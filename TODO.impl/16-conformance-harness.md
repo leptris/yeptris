@@ -69,7 +69,11 @@ C. Close to 100%-or-documented by Phase 5 (every entry justified).
   de-visualization of U+2423 ␣ markers and fail:true error cases;
   tree.{h,c} — THE event-format adapter; main.c with --verbose/--id/
   --progress + conformance-failures.txt).
-- **Baseline after first fix round: 145/351 (41.3%)** — hang-free.
+- **Baseline 41.3% → 43.0% (151/351)** through suite-driven fixes:
+  YAML 1.2 trailing flow commas; JSON-style `:` after quoted flow keys;
+  flow plain scalars may start with a non-structural `:` (`::x`);
+  `?foo`/`:foo` (indicator + non-blank) are plain, not markers;
+  root-level values on following lines at any indent (`&a\n- x`).
 - Engine bugs found & fixed by the harness already:
   - `unquoted : value` in flow (space before colon) — colon detection
     skipped spaces; bare ':' at token position is structural (infinite

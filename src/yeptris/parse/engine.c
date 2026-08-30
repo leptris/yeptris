@@ -613,8 +613,17 @@ static int e_flow_node(yep_engine* e, yep_event* ev) {
     if (c == '[' || c == '{') {
         return 2;
     }
-    if (c == ']' || c == '}' || c == ',' || c == ':') {
-        return 0; /* separator / close; ':' at token position is structural */
+    if (c == ']' || c == '}' || c == ',') {
+        return 0; /* separator / close */
+    }
+    if (c == ':') {
+        /* ':' separates only when followed by blank/EOL/flow indicator;
+         * ":x" is a plain scalar starting with a colon */
+        size_t n2 = e->pos + 1;
+        if (n2 >= e->len || e->p[n2] == ' ' || e->p[n2] == '\n' || e->p[n2] == '\r' ||
+            yep_ct_is((unsigned char)e->p[n2], YEP_CT_FLOW_IND)) {
+            return 0;
+        }
     }
 
     e_event_init(ev, YEP_EV_SCALAR);
@@ -636,8 +645,18 @@ static int e_flow_node(yep_engine* e, yep_event* ev) {
     if (c == '[' || c == '{') {
         return 2;
     }
-    /* plain: may span lines (folded) */
-    size_t start = e->pos;
+    /* plain: may span lines (folded); a leading non-structural ':' is
+     * part of the scalar ("::x" per the suite) */
+    int lead_colon = 0;
+    if ((unsigned char)e->p[e->pos] == ':') {
+        lead_colon = 1;
+        e->pos++;
+        e_flow_ws(e);
+        if (e->pos >= e->len) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
+    }
+    size_t start = e->pos - (size_t)lead_colon;
     e->fold_n = 0;
     for (;;) {
         yep_span s = yep_scan_plain(e->p, e->len, e->pos, 1);
@@ -749,10 +768,14 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             st[n - 1].sep = 0;
             st[n - 1].entries++;
             /* key detection: ':' after the node (spaces may precede the
-             * colon: "unquoted : value") */
+             * colon: "unquoted : value"). After a QUOTED node the colon
+             * separates JSON-style regardless of what follows. */
             e_skip_inline_space(e);
+            int quoted = (ev.type == YEP_EV_SCALAR &&
+                          (ev.style == YEP_STYLE_SINGLE_QUOTED ||
+                           ev.style == YEP_STYLE_DOUBLE_QUOTED));
             int colon = (e->pos < e->len && e->p[e->pos] == ':' &&
-                         (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
+                         (quoted || e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
                           e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
                           yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND)));
             if (colon && st[n - 1].kind == 1 && st[n - 1].pending_key == 0) {
@@ -875,9 +898,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             if (c != want) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
             }
-            if (st[n - 1].sep && st[n - 1].entries > 0) {
-                return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* trailing comma */
-            }
+            /* YAML 1.2 allows a trailing separator before the closer
+             * ("[1, ]", "{a: 1, }"); the comma handler already rejected
+             * doubled commas. */
             if (st[n - 1].kind == 1 && st[n - 1].pending_key != 0) {
                 yep_event nv;
                 e_event_init(&nv, YEP_EV_SCALAR);
@@ -972,7 +995,8 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         return e_parse_value(e, YEP_CTX_AFTER_DASH, col);
     }
 
-    if (c == '?') {
+    if (c == '?' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
+                     e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
         if (ctx != YEP_CTX_FRESH) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }
@@ -1154,7 +1178,9 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             e_line_done(e, li.end);
             continue;
         }
-        if (li.indent > floor_col) {
+        /* At document root there is no parent block: a following line
+         * at any indent is the value ("&a\n- x"). */
+        if (li.indent > floor_col || e->depth == 0) {
             e->pos += li.indent;
             return e_node(e, YEP_CTX_FRESH, floor_col);
         }
