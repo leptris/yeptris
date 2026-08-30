@@ -44,11 +44,18 @@ static char* devisualize(const char* in) {
             p[0] = '\n'; /* ↵ visualizes a NEL line break */
             memmove(p + 1, p + 3, strlen(p + 3) + 1);
         } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x80 &&
-                   (unsigned char)p[2] == 0x94 && (unsigned char)p[3] == 0xE2 &&
-                   (unsigned char)p[4] == 0x80 && (unsigned char)p[5] == 0x94 &&
-                   (unsigned char)p[6] == 0xC2 && (unsigned char)p[7] == 0xBB) {
-            p[0] = '\t'; /* ——» visualizes a tab */
-            memmove(p + 1, p + 8, strlen(p + 8) + 1);
+                   (unsigned char)p[2] == 0x94) {
+            /* em-dash(es) + » visualizes a tab, aligned to 4-col stops:
+             * glyph count = (4 - col % 4) */
+            char* q = p + 3;
+            while ((unsigned char)q[0] == 0xE2 && (unsigned char)q[1] == 0x80 &&
+                   (unsigned char)q[2] == 0x94) {
+                q += 3;
+            }
+            if ((unsigned char)q[0] == 0xC2 && (unsigned char)q[1] == 0xBB) {
+                p[0] = '\t';
+                memmove(p + 1, q + 2, strlen(q + 2) + 1);
+            }
         }
     }
     return out;

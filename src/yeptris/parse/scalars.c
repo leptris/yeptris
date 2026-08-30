@@ -82,17 +82,25 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
         if (c != '\\') {
             if (multiline && (c == '\n' || c == '\r')) {
                 /* fold: one break → ' ', n → (n-1) '\n'; skip leading
-                 * spaces of the next line. */
+                 * spaces of the next line. A whitespace-ONLY line counts
+                 * as an empty line (an extra break). */
                 uint32_t breaks = 0;
-                while (i < end && (p[i] == '\n' || p[i] == '\r')) {
-                    if (p[i] == '\r' && i + 1 < end && p[i + 1] == '\n') {
+                for (;;) {
+                    while (i < end && (p[i] == '\n' || p[i] == '\r')) {
+                        if (p[i] == '\r' && i + 1 < end && p[i + 1] == '\n') {
+                            i++;
+                        }
+                        i++;
+                        breaks++;
+                    }
+                    size_t save = i;
+                    while (i < end && (p[i] == ' ' || p[i] == '\t')) {
                         i++;
                     }
-                    i++;
-                    breaks++;
-                }
-                while (i < end && p[i] == ' ') {
-                    i++;
+                    if (i < end && (p[i] == '\n' || p[i] == '\r') && i > save) {
+                        continue; /* whitespace-only line: keep counting */
+                    }
+                    break;
                 }
                 if (breaks == 1) {
                     yep_buf_putc(&b, ' ');
