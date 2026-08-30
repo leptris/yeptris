@@ -40,7 +40,7 @@ static void tvalue(yts_tree* t, const yep_event* ev) {
         } else if (c == '\r') {
             tputs(t, "\\r");
         } else if (c == '\t') {
-            tputs(t, "\\t");
+            tputs(t, "——»"); /* the suite tab visualization */
         } else {
             tput(t, &c, 1);
         }
