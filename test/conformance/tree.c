@@ -31,7 +31,8 @@ static void tindent(yts_tree* t) {
 
 /* Suite value escaping: \n \r \t \\ become their backslash forms. */
 static void tvalue(yts_tree* t, const yep_event* ev) {
-    int dq = (ev->style == YEP_STYLE_DOUBLE_QUOTED);
+    int dq = (ev->style == YEP_STYLE_DOUBLE_QUOTED || ev->style == YEP_STYLE_LITERAL ||
+              ev->style == YEP_STYLE_FOLDED);
     uint32_t col = ev->col > 0 ? ev->col - 1 : 0; /* value start column */
     uint32_t emitted = 0;
     for (uint32_t i = 0; i < ev->value.len; i++) {
