@@ -274,6 +274,7 @@ static int e_quoted(yep_engine* e, yep_event* ev) {
         char* out = yep_finish_single(e->p, start, end, multiline, e->pool, &ev->value.len);
         if (out == NULL) {
             ev->value.p = e->p + start;
+            ev->value.len = end - start; /* finish_single returns before writing len */
             ev->borrowed = 1;
         } else {
             ev->value.p = out;
@@ -1038,11 +1039,49 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             continue;
         }
         if (c == ':') {
-            /* ':' after a bare key completes it (value next); with no
-             * pending key it is a stray — error */
+            e->pos++;
             if (st[n - 1].kind == 1 && st[n - 1].pending_key == 2) {
-                e->pos++;
+                /* ':' after a bare key completes it (value next) */
                 st[n - 1].pending_key = 1;
+                continue;
+            }
+            if (st[n - 1].kind == 1 && st[n - 1].pending_key == 0 && st[n - 1].entries == 0 &&
+                st[n - 1].sep == 0) {
+                /* '{: x' — empty key, value next */
+                yep_event kv;
+                e_event_init(&kv, YEP_EV_SCALAR);
+                kv.implicit = 1;
+                if (emit_now(e, &kv) != 0) {
+                    return -2;
+                }
+                st[n - 1].pending_key = 1;
+                st[n - 1].entries = 1;
+                continue;
+            }
+            if (st[n - 1].kind == 0 && n >= 1) {
+                /* '[ : v' — single-pair mapping with an empty key */
+                if (n >= YEP_MAX_DEPTH) {
+                    return e_fail(e, YEP_ERR_DEPTH, e->pos);
+                }
+                yep_event mk;
+                e_event_init(&mk, YEP_EV_MAP_START);
+                mk.flow = 1;
+                if (emit_now(e, &mk) != 0) {
+                    return -2;
+                }
+                yep_event kv;
+                e_event_init(&kv, YEP_EV_SCALAR);
+                kv.implicit = 1;
+                if (emit_now(e, &kv) != 0) {
+                    return -2;
+                }
+                st[n - 1].sep = 0;
+                st[n - 1].entries++;
+                st[n].kind = 1;
+                st[n].pending_key = 1;
+                st[n].sep = 0;
+                st[n].entries = 0;
+                n++;
                 continue;
             }
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
