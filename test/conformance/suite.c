@@ -66,8 +66,23 @@ char* extract_field(const char* text, const char* key) {
                 v[n + 1] = '\0';
                 return v;
             }
-            /* block scalar: consume following deeper-indented lines */
+            /* block scalar: consume following deeper-indented lines. An
+             * explicit indicator "|2" pins the indent (key indent 2 + N);
+             * otherwise it is detected from the first content line. */
             size_t content_indent = 0;
+            int explicit_indent = 0;
+            {
+                const char* ind = rest;
+                while (ind < eol && *ind == ' ') {
+                    ind++;
+                }
+                if (ind < eol && (*ind == '|' || *ind == '>')) {
+                    ind++;
+                    if (ind < eol && *ind >= '1' && *ind <= '9') {
+                        explicit_indent = 2 + (*ind - '0');
+                    }
+                }
+            }
             const char* q = (eol < p + strlen(p)) ? eol + 1 : eol;
             /* detect indent from first following line */
             const char* r = q;
@@ -75,7 +90,9 @@ char* extract_field(const char* text, const char* key) {
                 r++;
             }
             content_indent = (size_t)(r - q);
-            if (content_indent <= 2) {
+            if (explicit_indent > 0) {
+                content_indent = (size_t)explicit_indent;
+            } else if (content_indent <= 2) {
                 return NULL; /* empty block */
             }
             size_t cap = 256, n = 0;

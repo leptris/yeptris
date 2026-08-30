@@ -360,6 +360,36 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, uint16_t parent_col) {
             }
         }
         if (blank) {
+            /* a blank line whose spaces extend past the content indent is
+             * CONTENT (kept verbatim); otherwise it is a pure break */
+            if (content_indent >= 0 && li.indent > content_indent) {
+                if (e->fold_n >= YEP_MAX_FOLD_LINES) {
+                    return e_fail(e, YEP_ERR_MEMORY, e->pos);
+                }
+                e->fold[e->fold_n].content.p = e->p + li.offset + (uint32_t)content_indent;
+                e->fold[e->fold_n].content.len =
+                    li.end > li.offset + content_indent ? li.end - li.offset - content_indent : 0;
+                e->fold[e->fold_n].breaks_before =
+                    saw_content ? pending_breaks + 1 : pending_breaks;
+                e->fold[e->fold_n].more_indented = 1;
+                e->fold_n++;
+                saw_content = 1;
+                pending_breaks = 0;
+                trailing_breaks = 0;
+                {
+                    size_t at = li.end;
+                    size_t br = yep_scan_break_len(e->p, e->len, at);
+                    if (br > 0) {
+                        trailing_breaks = 1;
+                        e->pos = at + br;
+                        e->line++;
+                        e->line_start = e->pos;
+                    } else {
+                        e->pos = at;
+                    }
+                }
+                continue;
+            }
             pending_breaks++;
             e_line_done(e, li.end);
             continue;
