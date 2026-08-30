@@ -63,6 +63,7 @@ struct yep_engine {
     /* properties that belong to a value parsed on following lines */
     yep_view pend_anchor, pend_tag;
 
+    int doc_content; /* any node emitted for the current document */
     /* %TAG handle map for the current document (engine = tag SSOT) */
     struct {
         yep_view handle, prefix;
@@ -367,7 +368,8 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, uint16_t parent_col) {
         }
         e->fold[e->fold_n].content.p = e->p + from;
         e->fold[e->fold_n].content.len = li.end > from ? li.end - from : 0;
-        e->fold[e->fold_n].breaks_before = saw_content ? pending_breaks + 1 : 0;
+        /* leading blank lines belong to the block content */
+        e->fold[e->fold_n].breaks_before = saw_content ? pending_breaks + 1 : pending_breaks;
         e->fold[e->fold_n].more_indented = li.indent > content_indent;
         e->fold_n++;
         saw_content = 1;
@@ -664,7 +666,7 @@ static int e_skip_flow(yep_engine* e) {
 
 /* Parses one flow node at the cursor into *ev. Return: 1 node parsed,
  * 0 no node (separator/close next), 2 nested opener, -1 error. */
-static int e_flow_node(yep_engine* e, yep_event* ev) {
+static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     e_flow_ws(e);
     if (e->pos >= e->len) {
         return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
@@ -719,7 +721,24 @@ static int e_flow_node(yep_engine* e, yep_event* ev) {
     size_t start = e->pos - (size_t)lead_colon;
     e->fold_n = 0;
     for (;;) {
-        yep_span s = yep_scan_plain(e->p, e->len, e->pos, 1);
+        yep_span s;
+        if (keyish) {
+            /* key candidates end at ANY ':' — plain keys cannot contain
+             * one, and "?foo:bar" separates without a space */
+            s = yep_scan_plain(e->p, e->len, e->pos, 1);
+            size_t ci = s.start;
+            while (ci < s.end && e->p[ci] != ':') {
+                ci++;
+            }
+            if (ci < s.end) {
+                s.end = (uint32_t)ci;
+                s.term = YEP_TERM_COLON;
+                e->pos = (uint32_t)ci;
+                break;
+            }
+        } else {
+            s = yep_scan_plain(e->p, e->len, e->pos, 1);
+        }
         if (e->fold_n >= YEP_MAX_FOLD_LINES) {
             return e_fail(e, YEP_ERR_MEMORY, e->pos);
         }
@@ -793,7 +812,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
 
     for (;;) {
         e_event_init(&ev, YEP_EV_NONE);
-        int rc = e_flow_node(e, &ev);
+        int keyish = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0);
+        int rc = e_flow_node(e, &ev, keyish);
         if (rc == -1) {
             return -1;
         }
@@ -827,16 +847,21 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         if (rc == 1) {
             st[n - 1].sep = 0;
             st[n - 1].entries++;
-            /* key detection: ':' after the node (spaces may precede the
-             * colon: "unquoted : value"). After a QUOTED node the colon
-             * separates JSON-style regardless of what follows. */
-            e_skip_inline_space(e);
+            /* key detection: ':' after the node (spaces and line breaks
+             * may precede it: "unquoted : value", "\"foo\"\n: bar").
+             * After a QUOTED node the colon separates JSON-style. */
+            size_t save_pos = e->pos;
+            e_flow_ws(e); /* crosses newlines; restored below when no colon */
             int quoted = (ev.type == YEP_EV_SCALAR && (ev.style == YEP_STYLE_SINGLE_QUOTED ||
                                                        ev.style == YEP_STYLE_DOUBLE_QUOTED));
+            int key_pos = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0);
             int colon = (e->pos < e->len && e->p[e->pos] == ':' &&
-                         (quoted || e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
+                         (quoted || key_pos || e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
                           e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
                           yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND)));
+            if (!colon) {
+                e->pos = save_pos; /* not a key; the caller re-reads */
+            }
             if (colon && st[n - 1].kind == 1 && st[n - 1].pending_key == 0) {
                 e->pos++;
                 st[n - 1].pending_key = 1;
@@ -861,7 +886,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                     return -2;
                 }
                 yep_event vev;
-                int vrc = e_flow_node(e, &vev);
+                int vrc = e_flow_node(e, &vev, 0);
                 if (vrc == -1) {
                     return -1;
                 }
@@ -1161,7 +1186,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (ctx == YEP_CTX_AFTER_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, s.end);
         }
-        uint16_t key_col = e_col(e, start);
+        uint16_t key_col = e_col(e, node_at);
         int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t);
         if (rc != 0) {
             return rc;
@@ -1309,6 +1334,8 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     e->line_start = 0;
     e->depth = 0;
     e->anchor_count = 0;
+    e->tagmap_n = 0;
+    e->doc_content = 0;
     e->sink = sink;
     yep_error_clear(&e->err);
 
@@ -1392,6 +1419,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                     }
                     goto fail;
                 }
+                e->doc_content = 1;
             }
             e_line_done(e, e->pos);
             continue;
@@ -1473,6 +1501,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 }
                 goto fail;
             }
+            e->doc_content = 1;
             e_line_done(e, e->pos);
             continue;
         }
@@ -1485,6 +1514,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 }
                 goto fail;
             }
+            e->doc_content = 1;
         }
         e_line_done(e, e->pos);
     }
@@ -1496,6 +1526,13 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
         }
     }
     if (doc_open) {
+        if (!e->doc_content) {
+            e_event_init(&ev, YEP_EV_SCALAR);
+            ev.implicit = 1;
+            if (emit_now(e, &ev) != 0) {
+                return -2;
+            }
+        }
         e_event_init(&ev, YEP_EV_DOCUMENT_END);
         if (emit_now(e, &ev) != 0) {
             return -2;
