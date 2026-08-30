@@ -127,6 +127,19 @@ endif()
 
 if(BUILD_TESTING)
     add_subdirectory(test)
+
+    # Conformance runner (TODO.impl/16): builds on demand; the corpus
+    # arrives via scripts/fetch-corpora.sh.
+    add_executable(test_conformance EXCLUDE_FROM_ALL
+        test/conformance/main.c
+        test/conformance/suite.c
+        test/conformance/tree.c)
+    target_link_libraries(test_conformance PRIVATE yeptris_static)
+    target_include_directories(test_conformance PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/yeptris
+        ${CMAKE_SOURCE_DIR}/src/include
+        ${CMAKE_BINARY_DIR}/generated)
+    yeptris_set_warnings(test_conformance)
 endif()
 
 if(YEPTRIS_BUILD_BENCHMARKS)
