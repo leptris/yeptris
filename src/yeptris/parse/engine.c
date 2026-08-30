@@ -700,6 +700,7 @@ static int e_skip_flow(yep_engine* e) {
 /* Parses one flow node at the cursor into *ev. Return: 1 node parsed,
  * 0 no node (separator/close next), 2 nested opener, -1 error. */
 static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
+    (void)keyish;
     e_flow_ws(e);
     if (e->pos >= e->len) {
         return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
@@ -756,18 +757,6 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     e->fold_n = 0;
     for (;;) {
         yep_span s = yep_scan_plain(e->p, e->len, e->pos, 1);
-        if (keyish) {
-            /* key candidates end at ANY ':' — plain keys cannot contain
-             * one, and "?foo:bar" separates without a space */
-            size_t ci = s.start;
-            while (ci < s.end && e->p[ci] != ':') {
-                ci++;
-            }
-            if (ci < s.end) {
-                s.end = (uint32_t)ci;
-                s.term = YEP_TERM_COLON;
-            }
-        }
         if (s.end == s.start && e->fold_n == 0) {
             return 0; /* empty token: separator/close comes next */
         }
