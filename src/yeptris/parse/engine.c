@@ -864,6 +864,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         uint8_t kind;        /* 0 seq, 1 map */
         uint8_t pending_key; /* map: 1 key seen awaiting ':' value; 2 key emitted w/o ':' */
         uint8_t sep;         /* a ',' was consumed and no entry followed yet */
+        uint8_t just_closed; /* a nested collection closed here (key candidate) */
         uint32_t entries;    /* completed entries (for trailing-comma detection) */
     } st[YEP_MAX_DEPTH];
     int n = 0;
@@ -883,6 +884,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
     st[n].kind = (open == '[') ? 0 : 1;
     st[n].pending_key = 0;
     st[n].sep = 0;
+    st[n].just_closed = 0;
     st[n].entries = 0;
     n++;
 
@@ -906,6 +908,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }
+            st[n - 1].just_closed = 0;
             /* the nested collection is an entry of the parent frame; when
              * it appears in a map's value position it completes the pair */
             if (st[n - 1].kind == 1 && st[n - 1].pending_key == 1) {
@@ -922,6 +925,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         }
         if (rc == 1) {
             st[n - 1].sep = 0;
+            st[n - 1].just_closed = 0;
             st[n - 1].entries++;
             /* key detection: ':' after the node (spaces and line breaks
              * may precede it: "unquoted : value", "\"foo\"\n: bar").
@@ -1051,6 +1055,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 st[n - 1].pending_key = 0;
             }
             st[n - 1].sep = 1;
+            st[n - 1].just_closed = 0;
             continue;
         }
         if (c == ']' || c == '}') {
@@ -1080,12 +1085,19 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 e_skip_inline_space(e);
                 return 0;
             }
+            st[n - 1].just_closed = 1;
             continue;
         }
         if (c == ':') {
             e->pos++;
             if (st[n - 1].kind == 1 && st[n - 1].pending_key == 2) {
                 /* ':' after a bare key completes it (value next) */
+                st[n - 1].pending_key = 1;
+                continue;
+            }
+            if (st[n - 1].kind == 1 && st[n - 1].just_closed) {
+                /* '[a, b]: v' inside a map — the closed collection is the key */
+                st[n - 1].just_closed = 0;
                 st[n - 1].pending_key = 1;
                 continue;
             }
@@ -1204,6 +1216,21 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return rc;
         }
         e->pos++;
+        e_skip_inline_space(e);
+        if (e->pos < e->len && e->p[e->pos] == ':' &&
+            (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\n' ||
+             e->p[e->pos + 1] == '\r')) {
+            /* '? : value' — empty explicit key */
+            yep_event kv;
+            e_event_init(&kv, YEP_EV_SCALAR);
+            kv.style = YEP_STYLE_PLAIN;
+            kv.implicit = 1;
+            if (emit_now(e, &kv) != 0) {
+                return -2;
+            }
+            e->pos++;
+            return e_parse_value(e, YEP_CTX_AFTER_COLON, col);
+        }
         /* the explicit key is parsed as a value (may be empty → null);
          * its content may ALIGN with the '?' column */
         e->q_key_pending = 1;
