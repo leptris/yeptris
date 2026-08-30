@@ -1,0 +1,8 @@
+{
+    "name": "yeptris",
+    "version": "0.1.0",
+    "description": "Ultra-fast YAML 1.2 parser, emitter and streamer in C",
+    "homepage": "https://github.com/leptris/yeptris",
+    "license": "BSD-2-Clause",
+    "dependencies": []
+}

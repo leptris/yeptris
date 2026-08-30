@@ -1,0 +1,21 @@
+# Build directories (leptris convention: build-<purpose>)
+build*/
+build*/
+
+# Generated
+compile_commands.json
+test/conformance/data/
+
+# Artifacts
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exe
+
+# OS / editor
+.DS_Store
+*~
