@@ -47,18 +47,11 @@ static void tvalue(yts_tree* t, const yep_event* ev) {
     }
 }
 
-/* Resolved-tag form: !!x → <tag:yaml.org,2002:x>, !x → <!x>, ! → <!>,
- * verbatim !<...> → <...>. */
+/* Tags arrive RESOLVED from the engine (%TAG handles, !! shorthand);
+ * the adapter only renders <...>. */
 static void ttag(yts_tree* t, yep_view tag) {
     tputs(t, " <");
-    if (tag.len >= 2 && tag.p[0] == '!' && tag.p[1] == '!') {
-        tputs(t, "tag:yaml.org,2002:");
-        tput(t, tag.p + 2, tag.len - 2);
-    } else if (tag.len >= 3 && tag.p[0] == '!' && tag.p[1] == '<') {
-        tput(t, tag.p + 2, tag.len - 3); /* strip !< and > */
-    } else {
-        tput(t, tag.p, tag.len);
-    }
+    tput(t, tag.p, tag.len);
     tputs(t, ">");
 }
 

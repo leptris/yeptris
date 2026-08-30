@@ -276,7 +276,7 @@ TEST(Parse, Tags) {
     size_t tlen = 0;
     const char* t = yeptris_node_tag(a, &tlen);
     ASSERT_NE(t, nullptr);
-    EXPECT_EQ(std::string(t, tlen), "!!str");
+    EXPECT_EQ(std::string(t, tlen), "tag:yaml.org,2002:str");
     EXPECT_EQ(val(a), "123");
     YeptrisNode b = yeptris_node_map_get(root, "b", 1);
     t = yeptris_node_tag(b, &tlen);
@@ -340,7 +340,7 @@ TEST(Parse, Errors) {
         {"key: \"unterminated", YEPTRIS_ERROR_PARSE}, /* unterminated quote */
         {"bad: *missing", YEPTRIS_ERROR_PARSE},       /* undefined alias */
         {"a: 1\n\tb: 2\n", YEPTRIS_ERROR_PARSE},      /* tab indent */
-        {"[1,]", YEPTRIS_ERROR_PARSE},                /* trailing comma */
+        {"[1,,2]", YEPTRIS_ERROR_PARSE},               /* doubled comma */
         {"a: b: c", YEPTRIS_ERROR_PARSE},             /* mapping values not allowed */
     };
     for (const auto& c : cases) {
