@@ -163,6 +163,12 @@ static ptrdiff_t yep_neon_quote_scan(const char* s, size_t len, char q, int* has
                 did_break = 1;
                 break;
             }
+            if (q == '\'' && i + kq + 1 < len && s[i + kq + 1] == '\'') {
+                esc = 1;
+                i += kq + 2; /* doubled quote inside a single-quoted scalar */
+                did_break = 1;
+                break;
+            }
             if (has_escape != NULL) {
                 *has_escape = esc;
             }

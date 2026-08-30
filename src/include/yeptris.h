@@ -8,7 +8,9 @@
 #define YEPTRIS_H
 
 #include <yeptris/api.h>
+#include <yeptris/dom.h>
 #include <yeptris/error.h>
+#include <yeptris/parse.h>
 #include <yeptris/types.h>
 #include <yeptris/version.h>
 
