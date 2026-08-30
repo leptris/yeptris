@@ -1343,7 +1343,10 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (emit_now(e, &kv) != 0) {
             return -2;
         }
-        /* the span end is the TRIMMED end; spaces may precede the colon */
+        /* advance from the TRIMMED span end (not the stale pre-scan
+         * position — the first ':' in the buffer may be INSIDE the key);
+         * spaces may still precede the terminating colon */
+        e->pos = s.end;
         while (e->pos < e->len && e->p[e->pos] != ':') {
             e->pos++;
         }
