@@ -15,6 +15,14 @@ set(YEPTRIS_SOURCES
     yeptris/memory/allocator.c
     yeptris/memory/pool.c
     yeptris/memory/arena.c
+    yeptris/encoding/bom.c
+    yeptris/encoding/transcode.c
+    yeptris/encoding/utf8_validate.c
+    yeptris/scan/scan.c
+    yeptris/parse/scalars.c
+    yeptris/parse/engine.c
+    yeptris/dom/dom.c
+    yeptris/parse.c
 )
 
 # AOT SIMD TUs (TODO.impl/04): per-ISA compile flags; the TUs and the
@@ -30,8 +38,10 @@ endif()
 set(YEPTRIS_PUBLIC_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/api.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/types.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/dom.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/error.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/parse.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/types.h
 )
 
 set(YEPTRIS_INCLUDE_DIRS
@@ -43,7 +53,9 @@ if(YEPTRIS_BUILD_STATIC)
     add_library(yeptris_static STATIC ${YEPTRIS_SOURCES})
     add_library(yeptris::yeptris ALIAS yeptris_static)
     set_target_properties(yeptris_static PROPERTIES OUTPUT_NAME yeptris)
-    target_include_directories(yeptris_static PUBLIC ${YEPTRIS_INCLUDE_DIRS})
+    target_include_directories(yeptris_static
+        PUBLIC ${YEPTRIS_INCLUDE_DIRS}
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris) # internal root-relative includes
     target_compile_definitions(yeptris_static PRIVATE YEPTRIS_BUILDING)
     yeptris_set_warnings(yeptris_static)
 endif()
@@ -53,7 +65,9 @@ if(YEPTRIS_BUILD_SHARED)
     set_target_properties(yeptris_shared
         PROPERTIES OUTPUT_NAME yeptris
                     SOVERSION ${PROJECT_VERSION_MAJOR})
-    target_include_directories(yeptris_shared PUBLIC ${YEPTRIS_INCLUDE_DIRS})
+    target_include_directories(yeptris_shared
+        PUBLIC ${YEPTRIS_INCLUDE_DIRS}
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris)
     target_compile_definitions(yeptris_shared PRIVATE YEPTRIS_BUILDING)
     yeptris_set_warnings(yeptris_shared)
 endif()

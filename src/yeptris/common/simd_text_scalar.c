@@ -88,6 +88,11 @@ ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has
             continue;
         }
         if (s[i] == q) {
+            if (q == '\'' && i + 1 < len && s[i + 1] == '\'') {
+                esc = 1;
+                i++; /* doubled quote inside a single-quoted scalar */
+                continue;
+            }
             if (has_escape != NULL) {
                 *has_escape = esc;
             }

@@ -145,6 +145,11 @@ static ptrdiff_t yep_avx2_quote_scan(const char* s, size_t len, char q, int* has
                 i += k + 2; /* skip the escaped byte */
                 break;
             }
+            if (q == '\'' && i + k + 1 < len && s[i + k + 1] == '\'') {
+                esc = 1;
+                i += k + 2; /* doubled quote inside a single-quoted scalar */
+                break;
+            }
             if (has_escape != NULL) {
                 *has_escape = esc;
             }

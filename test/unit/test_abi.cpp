@@ -34,6 +34,19 @@ static_assert(YEPTRIS_ERROR_ARG == 6, "pinned ABI value");
 static_assert(YEPTRIS_ERROR_UNSUPPORTED == 7, "pinned ABI value");
 static_assert(YEPTRIS_ERROR_INTERNAL == 8, "pinned ABI value");
 
+/* ---- Node kind / scalar style enums: pinned (TODO.impl/11). */
+static_assert(YEPTRIS_NODE_SCALAR == 0, "pinned ABI value");
+static_assert(YEPTRIS_NODE_SEQUENCE == 1, "pinned ABI value");
+static_assert(YEPTRIS_NODE_MAPPING == 2, "pinned ABI value");
+static_assert(YEPTRIS_NODE_ALIAS == 3, "pinned ABI value");
+
+static_assert(YEPTRIS_STYLE_ANY == 0, "pinned ABI value");
+static_assert(YEPTRIS_STYLE_PLAIN == 1, "pinned ABI value");
+static_assert(YEPTRIS_STYLE_SINGLE_QUOTED == 2, "pinned ABI value");
+static_assert(YEPTRIS_STYLE_DOUBLE_QUOTED == 3, "pinned ABI value");
+static_assert(YEPTRIS_STYLE_LITERAL == 4, "pinned ABI value");
+static_assert(YEPTRIS_STYLE_FOLDED == 5, "pinned ABI value");
+
 TEST(Abi, VersionStringMatchesMacros) {
     const char* v = yeptris_version();
     ASSERT_NE(v, nullptr);
