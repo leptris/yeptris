@@ -35,6 +35,7 @@ typedef enum {
     YEP_CTX_FRESH = 0,   /* fresh line entry: may open collections */
     YEP_CTX_AFTER_DASH,  /* value of a seq entry: may open collections (compact) */
     YEP_CTX_AFTER_COLON, /* value of a map key: collections via following lines only */
+    YEP_CTX_AFTER_Q,     /* explicit-key content: may ALIGN with the '?' column */
 } yep_ctx;
 
 struct yep_engine {
@@ -63,7 +64,8 @@ struct yep_engine {
     /* properties that belong to a value parsed on following lines */
     yep_view pend_anchor, pend_tag;
 
-    int doc_content; /* any node emitted for the current document */
+    int doc_content;   /* any node emitted for the current document */
+    int q_key_pending; /* an explicit '?' key awaits its ':' value line */
     /* %TAG handle map for the current document (engine = tag SSOT) */
     struct {
         yep_view handle, prefix;
@@ -1089,8 +1091,10 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return rc;
         }
         e->pos++;
-        /* the explicit key is parsed as a value (may be empty → null) */
-        return e_parse_value(e, YEP_CTX_AFTER_DASH, col);
+        /* the explicit key is parsed as a value (may be empty → null);
+         * its content may ALIGN with the '?' column */
+        e->q_key_pending = 1;
+        return e_parse_value(e, YEP_CTX_AFTER_Q, col);
     }
 
     if (c == '[' || c == '{') {
@@ -1262,8 +1266,10 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             continue;
         }
         /* At document root there is no parent block: a following line
-         * at any indent is the value ("&a\n- x"). */
-        if (li.indent > floor_col || e->depth == 0) {
+         * at any indent is the value ("&a\n- x"). Explicit-key content
+         * may align with the '?' column. */
+        if (li.indent > floor_col || e->depth == 0 ||
+            (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col)) {
             e->pos += li.indent;
             return e_node(e, YEP_CTX_FRESH, floor_col);
         }
@@ -1335,6 +1341,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     e->anchor_count = 0;
     e->tagmap_n = 0;
     e->doc_content = 0;
+    e->q_key_pending = 0;
     e->sink = sink;
     yep_error_clear(&e->err);
 
@@ -1487,13 +1494,29 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
         unsigned char first = (unsigned char)e->p[e->pos];
         if (first == ':' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
                              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
-            /* explicit-key value line */
+            /* explicit-key value line, or a bare ':' pair (empty key) */
+            int rc;
             if (e->depth == 0 || e->frames[e->depth - 1].kind != YEP_FRAME_MAP) {
-                e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
-                goto fail;
+                rc = e_open_map(e, c, e->line, c + 1, e->pend_anchor, e->pend_tag);
+                if (rc != 0) {
+                    if (rc == -2) {
+                        return -2;
+                    }
+                    goto fail;
+                }
             }
+            if (!e->q_key_pending) {
+                yep_event kv;
+                e_event_init(&kv, YEP_EV_SCALAR);
+                kv.style = YEP_STYLE_PLAIN;
+                kv.implicit = 1;
+                if (emit_now(e, &kv) != 0) {
+                    return -2;
+                }
+            }
+            e->q_key_pending = 0;
             e->pos++;
-            int rc = e_parse_value(e, YEP_CTX_AFTER_COLON, e->frames[e->depth - 1].col);
+            rc = e_parse_value(e, YEP_CTX_AFTER_COLON, e->frames[e->depth - 1].col);
             if (rc != 0) {
                 if (rc == -2) {
                     return -2;

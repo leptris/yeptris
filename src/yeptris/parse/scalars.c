@@ -331,9 +331,11 @@ char* yep_finish_block(const yep_fold_line* lines, size_t n, int folded, int cho
             yep_emit_breaks(&b, br); /* literal: every break is a newline */
         } else {
             /* folded: plain-fold, unless a more-indented neighbor forces
-             * every break to be kept literally */
+             * every break to be kept literally. LEADING breaks (before
+             * the first content line) have no preceding content to fold
+             * against — they emit literally. */
             int keep = lines[i].more_indented || (i > 0 && lines[i - 1].more_indented);
-            if (keep) {
+            if (keep || i == 0) {
                 yep_emit_breaks(&b, br);
             } else {
                 yep_fold_break(&b, br);
