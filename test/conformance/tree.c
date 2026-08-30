@@ -31,6 +31,7 @@ static void tindent(yts_tree* t) {
 
 /* Suite value escaping: \n \r \t \\ become their backslash forms. */
 static void tvalue(yts_tree* t, const yep_event* ev) {
+    int dq = (ev->style == YEP_STYLE_DOUBLE_QUOTED);
     for (uint32_t i = 0; i < ev->value.len; i++) {
         char c = ev->value.p[i];
         if (c == '\\') {
@@ -40,7 +41,8 @@ static void tvalue(yts_tree* t, const yep_event* ev) {
         } else if (c == '\r') {
             tputs(t, "\\r");
         } else if (c == '\t') {
-            tputs(t, "——»"); /* the suite tab visualization */
+            /* double-quoted values keep the escape; others visualize */
+            tputs(t, dq ? "\\t" : "——»");
         } else {
             tput(t, &c, 1);
         }
