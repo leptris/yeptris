@@ -37,8 +37,18 @@ static char* devisualize(const char* in) {
     for (char* p = out; *p != '\0'; p++) {
         if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x90 &&
             (unsigned char)p[2] == 0xA3) {
-            p[0] = ' ';
+            p[0] = ' '; /* ␣ visualizes a space */
             memmove(p + 1, p + 3, strlen(p + 3) + 1);
+        } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x86 &&
+                   (unsigned char)p[2] == 0xB5) {
+            p[0] = '\n'; /* ↵ visualizes a NEL line break */
+            memmove(p + 1, p + 3, strlen(p + 3) + 1);
+        } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x80 &&
+                   (unsigned char)p[2] == 0x94 && (unsigned char)p[3] == 0xE2 &&
+                   (unsigned char)p[4] == 0x80 && (unsigned char)p[5] == 0x94 &&
+                   (unsigned char)p[6] == 0xC2 && (unsigned char)p[7] == 0xBB) {
+            p[0] = '\t'; /* ——» visualizes a tab */
+            memmove(p + 1, p + 8, strlen(p + 8) + 1);
         }
     }
     return out;

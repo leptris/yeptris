@@ -1208,7 +1208,11 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (emit_now(e, &kv) != 0) {
             return -2;
         }
-        e->pos = s.end + 1; /* past ':' */
+        /* the span end is the TRIMMED end; spaces may precede the colon */
+        while (e->pos < e->len && e->p[e->pos] != ':') {
+            e->pos++;
+        }
+        e->pos++; /* past ':' */
         return e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
     }
 
