@@ -1,6 +1,26 @@
 # TODO.impl/05 — Encoding front-end: BOM, fused UTF-8 validation, transcode
 
-Status: pending · Depends: 03, 04 · Layer: `src/yeptris/encoding` · PLAN.md phase: 0
+Status: done · Depends: 03, 04 · Layer: `src/yeptris/encoding` · PLAN.md phase: 0
+
+## Settled decisions (recorded at implementation time)
+
+- **One internal header** (`encoding.h`) with three .c files (bom,
+  utf8_validate, transcode) — the item's per-module headers collapsed into
+  one SSOT header; the "registry" is the enum + dispatch switch.
+- **Validation is scalar with a SWAR ASCII fast path** (8-byte high-bit
+  mask). Multi-GB/s on ASCII; the SIMD kernel lands only if 06's profiles
+  justify it. Verified differential against a naive test-local decoder
+  over the full 2-byte input space + 2000 random buffers.
+- **Transcode is strict v1** (unpaired surrogates / > U+10FFFF / partial
+  units error at the offending offset); the compat replacement policy
+  arrives with parse options (10). Worst-case sizing: UTF-16 1.5×,
+  UTF-32 1×.
+- Internal include convention fixed at this item: the lib targets carry
+  `src/yeptris` as a private include root, so internal includes are
+  root-relative (`"memory/allocator.h"`) — same convention the tests use.
+- C gotcha documented: in `"...\xA9b"`, the `b` is a hex digit and merges
+  into the escape (0xA9B > 0xFF → compile error); break literals when a
+  hex escape is followed by [0-9a-fA-F].
 
 ## Goal
 

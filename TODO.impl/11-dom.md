@@ -1,6 +1,6 @@
 # TODO.impl/11 — DOM: compact nodes, vtables, interning, O(1) access
 
-Status: pending · Depends: 07, 10 · Layer: `src/yeptris/dom` · PLAN.md phase: 1
+Status: active (v1 shipped) · Depends: 07, 10 · Layer: `src/yeptris/dom` · PLAN.md phase: 1
 
 ## Goal
 
@@ -70,3 +70,23 @@ C. Path queries, alias/merge semantics; psych `test_merge_keys.rb`,
 - `~/src/leptris/leptris/src/leptris/dom/{compact.c,element_index.c,node_vtable.c}`
   (the compactness + vtable + index disciplines), `~/src/external/libfyaml/src/lib/fy-doc.c`
   (doc model), `~/src/external/psych/lib/psych/nodes.rb` (node vocabulary).
+
+## v1 shipped (2026-08-30)
+
+- `dom.{h,c}`: sibling-linked nodes (first/last child + next_sibling,
+  UINT32_MAX sentinels — dense-array interleaving bug avoided), builder
+  sink over engine events, anchor binding incl. collection anchors,
+  alias nodes with target ids, document roots.
+- Public surface: document count/root/free (one free releases pool +
+  handles — handles allocated from the document pool), node kind/value/
+  style/tag/anchor/alias-target, seq count/at, map count/get (linear).
+- Pinned enums (node kinds, scalar styles) in the ABI test.
+
+## Remaining phases (next work)
+
+1. Key interning + O(1) map lookup (currently linear scan) — the
+   open-addressing table from the item design.
+2. Node-size gate (≤64 B target) in validate.sh once the layout settles.
+3. Per-kind vtables (with mutation + emitter integration).
+4. Merge-key resolution (<<) in compat mode (with 10).
+5. Node-handle identity guarantees for bindings (12/15).
