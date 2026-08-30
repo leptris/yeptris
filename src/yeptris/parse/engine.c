@@ -708,24 +708,24 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
         return 2;
     }
     /* plain: may span lines (folded); a leading non-structural ':' is
-     * part of the scalar ("::x" per the suite) */
-    int lead_colon = 0;
-    if ((unsigned char)e->p[e->pos] == ':') {
-        lead_colon = 1;
+     * part of the scalar ("::x" per the suite) — keep it in the first
+     * piece by scanning from the colon itself */
+    const char* piece_start_fix = e->p + e->pos;
+    if ((unsigned char)*piece_start_fix == ':') {
         e->pos++;
         e_flow_ws(e);
         if (e->pos >= e->len) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }
+        /* rescan from the colon so the piece includes it */
+        e->pos = (size_t)(piece_start_fix - e->p);
     }
-    size_t start = e->pos - (size_t)lead_colon;
     e->fold_n = 0;
     for (;;) {
-        yep_span s;
+        yep_span s = yep_scan_plain(e->p, e->len, e->pos, 1);
         if (keyish) {
             /* key candidates end at ANY ':' — plain keys cannot contain
              * one, and "?foo:bar" separates without a space */
-            s = yep_scan_plain(e->p, e->len, e->pos, 1);
             size_t ci = s.start;
             while (ci < s.end && e->p[ci] != ':') {
                 ci++;
@@ -733,33 +733,33 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
             if (ci < s.end) {
                 s.end = (uint32_t)ci;
                 s.term = YEP_TERM_COLON;
-                e->pos = (uint32_t)ci;
-                break;
             }
-        } else {
-            s = yep_scan_plain(e->p, e->len, e->pos, 1);
+        }
+        if (s.end == s.start && e->fold_n == 0) {
+            return 0; /* empty token: separator/close comes next */
         }
         if (e->fold_n >= YEP_MAX_FOLD_LINES) {
             return e_fail(e, YEP_ERR_MEMORY, e->pos);
         }
-        e->fold[e->fold_n].content.p = e->p + s.start;
-        e->fold[e->fold_n].content.len = s.end - s.start;
-        e->fold[e->fold_n].breaks_before = (e->fold_n == 0) ? 0 : 1;
-        e->fold_n++;
+        if (s.end > s.start) {
+            e->fold[e->fold_n].content.p = e->p + s.start;
+            e->fold[e->fold_n].content.len = s.end - s.start;
+            e->fold[e->fold_n].breaks_before = (e->fold_n == 0) ? 0 : 1;
+            e->fold_n++;
+        }
         if (s.term == YEP_TERM_EOL || s.term == YEP_TERM_COMMENT) {
+            e->pos = s.end;
             if (s.term == YEP_TERM_COMMENT) {
                 e_skip_to_eol(e);
             }
             e_line_done(e, e->pos);
-            e_skip_inline_space(e);
-            if (e->pos < e->len && e->p[e->pos] != '\n' && e->p[e->pos] != '\r' &&
-                e->p[e->pos] != ']' && e->p[e->pos] != '}' && e->p[e->pos] != ',' &&
-                e->p[e->pos] != '#') {
-                e->pos = s.end;
-                continue; /* continuation on the next line */
+            e_flow_ws(e);
+            if (e->pos < e->len && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
+                e->p[e->pos] != ',' && e->p[e->pos] != '#' && e->p[e->pos] != '\n' &&
+                e->p[e->pos] != '\r') {
+                continue; /* continuation on a following line */
             }
-            e->pos = s.end;
-            break;
+            break; /* at a boundary; pos is on the separator/close */
         }
         e->pos = s.end;
         break;
@@ -776,7 +776,6 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
         ev->value.p = out;
         ev->borrowed = 0;
     }
-    (void)start;
     ev->style = YEP_STYLE_PLAIN;
     ev->implicit = 1;
     return 1;

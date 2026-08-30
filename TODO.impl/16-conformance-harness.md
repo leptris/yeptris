@@ -69,7 +69,7 @@ C. Close to 100%-or-documented by Phase 5 (every entry justified).
   de-visualization of U+2423 ␣ markers and fail:true error cases;
   tree.{h,c} — THE event-format adapter; main.c with --verbose/--id/
   --progress + conformance-failures.txt).
-- **Baseline 41.3% → 43.0% → 47.3% (166/351; round 3: empty-scalar for content-less docs, prop-prefixed keys open maps at the node column, flow colon may cross a line break, block-scalar leading blanks, flow key-position colon rule)** through suite-driven fixes:
+- **Baseline 41.3% → 43.0% → 49.9% (175/351; round 4 rewrote the flow-plain token loop — EOL handling now advances from the piece end (was re-scanning from the pre-scan position, producing phantom-space folds), empty tokens return to the separator path, leading ":" rides the scanned span. Was 47.3% (166/351; round 3: empty-scalar for content-less docs, prop-prefixed keys open maps at the node column, flow colon may cross a line break, block-scalar leading blanks, flow key-position colon rule)** through suite-driven fixes:
   YAML 1.2 trailing flow commas; JSON-style `:` after quoted flow keys;
   flow plain scalars may start with a non-structural `:` (`::x`);
   `?foo`/`:foo` (indicator + non-blank) are plain, not markers;
