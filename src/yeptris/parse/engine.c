@@ -289,6 +289,40 @@ static int e_quoted(yep_engine* e, yep_event* ev) {
             break;
         }
     }
+    /* escape pre-validation: unknown escapes are errors */
+    for (size_t i = start; i < end; i++) {
+        if (e->p[i] != '\\' || i + 1 >= end) {
+            continue;
+        }
+        unsigned char esc = (unsigned char)e->p[i + 1];
+        if (esc == 'x' || esc == 'u' || esc == 'U' || esc == '\n' || esc == '\r') {
+            continue; /* checked by finish_double */
+        }
+        switch (esc) {
+        case '0':
+        case 'a':
+        case 'b':
+        case 't':
+        case '\t':
+        case 'n':
+        case 'v':
+        case 'f':
+        case 'r':
+        case 'e':
+        case ' ':
+        case '"':
+        case '/':
+        case '\\':
+        case 'N':
+        case '_':
+        case 'L':
+        case 'P':
+            break;
+        default:
+            return e_fail(e, YEP_ERR_INVALID_ESCAPE, i);
+        }
+        i++; /* skip the escaped byte */
+    }
 
     ev->style = (q == '\'') ? YEP_STYLE_SINGLE_QUOTED : YEP_STYLE_DOUBLE_QUOTED;
     if (q == '\'') {
@@ -1208,7 +1242,16 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             e->pos++; /* ':' */
             return e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
         }
-        return e_flow(e, node_a, node_t);
+        {
+            int rc = e_flow(e, node_a, node_t);
+            if (rc != 0) {
+                return rc;
+            }
+            if (!e_at_eol(e)) {
+                return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "[ a ] ]" */
+            }
+            return 0;
+        }
     }
 
     if (c == '"' || c == '\'') {
@@ -1271,6 +1314,12 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     /* plain scalar */
     size_t start = e->pos;
     yep_span s = yep_scan_plain(e->p, e->len, e->pos, 0);
+    if (s.term != YEP_TERM_COLON && ctx == YEP_CTX_FRESH && e->depth > 0 &&
+        e_col(e, node_at) == e->frames[e->depth - 1].col) {
+        /* a plain scalar at an open container's column with no ':' —
+         * neither a mapping key nor a sequence entry */
+        return e_fail(e, YEP_ERR_UNEXPECTED, s.end);
+    }
     if (s.term == YEP_TERM_COLON) {
         if (ctx == YEP_CTX_AFTER_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, s.end);
@@ -1530,6 +1579,17 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
             continue;
         }
         if (li.flags & YEP_LF_DOC_END) {
+            {
+                size_t rest = li.offset + li.indent + 3;
+                while (rest < e->len &&
+                       (e->p[rest] == ' ' || e->p[rest] == '\t' || e->p[rest] == '\r')) {
+                    rest++;
+                }
+                if (rest < e->len && e->p[rest] != '\n' && e->p[rest] != '#') {
+                    e_fail(e, YEP_ERR_UNEXPECTED, rest);
+                    goto fail;
+                }
+            }
             int rc = e_close_to(e, 0);
             if (rc != 0) {
                 return rc;
