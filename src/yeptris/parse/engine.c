@@ -396,9 +396,6 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, uint16_t parent_col) {
 
     while (e->pos < e->len) {
         yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
-        if (li.flags & YEP_LF_TAB) {
-            return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
-        }
         int blank = (li.flags & YEP_LF_BLANK) != 0;
         if (!blank) {
             if (content_indent < 0) {
@@ -518,9 +515,6 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
         breaks++;
         e_line_done(e, e->pos);
         yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
-        if (li.flags & YEP_LF_TAB) {
-            return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
-        }
         if (li.flags & YEP_LF_BLANK) {
             /* Park at the line end: the loop's next break consumption
              * counts this blank line's own break. */
@@ -1423,9 +1417,6 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             goto empty_value;
         }
         yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
-        if (li.flags & YEP_LF_TAB) {
-            return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
-        }
         if (li.flags & YEP_LF_BLANK) {
             e_line_done(e, li.end);
             continue;
