@@ -25,6 +25,12 @@ typedef enum {
     YEPTRIS_ERROR_INTERNAL = 8,    /* invariant violation — a bug, please report */
 } YeptrisStatus;
 
+/* Message of the most recent failure on the calling thread, with its
+ * 1-based line/column (0 = unknown). Returns "" when the last operation
+ * succeeded. Memory: thread-local static storage; valid until the next
+ * library call on this thread. */
+YEPTRIS_API const char* yeptris_last_error(uint32_t* line, uint32_t* col);
+
 #ifdef __cplusplus
 }
 #endif
