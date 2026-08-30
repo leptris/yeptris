@@ -62,6 +62,12 @@ struct yep_engine {
 
     /* properties that belong to a value parsed on following lines */
     yep_view pend_anchor, pend_tag;
+
+    /* %TAG handle map for the current document (engine = tag SSOT) */
+    struct {
+        yep_view handle, prefix;
+    } tagmap[8];
+    int tagmap_n;
 };
 
 /* ------------------------------------------------------------ forwards */
@@ -405,6 +411,14 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
         if (e->pos >= e->len) {
             break;
         }
+        /* trailing spaces/tabs after a piece are stripped before the
+         * break — they must not inflate the break count */
+        while (e->pos < e->len && (e->p[e->pos] == ' ' || e->p[e->pos] == '\t')) {
+            e->pos++;
+        }
+        if (e->pos >= e->len) {
+            break;
+        }
         if (e->p[e->pos] == '#') {
             e_skip_to_eol(e);
         }
@@ -462,6 +476,52 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
 
 /* ---------------------------------------------------------------- props */
 
+/* Resolves a scanned tag against the document's %TAG map. !! is the
+ * YAML shorthand prefix; !<...> is verbatim; matched handles compose
+ * prefix+suffix in the finish pool. */
+static yep_view e_resolve_tag(yep_engine* e, yep_view tag) {
+    if (tag.len >= 3 && tag.p[0] == '!' && tag.p[1] == '<' && tag.p[tag.len - 1] == '>') {
+        yep_view v = {tag.p + 2, tag.len - 3};
+        return v;
+    }
+    /* longest matching handle wins */
+    int best = -1;
+    uint32_t best_len = 0;
+    for (int i = 0; i < e->tagmap_n; i++) {
+        if (tag.len >= e->tagmap[i].handle.len && e->tagmap[i].handle.len > best_len &&
+            memcmp(tag.p, e->tagmap[i].handle.p, e->tagmap[i].handle.len) == 0) {
+            best = i;
+            best_len = e->tagmap[i].handle.len;
+        }
+    }
+    if (tag.len >= 2 && tag.p[0] == '!' && tag.p[1] == '!') {
+        static const char yns[] = "tag:yaml.org,2002:";
+        size_t plen = sizeof(yns) - 1;
+        char* out = yep_pool_alloc(e->pool, plen + tag.len - 2, 16);
+        if (out == NULL) {
+            return tag;
+        }
+        memcpy(out, yns, plen);
+        memcpy(out + plen, tag.p + 2, tag.len - 2);
+        yep_view v = {out, (uint32_t)(plen + tag.len - 2)};
+        return v;
+    }
+    if (best >= 0) {
+        const yep_view* h = &e->tagmap[best].handle;
+        const yep_view* pfx = &e->tagmap[best].prefix;
+        size_t n = pfx->len + tag.len - h->len;
+        char* out = yep_pool_alloc(e->pool, n ? n : 1, 16);
+        if (out == NULL) {
+            return tag;
+        }
+        memcpy(out, pfx->p, pfx->len);
+        memcpy(out + pfx->len, tag.p + h->len, tag.len - h->len);
+        yep_view v = {out, (uint32_t)n};
+        return v;
+    }
+    return tag;
+}
+
 static int e_prop_char(unsigned char c) {
     return !yep_ct_any(c, YEP_CT_BLANK | YEP_CT_LBREAK | YEP_CT_FLOW_IND) && c != ',' && c != '#';
 }
@@ -496,8 +556,8 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
                     e->pos++;
                 }
             }
-            tag->p = e->p + start;
-            tag->len = (uint32_t)(e->pos - start);
+            yep_view raw = {e->p + start, (uint32_t)(e->pos - start)};
+            *tag = e_resolve_tag(e, raw);
         } else {
             return;
         }
@@ -771,9 +831,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
              * colon: "unquoted : value"). After a QUOTED node the colon
              * separates JSON-style regardless of what follows. */
             e_skip_inline_space(e);
-            int quoted = (ev.type == YEP_EV_SCALAR &&
-                          (ev.style == YEP_STYLE_SINGLE_QUOTED ||
-                           ev.style == YEP_STYLE_DOUBLE_QUOTED));
+            int quoted = (ev.type == YEP_EV_SCALAR && (ev.style == YEP_STYLE_SINGLE_QUOTED ||
+                                                       ev.style == YEP_STYLE_DOUBLE_QUOTED));
             int colon = (e->pos < e->len && e->p[e->pos] == ':' &&
                          (quoted || e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
                           e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
@@ -995,8 +1054,8 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         return e_parse_value(e, YEP_CTX_AFTER_DASH, col);
     }
 
-    if (c == '?' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
-                     e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
+    if (c == '?' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\n' ||
+                     e->p[e->pos + 1] == '\r')) {
         if (ctx != YEP_CTX_FRESH) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }
@@ -1267,7 +1326,41 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
             e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
             goto fail;
         }
-        if (li.flags & (YEP_LF_BLANK | YEP_LF_COMMENT | YEP_LF_DIRECTIVE)) {
+        if (li.flags & YEP_LF_DIRECTIVE) {
+            /* %TAG <handle> <prefix> — registered for the next document */
+            size_t d = li.offset + li.indent + 1;
+            while (d < li.end && e->p[d] == ' ') {
+                d++;
+            }
+            if (li.end - d >= 3 && memcmp(e->p + d, "TAG", 3) == 0 && e->tagmap_n < 8) {
+                size_t h0 = d + 3;
+                while (h0 < li.end && e->p[h0] == ' ') {
+                    h0++;
+                }
+                size_t h1 = h0;
+                while (h1 < li.end && e->p[h1] != ' ') {
+                    h1++;
+                }
+                size_t p0 = h1;
+                while (p0 < li.end && e->p[p0] == ' ') {
+                    p0++;
+                }
+                size_t p1 = li.end;
+                while (p1 > p0 && (e->p[p1 - 1] == ' ' || e->p[p1 - 1] == '\r')) {
+                    p1--;
+                }
+                if (h1 > h0 && p1 > p0 && e->p[h0] == '!') {
+                    e->tagmap[e->tagmap_n].handle.p = e->p + h0;
+                    e->tagmap[e->tagmap_n].handle.len = (uint32_t)(h1 - h0);
+                    e->tagmap[e->tagmap_n].prefix.p = e->p + p0;
+                    e->tagmap[e->tagmap_n].prefix.len = (uint32_t)(p1 - p0);
+                    e->tagmap_n++;
+                }
+            }
+            e_line_done(e, li.end);
+            continue;
+        }
+        if (li.flags & (YEP_LF_BLANK | YEP_LF_COMMENT)) {
             e_line_done(e, li.end);
             continue;
         }
@@ -1310,7 +1403,8 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
             }
             if (doc_open) {
                 e_event_init(&ev, YEP_EV_DOCUMENT_END);
-                ev.style = 1; /* explicit "..." marker */
+                ev.style = 1;    /* explicit "..." marker */
+                e->tagmap_n = 0; /* directives are per-document */
                 if (emit_now(e, &ev) != 0) {
                     return -2;
                 }
@@ -1406,6 +1500,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
         if (emit_now(e, &ev) != 0) {
             return -2;
         }
+        e->tagmap_n = 0;
     }
     e_event_init(&ev, YEP_EV_STREAM_END);
     if (emit_now(e, &ev) != 0) {

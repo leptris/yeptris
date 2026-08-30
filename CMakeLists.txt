@@ -130,10 +130,13 @@ if(BUILD_TESTING)
 
     # Conformance runner (TODO.impl/16): builds on demand; the corpus
     # arrives via scripts/fetch-corpora.sh.
-    add_executable(test_conformance EXCLUDE_FROM_ALL
+    add_executable(test_conformance
         test/conformance/main.c
         test/conformance/suite.c
         test/conformance/tree.c)
+    # Runs in CI after fetch-corpora.sh; passes-as-skip when absent.
+    add_test(NAME conformance
+        COMMAND test_conformance ${CMAKE_SOURCE_DIR}/test/conformance/data/yaml-test-suite/src)
     target_link_libraries(test_conformance PRIVATE yeptris_static)
     target_include_directories(test_conformance PRIVATE
         ${CMAKE_SOURCE_DIR}/src/yeptris

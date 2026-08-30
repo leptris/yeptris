@@ -69,7 +69,7 @@ C. Close to 100%-or-documented by Phase 5 (every entry justified).
   de-visualization of U+2423 ␣ markers and fail:true error cases;
   tree.{h,c} — THE event-format adapter; main.c with --verbose/--id/
   --progress + conformance-failures.txt).
-- **Baseline 41.3% → 43.0% (151/351)** through suite-driven fixes:
+- **Baseline 41.3% → 43.0% → 45.6% (160/351; ctest-registered, non-gating until target)** through suite-driven fixes:
   YAML 1.2 trailing flow commas; JSON-style `:` after quoted flow keys;
   flow plain scalars may start with a non-structural `:` (`::x`);
   `?foo`/`:foo` (indicator + non-blank) are plain, not markers;
@@ -88,7 +88,8 @@ C. Close to 100%-or-documented by Phase 5 (every entry justified).
 
 ## Remaining phases (next work)
 
-1. The runner: parse every suite input (all consumption models),
+1. Runner is LIVE; remaining mismatch clusters: empty-value-before-close (~10), explicit/complex keys, block-scalar edge accounting, ↵/NEL rendering. Runner is a default ctest target (stale-binary trap removed).
+2. (was) parse every suite input (all consumption models),
    compare event streams against test.event expectations via the event
    format adapter; error-class comparison for error cases.
 2. Baseline number + divergence ledger (VALIDATION.md).
