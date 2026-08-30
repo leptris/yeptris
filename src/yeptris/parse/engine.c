@@ -64,8 +64,10 @@ struct yep_engine {
     /* properties that belong to a value parsed on following lines */
     yep_view pend_anchor, pend_tag;
 
-    int doc_content;   /* any node emitted for the current document */
-    int q_key_pending; /* an explicit '?' key awaits its ':' value line */
+    int doc_content;     /* any node emitted for the current document */
+    int q_key_pending;   /* an explicit '?' key awaits its ':' value line */
+    int q_value_pending; /* an explicit key was emitted; its value is null
+                            until a ':' line supplies one */
     /* %TAG handle map for the current document (engine = tag SSOT) */
     struct {
         yep_view handle, prefix;
@@ -206,7 +208,26 @@ static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     return emit_now(e, &ev) == 0 ? 0 : -2;
 }
 
+/* Emits the null value for an explicit key that never got its ':' line. */
+static int e_flush_q_value(yep_engine* e) {
+    if (!e->q_value_pending) {
+        return 0;
+    }
+    e->q_value_pending = 0;
+    yep_event ev;
+    e_event_init(&ev, YEP_EV_SCALAR);
+    ev.style = YEP_STYLE_PLAIN;
+    ev.implicit = 1;
+    return emit_now(e, &ev) == 0 ? 0 : -2;
+}
+
 static int e_close_to(yep_engine* e, int to_depth) {
+    {
+        int rc = e_flush_q_value(e);
+        if (rc != 0) {
+            return rc;
+        }
+    }
     while (e->depth > to_depth) {
         e->depth--;
         yep_event ev;
@@ -1152,7 +1173,14 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         /* the explicit key is parsed as a value (may be empty → null);
          * its content may ALIGN with the '?' column */
         e->q_key_pending = 1;
-        return e_parse_value(e, YEP_CTX_AFTER_Q, col);
+        {
+            int rc = e_parse_value(e, YEP_CTX_AFTER_Q, col);
+            if (rc != 0) {
+                return rc;
+            }
+            e->q_value_pending = 1; /* until a ':' line supplies the value */
+            return 0;
+        }
     }
 
     if (c == '[' || c == '{') {
@@ -1404,6 +1432,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     e->tagmap_n = 0;
     e->doc_content = 0;
     e->q_key_pending = 0;
+    e->q_value_pending = 0;
     e->sink = sink;
     yep_error_clear(&e->err);
 
@@ -1465,6 +1494,14 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 return rc;
             }
             if (doc_open) {
+                if (!e->doc_content) {
+                    e_event_init(&ev, YEP_EV_SCALAR);
+                    ev.implicit = 1;
+                    if (emit_now(e, &ev) != 0) {
+                        return -2;
+                    }
+                }
+                e->doc_content = 0;
                 e_event_init(&ev, YEP_EV_DOCUMENT_END);
                 if (emit_now(e, &ev) != 0) {
                     return -2;
@@ -1577,6 +1614,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 }
             }
             e->q_key_pending = 0;
+            e->q_value_pending = 0;
             e->pos++;
             rc = e_parse_value(e, YEP_CTX_AFTER_COLON, e->frames[e->depth - 1].col);
             if (rc != 0) {
@@ -1591,7 +1629,11 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
         }
 
         {
-            int rc = e_node(e, YEP_CTX_FRESH, e->depth > 0 ? e->frames[e->depth - 1].col : 0);
+            int rc = e_flush_q_value(e); /* a key without its ':' line */
+            if (rc != 0) {
+                return -2;
+            }
+            rc = e_node(e, YEP_CTX_FRESH, e->depth > 0 ? e->frames[e->depth - 1].col : 0);
             if (rc != 0) {
                 if (rc == -2) {
                     return -2;
