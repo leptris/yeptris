@@ -1,6 +1,6 @@
 # TODO.impl/16 — Conformance harness: yaml-test-suite + corpora + divergence ledger
 
-Status: pending · Depends: 07, 12 · Layer: `test/conformance` · PLAN.md phase: 1 (start) → 5 (finish)
+Status: active (corpus fetched, runner pending) · Depends: 07, 12 · Layer: `test/conformance` · PLAN.md phase: 1
 
 ## Goal
 
@@ -60,3 +60,33 @@ C. Close to 100%-or-documented by Phase 5 (every entry justified).
 - yaml/yaml-test-suite (fetched), `~/src/external/libfyaml/test/`
   (corpora + how the conformance leader classifies ambiguity),
   `~/src/external/psych-pure/spec/*.tml` (extra behavioral corpora).
+
+## v1 shipped (2026-08-30)
+
+- `scripts/fetch-corpora.sh` + the yaml-test-suite cloned at
+  test/conformance/data/yaml-test-suite (352 .yaml cases, gitignored).
+- The runner: `test_conformance` (suite.{h,c} frontmatter loader with
+  de-visualization of U+2423 ␣ markers and fail:true error cases;
+  tree.{h,c} — THE event-format adapter; main.c with --verbose/--id/
+  --progress + conformance-failures.txt).
+- **Baseline after first fix round: 145/351 (41.3%)** — hang-free.
+- Engine bugs found & fixed by the harness already:
+  - `unquoted : value` in flow (space before colon) — colon detection
+    skipped spaces; bare ':' at token position is structural (infinite
+    loop in e_flow);
+  - `{"foo"\n: "bar"}` — ':' starting a line inside flow;
+  - `--- > folded` — doc markers with same-line content were not
+    recognized (scan_line required line-exact markers);
+  - root-level multi-line plain scalars (`a\nb` is ONE scalar at
+    document level — continuation may sit at column 0);
+  - blank-line handling in plain continuation loops (park at line end
+    before counting the break — infinite loop otherwise).
+
+## Remaining phases (next work)
+
+1. The runner: parse every suite input (all consumption models),
+   compare event streams against test.event expectations via the event
+   format adapter; error-class comparison for error cases.
+2. Baseline number + divergence ledger (VALIDATION.md).
+3. libfyaml corpora (jsontestsuite, emitter-examples) into the manifest.
+4. CI wiring: fetch + run, PASS% in the job summary.

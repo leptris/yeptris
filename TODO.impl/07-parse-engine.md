@@ -1,6 +1,6 @@
 # TODO.impl/07 — Parse engine: one resumable state machine
 
-Status: pending · Depends: 06 · Layer: `src/yeptris/parse` · PLAN.md phase: 1
+Status: active (v1 shipped) · Depends: 06 · Layer: `src/yeptris/parse` · PLAN.md phase: 1
 
 ## Goal
 
@@ -73,3 +73,35 @@ C. Chunked feed + streaming state-carry tests (adversarial split points).
   `~/src/external/libyaml/src/{scanner,parser}.c` (grammar semantics —
   compat target), `~/src/external/psych-pure/lib/psych/pure.rb`
   (readable 1.2 grammar), yaml-test-suite (parity bar).
+
+## v1 shipped (2026-08-30)
+
+- `engine.{h,c}`: single non-recursive machine — explicit frame stack,
+  indent unwind, sibling-frame reuse, compact "- k: v", indentless
+  sequences, explicit "?" keys and ":" value lines, block scalars,
+  anchors/aliases (last-definition-wins, undefined-alias errors), tags
+  (incl. verbatim !<...>), multi-doc (---/.../directives), depth guard
+  (1000, YEPTRIS_ERROR_DEPTH).
+- Flow kernel: nested collections, single-pair maps in sequences, keys
+  via quoted/plain/flow/alias, trailing-comma rejection, empty [] {},
+  entry counting.
+- Property semantics: same-line props attach to the following node (key
+  scalars); value-position props parsed at EOL carry to the value node
+  (pend) and ride collection START events.
+- Public surface: yeptris_parse (BOM → validate/transcode → engine →
+  DOM), yeptris_last_error with line/col; empty stream = NULL + OK.
+- 17 end-to-end tests green (block/flow/scalars/anchors/tags/multi-doc/
+  errors/depth).
+
+## Remaining phases (next work)
+
+1. Resumable stepping (yep_engine_step) — required by pull/recorder
+   (12); the whole-buffer run() is the v1 shape.
+2. Event-parity vs yaml-test-suite (16's runner; corpus is fetched at
+   test/conformance/data/yaml-test-suite — 352 cases) — drive fixes from
+   failures; target ≥90% per the phase gate.
+3. Single-pair map in a sequence whose value is a nested collection
+   ("[a: [1]]") — known gap, events unbalanced.
+4. Simple-key 1024-char limit; %YAML version validation; %TAG handle
+   expansion; merge-key "<<" marking (resolver hook, 10).
+5. Chunked feed (streaming) with carried state (with 12).

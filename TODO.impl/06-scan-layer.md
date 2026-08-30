@@ -1,6 +1,6 @@
 # TODO.impl/06 — Scan layer: line table, indentation, indicators, spans
 
-Status: pending · Depends: 04, 05 · Layer: `src/yeptris/scan` · PLAN.md phase: 1
+Status: active (v1 shipped) · Depends: 04, 05 · Layer: `src/yeptris/scan` · PLAN.md phase: 1
 
 ## Goal
 
@@ -68,3 +68,21 @@ C. `sizing` fused counters wired to arena reserve; allocation-count gate.
 - `~/src/external/simdjson/include/simdjson/generic/` (structural-index
   concepts), `~/src/external/libyaml/src/scanner.c` (line/indent semantics
   to match in compat mode), yaml-test-suite (fixtures).
+
+## v1 shipped (2026-08-30)
+
+- `scan.{h,c}`: line facts (offset/end/indent/flags incl. TAB, DOC markers,
+  directives, comments), plain-span scan (block + flow stop sets, colon /
+  comment terminators, trailing trim), quoted-span scan (via the
+  quote_scan kernel), break-length helper (\n, \r\n, \r), key-start
+  classification. All span scans ride the SIMD kernels.
+
+## Remaining phases (next work)
+
+1. Fuse the arena-sizing counters (count3 of `\n`, `:`, quotes) into
+   yeptris_parse and feed yep_sizing_hints — the 0-allocs-after-reserve
+   gate (item 03's acceptance) is not yet exercised by parse.
+2. Streaming window contract: the scanner currently assumes a whole
+   buffer; chunk-boundary state-carry lands with item 12's feed API.
+3. Line-table throughput gate (≥2 GB/s ledger entry) once sizing is wired.
+4. NEL/LS/PS line-break recognition (currently \n/\r\n/\r only).

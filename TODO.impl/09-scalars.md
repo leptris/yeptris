@@ -1,6 +1,6 @@
 # TODO.impl/09 — Scalars: trim, fold, unescape, block scalars, style recording
 
-Status: pending · Depends: 07 · Layer: `src/yeptris/scalars` (under parse) · PLAN.md phase: 1
+Status: active (v1 shipped) · Depends: 07 · Layer: `src/yeptris/scalars` (parse/) · PLAN.md phase: 1
 
 ## Goal
 
@@ -68,3 +68,21 @@ C. Style record completeness: for the emitter roundtrip test (13), every
   (atom analysis semantics), `~/src/external/psych-pure` `parse-scalar.tml`,
   psych `test_scalar.rb` / `test_scalar_scanner.rb` (Ruby-side split of
   labor).
+
+## v1 shipped (2026-08-30)
+
+- `scalars.{h,c}`: double-quote finishing (full escape set incl. \x \u
+  \U \N \_ \L \P, line continuations, multi-line folding), single-quote
+  '' doubling + folding (borrow kept when clean), plain folding (1 break
+  → space, n → n-1 newlines), block scalars (literal/folded, explicit
+  indent digit, clip/strip/keep chomping, more-indented lines keep
+  breaks). Escape truth declared once here; kernels gained '' handling
+  (differential suite updated).
+
+## Remaining phases (next work)
+
+1. Folded-block more-indented edge cases vs the yaml-test-suite (fold
+   semantics around blank+more-indented boundaries).
+2. Style-record completeness for the emitter (has-escape / multiline
+   flags are implicit today; 13 needs them explicit).
+3. Suite-driven refinements after 16's runner lands.
