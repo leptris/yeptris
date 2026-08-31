@@ -12,6 +12,7 @@
 #include <yeptris/events.h>
 #include <yeptris/error.h>
 #include <yeptris/parse.h>
+#include <yeptris/resolve.h>
 #include <yeptris/types.h>
 #include <yeptris/version.h>
 

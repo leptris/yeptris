@@ -1,6 +1,6 @@
 # TODO.impl/10 — Schema resolvers: 1.2 core, 1.1 compat, per-parse options
 
-Status: pending · Depends: 09 · Layer: `src/yeptris/resolve` · PLAN.md phase: 1
+Status: COMPLETE (A+B+C: interface, tag table, core12, compat11, parse options; strict/tab_policy/recover stay reserved pins) · Depends: 09 · Layer: `src/yeptris/resolve` · PLAN.md phase: 1
 
 ## Goal
 

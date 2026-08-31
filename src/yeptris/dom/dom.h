@@ -39,6 +39,7 @@ typedef struct yep_dnode {
     uint8_t kind;
     uint8_t style;
     uint8_t implicit;
+    uint8_t tag_id;       /* resolved tag (resolve/resolver.h) */
     uint32_t first_child; /* child link (mappings: key,value,key,value…) */
     uint32_t last_child;
     uint32_t next_sibling;

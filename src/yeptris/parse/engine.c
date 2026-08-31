@@ -23,6 +23,7 @@
 #include "memory/allocator.h"
 #include "memory/pool.h"
 #include "parse/scalars.h"
+#include "resolve/resolver.h"
 #include "scan/scan.h"
 
 #define YEP_MAX_DEPTH 1000
@@ -84,13 +85,15 @@ struct yep_engine {
      * the key's events, but ':' is only seen after them). */
     yep_event* ev_buf;
     uint32_t ev_buf_n, ev_buf_cap;
-    uint32_t ev_scopes;  /* active entry-buffer scopes */
-    char* norm_buf;      /* owned input copy with exotic breaks normalized */
-    int last_root_flow;  /* a root-level flow node just completed */
-    int tag_undef;       /* an unresolved !handle! was seen (QLJ7) */
-    int doc_inline;      /* content node opened on the --- line */
-    uint16_t flow_floor; /* parent column of the current block-level flow */
-    int flow_enforce;    /* flow continuation lines must out-indent it */
+    uint32_t ev_scopes;                  /* active entry-buffer scopes */
+    char* norm_buf;                      /* owned input copy with exotic breaks normalized */
+    const struct yep_resolver* resolver; /* implicit-typing schema (10) */
+    int max_depth;                       /* runtime nesting limit (options) */
+    int last_root_flow;                  /* a root-level flow node just completed */
+    int tag_undef;                       /* an unresolved !handle! was seen (QLJ7) */
+    int doc_inline;                      /* content node opened on the --- line */
+    uint16_t flow_floor;                 /* parent column of the current block-level flow */
+    int flow_enforce;                    /* flow continuation lines must out-indent it */
 };
 
 /* ------------------------------------------------------------ forwards */
@@ -115,6 +118,18 @@ static void e_event_init(yep_event* ev, yep_event_type t) {
 }
 
 static int emit_now(yep_engine* e, const yep_event* ev) {
+    if (ev->type == YEP_EV_SCALAR) {
+        /* Resolution happens exactly here: every scalar path flows
+         * through this choke point (the resolver is the typing SSOT) */
+        if (ev->tag.len > 0) {
+            ((yep_event*)ev)->tag_id = yep_tag_from_uri((const char*)ev->tag.p, ev->tag.len);
+        } else if (ev->implicit && e->resolver != NULL) {
+            ((yep_event*)ev)->tag_id = e->resolver->resolve(
+                e->resolver->ctx, (const char*)ev->value.p, (uint32_t)ev->value.len);
+        } else {
+            ((yep_event*)ev)->tag_id = 0; /* str: quoted or tag-free */
+        }
+    }
     if (e->ev_scopes > 0) {
         if (e->ev_buf_n == e->ev_buf_cap) {
             uint32_t cap = e->ev_buf_cap ? e->ev_buf_cap * 2 : 16;
@@ -248,7 +263,7 @@ static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
         e->frames[e->depth - 1].col == col) {
         return 0;
     }
-    if (e->depth >= YEP_MAX_DEPTH) {
+    if (e->depth >= e->max_depth) {
         return e_fail(e, YEP_ERR_DEPTH, e->pos);
     }
     e->frames[e->depth].col = col;
@@ -271,7 +286,7 @@ static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
         e->frames[e->depth - 1].col == col) {
         return 0;
     }
-    if (e->depth >= YEP_MAX_DEPTH) {
+    if (e->depth >= e->max_depth) {
         return e_fail(e, YEP_ERR_DEPTH, e->pos);
     }
     e->frames[e->depth].col = col;
@@ -962,12 +977,12 @@ static int e_skip_flow(yep_engine* e) {
             continue;
         }
         if (c == '[') {
-            if (n >= YEP_MAX_DEPTH) {
+            if (n >= e->max_depth) {
                 return e_fail(e, YEP_ERR_DEPTH, e->pos);
             }
             stk[n++] = 0;
         } else if (c == '{') {
-            if (n >= YEP_MAX_DEPTH) {
+            if (n >= e->max_depth) {
                 return e_fail(e, YEP_ERR_DEPTH, e->pos);
             }
             stk[n++] = 1;
@@ -1268,7 +1283,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             return -1;
         }
         if (rc == 2) {
-            if (n >= YEP_MAX_DEPTH) {
+            if (n >= e->max_depth) {
                 return e_fail(e, YEP_ERR_DEPTH, e->pos);
             }
             st[n - 1].pair_value = 1;
@@ -1643,7 +1658,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             }
             if (st[n - 1].kind == 0 && n >= 1) {
                 /* '[ : v' — single-pair mapping with an empty key */
-                if (n >= YEP_MAX_DEPTH) {
+                if (n >= e->max_depth) {
                     return e_fail(e, YEP_ERR_DEPTH, e->pos);
                 }
                 yep_event mk;
@@ -2081,6 +2096,18 @@ empty_value: {
 
 /* ------------------------------------------------------------ lifecycle */
 
+void yep_engine_set_resolver(yep_engine* e, const yep_resolver* r) {
+    if (e != NULL) {
+        e->resolver = r != NULL ? r : yep_resolver_core12();
+    }
+}
+
+void yep_engine_set_max_depth(yep_engine* e, int depth) {
+    if (e != NULL && depth > 0) {
+        e->max_depth = depth > YEP_MAX_DEPTH ? YEP_MAX_DEPTH : depth;
+    }
+}
+
 yep_pool* yep_engine_detach_pool(yep_engine* e) {
     if (e == NULL || e->pool == NULL) {
         return NULL;
@@ -2106,6 +2133,7 @@ yep_engine* yep_engine_create(const yep_allocator* sys) {
     memset(e, 0, sizeof(*e));
     e->sys = sys;
     e->pool = pool;
+    e->max_depth = YEP_MAX_DEPTH;
     yep_error_clear(&e->err);
     return e;
 }
@@ -2183,6 +2211,9 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     e->q_value_pending = 0;
     e->sink = sink;
     yep_error_clear(&e->err);
+    if (e->resolver == NULL) {
+        e->resolver = yep_resolver_core12();
+    }
 
     yep_event ev;
     e_event_init(&ev, YEP_EV_STREAM_START);

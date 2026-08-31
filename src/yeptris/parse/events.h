@@ -48,6 +48,7 @@ typedef struct yep_event {
     uint8_t implicit;  /* scalar written without quotes/tag (plain implicit) */
     uint8_t flow;      /* collection opened in flow context */
     uint8_t multiline; /* scalar spanned lines: may not be a simple key */
+    uint8_t tag_id;    /* resolved implicit/explicit tag (resolve/resolver.h) */
     uint8_t borrowed;  /* 1: value borrows the INPUT; 0: engine finish pool */
     uint32_t line;     /* 1-based position of the node start */
     uint32_t col;

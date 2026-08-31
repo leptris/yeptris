@@ -7,7 +7,12 @@
 #include "memory/allocator.h"
 #include "memory/pool.h"
 #include "parse/engine.h"
+#include "resolve/resolver.h"
+
 #include "parse/events.h"
+#include <errno.h>
+#include <math.h>
+#include <stdlib.h>
 
 #include <yeptris.h>
 
@@ -43,6 +48,12 @@ YEPTRIS_API const char* yeptris_last_error(uint32_t* line, uint32_t* col) {
 }
 
 YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisStatus* status) {
+    return yeptris_parse_ex(buf, len, NULL, status);
+}
+
+YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
+                                             const YeptrisParseOptions* opts,
+                                             YeptrisStatus* status) {
     YeptrisStatus st = YEPTRIS_OK;
     if (buf == NULL && len != 0) {
         st = YEPTRIS_ERROR_ARG;
@@ -85,6 +96,14 @@ YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisSt
 
     /* Engine → DOM. */
     yep_engine* eng = yep_engine_create(sys);
+    if (opts != NULL) {
+        yep_engine_set_resolver(eng, opts->schema == YEPTRIS_SCHEMA_11_COMPAT
+                                         ? yep_resolver_compat11()
+                                         : yep_resolver_core12());
+        if (opts->max_depth > 0) {
+            yep_engine_set_max_depth(eng, opts->max_depth);
+        }
+    }
     if (eng == NULL) {
         yep_free(sys, transcoded);
         st = YEPTRIS_ERROR_MEMORY;
@@ -235,6 +254,233 @@ YEPTRIS_API const char* yeptris_node_value(YeptrisNode handle, size_t* len) {
 YEPTRIS_API YeptrisScalarStyle yeptris_node_style(YeptrisNode handle) {
     const yep_dnode* n = node_of(handle);
     return n ? (YeptrisScalarStyle)n->style : YEPTRIS_STYLE_ANY;
+}
+
+YEPTRIS_API const char* yeptris_tag_uri(YeptrisTagId id) {
+    return yep_tag_uri((yep_tag_id)id);
+}
+
+YEPTRIS_API YeptrisTagId yeptris_node_tag_id(YeptrisNode handle) {
+    const yep_dnode* n = node_of(handle);
+    if (n == NULL) {
+        return YEPTRIS_TAG_CUSTOM;
+    }
+    if (n->kind == YEPTRIS_NODE_SEQUENCE) {
+        return YEPTRIS_TAG_SEQ;
+    }
+    if (n->kind == YEPTRIS_NODE_MAPPING) {
+        return YEPTRIS_TAG_MAP;
+    }
+    return (YeptrisTagId)n->tag_id;
+}
+
+/* strips '_' and ',' into dst (nul-terminated); returns length */
+static size_t clean_num(const yep_dnode* n, char* dst, size_t cap) {
+    size_t o = 0;
+    for (uint32_t i = 0; i < n->value.len && o + 1 < cap; i++) {
+        char c = ((const char*)n->value.p)[i];
+        if (c == '_' || c == ',') {
+            continue;
+        }
+        dst[o++] = c;
+    }
+    dst[o] = '\0';
+    return o;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_node_int(YeptrisNode handle, int64_t* out) {
+    const yep_dnode* n = node_of(handle);
+    if (n == NULL || out == NULL) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    if (n->tag_id != YEPTRIS_TAG_INT) {
+        return YEPTRIS_ERROR_PARSE;
+    }
+    char buf[80];
+    size_t len = clean_num(n, buf, sizeof(buf));
+    if (len == 0) {
+        return YEPTRIS_ERROR_PARSE;
+    }
+    int base = 10;
+    const char* s = buf;
+    if (buf[0] == '-' || buf[0] == '+') {
+        s++;
+    }
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        base = 16;
+    } else if (s[0] == '0' && (s[1] == 'b' || s[1] == 'B')) {
+        base = 2;
+    } else if (s[0] == '0' && s[1] == 'o') {
+        memmove(buf + (size_t)(s - buf) + 1, s + 2, len - (size_t)(s - buf) - 1);
+        len -= 1;
+        buf[len] = '\0';
+        base = 8; /* 0o17 -> 017 octal */
+    } else if (s[0] == '0' && s[1] != '\0' && s[1] != '.') {
+        base = 8; /* compat leading-0 octal */
+    }
+    if (memchr(buf, ':', len) != NULL) {
+        /* compat sexagesimal: [-+]?d+(:dd){1,2} */
+        long long sign = 1;
+        const char* p = buf;
+        if (p[0] == '-') {
+            sign = -1;
+            p++;
+        } else if (p[0] == '+') {
+            p++;
+        }
+        long long v = 0;
+        int groups = 0;
+        while (*p >= '0' && *p <= '9') {
+            v = v * 10 + (*p - '0');
+            p++;
+        }
+        while (*p == ':' && groups < 2) {
+            p++;
+            long long g = 0;
+            int d = 0;
+            while (*p >= '0' && *p <= '9') {
+                g = g * 10 + (*p - '0');
+                p++;
+                d++;
+            }
+            if (d == 0) {
+                return YEPTRIS_ERROR_PARSE;
+            }
+            v = v * 60 + g;
+            groups++;
+        }
+        if (groups == 0 || *p != '\0') {
+            return YEPTRIS_ERROR_PARSE;
+        }
+        *out = sign * v;
+        return YEPTRIS_OK;
+    }
+    char* end = NULL;
+    errno = 0;
+    long long v = strtoll(buf, &end, base);
+    if (end == buf || *end != '\0' || errno == ERANGE) {
+        return YEPTRIS_ERROR_PARSE;
+    }
+    *out = (int64_t)v;
+    return YEPTRIS_OK;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_node_float(YeptrisNode handle, double* out) {
+    const yep_dnode* n = node_of(handle);
+    if (n == NULL || out == NULL) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    if (n->tag_id != YEPTRIS_TAG_FLOAT) {
+        return YEPTRIS_ERROR_PARSE;
+    }
+    char buf[80];
+    size_t len = clean_num(n, buf, sizeof(buf));
+    if (len == 0) {
+        return YEPTRIS_ERROR_PARSE;
+    }
+    /* .inf / .nan family (sign allowed on inf) */
+    {
+        const char* s = buf;
+        size_t sl = len;
+        if (s[0] == '-' || s[0] == '+') {
+            s++;
+            sl--;
+        }
+        if (sl == 4 && s[0] == '.') {
+            if ((s[1] == 'i' || s[1] == 'I') && (s[2] == 'n' || s[2] == 'N') &&
+                (s[3] == 'f' || s[3] == 'F')) {
+                *out = (buf[0] == '-') ? -INFINITY : INFINITY;
+                return YEPTRIS_OK;
+            }
+            if ((s[1] == 'n' || s[1] == 'N') && (s[2] == 'a' || s[2] == 'A') &&
+                (s[3] == 'n' || s[3] == 'N')) {
+                *out = NAN;
+                return YEPTRIS_OK;
+            }
+        }
+    }
+    /* sexagesimal: [-+]?d+(:dd){1,2}(.d*)? */
+    if (memchr(buf, ':', len) != NULL) {
+        double sign = 1.0;
+        const char* s = buf;
+        if (s[0] == '-') {
+            sign = -1.0;
+            s++;
+        } else if (s[0] == '+') {
+            s++;
+        }
+        double v = 0.0;
+        const char* p = s;
+        int groups = 0;
+        while (*p >= '0' && *p <= '9') {
+            v = v * 10.0 + (*p - '0');
+            p++;
+        }
+        while (*p == ':' && groups < 2) {
+            p++;
+            double g = 0.0;
+            int d = 0;
+            while (*p >= '0' && *p <= '9') {
+                g = g * 10.0 + (*p - '0');
+                p++;
+                d++;
+            }
+            if (d == 0) {
+                return YEPTRIS_ERROR_PARSE;
+            }
+            v = v * 60.0 + g;
+            groups++;
+        }
+        if (groups == 0 || (*p != '\0' && *p != '.')) {
+            return YEPTRIS_ERROR_PARSE;
+        }
+        if (*p == '.') {
+            double frac = 0.0, scale = 0.1;
+            p++;
+            while (*p >= '0' && *p <= '9') {
+                frac += (*p - '0') * scale;
+                scale /= 10.0;
+                p++;
+            }
+            v += frac;
+        }
+        if (*p != '\0') {
+            return YEPTRIS_ERROR_PARSE;
+        }
+        *out = sign * v;
+        return YEPTRIS_OK;
+    }
+    char* end = NULL;
+    errno = 0;
+    double v = strtod(buf, &end);
+    if (end == buf || *end != '\0') {
+        return YEPTRIS_ERROR_PARSE;
+    }
+    (void)errno;
+    *out = v;
+    return YEPTRIS_OK;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_node_bool(YeptrisNode handle, int* out) {
+    const yep_dnode* n = node_of(handle);
+    if (n == NULL || out == NULL) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    if (n->tag_id != YEPTRIS_TAG_BOOL) {
+        return YEPTRIS_ERROR_PARSE;
+    }
+    /* the resolver accepted it; true-set membership decides the value */
+    static const char* k_true[] = {"true", "True", "TRUE", "y",  "Y", "yes",
+                                   "Yes",  "YES",  "on",   "On", "ON"};
+    for (size_t i = 0; i < sizeof(k_true) / sizeof(k_true[0]); i++) {
+        size_t m = strlen(k_true[i]);
+        if (n->value.len == m && memcmp(n->value.p, k_true[i], m) == 0) {
+            *out = 1;
+            return YEPTRIS_OK;
+        }
+    }
+    *out = 0;
+    return YEPTRIS_OK;
 }
 
 YEPTRIS_API const char* yeptris_node_tag(YeptrisNode handle, size_t* len) {
