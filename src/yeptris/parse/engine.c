@@ -984,6 +984,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
         e->pos = (size_t)(piece_start_fix - e->p);
     }
     e->fold_n = 0;
+    int crossed_break = 0;
     for (;;) {
         yep_span s = yep_scan_plain(e->p, e->len, e->pos, 1);
         if (s.end == s.start && e->fold_n == 0) {
@@ -1005,6 +1006,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
                 break; /* a comment ends the scalar: the next token is new */
             }
             e_line_done(e, e->pos);
+            crossed_break = 1;
             {
                 yep_line_info cl = yep_scan_line(e->p, e->len, e->pos);
                 if (cl.flags & YEP_LF_COMMENT) {
@@ -1040,7 +1042,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     }
     ev->style = YEP_STYLE_PLAIN;
     ev->implicit = 1;
-    ev->multiline = (e->fold_n > 1);
+    ev->multiline = (e->fold_n > 1) || crossed_break;
     return 1;
 }
 
@@ -1102,9 +1104,16 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             }
         }
         if (e->pos < e->len && e->p[e->pos] != ',' && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
-            e->p[e->pos] != ':' && st[n - 1].entries > 0 && st[n - 1].sep == 0 &&
-            !st[n - 1].pair_open && !(st[n - 1].kind == 1 && st[n - 1].pending_key == 1)) {
-            /* a node without a preceding ',' or ':' (CML9 missing comma) */
+            !(e->p[e->pos] == ':' &&
+              ((st[n - 1].kind == 1 && st[n - 1].pending_key == 1) || st[n - 1].just_closed)) &&
+            st[n - 1].entries > 0 && st[n - 1].sep == 0 && !st[n - 1].pair_open &&
+            !(st[n - 1].kind == 1 && st[n - 1].pending_key == 1)) {
+            if (getenv("YEP_TRACE"))
+                fprintf(stderr, "[mc] pos=%c kind=%d ent=%u sep=%u pk=%u jc=%u\n", e->p[e->pos],
+                        st[n - 1].kind, st[n - 1].entries, st[n - 1].sep, st[n - 1].pending_key,
+                        st[n - 1].just_closed);
+            /* a node without a preceding ',' or ':' (CML9 missing comma);
+             * in a sequence a ':'-led token is a new plain, so it errors */
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }
         if (e->pos < e->len && e->p[e->pos] == '?' &&
@@ -1199,7 +1208,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 }
             }
             int colon = (e->pos < e->len && e->p[e->pos] == ':' &&
-                         ((quoted && !ev.multiline && st[n - 1].kind == 1) ||
+                         ((quoted && !ev.multiline && (!cross_line || st[n - 1].kind == 1)) ||
                           (key_pos && !ev.multiline && !cross_line) || e->pos + 1 >= e->len ||
                           e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
                           e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
@@ -1584,6 +1593,10 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
 
     unsigned char c = (unsigned char)e->p[e->pos];
 
+    if (c == ',' && (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag) ||
+                     !yep_view_is_empty(pend_a) || !yep_view_is_empty(pend_t))) {
+        return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "!!str, xxx" (block) */
+    }
     if (c == '-' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
                      e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
         if (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag)) {
@@ -1752,6 +1765,12 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     /* plain scalar */
     size_t start = e->pos;
     yep_span s = yep_scan_plain(e->p, e->len, e->pos, 0);
+    if (s.term != YEP_TERM_COLON && !yep_view_is_empty(pend_a) && !yep_view_is_empty(anchor)) {
+        /* two anchors on ONE scalar ("&a
+&b v"); a colon means the
+         * inline anchor belongs to the key and the pend one elsewhere */
+        return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+    }
     if (s.term != YEP_TERM_COLON && ctx == YEP_CTX_FRESH && e->depth > 0 &&
         e_col(e, node_at) == e->frames[e->depth - 1].col) {
         /* a plain scalar at an open container's column with no ':' —
