@@ -108,7 +108,17 @@ static yts_result run_case(const yts_case* c, char** got_tree) {
         return R_SHOULD_PARSE;
     }
     yts_result r = R_PASS;
-    if (strcmp(tree.buf ? tree.buf : "", c->tree ? c->tree : "") != 0) {
+    /* trailing whitespace in tree fields is file-format noise, not data */
+    /* compare modulo trailing whitespace: block-field noise, not data */
+    const char* tb = tree.buf ? tree.buf : "";
+    const char* et = c->tree ? c->tree : "";
+    size_t tl = strlen(tb);
+    size_t el = strlen(et);
+    while (tl > 0 && (tb[tl - 1] == '\n' || tb[tl - 1] == ' '))
+        tl--;
+    while (el > 0 && (et[el - 1] == '\n' || et[el - 1] == ' '))
+        el--;
+    if (tl != el || memcmp(tb, et, tl) != 0) {
         r = R_TREE_MISMATCH;
         if (got_tree != NULL) {
             *got_tree = tree.buf ? strdup(tree.buf) : strdup("");

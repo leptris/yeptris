@@ -83,9 +83,11 @@ struct yep_engine {
      * the key's events, but ':' is only seen after them). */
     yep_event* ev_buf;
     uint32_t ev_buf_n, ev_buf_cap;
-    uint32_t ev_scopes; /* active entry-buffer scopes */
-    char* norm_buf;     /* owned input copy with exotic breaks normalized */
-    int last_root_flow; /* a root-level flow node just completed */
+    uint32_t ev_scopes;  /* active entry-buffer scopes */
+    char* norm_buf;      /* owned input copy with exotic breaks normalized */
+    int last_root_flow;  /* a root-level flow node just completed */
+    uint16_t flow_floor; /* parent column of the current block-level flow */
+    int flow_enforce;    /* flow continuation lines must out-indent it */
 };
 
 /* ------------------------------------------------------------ forwards */
@@ -296,13 +298,15 @@ static int e_flush_q_value(yep_engine* e) {
 }
 
 static int e_close_to(yep_engine* e, int to_depth) {
-    {
+    while (e->depth > to_depth) {
+        /* the pending '?' value flushes once the key's structure closed */
         int rc = e_flush_q_value(e);
         if (rc != 0) {
             return rc;
         }
-    }
-    while (e->depth > to_depth) {
+        if (e->q_value_pending && e->depth == e->q_map_depth) {
+            continue; /* flushed the null; this frame closes next round */
+        }
         e->depth--;
         yep_event ev;
         e_event_init(&ev,
@@ -1102,6 +1106,11 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             if (fl.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END | YEP_LF_DIRECTIVE)) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* marker inside flow */
             }
+            if (e->flow_enforce && !(fl.flags & (YEP_LF_BLANK | YEP_LF_COMMENT)) &&
+                fl.indent <= e->flow_floor) {
+                /* a block-level flow's lines out-indent its parent (9C9N) */
+                return e_fail(e, YEP_ERR_BAD_INDENT, e->pos + fl.indent);
+            }
         }
         if (e->pos < e->len && e->p[e->pos] != ',' && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
             !(e->p[e->pos] == ':' &&
@@ -1226,8 +1235,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 continue;
             }
             if (colon && st[n - 1].kind == 0) {
-                if (st[n - 1].buf_from >= 0 && save_pos < e->line_start && !quoted) {
-                    /* "[a\n: b]": a plain implicit key cannot span lines */
+                if (st[n - 1].buf_from >= 0 && !quoted && !q_key &&
+                    (save_pos < e->line_start || ev.multiline)) {
+                    /* "[a\n: b]": an IMPLICIT key cannot span lines ("? " may) */
                     return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
                 }
                 /* single-pair mapping inside a sequence: the entry's
@@ -1496,6 +1506,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 }
                 /* '[ [a, b]: v' — the buffered collection is the pair key */
                 int32_t bf0 = st[n - 1].buf_from;
+                int was_empty = ((uint32_t)bf0 == e->ev_buf_n);
                 st[n - 1].buf_from = -1;
                 e->ev_scopes--;
                 if (e_buf_wrap(e, (uint32_t)bf0) != 0) {
@@ -1505,6 +1516,14 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                     int brc = e_buf_send(e, 0);
                     if (brc != 0) {
                         return brc;
+                    }
+                }
+                if (was_empty) {
+                    yep_event kv; /* "[ : v" — the empty key */
+                    e_event_init(&kv, YEP_EV_SCALAR);
+                    kv.implicit = 1;
+                    if (emit_now(e, &kv) != 0) {
+                        return -2;
                     }
                 }
                 st[n - 1].pair_open = 1;
@@ -1687,7 +1706,10 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
         }
         {
+            e->flow_floor = floor_col;
+            e->flow_enforce = (e->depth > 0);
             int rc = e_flow(e, node_a, node_t);
+            e->flow_enforce = 0;
             if (rc != 0) {
                 return rc;
             }
@@ -1903,7 +1925,7 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
          * may align with the '?' column. Flow nodes and property runs
          * continue the value even at the parent column ("k:\n!!seq\n[a]"). */
         if (li.indent > floor_col || e->depth == 0 ||
-            (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col) ||
+            (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first != ':') ||
             ((li.first == '[' || li.first == '{') && li.indent == floor_col)) {
             e->pos += li.indent;
             return e_node(e, vctx, floor_col);
