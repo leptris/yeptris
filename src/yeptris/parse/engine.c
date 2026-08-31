@@ -68,6 +68,7 @@ struct yep_engine {
 
     int doc_content;     /* any node emitted for the current document */
     int q_key_pending;   /* an explicit '?' key awaits its ':' value line */
+    int q_map_depth;     /* frame depth of the '?' mapping (flush guard) */
     int q_value_pending; /* an explicit key was emitted; its value is null
                             until a ':' line supplies one */
     /* %TAG handle map for the current document (engine = tag SSOT) */
@@ -83,6 +84,7 @@ struct yep_engine {
     yep_event* ev_buf;
     uint32_t ev_buf_n, ev_buf_cap;
     uint32_t ev_scopes; /* active entry-buffer scopes */
+    char* norm_buf;     /* owned input copy with exotic breaks normalized */
 };
 
 /* ------------------------------------------------------------ forwards */
@@ -280,6 +282,9 @@ static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
 static int e_flush_q_value(yep_engine* e) {
     if (!e->q_value_pending) {
         return 0;
+    }
+    if (e->depth > e->q_map_depth) {
+        return 0; /* the key's own structure is still open */
     }
     e->q_value_pending = 0;
     yep_event ev;
@@ -930,8 +935,16 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     e_props(e, &anchor, &tag);
     ev->anchor = anchor;
     ev->tag = tag;
+    if (!yep_view_is_empty(anchor)) {
+        anchor_define(e, anchor);
+    }
     e_flow_ws(e);
     c = (unsigned char)e->p[e->pos];
+    if ((c == ',' || c == ']' || c == '}' || c == ':') &&
+        (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
+        ev->implicit = 1; /* properties with no node: a tagged null */
+        return 1;
+    }
     if (c == '"' || c == '\'') {
         ev->implicit = 0;
         return e_quoted_floor(e, ev, 0, 0) == 0 ? 1 : -1;
@@ -1542,6 +1555,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (rc != 0) {
             return rc;
         }
+        e->q_map_depth = e->depth;
         e->pos++;
         e_skip_inline_space(e);
         if (e->pos < e->len && e->p[e->pos] == ':' &&
@@ -1736,6 +1750,28 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "key: - x" */
         }
+        if (ctx == YEP_CTX_AFTER_DASH && e->p[e->pos] == ':' &&
+            (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+             e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
+            /* "- :" — a compact pair with an empty key */
+            uint16_t col = e_col(e, e->pos);
+            int rc = e_open_map(e, col, e->line, col + 1, e->pend_anchor, e->pend_tag);
+            if (rc != 0) {
+                return rc;
+            }
+            e->pend_anchor.p = NULL;
+            e->pend_anchor.len = 0;
+            e->pend_tag.p = NULL;
+            e->pend_tag.len = 0;
+            yep_event kv;
+            e_event_init(&kv, YEP_EV_SCALAR);
+            kv.implicit = 1;
+            if (emit_now(e, &kv) != 0) {
+                return -2;
+            }
+            e->pos++;
+            return e_parse_value(e, YEP_CTX_AFTER_COLON, col);
+        }
         int rc = e_node(e, ctx, floor_col);
         if (rc != 0) {
             return rc;
@@ -1787,13 +1823,18 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             e->pos += li.indent;
             return e_node(e, vctx, floor_col);
         }
-        /* indentless sequence as a mapping value */
-        if (li.indent == floor_col && vctx == YEP_CTX_VALUE_LINE && li.first == '-' &&
+        /* indentless sequence as a mapping value; under a sequence frame
+         * a dash at the same column is a SIBLING, not a continuation */
+        if (li.indent == floor_col && li.first == '-' &&
+            ((ctx == YEP_CTX_AFTER_DASH && e->depth > 0 &&
+              e->frames[e->depth - 1].kind == YEP_FRAME_MAP &&
+              e->frames[e->depth - 1].col == floor_col) ||
+             vctx == YEP_CTX_VALUE_LINE) &&
             (li.offset + li.indent + 1 >= e->len || e->p[li.offset + li.indent + 1] == ' ' ||
              e->p[li.offset + li.indent + 1] == '\t' || e->p[li.offset + li.indent + 1] == '\n' ||
              e->p[li.offset + li.indent + 1] == '\r')) {
             e->pos += li.indent;
-            return e_node(e, vctx, floor_col);
+            return e_node(e, ctx == YEP_CTX_AFTER_DASH ? ctx : vctx, floor_col);
         }
         goto empty_value;
     }
@@ -1836,6 +1877,7 @@ yep_engine* yep_engine_create(const yep_allocator* sys) {
 }
 
 void yep_engine_destroy(yep_engine* e) {
+    yep_free(e->sys, e->norm_buf);
     if (e == NULL) {
         return;
     }
@@ -1843,12 +1885,58 @@ void yep_engine_destroy(yep_engine* e) {
     yep_free(e->sys, e);
 }
 
+/* YAML 1.2 line breaks beyond \n/\r: NEL, LS, PS. When present, the
+ * input is copied with each normalized to a single '\n' (libyaml reader
+ * behavior); inputs without them keep the zero-copy path. */
+static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len) {
+    const unsigned char* q = (const unsigned char*)p;
+    size_t i = 0;
+    int found = 0;
+    while (i < len) {
+        if (q[i] == 0xC2 && i + 1 < len && q[i + 1] == 0x85) {
+            found = 1;
+            break;
+        }
+        if (q[i] == 0xE2 && i + 2 < len && q[i + 1] == 0x80 &&
+            (q[i + 2] == 0xA8 || q[i + 2] == 0xA9)) {
+            found = 1;
+            break;
+        }
+        i++;
+    }
+    if (!found) {
+        return p;
+    }
+    char* out = yep_alloc(e->sys, len + 1);
+    if (out == NULL) {
+        return p; /* fall back: parse as-is */
+    }
+    size_t o = 0;
+    for (size_t j = 0; j < len;) {
+        if (q[j] == 0xC2 && j + 1 < len && q[j + 1] == 0x85) {
+            out[o++] = '\n';
+            j += 2;
+        } else if (q[j] == 0xE2 && j + 2 < len && q[j + 1] == 0x80 &&
+                   (q[j + 2] == 0xA8 || q[j + 2] == 0xA9)) {
+            out[o++] = '\n';
+            j += 3;
+        } else {
+            out[o++] = p[j++];
+        }
+    }
+    out[o] = '\0';
+    e->norm_buf = out;
+    return out;
+}
+
 int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* sink) {
     if (e == NULL || (buf == NULL && len != 0)) {
         return -1;
     }
-    e->p = buf;
-    e->len = len;
+    yep_free(e->sys, e->norm_buf);
+    e->norm_buf = NULL;
+    e->p = e_normalize_breaks(e, buf, len);
+    e->len = (e->norm_buf != NULL) ? strlen(e->norm_buf) : len;
     e->pos = 0;
     e->line = 1;
     e->line_start = 0;
