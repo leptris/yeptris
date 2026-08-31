@@ -1,0 +1,13 @@
+# suite-ok
++STR
++DOC
++MAP {}
+=VAL : explicit
+=VAL : entry
+=VAL : implicit
+=VAL : entry
+=VAL : 
+=VAL : 
+-MAP
+-DOC
+-STR

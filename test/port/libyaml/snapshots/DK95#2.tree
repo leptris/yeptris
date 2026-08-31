@@ -1,0 +1,9 @@
+# suite-error
++STR
++DOC
++MAP
+=VAL : foo
+=VAL " bar baz
+-MAP
+-DOC
+-STR

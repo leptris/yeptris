@@ -26,6 +26,11 @@ typedef struct {
 long yts_load(const char* src_dir, yts_case** out);
 void yts_free(yts_case* cases, long n);
 
+/* The ready-to-parse input for a case: block-field content joined with
+ * exactly one trailing newline, visualization glyphs decoded. Caller
+ * frees. (Shared with the libyaml differential, TODO.impl/17.) */
+char* yts_case_input(const yts_case* c);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,0 +1,9 @@
+# suite-error
++STR
++DOC ---
+=VAL : scalar1
+-DOC
++DOC ---
+=VAL : scalar2
+-DOC
+-STR

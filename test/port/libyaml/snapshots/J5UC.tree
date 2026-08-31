@@ -1,0 +1,13 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : foo
+=VAL : blue
+=VAL : bar
+=VAL : arrr
+=VAL : baz
+=VAL : jazz
+-MAP
+-DOC
+-STR

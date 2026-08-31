@@ -1,0 +1,13 @@
+# suite-error
++STR
++DOC ---
++MAP
+=VAL : flow
++SEQ []
+=VAL : a
+=VAL : b
+=VAL : c
+-SEQ
+-MAP
+-DOC
+-STR

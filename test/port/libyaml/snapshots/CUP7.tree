@@ -1,0 +1,11 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : anchored
+=VAL : &anchor <!local> value
+=VAL : alias
+=ALI *anchor
+-MAP
+-DOC
+-STR

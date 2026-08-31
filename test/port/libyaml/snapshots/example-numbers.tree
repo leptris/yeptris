@@ -1,0 +1,11 @@
+# suite-ok
++STR
++DOC
++SEQ []
+=VAL : 100
+=VAL : 12.5
+=VAL : -130
+=VAL : 1.3e+9
+-SEQ
+-DOC
+-STR

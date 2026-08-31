@@ -1,0 +1,9 @@
+# suite-ok
++STR
++DOC
++MAP {}
+=VAL : unquoted
+=VAL " separate
+=VAL : http://foo.com
+=VAL : 
+!ERROR

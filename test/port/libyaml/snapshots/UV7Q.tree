@@ -1,0 +1,11 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : x
++SEQ
+=VAL : x x
+-SEQ
+-MAP
+-DOC
+-STR
