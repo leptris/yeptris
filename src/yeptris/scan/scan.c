@@ -44,14 +44,15 @@ yep_line_info yep_scan_line(const char* p, size_t len, size_t pos) {
     }
     li.indent = (uint16_t)(j - pos);
     if (j < li.end && p[j] == '\t') {
-        /* a whitespace-only line (spaces AND tabs) is blank; a tab that
-         * precedes content is tab-in-indentation */
         size_t k = j;
         while (k < li.end && (p[k] == ' ' || p[k] == '\t')) {
             k++;
         }
         if (k >= li.end) {
             li.flags |= YEP_LF_BLANK;
+            if (li.indent == 0) {
+                li.flags |= YEP_LF_TAB;
+            }
             return li;
         }
         li.flags |= YEP_LF_TAB;
