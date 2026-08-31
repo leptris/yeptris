@@ -1,0 +1,19 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : unicode
+=VAL " Sosa did fine.☺
+=VAL : control
+=VAL " \x081998\t1999\t2000\n
+=VAL : hex esc
+=VAL " \r\n is \r\n
+=VAL : single
+=VAL ' "Howdy!" he cried.
+=VAL : quoted
+=VAL '  # Not a 'comment'.
+=VAL : tie-fighter
+=VAL ' |\\-*-/|
+-MAP
+-DOC
+-STR

@@ -1,0 +1,11 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : key
+=VAL : value
+=VAL : other-key
+=VAL : other-value
+-MAP
+-DOC
+-STR

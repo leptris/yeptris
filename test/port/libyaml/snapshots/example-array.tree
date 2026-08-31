@@ -1,0 +1,9 @@
+# suite-ok
++STR
++DOC
++SEQ
+=VAL : member
+=VAL : member2
+-SEQ
+-DOC
+-STR

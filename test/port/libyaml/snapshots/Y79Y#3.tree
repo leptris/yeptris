@@ -1,0 +1,10 @@
+# suite-ok
++STR
++DOC
++SEQ
++SEQ []
+=VAL : foo
+-SEQ
+-SEQ
+-DOC
+-STR

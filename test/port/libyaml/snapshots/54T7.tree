@@ -1,0 +1,11 @@
+# suite-ok
++STR
++DOC
++MAP {}
+=VAL : foo
+=VAL : you
+=VAL : bar
+=VAL : far
+-MAP
+-DOC
+-STR

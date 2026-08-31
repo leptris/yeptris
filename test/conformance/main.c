@@ -31,59 +31,9 @@ static const char* result_name(yts_result r) {
     }
 }
 
-/* The suite renders significant spaces as U+2423 (␣); de-visualize. */
-static char* devisualize(const char* in) {
-    char* out = strdup(in);
-    for (char* p = out; *p != '\0'; p++) {
-        if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x90 &&
-            (unsigned char)p[2] == 0xA3) {
-            p[0] = ' '; /* ␣ visualizes a space */
-            memmove(p + 1, p + 3, strlen(p + 3) + 1);
-        } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x86 &&
-                   (unsigned char)p[2] == 0xB5) {
-            /* ↵ visualizes a NEL line break; a ↵-only line is ONE break */
-            if (p[3] == '\n') {
-                p[0] = '\n';
-                memmove(p + 1, p + 4, strlen(p + 4) + 1);
-            } else {
-                p[0] = '\n';
-                memmove(p + 1, p + 3, strlen(p + 3) + 1);
-            }
-        } else if ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0xBB) {
-            p[0] = '\t'; /* standalone » is a tab (exact 4-stop column) */
-            memmove(p + 1, p + 2, strlen(p + 2) + 1);
-        } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x80 &&
-                   (unsigned char)p[2] == 0x94) {
-            /* em-dash(es) + » visualizes a tab, aligned to 4-col stops:
-             * glyph count = (4 - col % 4) */
-            char* q = p + 3;
-            while ((unsigned char)q[0] == 0xE2 && (unsigned char)q[1] == 0x80 &&
-                   (unsigned char)q[2] == 0x94) {
-                q += 3;
-            }
-            if ((unsigned char)q[0] == 0xC2 && (unsigned char)q[1] == 0xBB) {
-                p[0] = '\t';
-                memmove(p + 1, q + 2, strlen(q + 2) + 1);
-            }
-        }
-    }
-    return out;
-}
-
-/* ∎ (U+220E) terminates input with NO trailing newline. */
-static void strip_eof_marker(char* in) {
-    size_t n = strlen(in);
-    if (n >= 4 && memcmp(in + n - 4, "\xe2\x88\x8e\n", 4) == 0) {
-        in[n - 4] = '\0';
-    } else if (n >= 3 && memcmp(in + n - 3, "\xe2\x88\x8e", 3) == 0) {
-        in[n - 3] = '\0';
-    }
-}
-
 /* Runs one case; on mismatch with want_tree != NULL writes our tree. */
 static yts_result run_case(const yts_case* c, char** got_tree) {
-    char* input = devisualize(c->yaml);
-    strip_eof_marker(input);
+    char* input = yts_case_input(c);
     yts_tree tree;
     yts_tree_init(&tree);
     yep_engine* eng = yep_engine_create(yep_system_allocator());

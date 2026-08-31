@@ -1,0 +1,7 @@
+# suite-error
++STR
++DOC
++SEQ
+=VAL : item1
+=VAL : item2
+!ERROR

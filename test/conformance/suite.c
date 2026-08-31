@@ -251,3 +251,53 @@ void yts_free(yts_case* cases, long n) {
     }
     free(cases);
 }
+
+/* --- input preparation (shared with the libyaml differential, 17) --- */
+
+/* The suite renders significant bytes with glyphs; de-visualize:
+ * U+2423 (\xe2\x90\xa3) -> space, U+21B5 (\xe2\x86\xb5) -> NEL break
+ * (a NEL-only line is ONE break), an em-dash run + U+00BB -> tab, a
+ * lone U+00BB -> tab, and U+220E (\xe2\x88\x8e) terminates input with
+ * no trailing newline. */
+static char* yts_devisualize(const char* in) {
+    char* out = strdup(in);
+    for (char* p = out; *p != '\0'; p++) {
+        if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x90 &&
+            (unsigned char)p[2] == 0xA3) {
+            p[0] = ' ';
+            memmove(p + 1, p + 3, strlen(p + 3) + 1);
+        } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x86 &&
+                   (unsigned char)p[2] == 0xB5) {
+            if (p[3] == '\n') {
+                p[0] = '\n'; /* a NEL-only line is one break */
+                memmove(p + 1, p + 4, strlen(p + 4) + 1);
+            } else {
+                p[0] = '\n';
+                memmove(p + 1, p + 3, strlen(p + 3) + 1);
+            }
+        } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x80 &&
+                   (unsigned char)p[2] == 0x94) {
+            char* q = p + 3;
+            while ((unsigned char)q[0] == 0xE2 && (unsigned char)q[1] == 0x80 &&
+                   (unsigned char)q[2] == 0x94) {
+                q += 3;
+            }
+            if ((unsigned char)q[0] == 0xC2 && (unsigned char)q[1] == 0xBB) {
+                p[0] = '\t';
+                memmove(p + 1, q + 2, strlen(q + 2) + 1);
+            }
+        } else if ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0xBB) {
+            p[0] = '\t'; /* standalone: a tab at an exact 4-stop column */
+            memmove(p + 1, p + 2, strlen(p + 2) + 1);
+        } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x88 &&
+                   (unsigned char)p[2] == 0x8E) {
+            p[0] = '\0'; /* EOF marker: nothing follows */
+            break;
+        }
+    }
+    return out;
+}
+
+char* yts_case_input(const yts_case* c) {
+    return yts_devisualize(c->yaml);
+}

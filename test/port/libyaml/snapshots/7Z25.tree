@@ -1,0 +1,6 @@
+# suite-ok
++STR
++DOC ---
+=VAL : scalar1
+-DOC ...
+!ERROR

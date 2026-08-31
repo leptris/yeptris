@@ -1,0 +1,15 @@
+# suite-ok
++STR
++DOC
++SEQ
++SEQ []
+=VAL : one
+=VAL : two
+-SEQ
++SEQ []
+=VAL : three
+=VAL : four
+-SEQ
+-SEQ
+-DOC
+-STR

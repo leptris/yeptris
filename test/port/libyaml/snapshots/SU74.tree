@@ -1,0 +1,9 @@
+# suite-error
++STR
++DOC
++MAP
+=VAL : key1
+=VAL : &alias value1
+=VAL : &b 
+=VAL : 
+!ERROR

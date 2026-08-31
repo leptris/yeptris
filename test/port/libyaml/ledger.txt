@@ -1,0 +1,9 @@
+# Divergence ledger (TODO.impl/17): libyaml's event stream deviates from
+# the yaml-test-suite ground truth, which yeptris follows. Verified
+# against the suite's own expected trees; suite-ok + both-parse + stream
+# diff => upstream deviation. Extend only with a suite citation.
+
+652Z  libyaml drops the leading '?' from a flow plain key ("?foo"); the suite keeps it
+Y2GN  libyaml ends an anchor at ':' ("&an:chor"); the suite allows ':' in anchor names
+L24T#2  libyaml loses the final more-indented blank under keep chomping
+HM87#2  libyaml treats "[?x]" as an explicit key; the suite reads the plain "?x"
