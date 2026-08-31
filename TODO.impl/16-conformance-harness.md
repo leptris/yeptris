@@ -1,6 +1,6 @@
 # TODO.impl/16 — Conformance harness: yaml-test-suite + corpora + divergence ledger
 
-Status: active (corpus fetched, runner pending) · Depends: 07, 12 · Layer: `test/conformance` · PLAN.md phase: 1
+Status: yaml-test-suite COMPLETE — 395/395 (100%), YEP_STRICT gating green · Depends: 07, 12 · Layer: `test/conformance` · PLAN.md phase: 1
 
 ## Goal
 
