@@ -54,6 +54,7 @@ struct yep_engine {
     struct {
         uint16_t col;
         uint8_t kind;
+        uint8_t inline_doc; /* opened on the --- line: deeper keys only */
     } frames[YEP_MAX_DEPTH];
     int depth;
 
@@ -86,6 +87,8 @@ struct yep_engine {
     uint32_t ev_scopes;  /* active entry-buffer scopes */
     char* norm_buf;      /* owned input copy with exotic breaks normalized */
     int last_root_flow;  /* a root-level flow node just completed */
+    int tag_undef;       /* an unresolved !handle! was seen (QLJ7) */
+    int doc_inline;      /* content node opened on the --- line */
     uint16_t flow_floor; /* parent column of the current block-level flow */
     int flow_enforce;    /* flow continuation lines must out-indent it */
 };
@@ -250,6 +253,8 @@ static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     }
     e->frames[e->depth].col = col;
     e->frames[e->depth].kind = YEP_FRAME_SEQ;
+    e->frames[e->depth].inline_doc = (uint8_t)e->doc_inline;
+    e->doc_inline = 0;
     e->depth++;
     yep_event ev;
     e_event_init(&ev, YEP_EV_SEQ_START);
@@ -271,6 +276,8 @@ static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     }
     e->frames[e->depth].col = col;
     e->frames[e->depth].kind = YEP_FRAME_MAP;
+    e->frames[e->depth].inline_doc = (uint8_t)e->doc_inline;
+    e->doc_inline = 0;
     e->depth++;
     yep_event ev;
     e_event_init(&ev, YEP_EV_MAP_START);
@@ -516,6 +523,34 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
             }
         }
         if (blank) {
+            if (li.indent > 0 && memchr(e->p + li.offset, '\t', li.end - li.offset) != NULL) {
+                /* a tab after leading spaces is CONTENT (Y79Y#2) */
+                if (content_indent < 0) {
+                    content_indent = li.indent;
+                    if (content_indent <= parent_col) {
+                        break;
+                    }
+                } else if (li.indent < content_indent) {
+                    break;
+                }
+                if (li.indent >= content_indent) {
+                    uint32_t from2 = li.offset + (uint32_t)content_indent;
+                    if (e->fold_n >= YEP_MAX_FOLD_LINES) {
+                        return e_fail(e, YEP_ERR_MEMORY, e->pos);
+                    }
+                    e->fold[e->fold_n].content.p = e->p + from2;
+                    e->fold[e->fold_n].content.len = li.end > from2 ? li.end - from2 : 0;
+                    e->fold[e->fold_n].breaks_before =
+                        saw_content ? pending_breaks + 1 : pending_breaks;
+                    e->fold[e->fold_n].more_indented = 1;
+                    e->fold_n++;
+                    saw_content = 1;
+                    pending_breaks = 0;
+                    trailing_breaks = 0;
+                    e_line_done(e, li.end);
+                    continue;
+                }
+            }
             /* a blank line whose spaces extend past the content indent is
              * CONTENT (kept verbatim); otherwise it is a pure break */
             if (content_indent >= 0 && li.indent > content_indent) {
@@ -781,7 +816,7 @@ static yep_view e_resolve_tag_raw(yep_engine* e, yep_view tag) {
                 yep_view hv = {m, h.len};
                 yep_view res = e_resolve_tag_raw(e, hv);
                 if (res.p == hv.p) {
-                    e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                    e->tag_undef = 1; /* e_props reports it */
                 }
             }
             break;
@@ -830,6 +865,11 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
             }
             yep_view raw = {e->p + start, (uint32_t)(e->pos - start)};
             *tag = e_resolve_tag(e, raw);
+            if (e->tag_undef) {
+                e->tag_undef = 0;
+                e_fail(e, YEP_ERR_UNEXPECTED, start);
+                return;
+            }
         } else {
             return;
         }
@@ -860,10 +900,7 @@ static int e_alias(yep_engine* e, yep_event* ev) {
 
 /* ---------------------------------------------------------------- flow */
 
-static void e_flow_ws(yep_engine* e) {
-    /* note: document markers inside a flow collection are checked by the
-     * main loop (they end the line scan); quoted spans reject them in
-     * e_quoted_floor. */
+static int e_flow_ws(yep_engine* e) {
     for (;;) {
         while (e->pos < e->len && (e->p[e->pos] == ' ' || e->p[e->pos] == '\t')) {
             e->pos++;
@@ -874,9 +911,25 @@ static void e_flow_ws(yep_engine* e) {
         }
         if (e->pos < e->len && (e->p[e->pos] == '\n' || e->p[e->pos] == '\r')) {
             e_line_done(e, e->pos);
+            if (e->pos < e->len && e->pos == e->line_start) {
+                yep_line_info fl = yep_scan_line(e->p, e->len, e->line_start);
+                if ((fl.flags & YEP_LF_TAB) && !(fl.flags & YEP_LF_BLANK) && fl.indent == 0) {
+                    /* a col-0 tab before flow content errors; tabs after
+                     * spaces are separation (6HB6) */
+                    size_t t = e->line_start + fl.indent;
+                    while (t < fl.end && (e->p[t] == ' ' || e->p[t] == '\t')) {
+                        t++;
+                    }
+                    if (t < fl.end && e->p[t] != '[' && e->p[t] != ']' && e->p[t] != '{' &&
+                        e->p[t] != '}' && e->p[t] != ',' && e->p[t] != '#' && e->p[t] != ':') {
+                        e_fail(e, YEP_ERR_TAB_IN_INDENT, t); /* Y79Y#4 */
+                        return -1;
+                    }
+                }
+            }
             continue;
         }
-        return;
+        return 0;
     }
 }
 
@@ -941,7 +994,9 @@ static int e_skip_flow(yep_engine* e) {
  * 0 no node (separator/close next), 2 nested opener, -1 error. */
 static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     (void)keyish;
-    e_flow_ws(e);
+    if (e_flow_ws(e) != 0) {
+        return -1;
+    }
     if (e->pos >= e->len) {
         return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
     }
@@ -953,11 +1008,13 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
         return 0; /* separator / close */
     }
     if (c == ':') {
-        /* ':' separates only when followed by blank/EOL/flow indicator;
-         * ":x" is a plain scalar starting with a colon */
+        /* ':' separates when followed by blank/EOL/flow indicator, or
+         * directly after a flow close ("{a: b}:c" — JSON-style); ":x" is
+         * a plain scalar starting with a colon */
         size_t n2 = e->pos + 1;
         if (n2 >= e->len || e->p[n2] == ' ' || e->p[n2] == '\n' || e->p[n2] == '\r' ||
-            yep_ct_is((unsigned char)e->p[n2], YEP_CT_FLOW_IND)) {
+            yep_ct_is((unsigned char)e->p[n2], YEP_CT_FLOW_IND) ||
+            (e->pos > 0 && (e->p[e->pos - 1] == ']' || e->p[e->pos - 1] == '}'))) {
             return 0;
         }
     }
@@ -972,7 +1029,9 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     if (!yep_view_is_empty(anchor)) {
         anchor_define(e, anchor);
     }
-    e_flow_ws(e);
+    if (e_flow_ws(e) != 0) {
+        return -1;
+    }
     c = (unsigned char)e->p[e->pos];
     if ((c == ',' || c == ']' || c == '}' || c == ':') &&
         (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
@@ -995,7 +1054,9 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     const char* piece_start_fix = e->p + e->pos;
     if ((unsigned char)*piece_start_fix == ':') {
         e->pos++;
-        e_flow_ws(e);
+        if (e_flow_ws(e) != 0) {
+            return -1;
+        }
         if (e->pos >= e->len) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }
@@ -1033,7 +1094,9 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
                     break; /* a comment line ends the scalar too */
                 }
             }
-            e_flow_ws(e);
+            if (e_flow_ws(e) != 0) {
+                return -1;
+            }
             if (e->pos < e->len && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
                 e->p[e->pos] != ',' && !e_comment_at(e) && e->p[e->pos] != '\n' &&
                 e->p[e->pos] != '\r') {
@@ -1104,6 +1167,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
 
     for (;;) {
         e_event_init(&ev, YEP_EV_NONE);
+        if (e->pos == e->line_start && e->pos < e->len) {
+            yep_line_info fl = yep_scan_line(e->p, e->len, e->line_start);
+            if ((fl.flags & YEP_LF_TAB) && !(fl.flags & YEP_LF_BLANK)) {
+                return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos); /* Y79Y#4 */
+            }
+        }
         if (st[n - 1].kind == 0 && st[n - 1].buf_from < 0 && st[n - 1].pair_open == 0 &&
             e->pos < e->len && e->p[e->pos] != ',' && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
             e->p[e->pos] != ':') {
@@ -1115,11 +1184,16 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         int keyish = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0);
         int q_key = 0;
         int rc;
-        e_flow_ws(e);
+        if (e_flow_ws(e) != 0) {
+            return -1;
+        }
         if (e->pos < e->len && e->pos == e->line_start) {
             yep_line_info fl = yep_scan_line(e->p, e->len, e->line_start);
             if (fl.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END | YEP_LF_DIRECTIVE)) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* marker inside flow */
+            }
+            if (fl.flags & YEP_LF_TAB) {
+                return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos); /* Y79Y#4 */
             }
             if (e->flow_enforce && !(fl.flags & (YEP_LF_BLANK | YEP_LF_COMMENT)) &&
                 fl.indent <= e->flow_floor) {
@@ -1145,7 +1219,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
              yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND))) {
             e->pos++;
-            e_flow_ws(e);
+            if (e_flow_ws(e) != 0) {
+                return -1;
+            }
             if (e->pos >= e->len ||
                 (e->p[e->pos] == ':' &&
                  (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
@@ -1220,7 +1296,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
              * may precede it: "unquoted : value", "\"foo\"\n: bar").
              * After a QUOTED node the colon separates JSON-style. */
             size_t save_pos = e->pos;
-            e_flow_ws(e); /* crosses newlines; restored below when no colon */
+            if (e_flow_ws(e) != 0) {
+                return -1;
+            } /* crosses newlines; restored below when no colon */
             int quoted = (ev.type == YEP_EV_SCALAR && (ev.style == YEP_STYLE_SINGLE_QUOTED ||
                                                        ev.style == YEP_STYLE_DOUBLE_QUOTED));
             int key_pos = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0);
@@ -1341,7 +1419,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         }
 
         /* rc == 0: separator or close */
-        e_flow_ws(e);
+        if (e_flow_ws(e) != 0) {
+            return -1;
+        }
         if (e->pos >= e->len) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }
@@ -1601,6 +1681,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     e->pend_tag.len = 0;
     yep_view anchor = {0}, tag = {0};
     e_props(e, &anchor, &tag);
+    if (e->err.code != YEP_ERR_NONE) {
+        return -1; /* e_props failed (unresolved tag handle) */
+    }
     if (!yep_view_is_empty(anchor)) {
         anchor_define(e, anchor);
     }
@@ -1621,6 +1704,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         /* properties with the value on following lines */
         e->pend_anchor = node_a;
         e->pend_tag = node_t;
+        e->doc_inline = 0; /* the node starts on a later line */
         return e_parse_value(e, ctx, floor_col);
         /* (ctx stays: AFTER_COLON converts to VALUE_LINE at the break) */
     }
@@ -1633,6 +1717,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     }
     if (c == '-' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
                      e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
+        if (e->pos > 0 && e->p[e->pos - 1] == '\t') {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "-\t-" (Y79Y) */
+        }
         if (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag)) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "&a - x" */
         }
@@ -1649,6 +1736,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                      e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
         if (ctx == YEP_CTX_AFTER_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "key: ? a" */
+        }
+        if (e->pos > 0 && e->p[e->pos - 1] == '\t') {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "?\t-" (Y79Y) */
         }
         uint16_t col = e_col(e, e->pos);
         int rc = e_open_map(e, col, e->line, col + 1, pend_a, pend_t);
@@ -1818,6 +1908,12 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (ctx == YEP_CTX_AFTER_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, s.end);
         }
+        if (node_at > 0 && e->p[node_at - 1] == '\t') {
+            return e_fail(e, YEP_ERR_UNEXPECTED, node_at); /* ":\tkey:" */
+        }
+        if (e->doc_inline && (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "--- &a k: v" */
+        }
         uint16_t key_col = e_col(e, node_at);
         int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t);
         if (rc != 0) {
@@ -1924,9 +2020,6 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (li.flags & YEP_LF_COMMENT) {
             e_line_done(e, li.end);
             continue;
-        }
-        if (li.flags & YEP_LF_TAB) {
-            return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
         }
         if (li.indent == floor_col && e->depth > 0 &&
             (ctx == YEP_CTX_AFTER_COLON || ctx == YEP_CTX_VALUE_LINE) &&
@@ -2082,7 +2175,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
 
     while (e->pos < e->len) {
         yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
-        if (li.flags & YEP_LF_TAB) {
+        if ((li.flags & YEP_LF_TAB) && !(li.flags & YEP_LF_BLANK)) {
             size_t t = li.offset + li.indent;
             while (t < li.end && (e->p[t] == ' ' || e->p[t] == '\t')) {
                 t++;
@@ -2188,6 +2281,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                     return -2;
                 }
                 doc_open = 0;
+                e->tagmap_n = 0; /* directives are per-document */
             }
             e_event_init(&ev, YEP_EV_DOCUMENT_START);
             ev.style = 1; /* explicit marker */
@@ -2200,7 +2294,9 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
             e->pos = li.offset + li.indent + 3;
             e_skip_inline_space(e);
             if (!e_at_eol(e)) {
+                e->doc_inline = 1;
                 rc = e_node(e, YEP_CTX_FRESH, li.indent);
+                e->doc_inline = 0;
                 if (rc != 0) {
                     if (rc == -2) {
                         return -2;
@@ -2278,6 +2374,8 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                                                      e->p[li.offset + li.indent + 1] == '\t' ||
                                                      e->p[li.offset + li.indent + 1] == '\n' ||
                                                      e->p[li.offset + li.indent + 1] == '\r'));
+                } else if (e->frames[e->depth - 1].inline_doc) {
+                    continues = 0; /* "--- k: v" maps take deeper keys only */
                 } else {
                     continues = yep_scan_is_key_start(li.first) || li.first == ':' ||
                                 li.first == '?' ||
