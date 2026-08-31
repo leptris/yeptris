@@ -41,8 +41,14 @@ static char* devisualize(const char* in) {
             memmove(p + 1, p + 3, strlen(p + 3) + 1);
         } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x86 &&
                    (unsigned char)p[2] == 0xB5) {
-            p[0] = '\n'; /* ↵ visualizes a NEL line break */
-            memmove(p + 1, p + 3, strlen(p + 3) + 1);
+            /* ↵ visualizes a NEL line break; a ↵-only line is ONE break */
+            if (p[3] == '\n') {
+                p[0] = '\n';
+                memmove(p + 1, p + 4, strlen(p + 4) + 1);
+            } else {
+                p[0] = '\n';
+                memmove(p + 1, p + 3, strlen(p + 3) + 1);
+            }
         } else if ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0xBB) {
             p[0] = '\t'; /* standalone » is a tab (exact 4-stop column) */
             memmove(p + 1, p + 2, strlen(p + 2) + 1);
