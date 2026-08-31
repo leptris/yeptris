@@ -43,6 +43,9 @@ static char* devisualize(const char* in) {
                    (unsigned char)p[2] == 0xB5) {
             p[0] = '\n'; /* ↵ visualizes a NEL line break */
             memmove(p + 1, p + 3, strlen(p + 3) + 1);
+        } else if ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0xBB) {
+            p[0] = '\t'; /* standalone » is a tab (exact 4-stop column) */
+            memmove(p + 1, p + 2, strlen(p + 2) + 1);
         } else if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x80 &&
                    (unsigned char)p[2] == 0x94) {
             /* em-dash(es) + » visualizes a tab, aligned to 4-col stops:
@@ -61,9 +64,20 @@ static char* devisualize(const char* in) {
     return out;
 }
 
+/* ∎ (U+220E) terminates input with NO trailing newline. */
+static void strip_eof_marker(char* in) {
+    size_t n = strlen(in);
+    if (n >= 4 && memcmp(in + n - 4, "\xe2\x88\x8e\n", 4) == 0) {
+        in[n - 4] = '\0';
+    } else if (n >= 3 && memcmp(in + n - 3, "\xe2\x88\x8e", 3) == 0) {
+        in[n - 3] = '\0';
+    }
+}
+
 /* Runs one case; on mismatch with want_tree != NULL writes our tree. */
 static yts_result run_case(const yts_case* c, char** got_tree) {
     char* input = devisualize(c->yaml);
+    strip_eof_marker(input);
     yts_tree tree;
     yts_tree_init(&tree);
     yep_engine* eng = yep_engine_create(yep_system_allocator());
@@ -77,6 +91,12 @@ static yts_result run_case(const yts_case* c, char** got_tree) {
         return (rc != 0) ? R_PASS : R_SHOULD_FAIL;
     }
     if (rc != 0) {
+        if (got_tree != NULL) {
+            const yep_error* err = yep_engine_error(eng);
+            char msg[128];
+            snprintf(msg, sizeof(msg), "(error %d line %u col %u)", err->code, err->line, err->col);
+            *got_tree = strdup(msg);
+        }
         yts_tree_free(&tree);
         yep_engine_destroy(eng);
         return R_SHOULD_PARSE;
