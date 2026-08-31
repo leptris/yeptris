@@ -44,11 +44,12 @@ typedef struct yep_event {
     yep_view value;  /* scalar content / alias name */
     yep_view anchor; /* node properties, empty when absent */
     yep_view tag;
-    uint8_t style;    /* yep_scalar_style */
-    uint8_t implicit; /* scalar written without quotes/tag (plain implicit) */
-    uint8_t flow;     /* collection opened in flow context */
-    uint8_t borrowed; /* 1: value borrows the INPUT; 0: engine finish pool */
-    uint32_t line;    /* 1-based position of the node start */
+    uint8_t style;     /* yep_scalar_style */
+    uint8_t implicit;  /* scalar written without quotes/tag (plain implicit) */
+    uint8_t flow;      /* collection opened in flow context */
+    uint8_t multiline; /* scalar spanned lines: may not be a simple key */
+    uint8_t borrowed;  /* 1: value borrows the INPUT; 0: engine finish pool */
+    uint32_t line;     /* 1-based position of the node start */
     uint32_t col;
 } yep_event;
 

@@ -37,7 +37,9 @@ static void tvalue(yts_tree* t, const yep_event* ev) {
     uint32_t emitted = 0;
     for (uint32_t i = 0; i < ev->value.len; i++) {
         char c = ev->value.p[i];
-        if (c == '\\') {
+        if (c == ' ' && i + 1 == ev->value.len) {
+            tputs(t, "\xe2\x90\xa3"); /* ␣: trailing space would be invisible */
+        } else if (c == '\\') {
             tputs(t, "\\\\");
         } else if (c == '\n') {
             tputs(t, "\\n");

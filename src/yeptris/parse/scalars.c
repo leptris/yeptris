@@ -81,9 +81,10 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
         unsigned char c = (unsigned char)p[i];
         if (c != '\\') {
             if (multiline && (c == '\n' || c == '\r')) {
-                /* fold: one break → ' ', n → (n-1) '\n'; skip leading
-                 * spaces of the next line. A whitespace-ONLY line counts
-                 * as an empty line (an extra break). */
+                /* fold: one break → ' ', n → (n-1) '\n'. Trailing
+                 * whitespace BEFORE a break is stripped; the next line's
+                 * leading whitespace (spaces AND tabs) is skipped; a
+                 * whitespace-ONLY line counts as an empty line. */
                 uint32_t breaks = 0;
                 for (;;) {
                     while (i < end && (p[i] == '\n' || p[i] == '\r')) {
@@ -101,6 +102,9 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
                         continue; /* whitespace-only line: keep counting */
                     }
                     break;
+                }
+                while (b.len > 0 && b.data[b.len - 1] == ' ') {
+                    b.len--; /* strip trailing spaces before the break */
                 }
                 if (breaks == 1) {
                     yep_buf_putc(&b, ' ');
@@ -276,15 +280,25 @@ char* yep_finish_single(const char* p, uint32_t start, uint32_t end, int multili
         }
         if (multiline && (p[i] == '\n' || p[i] == '\r')) {
             uint32_t breaks = 0;
-            while (i < end && (p[i] == '\n' || p[i] == '\r')) {
-                if (p[i] == '\r' && i + 1 < end && p[i + 1] == '\n') {
+            for (;;) {
+                while (i < end && (p[i] == '\n' || p[i] == '\r')) {
+                    if (p[i] == '\r' && i + 1 < end && p[i + 1] == '\n') {
+                        i++;
+                    }
+                    i++;
+                    breaks++;
+                }
+                size_t save = i;
+                while (i < end && (p[i] == ' ' || p[i] == '\t')) {
                     i++;
                 }
-                i++;
-                breaks++;
+                if (i < end && (p[i] == '\n' || p[i] == '\r') && i > save) {
+                    continue; /* whitespace-only line: keep counting */
+                }
+                break;
             }
-            while (i < end && p[i] == ' ') {
-                i++;
+            while (b.len > 0 && b.data[b.len - 1] == ' ') {
+                b.len--; /* strip trailing spaces before the break */
             }
             if (breaks == 1) {
                 yep_buf_putc(&b, ' ');
@@ -356,8 +370,8 @@ char* yep_finish_block(const yep_fold_line* lines, size_t n, int folded, int cho
     if (chomp == 1) {        /* strip: nothing */
     } else if (chomp == 2) { /* keep: every trailing break */
         yep_emit_breaks(&b, trailing_breaks);
-    } else { /* clip: exactly one trailing newline when anything is there */
-        if (b.len > 0 || trailing_breaks > 0) {
+    } else { /* clip: one trailing newline, but nothing without content */
+        if (b.len > 0) {
             yep_buf_putc(&b, '\n');
         }
     }

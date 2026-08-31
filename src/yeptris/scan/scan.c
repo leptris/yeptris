@@ -199,6 +199,9 @@ int yep_scan_is_key_start(unsigned char c) {
     if (c == '\'' || c == '"' || c == '[' || c == '{' || c == '?') {
         return 1;
     }
+    if (c == '&' || c == '!' || c == '*') {
+        return 1; /* properties or an alias may open a key node */
+    }
     if (yep_ct_is(c, YEP_CT_INDICATOR)) {
         return 0; /* the remaining indicators cannot start a plain scalar */
     }

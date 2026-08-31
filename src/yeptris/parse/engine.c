@@ -36,6 +36,8 @@ typedef enum {
     YEP_CTX_AFTER_DASH,  /* value of a seq entry: may open collections (compact) */
     YEP_CTX_AFTER_COLON, /* value of a map key: collections via following lines only */
     YEP_CTX_AFTER_Q,     /* explicit-key content: may ALIGN with the '?' column */
+    YEP_CTX_VALUE_LINE,  /* value of "key:" on a FOLLOWING line: indentless
+                          * sequences allowed, same-line prohibitions lifted */
 } yep_ctx;
 
 struct yep_engine {
@@ -73,6 +75,13 @@ struct yep_engine {
         yep_view handle, prefix;
     } tagmap[8];
     int tagmap_n;
+
+    /* Flow single-pair deferral: a sequence entry's events are buffered
+     * until we know whether ':' follows ("[a: b]" needs MAP_START before
+     * the key's events, but ':' is only seen after them). */
+    yep_event* ev_buf;
+    uint32_t ev_buf_n, ev_buf_cap;
+    uint32_t ev_scopes; /* active entry-buffer scopes */
 };
 
 /* ------------------------------------------------------------ forwards */
@@ -91,13 +100,64 @@ static int e_fail(yep_engine* e, yep_err_code code, size_t at) {
     return -1;
 }
 
-static int emit_now(yep_engine* e, const yep_event* ev) {
-    return e->sink ? e->sink->on_event(e->sink->ctx, ev) : 0;
-}
-
 static void e_event_init(yep_event* ev, yep_event_type t) {
     memset(ev, 0, sizeof(*ev));
     ev->type = t;
+}
+
+static int emit_now(yep_engine* e, const yep_event* ev) {
+    if (e->ev_scopes > 0) {
+        if (e->ev_buf_n == e->ev_buf_cap) {
+            uint32_t cap = e->ev_buf_cap ? e->ev_buf_cap * 2 : 16;
+            yep_event* nb = yep_pool_alloc(e->pool, (size_t)cap * sizeof(yep_event), 16);
+            if (nb == NULL) {
+                e_fail(e, YEP_ERR_MEMORY, e->pos);
+                return -2;
+            }
+            if (e->ev_buf_n > 0) {
+                memcpy(nb, e->ev_buf, (size_t)e->ev_buf_n * sizeof(yep_event));
+            }
+            e->ev_buf = nb;
+            e->ev_buf_cap = cap;
+        }
+        e->ev_buf[e->ev_buf_n++] = *ev;
+        return 0;
+    }
+    return e->sink ? e->sink->on_event(e->sink->ctx, ev) : 0;
+}
+
+/* Emits buffered events from `from` to the sink and truncates. */
+static int e_buf_send(yep_engine* e, uint32_t from) {
+    for (uint32_t i = from; i < e->ev_buf_n; i++) {
+        if (e->sink && e->sink->on_event(e->sink->ctx, &e->ev_buf[i]) != 0) {
+            return -2;
+        }
+    }
+    e->ev_buf_n = from;
+    return 0;
+}
+
+/* Inserts a flow MAP_START at `from`, wrapping the buffered entry. */
+static int e_buf_wrap(yep_engine* e, uint32_t from) {
+    if (e->ev_buf_n >= e->ev_buf_cap) {
+        uint32_t cap = e->ev_buf_cap ? e->ev_buf_cap * 2 : 16;
+        yep_event* nb = yep_pool_alloc(e->pool, (size_t)cap * sizeof(yep_event), 16);
+        if (nb == NULL) {
+            e_fail(e, YEP_ERR_MEMORY, e->pos);
+            return -2;
+        }
+        if (e->ev_buf_n > 0) {
+            memcpy(nb, e->ev_buf, (size_t)e->ev_buf_n * sizeof(yep_event));
+        }
+        e->ev_buf = nb;
+        e->ev_buf_cap = cap;
+    }
+    memmove(&e->ev_buf[from + 1], &e->ev_buf[from],
+            (size_t)(e->ev_buf_n - from) * sizeof(yep_event));
+    e_event_init(&e->ev_buf[from], YEP_EV_MAP_START);
+    e->ev_buf[from].flow = 1;
+    e->ev_buf_n++;
+    return 0;
 }
 
 static void e_line_done(yep_engine* e, size_t at) {
@@ -326,6 +386,7 @@ static int e_quoted(yep_engine* e, yep_event* ev) {
 
     ev->style = (q == '\'') ? YEP_STYLE_SINGLE_QUOTED : YEP_STYLE_DOUBLE_QUOTED;
     if (q == '\'') {
+        ev->multiline = (uint8_t)multiline;
         char* out = yep_finish_single(e->p, start, end, multiline, e->pool, &ev->value.len);
         if (out == NULL) {
             ev->value.p = e->p + start;
@@ -340,6 +401,7 @@ static int e_quoted(yep_engine* e, yep_event* ev) {
         ev->value.len = end - start;
         ev->borrowed = 1;
     } else {
+        ev->multiline = (uint8_t)multiline;
         char* out = yep_finish_double(e->p, start, end, multiline, e->pool, &ev->value.len);
         if (out == NULL) {
             return e_fail(e, YEP_ERR_MEMORY, e->pos);
@@ -368,7 +430,7 @@ static int e_quoted(yep_engine* e, yep_event* ev) {
 }
 
 /* Block scalar (| or >) with header, auto/explicit indent, chomping. */
-static int e_block_scalar(yep_engine* e, yep_event* ev, uint16_t parent_col) {
+static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
     int folded = (e->p[e->pos] == '>');
     e->pos++;
     int chomp = 0;
@@ -398,6 +460,10 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, uint16_t parent_col) {
         yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
         int blank = (li.flags & YEP_LF_BLANK) != 0;
         if (!blank) {
+            if (saw_content && parent_col < 0 &&
+                (li.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END | YEP_LF_DIRECTIVE))) {
+                break; /* root block ends at ---/.../% even at the content column */
+            }
             if (content_indent < 0) {
                 content_indent = li.indent;
                 if (content_indent <= parent_col) {
@@ -455,7 +521,9 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, uint16_t parent_col) {
         e->fold[e->fold_n].content.len = li.end > from ? li.end - from : 0;
         /* leading blank lines belong to the block content */
         e->fold[e->fold_n].breaks_before = saw_content ? pending_breaks + 1 : pending_breaks;
-        e->fold[e->fold_n].more_indented = li.indent > content_indent;
+        e->fold[e->fold_n].more_indented =
+            li.indent > content_indent ||
+            (from < li.end && (e->p[from] == ' ' || e->p[from] == '\t'));
         e->fold_n++;
         saw_content = 1;
         pending_breaks = 0;
@@ -524,11 +592,13 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
         /* At document root there is no parent block, so continuation
          * lines may sit at column 0. */
         int too_shallow = root_ctx ? (li.indent < 0) : (li.indent <= block_floor);
-        if (too_shallow || (li.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END)) ||
-            (li.flags & YEP_LF_DIRECTIVE)) {
-            break;
+        if (too_shallow || (li.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END))) {
+            break; /* a directive-LIKE line is content (XLQ9) */
         }
         size_t cs = e->pos + li.indent;
+        while (cs < e->len && (e->p[cs] == ' ' || e->p[cs] == '\t')) {
+            cs++; /* continuation leading white space is stripped */
+        }
         yep_span s = yep_scan_plain(e->p, e->len, cs, 0);
         if (s.term == YEP_TERM_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, s.end);
@@ -563,7 +633,48 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
 /* Resolves a scanned tag against the document's %TAG map. !! is the
  * YAML shorthand prefix; !<...> is verbatim; matched handles compose
  * prefix+suffix in the finish pool. */
-static yep_view e_resolve_tag(yep_engine* e, yep_view tag) {
+static int e_hex_val(unsigned char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+/* Tags carry URI escapes (%XX) in every form (verbatim, !!, %TAG). */
+static yep_view e_tag_uri_decode(yep_engine* e, yep_view v) {
+    const char* p = v.p;
+    for (uint32_t i = 0; i + 2 < v.len; i++) {
+        if (p[i] == '%' && e_hex_val((unsigned char)p[i + 1]) >= 0 &&
+            e_hex_val((unsigned char)p[i + 2]) >= 0) {
+            char* out = yep_pool_alloc(e->pool, v.len, 16);
+            if (out == NULL) {
+                return v;
+            }
+            uint32_t o = 0;
+            for (uint32_t j = 0; j < v.len;) {
+                if (j + 2 < v.len && p[j] == '%' && e_hex_val((unsigned char)p[j + 1]) >= 0 &&
+                    e_hex_val((unsigned char)p[j + 2]) >= 0) {
+                    out[o++] = (char)(e_hex_val((unsigned char)p[j + 1]) * 16 +
+                                      e_hex_val((unsigned char)p[j + 2]));
+                    j += 3;
+                } else {
+                    out[o++] = p[j++];
+                }
+            }
+            yep_view d = {out, o};
+            return d;
+        }
+    }
+    return v;
+}
+
+static yep_view e_resolve_tag_raw(yep_engine* e, yep_view tag) {
     if (tag.len >= 3 && tag.p[0] == '!' && tag.p[1] == '<' && tag.p[tag.len - 1] == '>') {
         yep_view v = {tag.p + 2, tag.len - 3};
         return v;
@@ -604,6 +715,10 @@ static yep_view e_resolve_tag(yep_engine* e, yep_view tag) {
         return v;
     }
     return tag;
+}
+
+static yep_view e_resolve_tag(yep_engine* e, yep_view tag) {
+    return e_tag_uri_decode(e, e_resolve_tag_raw(e, tag));
 }
 
 static int e_prop_char(unsigned char c) {
@@ -849,6 +964,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     }
     ev->style = YEP_STYLE_PLAIN;
     ev->implicit = 1;
+    ev->multiline = (e->fold_n > 1);
     return 1;
 }
 
@@ -859,6 +975,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         uint8_t pending_key; /* map: 1 key seen awaiting ':' value; 2 key emitted w/o ':' */
         uint8_t sep;         /* a ',' was consumed and no entry followed yet */
         uint8_t just_closed; /* a nested collection closed here (key candidate) */
+        uint8_t pair_open;   /* seq: a buffered single-pair awaits its MAP_END */
+        uint8_t pair_value;  /* seq: the open pair already has its value */
+        int32_t buf_from;    /* seq: entry events buffered from this index */
         uint32_t entries;    /* completed entries (for trailing-comma detection) */
     } st[YEP_MAX_DEPTH];
     int n = 0;
@@ -879,13 +998,51 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
     st[n].pending_key = 0;
     st[n].sep = 0;
     st[n].just_closed = 0;
+    st[n].pair_open = 0;
+    st[n].buf_from = -1;
     st[n].entries = 0;
     n++;
 
     for (;;) {
         e_event_init(&ev, YEP_EV_NONE);
+        if (st[n - 1].kind == 0 && st[n - 1].buf_from < 0 && st[n - 1].pair_open == 0 &&
+            e->pos < e->len && e->p[e->pos] != ',' && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
+            e->p[e->pos] != ':') {
+            /* a sequence entry may become a single-pair key: defer it */
+            st[n - 1].buf_from = (int32_t)e->ev_buf_n;
+            e->ev_scopes++;
+        }
         int keyish = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0);
-        int rc = e_flow_node(e, &ev, keyish);
+        int q_key = 0;
+        int rc;
+        e_flow_ws(e);
+        if (e->pos < e->len && e->p[e->pos] == '?' &&
+            (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+             e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
+             yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND))) {
+            e->pos++;
+            e_flow_ws(e);
+            if (e->pos >= e->len ||
+                (e->p[e->pos] == ':' &&
+                 (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+                  e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
+                  yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND) ||
+                  e->p[e->pos + 1] == ',' || e->p[e->pos + 1] == ']' || e->p[e->pos + 1] == '}')) ||
+                e->p[e->pos] == ',' || e->p[e->pos] == ']' || e->p[e->pos] == '}') {
+                /* '? : v' / '?' at the boundary: an EMPTY explicit key */
+                e_event_init(&ev, YEP_EV_SCALAR);
+                ev.implicit = 1;
+                ev.line = e->line;
+                ev.col = e_col(e, e->pos) + 1;
+                rc = 1;
+                q_key = 1;
+            } else {
+                rc = e_flow_node(e, &ev, keyish);
+                q_key = 1;
+            }
+        } else {
+            rc = e_flow_node(e, &ev, keyish);
+        }
         if (rc == -1) {
             return -1;
         }
@@ -893,10 +1050,14 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             if (n >= YEP_MAX_DEPTH) {
                 return e_fail(e, YEP_ERR_DEPTH, e->pos);
             }
+            st[n - 1].pair_value = 1;
             unsigned char oc = (unsigned char)e->p[e->pos];
             e->pos++;
+            yep_view pa = ev.anchor, pt = ev.tag; /* props before the opener */
             e_event_init(&ev, oc == '[' ? YEP_EV_SEQ_START : YEP_EV_MAP_START);
             ev.flow = 1;
+            ev.anchor = pa;
+            ev.tag = pt;
             ev.line = e->line;
             ev.col = e_col(e, e->pos);
             if (emit_now(e, &ev) != 0) {
@@ -913,6 +1074,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             st[n].kind = (oc == '[') ? 0 : 1;
             st[n].pending_key = 0;
             st[n].sep = 0;
+            st[n].pair_open = 0;
+            st[n].pair_value = 0;
+            st[n].buf_from = -1;
             st[n].entries = 0;
             n++;
             continue;
@@ -921,6 +1085,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             st[n - 1].sep = 0;
             st[n - 1].just_closed = 0;
             st[n - 1].entries++;
+            if (st[n - 1].pair_open) {
+                st[n - 1].pair_value = 1; /* the pair's value arrived */
+            }
             /* key detection: ':' after the node (spaces and line breaks
              * may precede it: "unquoted : value", "\"foo\"\n: bar").
              * After a QUOTED node the colon separates JSON-style. */
@@ -929,10 +1096,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             int quoted = (ev.type == YEP_EV_SCALAR && (ev.style == YEP_STYLE_SINGLE_QUOTED ||
                                                        ev.style == YEP_STYLE_DOUBLE_QUOTED));
             int key_pos = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0);
-            int colon = (e->pos < e->len && e->p[e->pos] == ':' &&
-                         (quoted || key_pos || e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
-                          e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
-                          yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND)));
+            int colon =
+                (e->pos < e->len && e->p[e->pos] == ':' &&
+                 ((quoted && !ev.multiline) || (key_pos && !ev.multiline) || e->pos + 1 >= e->len ||
+                  e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' || e->p[e->pos + 1] == '\n' ||
+                  e->p[e->pos + 1] == '\r' ||
+                  yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND)));
             if (!colon) {
                 e->pos = save_pos; /* not a key; the caller re-reads */
             }
@@ -946,65 +1115,69 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 continue;
             }
             if (colon && st[n - 1].kind == 0) {
-                /* single-pair mapping inside a sequence */
-                yep_event mk;
-                e_event_init(&mk, YEP_EV_MAP_START);
-                mk.flow = 1;
-                mk.line = ev.line;
-                mk.col = ev.col;
-                if (emit_now(e, &mk) != 0) {
-                    return -2;
-                }
+                /* single-pair mapping inside a sequence: the entry's
+                 * events are buffered; wrap them in MAP_START .. MAP_END */
                 e->pos++;
-                if (emit_now(e, &ev) != 0) {
-                    return -2;
-                }
-                yep_event vev;
-                int vrc = e_flow_node(e, &vev, 0);
-                if (vrc == -1) {
-                    return -1;
-                }
-                if (vrc == 2) {
-                    /* nested collection as the pair value: run a nested
-                     * kernel by pushing through our own loop */
-                    if (n >= YEP_MAX_DEPTH) {
-                        return e_fail(e, YEP_ERR_DEPTH, e->pos);
+                {
+                    int32_t bf = st[n - 1].buf_from;
+                    if (bf >= 0) {
+                        st[n - 1].buf_from = -1;
+                        e->ev_scopes--;
+                        if (e_buf_wrap(e, (uint32_t)bf) != 0) {
+                            return -2;
+                        }
+                        if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
+                            int brc = e_buf_send(e, 0);
+                            if (brc != 0) {
+                                return brc;
+                            }
+                        }
+                        if (emit_now(e, &ev) != 0) {
+                            return -2;
+                        }
+                        st[n - 1].pair_open = 1;
+                        continue;
+                    } else {
+                        yep_event mk;
+                        e_event_init(&mk, YEP_EV_MAP_START);
+                        mk.flow = 1;
+                        mk.line = ev.line;
+                        mk.col = ev.col;
+                        if (emit_now(e, &mk) != 0) {
+                            return -2;
+                        }
+                        if (emit_now(e, &ev) != 0) {
+                            return -2;
+                        }
                     }
-                    unsigned char oc = (unsigned char)e->p[e->pos];
-                    e->pos++;
-                    e_event_init(&vev, oc == '[' ? YEP_EV_SEQ_START : YEP_EV_MAP_START);
-                    vev.flow = 1;
-                    if (emit_now(e, &vev) != 0) {
+                    st[n - 1].pair_open = 1;
+                }
+                continue; /* the value parses as the next regular node */
+            }
+            if (q_key && st[n - 1].kind == 0) {
+                /* "[? x]": an explicit pair with no ':' — null value */
+                int32_t bf = st[n - 1].buf_from;
+                if (bf >= 0) {
+                    st[n - 1].buf_from = -1;
+                    e->ev_scopes--;
+                    if (e_buf_wrap(e, (uint32_t)bf) != 0) {
                         return -2;
                     }
-                    st[n].kind = (oc == '[') ? 0 : 1;
-                    st[n].pending_key = 0;
-                    st[n].sep = 1;
-                    n++;
-                    /* mark that this frame must close into a MAP_END for
-                     * the single-pair when popped: simplified — emit the
-                     * MAP_END right after the inner closes is handled by
-                     * tracking pair_depth */
-                    continue; /* v1 limitation: nested-in-pair closes are
-                                 balanced by the close handler below */
-                }
-                if (vrc == 1 && emit_now(e, &vev) != 0) {
-                    return -2;
-                }
-                if (vrc == 0) {
-                    /* no value: null */
+                    st[n - 1].pair_open = 1;
+                    if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
+                        int brc = e_buf_send(e, 0);
+                        if (brc != 0) {
+                            return brc;
+                        }
+                    }
                     yep_event nv;
                     e_event_init(&nv, YEP_EV_SCALAR);
                     nv.implicit = 1;
                     if (emit_now(e, &nv) != 0) {
                         return -2;
                     }
+                    continue;
                 }
-                e_event_init(&mk, YEP_EV_MAP_END);
-                if (emit_now(e, &mk) != 0) {
-                    return -2;
-                }
-                continue;
             }
             if (st[n - 1].kind == 1 && st[n - 1].pending_key == 0) {
                 /* bare entry in a flow map: key with null value */
@@ -1035,6 +1208,33 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         unsigned char c = (unsigned char)e->p[e->pos];
         if (c == ',') {
             e->pos++;
+            if (st[n - 1].pair_open) {
+                if (!st[n - 1].pair_value) {
+                    yep_event nv;
+                    e_event_init(&nv, YEP_EV_SCALAR);
+                    nv.implicit = 1;
+                    if (emit_now(e, &nv) != 0) {
+                        return -2;
+                    }
+                }
+                yep_event mk;
+                e_event_init(&mk, YEP_EV_MAP_END);
+                if (emit_now(e, &mk) != 0) {
+                    return -2;
+                }
+                st[n - 1].pair_open = 0;
+                st[n - 1].pair_value = 0;
+            }
+            if (st[n - 1].buf_from >= 0) {
+                st[n - 1].buf_from = -1;
+                e->ev_scopes--;
+                if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
+                    int brc = e_buf_send(e, 0);
+                    if (brc != 0) {
+                        return brc;
+                    }
+                }
+            }
             if (st[n - 1].sep) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "{,x}" / "[1,,2]" */
             }
@@ -1069,6 +1269,33 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 }
                 st[n - 1].pending_key = 0;
             }
+            if (st[n - 1].pair_open) {
+                if (!st[n - 1].pair_value) {
+                    yep_event nv;
+                    e_event_init(&nv, YEP_EV_SCALAR);
+                    nv.implicit = 1;
+                    if (emit_now(e, &nv) != 0) {
+                        return -2;
+                    }
+                }
+                yep_event mk;
+                e_event_init(&mk, YEP_EV_MAP_END);
+                if (emit_now(e, &mk) != 0) {
+                    return -2;
+                }
+                st[n - 1].pair_open = 0;
+                st[n - 1].pair_value = 0;
+            }
+            if (st[n - 1].buf_from >= 0) {
+                st[n - 1].buf_from = -1;
+                e->ev_scopes--;
+                if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
+                    int brc = e_buf_send(e, 0);
+                    if (brc != 0) {
+                        return brc;
+                    }
+                }
+            }
             e->pos++;
             e_event_init(&ev, st[n - 1].kind ? YEP_EV_MAP_END : YEP_EV_SEQ_END);
             if (emit_now(e, &ev) != 0) {
@@ -1076,10 +1303,22 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             }
             n--;
             if (n == 0) {
+                if (e->ev_scopes != 0) {
+                    return e_fail(e, YEP_ERR_INTERNAL, e->pos);
+                }
+                if (e->ev_buf_n > 0) {
+                    int brc = e_buf_send(e, 0);
+                    if (brc != 0) {
+                        return brc;
+                    }
+                }
                 e_skip_inline_space(e);
                 return 0;
             }
             st[n - 1].just_closed = 1;
+            if (st[n - 1].pair_open) {
+                st[n - 1].pair_value = 1;
+            }
             continue;
         }
         if (c == ':') {
@@ -1095,9 +1334,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 st[n - 1].pending_key = 1;
                 continue;
             }
-            if (st[n - 1].kind == 1 && st[n - 1].pending_key == 0 && st[n - 1].entries == 0 &&
-                st[n - 1].sep == 0) {
-                /* '{: x' — empty key, value next */
+            if (st[n - 1].kind == 1 && st[n - 1].pending_key == 0 &&
+                (st[n - 1].sep || st[n - 1].entries == 0)) {
+                /* '{: x' or '{a, : x' — empty key at a fresh entry */
                 yep_event kv;
                 e_event_init(&kv, YEP_EV_SCALAR);
                 kv.implicit = 1;
@@ -1107,6 +1346,22 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 st[n - 1].pending_key = 1;
                 st[n - 1].entries = 1;
                 continue;
+            }
+            if (st[n - 1].kind == 0 && st[n - 1].buf_from >= 0) {
+                /* '[ [a, b]: v' — the buffered collection is the pair key */
+                st[n - 1].buf_from = -1;
+                e->ev_scopes--;
+                if (e_buf_wrap(e, 0) != 0) {
+                    return -2;
+                }
+                if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
+                    int brc = e_buf_send(e, 0);
+                    if (brc != 0) {
+                        return brc;
+                    }
+                }
+                st[n - 1].pair_open = 1;
+                continue; /* value next */
             }
             if (st[n - 1].kind == 0 && n >= 1) {
                 /* '[ : v' — single-pair mapping with an empty key */
@@ -1130,6 +1385,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 st[n].kind = 1;
                 st[n].pending_key = 1;
                 st[n].sep = 0;
+                st[n].pair_open = 0;
+                st[n].pair_value = 0;
+                st[n].buf_from = -1;
                 st[n].entries = 0;
                 n++;
                 continue;
@@ -1181,15 +1439,13 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         e->pend_anchor = node_a;
         e->pend_tag = node_t;
         return e_parse_value(e, ctx, floor_col);
+        /* (ctx stays: AFTER_COLON converts to VALUE_LINE at the break) */
     }
 
     unsigned char c = (unsigned char)e->p[e->pos];
 
-    if (c == '-' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\n' ||
-                     e->p[e->pos + 1] == '\r')) {
-        if (ctx == YEP_CTX_AFTER_COLON) {
-            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "key: - x" */
-        }
+    if (c == '-' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+                     e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
         uint16_t col = e_col(e, e->pos);
         int rc = e_open_seq(e, col, e->line, col + 1, node_a, node_t);
         if (rc != 0) {
@@ -1199,10 +1455,10 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         return e_parse_value(e, YEP_CTX_AFTER_DASH, col);
     }
 
-    if (c == '?' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\n' ||
-                     e->p[e->pos + 1] == '\r')) {
-        if (ctx != YEP_CTX_FRESH) {
-            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+    if (c == '?' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+                     e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
+        if (ctx == YEP_CTX_AFTER_COLON) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "key: ? a" */
         }
         uint16_t col = e_col(e, e->pos);
         int rc = e_open_map(e, col, e->line, col + 1, pend_a, pend_t);
@@ -1212,8 +1468,8 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         e->pos++;
         e_skip_inline_space(e);
         if (e->pos < e->len && e->p[e->pos] == ':' &&
-            (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\n' ||
-             e->p[e->pos + 1] == '\r')) {
+            (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+             e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
             /* '? : value' — empty explicit key */
             yep_event kv;
             e_event_init(&kv, YEP_EV_SCALAR);
@@ -1326,7 +1582,8 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     }
 
     if (c == '|' || c == '>') {
-        if (e_block_scalar(e, &ev, floor_col) != 0) {
+        int parent_col = (e->depth == 0) ? -1 : (int)floor_col;
+        if (e_block_scalar(e, &ev, parent_col) != 0) {
             return -1;
         }
         return emit_now(e, &ev) == 0 ? 0 : -2;
@@ -1394,6 +1651,11 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
 static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     e_skip_inline_space(e);
     if (!e_at_eol(e)) {
+        if (ctx == YEP_CTX_AFTER_COLON && e->p[e->pos] == '-' &&
+            (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+             e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "key: - x" */
+        }
         int rc = e_node(e, ctx, floor_col);
         if (rc != 0) {
             return rc;
@@ -1425,20 +1687,27 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             e_line_done(e, li.end);
             continue;
         }
+        if (li.flags & YEP_LF_TAB) {
+            return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
+        }
+        yep_ctx vctx = (ctx == YEP_CTX_AFTER_COLON) ? YEP_CTX_VALUE_LINE : ctx;
         /* At document root there is no parent block: a following line
          * at any indent is the value ("&a\n- x"). Explicit-key content
-         * may align with the '?' column. */
+         * may align with the '?' column. Flow nodes and property runs
+         * continue the value even at the parent column ("k:\n!!seq\n[a]"). */
         if (li.indent > floor_col || e->depth == 0 ||
-            (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col)) {
+            (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col) ||
+            ((li.first == '[' || li.first == '{') && li.indent == floor_col)) {
             e->pos += li.indent;
-            return e_node(e, YEP_CTX_FRESH, floor_col);
+            return e_node(e, vctx, floor_col);
         }
         /* indentless sequence as a mapping value */
-        if (li.indent == floor_col && ctx == YEP_CTX_AFTER_COLON && li.first == '-' &&
+        if (li.indent == floor_col && vctx == YEP_CTX_VALUE_LINE && li.first == '-' &&
             (li.offset + li.indent + 1 >= e->len || e->p[li.offset + li.indent + 1] == ' ' ||
-             e->p[li.offset + li.indent + 1] == '\n' || e->p[li.offset + li.indent + 1] == '\r')) {
+             e->p[li.offset + li.indent + 1] == '\t' || e->p[li.offset + li.indent + 1] == '\n' ||
+             e->p[li.offset + li.indent + 1] == '\r')) {
             e->pos += li.indent;
-            return e_node(e, YEP_CTX_FRESH, floor_col);
+            return e_node(e, vctx, floor_col);
         }
         goto empty_value;
     }
@@ -1517,8 +1786,15 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     while (e->pos < e->len) {
         yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
         if (li.flags & YEP_LF_TAB) {
-            e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
-            goto fail;
+            size_t t = li.offset + li.indent;
+            while (t < li.end && (e->p[t] == ' ' || e->p[t] == '\t')) {
+                t++;
+            }
+            if (t >= li.end || (e->p[t] != '[' && e->p[t] != '{')) {
+                e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
+                goto fail;
+            }
+            li.indent = (uint16_t)(t - li.offset);
         }
         if (li.flags & YEP_LF_DIRECTIVE) {
             /* %TAG <handle> <prefix> — registered for the next document */
@@ -1616,6 +1892,13 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 return rc;
             }
             if (doc_open) {
+                if (!e->doc_content) {
+                    e_event_init(&ev, YEP_EV_SCALAR);
+                    ev.implicit = 1;
+                    if (emit_now(e, &ev) != 0) {
+                        return -2;
+                    }
+                }
                 e_event_init(&ev, YEP_EV_DOCUMENT_END);
                 ev.style = 1;    /* explicit "..." marker */
                 e->tagmap_n = 0; /* directives are per-document */
@@ -1623,6 +1906,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                     return -2;
                 }
                 doc_open = 0;
+                e->doc_content = 0;
             }
             e_line_done(e, li.end);
             continue;
@@ -1653,11 +1937,17 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 if (kind == YEP_FRAME_SEQ) {
                     continues = (li.first == '-' && (li.offset + li.indent + 1 >= e->len ||
                                                      e->p[li.offset + li.indent + 1] == ' ' ||
+                                                     e->p[li.offset + li.indent + 1] == '\t' ||
                                                      e->p[li.offset + li.indent + 1] == '\n' ||
                                                      e->p[li.offset + li.indent + 1] == '\r'));
                 } else {
-                    continues =
-                        yep_scan_is_key_start(li.first) || li.first == ':' || li.first == '?';
+                    continues = yep_scan_is_key_start(li.first) || li.first == ':' ||
+                                li.first == '?' ||
+                                (li.first == '-' && !(li.offset + li.indent + 1 >= e->len ||
+                                                      e->p[li.offset + li.indent + 1] == ' ' ||
+                                                      e->p[li.offset + li.indent + 1] == '\t' ||
+                                                      e->p[li.offset + li.indent + 1] == '\n' ||
+                                                      e->p[li.offset + li.indent + 1] == '\r'));
                 }
                 if (!continues) {
                     int rc = e_close_to(e, e->depth - 1);
@@ -1670,10 +1960,24 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
             break;
         }
 
+        if (e->depth == 0 && e->doc_content) {
+            /* a completed root scalar followed by more content: a second
+             * root node in the same document ("word1  # c\nword2") */
+            e_fail(e, YEP_ERR_UNEXPECTED, e->pos + li.indent);
+            goto fail;
+        }
+        if (e->depth > 0 && e->frames[e->depth - 1].col < c) {
+            /* deeper than any open container at main dispatch: nested
+             * values are consumed inside e_parse_value, so this line is
+             * an orphan continuation ("key: word1\n# c\n  word2") */
+            e_fail(e, YEP_ERR_BAD_INDENT, e->pos + li.indent);
+            goto fail;
+        }
         e->pos += li.indent;
         unsigned char first = (unsigned char)e->p[e->pos];
-        if (first == ':' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' ||
-                             e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
+        if (first == ':' &&
+            (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+             e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
             /* explicit-key value line, or a bare ':' pair (empty key) */
             int rc;
             if (e->depth == 0 || e->frames[e->depth - 1].kind != YEP_FRAME_MAP) {
@@ -1697,7 +2001,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
             e->q_key_pending = 0;
             e->q_value_pending = 0;
             e->pos++;
-            rc = e_parse_value(e, YEP_CTX_AFTER_COLON, e->frames[e->depth - 1].col);
+            rc = e_parse_value(e, YEP_CTX_AFTER_DASH, e->frames[e->depth - 1].col);
             if (rc != 0) {
                 if (rc == -2) {
                     return -2;
