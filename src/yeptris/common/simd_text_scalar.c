@@ -82,7 +82,7 @@ ptrdiff_t yep_text_stopset_find_scalar(const char* s, size_t len, const unsigned
 ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has_escape) {
     int esc = 0;
     for (size_t i = 0; i < len; i++) {
-        if (s[i] == '\\') {
+        if (q == '"' && s[i] == '\\') {
             esc = 1;
             i++; /* skip the escaped byte (a trailing lone backslash ends scanning) */
             continue;

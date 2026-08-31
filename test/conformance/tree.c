@@ -45,6 +45,34 @@ static void tvalue(yts_tree* t, const yep_event* ev) {
             tputs(t, "\\n");
         } else if (c == '\r') {
             tputs(t, "\\r");
+        } else if ((unsigned char)c < 0x20 && c != '\n' && c != '\r' && c != '\t') {
+            /* C0 controls render libyaml-style: \0 \a \b \v \f \e */
+            switch ((unsigned char)c) {
+            case 0x00:
+                tputs(t, "\\0");
+                break;
+            case 0x07:
+                tputs(t, "\\a");
+                break;
+            case 0x08:
+                tputs(t, "\\b");
+                break;
+            case 0x0b:
+                tputs(t, "\\v");
+                break;
+            case 0x0c:
+                tputs(t, "\\f");
+                break;
+            case 0x1b:
+                tputs(t, "\\e");
+                break;
+            default: {
+                char h[8];
+                snprintf(h, sizeof(h), "\\x%02X", (unsigned char)c);
+                tputs(t, h);
+                break;
+            }
+            }
         } else if (c == '\t') {
             /* double-quoted values keep the escape; others expand to the
              * suite's tab-stop glyphs (dashes + », aligned to 4) */
