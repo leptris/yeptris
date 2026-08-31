@@ -103,8 +103,14 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
                     }
                     break;
                 }
-                while (b.len > 0 && b.data[b.len - 1] == ' ') {
-                    b.len--; /* strip trailing spaces before the break */
+                if (breaks > 1) {
+                    while (b.len > 0 && (b.data[b.len - 1] == ' ' || b.data[b.len - 1] == '\t')) {
+                        b.len--; /* multi-break folds strip all white space */
+                    }
+                } else {
+                    while (b.len > 0 && b.data[b.len - 1] == ' ') {
+                        b.len--; /* a single fold strips trailing spaces */
+                    }
                 }
                 if (breaks == 1) {
                     yep_buf_putc(&b, ' ');
@@ -297,8 +303,14 @@ char* yep_finish_single(const char* p, uint32_t start, uint32_t end, int multili
                 }
                 break;
             }
-            while (b.len > 0 && b.data[b.len - 1] == ' ') {
-                b.len--; /* strip trailing spaces before the break */
+            if (breaks > 1) {
+                while (b.len > 0 && (b.data[b.len - 1] == ' ' || b.data[b.len - 1] == '\t')) {
+                    b.len--; /* multi-break folds strip all white space */
+                }
+            } else {
+                while (b.len > 0 && b.data[b.len - 1] == ' ') {
+                    b.len--; /* a single fold strips trailing spaces */
+                }
             }
             if (breaks == 1) {
                 yep_buf_putc(&b, ' ');
