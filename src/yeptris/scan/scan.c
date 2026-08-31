@@ -146,8 +146,8 @@ yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow) {
             continue;
         }
         if (c == '#') {
-            /* '#' only starts a comment after a blank or at span start. */
-            if (at > s.start && (p[at - 1] == ' ' || p[at - 1] == '\t')) {
+            /* '#' starts a comment after a blank or at span start */
+            if (at == s.start || (at > s.start && (p[at - 1] == ' ' || p[at - 1] == '\t'))) {
                 i = at;
                 s.term = YEP_TERM_COMMENT;
                 break;
