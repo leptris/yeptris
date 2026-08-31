@@ -75,6 +75,7 @@ struct yep_engine {
         yep_view handle, prefix;
     } tagmap[8];
     int tagmap_n;
+    int saw_yaml; /* %YAML seen for the pending document */
 
     /* Flow single-pair deferral: a sequence entry's events are buffered
      * until we know whether ':' follows ("[a: b]" needs MAP_START before
@@ -310,7 +311,7 @@ static int e_close_to(yep_engine* e, int to_depth) {
 /* ------------------------------------------------------------- scalars */
 
 /* Quoted scalar at the opening quote; spans lines when needed. */
-static int e_quoted(yep_engine* e, yep_event* ev) {
+static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int enforce) {
     unsigned char q = (unsigned char)e->p[e->pos];
     size_t content_start = e->pos + 1;
     int has_esc = 0;
@@ -353,7 +354,16 @@ static int e_quoted(yep_engine* e, yep_event* ev) {
     for (size_t i = start; i < end; i++) {
         if (e->p[i] == '\n' || e->p[i] == '\r') {
             multiline = 1;
-            break;
+            /* each following line must be content, not a document marker,
+             * and in block context must out-indent the parent (QB6E) */
+            size_t br = yep_scan_break_len(e->p, e->len, i);
+            yep_line_info ql = yep_scan_line(e->p, e->len, i + br);
+            if (ql.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END | YEP_LF_DIRECTIVE)) {
+                return e_fail(e, YEP_ERR_UNTERMINATED_QUOTE, i + br);
+            }
+            if (enforce && !(ql.flags & YEP_LF_BLANK) && ql.indent <= min_indent) {
+                return e_fail(e, YEP_ERR_BAD_INDENT, i + br + ql.indent);
+            }
         }
     }
     /* escape pre-validation: unknown escapes are errors */
@@ -462,6 +472,8 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
     uint32_t pending_breaks = 0;
     uint32_t trailing_breaks = 0;
     int saw_content = 0;
+    int blank_tab = 0;
+    int max_blank_indent = -1;
 
     while (e->pos < e->len) {
         yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
@@ -516,6 +528,14 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
                 }
                 continue;
             }
+            if (!saw_content) {
+                if (memchr(e->p + li.offset, '\t', li.end - li.offset) != NULL) {
+                    blank_tab = 1;
+                }
+                if ((int)li.indent > max_blank_indent) {
+                    max_blank_indent = (int)li.indent;
+                }
+            }
             pending_breaks++;
             e_line_done(e, li.end);
             continue;
@@ -548,6 +568,12 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
         }
     }
     trailing_breaks += pending_breaks;
+    if (saw_content ? (max_blank_indent > content_indent)
+                    : (max_blank_indent > parent_col || blank_tab)) {
+        /* a leading blank line out-indents the first content line (or,
+         * with no content, the parent column) (5LLU/S98Z/W9L4/Y79Y) */
+        return e_fail(e, YEP_ERR_BAD_INDENT, e->pos);
+    }
 
     char* out = yep_finish_block(e->fold, e->fold_n, folded, chomp, trailing_breaks, e->pool,
                                  &ev->value.len);
@@ -581,8 +607,9 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
         if (e->pos >= e->len) {
             break;
         }
-        if (e->p[e->pos] == '#') {
+        if (e_comment_at(e)) {
             e_skip_to_eol(e);
+            break; /* a comment terminates the plain scalar */
         }
         if (e->pos >= e->len) {
             break;
@@ -795,6 +822,9 @@ static int e_alias(yep_engine* e, yep_event* ev) {
 /* ---------------------------------------------------------------- flow */
 
 static void e_flow_ws(yep_engine* e) {
+    /* note: document markers inside a flow collection are checked by the
+     * main loop (they end the line scan); quoted spans reject them in
+     * e_quoted_floor. */
     for (;;) {
         while (e->pos < e->len && (e->p[e->pos] == ' ' || e->p[e->pos] == '\t')) {
             e->pos++;
@@ -904,7 +934,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     c = (unsigned char)e->p[e->pos];
     if (c == '"' || c == '\'') {
         ev->implicit = 0;
-        return e_quoted(e, ev) == 0 ? 1 : -1;
+        return e_quoted_floor(e, ev, 0, 0) == 0 ? 1 : -1;
     }
     if (c == '*') {
         return e_alias(e, ev) == 0 ? 1 : -1;
@@ -1029,6 +1059,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         int q_key = 0;
         int rc;
         e_flow_ws(e);
+        if (e->pos < e->len && e->p[e->pos] != ',' && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
+            e->p[e->pos] != ':' && st[n - 1].entries > 0 && st[n - 1].sep == 0 &&
+            !st[n - 1].pair_open && !(st[n - 1].kind == 1 && st[n - 1].pending_key == 1)) {
+            /* a node without a preceding ',' or ':' (CML9 missing comma) */
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
         if (e->pos < e->len && e->p[e->pos] == '?' &&
             (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
@@ -1119,12 +1155,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                     break;
                 }
             }
-            int colon =
-                (e->pos < e->len && e->p[e->pos] == ':' &&
-                 ((quoted && !ev.multiline) || (key_pos && !ev.multiline && !cross_line) ||
-                  e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
-                  e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
-                  yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND)));
+            int colon = (e->pos < e->len && e->p[e->pos] == ':' &&
+                         ((quoted && !ev.multiline && st[n - 1].kind == 1) ||
+                          (key_pos && !ev.multiline && !cross_line) || e->pos + 1 >= e->len ||
+                          e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+                          e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
+                          yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND)));
             if (!colon) {
                 e->pos = save_pos; /* not a key; the caller re-reads */
             }
@@ -1484,6 +1520,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
 
     if (c == '-' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
                      e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
+        if (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag)) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "&a - x" */
+        }
         uint16_t col = e_col(e, e->pos);
         int rc = e_open_seq(e, col, e->line, col + 1, node_a, node_t);
         if (rc != 0) {
@@ -1570,7 +1609,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     }
 
     if (c == '"' || c == '\'') {
-        if (e_quoted(e, &ev) != 0) {
+        if (e_quoted_floor(e, &ev, floor_col, e->depth > 0) != 0) {
             return -1;
         }
         if (e_colon_at(e, e->pos)) {
@@ -1595,6 +1634,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     }
 
     if (c == '*') {
+        if (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag)) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "&a *b" */
+        }
         if (e_alias(e, &ev) != 0) {
             return -1;
         }
@@ -1728,7 +1770,8 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (li.flags & YEP_LF_TAB) {
             return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
         }
-        if (li.indent == floor_col && e->depth > 0 && ctx == YEP_CTX_AFTER_COLON &&
+        if (li.indent == floor_col && e->depth > 0 &&
+            (ctx == YEP_CTX_AFTER_COLON || ctx == YEP_CTX_VALUE_LINE) &&
             (li.first == '&' || li.first == '!')) {
             /* properties at the parent column are a new node, not a value */
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos + li.indent);
@@ -1812,6 +1855,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     e->depth = 0;
     e->anchor_count = 0;
     e->tagmap_n = 0;
+    e->saw_yaml = 0;
     e->doc_content = 0;
     e->q_key_pending = 0;
     e->q_value_pending = 0;
@@ -1844,11 +1888,16 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 e_fail(e, YEP_ERR_BAD_DIRECTIVE, e->pos);
                 goto fail;
             }
+            if (e->saw_yaml) {
+                e_fail(e, YEP_ERR_BAD_DIRECTIVE, e->pos); /* repeated %YAML */
+                goto fail;
+            }
             {
                 /* %YAML takes exactly one version argument */
                 size_t chk = li.offset + li.indent + 1;
-                if (li.end - chk >= 5 && memcmp(e->p + chk, "%YAML", 5) == 0) {
-                    size_t a0 = chk + 5;
+                if (li.end - chk >= 4 && memcmp(e->p + chk, "YAML", 4) == 0) {
+                    e->saw_yaml = 1;
+                    size_t a0 = chk + 4;
                     while (a0 < li.end && e->p[a0] == ' ') {
                         a0++;
                     }
@@ -1862,6 +1911,9 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                     size_t rest = a1;
                     while (rest < li.end && e->p[rest] == ' ') {
                         rest++;
+                    }
+                    if (rest < li.end && e->p[rest] == '#' && rest > a1) {
+                        rest = li.end; /* trailing comment (blank before #) */
                     }
                     if (a1 == a0 || dots != 1 || rest < li.end || e->p[a0] == '.' ||
                         e->p[a1 - 1] == '.') {
@@ -1933,6 +1985,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 return -2;
             }
             doc_open = 1;
+            e->saw_yaml = 0; /* a new document may carry its own directives */
             e->pos = li.offset + li.indent + 3;
             e_skip_inline_space(e);
             if (!e_at_eol(e)) {
@@ -1980,6 +2033,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 }
                 doc_open = 0;
                 e->doc_content = 0;
+                e->saw_yaml = 0;
             }
             e_line_done(e, li.end);
             continue;
@@ -2103,8 +2157,8 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
         e_line_done(e, e->pos);
     }
 
-    if (e->tagmap_n > 0 && !doc_open) {
-        /* a %TAG/%YAML directive was never followed by "---" */
+    if ((e->tagmap_n > 0 || e->saw_yaml) && !doc_open) {
+        /* a directive was never followed by "---" */
         e_fail(e, YEP_ERR_BAD_DIRECTIVE, e->len);
         goto fail;
     }
