@@ -177,8 +177,15 @@ static void e_skip_inline_space(yep_engine* e) {
     }
 }
 
+/* '#' only opens a comment when a blank (or nothing) precedes it. */
+static int e_comment_at(const yep_engine* e) {
+    return e->p[e->pos] == '#' &&
+           (e->pos == 0 || e->p[e->pos - 1] == ' ' || e->p[e->pos - 1] == '\t' ||
+            e->p[e->pos - 1] == '\n' || e->p[e->pos - 1] == '\r');
+}
+
 static int e_at_eol(yep_engine* e) {
-    return e->pos >= e->len || e->p[e->pos] == '\n' || e->p[e->pos] == '\r' || e->p[e->pos] == '#';
+    return e->pos >= e->len || e->p[e->pos] == '\n' || e->p[e->pos] == '\r' || e_comment_at(e);
 }
 
 static int e_skip_to_eol(yep_engine* e) {
@@ -792,7 +799,7 @@ static void e_flow_ws(yep_engine* e) {
         while (e->pos < e->len && (e->p[e->pos] == ' ' || e->p[e->pos] == '\t')) {
             e->pos++;
         }
-        if (e->pos < e->len && e->p[e->pos] == '#') {
+        if (e->pos < e->len && e_comment_at(e)) {
             e_skip_to_eol(e);
             continue;
         }
@@ -824,7 +831,7 @@ static int e_skip_flow(yep_engine* e) {
             e->pos += 1 + (size_t)r + 1;
             continue;
         }
-        if (c == '#') {
+        if (c == '#' && e_comment_at(e)) {
             e_skip_to_eol(e);
             continue;
         }
@@ -937,6 +944,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
             e->pos = s.end;
             if (s.term == YEP_TERM_COMMENT) {
                 e_skip_to_eol(e);
+                break; /* a comment ends the scalar: the next token is new */
             }
             e_line_done(e, e->pos);
             e_flow_ws(e);
@@ -962,6 +970,9 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
         ev->value.p = out;
         ev->borrowed = 0;
     }
+    if (e->fold_n == 1 && e->fold[0].content.len == 1 && e->fold[0].content.p[0] == '-') {
+        return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "[-, -]": bare dash entry */
+    }
     ev->style = YEP_STYLE_PLAIN;
     ev->implicit = 1;
     ev->multiline = (e->fold_n > 1);
@@ -978,6 +989,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         uint8_t pair_open;   /* seq: a buffered single-pair awaits its MAP_END */
         uint8_t pair_value;  /* seq: the open pair already has its value */
         int32_t buf_from;    /* seq: entry events buffered from this index */
+        uint32_t entry_line; /* seq: line where the buffered entry ended */
         uint32_t entries;    /* completed entries (for trailing-comma detection) */
     } st[YEP_MAX_DEPTH];
     int n = 0;
@@ -1010,6 +1022,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             e->p[e->pos] != ':') {
             /* a sequence entry may become a single-pair key: defer it */
             st[n - 1].buf_from = (int32_t)e->ev_buf_n;
+            st[n - 1].entry_line = e->line;
             e->ev_scopes++;
         }
         int keyish = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0);
@@ -1085,6 +1098,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             st[n - 1].sep = 0;
             st[n - 1].just_closed = 0;
             st[n - 1].entries++;
+            if (st[n - 1].buf_from >= 0) {
+                st[n - 1].entry_line = e->line; /* node end (pre-colon ws) */
+            }
             if (st[n - 1].pair_open) {
                 st[n - 1].pair_value = 1; /* the pair's value arrived */
             }
@@ -1096,11 +1112,18 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             int quoted = (ev.type == YEP_EV_SCALAR && (ev.style == YEP_STYLE_SINGLE_QUOTED ||
                                                        ev.style == YEP_STYLE_DOUBLE_QUOTED));
             int key_pos = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0);
+            int cross_line = 0;
+            for (size_t k = save_pos; k < e->pos; k++) {
+                if (e->p[k] == '\n' || e->p[k] == '\r') {
+                    cross_line = 1;
+                    break;
+                }
+            }
             int colon =
                 (e->pos < e->len && e->p[e->pos] == ':' &&
-                 ((quoted && !ev.multiline) || (key_pos && !ev.multiline) || e->pos + 1 >= e->len ||
-                  e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' || e->p[e->pos + 1] == '\n' ||
-                  e->p[e->pos + 1] == '\r' ||
+                 ((quoted && !ev.multiline) || (key_pos && !ev.multiline && !cross_line) ||
+                  e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+                  e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
                   yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND)));
             if (!colon) {
                 e->pos = save_pos; /* not a key; the caller re-reads */
@@ -1115,6 +1138,10 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 continue;
             }
             if (colon && st[n - 1].kind == 0) {
+                if (st[n - 1].buf_from >= 0 && st[n - 1].entry_line != e->line && !quoted) {
+                    /* "[a\n: b]": a plain implicit key cannot span lines */
+                    return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                }
                 /* single-pair mapping inside a sequence: the entry's
                  * events are buffered; wrap them in MAP_START .. MAP_END */
                 e->pos++;
@@ -1238,6 +1265,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             if (st[n - 1].sep) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "{,x}" / "[1,,2]" */
             }
+            if (st[n - 1].entries == 0 && !st[n - 1].pair_open) {
+                return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "[, a]" */
+            }
             if (st[n - 1].kind == 1 && st[n - 1].pending_key != 0) {
                 /* key without ':' value, or ':' without value: null value */
                 yep_event nv;
@@ -1319,6 +1349,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             if (st[n - 1].pair_open) {
                 st[n - 1].pair_value = 1;
             }
+            if (st[n - 1].buf_from >= 0) {
+                st[n - 1].entry_line = e->line; /* the nested key ended here */
+            }
             continue;
         }
         if (c == ':') {
@@ -1348,10 +1381,15 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 continue;
             }
             if (st[n - 1].kind == 0 && st[n - 1].buf_from >= 0) {
+                if (st[n - 1].entry_line != e->line) {
+                    /* the key ended on an earlier line */
+                    return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                }
                 /* '[ [a, b]: v' — the buffered collection is the pair key */
+                int32_t bf0 = st[n - 1].buf_from;
                 st[n - 1].buf_from = -1;
                 e->ev_scopes--;
-                if (e_buf_wrap(e, 0) != 0) {
+                if (e_buf_wrap(e, (uint32_t)bf0) != 0) {
                     return -2;
                 }
                 if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
@@ -1536,7 +1574,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return -1;
         }
         if (e_colon_at(e, e->pos)) {
-            if (ctx == YEP_CTX_AFTER_COLON) {
+            if (ctx == YEP_CTX_AFTER_COLON || ev.multiline) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
             }
             uint16_t key_col = e_col(e, node_at);
@@ -1561,7 +1599,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return -1;
         }
         if (e_colon_at(e, e->pos)) {
-            if (ctx == YEP_CTX_AFTER_COLON) {
+            if (ctx == YEP_CTX_AFTER_COLON || ev.multiline) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
             }
             uint16_t key_col = e_col(e, node_at);
@@ -1690,6 +1728,11 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (li.flags & YEP_LF_TAB) {
             return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
         }
+        if (li.indent == floor_col && e->depth > 0 && ctx == YEP_CTX_AFTER_COLON &&
+            (li.first == '&' || li.first == '!')) {
+            /* properties at the parent column are a new node, not a value */
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos + li.indent);
+        }
         yep_ctx vctx = (ctx == YEP_CTX_AFTER_COLON) ? YEP_CTX_VALUE_LINE : ctx;
         /* At document root there is no parent block: a following line
          * at any indent is the value ("&a\n- x"). Explicit-key content
@@ -1797,6 +1840,36 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
             li.indent = (uint16_t)(t - li.offset);
         }
         if (li.flags & YEP_LF_DIRECTIVE) {
+            if (doc_open && e->doc_content) {
+                e_fail(e, YEP_ERR_BAD_DIRECTIVE, e->pos);
+                goto fail;
+            }
+            {
+                /* %YAML takes exactly one version argument */
+                size_t chk = li.offset + li.indent + 1;
+                if (li.end - chk >= 5 && memcmp(e->p + chk, "%YAML", 5) == 0) {
+                    size_t a0 = chk + 5;
+                    while (a0 < li.end && e->p[a0] == ' ') {
+                        a0++;
+                    }
+                    size_t a1 = a0;
+                    int dots = 0;
+                    while (a1 < li.end &&
+                           ((e->p[a1] >= '0' && e->p[a1] <= '9') || e->p[a1] == '.')) {
+                        dots += (e->p[a1] == '.');
+                        a1++;
+                    }
+                    size_t rest = a1;
+                    while (rest < li.end && e->p[rest] == ' ') {
+                        rest++;
+                    }
+                    if (a1 == a0 || dots != 1 || rest < li.end || e->p[a0] == '.' ||
+                        e->p[a1 - 1] == '.') {
+                        e_fail(e, YEP_ERR_BAD_DIRECTIVE, chk);
+                        goto fail;
+                    }
+                }
+            }
             /* %TAG <handle> <prefix> — registered for the next document */
             size_t d = li.offset + li.indent + 1;
             while (d < li.end && e->p[d] == ' ') {
@@ -2030,6 +2103,11 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
         e_line_done(e, e->pos);
     }
 
+    if (e->tagmap_n > 0 && !doc_open) {
+        /* a %TAG/%YAML directive was never followed by "---" */
+        e_fail(e, YEP_ERR_BAD_DIRECTIVE, e->len);
+        goto fail;
+    }
     {
         int rc = e_close_to(e, 0);
         if (rc != 0) {
