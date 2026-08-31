@@ -162,27 +162,79 @@ long yts_load(const char* src_dir, yts_case** out) {
         if (text == NULL) {
             continue;
         }
-        if (n >= cap) {
-            cap *= 2;
-            cases = realloc(cases, (size_t)cap * sizeof(yts_case));
+        /* One file may hold several test entries ("- name:" / "- fail:");
+         * each becomes its own case; later ids gain a #N suffix. */
+        long entry = 0;
+        const char* p = text;
+        while (p != NULL && *p != '\0') {
+            const char* eol = strchr(p, '\n');
+            if (eol == NULL) {
+                eol = p + strlen(p);
+            }
+            size_t ll = (size_t)(eol - p);
+            int entry_key =
+                (ll >= 7 && (memcmp(p, "- name:", 7) == 0 || memcmp(p, "- fail:", 7) == 0 ||
+                             memcmp(p, "- yaml:", 7) == 0)) ||
+                (ll >= 8 && memcmp(p, "- error:", 8) == 0) ||
+                (ll >= 9 && memcmp(p, "- brief:", 9) == 0);
+            if (entry_key) {
+                /* entry starts here; find its end (next entry or EOF) */
+                const char* q = eol;
+                const char* end = text + strlen(text);
+                for (;;) {
+                    const char* ne = strchr(q + 1, '\n');
+                    if (ne == NULL) {
+                        break;
+                    }
+                    const char* ln = ne + 1;
+                    size_t l2 = strcspn(ln, "\n");
+                    int next_key = (l2 >= 7 && (memcmp(ln, "- name:", 7) == 0 ||
+                                                memcmp(ln, "- fail:", 7) == 0 ||
+                                                memcmp(ln, "- yaml:", 7) == 0)) ||
+                                   (l2 >= 8 && memcmp(ln, "- error:", 8) == 0) ||
+                                   (l2 >= 9 && memcmp(ln, "- brief:", 9) == 0);
+                    if (next_key) {
+                        end = ln;
+                        break;
+                    }
+                    q = ne;
+                }
+                size_t len = (size_t)(end - p);
+                char* slice = malloc(len + 1);
+                memcpy(slice, p, len);
+                slice[len] = '\0';
+                entry++;
+                if (n >= cap) {
+                    cap *= 2;
+                    cases = realloc(cases, (size_t)cap * sizeof(yts_case));
+                }
+                yts_case* c = &cases[n];
+                memset(c, 0, sizeof(*c));
+                memcpy(c->id, ent->d_name, 4);
+                if (entry == 1) {
+                    c->id[4] = '\0';
+                } else {
+                    snprintf(c->id + 4, sizeof(c->id) - 4, "#%ld", entry);
+                }
+                c->yaml = extract_field(slice, "yaml");
+                c->tree = extract_field(slice, "tree");
+                c->fail = extract_field(slice, "fail");
+                c->error = extract_field(slice, "error");
+                free(slice);
+                if (c->yaml != NULL && (c->tree != NULL || c->error != NULL || c->fail != NULL)) {
+                    n++;
+                } else {
+                    free(c->yaml);
+                    free(c->tree);
+                    free(c->fail);
+                    free(c->error);
+                }
+                p = (end < text + strlen(text)) ? end : NULL;
+            } else {
+                p = (*eol == '\0') ? NULL : eol + 1;
+            }
         }
-        yts_case* c = &cases[n];
-        memset(c, 0, sizeof(*c));
-        memcpy(c->id, ent->d_name, 4);
-        c->id[4] = '\0';
-        c->yaml = extract_field(text, "yaml");
-        c->tree = extract_field(text, "tree");
-        c->fail = extract_field(text, "fail");
-        c->error = extract_field(text, "error");
         free(text);
-        if (c->yaml != NULL && (c->tree != NULL || c->error != NULL || c->fail != NULL)) {
-            n++;
-        } else {
-            free(c->yaml);
-            free(c->tree);
-            free(c->fail);
-            free(c->error);
-        }
     }
     closedir(d);
     qsort(cases, (size_t)n, sizeof(yts_case), case_cmp);

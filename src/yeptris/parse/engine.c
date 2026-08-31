@@ -586,10 +586,9 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
         }
     }
     trailing_breaks += pending_breaks;
-    if (saw_content ? (max_blank_indent > content_indent)
-                    : (max_blank_indent > parent_col || blank_tab)) {
-        /* a leading blank line out-indents the first content line (or,
-         * with no content, the parent column) (5LLU/S98Z/W9L4/Y79Y) */
+    if (saw_content ? (max_blank_indent > content_indent) : blank_tab) {
+        /* a leading blank line out-indents the first content line; a
+         * tab-only line before any content is an error (5LLU/Y79Y) */
         return e_fail(e, YEP_ERR_BAD_INDENT, e->pos);
     }
 
@@ -771,6 +770,22 @@ static yep_view e_resolve_tag_raw(yep_engine* e, yep_view tag) {
         memcpy(out + pfx->len, tag.p + h->len, tag.len - h->len);
         yep_view v = {out, (uint32_t)n};
         return v;
+    }
+    /* "!word!suffix" with no %TAG entry for the handle is undefined */
+    for (uint32_t k = 1; k + 1 < tag.len; k++) {
+        if (tag.p[k] == '!') {
+            yep_view h = {tag.p, k + 1};
+            char* m = yep_pool_alloc(e->pool, h.len, 16);
+            if (m != NULL) {
+                memcpy(m, h.p, h.len);
+                yep_view hv = {m, h.len};
+                yep_view res = e_resolve_tag_raw(e, hv);
+                if (res.p == hv.p) {
+                    e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                }
+            }
+            break;
+        }
     }
     return tag;
 }
@@ -2079,7 +2094,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
             li.indent = (uint16_t)(t - li.offset);
         }
         if (li.flags & YEP_LF_DIRECTIVE) {
-            if (doc_open && e->doc_content) {
+            if (doc_open) {
                 e_fail(e, YEP_ERR_BAD_DIRECTIVE, e->pos);
                 goto fail;
             }

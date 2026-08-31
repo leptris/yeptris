@@ -76,6 +76,7 @@ static void yep_buf_put(yep_buf* b, const char* s, size_t n) {
 char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multiline, yep_pool* pool,
                         uint32_t* out_len) {
     yep_buf b = {pool, NULL, 0, 0};
+    size_t esc_floor = 0; /* decoded bytes below this are escape content */
     size_t i = start;
     while (i < end) {
         unsigned char c = (unsigned char)p[i];
@@ -103,14 +104,9 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
                     }
                     break;
                 }
-                if (breaks > 1) {
-                    while (b.len > 0 && (b.data[b.len - 1] == ' ' || b.data[b.len - 1] == '\t')) {
-                        b.len--; /* multi-break folds strip all white space */
-                    }
-                } else {
-                    while (b.len > 0 && b.data[b.len - 1] == ' ') {
-                        b.len--; /* a single fold strips trailing spaces */
-                    }
+                while (b.len > esc_floor &&
+                       (b.data[b.len - 1] == ' ' || b.data[b.len - 1] == '\t')) {
+                    b.len--; /* raw trailing white space strips; escapes keep */
                 }
                 if (breaks == 1) {
                     yep_buf_putc(&b, ' ');
@@ -257,6 +253,7 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
             i++;
             break;
         }
+        esc_floor = b.len; /* decoded content is never strippable */
     }
     *out_len = (uint32_t)b.len;
     return b.data;
@@ -303,14 +300,8 @@ char* yep_finish_single(const char* p, uint32_t start, uint32_t end, int multili
                 }
                 break;
             }
-            if (breaks > 1) {
-                while (b.len > 0 && (b.data[b.len - 1] == ' ' || b.data[b.len - 1] == '\t')) {
-                    b.len--; /* multi-break folds strip all white space */
-                }
-            } else {
-                while (b.len > 0 && b.data[b.len - 1] == ' ') {
-                    b.len--; /* a single fold strips trailing spaces */
-                }
+            while (b.len > 0 && (b.data[b.len - 1] == ' ' || b.data[b.len - 1] == '\t')) {
+                b.len--; /* trailing white space strips before breaks */
             }
             if (breaks == 1) {
                 yep_buf_putc(&b, ' ');
