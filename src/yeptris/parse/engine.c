@@ -459,6 +459,14 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
     int explicit_indent = 0;
     while (e->pos < e->len && e->p[e->pos] != '\n' && e->p[e->pos] != '\r') {
         char c = e->p[e->pos];
+        if (c == ' ' || c == '\t') {
+            e->pos++;
+            continue;
+        }
+        if (e_comment_at(e)) {
+            e_skip_to_eol(e);
+            break;
+        }
         if (c == '-') {
             chomp = 1;
         } else if (c == '+') {
@@ -598,6 +606,11 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
         e->fold[0].content.len = s0.end - s0.start;
         e->fold[0].breaks_before = 0;
         e->fold_n = 1;
+        if (s0.term == YEP_TERM_COMMENT) {
+            e->pos = s0.end;
+            e_skip_to_eol(e);
+            return 0; /* the comment ends the scalar here */
+        }
     }
     uint32_t breaks = 0;
     for (;;) {
@@ -653,6 +666,7 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
         e->pos = s.end;
         if (s.term == YEP_TERM_COMMENT) {
             e_skip_to_eol(e);
+            break; /* the comment ends the scalar; later lines are new */
         }
     }
     if (e->fold_n == 1) {
@@ -728,7 +742,7 @@ static yep_view e_resolve_tag_raw(yep_engine* e, yep_view tag) {
             best_len = e->tagmap[i].handle.len;
         }
     }
-    if (tag.len >= 2 && tag.p[0] == '!' && tag.p[1] == '!') {
+    if (tag.len >= 2 && tag.p[0] == '!' && tag.p[1] == '!' && best < 0) {
         static const char yns[] = "tag:yaml.org,2002:";
         size_t plen = sizeof(yns) - 1;
         char* out = yep_pool_alloc(e->pool, plen + tag.len - 2, 16);
@@ -990,9 +1004,16 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
                 break; /* a comment ends the scalar: the next token is new */
             }
             e_line_done(e, e->pos);
+            {
+                yep_line_info cl = yep_scan_line(e->p, e->len, e->pos);
+                if (cl.flags & YEP_LF_COMMENT) {
+                    e_line_done(e, cl.end);
+                    break; /* a comment line ends the scalar too */
+                }
+            }
             e_flow_ws(e);
             if (e->pos < e->len && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
-                e->p[e->pos] != ',' && e->p[e->pos] != '#' && e->p[e->pos] != '\n' &&
+                e->p[e->pos] != ',' && !e_comment_at(e) && e->p[e->pos] != '\n' &&
                 e->p[e->pos] != '\r') {
                 continue; /* continuation on a following line */
             }
@@ -1187,7 +1208,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 continue;
             }
             if (colon && st[n - 1].kind == 0) {
-                if (st[n - 1].buf_from >= 0 && st[n - 1].entry_line != e->line && !quoted) {
+                if (st[n - 1].buf_from >= 0 && save_pos < e->line_start && !quoted) {
                     /* "[a\n: b]": a plain implicit key cannot span lines */
                     return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
                 }
@@ -1561,16 +1582,24 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (e->pos < e->len && e->p[e->pos] == ':' &&
             (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
-            /* '? : value' — empty explicit key */
-            yep_event kv;
-            e_event_init(&kv, YEP_EV_SCALAR);
-            kv.style = YEP_STYLE_PLAIN;
-            kv.implicit = 1;
-            if (emit_now(e, &kv) != 0) {
-                return -2;
+            size_t after = e->pos + 1;
+            while (after < e->len && (e->p[after] == ' ' || e->p[after] == '\t')) {
+                after++;
             }
-            e->pos++;
-            return e_parse_value(e, YEP_CTX_AFTER_COLON, col);
+            if (after >= e->len || e->p[after] == '\n' || e->p[after] == '\r' ||
+                (e->p[after] == '#' && after > e->pos + 1)) {
+                /* '? :' at end of line — empty explicit key */
+                yep_event kv;
+                e_event_init(&kv, YEP_EV_SCALAR);
+                kv.style = YEP_STYLE_PLAIN;
+                kv.implicit = 1;
+                if (emit_now(e, &kv) != 0) {
+                    return -2;
+                }
+                e->pos++;
+                return e_parse_value(e, YEP_CTX_AFTER_COLON, col);
+            }
+            /* '? : x' — the ':' starts a nested pair: the KEY is that map */
         }
         /* the explicit key is parsed as a value (may be empty → null);
          * its content may ALIGN with the '?' column */
@@ -1732,11 +1761,11 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     ev.style = YEP_STYLE_PLAIN;
     ev.implicit = 1;
     e->pos = s.end;
-    if (s.term == YEP_TERM_COMMENT) {
-        e_skip_to_eol(e);
-    }
     if (e_plain_multiline(e, start, floor_col, &ev, e->depth == 0) != 0) {
         return -1;
+    }
+    if (e->fold_n == 1 && s.term == YEP_TERM_COMMENT) {
+        e_skip_to_eol(e); /* single line ending in a comment */
     }
     return emit_now(e, &ev) == 0 ? 0 : -2;
 }
