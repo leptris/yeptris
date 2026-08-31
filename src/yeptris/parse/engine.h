@@ -10,6 +10,7 @@
 #define YEP_ENGINE_H
 
 #include "common/error.h"
+#include "memory/pool.h"
 #include "memory/allocator.h"
 #include "parse/events.h"
 
@@ -25,6 +26,14 @@ void yep_engine_destroy(yep_engine* e);
 /* Parses [buf, buf+len) — must be validated UTF-8 (05). Returns 0 on
  * success, -1 on parse error (see yep_engine_error), -2 sink abort. */
 int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* sink);
+
+/* Detaches the finish pool (ownership moves to the caller; the engine
+ * allocates a fresh one if reused). Returns NULL when absent. */
+yep_pool* yep_engine_detach_pool(yep_engine* e);
+
+/* Byte offset the last run reached (into that run's buffer); used by
+ * consumers that stop the engine at a boundary and resume. */
+size_t yep_engine_pos(const yep_engine* e);
 
 const yep_error* yep_engine_error(const yep_engine* e);
 

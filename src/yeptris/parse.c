@@ -5,6 +5,7 @@
 #include "dom/dom.h"
 #include "encoding/encoding.h"
 #include "memory/allocator.h"
+#include "memory/pool.h"
 #include "parse/engine.h"
 #include "parse/events.h"
 
@@ -18,6 +19,9 @@ typedef struct yeptris_document {
     unsigned char* transcoded; /* owned when non-NULL */
     size_t transcoded_len;
     const char* input; /* borrowed input (for lifetime documentation) */
+    void* finish_pool; /* engine finish pool: resolved tags, folded and
+                          escaped scalars outlive the engine through the
+                          document (ASAN: heap-use-after-free otherwise) */
 } yeptris_document;
 
 /* Node handle: a (document, node-id) pair so nodes stay usable even if
@@ -111,11 +115,16 @@ YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisSt
                                        : YEPTRIS_ERROR_PARSE;
         goto fail;
     }
+    /* Resolved tags, folded and escaped scalars live in the engine's
+     * finish pool; the document must own it or every such string would
+     * dangle at engine teardown (found by ASAN). */
+    yep_pool* finish = yep_engine_detach_pool(eng);
     yep_engine_destroy(eng);
 
     /* Empty stream (no documents): NULL document with YEPTRIS_OK. */
     if (dom->dcount == 0) {
         yep_dom_destroy(dom);
+        yep_pool_destroy(finish);
         yep_free(sys, transcoded);
         if (status != NULL) {
             *status = YEPTRIS_OK;
@@ -126,6 +135,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisSt
     yeptris_document* doc = yep_alloc(sys, sizeof(yeptris_document));
     if (doc == NULL) {
         yep_dom_destroy(dom);
+        yep_pool_destroy(finish);
         yep_free(sys, transcoded);
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
@@ -135,6 +145,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisSt
     doc->transcoded = transcoded;
     doc->transcoded_len = transcoded_len;
     doc->input = buf;
+    doc->finish_pool = finish;
     return (YeptrisDocument)doc;
 
 fail:
@@ -150,6 +161,7 @@ YEPTRIS_API void yeptris_document_free(YeptrisDocument handle) {
         return;
     }
     yep_dom_destroy(doc->dom);
+    yep_pool_destroy((yep_pool*)doc->finish_pool);
     yep_free(doc->sys, doc->transcoded);
     yep_free(doc->sys, doc);
 }

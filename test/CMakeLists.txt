@@ -20,6 +20,7 @@ add_executable(test_unit
     unit/test_chartype.cpp
     unit/test_cpu.cpp
     unit/test_encoding.cpp
+    unit/test_events.cpp
     unit/test_error.cpp
     unit/test_memory.cpp
     unit/test_parse.cpp
@@ -32,6 +33,16 @@ yeptris_set_warnings(test_unit)
 
 include(GoogleTest)
 gtest_discover_tests(test_unit)
+
+# ---- cross-model event check (TODO.impl/12) ----------------------------
+add_executable(test_events_crosscheck events_crosscheck.c)
+target_link_libraries(test_events_crosscheck PRIVATE yeptris_static)
+target_include_directories(test_events_crosscheck PRIVATE ${CMAKE_SOURCE_DIR}/test)
+yeptris_set_warnings(test_events_crosscheck)
+add_test(
+    NAME events-crosscheck
+    COMMAND test_events_crosscheck ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+)
 
 # ---- libyaml differential (TODO.impl/17) --------------------------------
 # The snapshots are libyaml's own event streams over the corpora,
