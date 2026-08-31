@@ -10,8 +10,8 @@
 #define YEP_ENGINE_H
 
 #include "common/error.h"
-#include "memory/pool.h"
 #include "memory/allocator.h"
+#include "memory/pool.h"
 #include "parse/events.h"
 
 #ifdef __cplusplus
@@ -30,6 +30,12 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
 /* Detaches the finish pool (ownership moves to the caller; the engine
  * allocates a fresh one if reused). Returns NULL when absent. */
 yep_pool* yep_engine_detach_pool(yep_engine* e);
+
+/* Implicit-typing schema for the next run (NULL: 1.2 core), and the
+ * runtime nesting limit. */
+struct yep_resolver;
+void yep_engine_set_resolver(yep_engine* e, const struct yep_resolver* r);
+void yep_engine_set_max_depth(yep_engine* e, int depth);
 
 /* Byte offset the last run reached (into that run's buffer); used by
  * consumers that stop the engine at a boundary and resume. */

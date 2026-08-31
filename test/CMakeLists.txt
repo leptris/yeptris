@@ -21,6 +21,7 @@ add_executable(test_unit
     unit/test_cpu.cpp
     unit/test_encoding.cpp
     unit/test_events.cpp
+    unit/test_resolve.cpp
     unit/test_error.cpp
     unit/test_memory.cpp
     unit/test_parse.cpp

@@ -7,6 +7,7 @@
 
 #include <yeptris/api.h>
 #include <yeptris/error.h>
+#include <yeptris/resolve.h>
 #include <yeptris/types.h>
 
 #ifdef __cplusplus
@@ -21,6 +22,24 @@ extern "C" {
  * Memory: the caller owns the document; free it with
  * yeptris_document_free — one call releases everything. */
 YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisStatus* status);
+
+/* Per-parse options (TODO.impl/10): schema selects the implicit-typing
+ * resolver (default YEPTRIS_SCHEMA_12_CORE), max_depth caps nesting
+ * (0: the library default), strict/tab_policy/recover are reserved
+ * pins of the option shape (the strict grammar is the default today;
+ * lenient modes land with the recover work). Zero-initialized = the
+ * yeptris_parse defaults. */
+typedef struct YeptrisParseOptions {
+    YeptrisSchema schema;
+    int max_depth;
+    int strict;
+    int tab_policy;
+    int recover;
+} YeptrisParseOptions;
+
+YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
+                                             const YeptrisParseOptions* opts,
+                                             YeptrisStatus* status);
 
 #ifdef __cplusplus
 }

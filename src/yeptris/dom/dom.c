@@ -71,6 +71,7 @@ static uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
     n->kind = kind;
     if (ev) {
         n->tag = ev->tag;
+        n->tag_id = ev->tag_id;
         n->anchor = ev->anchor;
         n->style = ev->style;
         n->implicit = ev->implicit;
