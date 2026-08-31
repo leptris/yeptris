@@ -23,6 +23,11 @@ set(YEPTRIS_SOURCES
     yeptris/parse/engine.c
     yeptris/dom/dom.c
     yeptris/parse.c
+    yeptris/events/capture.c
+    yeptris/events/push.c
+    yeptris/events/pull.c
+    yeptris/events/recorder.c
+    yeptris/events/iterparse.c
 )
 
 # AOT SIMD TUs (TODO.impl/04): per-ISA compile flags; the TUs and the
@@ -40,6 +45,7 @@ set(YEPTRIS_PUBLIC_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/api.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/dom.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/error.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/events.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/parse.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/types.h
 )

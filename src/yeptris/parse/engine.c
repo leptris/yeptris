@@ -1129,6 +1129,33 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
 }
 
 /* Iterative flow kernel; emits events for the whole collection. */
+/* Initializes one flow frame (SSOT: every field, every push site). */
+static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
+    typedef struct {
+        uint8_t kind;
+        uint8_t pending_key;
+        uint8_t sep;
+        uint8_t just_closed;
+        uint8_t pair_open;
+        uint8_t pair_value;
+        uint8_t pair_wrap;
+        int32_t buf_from;
+        uint32_t entry_line;
+        uint32_t entries;
+    } e_flow_frame;
+    e_flow_frame* st = (e_flow_frame*)stv;
+    st[idx].kind = (uint8_t)kind;
+    st[idx].pending_key = (uint8_t)pending_key;
+    st[idx].sep = 0;
+    st[idx].just_closed = 0;
+    st[idx].pair_open = 0;
+    st[idx].pair_value = 0;
+    st[idx].pair_wrap = 0;
+    st[idx].buf_from = -1;
+    st[idx].entry_line = 0;
+    st[idx].entries = 0;
+}
+
 static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
     struct {
         uint8_t kind;        /* 0 seq, 1 map */
@@ -1156,13 +1183,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
     if (emit_now(e, &ev) != 0) {
         return -2;
     }
-    st[n].kind = (open == '[') ? 0 : 1;
-    st[n].pending_key = 0;
-    st[n].sep = 0;
-    st[n].just_closed = 0;
-    st[n].pair_open = 0;
-    st[n].buf_from = -1;
-    st[n].entries = 0;
+    e_flow_frame_init(st, n, (open == '[') ? 0 : 1, 0);
     n++;
 
     for (;;) {
@@ -1271,14 +1292,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             }
             st[n - 1].sep = 0;
             st[n - 1].entries++;
-            st[n].kind = (oc == '[') ? 0 : 1;
-            st[n].pending_key = 0;
-            st[n].sep = 0;
-            st[n].pair_open = 0;
-            st[n].pair_value = 0;
-            st[n].pair_wrap = 0;
-            st[n].buf_from = -1;
-            st[n].entries = 0;
+            e_flow_frame_init(st, n, (oc == '[') ? 0 : 1, 0);
             n++;
             continue;
         }
@@ -1494,6 +1508,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 }
                 st[n - 1].pair_wrap = 0;
                 n--;
+                if (n == 0) {
+                    break; /* wrapper was the last frame: malformed */
+                }
                 st[n - 1].just_closed = 1;
                 st[n - 1].entry_line = e->line;
             }
@@ -1643,15 +1660,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 }
                 st[n - 1].sep = 0;
                 st[n - 1].entries++;
-                st[n].kind = 1;
-                st[n].pending_key = 1;
-                st[n].sep = 0;
-                st[n].pair_open = 0;
-                st[n].pair_value = 0;
-                st[n].pair_wrap = 0;
-                st[n].pair_wrap = 1;
-                st[n].buf_from = -1;
-                st[n].entries = 0;
+                e_flow_frame_init(st, n, 1, 1);
+                st[n].pair_wrap = 1; /* the seq single-pair wrapper */
                 n++;
                 continue;
             }
@@ -2070,6 +2080,15 @@ empty_value: {
 }
 
 /* ------------------------------------------------------------ lifecycle */
+
+yep_pool* yep_engine_detach_pool(yep_engine* e) {
+    if (e == NULL || e->pool == NULL) {
+        return NULL;
+    }
+    yep_pool* p = e->pool;
+    e->pool = yep_pool_create(e->sys, 8192); /* fresh: engine stays usable */
+    return p;
+}
 
 yep_engine* yep_engine_create(const yep_allocator* sys) {
     if (sys == NULL) {
@@ -2505,6 +2524,10 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
 fail:
     *yep_error_tls() = e->err;
     return -1;
+}
+
+size_t yep_engine_pos(const yep_engine* e) {
+    return e ? e->pos : 0;
 }
 
 const yep_error* yep_engine_error(const yep_engine* e) {

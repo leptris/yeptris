@@ -1,6 +1,6 @@
 # TODO.impl/12 — Event delivery: pull, recorder, iterparse, libyaml-compat push
 
-Status: pending · Depends: 07, 11 · Layer: `src/yeptris/events` · PLAN.md phase: 1
+Status: phases A+B COMPLETE (push/pull/recorder/iterparse, cross-model 405/405); yaml_compat adapter + streaming feed remain · Depends: 07, 11 · Layer: `src/yeptris/events` · PLAN.md phase: 1
 
 ## Goal
 
