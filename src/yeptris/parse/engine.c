@@ -85,6 +85,7 @@ struct yep_engine {
     uint32_t ev_buf_n, ev_buf_cap;
     uint32_t ev_scopes; /* active entry-buffer scopes */
     char* norm_buf;     /* owned input copy with exotic breaks normalized */
+    int last_root_flow; /* a root-level flow node just completed */
 };
 
 /* ------------------------------------------------------------ forwards */
@@ -371,8 +372,8 @@ static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int
             }
         }
     }
-    /* escape pre-validation: unknown escapes are errors */
-    for (size_t i = start; i < end; i++) {
+    /* escape pre-validation (double quotes only: ' has no escapes) */
+    for (size_t i = (q == '"') ? start : end; i < end; i++) {
         if (e->p[i] != '\\' || i + 1 >= end) {
             continue;
         }
@@ -1052,6 +1053,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         uint8_t just_closed; /* a nested collection closed here (key candidate) */
         uint8_t pair_open;   /* seq: a buffered single-pair awaits its MAP_END */
         uint8_t pair_value;  /* seq: the open pair already has its value */
+        uint8_t pair_wrap;   /* map frame pushed as a seq single-pair */
         int32_t buf_from;    /* seq: entry events buffered from this index */
         uint32_t entry_line; /* seq: line where the buffered entry ended */
         uint32_t entries;    /* completed entries (for trailing-comma detection) */
@@ -1093,6 +1095,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
         int q_key = 0;
         int rc;
         e_flow_ws(e);
+        if (e->pos < e->len && e->pos == e->line_start) {
+            yep_line_info fl = yep_scan_line(e->p, e->len, e->line_start);
+            if (fl.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END | YEP_LF_DIRECTIVE)) {
+                return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* marker inside flow */
+            }
+        }
         if (e->pos < e->len && e->p[e->pos] != ',' && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
             e->p[e->pos] != ':' && st[n - 1].entries > 0 && st[n - 1].sep == 0 &&
             !st[n - 1].pair_open && !(st[n - 1].kind == 1 && st[n - 1].pending_key == 1)) {
@@ -1159,6 +1167,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             st[n].sep = 0;
             st[n].pair_open = 0;
             st[n].pair_value = 0;
+            st[n].pair_wrap = 0;
             st[n].buf_from = -1;
             st[n].entries = 0;
             n++;
@@ -1353,6 +1362,27 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             continue;
         }
         if (c == ']' || c == '}') {
+            while (st[n - 1].pair_wrap) {
+                /* a single-pair wrapper inside a sequence closes on any
+                 * bracket ("[ : v ]", CFD4) */
+                if (st[n - 1].pending_key != 0) {
+                    yep_event nv;
+                    e_event_init(&nv, YEP_EV_SCALAR);
+                    nv.implicit = 1;
+                    if (emit_now(e, &nv) != 0) {
+                        return -2;
+                    }
+                }
+                yep_event mk;
+                e_event_init(&mk, YEP_EV_MAP_END);
+                if (emit_now(e, &mk) != 0) {
+                    return -2;
+                }
+                st[n - 1].pair_wrap = 0;
+                n--;
+                st[n - 1].just_closed = 1;
+                st[n - 1].entry_line = e->line;
+            }
             unsigned char want = st[n - 1].kind ? '}' : ']';
             if (c != want) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
@@ -1495,6 +1525,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 st[n].sep = 0;
                 st[n].pair_open = 0;
                 st[n].pair_value = 0;
+                st[n].pair_wrap = 0;
+                st[n].pair_wrap = 1;
                 st[n].buf_from = -1;
                 st[n].entries = 0;
                 n++;
@@ -1615,13 +1647,15 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     }
 
     if (c == '[' || c == '{') {
-        /* pre-scan: is this flow collection a mapping KEY? */
+        /* pre-scan: is this flow collection a mapping KEY? (a key must
+         * begin and end on one line — "[23\n]: 42" is not a key) */
         size_t save = e->pos;
+        uint32_t line0 = e->line;
         if (e_skip_flow(e) != 0) {
             return -1;
         }
         e_skip_inline_space(e);
-        int is_key = e_colon_at(e, e->pos);
+        int is_key = e_colon_at(e, e->pos) && e->line == line0;
         e->pos = save;
         if (is_key && ctx == YEP_CTX_AFTER_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
@@ -1646,6 +1680,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             }
             if (!e_at_eol(e)) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "[ a ] ]" */
+            }
+            if (e->depth == 0) {
+                e->last_root_flow = 1; /* "[23\n]: 42" is not a key */
             }
             return 0;
         }
@@ -2102,7 +2139,8 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 return -2;
             }
             doc_open = 1;
-            e->saw_yaml = 0; /* a new document may carry its own directives */
+            e->saw_yaml = 0;
+            e->last_root_flow = 0; /* a new document may carry its own directives */
             e->pos = li.offset + li.indent + 3;
             e_skip_inline_space(e);
             if (!e_at_eol(e)) {
@@ -2224,6 +2262,10 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
             /* explicit-key value line, or a bare ':' pair (empty key) */
             int rc;
+            if (e->last_root_flow) {
+                e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                goto fail; /* a root flow node cannot become a key */
+            }
             if (e->depth == 0 || e->frames[e->depth - 1].kind != YEP_FRAME_MAP) {
                 rc = e_open_map(e, c, e->line, c + 1, e->pend_anchor, e->pend_tag);
                 if (rc != 0) {
@@ -2258,6 +2300,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
         }
 
         {
+            e->last_root_flow = 0;
             int rc = e_flush_q_value(e); /* a key without its ':' line */
             if (rc != 0) {
                 return -2;

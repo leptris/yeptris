@@ -134,13 +134,16 @@ static ptrdiff_t yep_avx2_quote_scan(const char* s, size_t len, char q, int* has
     size_t i = 0;
     while (i < len) {
         for (; i + YEP_AVX2_CHUNK <= len;) {
-            uint32_t m = yep_avx2_eq_mask(s + i, q) | yep_avx2_eq_mask(s + i, '\\');
+            uint32_t m = yep_avx2_eq_mask(s + i, q);
+            if (q == '"') {
+                m |= yep_avx2_eq_mask(s + i, '\\');
+            }
             if (!m) {
                 i += YEP_AVX2_CHUNK;
                 continue;
             }
             size_t k = (size_t)__builtin_ctz(m);
-            if (s[i + k] == '\\') {
+            if (q == '"' && s[i + k] == '\\') {
                 esc = 1;
                 i += k + 2; /* skip the escaped byte */
                 break;

@@ -150,14 +150,17 @@ static ptrdiff_t yep_neon_quote_scan(const char* s, size_t len, char q, int* has
         int did_break = 0;
         for (; i + YEP_NEON_CHUNK <= len;) {
             uint16_t mq = yep_neon_bits(yep_neon_eq(s + i, (uint8_t)q));
-            uint16_t mb = yep_neon_bits(yep_neon_eq(s + i, (uint8_t)'\\'));
+            uint16_t mb = 0;
+            if (q == '"') {
+                mb = yep_neon_bits(yep_neon_eq(s + i, (uint8_t)'\\'));
+            }
             if (mq == 0 && mb == 0) {
                 i += YEP_NEON_CHUNK;
                 continue;
             }
             size_t kq = mq ? (size_t)__builtin_ctz(mq) : SIZE_MAX;
             size_t kb = mb ? (size_t)__builtin_ctz(mb) : SIZE_MAX;
-            if (kb < kq) {
+            if (q == '"' && kb < kq) {
                 esc = 1;
                 i += kb + 2; /* skip the escaped byte */
                 did_break = 1;

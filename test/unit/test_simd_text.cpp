@@ -60,8 +60,8 @@ size_t naive_count(const char* s, size_t len, char c) {
 ptrdiff_t naive_quote_scan(const char* s, size_t len, char q, int* has_escape) {
     int esc = 0;
     for (size_t i = 0; i < len; i++) {
-        if (s[i] == '\\') {
-            esc = 1;
+        if (q == '"' && s[i] == '\\') {
+            esc = 1; /* backslash escapes exist only in double quotes */
             i++;
             continue;
         }
