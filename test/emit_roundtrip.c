@@ -10,6 +10,7 @@
  *
  * Usage: test_emit_roundtrip <snapshots-dir> [--verbose]
  */
+#define _POSIX_C_SOURCE 200809L /* strdup: glibc hides it under -std=c11 */
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
