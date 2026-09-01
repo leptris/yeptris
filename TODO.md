@@ -20,7 +20,7 @@ measured-dead; record it, keep the numbers — do not delete history).
 | 11 | [DOM: compact nodes, vtables, interning, O(1) access](TODO.impl/11-dom.md) | 07, 10 | active (v1) |
 | 12 | [Event delivery: pull, recorder, iterparse, compat push](TODO.impl/12-event-delivery.md) | 07, 11 | pending |
 | 13 | [Emitter: exact sizing, style tables, canonical mode](TODO.impl/13-emitter.md) | 09, 10, 11 | pending |
-| 14 | [Float printer: shortest round-trip (ryu port)](TODO.impl/14-float-printer.md) | 13 | pending |
+| 14 | [Float printer](TODO.impl/14-float-printer.md) | 13 | clean-room v1 landed; cached-power perf queued |
 | 15 | [Ruby binding: FFI gem + Psych compatibility](TODO.impl/15-ruby-binding.md) | 11–13 | pending |
 | 16 | [Conformance harness: test-suite + divergence ledger](TODO.impl/16-conformance-harness.md) | 07, 12 | active (corpus) |
 | 17 | [libyaml test port + event differential](TODO.impl/17-libyaml-test-port.md) | 12, 16 | pending |

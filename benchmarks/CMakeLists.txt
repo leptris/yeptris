@@ -7,6 +7,11 @@
 set(YEPTRIS_BENCH_LIBYAML_ROOT "" CACHE PATH "built libyaml checkout (with build/libyaml.a)")
 
 add_executable(bench_matrix matrix/bench_matrix.cpp)
+
+add_executable(bench_float float/bench_float.cpp)
+target_link_libraries(bench_float PRIVATE yeptris_static)
+target_include_directories(bench_float PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
+target_compile_features(bench_float PRIVATE cxx_std_11)
 target_link_libraries(bench_matrix PRIVATE yeptris_static)
 target_compile_definitions(bench_matrix PRIVATE
     YEP_BENCH_SNAPSHOT_DIR="${CMAKE_SOURCE_DIR}/test/port/libyaml/snapshots")
