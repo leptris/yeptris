@@ -188,3 +188,16 @@ Surrogate escapes must pair (YAML 1.2): pairs combine at decode
 (finish_double), lone high/low reject in the engine pre-validator and
 the JSON string scanner; previously lone surrogates silently decoded
 to CESU-8 garbage. i_ verdicts re-pinned (12 now reject).
+
+### 2026-09-02 — JSON-mode entry throughput (DATA POINT)
+
+yeptris_parse_json on a 2.8 MB strict-JSON array (the flow-json shape
+re-cast): 63.0 MB/s DOM vs 66.3 MB/s YAML-mode on the equivalent YAML
+corpus (min-of-20 x 10 iters, quiet dev box) — the strict whole-input
+validation pass costs ~5% over the general front-end, and the engine's
+fast path carries both. The simdjson-class gap (GB/s) is the
+direct-from-index DOM (task: skip the event pipeline; pre-size the
+node array from validation token counts) — the measured per-event wall
+(~80 ns/event) is the same wall documented 2026-09-01; that unit is
+the single next lever for the JSON race and reuses scan/json.c's
+validator to produce the index.
