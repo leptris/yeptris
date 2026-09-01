@@ -52,4 +52,18 @@ char* yep_finish_block(const yep_fold_line* lines, size_t n, int folded, int cho
 }
 #endif
 
+/* hex digit to value, -1 when not hex (escape truth lives here) */
+static inline int hexval(unsigned char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
 #endif /* YEP_SCALARS_H */

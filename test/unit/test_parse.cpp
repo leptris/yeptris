@@ -8,6 +8,7 @@
 #include <string>
 
 #include <yeptris.h>
+#include <yeptris/json.h>
 
 namespace {
 
@@ -340,7 +341,7 @@ TEST(Parse, Errors) {
         {"key: \"unterminated", YEPTRIS_ERROR_PARSE}, /* unterminated quote */
         {"bad: *missing", YEPTRIS_ERROR_PARSE},       /* undefined alias */
         {"a: 1\n\tb: 2\n", YEPTRIS_ERROR_PARSE},      /* tab indent */
-        {"[1,,2]", YEPTRIS_ERROR_PARSE},               /* doubled comma */
+        {"[1,,2]", YEPTRIS_ERROR_PARSE},              /* doubled comma */
         {"a: b: c", YEPTRIS_ERROR_PARSE},             /* mapping values not allowed */
     };
     for (const auto& c : cases) {
@@ -430,4 +431,64 @@ TEST(Parse, DeepNestingGuard) {
     YeptrisDocument doc = yeptris_parse(y.c_str(), y.size(), &st);
     EXPECT_EQ(doc, nullptr);
     EXPECT_EQ(st, YEPTRIS_ERROR_DEPTH);
+}
+
+/* ---- strict JSON mode (TODO.impl/08C) -------------------------------- */
+
+TEST(JsonMode, StrictAcceptsAndRejects) {
+    struct {
+        const char* j;
+        int accept;
+    } cases[] = {
+        {"{\"a\": 1}", 1}, {"[1, 2, 3]", 1}, {"42", 1},      {"\"x\"", 1},       {"true", 1},
+        {"null", 1},       {"-0.5e+10", 1},  {" [ 1 ] ", 1}, {"{\"a\": 1,}", 0}, {"[1,,2]", 0},
+        {"01", 0},         {"+1", 0},        {".5", 0},      {"{'a': 1}", 0},    {"[unquoted]", 0},
+        {"{\"a\" 1}", 0},  {"[1 2]", 0},     {"", 0},        {"[1] x", 0},       {"[", 0},
+        {"\"\\uDd\"", 0},  {"\"\\a\"", 0},   {"nan", 0},     {"[1.0e]", 0},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse_json(c.j, strlen(c.j), &st);
+        EXPECT_EQ(doc != nullptr, c.accept != 0) << c.j;
+        yeptris_document_free(doc);
+    }
+}
+
+TEST(JsonMode, DomQueries) {
+    const char* j = "{\"name\": \"yeptris\", \"n\": 42, \"pi\": 3.5, \"ok\": true, \"no\": null}";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse_json(j, strlen(j), &st);
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(yeptris_node_kind(root), YEPTRIS_NODE_MAPPING);
+    EXPECT_EQ(map_str(root, "name"), "yeptris");
+    int64_t n = 0;
+    EXPECT_EQ(yeptris_node_int(yeptris_node_map_get(root, "n", 1), &n), YEPTRIS_OK);
+    EXPECT_EQ(n, 42);
+    double pi = 0;
+    EXPECT_EQ(yeptris_node_float(yeptris_node_map_get(root, "pi", 2), &pi), YEPTRIS_OK);
+    EXPECT_DOUBLE_EQ(pi, 3.5);
+    int b = 0;
+    EXPECT_EQ(yeptris_node_bool(yeptris_node_map_get(root, "ok", 2), &b), YEPTRIS_OK);
+    EXPECT_EQ(b, 1);
+    /* JSON null: the literal text with the null tag (Psych: nil) */
+    YeptrisNode no = yeptris_node_map_get(root, "no", 2);
+    EXPECT_EQ(val(no), "null");
+    yeptris_document_free(doc);
+}
+
+TEST(JsonMode, EscapesAndDeep) {
+    const char* j = "{\"k\": \"a\\nb\\u00e9\\ud834\\udd1e\", \"arr\": [[[[1]]]]}";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse_json(j, strlen(j), &st);
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    EXPECT_EQ(map_str(root, "k"), "a\nb\xC3\xA9\xF0\x9D\x84\x9E");
+    yeptris_document_free(doc);
+    std::string deep = "[[[[[[[[[[10]]]]]]]]]]";
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse_json(deep.c_str(), deep.size(), &st2);
+    EXPECT_NE(doc2, nullptr);
+    yeptris_document_free(doc2);
 }

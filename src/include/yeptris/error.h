@@ -6,6 +6,8 @@
  * pinning test (test/unit/test_abi.cpp) fails if one shifts without a major
  * version bump.
  */
+#include <stdint.h>
+
 #ifndef YEPTRIS_ERROR_H
 #define YEPTRIS_ERROR_H
 

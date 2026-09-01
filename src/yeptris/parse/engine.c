@@ -25,6 +25,7 @@
 #include "memory/pool.h"
 #include "parse/scalars.h"
 #include "resolve/resolver.h"
+#include "scan/json.h"
 #include "scan/scan.h"
 
 #define YEP_MAX_DEPTH 1000
@@ -431,6 +432,36 @@ static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int
             for (size_t k = 1; k <= need; k++) {
                 if (!yep_ct_is((unsigned char)e->p[i + 1 + k], YEP_CT_HEXDIGIT)) {
                     return e_fail(e, YEP_ERR_INVALID_ESCAPE, i + 1 + k);
+                }
+            }
+            if (esc == 'u') {
+                uint32_t cp = 0;
+                for (size_t k = 1; k <= 4; k++) {
+                    cp = (cp << 4) | (uint32_t)hexval((unsigned char)e->p[i + 1 + k]);
+                }
+                if (cp >= 0xD800 && cp <= 0xDBFF) {
+                    /* high surrogate: the low escape must follow */
+                    size_t j = i + 6; /* at the low escape's backslash */
+                    uint32_t lo = 0;
+                    if (j + 6 <= end && e->p[j] == '\\' && e->p[j + 1] == 'u') {
+                        int lok = 1;
+                        for (int k = 0; k < 4; k++) {
+                            int hv = hexval((unsigned char)e->p[j + 2 + (size_t)k]);
+                            if (hv < 0) {
+                                lok = 0;
+                                break;
+                            }
+                            lo = (lo << 4) | (uint32_t)hv;
+                        }
+                        if (lok && lo >= 0xDC00 && lo <= 0xDFFF) {
+                            i = j + 5; /* at the low escape's last digit */
+                            continue;
+                        }
+                    }
+                    return e_fail(e, YEP_ERR_INVALID_ESCAPE, i);
+                }
+                if (cp >= 0xDC00 && cp <= 0xDFFF) {
+                    return e_fail(e, YEP_ERR_INVALID_ESCAPE, i); /* lone low */
                 }
             }
             i += 1 + need; /* the digits are not escapes themselves */
@@ -1202,141 +1233,6 @@ enum {
     JX_COMMA_OR_CLOSE      /* after a value — ',' or close */
 };
 
-static int jx_ws(const char* p, size_t len, size_t* i, int* saw_tab) {
-    while (*i < len) {
-        char c = p[*i];
-        if (c == ' ' || c == '\n' || c == '\r') {
-            (*i)++;
-            continue;
-        }
-        if (c == '\t') {
-            *saw_tab = 1; /* tabs: let the general kernel rule on them */
-            return 0;
-        }
-        return 1; /* token byte */
-    }
-    return -1; /* EOF */
-}
-
-/* Strict RFC 8259 number: -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)? */
-static int jx_number(const char* p, size_t len, size_t* i) {
-    size_t k = *i;
-    if (p[k] == '-') {
-        k++;
-    }
-    if (k >= len || p[k] < '0' || p[k] > '9') {
-        return 0;
-    }
-    if (p[k] == '0') {
-        k++;
-    } else {
-        while (k < len && p[k] >= '0' && p[k] <= '9') {
-            k++;
-        }
-    }
-    if (k < len && p[k] == '.') {
-        k++;
-        if (k >= len || p[k] < '0' || p[k] > '9') {
-            return 0;
-        }
-        while (k < len && p[k] >= '0' && p[k] <= '9') {
-            k++;
-        }
-    }
-    if (k < len && (p[k] == 'e' || p[k] == 'E')) {
-        k++;
-        if (k < len && (p[k] == '-' || p[k] == '+')) {
-            k++;
-        }
-        if (k >= len || p[k] < '0' || p[k] > '9') {
-            return 0;
-        }
-        while (k < len && p[k] >= '0' && p[k] <= '9') {
-            k++;
-        }
-    }
-    if (k < len) {
-        char c = p[k];
-        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
-            return 0; /* "1x" is YAML, not JSON */
-        }
-    }
-    *i = k;
-    return 1;
-}
-
-static int jx_literal(const char* p, size_t len, size_t* i, const char* word) {
-    size_t w = 0;
-    while (word[w] != '\0') {
-        if (*i + w >= len || p[*i + w] != word[w]) {
-            return 0;
-        }
-        w++;
-    }
-    *i += w;
-    if (*i < len) {
-        char c = p[*i];
-        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
-            return 0; /* "truex" is a YAML plain, not JSON */
-        }
-    }
-    return 1;
-}
-
-/* Strict-JSON quoted scalar: no raw breaks, only JSON escapes. One
- * stopset walk {'"', '\\', '\n', '\r'} decides close/escape/break —
- * no second scan. On success *i sits just past the close, *close_out
- * is the close quote index, *has_esc reports backslashes. */
-static int jx_string(const char* p, size_t len, size_t* i, size_t* close_out, int* has_esc) {
-    const yep_text_kernels* k = yep_text_active();
-    unsigned char stop[32];
-    yep_stopset_clear(stop);
-    yep_stopset_add(stop, '"');
-    yep_stopset_add(stop, '\\');
-    yep_stopset_add(stop, '\n');
-    yep_stopset_add(stop, '\r');
-    size_t j = *i + 1;
-    int esc = 0;
-    for (;;) {
-        ptrdiff_t r = k->stopset_find(p + j, len - j, stop);
-        if (r < 0) {
-            return 0; /* unterminated */
-        }
-        size_t at = j + (size_t)r;
-        char c = p[at];
-        if (c == '"') {
-            *close_out = at;
-            *has_esc = esc;
-            *i = at + 1;
-            return 1;
-        }
-        if (c == '\n' || c == '\r') {
-            return 0; /* raw breaks: YAML folding, not JSON */
-        }
-        /* escape: validate the escaped byte inline */
-        if (at + 1 >= len) {
-            return 0;
-        }
-        esc = 1;
-        char e2 = p[at + 1];
-        if (e2 == 'u') {
-            for (int h = 2; h <= 5; h++) {
-                if (at + (size_t)h >= len ||
-                    !yep_ct_is((unsigned char)p[at + (size_t)h], YEP_CT_HEXDIGIT)) {
-                    return 0;
-                }
-            }
-            j = at + 6;
-            continue;
-        }
-        if (e2 != '"' && e2 != '\\' && e2 != '/' && e2 != 'b' && e2 != 'f' && e2 != 'n' &&
-            e2 != 'r' && e2 != 't') {
-            return 0; /* YAML-only escape (\a, \x…): not JSON */
-        }
-        j = at + 2;
-    }
-}
-
 /* Line/col across a gap [from, to): count breaks once, keep the last. */
 static void jx_advance_line(yep_engine* e, size_t from, size_t to, uint32_t* line,
                             size_t* line_start) {
@@ -1368,7 +1264,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
     expect[0] = kind[0] ? JX_KEY_OR_CLOSE : JX_VALUE_OR_CLOSE;
     depth = 1;
     for (;;) {
-        int ws = jx_ws(p, len, &i, &saw_tab);
+        int ws = yep_json_ws(p, len, &i, &saw_tab);
         if (ws != 1) {
             return 0; /* EOF, or a tab the general kernel should judge */
         }
@@ -1376,7 +1272,8 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
         if (c == ']' || c == '}') {
             int want = (c == ']') ? 0 : 1;
             if (kind[depth - 1] != want ||
-                (expect[depth - 1] != JX_VALUE_OR_CLOSE && expect[depth - 1] != JX_KEY_OR_CLOSE)) {
+                (expect[depth - 1] != JX_VALUE_OR_CLOSE && expect[depth - 1] != JX_KEY_OR_CLOSE &&
+                 expect[depth - 1] != JX_COMMA_OR_CLOSE)) {
                 return 0; /* mismatched or premature close */
             }
             depth--;
@@ -1420,23 +1317,23 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
         int he = 0;
         size_t str_close;
         if (c == '"') {
-            if (!jx_string(p, len, &i, &str_close, &he)) {
+            if (!yep_json_string(p, len, &i, &str_close, &he)) {
                 return 0;
             }
         } else if (c == '-' || (c >= '0' && c <= '9')) {
-            if (!jx_number(p, len, &i)) {
+            if (!yep_json_number(p, len, &i)) {
                 return 0;
             }
         } else if (c == 't') {
-            if (!jx_literal(p, len, &i, "true")) {
+            if (!yep_json_literal(p, len, &i, "true")) {
                 return 0;
             }
         } else if (c == 'f') {
-            if (!jx_literal(p, len, &i, "false")) {
+            if (!yep_json_literal(p, len, &i, "false")) {
                 return 0;
             }
         } else if (c == 'n') {
-            if (!jx_literal(p, len, &i, "null")) {
+            if (!yep_json_literal(p, len, &i, "null")) {
                 return 0;
             }
         } else {
@@ -1567,7 +1464,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
         if (c == '"') {
             int he = 0;
             size_t vclose;
-            if (!jx_string(p, close + 1, &i, &vclose, &he)) {
+            if (!yep_json_string(p, close + 1, &i, &vclose, &he)) {
                 return -1; /* validated: cannot happen */
             }
             size_t vend = vclose; /* the closing quote */
@@ -1586,14 +1483,20 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
                 ev.value.len = (uint32_t)(vend - vstart - 1);
                 ev.borrowed = 1;
             }
-        } else {
-            if (c == '-') {
-                i++;
-            }
+        } else if (c == '-' || (c >= '0' && c <= '9')) {
+            i++;
             while (i < close && ((p[i] >= '0' && p[i] <= '9') || p[i] == '.' || p[i] == 'e' ||
                                  p[i] == 'E' || p[i] == '+' || p[i] == '-')) {
                 i++;
             }
+            ev.value.p = p + vstart;
+            ev.value.len = (uint32_t)(i - vstart);
+            ev.borrowed = 1;
+            ev.style = YEP_STYLE_PLAIN;
+            ev.implicit = 1;
+        } else {
+            /* literals: validated in pass 1; walk their exact length */
+            i += (c == 't') ? 4 : (c == 'f') ? 5 : 4;
             ev.value.p = p + vstart;
             ev.value.len = (uint32_t)(i - vstart);
             ev.borrowed = 1;

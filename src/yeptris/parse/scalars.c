@@ -4,16 +4,6 @@
 
 #include "scalars.h"
 
-static int hexval(unsigned char c) {
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    return -1;
-}
-
 static char* yep_emit_cp(char* o, uint32_t cp) {
     if (cp < 0x80) {
         *o++ = (char)cp;
@@ -225,6 +215,28 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
                 yep_buf_putc(&b, (char)e);
                 i++;
                 break;
+            }
+            if (e == 'u' && cp >= 0xD800 && cp <= 0xDBFF && i + 1 + 4 + 6 <= end &&
+                p[i + 1 + 4] == '\\' && p[i + 2 + 4] == 'u') {
+                /* surrogate pair: combine into one scalar */
+                uint32_t lo = 0;
+                int lok = 1;
+                for (int k = 0; k < 4; k++) {
+                    int hv2 = hexval((unsigned char)p[i + 3 + 4 + (size_t)k]);
+                    if (hv2 < 0) {
+                        lok = 0;
+                        break;
+                    }
+                    lo = (lo << 4) | (uint32_t)hv2;
+                }
+                if (lok && lo >= 0xDC00 && lo <= 0xDFFF) {
+                    cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                    i += 6; /* the low escape's "\u" */
+                }
+            }
+            if (cp >= 0xD800 && cp <= 0xDFFF) {
+                /* lone surrogate: validators reject; decode defensively */
+                cp = 0xFFFD;
             }
             char tmp[4];
             char* o = yep_emit_cp(tmp, cp);

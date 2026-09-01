@@ -19,6 +19,7 @@ set(YEPTRIS_SOURCES
     yeptris/encoding/bom.c
     yeptris/encoding/transcode.c
     yeptris/encoding/utf8_validate.c
+    yeptris/scan/json.c
     yeptris/scan/scan.c
     yeptris/parse/scalars.c
     yeptris/parse/engine.c
@@ -58,6 +59,7 @@ set(YEPTRIS_PUBLIC_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/emit.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/resolve.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/parse.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/json.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/types.h
 )
 
