@@ -17,7 +17,36 @@ struct json_object {
     YeptrisNode node;    /* NULL for the root placeholder */
     int owns_doc;
     char* json_out; /* cached to_json_string result */
+    /* the root registers every child wrapper it hands out; children
+     * live until the root is put (json-c lifetime: borrowed refs die
+     * with the root) */
+    struct json_object** children;
+    size_t nchild;
+    size_t capchild;
 };
+
+static json_object* child_of(json_object* root, YeptrisNode node) {
+    if (root == NULL || node == NULL) {
+        return NULL;
+    }
+    if (root->nchild == root->capchild) {
+        size_t cap = root->capchild ? root->capchild * 2 : 8;
+        struct json_object** grown = realloc(root->children, cap * sizeof(*grown));
+        if (grown == NULL) {
+            return NULL;
+        }
+        root->children = grown;
+        root->capchild = cap;
+    }
+    json_object* child = calloc(1, sizeof(*child));
+    if (child == NULL) {
+        return NULL;
+    }
+    child->doc = root->doc;
+    child->node = node;
+    root->children[root->nchild++] = child;
+    return child;
+}
 
 json_object* json_tokener_parse(const char* str) {
     if (str == NULL) {
@@ -61,10 +90,15 @@ int json_object_put(json_object* obj) {
     }
     if (obj->owns_doc) {
         free(obj->json_out);
+        for (size_t i = 0; i < obj->nchild; i++) {
+            free(obj->children[i]->json_out);
+            free(obj->children[i]);
+        }
+        free(obj->children);
         yeptris_document_free(obj->doc);
         free(obj);
     }
-    /* children are owned by their document */
+    /* children are owned by their root */
     return 1;
 }
 
@@ -187,15 +221,9 @@ int json_object_object_get_ex(const json_object* obj, const char* key, json_obje
         return 0;
     }
     if (value != NULL) {
-        json_object* child = calloc(1, sizeof(*child));
-        if (child == NULL) {
-            *value = NULL;
-            return 0;
-        }
-        child->doc = obj->doc;
-        child->node = n;
-        child->owns_doc = 0;
+        json_object* child = child_of((json_object*)obj, n);
         *value = child;
+        return child != NULL;
     }
     return 1;
 }
@@ -221,14 +249,7 @@ json_object* json_object_array_get_idx(const json_object* obj, size_t idx) {
     if (idx >= yeptris_node_seq_count(obj->node)) {
         return NULL;
     }
-    json_object* child = calloc(1, sizeof(*child));
-    if (child == NULL) {
-        return NULL;
-    }
-    child->doc = obj->doc;
-    child->node = yeptris_node_seq_at(obj->node, idx);
-    child->owns_doc = 0;
-    return child;
+    return child_of((json_object*)obj, yeptris_node_seq_at(obj->node, idx));
 }
 
 const char* json_object_to_json_string_ext(json_object* obj, int flags) {
