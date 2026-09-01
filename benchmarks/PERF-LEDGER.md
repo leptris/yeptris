@@ -164,3 +164,27 @@ exponents, and the test oracle for tier A).
   our own tables generated at init). Target: >100M/s on all shapes
   incl. uniform. Deferring until 13B canonical emission lands (the
   emitter decides which float shapes actually matter).
+
+### 2026-09-02 — fast path truly engaged + strict JSON mode (WIN + fixes)
+
+Two latent fast-path bugs surfaced by strict JSON mode's tests, both
+fixed: (1) the span validator's close branch rejected the
+COMMA_OR_CLOSE state — every collection whose last value completed
+before the close fell back to the general kernel (the measured "+8%"
+was pass-1-only engagement); (2) the emission walk never advanced
+over true/false/null literals — an INFINITE LOOP once (1) let maps
+with literal tails take the fast path (found by JsonMode tests,
+alarm-guarded repro). Post-fix numbers on the loaded dev box:
+flow-json pull 2.86x / recorder 3.01x (was 2.72/2.95); DOM within
+noise. Re-measure quiet.
+
+Strict JSON mode (yeptris_parse_json, 8C): the whole-input RFC 8259
+validator lives in scan/json.c (grammar SSOT — the engine fast path
+and JSON mode share the token primitives); strict gate: 95/95 y_
+accept, 188/188 n_ reject (json-suite-strict ctest). JSON charset =
+UTF-8 well-formedness only — RFC 8259 allows DEL and noncharacters
+that YAML c-printable rejects (the front-end has a json_mode branch).
+Surrogate escapes must pair (YAML 1.2): pairs combine at decode
+(finish_double), lone high/low reject in the engine pre-validator and
+the JSON string scanner; previously lone surrogates silently decoded
+to CESU-8 garbage. i_ verdicts re-pinned (12 now reject).

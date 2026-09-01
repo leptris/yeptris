@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include <yeptris.h>
+#include <yeptris/json.h>
 
 typedef struct {
     char* name;
@@ -22,10 +23,17 @@ typedef struct {
 } verdict;
 
 int main(int argc, char** argv) {
+    int strict = (argc > 1 && strcmp(argv[1], "--strict") == 0);
+    if (strict) {
+        argv++;
+        argc--;
+    }
     if (argc < 3) {
-        fprintf(stderr, "usage: jsonsuite <test_parsing-dir> <expected-file>\n");
+        fprintf(stderr, "usage: jsonsuite [--strict] <test_parsing-dir> <expected-file>\n");
         return 2;
     }
+    /* strict mode ignores the verdict file: RFC 8259 rules apply
+     * directly — y_ must accept, n_ must reject, i_ recorded only */
     FILE* ef = fopen(argv[2], "r");
     if (ef == NULL) {
         fprintf(stderr, "jsonsuite: no expected file at %s\n", argv[2]);
@@ -62,16 +70,33 @@ int main(int argc, char** argv) {
             continue;
         }
         verdict* mine = NULL;
-        for (int i = 0; i < nv; i++) {
-            if (strcmp(v[i].name, ent->d_name) == 0) {
-                mine = &v[i];
+        if (!strict) {
+            for (int i = 0; i < nv; i++) {
+                if (strcmp(v[i].name, ent->d_name) == 0) {
+                    mine = &v[i];
+                    break;
+                }
+            }
+            if (mine == NULL) {
+                printf("UNLISTED %s (suite drifted from the pin?)\n", ent->d_name);
+                bad++;
+                continue;
+            }
+        } else {
+            static verdict sv;
+            sv.name = ent->d_name;
+            switch (ent->d_name[0]) {
+            case 'y':
+                sv.accept = 1;
+                break;
+            case 'n':
+                sv.accept = 0;
+                break;
+            default: /* i_: implementation-defined, non-gating */
+                sv.accept = -1;
                 break;
             }
-        }
-        if (mine == NULL) {
-            printf("UNLISTED %s (suite drifted from the pin?)\n", ent->d_name);
-            bad++;
-            continue;
+            mine = &sv;
         }
         char path[1024];
         snprintf(path, sizeof(path), "%s/%s", argv[1], ent->d_name);
@@ -89,10 +114,14 @@ int main(int argc, char** argv) {
         }
         fclose(f);
         YeptrisStatus st = YEPTRIS_OK;
-        YeptrisDocument doc = yeptris_parse(buf, (size_t)len, &st);
+        YeptrisDocument doc = strict ? yeptris_parse_json(buf, (size_t)len, &st)
+                                     : yeptris_parse(buf, (size_t)len, &st);
         int accept = (doc != NULL);
         yeptris_document_free(doc);
         free(buf);
+        if (mine->accept < 0) {
+            continue; /* i_: informational only */
+        }
         checked++;
         if (accept != mine->accept) {
             printf("DIVERGE %s: pinned %s, now %s\n", ent->d_name,

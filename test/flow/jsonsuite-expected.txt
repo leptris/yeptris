@@ -5,11 +5,10 @@
 # The suite classifies by RFC 8259; yeptris is a YAML parser. Most n_
 # inputs are JSON-invalid but VALID YAML (unquoted keys, +1, .2e-3 as a
 # string, single quotes, comments, trailing commas — legal per the YAML
-# 1.2 flow grammar, libyaml agrees) and accept. Known spec splits, where
-# RFC 8259 allows and YAML 1.2 c-printable rejects (raw DEL, U+FFFF):
-#   y_string_unescaped_char_delete.json        reject
-#   y_string_with_del_character.json           reject
-#   y_string_nonCharacterInUTF-8_U+FFFF.json   reject
+# 1.2 flow grammar, libyaml agrees) and accept. Spec splits, where
+# RFC 8259 allows and YAML 1.2 rejects: raw C0/DEL/C1/noncharacters,
+# and (2026-09-02) lone surrogate escapes — pairs are legal and combine;
+# lone high/low reject per YAML 1.2 (several i_ files re-pinned).
 i_number_double_huge_neg_exp.json accept
 i_number_huge_exp.json accept
 i_number_neg_int_huge_exp.json accept
@@ -20,21 +19,21 @@ i_number_real_underflow.json accept
 i_number_too_big_neg_int.json accept
 i_number_too_big_pos_int.json accept
 i_number_very_big_negative_int.json accept
-i_object_key_lone_2nd_surrogate.json accept
-i_string_1st_surrogate_but_2nd_missing.json accept
-i_string_1st_valid_surrogate_2nd_invalid.json accept
+i_object_key_lone_2nd_surrogate.json reject
+i_string_1st_surrogate_but_2nd_missing.json reject
+i_string_1st_valid_surrogate_2nd_invalid.json reject
 i_string_UTF-16LE_with_BOM.json accept
 i_string_UTF-8_invalid_sequence.json reject
 i_string_UTF8_surrogate_U+D800.json reject
-i_string_incomplete_surrogate_and_escape_valid.json accept
-i_string_incomplete_surrogate_pair.json accept
-i_string_incomplete_surrogates_escape_valid.json accept
-i_string_invalid_lonely_surrogate.json accept
-i_string_invalid_surrogate.json accept
+i_string_incomplete_surrogate_and_escape_valid.json reject
+i_string_incomplete_surrogate_pair.json reject
+i_string_incomplete_surrogates_escape_valid.json reject
+i_string_invalid_lonely_surrogate.json reject
+i_string_invalid_surrogate.json reject
 i_string_invalid_utf-8.json reject
-i_string_inverted_surrogates_U+1D11E.json accept
+i_string_inverted_surrogates_U+1D11E.json reject
 i_string_iso_latin_1.json reject
-i_string_lone_second_surrogate.json accept
+i_string_lone_second_surrogate.json reject
 i_string_lone_utf8_continuation_byte.json reject
 i_string_not_in_unicode_range.json reject
 i_string_overlong_sequence_2_bytes.json reject

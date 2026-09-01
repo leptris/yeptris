@@ -85,6 +85,12 @@ add_test(
             ${CMAKE_SOURCE_DIR}/test/conformance/data/json-test-suite/test_parsing
             ${CMAKE_CURRENT_SOURCE_DIR}/flow/jsonsuite-expected.txt
 )
+add_test(
+    NAME json-suite-strict
+    COMMAND test_jsonsuite --strict
+            ${CMAKE_SOURCE_DIR}/test/conformance/data/json-test-suite/test_parsing
+            ${CMAKE_CURRENT_SOURCE_DIR}/flow/jsonsuite-expected.txt
+)
 
 # One-time regeneration tool: builds only when a libyaml checkout is
 # provided (-DYEPTRIS_LIBYAML_ROOT=$HOME/src/external/libyaml).

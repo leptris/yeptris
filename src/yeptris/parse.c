@@ -9,6 +9,7 @@
 #include "memory/pool.h"
 #include "parse/engine.h"
 #include "resolve/resolver.h"
+#include "scan/json.h"
 
 #include "parse/events.h"
 #include <errno.h>
@@ -35,13 +36,45 @@ YEPTRIS_API const char* yeptris_last_error(uint32_t* line, uint32_t* col) {
     return tls->msg;
 }
 
+static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisParseOptions* opts,
+                                  int json_mode, YeptrisStatus* status);
+
 YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisStatus* status) {
     return yeptris_parse_ex(buf, len, NULL, status);
 }
 
-YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
-                                             const YeptrisParseOptions* opts,
-                                             YeptrisStatus* status) {
+YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, YeptrisStatus* status) {
+    YeptrisStatus st = YEPTRIS_OK;
+    if (buf == NULL && len != 0) {
+        st = YEPTRIS_ERROR_ARG;
+        goto jfail;
+    }
+    size_t verr = 0;
+    if (!yep_json_document(buf, len, &verr)) {
+        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, verr,
+                      "not strict JSON at byte %zu", verr);
+        st = YEPTRIS_ERROR_PARSE;
+        goto jfail;
+    }
+    size_t uerr = 0;
+    if (!yep_utf8_validate((const unsigned char*)buf, len, &uerr)) {
+        yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, uerr, "ill-formed UTF-8 at byte %zu",
+                      uerr);
+        st = YEPTRIS_ERROR_ENCODING;
+        goto jfail;
+    }
+    /* validated pure JSON: no BOM sniff, no printable check (JSON
+     * strings allow DEL), straight into the engine */
+    return parse_impl(buf, len, NULL, 1, status);
+jfail:
+    if (status != NULL) {
+        *status = st;
+    }
+    return NULL;
+}
+
+static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisParseOptions* opts,
+                                  int json_mode, YeptrisStatus* status) {
     YeptrisStatus st = YEPTRIS_OK;
     if (buf == NULL && len != 0) {
         st = YEPTRIS_ERROR_ARG;
@@ -51,13 +84,24 @@ YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
     const yep_allocator* sys = yep_system_allocator();
 
     /* Encoding front-end: BOM sniff; borrow UTF-8, transcode the rest. */
-    yep_encoding enc = YEP_ENC_UNKNOWN;
-    size_t bom = yep_bom_sniff((const unsigned char*)buf, len, &enc);
-    const char* data = buf + bom;
-    size_t data_len = len - bom;
-
+    const char* data = buf;
+    size_t data_len = len;
     unsigned char* transcoded = NULL;
     size_t transcoded_len = 0;
+    yep_encoding enc = YEP_ENC_UNKNOWN;
+
+    if (json_mode) {
+        /* JSON mode validated grammar and UTF-8 well-formedness at the
+         * entry: no BOM, no transcoding, and never the printable set —
+         * RFC 8259 allows DEL and noncharacters that YAML c-printable
+         * excludes. The engine takes the bytes directly. */
+        goto engine_enter;
+    }
+
+    size_t bom = yep_bom_sniff((const unsigned char*)buf, len, &enc);
+    data = buf + bom;
+    data_len = len - bom;
+
     if (enc == YEP_ENC_UTF16LE || enc == YEP_ENC_UTF16BE || enc == YEP_ENC_UTF32LE ||
         enc == YEP_ENC_UTF32BE) {
         size_t terr = 0;
@@ -91,7 +135,9 @@ YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
     }
 
     /* Engine → DOM. */
-    yep_engine* eng = yep_engine_create(sys);
+    yep_engine* eng = NULL;
+engine_enter:
+    eng = yep_engine_create(sys);
     if (opts != NULL) {
         yep_engine_set_resolver(eng, opts->schema == YEPTRIS_SCHEMA_11_COMPAT
                                          ? yep_resolver_compat11()
@@ -168,6 +214,12 @@ fail:
         *status = st;
     }
     return NULL;
+}
+
+YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
+                                             const YeptrisParseOptions* opts,
+                                             YeptrisStatus* status) {
+    return parse_impl(buf, len, opts, 0, status);
 }
 
 YEPTRIS_API void yeptris_document_free(YeptrisDocument handle) {

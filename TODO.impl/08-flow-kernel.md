@@ -1,6 +1,6 @@
 # TODO.impl/08 — Flow kernel: the JSON-superset fast path
 
-Status: v1 SHIPPED inside 07 (e_flow: correct YAML flow, suite+differential green). This item's remaining substance: C (JSON corpora — jsonsuite runner + pinned verdicts landed 2026-09-01; strict RFC 8259 `yeptris_parse_json` mode remains) and A's SIMD structural fast path (profiled wall: ~80 ns/event; PERF-LEDGER 2026-09-01). B (number kernel) is typed-access perf, not parse perf. NOTE: the deliverables text below is wrong about trailing commas — libyaml ACCEPTS them and the YAML 1.2 flow grammar allows them; yeptris follows spec+libyaml (jsonsuite verdicts pin it) · Depends: 07 · Layer: `src/yeptris/parse` · PLAN.md phase: 1
+Status: v1 SHIPPED inside 07; C COMPLETE 2026-09-02 (jsonsuite runner + pinned YAML verdicts + STRICT gate 95/95 + 188/188 via yeptris_parse_json; scan/json.c is the grammar SSOT; surrogate pairing enforced engine+scanner+decoder). Remaining: B (number kernel, typed-access perf) and A's SIMD hardening (fast path shipped, see PERF-LEDGER). B (number kernel) is typed-access perf, not parse perf. NOTE: the deliverables text below is wrong about trailing commas — libyaml ACCEPTS them and the YAML 1.2 flow grammar allows them; yeptris follows spec+libyaml (jsonsuite verdicts pin it) · Depends: 07 · Layer: `src/yeptris/parse` · PLAN.md phase: 1
 
 ## Goal
 
