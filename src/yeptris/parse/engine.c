@@ -422,8 +422,22 @@ static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int
             continue;
         }
         unsigned char esc = (unsigned char)e->p[i + 1];
-        if (esc == 'x' || esc == 'u' || esc == 'U' || esc == '\n' || esc == '\r') {
-            continue; /* checked by finish_double */
+        if (esc == 'x' || esc == 'u' || esc == 'U') {
+            /* hex escapes carry exact digit counts: 2/4/8 */
+            size_t need = (esc == 'x') ? 2 : (esc == 'u') ? 4 : 8;
+            if (i + 1 + need >= end) {
+                return e_fail(e, YEP_ERR_INVALID_ESCAPE, i); /* truncated "\uDd" */
+            }
+            for (size_t k = 1; k <= need; k++) {
+                if (!yep_ct_is((unsigned char)e->p[i + 1 + k], YEP_CT_HEXDIGIT)) {
+                    return e_fail(e, YEP_ERR_INVALID_ESCAPE, i + 1 + k);
+                }
+            }
+            i += 1 + need; /* the digits are not escapes themselves */
+            continue;
+        }
+        if (esc == '\n' || esc == '\r') {
+            continue; /* line continuation: checked by finish_double */
         }
         switch (esc) {
         case '0':
@@ -1940,6 +1954,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     }
 
     /* plain scalar */
+    if (!yep_plain_first_ok((unsigned char)e->p[e->pos])) {
+        return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* lone "]" / "}" / "," */
+    }
     size_t start = e->pos;
     yep_span s = yep_scan_plain(e->p, e->len, e->pos, 0);
     if (s.term != YEP_TERM_COLON && !yep_view_is_empty(pend_a) && !yep_view_is_empty(anchor)) {

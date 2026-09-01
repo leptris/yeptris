@@ -44,6 +44,11 @@ size_t yep_bom_sniff(const unsigned char* p, size_t len, yep_encoding* out);
  * the offset of the first offending byte (err_pos may be NULL). */
 int yep_utf8_validate(const unsigned char* p, size_t len, size_t* err_pos);
 
+/* Well-formed UTF-8 AND the YAML 1.2 c-printable charset: raw C0
+ * controls except TAB/LF/CR, DEL, C1 except NEL, U+FFFE/U+FFFF are
+ * rejected (charset SSOT — encoding/ is the only place that decides). */
+int yep_printable_validate(const unsigned char* p, size_t len, size_t* err_pos);
+
 /* Transcodes UTF-16/32 (any endianness) into freshly allocated UTF-8.
  * On success returns 0, stores the buffer (owned by the caller, freed
  * with the allocator) and its length. Errors: -1 allocation failure,

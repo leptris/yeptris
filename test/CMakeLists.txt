@@ -73,6 +73,18 @@ add_test(
 )
 set_tests_properties(libyaml-diff PROPERTIES ENVIRONMENT "YEP_STRICT=1")
 
+# ---- JSONTestSuite under YAML semantics (TODO.impl/08C) ---------------
+add_executable(test_jsonsuite flow/jsonsuite.c)
+target_link_libraries(test_jsonsuite PRIVATE yeptris_static)
+target_include_directories(test_jsonsuite PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+yeptris_set_warnings(test_jsonsuite)
+add_test(
+    NAME json-suite
+    COMMAND test_jsonsuite
+            ${CMAKE_SOURCE_DIR}/test/conformance/data/json-test-suite/test_parsing
+            ${CMAKE_CURRENT_SOURCE_DIR}/flow/jsonsuite-expected.txt
+)
+
 # One-time regeneration tool: builds only when a libyaml checkout is
 # provided (-DYEPTRIS_LIBYAML_ROOT=$HOME/src/external/libyaml).
 set(YEPTRIS_LIBYAML_ROOT "" CACHE PATH "libyaml checkout for golden regeneration")
