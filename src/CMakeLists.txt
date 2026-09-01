@@ -35,6 +35,8 @@ set(YEPTRIS_SOURCES
     yeptris/emit/style.c
     yeptris/emit/writer.c
     yeptris/emit/emit.c
+    yeptris/emit/float/print.c
+    yeptris/emit/float/dragon.c
 )
 
 # AOT SIMD TUs (TODO.impl/04): per-ISA compile flags; the TUs and the
@@ -82,7 +84,8 @@ if(YEPTRIS_BUILD_SHARED)
                     SOVERSION ${PROJECT_VERSION_MAJOR})
     target_include_directories(yeptris_shared
         PUBLIC ${YEPTRIS_INCLUDE_DIRS}
-        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris)
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris/emit/float)
     target_compile_definitions(yeptris_shared PRIVATE YEPTRIS_BUILDING)
     yeptris_set_warnings(yeptris_shared)
 endif()

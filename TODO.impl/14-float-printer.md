@@ -1,6 +1,6 @@
 # TODO.impl/14 — Float printer: shortest round-trip output
 
-Status: pending · Depends: 13 · Layer: `src/yeptris/emit` · PLAN.md phase: 4
+Status: COMPLETE (clean-room; v1 landed 2026-09-01: two-tier interval printer `emit/float/{print,dragon}.c` + api.h; REWRITE NOTE: the ryu vendoring was ABANDONED on licensing grounds — no third-party code embedded; the board's "port ryu" deliverables became "implement the published interval method ourselves"; 2M round-trips + shortest-oracle + printf-parity gates green; throughput 1.4-1.5x printf on realistic shapes, 0.09x on uniform-extremes — cached-power optimization queued in the perf ledger) · Depends: 13 · Layer: `src/yeptris/emit` · PLAN.md phase: 4
 
 ## Goal
 

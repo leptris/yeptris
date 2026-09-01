@@ -135,3 +135,32 @@ DOM node create+link. The next 2x on flow-json is event-pipeline
 slimming — smaller `yep_event`, batch sink entry point (`on_events(ev[],
 n)` vtable slot, DOM overrides with a tight loop) — a wider unit;
 this fast path is the foundation strict-JSON mode (08C) builds on.
+
+### 2026-09-01 — float printer: clean-room two-tier interval printer (LANDED)
+
+TODO.impl/14 rewritten clean-room after the licensing decision: NO
+vendored ryu code (the port was deleted before commit). Our own
+implementation of the published interval method (Dragon4/Steele-White
+family): tier A runs the digit loop over exact u128 integers; tier B
+runs the identical loop over a fixed limb vector (exact for extreme
+exponents, and the test oracle for tier A).
+
+- Correctness: 2M random-bit round-trips + 100k shortest-oracle (vs
+  minimal %.*e precision) + fixed-vs-printf parity (100k) + float32
+  round-trips + boundary vectors — all bitwise. Two subtle rules
+  derived and pinned by tests: the round-trip interval uses HALF-ulp
+  boundaries (r=2*m2 over s=2^(1-e2)), and exact boundary hits are
+  acceptable only when v's significand is even (reparse
+  ties-to-even); powers of two widen the lower half by one binade.
+- Throughput (bench_float, min-of-reps, loaded dev box): nice x.5
+  1.7M/s = 1.40x printf %.17g; decimal-ish 1.49x printf; uniform bit
+  patterns 0.09x (extremes exercise the limb tier at ~13us).
+  Standalone -O2 single-shot measured 314ns (nice) / 636ns
+  (decimal-ish) — bench numbers are load-contaminated; CI artifacts
+  across commits are the reliable trend.
+- Next lever (queued): cached-power scaling — precompute 128-bit
+  10^k tables, jump straight to the digit position with two 128-bit
+  multiplies, extract digits in pairs (Grisu/Ryu-class engineering,
+  our own tables generated at init). Target: >100M/s on all shapes
+  incl. uniform. Deferring until 13B canonical emission lands (the
+  emitter decides which float shapes actually matter).
