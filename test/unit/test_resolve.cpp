@@ -145,6 +145,7 @@ TEST(Resolve, TypedAccessors) {
     EXPECT_EQ(yeptris_node_int(yeptris_node_map_get(root, "s", 1), &bad), YEPTRIS_ERROR_PARSE);
     /* int bases + compat forms */
     const char* y2 = "a: 0x1A\nb: 0o17\nc: -7\n";
+    yeptris_document_free(doc);
     doc = yeptris_parse(y2, strlen(y2), &st);
     root = yeptris_document_root(doc, 0);
     EXPECT_EQ(yeptris_node_int(yeptris_node_map_get(root, "a", 1), &i), YEPTRIS_OK);
