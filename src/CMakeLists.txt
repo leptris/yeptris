@@ -30,6 +30,7 @@ set(YEPTRIS_SOURCES
     yeptris/events/pull.c
     yeptris/events/recorder.c
     yeptris/events/iterparse.c
+    yeptris/events/yaml_compat.c
     yeptris/resolve/tags.c
     yeptris/resolve/core12.c
     yeptris/resolve/compat11.c

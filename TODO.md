@@ -18,12 +18,12 @@ measured-dead; record it, keep the numbers — do not delete history).
 | 09 | [Scalars: trim, fold, unescape, style recording](TODO.impl/09-scalars.md) | 07 | active (v1) |
 | 10 | [Schema resolvers: 1.2 core, 1.1 compat, options](TODO.impl/10-schema-resolvers.md) | 09 | pending |
 | 11 | [DOM: compact nodes, vtables, interning, O(1) access](TODO.impl/11-dom.md) | 07, 10 | active (v1) |
-| 12 | [Event delivery: pull, recorder, iterparse, compat push](TODO.impl/12-event-delivery.md) | 07, 11 | pending |
+| 12 | [Event delivery](TODO.impl/12-event-delivery.md) | 07, 11 | COMPLETE (pull/push/recorder/iterparse + yaml_compat adapter) |
 | 13 | [Emitter](TODO.impl/13-emitter.md) | 11, 09, 10 | A + canonical done (fixed-point gate 405/405); folding + streaming remain |
 | 14 | [Float printer](TODO.impl/14-float-printer.md) | 13 | clean-room v1 landed; cached-power perf queued |
 | 15 | [Ruby binding: FFI gem + Psych compatibility](TODO.impl/15-ruby-binding.md) | 11–13 | pending |
 | 16 | [Conformance harness: test-suite + divergence ledger](TODO.impl/16-conformance-harness.md) | 07, 12 | active (corpus) |
-| 17 | [libyaml test port + event differential](TODO.impl/17-libyaml-test-port.md) | 12, 16 | pending |
+| 17 | [libyaml test port](TODO.impl/17-libyaml-test-port.md) | 12, 16 | parse + emitter differentials green (279 .ly goldens); yepdiff tool |
 | 18 | [Benchmarks: matrix, corpora, CI artifacts, ledger](TODO.impl/18-benchmarks.md) | 06+ | A done: matrix+ledger+CI bench.yml, all shapes >2.1x vs libyaml |
 | 19 | [Hardening: sanitizers, fuzzing, differential, limits](TODO.impl/19-hardening.md) | 07+ | pending |
 | 20 | [Packaging, ABI policy, automated release](TODO.impl/20-packaging-release.md) | all | pending |

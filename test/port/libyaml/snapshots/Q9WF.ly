@@ -1,0 +1,3 @@
+? {first: Sammy, last: Sosa}
+: hr: 65
+  avg: 0.278
