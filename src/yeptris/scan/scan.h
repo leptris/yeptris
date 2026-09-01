@@ -57,6 +57,11 @@ typedef struct yep_span {
  * consumed. Trailing spaces are trimmed from the span. */
 yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow);
 
+/* ns-plain-first truth: whether c may START a plain scalar. ','
+ * ']' '}' are c-flow-indicators, excluded in every context ('[' '{'
+ * never reach a plain start: the engine dispatches flow first). */
+int yep_plain_first_ok(unsigned char c);
+
 /* Scans a quoted scalar whose opening quote is at pos. Returns span of
  * the CONTENT (between quotes) and sets *term (EOL on unterminated → the
  * caller errors). q is '\'' or '"'. */

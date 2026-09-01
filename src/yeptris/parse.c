@@ -72,11 +72,19 @@ YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
         }
         data = (const char*)transcoded;
         data_len = transcoded_len;
+        size_t pverr = 0;
+        if (!yep_printable_validate((const unsigned char*)data, data_len, &pverr)) {
+            yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, pverr,
+                          "non-printable character at byte %zu", pverr);
+            yep_free(sys, transcoded);
+            st = YEPTRIS_ERROR_ENCODING;
+            goto fail;
+        }
     } else {
         size_t verr = 0;
-        if (!yep_utf8_validate((const unsigned char*)data, data_len, &verr)) {
+        if (!yep_printable_validate((const unsigned char*)data, data_len, &verr)) {
             yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, verr,
-                          "ill-formed UTF-8 at byte %zu", verr);
+                          "ill-formed or non-printable UTF-8 at byte %zu", verr);
             st = YEPTRIS_ERROR_ENCODING;
             goto fail;
         }

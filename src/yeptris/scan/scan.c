@@ -101,6 +101,10 @@ static int yep_colon_terminates(const char* p, size_t len, size_t colon, int flo
     return 0;
 }
 
+int yep_plain_first_ok(unsigned char c) {
+    return !(c == ',' || c == ']' || c == '}' || c == '%' || c == '@' || c == '`');
+}
+
 yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow) {
     const yep_text_kernels* k = yep_text_active();
     unsigned char stop[32];
