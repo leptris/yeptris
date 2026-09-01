@@ -15,6 +15,8 @@
  * Exit 0 when no yeptris-side divergences (YEP_STRICT additionally
  * fails on upstream divergences).
  */
+#define _POSIX_C_SOURCE 200809L /* strdup+dirent: glibc hides them under -std=c11 */
+
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
