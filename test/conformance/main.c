@@ -5,6 +5,8 @@
  * Exits 0 when every case passes, 1 otherwise (the CI gate once green).
  */
 
+#define _POSIX_C_SOURCE 200809L /* strdup+dirent: glibc hides them under -std=c11 */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
