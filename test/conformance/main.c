@@ -72,13 +72,11 @@ static yts_result run_case(const yts_case* c, char** got_tree) {
         el--;
     if (tl != el || memcmp(tb, et, tl) != 0) {
         r = R_TREE_MISMATCH;
-        if (got_tree != NULL) {
-            *got_tree = tree.buf ? strdup(tree.buf) : strdup("");
-        }
     }
-    if (got_tree == NULL || r == R_PASS) {
-        yts_tree_free(&tree);
+    if (got_tree != NULL && r == R_TREE_MISMATCH) {
+        *got_tree = tree.buf ? strdup(tree.buf) : strdup("");
     }
+    yts_tree_free(&tree);
     yep_engine_destroy(eng);
     return r;
 }

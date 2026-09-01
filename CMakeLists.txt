@@ -137,6 +137,9 @@ if(BUILD_TESTING)
     # Runs in CI after fetch-corpora.sh; passes-as-skip when absent.
     add_test(NAME conformance
         COMMAND test_conformance ${CMAKE_SOURCE_DIR}/test/conformance/data/yaml-test-suite/src)
+    # strict: the suite is at 100% — a regression must fail CI, not hide
+    # behind the non-strict exit (a tree-mismatch once slipped through)
+    set_tests_properties(conformance PROPERTIES ENVIRONMENT "YEP_STRICT=1")
     target_link_libraries(test_conformance PRIVATE yeptris_static)
     target_include_directories(test_conformance PRIVATE
         ${CMAKE_SOURCE_DIR}/src/yeptris
