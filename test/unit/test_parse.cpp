@@ -367,6 +367,57 @@ TEST(Parse, EmptyAndWhitespace) {
     }
 }
 
+/* A properties-only document ("---\n!\n") ends at the boundary: the
+ * props belong to its empty scalar and must never swallow the next
+ * document as their value (found by the realworld bench corpus). */
+TEST(Parse, PropsOnlyDocumentThenBoundary) {
+    struct {
+        const char* y;
+        const char* tag;
+        const char* anchor;
+    } cases[] = {
+        {"---\n!\n---\nfoo: bar\n", "!", ""},
+        {"---\n!tag\n---\nfoo: bar\n", "!tag", ""},
+        {"---\n&a\n---\nfoo: bar\n", "", "a"},
+        {"---\n!\n...\nfoo: bar\n", "!", ""},
+        {"---\n!\n# comment\n---\nfoo: bar\n", "!", ""},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.y, strlen(c.y), &st);
+        ASSERT_NE(doc, nullptr) << c.y << ": " << yeptris_last_error(NULL, NULL);
+        ASSERT_EQ(yeptris_document_count(doc), 2u) << c.y;
+        YeptrisNode first = yeptris_document_root(doc, 0);
+        ASSERT_NE(first, nullptr) << c.y;
+        EXPECT_EQ(yeptris_node_kind(first), YEPTRIS_NODE_SCALAR) << c.y;
+        EXPECT_EQ(val(first), "") << c.y;
+        size_t tl = 0;
+        const char* tp = yeptris_node_tag(first, &tl);
+        std::string tag = tp ? std::string(tp, tl) : std::string();
+        EXPECT_EQ(tag, c.tag) << c.y;
+        YeptrisNode second = yeptris_document_root(doc, 1);
+        ASSERT_NE(second, nullptr) << c.y;
+        EXPECT_EQ(yeptris_node_kind(second), YEPTRIS_NODE_MAPPING) << c.y;
+        EXPECT_EQ(map_str(second, "foo"), "bar") << c.y;
+        yeptris_document_free(doc);
+    }
+}
+
+/* 2JQS: two empty-key pairs — suite-valid, libyaml-rejected; the bench
+ * corpus keeps it out of the shared race but parse behavior is pinned. */
+TEST(Parse, EmptyKeyPairs) {
+    const char* y = ": a\n: b\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(yeptris_node_kind(root), YEPTRIS_NODE_MAPPING);
+    EXPECT_EQ(yeptris_node_map_count(root), 2u);
+    EXPECT_EQ(map_str(root, ""), "a");
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, DeepNestingGuard) {
     std::string y;
     for (int i = 0; i < 1200; i++) {

@@ -1,6 +1,6 @@
 # TODO.impl/18 — Benchmarks: matrix, corpora, CI artifacts, perf ledger
 
-Status: pending · Depends: 06+ (parse path); grows with every item · Layer: `benchmarks` · PLAN.md phase: 2+
+Status: phase A COMPLETE (matrix harness, libyaml race, realworld corpus, PERF-LEDGER baseline 2026-09-01 — every shape >2.1x on every measure); B (ruby bench, alloc/RSS measures) and CI bench.yml remain · Depends: 06+ · Layer: `benchmarks` · PLAN.md phase: 2+
 
 ## Goal
 

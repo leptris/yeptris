@@ -25,6 +25,7 @@ add_executable(test_unit
     unit/test_resolve.cpp
     unit/test_error.cpp
     unit/test_memory.cpp
+    unit/test_nametab.cpp
     unit/test_parse.cpp
     unit/test_simd_text.cpp
     unit/test_string_view.cpp

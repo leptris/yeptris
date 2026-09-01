@@ -10,6 +10,7 @@ set(YEPTRIS_SOURCES
     yeptris/common/chartype.c
     yeptris/common/string_view.c
     yeptris/common/error.c
+    yeptris/common/nametab.c
     yeptris/common/simd_text.c
     yeptris/common/simd_text_scalar.c
     yeptris/memory/allocator.c

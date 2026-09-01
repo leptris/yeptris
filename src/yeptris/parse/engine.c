@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "common/chartype.h"
+#include "common/nametab.h"
 #include "common/simd_text.h"
 #include "engine.h"
 #include "memory/allocator.h"
@@ -27,7 +28,6 @@
 #include "scan/scan.h"
 
 #define YEP_MAX_DEPTH 1000
-#define YEP_MAX_ANCHORS 2048
 #define YEP_MAX_FOLD_LINES 8192
 
 typedef enum { YEP_FRAME_SEQ = 0, YEP_FRAME_MAP } yep_frame_kind;
@@ -59,8 +59,7 @@ struct yep_engine {
     } frames[YEP_MAX_DEPTH];
     int depth;
 
-    yep_view anchors[YEP_MAX_ANCHORS];
-    int anchor_count;
+    yep_nametab anchors; /* name interning: O(1) define/lookup at any scale */
 
     yep_fold_line fold[YEP_MAX_FOLD_LINES];
     size_t fold_n;
@@ -232,24 +231,13 @@ static int e_colon_at(yep_engine* e, size_t at) {
 /* -------------------------------------------------------------- anchors */
 
 static int anchor_defined(yep_engine* e, yep_view name) {
-    for (int i = 0; i < e->anchor_count; i++) {
-        if (yep_view_eq(e->anchors[i], name)) {
-            return 1;
-        }
-    }
-    return 0;
+    return yep_nametab_get(&e->anchors, name) != YEP_NAMETAB_NIL;
 }
 
 static void anchor_define(yep_engine* e, yep_view name) {
-    for (int i = 0; i < e->anchor_count; i++) {
-        if (yep_view_eq(e->anchors[i], name)) {
-            e->anchors[i] = name; /* last definition wins (libyaml parity) */
-            return;
-        }
-    }
-    if (e->anchor_count < YEP_MAX_ANCHORS) {
-        e->anchors[e->anchor_count++] = name;
-    }
+    /* Last definition wins (libyaml parity); OOM leaves the anchor
+     * undefined so its alias errors. */
+    yep_nametab_set(&e->anchors, name, 1);
 }
 
 /* --------------------------------------------------------------- frames */
@@ -2057,6 +2045,12 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             e_line_done(e, li.end);
             continue;
         }
+        if (li.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END)) {
+            /* a document boundary ends the pending node: the props-only
+             * document ("---\n!\n---\n…") emits its empty scalar here,
+             * never swallowing the next document as its value */
+            goto empty_value;
+        }
         if (li.indent == floor_col && e->depth > 0 &&
             (ctx == YEP_CTX_AFTER_COLON || ctx == YEP_CTX_VALUE_LINE) &&
             (li.first == '&' || li.first == '!')) {
@@ -2165,15 +2159,21 @@ yep_engine* yep_engine_create(const yep_allocator* sys) {
     e->sys = sys;
     e->pool = pool;
     e->max_depth = YEP_MAX_DEPTH;
+    if (!yep_nametab_init(&e->anchors, sys)) {
+        yep_free(e->sys, e);
+        yep_pool_destroy(pool);
+        return NULL;
+    }
     yep_error_clear(&e->err);
     return e;
 }
 
 void yep_engine_destroy(yep_engine* e) {
-    yep_free(e->sys, e->norm_buf);
     if (e == NULL) {
         return;
     }
+    yep_nametab_free(&e->anchors);
+    yep_free(e->sys, e->norm_buf);
     yep_pool_destroy(e->pool);
     yep_free(e->sys, e);
 }
@@ -2234,7 +2234,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     e->line = 1;
     e->line_start = 0;
     e->depth = 0;
-    e->anchor_count = 0;
+    yep_nametab_clear(&e->anchors);
     e->tagmap_n = 0;
     e->saw_yaml = 0;
     e->doc_content = 0;
@@ -2362,7 +2362,8 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                     return -2;
                 }
                 doc_open = 0;
-                e->tagmap_n = 0; /* directives are per-document */
+                e->tagmap_n = 0;                /* directives are per-document */
+                yep_nametab_clear(&e->anchors); /* so are anchors */
             }
             e_event_init(&ev, YEP_EV_DOCUMENT_START);
             ev.style = 1; /* explicit marker */
@@ -2416,6 +2417,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
                 e_event_init(&ev, YEP_EV_DOCUMENT_END);
                 ev.style = 1;    /* explicit "..." marker */
                 e->tagmap_n = 0; /* directives are per-document */
+                yep_nametab_clear(&e->anchors);
                 if (emit_now(e, &ev) != 0) {
                     return -2;
                 }
@@ -2576,6 +2578,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
             return -2;
         }
         e->tagmap_n = 0;
+        yep_nametab_clear(&e->anchors);
     }
     e_event_init(&ev, YEP_EV_STREAM_END);
     if (emit_now(e, &ev) != 0) {

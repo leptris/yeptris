@@ -83,28 +83,11 @@ static uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
 }
 
 static int dom_anchor_set(yep_dom* d, yep_view name, uint32_t node) {
-    for (uint32_t i = 0; i < d->anchor_count; i++) {
-        if (yep_view_eq(d->anchors[i].name, name)) {
-            d->anchors[i].node = node;
-            return 1;
-        }
-    }
-    if (d->anchor_count >= YEP_DOM_MAX_ANCHORS) {
-        return 0;
-    }
-    d->anchors[d->anchor_count].name = name;
-    d->anchors[d->anchor_count].node = node;
-    d->anchor_count++;
-    return 1;
+    return yep_nametab_set(&d->anchors, name, node);
 }
 
 static uint32_t dom_anchor_get(const yep_dom* d, yep_view name) {
-    for (uint32_t i = 0; i < d->anchor_count; i++) {
-        if (yep_view_eq(d->anchors[i].name, name)) {
-            return d->anchors[i].node;
-        }
-    }
-    return UINT32_MAX;
+    return yep_nametab_get(&d->anchors, name);
 }
 
 static void dom_link(yep_dom* d, uint32_t parent, uint32_t child) {
@@ -155,6 +138,8 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
     case YEP_EV_STREAM_END:
     case YEP_EV_DOCUMENT_START:
     case YEP_EV_DOCUMENT_END:
+        /* bindings are document-scoped, like the engine's names */
+        yep_nametab_clear(&d->anchors);
         return 0;
 
     case YEP_EV_SEQ_START:
@@ -233,6 +218,11 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
     memset(d, 0, sizeof(*d));
     d->sys = sys;
     d->pool = pool;
+    if (!yep_nametab_init(&d->anchors, sys)) {
+        yep_pool_destroy(pool);
+        yep_free(sys, d);
+        return NULL;
+    }
     return d;
 }
 
@@ -240,6 +230,7 @@ void yep_dom_destroy(yep_dom* d) {
     if (d == NULL) {
         return;
     }
+    yep_nametab_free(&d->anchors);
     yep_pool_destroy(d->pool);
     yep_free(d->sys, d);
 }

@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 
+#include "common/nametab.h"
 #include "memory/allocator.h"
 #include "memory/pool.h"
 #include "parse/events.h"
@@ -32,7 +33,6 @@ typedef enum {
     YEP_DOM_ALIAS,
 } yep_dom_kind;
 
-#define YEP_DOM_MAX_ANCHORS 2048
 #define YEP_DOM_MAX_DEPTH 1000
 
 typedef struct yep_dnode {
@@ -60,11 +60,7 @@ typedef struct yep_dom {
     uint32_t ncount, ncap;
     uint32_t* docs; /* document root node ids */
     uint32_t dcount, dcap;
-    struct {
-        yep_view name;
-        uint32_t node;
-    } anchors[YEP_DOM_MAX_ANCHORS];
-    uint32_t anchor_count;
+    yep_nametab anchors; /* anchor name -> binding node id */
     /* builder state */
     uint32_t stack[YEP_DOM_MAX_DEPTH];
     int depth;
