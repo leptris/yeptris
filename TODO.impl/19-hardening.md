@@ -1,6 +1,6 @@
 # TODO.impl/19 — Hardening: sanitizers, fuzzing, differential fuzzing, limits, threads
 
-Status: pending · Depends: 07+ (continuous) · Layer: `test/{fuzz,concurrency}` + CI · PLAN.md phase: 5
+Status: STARTED 2026-09-02 — fuzz_parse + fuzz_roundtrip harnesses (standalone corpus walkers in ctest + libFuzzer targets under YEPTRIS_ENABLE_FUZZING) and the nightly fuzz workflow (10 min/harness, seeds = all corpora, crash artifacts retained). REMAINING: fuzz_feed (chunked streaming), fuzz_transcode, allocation-failure injection, thread contract tests, TSAN/UBSAN/valgrind CI jobs, limit-boundary tests, differential fuzzing via yepdiff · Depends: 07+ · Layer: `test/{fuzz,concurrency}` + CI · PLAN.md phase: 5
 
 ## Goal
 

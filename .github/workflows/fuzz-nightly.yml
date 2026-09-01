@@ -1,0 +1,63 @@
+name: Fuzz Nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-nightly
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: libFuzzer (ubuntu, 10 min each)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+
+      - name: Fetch corpora
+        run: scripts/fetch-corpora.sh
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DYEPTRIS_ENABLE_FUZZING=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Seed corpus
+        run: |
+          mkdir -p corpus
+          cp test/port/libyaml/snapshots/*.in corpus/ 2>/dev/null || true
+          find test/conformance/data/yaml-test-suite -name '*.yaml' -exec cp {} corpus/ \; 2>/dev/null || true
+          find test/conformance/data/json-test-suite/test_parsing -name '*.json' -exec cp {} corpus/ \; 2>/dev/null || true
+
+      - name: fuzz_parse (10 min)
+        run: ./build/test/fuzz_parse_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+
+      - name: fuzz_roundtrip (10 min)
+        run: ./build/test/fuzz_roundtrip_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+
+      - name: Retain crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers
+          path: |
+            crash-*
+            leak-*
+            timeout-*
+          if-no-files-found: ignore

@@ -100,6 +100,17 @@ add_test(
     COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
 )
 
+if(YEPTRIS_ENABLE_FUZZING)
+    add_executable(fuzz_parse_lf fuzz/fuzz_parse.c)
+    target_link_libraries(fuzz_parse_lf PRIVATE yeptris_static)
+    target_include_directories(fuzz_parse_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+    yeptris_set_warnings(fuzz_parse_lf)
+
+    add_executable(fuzz_roundtrip_lf fuzz/fuzz_roundtrip.c)
+    target_link_libraries(fuzz_roundtrip_lf PRIVATE yeptris_static)
+    yeptris_set_warnings(fuzz_roundtrip_lf)
+endif()
+
 # ---- JSONTestSuite under YAML semantics (TODO.impl/08C) ---------------
 add_executable(test_jsonsuite flow/jsonsuite.c)
 target_link_libraries(test_jsonsuite PRIVATE yeptris_static)
