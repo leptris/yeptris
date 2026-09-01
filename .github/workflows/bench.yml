@@ -1,0 +1,91 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '**.adoc'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '**.adoc'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Matrix on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+
+      # Pinned so every CI run races the same reference (the local
+      # numbers in benchmarks/PERF-LEDGER.md use this commit).
+      - name: Fetch and build libyaml (pinned)
+        run: |
+          git clone --depth 1 https://github.com/yaml/libyaml.git deps/libyaml
+          git -C deps/libyaml fetch --depth 1 origin 90a56d4500aa1a1798514c5cb55c3ad4cb095f94
+          git -C deps/libyaml checkout 90a56d4500aa1a1798514c5cb55c3ad4cb095f94
+          cmake -B deps/libyaml/build -S deps/libyaml -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake --build deps/libyaml/build
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DYEPTRIS_BUILD_BENCHMARKS=ON \
+            -DYEPTRIS_BENCH_LIBYAML_ROOT="$PWD/deps/libyaml"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run benchmark matrix
+        run: |
+          mkdir -p benchmarks/results
+          ./build/benchmarks/bench_matrix benchmarks/results --quick
+
+      - name: Write summary
+        run: |
+          {
+            echo "# Benchmark matrix — ${{ matrix.os }}"
+            echo
+            echo "Commit: ${{ github.sha }} (libyaml pinned at 90a56d4)"
+            echo
+            cat benchmarks/results/bench-matrix.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat benchmarks/results/bench-matrix.md >> benchmarks/results/summary.md
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ matrix.os }}
+          path: benchmarks/results/
+          if-no-files-found: warn
