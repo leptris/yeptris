@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "doc.h"
 #include "dom/dom.h"
 #include "encoding/encoding.h"
 #include "memory/allocator.h"
@@ -15,19 +16,6 @@
 #include <stdlib.h>
 
 #include <yeptris.h>
-
-/* Document handle: the DOM plus the owning allocator and transcoded
- * buffer (when the input was not UTF-8). */
-typedef struct yeptris_document {
-    yep_dom* dom;
-    const yep_allocator* sys;
-    unsigned char* transcoded; /* owned when non-NULL */
-    size_t transcoded_len;
-    const char* input; /* borrowed input (for lifetime documentation) */
-    void* finish_pool; /* engine finish pool: resolved tags, folded and
-                          escaped scalars outlive the engine through the
-                          document (ASAN: heap-use-after-free otherwise) */
-} yeptris_document;
 
 /* Node handle: a (document, node-id) pair so nodes stay usable even if
  * the node pool grows (ids are stable; pointers are not). */
@@ -550,6 +538,27 @@ YEPTRIS_API YeptrisNode yeptris_node_seq_at(YeptrisNode handle, size_t index) {
 YEPTRIS_API size_t yeptris_node_map_count(YeptrisNode handle) {
     const yep_dnode* n = node_of(handle);
     return (n && n->kind == YEP_DOM_MAPPING) ? n->count / 2 : 0;
+}
+
+YEPTRIS_API int yeptris_node_map_at(YeptrisNode handle, size_t index, YeptrisNode* key,
+                                    YeptrisNode* value) {
+    const yep_dnode* n = node_of(handle);
+    if (n == NULL || n->kind != YEPTRIS_NODE_MAPPING || index >= n->count / 2) {
+        return -1;
+    }
+    yeptris_node* h = (yeptris_node*)handle;
+    const yep_dom* d = h->doc->dom;
+    uint32_t child = n->first_child;
+    for (size_t i = 0; i < index * 2; i++) {
+        child = d->nodes[child].next_sibling; /* pairs are key,value,… */
+    }
+    if (key != NULL) {
+        *key = wrap(h, child);
+    }
+    if (value != NULL) {
+        *value = wrap(h, d->nodes[child].next_sibling);
+    }
+    return 0;
 }
 
 YEPTRIS_API YeptrisNode yeptris_node_map_get(YeptrisNode handle, const char* key, size_t key_len) {

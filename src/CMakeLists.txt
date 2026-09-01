@@ -31,6 +31,9 @@ set(YEPTRIS_SOURCES
     yeptris/resolve/tags.c
     yeptris/resolve/core12.c
     yeptris/resolve/compat11.c
+    yeptris/emit/style.c
+    yeptris/emit/writer.c
+    yeptris/emit/emit.c
 )
 
 # AOT SIMD TUs (TODO.impl/04): per-ISA compile flags; the TUs and the
@@ -49,6 +52,7 @@ set(YEPTRIS_PUBLIC_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/dom.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/error.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/events.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/emit.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/resolve.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/parse.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/types.h

@@ -40,6 +40,7 @@ typedef struct yep_dnode {
     uint8_t style;
     uint8_t implicit;
     uint8_t tag_id;       /* resolved tag (resolve/resolver.h) */
+    uint8_t flow;         /* collection opened in flow style */
     uint32_t first_child; /* child link (mappings: key,value,key,value…) */
     uint32_t last_child;
     uint32_t next_sibling;
@@ -68,7 +69,8 @@ typedef struct yep_dom {
     uint32_t stack[YEP_DOM_MAX_DEPTH];
     int depth;
     int doc_open;
-    int map_pending_key; /* 1 when a key was seen and the value is next */
+    int map_pending_key[YEP_DOM_MAX_DEPTH]; /* per-frame: key seen, value next */
+    uint32_t pending_key_id[YEP_DOM_MAX_DEPTH];
     uint32_t pending_key;
 } yep_dom;
 

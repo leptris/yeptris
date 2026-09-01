@@ -21,6 +21,7 @@ add_executable(test_unit
     unit/test_cpu.cpp
     unit/test_encoding.cpp
     unit/test_events.cpp
+    unit/test_emit.cpp
     unit/test_resolve.cpp
     unit/test_error.cpp
     unit/test_memory.cpp
@@ -34,6 +35,17 @@ yeptris_set_warnings(test_unit)
 
 include(GoogleTest)
 gtest_discover_tests(test_unit)
+
+# ---- emitter roundtrip gate (TODO.impl/13) -----------------------------
+add_executable(test_emit_roundtrip emit_roundtrip.c)
+target_link_libraries(test_emit_roundtrip PRIVATE yeptris_static)
+target_include_directories(test_emit_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/test
+    ${CMAKE_SOURCE_DIR}/src/yeptris)
+yeptris_set_warnings(test_emit_roundtrip)
+add_test(
+    NAME emit-roundtrip
+    COMMAND test_emit_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+)
 
 # ---- cross-model event check (TODO.impl/12) ----------------------------
 add_executable(test_events_crosscheck events_crosscheck.c)

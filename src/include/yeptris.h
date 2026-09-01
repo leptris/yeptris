@@ -10,6 +10,7 @@
 #include <yeptris/api.h>
 #include <yeptris/dom.h>
 #include <yeptris/events.h>
+#include <yeptris/emit.h>
 #include <yeptris/error.h>
 #include <yeptris/parse.h>
 #include <yeptris/resolve.h>

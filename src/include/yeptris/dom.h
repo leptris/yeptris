@@ -65,6 +65,11 @@ YEPTRIS_API YeptrisNode yeptris_node_seq_at(YeptrisNode node, size_t index);
 YEPTRIS_API size_t yeptris_node_map_count(YeptrisNode node);
 YEPTRIS_API YeptrisNode yeptris_node_map_get(YeptrisNode node, const char* key, size_t key_len);
 
+/* Ordered pair access: key and value of pair i (0-based). Returns 0
+ * and sets the out-params when the index is in range, -1 otherwise. */
+YEPTRIS_API int yeptris_node_map_at(YeptrisNode node, size_t index, YeptrisNode* key,
+                                    YeptrisNode* value);
+
 #ifdef __cplusplus
 }
 #endif
