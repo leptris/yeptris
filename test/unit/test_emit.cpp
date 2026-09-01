@@ -108,3 +108,70 @@ TEST(Emit, ByteStableAcrossRoundtrips) {
         EXPECT_EQ(s1, s2) << "unstable for: " << y;
     }
 }
+
+/* ---- canonical mode (13B) ------------------------------------------- */
+
+static std::string canon(const char* y) {
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    EXPECT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL) << " [" << y << "]";
+    if (doc == nullptr) {
+        return "<parse-failed>";
+    }
+    yeptris_emit_options opts = {sizeof(yeptris_emit_options), 1, 0};
+    size_t len = 0;
+    char* out = yeptris_serialize_ex(doc, &opts, &len);
+    yeptris_document_free(doc);
+    if (out == nullptr) {
+        return "<emit-failed>";
+    }
+    std::string r(out, len);
+    free(out);
+    return r;
+}
+
+TEST(EmitCanonical, Basics) {
+    EXPECT_EQ(canon("a: 1\nb: 'x'\nc: [1, 2]\n"), "---\n{\"a\": 1, \"b\": \"x\", \"c\": [1, 2]}\n");
+    EXPECT_EQ(canon("a: hi\n"), "---\n{\"a\": \"hi\"}\n");
+    EXPECT_EQ(canon("- 1\n- 2\n"), "---\n[1, 2]\n");
+    EXPECT_EQ(canon("k: plain words here\n"), "---\n{\"k\": \"plain words here\"}\n");
+}
+
+TEST(EmitCanonical, TypedWordsAndFloats) {
+    EXPECT_EQ(canon("t: true\nf: false\nn: ~\ne: \n"),
+              "---\n{\"t\": true, \"f\": false, \"n\": ~, \"e\": ~}\n");
+    EXPECT_EQ(canon("x: True\n"), "---\n{\"x\": true}\n");
+    EXPECT_EQ(canon("x: 6.8599e+5\n"), "---\n{\"x\": 685990.0}\n");
+    EXPECT_EQ(canon("x: 0.1\n"), "---\n{\"x\": 0.1}\n");
+    EXPECT_EQ(canon("x: 3.141592653589793\n"), "---\n{\"x\": 3.141592653589793}\n");
+    EXPECT_EQ(canon("x: .inf\n"), "---\n{\"x\": .inf}\n");
+    EXPECT_EQ(canon("x: 42\n"), "---\n{\"x\": 42}\n");
+}
+
+TEST(EmitCanonical, FixedPointFByteStability) {
+    const char* cases[] = {
+        "a: 1\nb: [x, y]\nc:\n  d: 2\n",     "- - 1\n  - 2\n- k: v\n",
+        "text: |\n  line one\n  line two\n", "a: &x 1\nb: *x\n",
+        "key with spaces: value\n",          "'quoted key': v\n",
+        "nested: {a: {b: [1, {c: 2}]}}\n",   "e: ''\nz:\n",
+    };
+    for (const char* y : cases) {
+        std::string c1 = canon(y);
+        /* parse(c1) must re-canonicalize byte-identically */
+        EXPECT_EQ(canon(c1.c_str()), c1) << "input [" << y << "] -> [" << c1 << "]";
+    }
+}
+
+TEST(EmitCanonical, OptionsVersioning) {
+    yeptris_emit_options opts = {4, 1, 0}; /* too small: canonical ignored */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse("a: 1\n", 5, &st);
+    ASSERT_NE(doc, nullptr);
+    size_t len = 0;
+    char* out = yeptris_serialize_ex(doc, &opts, &len);
+    yeptris_document_free(doc);
+    ASSERT_NE(out, nullptr);
+    /* fidelity mode: no --- marker */
+    EXPECT_EQ(std::string(out, len), "a: 1\n");
+    free(out);
+}

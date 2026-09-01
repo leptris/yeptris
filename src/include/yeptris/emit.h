@@ -14,6 +14,7 @@
 #define YEPTRIS_EMIT_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include <yeptris/api.h>
 #include <yeptris/types.h>
@@ -21,6 +22,23 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Emission options (13B). Versioned by size: initialize with
+ * {sizeof(yeptris_emit_options)} so future fields stay optional. */
+typedef struct yeptris_emit_options {
+    uint32_t size; /* sizeof(yeptris_emit_options) */
+    int canonical; /* fixed form: flow collections, quoted strings,
+                    * typed words, shortest floats; a parse of the
+                    * output re-serializes byte-identically */
+    int reserved;  /* width/folding arrive here (13B continuation) */
+} yeptris_emit_options;
+
+/* Options-aware entries; opts == NULL selects the fidelity mode
+ * (recorded styles re-emitted). Same contracts as below. */
+YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument doc, const yeptris_emit_options* opts,
+                                             char* buf, size_t cap);
+YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument doc, const yeptris_emit_options* opts,
+                                       size_t* len);
 
 /* Serializes the document set. buf == NULL: returns the exact byte
  * count needed and writes nothing. Otherwise writes at most cap bytes

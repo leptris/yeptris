@@ -226,11 +226,47 @@ int main(int argc, char** argv) {
         free(d1);
         free(d0);
         free(s1);
+
+        /* canonical mode (13B): fixed form is a parse fixed point —
+         * c2 == c1 byte-for-byte after the first canonicalization */
+        yeptris_emit_options opts = {sizeof(yeptris_emit_options), 1, 0};
+        YeptrisStatus stc = YEPTRIS_OK;
+        YeptrisDocument dc = yeptris_parse(in, len, &stc);
+        if (dc != NULL) {
+            size_t c1len = 0;
+            char* c1 = yeptris_serialize_ex(dc, &opts, &c1len);
+            yeptris_document_free(dc);
+            if (c1 == NULL) {
+                failed++;
+                printf("CANONICAL %s: serialize_ex failed\n", ent->d_name);
+            } else {
+                YeptrisStatus stc2 = YEPTRIS_OK;
+                YeptrisDocument dc2 = yeptris_parse(c1, c1len, &stc2);
+                if (dc2 == NULL) {
+                    failed++;
+                    printf("CANONICAL %s: canonical output does not re-parse\n%.*s", ent->d_name,
+                           (int)c1len, c1);
+                } else {
+                    size_t c2len = 0;
+                    char* c2 = yeptris_serialize_ex(dc2, &opts, &c2len);
+                    yeptris_document_free(dc2);
+                    if (c2 == NULL || c2len != c1len || memcmp(c1, c2, c1len) != 0) {
+                        unstable++;
+                        printf("CANON-UNSTABLE %s\n", ent->d_name);
+                        if (verbose && c2 != NULL) {
+                            printf("--- c1:\n%.*s--- c2:\n%s\n", (int)c1len, c1, c2);
+                        }
+                    }
+                    free(c2);
+                }
+                free(c1);
+            }
+        }
         free(in);
     }
     closedir(d);
     printf("emit roundtrip: %ld inputs — semantic diffs %ld, unstable %ld, "
-           "hard failures %ld\n",
+           "hard failures %ld (canonical gate included)\n",
            total, semantic, unstable, failed);
     return (failed + semantic + unstable) == 0 ? 0 : 1;
 }
