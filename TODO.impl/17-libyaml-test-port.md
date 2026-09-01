@@ -1,6 +1,6 @@
 # TODO.impl/17 — libyaml test-suite port + event differential vs libyaml
 
-Status: pending · Depends: 12, 16 · Layer: `test/port/libyaml` · PLAN.md phase: 1
+Status: A prior (405-snapshot parse differential); B+C COMPLETE 2026-09-02 — emitter differential vs libyaml's OWN emissions (279 committed .ly goldens, semantic equality via the shared sem_dump SSOT, ledger waivers, 0 divergences); tools/yepdiff.c classifies EQUAL/DIFFER/BOTH-ERROR/SPLIT per input (dev tool, built with YEPTRIS_LIBYAML_ROOT); run-loader equivalent is the DOM path itself (crossmodel gate). Non-specific '!' tags normalize by style in semantic comparison (spec: they resolve by style) · Depends: 12, 16 · Layer: `test/port/libyaml` · PLAN.md phase: 1
 
 ## Goal
 

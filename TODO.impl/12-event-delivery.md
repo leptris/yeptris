@@ -1,6 +1,6 @@
 # TODO.impl/12 — Event delivery: pull, recorder, iterparse, libyaml-compat push
 
-Status: phases A+B COMPLETE (push/pull/recorder/iterparse, cross-model 405/405); yaml_compat adapter + streaming feed remain · Depends: 07, 11 · Layer: `src/yeptris/events` · PLAN.md phase: 1
+Status: COMPLETE 2026-09-02 (A+B prior; C: yaml_compat adapter landed — libyaml-shaped yep_ly_event with pinned enum values, style/implicit-flag mapping, lossy end-marks documented; internal until drivers prove it complete, which emit-diff now does) · Depends: 07, 11 · Layer: `src/yeptris/events` · PLAN.md phase: 1
 
 ## Goal
 

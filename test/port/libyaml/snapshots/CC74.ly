@@ -1,0 +1,2 @@
+%TAG !e! tag:example.com,2000:app/
+--- !e!foo "bar"

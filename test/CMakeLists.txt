@@ -30,6 +30,7 @@ add_executable(test_unit
     unit/test_parse.cpp
     unit/test_simd_text.cpp
     unit/test_string_view.cpp
+    unit/test_yaml_compat.cpp
 )
 target_link_libraries(test_unit PRIVATE yeptris_static GTest::gtest_main)
 target_include_directories(test_unit PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
@@ -92,6 +93,18 @@ add_test(
             ${CMAKE_CURRENT_SOURCE_DIR}/flow/jsonsuite-expected.txt
 )
 
+# ---- emitter differential vs libyaml's own emission (TODO.impl/17B) ---
+add_executable(test_emit_diff port/libyaml/emit_diff.c)
+target_link_libraries(test_emit_diff PRIVATE yeptris_static)
+target_include_directories(test_emit_diff PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml)
+yeptris_set_warnings(test_emit_diff)
+add_test(
+    NAME emit-diff
+    COMMAND test_emit_diff ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/ledger.txt
+)
+
 # One-time regeneration tool: builds only when a libyaml checkout is
 # provided (-DYEPTRIS_LIBYAML_ROOT=$HOME/src/external/libyaml).
 set(YEPTRIS_LIBYAML_ROOT "" CACHE PATH "libyaml checkout for golden regeneration")
@@ -107,4 +120,16 @@ if(YEPTRIS_LIBYAML_ROOT)
     )
     target_link_libraries(gen_libyaml_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
     yeptris_set_warnings(gen_libyaml_golden)
+
+    add_executable(yepdiff ../tools/yepdiff.c)
+    target_include_directories(yepdiff PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris
+        ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml ${YEPTRIS_LIBYAML_ROOT}/include)
+    target_link_libraries(yepdiff PRIVATE yeptris_static
+        ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
+    yeptris_set_warnings(yepdiff)
+
+    add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
+    target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
+    target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
+    yeptris_set_warnings(gen_emitter_golden)
 endif()
