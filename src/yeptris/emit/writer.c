@@ -105,6 +105,33 @@ static void emit_sq(yep_writer* w, const char* p, uint32_t n) {
     wr_byte(w, '\'');
 }
 
+/* JSON string escapes: \" \\ \b \f \n \r \t and \uXXXX for other
+ * controls; raw UTF-8 passes through (RFC 8259). */
+static void emit_dq_json(yep_writer* w, const char* p, uint32_t n) {
+    wr_byte(w, '"');
+    static const char* named[32] = {
+        NULL, NULL,  NULL,  NULL, NULL, NULL, NULL, "\\b", NULL, "\\t", "\\n",
+        NULL, "\\f", "\\r", NULL, NULL, NULL, NULL, NULL,  NULL, NULL,  NULL,
+        NULL, NULL,  NULL,  NULL, NULL, NULL, NULL, NULL,  NULL, NULL,
+    };
+    for (uint32_t i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)p[i];
+        if (c < 32 && named[c] != NULL) {
+            wr_put(w, named[c], 2);
+        } else if (c == '"' || c == '\\') {
+            wr_byte(w, '\\');
+            wr_byte(w, (char)c);
+        } else if (c < 0x20) {
+            static const char hd[] = "0123456789abcdef";
+            char hex[6] = {'\\', 'u', '0', '0', hd[(c >> 4) & 0xf], hd[c & 0xf]};
+            wr_put(w, hex, 6);
+        } else {
+            wr_byte(w, (char)c);
+        }
+    }
+    wr_byte(w, '"');
+}
+
 /* Literal block: header at the cursor, body lines at parent_col+2.
  * The explicit indicator is always '2' because the pad is defined as
  * parent_col+2 everywhere (the contract that keeps it valid). */
@@ -149,7 +176,11 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
     if (n->tag.len == 0) {
         switch (n->tag_id) {
         case YEPTRIS_TAG_NULL:
-            wr_put(w, "~", 1);
+            if (w->json) {
+                wr_put(w, "null", 4);
+            } else {
+                wr_put(w, "~", 1);
+            }
             return;
         case YEPTRIS_TAG_BOOL:
             if (len == 4) { /* true/TRUE/True/null-ish variants */
@@ -185,13 +216,17 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
             break;
         }
     }
-    emit_dq(w, p, len);
+    if (w->json) {
+        emit_dq_json(w, p, len);
+    } else {
+        emit_dq(w, p, len);
+    }
 }
 
 static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int as_key) {
     const char* p = (const char*)n->value.p;
     uint32_t len = n->value.len;
-    if (w->canonical) {
+    if (w->canonical || w->json) {
         emit_canonical_scalar(w, n);
         return;
     }
@@ -468,7 +503,7 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
         emit_alias_ex(em, n);
         return;
     }
-    if ((n->kind == 1 || n->kind == 2) && (n->flow || w->canonical || w->force_flow)) {
+    if ((n->kind == 1 || n->kind == 2) && (n->flow || w->canonical || w->json || w->force_flow)) {
         /* force_flow holds through the subtree: a complex key's nested
          * collections all render flow (scalars are never collections) */
         emit_flow(em, id);
@@ -510,6 +545,17 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     w->last = 0;
     w->force_flow = 0;
     yep_nametab_clear(&em->canon_names);
+    if (w->json) {
+        /* JSON has no multi-document streams: exactly one root */
+        if (d->dcount == 1) {
+            const yep_dnode* root = yep_dom_node(d, d->docs[0]);
+            emit_node(em, d->docs[0], -2, 0);
+            if (root != NULL && root->kind != 0 && w->last != '\n') {
+                wr_byte(w, '\n');
+            }
+        }
+        return w->len;
+    }
     int multi = (d->dcount > 1) || w->canonical;
     for (uint32_t i = 0; i < d->dcount; i++) {
         if (multi) {

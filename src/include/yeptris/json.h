@@ -27,6 +27,13 @@ extern "C" {
  * *st set; violations carry the byte offset via yeptris_last_error. */
 YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* data, size_t len, YeptrisStatus* st);
 
+/* Serializes the document's FIRST document as strict JSON (flow
+ * collections, JSON escapes, shortest floats, null/true/false words).
+ * Returns a malloc'd NUL-terminated buffer (caller frees) with *len
+ * (may be NULL) set, or NULL on a NULL document / allocation
+ * failure / zero documents. */
+YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument doc, size_t* len);
+
 #ifdef __cplusplus
 }
 #endif
