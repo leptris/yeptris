@@ -110,3 +110,28 @@ hotspot above ~12% remains. Conclusion: the next 2x on flow-json is
 architectural — a JSON-class structural fast path (SIMD scan → bulk
 events for pure-JSON flow spans, TODO 08/21) or event-struct slimming
 (invasive). Recorded here so the next attempt starts from this wall.
+
+### 2026-09-01 — JSON-class structural fast path (WIN, +8% isolated A/B)
+
+`e_flow_json` (engine.c): pure-JSON flow spans validate in one linear
+pass (strict RFC 8259 grammar; single stopset walk per string covering
+close/break/escape) then emit events in a second tight walk, skipping
+the general kernel's per-node guards. STRICTLY conservative — tabs,
+comments, YAML scalars, trailing commas, non-string keys, indent
+anomalies, or a key-position colon all fall back to the general kernel
+untouched, so semantics cannot diverge (gates: 98/98 incl. conformance
+395/395, libyaml-diff 0, json-suite verdicts unchanged). Hooked ahead
+of `e_skip_flow`, replacing its pre-scan when it applies.
+
+Isolated A/B (300 iterations, -O3, single process, YEP_NO_FAST toggle
+in a scratch build): 41.7 → 45.0 MB/s (+8%). Matrix runs on the shared
+dev box (load 16–38 today) read flow-json DOM 2.0x–2.5x — within the
+2.44–2.53x baseline noise band; re-measure on a quiet machine.
+
+Analysis: the general kernel's per-node guards were ~15% of event cost,
+not the 40% hoped. The confirmed wall is the per-event pipeline itself
+(~80 ns/event): event init (struct memset+copy), emit_now resolution,
+DOM node create+link. The next 2x on flow-json is event-pipeline
+slimming — smaller `yep_event`, batch sink entry point (`on_events(ev[],
+n)` vtable slot, DOM overrides with a tight loop) — a wider unit;
+this fast path is the foundation strict-JSON mode (08C) builds on.

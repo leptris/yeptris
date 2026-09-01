@@ -1182,6 +1182,440 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     return 1;
 }
 
+/* --------------------------------------------------- JSON fast path */
+
+/* The JSON-class fast path (TODO.impl/08A): one validating scan of the
+ * span, then bulk event emission — pure-JSON flow collections skip the
+ * general kernel's per-node guards. STRICTLY conservative: anything not
+ * byte-for-byte JSON (tabs, comments, YAML scalars, trailing commas,
+ * indent anomalies under a block parent) returns 0 and the general
+ * kernel handles it, so semantics can never diverge — only speed. */
+
+#define YEP_JSON_MAX_DEPTH 256
+
+enum {
+    JX_VALUE_OR_CLOSE = 0, /* after '(' or ',' — value or the close */
+    JX_VALUE,              /* value required */
+    JX_KEY_OR_CLOSE,       /* map start or after ',' — key or close */
+    JX_KEY,                /* key required */
+    JX_COLON,              /* ':' required */
+    JX_COMMA_OR_CLOSE      /* after a value — ',' or close */
+};
+
+static int jx_ws(const char* p, size_t len, size_t* i, int* saw_tab) {
+    while (*i < len) {
+        char c = p[*i];
+        if (c == ' ' || c == '\n' || c == '\r') {
+            (*i)++;
+            continue;
+        }
+        if (c == '\t') {
+            *saw_tab = 1; /* tabs: let the general kernel rule on them */
+            return 0;
+        }
+        return 1; /* token byte */
+    }
+    return -1; /* EOF */
+}
+
+/* Strict RFC 8259 number: -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)? */
+static int jx_number(const char* p, size_t len, size_t* i) {
+    size_t k = *i;
+    if (p[k] == '-') {
+        k++;
+    }
+    if (k >= len || p[k] < '0' || p[k] > '9') {
+        return 0;
+    }
+    if (p[k] == '0') {
+        k++;
+    } else {
+        while (k < len && p[k] >= '0' && p[k] <= '9') {
+            k++;
+        }
+    }
+    if (k < len && p[k] == '.') {
+        k++;
+        if (k >= len || p[k] < '0' || p[k] > '9') {
+            return 0;
+        }
+        while (k < len && p[k] >= '0' && p[k] <= '9') {
+            k++;
+        }
+    }
+    if (k < len && (p[k] == 'e' || p[k] == 'E')) {
+        k++;
+        if (k < len && (p[k] == '-' || p[k] == '+')) {
+            k++;
+        }
+        if (k >= len || p[k] < '0' || p[k] > '9') {
+            return 0;
+        }
+        while (k < len && p[k] >= '0' && p[k] <= '9') {
+            k++;
+        }
+    }
+    if (k < len) {
+        char c = p[k];
+        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
+            return 0; /* "1x" is YAML, not JSON */
+        }
+    }
+    *i = k;
+    return 1;
+}
+
+static int jx_literal(const char* p, size_t len, size_t* i, const char* word) {
+    size_t w = 0;
+    while (word[w] != '\0') {
+        if (*i + w >= len || p[*i + w] != word[w]) {
+            return 0;
+        }
+        w++;
+    }
+    *i += w;
+    if (*i < len) {
+        char c = p[*i];
+        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
+            return 0; /* "truex" is a YAML plain, not JSON */
+        }
+    }
+    return 1;
+}
+
+/* Strict-JSON quoted scalar: no raw breaks, only JSON escapes. One
+ * stopset walk {'"', '\\', '\n', '\r'} decides close/escape/break —
+ * no second scan. On success *i sits just past the close, *close_out
+ * is the close quote index, *has_esc reports backslashes. */
+static int jx_string(const char* p, size_t len, size_t* i, size_t* close_out, int* has_esc) {
+    const yep_text_kernels* k = yep_text_active();
+    unsigned char stop[32];
+    yep_stopset_clear(stop);
+    yep_stopset_add(stop, '"');
+    yep_stopset_add(stop, '\\');
+    yep_stopset_add(stop, '\n');
+    yep_stopset_add(stop, '\r');
+    size_t j = *i + 1;
+    int esc = 0;
+    for (;;) {
+        ptrdiff_t r = k->stopset_find(p + j, len - j, stop);
+        if (r < 0) {
+            return 0; /* unterminated */
+        }
+        size_t at = j + (size_t)r;
+        char c = p[at];
+        if (c == '"') {
+            *close_out = at;
+            *has_esc = esc;
+            *i = at + 1;
+            return 1;
+        }
+        if (c == '\n' || c == '\r') {
+            return 0; /* raw breaks: YAML folding, not JSON */
+        }
+        /* escape: validate the escaped byte inline */
+        if (at + 1 >= len) {
+            return 0;
+        }
+        esc = 1;
+        char e2 = p[at + 1];
+        if (e2 == 'u') {
+            for (int h = 2; h <= 5; h++) {
+                if (at + (size_t)h >= len ||
+                    !yep_ct_is((unsigned char)p[at + (size_t)h], YEP_CT_HEXDIGIT)) {
+                    return 0;
+                }
+            }
+            j = at + 6;
+            continue;
+        }
+        if (e2 != '"' && e2 != '\\' && e2 != '/' && e2 != 'b' && e2 != 'f' && e2 != 'n' &&
+            e2 != 'r' && e2 != 't') {
+            return 0; /* YAML-only escape (\a, \x…): not JSON */
+        }
+        j = at + 2;
+    }
+}
+
+/* Line/col across a gap [from, to): count breaks once, keep the last. */
+static void jx_advance_line(yep_engine* e, size_t from, size_t to, uint32_t* line,
+                            size_t* line_start) {
+    for (size_t i = from; i < to; i++) {
+        if (e->p[i] == '\n') {
+            (*line)++;
+            *line_start = i + 1;
+        }
+    }
+}
+
+/* Returns 1 = events emitted and consumed (e->pos past the close),
+ * 0 = not JSON-class (fall back), -1 = error set, -2 = sink abort. */
+static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
+    const char* p = e->p;
+    size_t len = e->len;
+    size_t open_pos = e->pos;
+    if (len - open_pos < 24) {
+        return 0; /* tiny spans: the general kernel is cheaper */
+    }
+
+    /* ---- pass 1: strict-JSON validation, find the matching close ---- */
+    uint8_t kind[YEP_JSON_MAX_DEPTH];
+    uint8_t expect[YEP_JSON_MAX_DEPTH];
+    int depth = 0;
+    int saw_tab = 0;
+    size_t i = open_pos + 1;
+    kind[0] = (p[open_pos] == '[') ? 0 : 1;
+    expect[0] = kind[0] ? JX_KEY_OR_CLOSE : JX_VALUE_OR_CLOSE;
+    depth = 1;
+    for (;;) {
+        int ws = jx_ws(p, len, &i, &saw_tab);
+        if (ws != 1) {
+            return 0; /* EOF, or a tab the general kernel should judge */
+        }
+        char c = p[i];
+        if (c == ']' || c == '}') {
+            int want = (c == ']') ? 0 : 1;
+            if (kind[depth - 1] != want ||
+                (expect[depth - 1] != JX_VALUE_OR_CLOSE && expect[depth - 1] != JX_KEY_OR_CLOSE)) {
+                return 0; /* mismatched or premature close */
+            }
+            depth--;
+            if (depth == 0) {
+                break; /* i = the matching close of open_pos */
+            }
+            /* (fall through: inner closes continue the walk) */
+            expect[depth - 1] = JX_COMMA_OR_CLOSE;
+            i++;
+            continue;
+        }
+        switch (expect[depth - 1]) {
+        case JX_COLON:
+            if (c != ':') {
+                return 0;
+            }
+            expect[depth - 1] = JX_VALUE;
+            i++;
+            continue;
+        case JX_COMMA_OR_CLOSE:
+            if (c != ',') {
+                return 0;
+            }
+            expect[depth - 1] = kind[depth - 1] ? JX_KEY : JX_VALUE;
+            i++;
+            continue;
+        default:
+            break;
+        }
+        if (c == '{' || c == '[') {
+            if (depth >= YEP_JSON_MAX_DEPTH || depth >= e->max_depth) {
+                return 0; /* the general kernel reports depth errors */
+            }
+            kind[depth] = (c == '[') ? 0 : 1;
+            expect[depth] = kind[depth] ? JX_KEY_OR_CLOSE : JX_VALUE_OR_CLOSE;
+            depth++;
+            i++;
+            continue;
+        }
+        /* a value (or, in maps with KEY state, a string key) */
+        int he = 0;
+        size_t str_close;
+        if (c == '"') {
+            if (!jx_string(p, len, &i, &str_close, &he)) {
+                return 0;
+            }
+        } else if (c == '-' || (c >= '0' && c <= '9')) {
+            if (!jx_number(p, len, &i)) {
+                return 0;
+            }
+        } else if (c == 't') {
+            if (!jx_literal(p, len, &i, "true")) {
+                return 0;
+            }
+        } else if (c == 'f') {
+            if (!jx_literal(p, len, &i, "false")) {
+                return 0;
+            }
+        } else if (c == 'n') {
+            if (!jx_literal(p, len, &i, "null")) {
+                return 0;
+            }
+        } else {
+            return 0; /* YAML plain scalar / comment / indicator */
+        }
+        if (kind[depth - 1] == 1 && expect[depth - 1] == JX_KEY_OR_CLOSE) {
+            expect[depth - 1] = JX_COLON;
+        } else if (kind[depth - 1] == 1 && expect[depth - 1] == JX_KEY) {
+            if (c != '"') {
+                return 0; /* JSON map keys are strings only */
+            }
+            expect[depth - 1] = JX_COLON;
+        } else {
+            expect[depth - 1] = JX_COMMA_OR_CLOSE;
+        }
+    }
+    size_t close = i;
+
+    /* A flow node followed by ':' on the same line is a KEY: the caller
+     * must wrap it in a mapping first — refuse so the general path's
+     * is_key logic runs. */
+    {
+        size_t j = close + 1;
+        while (j < len && p[j] == ' ') {
+            j++;
+        }
+        if (j < len && p[j] == ':' &&
+            (j + 1 >= len || p[j + 1] == ' ' || p[j + 1] == '\n' || p[j + 1] == '\r' ||
+             p[j + 1] == '\t')) {
+            return 0;
+        }
+    }
+
+    /* Block-level flow lines must out-indent the parent (9C9N): any
+     * line start inside the span at or left of the floor falls back. */
+    if (e->flow_enforce) {
+        size_t j = open_pos;
+        while (j < close) {
+            if (p[j] == '\n') {
+                size_t k = j + 1;
+                uint32_t ind = 0;
+                while (k < close && p[k] == ' ') {
+                    ind++;
+                    k++;
+                }
+                if (k < close && p[k] != '\n' && p[k] != '\r' && ind <= e->flow_floor) {
+                    return 0;
+                }
+            }
+            j++;
+        }
+    }
+
+    /* ---- pass 2: emit events from the validated span ---- */
+    uint32_t cur_line = e->line;
+    size_t cur_ls = e->line_start;
+    {
+        yep_event ev;
+        e_event_init(&ev, kind[0] ? YEP_EV_MAP_START : YEP_EV_SEQ_START);
+        ev.flow = 1;
+        ev.anchor = anchor;
+        ev.tag = tag;
+        ev.line = cur_line;
+        ev.col = (uint32_t)(open_pos + 1 - cur_ls) + 1;
+        if (emit_now(e, &ev) != 0) {
+            return -2;
+        }
+    }
+    uint8_t stk[YEP_JSON_MAX_DEPTH]; /* 0 seq, 1 map; key-pending per frame */
+    uint8_t kpending[YEP_JSON_MAX_DEPTH];
+    int sd = 1;
+    stk[0] = kind[0];
+    kpending[0] = 0;
+    i = open_pos + 1;
+    for (;;) {
+        while (i < close && (p[i] == ' ' || p[i] == '\n' || p[i] == '\r')) {
+            i++;
+        }
+        char c = p[i];
+        if (c == ']' || c == '}') {
+            yep_event ev;
+            e_event_init(&ev, stk[sd - 1] ? YEP_EV_MAP_END : YEP_EV_SEQ_END);
+            ev.flow = 1;
+            jx_advance_line(e, cur_ls < open_pos ? open_pos : cur_ls, i, &cur_line, &cur_ls);
+            ev.line = cur_line;
+            ev.col = (uint32_t)(i - cur_ls) + 1;
+            if (emit_now(e, &ev) != 0) {
+                return -2;
+            }
+            sd--;
+            if (sd == 0) {
+                break;
+            }
+            i++;
+            continue;
+        }
+        if (c == '{' || c == '[') {
+            if (stk[sd - 1] && kpending[sd - 1] == 2) {
+                kpending[sd - 1] = 0; /* the value of the pending pair */
+            }
+            yep_event ev;
+            e_event_init(&ev, c == '[' ? YEP_EV_SEQ_START : YEP_EV_MAP_START);
+            ev.flow = 1;
+            jx_advance_line(e, cur_ls < open_pos ? open_pos : cur_ls, i, &cur_line, &cur_ls);
+            ev.line = cur_line;
+            ev.col = (uint32_t)(i + 1 - cur_ls) + 1;
+            if (emit_now(e, &ev) != 0) {
+                return -2;
+            }
+            stk[sd] = (c == '[') ? 0 : 1;
+            kpending[sd] = 0;
+            sd++;
+            i++;
+            continue;
+        }
+        if (c == ',' || c == ':') {
+            i++;
+            continue;
+        }
+        /* scalar: quoted, number, or literal */
+        yep_event ev;
+        e_event_init(&ev, YEP_EV_SCALAR);
+        jx_advance_line(e, cur_ls < open_pos ? open_pos : cur_ls, i, &cur_line, &cur_ls);
+        ev.line = cur_line;
+        ev.col = (uint32_t)(i - cur_ls) + 1;
+        size_t vstart = i;
+        if (c == '"') {
+            int he = 0;
+            size_t vclose;
+            if (!jx_string(p, close + 1, &i, &vclose, &he)) {
+                return -1; /* validated: cannot happen */
+            }
+            size_t vend = vclose; /* the closing quote */
+            ev.style = YEP_STYLE_DOUBLE_QUOTED;
+            if (he) {
+                ev.multiline = 0;
+                char* out = yep_finish_double(p, (uint32_t)(vstart + 1), (uint32_t)vend, 0, e->pool,
+                                              &ev.value.len);
+                if (out == NULL) {
+                    return e_fail(e, YEP_ERR_MEMORY, vstart);
+                }
+                ev.value.p = out;
+                ev.borrowed = 0;
+            } else {
+                ev.value.p = p + vstart + 1;
+                ev.value.len = (uint32_t)(vend - vstart - 1);
+                ev.borrowed = 1;
+            }
+        } else {
+            if (c == '-') {
+                i++;
+            }
+            while (i < close && ((p[i] >= '0' && p[i] <= '9') || p[i] == '.' || p[i] == 'e' ||
+                                 p[i] == 'E' || p[i] == '+' || p[i] == '-')) {
+                i++;
+            }
+            ev.value.p = p + vstart;
+            ev.value.len = (uint32_t)(i - vstart);
+            ev.borrowed = 1;
+            ev.style = YEP_STYLE_PLAIN;
+            ev.implicit = 1;
+        }
+        if (emit_now(e, &ev) != 0) {
+            return -2;
+        }
+        if (stk[sd - 1] && p[i] == ':' && kpending[sd - 1] == 0) {
+            kpending[sd - 1] = 2; /* key seen; the next scalar/collection is the value */
+        }
+    }
+
+    /* engine position: past the close; line state reflects the span */
+    jx_advance_line(e, cur_ls < open_pos ? open_pos : cur_ls, close + 1, &cur_line, &cur_ls);
+    e->line = cur_line;
+    e->line_start = cur_ls;
+    e->pos = close + 1;
+    e_skip_inline_space(e);
+    return 1;
+}
+
 /* Iterative flow kernel; emits events for the whole collection. */
 /* Initializes one flow frame (SSOT: every field, every push site). */
 static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
@@ -1850,6 +2284,26 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     if (c == '[' || c == '{') {
         /* pre-scan: is this flow collection a mapping KEY? (a key must
          * begin and end on one line — "[23\n]: 42" is not a key) */
+        {
+            /* JSON fast path first: its validating scan already finds the
+             * close, replacing e_skip_flow's pre-scan when it applies. */
+            e->flow_floor = floor_col;
+            e->flow_enforce = (e->depth > 0);
+            int fast = e_flow_json(e, node_a, node_t);
+            e->flow_enforce = 0;
+            if (fast == 1) {
+                if (!e_at_eol(e)) {
+                    return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "[ a ] ]" */
+                }
+                if (e->depth == 0) {
+                    e->last_root_flow = 1; /* "[23\n]: 42" is not a key */
+                }
+                return 0;
+            }
+            if (fast == -2) {
+                return -2;
+            }
+        }
         size_t save = e->pos;
         uint32_t line0 = e->line;
         if (e_skip_flow(e) != 0) {
