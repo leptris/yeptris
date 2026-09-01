@@ -43,6 +43,9 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Fetch conformance corpora
+        run: scripts/fetch-corpora.sh
+
       - name: Test under ASAN
         run: ctest --test-dir build --output-on-failure
         env:
