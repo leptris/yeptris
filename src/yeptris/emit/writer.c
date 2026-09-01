@@ -29,6 +29,20 @@
 #include "float/api.h"
 #include "resolve/resolver.h"
 
+/* Streaming flush (13C): append-only output means any high-water
+ * crossing is a safe cut point. */
+static void wr_maybe_flush(yep_writer* w) {
+    if (w->sink == NULL || w->dry || w->len < w->watermark) {
+        return;
+    }
+    if (w->sink(w->sink_ctx, w->p, w->len) != 0) {
+        w->sink_aborted = 1;
+        return;
+    }
+    w->flushed += w->len;
+    w->len = 0;
+}
+
 static void wr_put(yep_writer* w, const char* p, uint32_t n) {
     if (n > 0) {
         w->last = p[n - 1];
@@ -39,6 +53,7 @@ static void wr_put(yep_writer* w, const char* p, uint32_t n) {
     }
     memcpy(w->p + w->len, p, n);
     w->len += n;
+    wr_maybe_flush(w);
 }
 
 static void wr_byte(yep_writer* w, char c) {
@@ -49,6 +64,7 @@ static void wr_byte(yep_writer* w, char c) {
     }
     w->p[w->len] = c;
     w->len++;
+    wr_maybe_flush(w);
 }
 
 static void wr_indent(yep_writer* w, int depth) {
@@ -544,6 +560,8 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     w->len = 0;
     w->last = 0;
     w->force_flow = 0;
+    w->flushed = 0;
+    w->sink_aborted = 0;
     yep_nametab_clear(&em->canon_names);
     if (w->json) {
         /* JSON has no multi-document streams: exactly one root */
@@ -554,7 +572,7 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
                 wr_byte(w, '\n');
             }
         }
-        return w->len;
+        return w->flushed + w->len;
     }
     int multi = (d->dcount > 1) || w->canonical;
     for (uint32_t i = 0; i < d->dcount; i++) {
@@ -583,5 +601,5 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
             wr_byte(w, '\n');
         }
     }
-    return w->len;
+    return w->flushed + w->len;
 }

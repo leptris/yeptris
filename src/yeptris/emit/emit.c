@@ -27,6 +27,10 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
     em.w.json = 0;
+    em.w.sink = NULL;
+    em.w.watermark = 0;
+    em.w.sink_aborted = 0;
+    em.w.flushed = 0;
     if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return 0;
     }
@@ -54,6 +58,10 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
     em.w.json = 0;
+    em.w.sink = NULL;
+    em.w.watermark = 0;
+    em.w.sink_aborted = 0;
+    em.w.flushed = 0;
     if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
@@ -83,6 +91,10 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     em.w.force_flow = 0;
     em.w.canonical = 0;
     em.w.json = 1;
+    em.w.sink = NULL;
+    em.w.watermark = 0;
+    em.w.sink_aborted = 0;
+    em.w.flushed = 0;
     if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
@@ -108,4 +120,47 @@ YEPTRIS_API size_t yeptris_serialize_into(YeptrisDocument handle, char* buf, siz
 
 YEPTRIS_API char* yeptris_serialize(YeptrisDocument handle, size_t* len) {
     return yeptris_serialize_ex(handle, NULL, len);
+}
+
+/* Streaming writer (13C): the writer appends linearly (nothing is
+ * back-patched), so flushing at a high-water mark is always safe —
+ * memory stays bounded by the mark, never the document. */
+YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
+                                            const yeptris_emit_options* opts,
+                                            yeptris_emit_sink sink, void* ctx) {
+    if (handle == NULL || sink == NULL) {
+        return 0;
+    }
+    yep_emitter em;
+    em.doc = (const yeptris_document*)handle;
+    em.w.p = NULL;
+    em.w.last = 0;
+    em.w.force_flow = 0;
+    em.w.canonical = opts_canonical(opts);
+    em.w.json = 0;
+    em.w.sink = sink;
+    em.w.sink_ctx = ctx;
+    em.w.watermark = YEP_EMIT_WATERMARK;
+    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+        return 0;
+    }
+    /* one scratch window; the writer flushes it when it fills */
+    char* window = malloc(YEP_EMIT_WATERMARK * 2);
+    if (window == NULL) {
+        yep_nametab_free(&em.canon_names);
+        return 0;
+    }
+    em.w.p = window;
+    em.w.sink_aborted = 0;
+    size_t total = yep_emit_run(&em, 0);
+    if (em.w.len > 0 && !em.w.sink_aborted) {
+        if (sink(ctx, window, em.w.len) != 0) {
+            em.w.sink_aborted = 1;
+        } else {
+            /* total already counted by the flush hooks */
+        }
+    }
+    free(window);
+    yep_nametab_free(&em.canon_names);
+    return em.w.sink_aborted ? 0 : total;
 }
