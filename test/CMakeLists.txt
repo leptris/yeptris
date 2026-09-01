@@ -77,6 +77,29 @@ add_test(
 )
 set_tests_properties(libyaml-diff PROPERTIES ENVIRONMENT "YEP_STRICT=1")
 
+# ---- fuzz harnesses (TODO.impl/19) ------------------------------------
+# Standalone corpus walkers (crash on invariant violation); the
+# libFuzzer build is CI-nightly (YEPTRIS_ENABLE_FUZZING).
+add_executable(fuzz_parse fuzz/fuzz_parse.c)
+target_link_libraries(fuzz_parse PRIVATE yeptris_static)
+target_include_directories(fuzz_parse PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+target_compile_definitions(fuzz_parse PRIVATE YEP_FUZZ_STANDALONE)
+yeptris_set_warnings(fuzz_parse)
+
+add_executable(fuzz_roundtrip fuzz/fuzz_roundtrip.c)
+target_link_libraries(fuzz_roundtrip PRIVATE yeptris_static)
+target_compile_definitions(fuzz_roundtrip PRIVATE YEP_FUZZ_STANDALONE)
+yeptris_set_warnings(fuzz_roundtrip)
+
+add_test(
+    NAME fuzz-corpus
+    COMMAND fuzz_parse ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+)
+add_test(
+    NAME fuzz-roundtrip-corpus
+    COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+)
+
 # ---- JSONTestSuite under YAML semantics (TODO.impl/08C) ---------------
 add_executable(test_jsonsuite flow/jsonsuite.c)
 target_link_libraries(test_jsonsuite PRIVATE yeptris_static)

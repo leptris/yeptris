@@ -17,18 +17,20 @@ struct json_object {
     YeptrisNode node;    /* NULL for the root placeholder */
     int owns_doc;
     char* json_out; /* cached to_json_string result */
-    /* the root registers every child wrapper it hands out; children
-     * live until the root is put (json-c lifetime: borrowed refs die
-     * with the root) */
+    struct json_object* root; /* the owning root (self for roots) */
+    /* the root registers every wrapper it hands out; wrappers live
+     * until the root is put (json-c lifetime: borrowed refs die with
+     * the root) */
     struct json_object** children;
     size_t nchild;
     size_t capchild;
 };
 
-static json_object* child_of(json_object* root, YeptrisNode node) {
-    if (root == NULL || node == NULL) {
+static json_object* child_of(json_object* from, YeptrisNode node) {
+    if (from == NULL || node == NULL) {
         return NULL;
     }
+    json_object* root = from->root;
     if (root->nchild == root->capchild) {
         size_t cap = root->capchild ? root->capchild * 2 : 8;
         struct json_object** grown = realloc(root->children, cap * sizeof(*grown));
@@ -44,6 +46,7 @@ static json_object* child_of(json_object* root, YeptrisNode node) {
     }
     child->doc = root->doc;
     child->node = node;
+    child->root = root;
     root->children[root->nchild++] = child;
     return child;
 }
@@ -77,6 +80,7 @@ json_object* json_tokener_parse_ex(const char* buf, int len) {
     obj->doc = doc;
     obj->node = yeptris_document_root(doc, 0);
     obj->owns_doc = 1;
+    obj->root = obj;
     return obj;
 }
 
