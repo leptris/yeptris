@@ -25,6 +25,8 @@ option(YEPTRIS_BUILD_CLI "Build the yeptris CLI tool" ON)
 option(YEPTRIS_BUILD_STATIC "Build the static library" ON)
 option(YEPTRIS_BUILD_SHARED "Build the shared library" OFF)
 option(YEPTRIS_BUILD_BENCHMARKS "Build performance benchmarks (TODO.impl/18)" OFF)
+option(YEPTRIS_BUILD_JSONC_COMPAT
+    "Build libyeptris-jsonc: the json-c drop-in migration layer (TODO.impl/21)" ON)
 option(YEPTRIS_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(YEPTRIS_ENABLE_TSAN "Enable ThreadSanitizer (requires all-TSAN build)" OFF)
 option(YEPTRIS_ENABLE_FUZZING "Build libFuzzer harnesses (TODO.impl/19; requires clang)" OFF)

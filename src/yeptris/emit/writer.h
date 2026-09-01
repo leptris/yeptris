@@ -16,6 +16,8 @@ typedef struct yep_writer {
     int force_flow; /* complex-key emission: collections render flow */
     int canonical;  /* 13B: fixed canonical form — flow collections,
                      * quoted strings, typed words, shortest floats */
+    int json;       /* 21: JSON output — canonical minus YAML words:
+                     * null (not ~), no document markers, JSON escapes */
 } yep_writer;
 
 typedef struct yep_emitter {

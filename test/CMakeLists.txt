@@ -30,9 +30,11 @@ add_executable(test_unit
     unit/test_parse.cpp
     unit/test_simd_text.cpp
     unit/test_string_view.cpp
+    unit/test_json_hpp.cpp
+    unit/test_jsonc_compat.cpp
     unit/test_yaml_compat.cpp
 )
-target_link_libraries(test_unit PRIVATE yeptris_static GTest::gtest_main)
+target_link_libraries(test_unit PRIVATE yeptris_static $<TARGET_NAME_IF_EXISTS:yeptris_jsonc> GTest::gtest_main)
 target_include_directories(test_unit PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
 yeptris_set_warnings(test_unit)
 

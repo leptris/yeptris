@@ -27,7 +27,7 @@ measured-dead; record it, keep the numbers — do not delete history).
 | 18 | [Benchmarks: matrix, corpora, CI artifacts, ledger](TODO.impl/18-benchmarks.md) | 06+ | A done: matrix+ledger+CI bench.yml, all shapes >2.1x vs libyaml |
 | 19 | [Hardening: sanitizers, fuzzing, differential, limits](TODO.impl/19-hardening.md) | 07+ | pending |
 | 20 | [Packaging, ABI policy, automated release](TODO.impl/20-packaging-release.md) | all | pending |
-| 21 | [JSON API compat (json-c drop-in, nlohmann C++, yajl) + best-API](TODO.impl/21-json-compat-api.md) | 08, 11, 13, 18 | pending |
+| 21 | [JSON API compat](TODO.impl/21-json-compat-api.md) | 08, 11, 13, 18 | core landed: jsonc drop-in + json.hpp + JSON writer; building API awaits 11p3 |
 
 Rules inherited from libleptris: one executed plan per item; each phase
 gate in the item file must pass before the item closes; performance

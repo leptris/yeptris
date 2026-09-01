@@ -26,6 +26,7 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
+    em.w.json = 0;
     if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return 0;
     }
@@ -52,12 +53,43 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
+    em.w.json = 0;
     if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
     size_t need = yep_emit_run(&em, 1);
     char* out = malloc(need + 1);
     if (out == NULL) {
+        return NULL;
+    }
+    em.w.p = out;
+    size_t wrote = yep_emit_run(&em, 0);
+    yep_nametab_free(&em.canon_names);
+    out[wrote] = '\0';
+    if (len != NULL) {
+        *len = wrote;
+    }
+    return out;
+}
+
+YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
+    if (handle == NULL) {
+        return NULL;
+    }
+    yep_emitter em;
+    em.doc = (const yeptris_document*)handle;
+    em.w.p = NULL;
+    em.w.last = 0;
+    em.w.force_flow = 0;
+    em.w.canonical = 0;
+    em.w.json = 1;
+    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+        return NULL;
+    }
+    size_t need = yep_emit_run(&em, 1);
+    char* out = malloc(need + 1);
+    if (out == NULL) {
+        yep_nametab_free(&em.canon_names);
         return NULL;
     }
     em.w.p = out;
