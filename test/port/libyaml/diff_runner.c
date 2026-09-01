@@ -258,6 +258,9 @@ int main(int argc, char** argv) {
         free(o.buf);
     }
     closedir(d);
+    for (int w = 0; w < nwaiver; w++) {
+        free(waiver[w]);
+    }
     printf("libyaml differential: %ld/%ld pass — upstream divergences %ld, "
            "yeptris divergences %ld\n",
            pass, total, upstream, ours);
