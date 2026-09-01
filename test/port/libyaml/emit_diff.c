@@ -153,6 +153,9 @@ int main(int argc, char** argv) {
         free(in);
     }
     closedir(d);
+    for (int w = 0; w < nwaiver; w++) {
+        free(waiver[w]);
+    }
     printf("emitter differential: %ld inputs — divergences %ld, hard failures %ld, waived %ld\n",
            total, diffs, hard, waived);
     return (diffs + hard) == 0 ? 0 : 1;
