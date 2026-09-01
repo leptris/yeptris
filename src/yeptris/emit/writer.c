@@ -22,6 +22,13 @@
 
 #include "style.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "../../include/yeptris/resolve.h"
+#include "float/api.h"
+#include "resolve/resolver.h"
+
 static void wr_put(yep_writer* w, const char* p, uint32_t n) {
     if (n > 0) {
         w->last = p[n - 1];
@@ -132,9 +139,62 @@ static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
     }
 }
 
+/* Canonical scalar (13B): typed words and numbers plain, everything
+ * else double-quoted; floats re-print through the shortest printer so
+ * canonical output is a fixed point (parse of canonical re-prints
+ * identically — the byte-stability gate). */
+static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
+    const char* p = (const char*)n->value.p;
+    uint32_t len = n->value.len;
+    if (n->tag.len == 0) {
+        switch (n->tag_id) {
+        case YEPTRIS_TAG_NULL:
+            wr_put(w, "~", 1);
+            return;
+        case YEPTRIS_TAG_BOOL:
+            if (len == 4) { /* true/TRUE/True/null-ish variants */
+                wr_put(w, (p[0] == 't' || p[0] == 'T') ? "true" : "null", 4);
+            } else { /* false family (5 chars) */
+                wr_put(w, "false", 5);
+            }
+            return;
+        case YEPTRIS_TAG_FLOAT: {
+            const char* word = yep_tag_float_word(p, len);
+            if (word != NULL) {
+                wr_put(w, word, (uint32_t)strlen(word));
+                return;
+            }
+            char buf[40];
+            char* end = NULL;
+            char tmp[40];
+            uint32_t tl = len < sizeof(tmp) - 1 ? len : (uint32_t)sizeof(tmp) - 1;
+            memcpy(tmp, p, tl);
+            tmp[tl] = '\0';
+            double d = strtod(tmp, &end);
+            if (end != NULL && *end == '\0' && end != tmp) {
+                int wl = yep_d2s_shortest(d, buf);
+                wr_put(w, buf, (uint32_t)wl);
+                return;
+            }
+            break; /* unparseable view: fall through to quoting */
+        }
+        case YEPTRIS_TAG_INT:
+            wr_put(w, p, len);
+            return;
+        default:
+            break;
+        }
+    }
+    emit_dq(w, p, len);
+}
+
 static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int as_key) {
     const char* p = (const char*)n->value.p;
     uint32_t len = n->value.len;
+    if (w->canonical) {
+        emit_canonical_scalar(w, n);
+        return;
+    }
     int multiline = (memchr(p, '\n', len) != NULL);
     int blockable = 0;
     if (multiline && !as_key) {
@@ -195,11 +255,47 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
     }
 }
 
-static void emit_anchor(yep_writer* w, const yep_dnode* n) {
-    if (n->anchor.len > 0) {
-        wr_byte(w, '&');
+/* Canonical mode renames anchors to generated names (a0, a1, ...):
+ * exotic source names (flow indicators inside them) cannot survive
+ * flow context raw, and renaming preserves the binding semantics.
+ * Deterministic by definition order -> byte-stable across roundtrips.
+ * The emitter's nametab lives in yep_emitter (owner: yep_emit_run). */
+static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
+    yep_writer* w = &em->w;
+    if (n->anchor.len == 0) {
+        return;
+    }
+    wr_byte(w, '&');
+    if (w->canonical) {
+        uint32_t idx = yep_nametab_get(&em->canon_names, n->anchor);
+        if (idx == YEP_NAMETAB_NIL) {
+            idx = em->canon_names.count;
+            yep_nametab_set(&em->canon_names, n->anchor, idx);
+        }
+        char name[24];
+        int nl = snprintf(name, sizeof(name), "a%u", idx);
+        wr_put(w, name, (uint32_t)nl);
+    } else {
         wr_put(w, (const char*)n->anchor.p, n->anchor.len);
-        wr_byte(w, ' ');
+    }
+    wr_byte(w, ' ');
+}
+
+static void emit_alias_ex(yep_emitter* em, const yep_dnode* n) {
+    yep_writer* w = &em->w;
+    wr_byte(w, '*');
+    if (w->canonical) {
+        uint32_t idx = yep_nametab_get(&em->canon_names, n->value);
+        char name[24];
+        int nl;
+        if (idx == YEP_NAMETAB_NIL) {
+            nl = snprintf(name, sizeof(name), "%.*s", (int)n->value.len, (const char*)n->value.p);
+        } else {
+            nl = snprintf(name, sizeof(name), "a%u", idx);
+        }
+        wr_put(w, name, (uint32_t)nl);
+    } else {
+        wr_put(w, (const char*)n->value.p, n->value.len);
     }
 }
 
@@ -242,7 +338,7 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
     const yep_dom* d = em->doc->dom;
     const yep_dnode* n = yep_dom_node(d, id);
     emit_tag(w, n);
-    emit_anchor(w, n);
+    emit_anchor_ex(em, n);
     int map = (n->kind == 2);
     wr_byte(w, map ? '{' : '[');
     uint32_t child = n->first_child;
@@ -253,8 +349,15 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
             wr_put(w, ", ", 2);
         }
         if (map) {
-            emit_node(em, child, 0, 1);
-            wr_put(w, ": ", 2);
+            int explicit_key = cn->anchor.len > 0 || cn->tag.len > 0 || cn->kind != 0;
+            if (explicit_key) {
+                wr_put(w, "? ", 2);
+                emit_node(em, child, 0, 1);
+                wr_put(w, " : ", 3);
+            } else {
+                emit_node(em, child, 0, 1);
+                wr_put(w, ": ", 2);
+            }
             emit_node(em, cn->next_sibling, 0, 0);
             child = cn->next_sibling;
             cn = yep_dom_node(d, child);
@@ -302,7 +405,7 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             emit_node(em, kn->next_sibling, content_col, 0);
         } else {
             emit_tag(w, kn);
-            emit_anchor(w, kn);
+            emit_anchor_ex(em, kn);
             emit_scalar(w, kn, content_col, 1);
             wr_byte(w, ':');
             if (vn->kind == 0 || vn->kind == 3 || vn->flow) {
@@ -362,11 +465,10 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
         return;
     }
     if (n->kind == 3) { /* alias */
-        wr_byte(w, '*');
-        wr_put(w, (const char*)n->value.p, n->value.len);
+        emit_alias_ex(em, n);
         return;
     }
-    if (n->flow || (w->force_flow && (n->kind == 1 || n->kind == 2))) {
+    if ((n->kind == 1 || n->kind == 2) && (n->flow || w->canonical || w->force_flow)) {
         /* force_flow holds through the subtree: a complex key's nested
          * collections all render flow (scalars are never collections) */
         emit_flow(em, id);
@@ -375,7 +477,7 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
     if (n->kind == 2) { /* mapping */
         if (n->count == 0) {
             emit_tag(w, n);
-            emit_anchor(w, n);
+            emit_anchor_ex(em, n);
             wr_put(w, "{}", 2);
         } else {
             emit_block_map(em, id, parent_col + 2);
@@ -385,7 +487,7 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
     if (n->kind == 1) { /* sequence */
         if (n->count == 0) {
             emit_tag(w, n);
-            emit_anchor(w, n);
+            emit_anchor_ex(em, n);
             wr_put(w, "[]", 2);
         } else {
             emit_block_seq(em, id, parent_col + 2);
@@ -393,7 +495,7 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
         return;
     }
     emit_tag(w, n);
-    emit_anchor(w, n);
+    emit_anchor_ex(em, n);
     if (parent_col < 0) {
         parent_col = 0; /* root scalar: block body at column 2 */
     }
@@ -407,13 +509,14 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     w->len = 0;
     w->last = 0;
     w->force_flow = 0;
-    int multi = (d->dcount > 1);
+    yep_nametab_clear(&em->canon_names);
+    int multi = (d->dcount > 1) || w->canonical;
     for (uint32_t i = 0; i < d->dcount; i++) {
         if (multi) {
             wr_put(w, "---\n", 4);
         }
         const yep_dnode* root = yep_dom_node(d, d->docs[i]);
-        if (root != NULL && (root->kind == 1 || root->kind == 2) && !root->flow &&
+        if (root != NULL && (root->kind == 1 || root->kind == 2) && !root->flow && !w->canonical &&
             (root->tag.len > 0 || root->anchor.len > 0)) {
             /* root block-collection props ride their own leading line;
              * scalars and flow collections carry them inline */

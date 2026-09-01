@@ -1,6 +1,6 @@
 # TODO.impl/13 — Emitter: exact sizing, style tables, canonical mode, streaming
 
-Status: phase A COMPLETE (writer/sizing/style, roundtrip 405/405 byte-stable); B (folding, canonical, perf) and C (streaming) remain · Depends: 11, 09, 10 · Layer: `src/yeptris/emit` · PLAN.md phase: 4
+Status: phase A COMPLETE; phase B canonical-mode COMPLETE (2026-09-01: yeptris_emit_options + serialize_ex; fixed form = flow collections, quoted strings, typed words, shortest floats via 14's printer, canonical anchor renaming a0.. via the nametab, '? key :' explicit flow keys for props/alias/collection keys; parse-fixed-point gate over the 405-snapshot corpus in emit-roundtrip); B folding/width and C streaming remain · Depends: 11, 09, 10 · Layer: `src/yeptris/emit` · PLAN.md phase: 4
 
 ## Goal
 

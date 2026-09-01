@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+#include "../common/nametab.h"
 #include "../doc.h"
 #include "../dom/dom.h"
 
@@ -13,11 +14,14 @@ typedef struct yep_writer {
     int dry;        /* 1: size only */
     char last;      /* last byte written ('\0' at start) — dry-safe */
     int force_flow; /* complex-key emission: collections render flow */
+    int canonical;  /* 13B: fixed canonical form — flow collections,
+                     * quoted strings, typed words, shortest floats */
 } yep_writer;
 
 typedef struct yep_emitter {
     const yeptris_document* doc;
     yep_writer w;
+    yep_nametab canon_names; /* canonical anchor renaming: view -> index */
 } yep_emitter;
 
 /* One pass over the document set. dry=1 counts exactly. */

@@ -34,4 +34,10 @@ const char* yep_tag_uri(yep_tag_id id);
  * id when it matches one, else YEPTRIS_TAG_CUSTOM. */
 yep_tag_id yep_tag_from_uri(const char* p, uint32_t len);
 
+/* Canonical word for a resolved float view: ".inf" / "-.inf" / ".nan"
+ * or NULL when the view is not an infinity/nan word (the canonical
+ * emitter re-prints these words; libc strtod does not accept them
+ * portably). */
+const char* yep_tag_float_word(const char* p, uint32_t len);
+
 #endif /* YEP_RESOLVER_H */

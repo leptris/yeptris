@@ -38,3 +38,21 @@ yep_tag_id yep_tag_from_uri(const char* p, uint32_t len) {
     }
     return 11; /* YEPTRIS_TAG_CUSTOM */
 }
+
+const char* yep_tag_float_word(const char* p, uint32_t len) {
+    static const struct {
+        const char* word;
+        const char* canon;
+    } words[] = {
+        {".inf", ".inf"},   {".Inf", ".inf"},   {".INF", ".inf"},  {"-.inf", "-.inf"},
+        {"-.Inf", "-.inf"}, {"-.INF", "-.inf"}, {"+.inf", ".inf"}, {"+.Inf", ".inf"},
+        {"+.INF", ".inf"},  {".nan", ".nan"},   {".NaN", ".nan"},  {".NAN", ".nan"},
+    };
+    for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
+        uint32_t wl = (uint32_t)strlen(words[i].word);
+        if (len == wl && memcmp(p, words[i].word, wl) == 0) {
+            return words[i].canon;
+        }
+    }
+    return NULL;
+}
