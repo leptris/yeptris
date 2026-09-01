@@ -507,7 +507,8 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
     }
     e_line_done(e, e->pos);
 
-    int content_indent = explicit_indent ? parent_col + explicit_indent : -1;
+    int content_indent =
+        explicit_indent ? (parent_col < 0 ? explicit_indent : parent_col + explicit_indent) : -1;
     e->fold_n = 0;
     uint32_t pending_breaks = 0;
     uint32_t trailing_breaks = 0;
@@ -897,6 +898,16 @@ static int e_alias(yep_engine* e, yep_event* ev) {
     size_t star = e->pos;
     size_t start = ++e->pos;
     while (e->pos < e->len && e_prop_char((unsigned char)e->p[e->pos])) {
+        if (e->p[e->pos] == ':') {
+            /* ':' separates only before blank or flow indicators; at
+             * EOL it belongs to the name ("*a:" — 2SXE), and interior
+             * colons always do ("*an:chor" — Y2GN) */
+            size_t n2 = e->pos + 1;
+            if (n2 < e->len && (e->p[n2] == ' ' || e->p[n2] == '\t' ||
+                                yep_ct_is((unsigned char)e->p[n2], YEP_CT_FLOW_IND))) {
+                break;
+            }
+        }
         e->pos++;
     }
     yep_view name = {e->p + start, (uint32_t)(e->pos - start)};
@@ -2049,8 +2060,28 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (li.indent == floor_col && e->depth > 0 &&
             (ctx == YEP_CTX_AFTER_COLON || ctx == YEP_CTX_VALUE_LINE) &&
             (li.first == '&' || li.first == '!')) {
-            /* properties at the parent column are a new node, not a value */
-            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos + li.indent);
+            /* Only PROPS-ONLY lines are new nodes, not values
+             * ("key: &x\n!!map\na: b"); "&anchor c: 3" is a keyed pair */
+            size_t t = li.offset + li.indent;
+            int only_props = 1;
+            while (t < li.end) {
+                char pc = e->p[t];
+                if (pc == ' ' || pc == '\t') {
+                    t++;
+                    continue;
+                }
+                if (pc == '&' || pc == '!' || pc == '<' || pc == ',' || pc == '>' ||
+                    (pc != '\n' && pc != '\r' && pc != '#' &&
+                     !yep_ct_is((unsigned char)pc, YEP_CT_FLOW_IND) && pc != ':' && pc != ' ')) {
+                    t++;
+                    continue;
+                }
+                only_props = (pc == '\n' || pc == '\r' || pc == '#');
+                break;
+            }
+            if (only_props) {
+                return e_fail(e, YEP_ERR_UNEXPECTED, e->pos + li.indent);
+            }
         }
         yep_ctx vctx = (ctx == YEP_CTX_AFTER_COLON) ? YEP_CTX_VALUE_LINE : ctx;
         /* At document root there is no parent block: a following line

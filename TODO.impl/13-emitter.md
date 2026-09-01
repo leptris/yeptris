@@ -1,6 +1,6 @@
 # TODO.impl/13 — Emitter: exact sizing, style tables, canonical mode, streaming
 
-Status: pending · Depends: 11, 09, 10 · Layer: `src/yeptris/emit` · PLAN.md phase: 4
+Status: phase A COMPLETE (writer/sizing/style, roundtrip 405/405 byte-stable); B (folding, canonical, perf) and C (streaming) remain · Depends: 11, 09, 10 · Layer: `src/yeptris/emit` · PLAN.md phase: 4
 
 ## Goal
 

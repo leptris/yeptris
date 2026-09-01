@@ -75,6 +75,7 @@ static uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
         n->anchor = ev->anchor;
         n->style = ev->style;
         n->implicit = ev->implicit;
+        n->flow = ev->flow;
         n->line = ev->line;
         n->col = ev->col;
     }
@@ -130,14 +131,17 @@ static int dom_place(yep_dom* d, uint32_t id) {
     uint32_t top = d->stack[d->depth - 1];
     yep_dnode* p = &d->nodes[top];
     if (p->kind == YEP_DOM_MAPPING) {
-        if (!d->map_pending_key) {
-            d->pending_key = id;
-            d->map_pending_key = 1;
+        /* per-frame pairing: a map nested as a KEY consumes this frame's
+         * slot without disturbing the parent's (global state corrupted
+         * complex keys) */
+        if (!d->map_pending_key[d->depth - 1]) {
+            d->pending_key_id[d->depth - 1] = id;
+            d->map_pending_key[d->depth - 1] = 1;
             return 0;
         }
-        d->map_pending_key = 0;
-        dom_link(d, top, d->pending_key); /* key */
-        dom_link(d, top, id);             /* value */
+        d->map_pending_key[d->depth - 1] = 0;
+        dom_link(d, top, d->pending_key_id[d->depth - 1]); /* key */
+        dom_link(d, top, id);                              /* value */
         return 0;
     }
     dom_link(d, top, id);
@@ -169,6 +173,7 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
         if (dom_place(d, id) != 0) {
             return -1;
         }
+        d->map_pending_key[d->depth] = 0;
         d->stack[d->depth++] = id;
         return 0;
     }
