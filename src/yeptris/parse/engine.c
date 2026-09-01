@@ -686,7 +686,7 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
         }
         /* At document root there is no parent block, so continuation
          * lines may sit at column 0. */
-        int too_shallow = root_ctx ? (li.indent < 0) : (li.indent <= block_floor);
+        int too_shallow = root_ctx ? 0 : (li.indent <= block_floor);
         if (too_shallow || (li.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END))) {
             break; /* a directive-LIKE line is content (XLQ9) */
         }
