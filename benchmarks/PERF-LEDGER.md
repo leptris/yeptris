@@ -16,6 +16,12 @@ per-machine context only.
   shapes; realworld is the committed snapshot set).
 - Reference: libyaml linked via `-DYEPTRIS_BENCH_LIBYAML_ROOT`
   (mandatory — it is the mission). Weakest cell is the headline.
+- CI (`bench.yml`) races the same matrix on shared runners with
+  libyaml pinned at `90a56d4500aa1a1798514c5cb55c3ad4cb095f94`.
+  Shared-runner ratios run lower than dev-machine ratios (noisy
+  neighbors, throttling): first run measured a 1.35x floor. Compare CI
+  artifacts ACROSS COMMITS on the same runner class, not against the
+  dev-machine table.
 
 ## Baseline 2026-09-01 (Apple silicon, Release+LTO, --quick)
 
