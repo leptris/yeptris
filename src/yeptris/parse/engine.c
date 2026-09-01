@@ -47,8 +47,10 @@ struct yep_engine {
     const char* p;
     size_t len;
     size_t pos;
-    uint32_t line;     /* 1-based current line */
-    size_t line_start; /* offset of the current line start */
+    uint32_t line;          /* 1-based current line */
+    size_t line_start;      /* offset of the current line start */
+    yep_line_info li_cache; /* flow loop's per-line scan_line memo */
+    uint32_t li_cache_line; /* 0 = no entry (line numbers are 1-based) */
     yep_error err;
     const yep_sink* sink;
 
@@ -189,9 +191,20 @@ static void e_line_done(yep_engine* e, size_t at) {
         e->pos = at + br;
         e->line++;
         e->line_start = e->pos;
+        e->li_cache_line = 0;
     } else {
         e->pos = at;
     }
+}
+
+/* scan_line for the current line, memoized for the flow loop (the
+ * loop head and the post-ws check each need it every line). */
+static yep_line_info e_line_info_here(yep_engine* e) {
+    if (e->li_cache_line != e->line) {
+        e->li_cache = yep_scan_line(e->p, e->len, e->line_start);
+        e->li_cache_line = e->line;
+    }
+    return e->li_cache;
 }
 
 static void e_skip_inline_space(yep_engine* e) {
@@ -371,23 +384,40 @@ static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int
     uint32_t start = (uint32_t)content_start;
     uint32_t end = (uint32_t)close;
     int multiline = 0;
-    for (size_t i = start; i < end; i++) {
-        if (e->p[i] == '\n' || e->p[i] == '\r') {
+    uint32_t breaks = 0; /* '\n' occurrences, folded with detection */
+    {
+        const yep_text_kernels* k = yep_text_active();
+        unsigned char brk[32];
+        yep_stopset_clear(brk);
+        yep_stopset_add(brk, '\n');
+        yep_stopset_add(brk, '\r');
+        size_t i = start;
+        while (i < end) {
+            ptrdiff_t r = k->stopset_find(e->p + i, end - i, brk);
+            if (r < 0) {
+                break; /* single-line span: one SIMD call decided it */
+            }
+            size_t at = i + (size_t)r;
             multiline = 1;
+            if (e->p[at] == '\n') {
+                breaks++;
+            }
             /* each following line must be content, not a document marker,
              * and in block context must out-indent the parent (QB6E) */
-            size_t br = yep_scan_break_len(e->p, e->len, i);
-            yep_line_info ql = yep_scan_line(e->p, e->len, i + br);
+            size_t br = yep_scan_break_len(e->p, e->len, at);
+            yep_line_info ql = yep_scan_line(e->p, e->len, at + br);
             if (ql.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END | YEP_LF_DIRECTIVE)) {
-                return e_fail(e, YEP_ERR_UNTERMINATED_QUOTE, i + br);
+                return e_fail(e, YEP_ERR_UNTERMINATED_QUOTE, at + br);
             }
             if (enforce && !(ql.flags & YEP_LF_BLANK) && ql.indent <= min_indent) {
-                return e_fail(e, YEP_ERR_BAD_INDENT, i + br + ql.indent);
+                return e_fail(e, YEP_ERR_BAD_INDENT, at + br + ql.indent);
             }
+            i = at + br;
         }
     }
-    /* escape pre-validation (double quotes only: ' has no escapes) */
-    for (size_t i = (q == '"') ? start : end; i < end; i++) {
+    /* escape pre-validation (double quotes only: ' has no escapes);
+     * quote_scan already reported whether any backslash exists */
+    for (size_t i = (q == '"' && has_esc) ? start : end; i < end; i++) {
         if (e->p[i] != '\\' || i + 1 >= end) {
             continue;
         }
@@ -448,11 +478,7 @@ static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int
     }
 
     size_t after = close + 1;
-    for (size_t i = start; i < after && i < e->len; i++) {
-        if (e->p[i] == '\n') {
-            e->line++;
-        }
-    }
+    e->line += breaks;
     /* approximate: after a multi-line scalar the column resets */
     if (multiline) {
         size_t ls = close;
@@ -926,7 +952,7 @@ static int e_flow_ws(yep_engine* e) {
         if (e->pos < e->len && (e->p[e->pos] == '\n' || e->p[e->pos] == '\r')) {
             e_line_done(e, e->pos);
             if (e->pos < e->len && e->pos == e->line_start) {
-                yep_line_info fl = yep_scan_line(e->p, e->len, e->line_start);
+                yep_line_info fl = e_line_info_here(e);
                 if ((fl.flags & YEP_LF_TAB) && !(fl.flags & YEP_LF_BLANK) && fl.indent == 0) {
                     /* a col-0 tab before flow content errors; tabs after
                      * spaces are separation (6HB6) */
@@ -1203,7 +1229,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
     for (;;) {
         e_event_init(&ev, YEP_EV_NONE);
         if (e->pos == e->line_start && e->pos < e->len) {
-            yep_line_info fl = yep_scan_line(e->p, e->len, e->line_start);
+            yep_line_info fl = e_line_info_here(e);
             if ((fl.flags & YEP_LF_TAB) && !(fl.flags & YEP_LF_BLANK)) {
                 return e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos); /* Y79Y#4 */
             }
@@ -1223,7 +1249,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             return -1;
         }
         if (e->pos < e->len && e->pos == e->line_start) {
-            yep_line_info fl = yep_scan_line(e->p, e->len, e->line_start);
+            yep_line_info fl = e_line_info_here(e);
             if (fl.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END | YEP_LF_DIRECTIVE)) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* marker inside flow */
             }
@@ -2233,6 +2259,7 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     e->pos = 0;
     e->line = 1;
     e->line_start = 0;
+    e->li_cache_line = 0;
     e->depth = 0;
     yep_nametab_clear(&e->anchors);
     e->tagmap_n = 0;
