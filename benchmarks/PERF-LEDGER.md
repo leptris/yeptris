@@ -84,3 +84,29 @@ files that parse. With libyaml linked, filtered to files BOTH parse:
 the race needs common ground; yeptris-only conformance wins (e.g. 2JQS
 empty-key mappings, suite-valid, libyaml-rejected) stay in the
 conformance suite where the comparison belongs.
+
+### 2026-09-01 — flow-json tuning pass (FLAT, kept: strictly less work)
+
+Profiled the flow kernel (sample, no-LTO build, per-line symbolization).
+Two real inefficiencies fixed:
+
+- `e_quoted_floor` walked every quoted scalar's span up to three extra
+  times byte-wise (multiline detect, escape pre-validation, newline
+  count). Now one SIMD `stopset_find` pass finds breaks (folding the
+  newline count in), and escape validation is gated on `has_esc`, which
+  `quote_scan` already reports. Strictly less work per quoted scalar.
+- The flow loop's line-start checks ran `yep_scan_line` twice per line
+  (loop head + post-ws); memoized per line (`li_cache`, invalidated on
+  every line advance and run reset).
+
+Measured: flow-json DOM 2.51x (was 2.44–2.53x) — flat within noise.
+All other shapes held or improved slightly (deep-nesting DOM 2.63 →
+2.90x, scalar-heavy DOM 3.59 → 3.66x). Kept: correct and less work,
+but the wall is elsewhere — per-event machinery. flow-json costs
+~80 ns/event (240 cycles) across ~14 events per line, spread thin:
+frame-state guards, event init+copy, resolver, DOM node create+link,
+single-pair-key deferral replay (`e_buf_send`), ws skipping. No single
+hotspot above ~12% remains. Conclusion: the next 2x on flow-json is
+architectural — a JSON-class structural fast path (SIMD scan → bulk
+events for pure-JSON flow spans, TODO 08/21) or event-struct slimming
+(invasive). Recorded here so the next attempt starts from this wall.
