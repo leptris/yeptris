@@ -101,6 +101,9 @@ int main(int argc, char** argv) {
         }
     }
     closedir(d);
+    for (int i = 0; i < nv; i++) {
+        free(v[i].name);
+    }
     printf("json suite: %d/%d match pinned verdicts, %d divergences\n", checked - bad, checked,
            bad);
     return bad == 0 ? 0 : 1;
