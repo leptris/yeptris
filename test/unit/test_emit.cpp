@@ -175,3 +175,83 @@ TEST(EmitCanonical, OptionsVersioning) {
     EXPECT_EQ(std::string(out, len), "a: 1\n");
     free(out);
 }
+
+/* ---- streaming writer (13C) ------------------------------------------ */
+
+#include <yeptris/emit.h>
+
+namespace {
+struct SinkAcc {
+    std::string out;
+    size_t calls = 0;
+};
+} // namespace
+
+static int sink_append(void* ctx, const char* bytes, size_t len) {
+    SinkAcc* a = (SinkAcc*)ctx;
+    a->out.append(bytes, len);
+    a->calls++;
+    return 0;
+}
+
+static int sink_abort(void* ctx, const char* bytes, size_t len) {
+    (void)ctx;
+    (void)bytes;
+    (void)len;
+    return 7;
+}
+
+TEST(EmitStream, IdenticalToBuffered) {
+    const char* docs[] = {
+        "a: 1\nb: [1, 2, 3]\nc: hello world\n",
+        "---\n- one\n- two\n- three\n...\n",
+        "text: |\n  a very long literal block\n  spanning several lines\n  to cross the mark\n",
+    };
+    for (const char* y : docs) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr);
+        size_t blen = 0;
+        char* buffered = yeptris_serialize(doc, &blen);
+        SinkAcc acc;
+        size_t slen = yeptris_serialize_stream(doc, nullptr, sink_append, &acc);
+        ASSERT_NE(buffered, nullptr);
+        EXPECT_EQ(slen, blen);
+        EXPECT_EQ(acc.out.size(), blen);
+        EXPECT_EQ(memcmp(acc.out.data(), buffered, blen), 0);
+        EXPECT_GE(acc.calls, 1u);
+        free(buffered);
+        yeptris_document_free(doc);
+    }
+}
+
+TEST(EmitStream, LargeDocumentFlushes) {
+    std::string y;
+    for (int i = 0; i < 20000; i++) {
+        y += "key" + std::to_string(i) + ": value number " + std::to_string(i) + "\n";
+    }
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y.c_str(), y.size(), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t blen = 0;
+    char* buffered = yeptris_serialize(doc, &blen);
+    SinkAcc acc;
+    size_t slen = yeptris_serialize_stream(doc, nullptr, sink_append, &acc);
+    EXPECT_GT(blen, (1u << 16)); /* actually crosses the watermark */
+    EXPECT_EQ(slen, blen);
+    EXPECT_EQ(acc.out.size(), blen);
+    EXPECT_EQ(memcmp(acc.out.data(), buffered, blen), 0);
+    EXPECT_GT(acc.calls, 1u); /* flushed multiple times */
+    free(buffered);
+    yeptris_document_free(doc);
+}
+
+TEST(EmitStream, AbortPropagates) {
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse("a: 1\n", 5, &st);
+    ASSERT_NE(doc, nullptr);
+    SinkAcc acc;
+    size_t slen = yeptris_serialize_stream(doc, nullptr, sink_abort, &acc);
+    EXPECT_EQ(slen, 0u); /* aborted: reported as nothing written */
+    yeptris_document_free(doc);
+}

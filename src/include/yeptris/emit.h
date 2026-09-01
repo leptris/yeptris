@@ -47,6 +47,14 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument doc, const yeptris_emit_o
  * returned. Returns 0 on a NULL document. */
 YEPTRIS_API size_t yeptris_serialize_into(YeptrisDocument doc, char* buf, size_t cap);
 
+/* Streaming emission (13C): bytes are delivered in chunks to sink as
+ * the walk proceeds — memory bounded by the largest scalar, never the
+ * document. Returns the total byte count, or 0 on a NULL argument or
+ * when the sink aborts (nonzero return aborts the walk). */
+typedef int (*yeptris_emit_sink)(void* ctx, const char* bytes, size_t len);
+YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument doc, const yeptris_emit_options* opts,
+                                            yeptris_emit_sink sink, void* ctx);
+
 /* Convenience: serializes into a malloc'd buffer (caller frees).
  * Returns NULL on allocation failure or a NULL document; *len (may be
  * NULL) receives the byte count. The buffer is NUL-terminated. */

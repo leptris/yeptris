@@ -1,6 +1,6 @@
 # TODO.impl/13 — Emitter: exact sizing, style tables, canonical mode, streaming
 
-Status: phase A COMPLETE; phase B canonical-mode COMPLETE (2026-09-01: yeptris_emit_options + serialize_ex; fixed form = flow collections, quoted strings, typed words, shortest floats via 14's printer, canonical anchor renaming a0.. via the nametab, '? key :' explicit flow keys for props/alias/collection keys; parse-fixed-point gate over the 405-snapshot corpus in emit-roundtrip); B folding/width and C streaming remain · Depends: 11, 09, 10 · Layer: `src/yeptris/emit` · PLAN.md phase: 4
+Status: phase A COMPLETE; phase B canonical-mode COMPLETE (2026-09-01: yeptris_emit_options + serialize_ex; fixed form = flow collections, quoted strings, typed words, shortest floats via 14's printer, canonical anchor renaming a0.. via the nametab, '? key :' explicit flow keys for props/alias/collection keys; parse-fixed-point gate over the 405-snapshot corpus in emit-roundtrip); 13C COMPLETE 2026-09-02: yeptris_serialize_stream — flush hooks inside the writer (append-only output makes any high-water crossing a safe cut), memory bounded by the 64 KiB mark, sink-abort propagates as 0; byte-equality with buffered output gated (incl. multi-flush on a 1 MB doc). B folding/width remains · Depends: 11, 09, 10 · Layer: `src/yeptris/emit` · PLAN.md phase: 4
 
 ## Goal
 
