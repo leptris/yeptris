@@ -125,9 +125,15 @@ static void num_shr(num* a, int bits) {
         return;
     }
     for (int i = 0; i + limbs < a->n; i++) {
+        /* rem == 0 would shift by 32 (UB on uint32_t) — the hi limb
+         * is only meaningful when there IS a fractional shift */
+        if (rem == 0) {
+            a->d[i] = a->d[i + limbs];
+            continue;
+        }
         uint32_t lo = a->d[i + limbs] >> rem;
         uint32_t hi = (i + limbs + 1 < a->n) ? a->d[i + limbs + 1] << (32 - rem) : 0;
-        a->d[i] = (rem == 0) ? a->d[i + limbs] : (lo | hi);
+        a->d[i] = lo | hi;
     }
     for (int i = a->n - limbs; i < a->n; i++) {
         a->d[i] = 0;

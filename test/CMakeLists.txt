@@ -36,6 +36,7 @@ add_executable(test_unit
     unit/test_jsonc_compat.cpp
     unit/test_mutate.cpp
     unit/test_mapindex.cpp
+    unit/test_limits.cpp
     unit/test_yaml_compat.cpp
 )
 find_package(Threads REQUIRED)
@@ -192,12 +193,33 @@ if(YEPTRIS_LIBYAML_ROOT)
     target_link_libraries(gen_libyaml_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
     yeptris_set_warnings(gen_libyaml_golden)
 
+    add_library(diff_core STATIC port/libyaml/diff_core.c)
+    target_include_directories(diff_core PUBLIC
+        ${CMAKE_SOURCE_DIR}/src/yeptris
+        ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml ${YEPTRIS_LIBYAML_ROOT}/include)
+    target_link_libraries(diff_core PUBLIC yeptris_static
+        ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
+    yeptris_set_warnings(diff_core)
+
     add_executable(yepdiff ../tools/yepdiff.c)
     target_include_directories(yepdiff PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris
         ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml ${YEPTRIS_LIBYAML_ROOT}/include)
-    target_link_libraries(yepdiff PRIVATE yeptris_static
-        ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
+    target_link_libraries(yepdiff PRIVATE diff_core)
     yeptris_set_warnings(yepdiff)
+
+    add_executable(fuzz_diff fuzz/fuzz_diff.c)
+    target_include_directories(fuzz_diff PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml ${YEPTRIS_LIBYAML_ROOT}/include)
+    target_link_libraries(fuzz_diff PRIVATE diff_core)
+    target_compile_definitions(fuzz_diff PRIVATE YEP_FUZZ_STANDALONE)
+    yeptris_set_warnings(fuzz_diff)
+
+    add_test(
+        NAME fuzz-diff-corpus
+        COMMAND fuzz_diff
+                --ledger=${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/ledger.txt
+                ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+    )
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)

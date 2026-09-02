@@ -2,8 +2,72 @@
 # the yaml-test-suite ground truth, which yeptris follows. Verified
 # against the suite's own expected trees; suite-ok + both-parse + stream
 # diff => upstream deviation. Extend only with a suite citation.
-
+# (Generated 2026-09-02 by joining every corpus split to the conformance
+# runner's per-case verdicts — see fuzz_diff, the enforcing gate.)
+2JQS  suite-VALID, libyaml rejects: Block Mapping with Missing Keys
+2LFX  suite-VALID, libyaml rejects: Spec Example 6.13. Reserved Directives [1.3]
+2SXE  suite-VALID, libyaml rejects: Anchors With Colon in Name
+4ABK  suite-VALID, libyaml rejects: Flow Mapping Separate Values
+4MUZ  suite-VALID, libyaml rejects: Flow mapping colon on line after key
+4MUZ#2  suite-VALID, libyaml rejects: Flow mapping colon on line after key
+4MUZ#3  suite-VALID, libyaml rejects: Flow mapping colon on line after key
+58MP  suite-VALID, libyaml rejects: Flow mapping edge cases
+5MUD  suite-VALID, libyaml rejects: Colon and adjacent value on next line
+5T43  suite-VALID, libyaml rejects: Colon at the beginning of adjacent flow scalar
 652Z  libyaml drops the leading '?' from a flow plain key ("?foo"); the suite keeps it
-Y2GN  libyaml ends an anchor at ':' ("&an:chor"); the suite allows ':' in anchor names
-L24T#2  libyaml loses the final more-indented blank under keep chomping
+6BCT  suite-VALID, libyaml rejects: Spec Example 6.3. Separation Spaces
+6CA3  suite-VALID, libyaml rejects: Tab indented top flow
+6LVF  suite-VALID, libyaml rejects: Spec Example 6.13. Reserved Directives
+6M2F  suite-VALID, libyaml rejects: Aliases in Explicit Block Mapping
+7Z25  suite-VALID, libyaml rejects: Bare document after document end marker
+8XYN  suite-VALID, libyaml rejects: Anchor with unicode character
+96NN  suite-VALID, libyaml rejects: Leading tab content in literals
+9C9N  suite-INVALID, libyaml accepts: Wrong indented flow sequence
+9HCY  suite-INVALID, libyaml accepts: Need document footer before directives
+9JBA  suite-INVALID, libyaml accepts: Invalid comment after end of flow sequence
+9SA2  suite-VALID, libyaml rejects: Multiline double quoted flow mapping key
+A2M4  suite-VALID, libyaml rejects: Spec Example 6.2. Indentation Indicators
+BEC7  suite-VALID, libyaml rejects: Spec Example 6.14. “YAML” directive
+CFD4  suite-VALID, libyaml rejects: Empty implicit key in single pair flow sequences
+CVW2  suite-INVALID, libyaml accepts: Invalid comment after comma
+DBG4  suite-VALID, libyaml rejects: Spec Example 7.10. Plain Characters
+DK3J  suite-VALID, libyaml rejects: Zero indented block scalar with line that looks like a comment
+DK95  suite-VALID, libyaml rejects: Tabs that look like indentation
+DK95#2  suite-INVALID, libyaml accepts: Tabs that look like indentation
+DK95#4  suite-VALID, libyaml rejects: Tabs that look like indentation
+DK95#5  suite-VALID, libyaml rejects: Tabs that look like indentation
+EB22  suite-INVALID, libyaml accepts: Missing document-end marker before directive
+FP8R  suite-VALID, libyaml rejects: Zero indented block scalar
+FRK4  suite-VALID, libyaml rejects: Spec Example 7.3. Completely Empty Flow Nodes
+G5U8  suite-INVALID, libyaml accepts: Plain dashes in flow sequence
+HM87  suite-VALID, libyaml rejects: Scalars in flow start with syntax char
 HM87#2  libyaml treats "[?x]" as an explicit key; the suite reads the plain "?x"
+HWV9  suite-VALID, libyaml rejects: Document-end marker
+K3WX  suite-VALID, libyaml rejects: Colon and adjacent value after comment on next line
+L24T#2  libyaml loses the final more-indented blank under keep chomping
+M2N8  suite-VALID, libyaml rejects: Question mark edge cases
+M7A3  suite-VALID, libyaml rejects: Spec Example 9.3. Bare Documents
+MUS6  suite-INVALID, libyaml accepts: Directive variants
+MUS6#2  suite-INVALID, libyaml accepts: Directive variants
+NHX8  suite-VALID, libyaml rejects: Empty Lines at End of Document
+NJ66  suite-VALID, libyaml rejects: Multiline plain flow mapping key
+NKF9  suite-VALID, libyaml rejects: Empty keys in block and flow mapping
+Q5MG  suite-VALID, libyaml rejects: Tab at beginning of line followed by a flow mapping
+QB6E  suite-INVALID, libyaml accepts: Wrong indented multiline quoted scalar
+QT73  suite-VALID, libyaml rejects: Comment and document-end marker
+R4YG  suite-VALID, libyaml rejects: Spec Example 8.2. Block Indentation Indicator
+RHX7  suite-INVALID, libyaml accepts: YAML directive without document end marker
+S3PD  suite-VALID, libyaml rejects: Spec Example 8.18. Implicit Block Mapping Entries
+S98Z  suite-INVALID, libyaml accepts: Block scalar with more spaces than first content line
+SU5Z  suite-INVALID, libyaml accepts: Comment without whitespace after doublequoted scalar
+UKK6  suite-VALID, libyaml rejects: Syntax character edge cases
+UT92  suite-VALID, libyaml rejects: Spec Example 9.4. Explicit Documents
+VJP3#2  suite-VALID, libyaml rejects: Flow collections over many lines
+W4TN  suite-VALID, libyaml rejects: Spec Example 9.5. Directives Documents
+W5VH  suite-VALID, libyaml rejects: Allowed characters in alias
+X4QW  suite-INVALID, libyaml accepts: Comment without whitespace after block scalar indicator
+Y2GN  libyaml ends an anchor at ':' ("&an:chor"); the suite allows ':' in anchor names
+Y79Y#11  suite-VALID, libyaml rejects: Tabs in various contexts
+Y79Y#2  suite-VALID, libyaml rejects: Tabs in various contexts
+Y79Y#4  suite-INVALID, libyaml accepts: Tabs in various contexts
+YJV2  suite-INVALID, libyaml accepts: Dash in flow sequence

@@ -29,6 +29,7 @@ option(YEPTRIS_BUILD_JSONC_COMPAT
     "Build libyeptris-jsonc: the json-c drop-in migration layer (TODO.impl/21)" ON)
 option(YEPTRIS_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(YEPTRIS_ENABLE_TSAN "Enable ThreadSanitizer (requires all-TSAN build)" OFF)
+option(YEPTRIS_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(YEPTRIS_ENABLE_FUZZING "Build libFuzzer harnesses (TODO.impl/19; requires clang)" OFF)
 option(YEPTRIS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
@@ -60,6 +61,14 @@ if(YEPTRIS_ENABLE_TSAN)
     add_compile_options(-fsanitize=thread -fno-omit-frame-pointer -g)
     add_link_options(-fsanitize=thread)
     message(STATUS "ThreadSanitizer: ENABLED")
+endif()
+
+if(YEPTRIS_ENABLE_UBSAN)
+    add_compile_options(
+        -fsanitize=undefined -fsanitize=float-cast-overflow
+        -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=undefined -fsanitize=float-cast-overflow)
+    message(STATUS "UndefinedBehaviorSanitizer: ENABLED (fatal)")
 endif()
 
 # libFuzzer implies ASAN (libleptris TODO 40 pattern).

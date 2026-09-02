@@ -79,3 +79,31 @@ jobs:
       # document sharing safe — TSAN verifies the whole suite
       - name: Test under TSAN
         run: ctest --test-dir build --output-on-failure
+
+  ubsan:
+    name: UBSan (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Configure (UBSan)
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DBUILD_TESTING=ON \
+            -DYEPTRIS_BUILD_CLI=ON \
+            -DYEPTRIS_ENABLE_UBSAN=ON \
+            -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Fetch conformance corpora
+        run: scripts/fetch-corpora.sh
+
+      # undefined behavior is a bug, not a report: -fno-sanitize-recover
+      - name: Test under UBSan
+        run: ctest --test-dir build --output-on-failure

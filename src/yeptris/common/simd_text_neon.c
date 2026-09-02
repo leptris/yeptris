@@ -105,7 +105,9 @@ static void yep_neon_copy_count3(char* dst, const char* src, size_t len, char c0
         memcpy(dst + i, src + i, len - i);
     }
     size_t ta = 0, tb = 0, td = 0;
-    yep_text_count3_scalar(dst + i, len - i, c0, c1, c2, &ta, &tb, &td);
+    if (i < len) { /* NULL dst + 0 offset is still UB to form */
+        yep_text_count3_scalar(dst + i, len - i, c0, c1, c2, &ta, &tb, &td);
+    }
     *n0 = a + ta;
     *n1 = b + tb;
     *n2 = d + td;
