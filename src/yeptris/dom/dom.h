@@ -70,8 +70,13 @@ typedef struct yep_dnode {
     uint32_t col;
 } yep_dnode;
 
-/* 11's node-size gate: compact views keep the dense record <= 64 B. */
+/* 11's node-size gate: compact views keep the dense record <= 64 B.
+ * (_Static_assert is C; this header reaches C++ test TUs.) */
+#if defined(__cplusplus)
+static_assert(sizeof(yep_dnode) <= 64, "yep_dnode exceeds the 64 B gate");
+#else
 _Static_assert(sizeof(yep_dnode) <= 64, "yep_dnode exceeds the 64 B gate");
+#endif
 
 typedef struct yep_dom {
     const yep_allocator* sys;
