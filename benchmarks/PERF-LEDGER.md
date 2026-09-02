@@ -292,3 +292,30 @@ gate <= 64 in dom.h). Engine finish pool is now RELEASED at parse end
   (smaller nodes = better locality; wide-mapping DOM 3.56x,
   scalar-heavy recorder 3.90x same-run vs libyaml).
 - 168/168 Release + ASAN + UBSan; TSAN clean; conformance 395/395.
+
+## 2026-09-02 — arena-sizing fusion (06): reserves from SIMD counts
+
+yep_dom_prepare: three count3 passes over the input (\n , -) (:
+[ {) (" ' |) feed one reserve call — node capacity from structural
+bytes, arena capacity ONLY when the content copies (quotes escape,
+block scalars fold; borrowed-only documents allocate no arena).
+The sizing formula lives in dom.c alone; parse_impl and the memory
+bench call the same seam, so the measure and the product cannot
+drift (found mid-unit: three formula variants produced identical
+tables because the bench drove the bare engine and never ran the
+reserve).
+
+18B measures (same machine, sequential with the compact-node entry):
+
+| shape | peak heap/input | was |
+|---|---|---|
+| scalar-heavy | **4.33x** | 6.15x |
+| flow-json | **19.43x** | 32.18x |
+| deep-nesting | **10.87x** | 15.47x |
+| block-heavy | **22.85x** | 36.85x |
+| wide-mapping | **18.89x** | 25.16x |
+
+Throughput unchanged (2.6-3.3x libyaml DOM, same-run). The <3x
+acceptance gate: scalar-heavy within reach; block/anchor shapes
+remain bounded by semantic copies (folds) and nametab storage.
+168/168 Release + ASAN + UBSan + TSAN.
