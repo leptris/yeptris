@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include <pthread.h>
+
 #include "dom.h"
 
 int dom_grow_nodes(yep_dom* d, uint32_t need) {
@@ -245,6 +247,14 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
         yep_free(sys, d);
         return NULL;
     }
+    if (pthread_mutex_init(&d->midx.mu, NULL) != 0) {
+        yep_nametab_free(&d->anchors);
+        yep_hpool_destroy(d->handles);
+        yep_pool_destroy(pool);
+        yep_free(sys, d);
+        return NULL;
+    }
+    d->midx.mu_ready = 1;
     return d;
 }
 
@@ -252,6 +262,7 @@ void yep_dom_destroy(yep_dom* d) {
     if (d == NULL) {
         return;
     }
+    yep_midx_destroy(d);
     yep_nametab_free(&d->anchors);
     yep_hpool_destroy(d->handles);
     yep_pool_destroy(d->pool);

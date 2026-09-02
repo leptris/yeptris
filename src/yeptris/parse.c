@@ -664,7 +664,17 @@ YEPTRIS_API YeptrisNode yeptris_node_map_get(YeptrisNode handle, const char* key
     if (n == NULL || n->kind != YEP_DOM_MAPPING || key == NULL) {
         return NULL;
     }
-    const yep_dom* dom = ((yeptris_node*)handle)->doc->dom;
+    yep_dom* dom = ((yeptris_node*)handle)->doc->dom;
+    /* O(1) through the lazy index (first use builds it); the scan
+     * below is the build-failure fallback */
+    uint32_t hit =
+        yep_midx_lookup(dom, ((yeptris_node*)handle)->id, (yep_view){key, (uint32_t)key_len});
+    if (hit != UINT32_MAX) {
+        const yep_dnode* kn = yep_dom_node(dom, hit);
+        if (kn != NULL) {
+            return wrap((yeptris_node*)handle, kn->next_sibling);
+        }
+    }
     uint32_t id = n->first_child;
     int want_key = 1;
     while (id != UINT32_MAX) {

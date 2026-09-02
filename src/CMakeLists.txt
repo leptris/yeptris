@@ -25,6 +25,7 @@ set(YEPTRIS_SOURCES
     yeptris/parse/engine.c
     yeptris/dom/dom.c
     yeptris/dom/hpool.c
+    yeptris/dom/mapindex.c
     yeptris/dom/mutate.c
     yeptris/parse.c
     yeptris/build.c

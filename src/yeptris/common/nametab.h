@@ -43,6 +43,11 @@ void yep_nametab_clear(yep_nametab* t);
 /* YEP_NAMETAB_NIL when absent. */
 uint32_t yep_nametab_get(const yep_nametab* t, yep_view key);
 
+/* The table's hash (FNV-1a + murmur-style finalizer): the ONE view
+ * hash — the map index and any future name-keyed structure reuse it,
+ * never a re-derivation. */
+uint32_t yep_view_hash(yep_view s);
+
 #ifdef __cplusplus
 }
 #endif

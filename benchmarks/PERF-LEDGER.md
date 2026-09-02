@@ -261,3 +261,14 @@ Findings:
    compounding. This is the top memory lever: arena-allocated
    compact nodes (the 11 board's original design: int32 offsets,
    per-kind tails) would land ~3-6x. Recorded as the follow-up unit.
+
+## 2026-09-02 — O(1) map lookup (11: dom/mapindex)
+
+Lazy per-mapping index (built on first `map_get`): 20k-key map lookup
+**217 ns** including the per-call handle allocation — the linear scan
+it replaces averages ~10k view comparisons (memcmp) on the same map,
+i.e. tens of µs. First-use build cost is one pair walk (~150 µs on the
+20k map, measured in-suite); mutation (add/set/del) frees the table —
+no pool leak (tables live on the system allocator). Concurrent
+first-lookups serialize on the document index mutex; probes after the
+build are immutable reads (read-sharing contract intact, TSAN-clean).

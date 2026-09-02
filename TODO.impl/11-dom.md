@@ -84,8 +84,16 @@ C. Path queries, alias/merge semantics; psych `test_merge_keys.rb`,
 
 ## Remaining phases (next work)
 
-1. Key interning + O(1) map lookup (currently linear scan) — the
-   open-addressing table from the item design.
+1. ~~Key interning + O(1) map lookup~~ — LANDED 2026-09-02 as
+   dom/mapindex.{h,c}: LAZY per-mapping open-addressing tables (view
+   hash from the nametab SSOT -> key child id; full view compare on
+   hash match), built on first lookup under a document mutex (the
+   read-only sharing contract holds), freed-not-pooled so mutation
+   invalidation is leak-free (map_add/set/del drop the table). First
+   key wins (the scan's contract); collection keys never indexed.
+   20k-key map: 217 ns/lookup incl. handle alloc. Divergence note:
+   the PARSER accepts duplicate keys (libyaml/Psych parity — Psych
+   materializes last-wins, map_get is first-wins; both documented).
 2. Node-size gate (≤64 B target) in validate.sh once the layout settles
    (mutation added `attached`/`depth` — 88 B → 96 B, recorded).
 3. ~~Mutation + builder API~~ — phase 3 core shipped 2026-09-02 (see

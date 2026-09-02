@@ -13,7 +13,7 @@
 #define NT_MIN_CAP 64u
 #define NT_LOAD_PCT 70u
 
-static uint32_t nt_hash(yep_view s) {
+uint32_t yep_view_hash(yep_view s) {
     uint32_t h = 2166136261u;
     for (uint32_t i = 0; i < s.len; i++) {
         h ^= (unsigned char)s.p[i];
@@ -66,7 +66,7 @@ static int nt_rehash(yep_nametab* t, uint32_t newcap) {
     memset(slots, 0, newcap * sizeof(*slots));
     uint32_t mask = newcap - 1;
     for (uint32_t i = 0; i < t->count; i++) {
-        uint32_t j = nt_hash(t->keys[i]) & mask;
+        uint32_t j = yep_view_hash(t->keys[i]) & mask;
         while (slots[j] != 0) {
             j = (j + 1) & mask;
         }
@@ -103,7 +103,7 @@ uint32_t yep_nametab_get(const yep_nametab* t, yep_view key) {
         return YEP_NAMETAB_NIL;
     }
     uint32_t mask = t->cap - 1;
-    uint32_t j = nt_hash(key) & mask;
+    uint32_t j = yep_view_hash(key) & mask;
     for (;;) {
         uint32_t entry = t->slots[j];
         if (entry == 0) {
@@ -129,7 +129,7 @@ int yep_nametab_set(yep_nametab* t, yep_view key, uint32_t value) {
         return 0;
     }
     uint32_t mask = t->cap - 1;
-    uint32_t j = nt_hash(key) & mask;
+    uint32_t j = yep_view_hash(key) & mask;
     for (;;) {
         uint32_t entry = t->slots[j];
         if (entry == 0) {
@@ -146,7 +146,7 @@ int yep_nametab_set(yep_nametab* t, yep_view key, uint32_t value) {
             return 0;
         }
         mask = t->cap - 1;
-        j = nt_hash(key) & mask;
+        j = yep_view_hash(key) & mask;
         while (t->slots[j] != 0) {
             j = (j + 1) & mask;
         }

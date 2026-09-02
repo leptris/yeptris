@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 #include "common/nametab.h"
+#include "dom/mapindex.h"
 #include "memory/allocator.h"
 #include "memory/pool.h"
 #include "parse/events.h"
@@ -66,7 +67,8 @@ typedef struct yep_dom {
     uint32_t ncount, ncap;
     uint32_t* docs; /* document root node ids */
     uint32_t dcount, dcap;
-    yep_nametab anchors; /* anchor name -> binding node id */
+    yep_nametab anchors;        /* anchor name -> binding node id */
+    struct yep_midx_state midx; /* lazy per-map lookup index (mapindex.c) */
     /* builder state */
     uint32_t stack[YEP_DOM_MAX_DEPTH];
     int depth;
