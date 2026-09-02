@@ -30,6 +30,76 @@ struct Corpus {
     std::string data;
 };
 
+/* ---- 18B measures: allocations/parse + memory/input ratio --------
+ * Via the engine+DOM pair with a counting allocator (the public parse
+ * entry hard-wires the system allocator; the pair below is the same
+ * path minus the encoding front-end, which allocates nothing on the
+ * borrow path). */
+extern "C" {
+#include "dom/dom.h"
+#include "memory/allocator.h"
+#include "parse/engine.h"
+}
+
+typedef struct {
+    size_t allocs;
+    size_t bytes; /* cumulative allocation volume (churn) */
+    size_t live;  /* outstanding bytes right now */
+    size_t peak;  /* high-water of live */
+} alloc_count;
+
+/* Size-prefixed allocations: free() reads the size back to keep the
+ * live-bytes ledger exact — deterministic peak, no RSS guesswork. */
+static void* count_alloc(void* ctx, size_t size) {
+    alloc_count* c = (alloc_count*)ctx;
+    c->allocs++;
+    c->bytes += size;
+    c->live += size;
+    if (c->live > c->peak) {
+        c->peak = c->live;
+    }
+    size_t* p = (size_t*)malloc(size + sizeof(size_t));
+    if (p != NULL) {
+        *p = size;
+    }
+    return p != NULL ? (void*)(p + 1) : NULL;
+}
+
+static void count_free(void* ctx, void* ptr) {
+    alloc_count* c = (alloc_count*)ctx;
+    if (ptr != NULL) {
+        size_t* p = (size_t*)ptr - 1;
+        c->live -= *p;
+        free(p);
+    }
+}
+
+typedef struct {
+    double allocs_per_mb;
+    double churn_ratio;    /* cumulative allocation bytes / input bytes */
+    double peak_rss_ratio; /* child-process peak RSS / input bytes */
+} mem_stats;
+
+static mem_stats measure_mem(const Corpus& c) {
+    alloc_count cnt = {0, 0};
+    yep_allocator counter = {count_alloc, count_free, &cnt};
+    yep_engine* eng = yep_engine_create(&counter);
+    yep_dom* dom = yep_dom_create(&counter);
+    mem_stats ms = {0, 0, 0};
+    if (eng != NULL && dom != NULL) {
+        yep_sink sink = {yep_dom_on_event, dom};
+        int rc = yep_engine_run(eng, c.data.data(), c.data.size(), &sink);
+        if (rc == 0 && dom->ncount > 0) {
+            ms.allocs_per_mb = (double)cnt.allocs / ((double)c.data.size() / 1e6);
+            ms.churn_ratio = (double)cnt.bytes / (double)c.data.size();
+            ms.peak_rss_ratio = (double)cnt.peak / (double)c.data.size();
+        }
+    }
+    yep_dom_destroy(dom);
+    yep_engine_destroy(eng);
+    return ms;
+}
+
 std::string fmt(double v) {
     char buf[64];
     snprintf(buf, sizeof(buf), "%.2f", v);
@@ -47,14 +117,15 @@ struct Rng {
         s ^= s << 17;
         return s;
     }
-    unsigned long pick(unsigned long n) { return next() % (n ? n : 1); }
+    unsigned long pick(unsigned long n) {
+        return next() % (n ? n : 1);
+    }
 };
 
-const char* k_words[] = {"alpha",   "beta",    "gamma",    "delta",    "epsilon",
-                         "zeta",    "eta",     "theta",    "iota",     "kappa",
-                         "value",   "item",    "record",   "node",     "entry",
-                         "118-222", "0x1A2B",  "3.14159",  "true",     "null",
-                         "name",    "status",  "level",    "count",    "ratio"};
+const char* k_words[] = {"alpha",  "beta",    "gamma",  "delta",   "epsilon", "zeta",   "eta",
+                         "theta",  "iota",    "kappa",  "value",   "item",    "record", "node",
+                         "entry",  "118-222", "0x1A2B", "3.14159", "true",    "null",   "name",
+                         "status", "level",   "count",  "ratio"};
 const int k_nwords = 25;
 
 std::string word(Rng& r) {
@@ -79,8 +150,8 @@ void gen_block(std::string* out, Rng& r, int entries) {
         out->append("  active: " + std::string(r.pick(2) ? "true" : "false") + "\n");
         out->append("  tags:\n    - " + word(r) + "\n    - " + word(r) + "\n");
         if (r.pick(3) == 0) {
-            out->append("  meta:\n    origin: " + word(r) + "\n    weight: " +
-                        std::to_string(r.pick(100)) + "\n");
+            out->append("  meta:\n    origin: " + word(r) +
+                        "\n    weight: " + std::to_string(r.pick(100)) + "\n");
         }
     }
 }
@@ -298,8 +369,7 @@ Result bench_dom(const Corpus& c, int iters) {
         }
     }
     double mb = (double)c.data.size() / (1024.0 * 1024.0);
-    return {c.name + " (DOM)", best_ms > 0 ? mb * 1000.0 / best_ms : 0, best_ms,
-            c.data.size()};
+    return {c.name + " (DOM)", best_ms > 0 ? mb * 1000.0 / best_ms : 0, best_ms, c.data.size()};
 }
 
 Result bench_pull(const Corpus& c, int iters) {
@@ -315,8 +385,7 @@ Result bench_pull(const Corpus& c, int iters) {
         auto t0 = clk::now();
         YeptrisPullParser p = yeptris_pull_new(c.data.data(), c.data.size());
         const YeptrisEvent* e;
-        while ((e = yeptris_pull_next(p)) != NULL) {
-        }
+        while ((e = yeptris_pull_next(p)) != NULL) {}
         auto t1 = clk::now();
         yeptris_pull_free(p);
         double m = ms_of(t0, t1);
@@ -325,8 +394,7 @@ Result bench_pull(const Corpus& c, int iters) {
         }
     }
     double mb = (double)c.data.size() / (1024.0 * 1024.0);
-    return {c.name + " (pull)", best_ms > 0 ? mb * 1000.0 / best_ms : 0, best_ms,
-            c.data.size()};
+    return {c.name + " (pull)", best_ms > 0 ? mb * 1000.0 / best_ms : 0, best_ms, c.data.size()};
 }
 
 Result bench_recorder(const Corpus& c, int iters) {
@@ -389,8 +457,7 @@ Result bench_libyaml(const Corpus& c, int iters) {
         yaml_parser_t p;
         yaml_event_t ev;
         if (yaml_parser_initialize(&p)) {
-            yaml_parser_set_input_string(&p, (const unsigned char*)c.data.data(),
-                                         c.data.size());
+            yaml_parser_set_input_string(&p, (const unsigned char*)c.data.data(), c.data.size());
             int done = 0;
             int bad = 0;
             while (!done) {
@@ -413,8 +480,7 @@ Result bench_libyaml(const Corpus& c, int iters) {
         }
     }
     double mb = (double)c.data.size() / (1024.0 * 1024.0);
-    return {c.name + " (libyaml)", best_ms > 0 ? mb * 1000.0 / best_ms : 0, best_ms,
-            c.data.size()};
+    return {c.name + " (libyaml)", best_ms > 0 ? mb * 1000.0 / best_ms : 0, best_ms, c.data.size()};
 }
 #endif
 
@@ -490,6 +556,15 @@ int main(int argc, char** argv) {
         }
     }
 
+    printf("18B measures (parse path)\n\n");
+    printf("| shape | allocs/MB | alloc churn/input | peak heap/input |\n|---|---|---|---|\n");
+    for (const Corpus& c : corpora) {
+        mem_stats ms = measure_mem(c);
+        printf("| %s | %.0f | %.2fx | %.2fx |\n", c.name.c_str(), ms.allocs_per_mb, ms.churn_ratio,
+               ms.peak_rss_ratio);
+    }
+    printf("\n");
+
     std::vector<Result> results;
     for (const Corpus& c : corpora) {
         int iters = full ? 5 : 3;
@@ -525,10 +600,10 @@ int main(int argc, char** argv) {
               res.name.substr(res.name.find("(") + 1, res.name.size() - res.name.find("(") - 2) +
               " | " + (res.mb_s > 0 ? fmt(res.mb_s) : "n/a") + " | " +
               (res.ms > 0 && res.ms < 1e8 ? fmt(res.ms) : "n/a") + " | " + ratio + " |\n";
-        js += "  {\"name\": \"" + res.name + "\", \"mb_s\": " +
-              (res.mb_s > 0 ? fmt(res.mb_s) : std::string("0")) + ", \"ms\": " +
-              (res.ms > 0 && res.ms < 1e8 ? fmt(res.ms) : std::string("0")) + ", \"bytes\": " +
-              std::to_string(res.bytes) + "},\n";
+        js += "  {\"name\": \"" + res.name +
+              "\", \"mb_s\": " + (res.mb_s > 0 ? fmt(res.mb_s) : std::string("0")) +
+              ", \"ms\": " + (res.ms > 0 && res.ms < 1e8 ? fmt(res.ms) : std::string("0")) +
+              ", \"bytes\": " + std::to_string(res.bytes) + "},\n";
     }
     if (js.size() > 2) {
         js[js.size() - 2] = '\n';

@@ -24,7 +24,7 @@ measured-dead; record it, keep the numbers — do not delete history).
 | 15 | [Ruby binding: FFI gem + Psych compatibility](TODO.impl/15-ruby-binding.md) | 11–13 | pending |
 | 16 | [Conformance harness: test-suite + divergence ledger](TODO.impl/16-conformance-harness.md) | 07, 12 | active (corpus) |
 | 17 | [libyaml test port](TODO.impl/17-libyaml-test-port.md) | 12, 16 | parse + emitter differentials green (279 .ly goldens); yepdiff tool |
-| 18 | [Benchmarks: matrix, corpora, CI artifacts, ledger](TODO.impl/18-benchmarks.md) | 06+ | A done: matrix+ledger+CI bench.yml, all shapes >2.1x vs libyaml |
+| 18 | [Benchmarks](TODO.impl/18-benchmarks.md) | 06+ | COMPLETE (matrix+CI+ledger+mem measures); compactness gap logged |
 | 19 | [Hardening](TODO.impl/19-hardening.md) | 07+ | fuzz harnesses + nightly workflow landed; alloc-inject + threads remain |
 | 20 | [Packaging, ABI policy, automated release](TODO.impl/20-packaging-release.md) | all | pending |
 | 21 | [JSON API compat](TODO.impl/21-json-compat-api.md) | 08, 11, 13, 18 | core + direct DOM landed (JSON entry 2.2x faster, 136 MB/s) |
