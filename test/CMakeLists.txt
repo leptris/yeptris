@@ -17,6 +17,8 @@ endif()
 
 add_executable(test_unit
     unit/test_abi.cpp
+    unit/test_alloc_fail.cpp
+    unit/test_threads.cpp
     unit/test_chartype.cpp
     unit/test_cpu.cpp
     unit/test_encoding.cpp
@@ -34,7 +36,8 @@ add_executable(test_unit
     unit/test_jsonc_compat.cpp
     unit/test_yaml_compat.cpp
 )
-target_link_libraries(test_unit PRIVATE yeptris_static $<TARGET_NAME_IF_EXISTS:yeptris_jsonc> GTest::gtest_main)
+find_package(Threads REQUIRED)
+target_link_libraries(test_unit PRIVATE yeptris_static Threads::Threads $<TARGET_NAME_IF_EXISTS:yeptris_jsonc> GTest::gtest_main)
 target_include_directories(test_unit PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
 yeptris_set_warnings(test_unit)
 

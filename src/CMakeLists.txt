@@ -24,6 +24,7 @@ set(YEPTRIS_SOURCES
     yeptris/parse/scalars.c
     yeptris/parse/engine.c
     yeptris/dom/dom.c
+    yeptris/dom/hpool.c
     yeptris/parse.c
     yeptris/events/capture.c
     yeptris/events/push.c
@@ -82,13 +83,16 @@ if(YEPTRIS_BUILD_JSONC_COMPAT AND YEPTRIS_BUILD_STATIC)
 endif()
 
 if(YEPTRIS_BUILD_STATIC)
-    add_library(yeptris_static STATIC ${YEPTRIS_SOURCES})
+    find_package(Threads REQUIRED)
+
+add_library(yeptris_static STATIC ${YEPTRIS_SOURCES})
     add_library(yeptris::yeptris ALIAS yeptris_static)
     set_target_properties(yeptris_static PROPERTIES OUTPUT_NAME yeptris)
     target_include_directories(yeptris_static
         PUBLIC ${YEPTRIS_INCLUDE_DIRS}
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris) # internal root-relative includes
     target_compile_definitions(yeptris_static PRIVATE YEPTRIS_BUILDING)
+    target_link_libraries(yeptris_static PRIVATE Threads::Threads)
     yeptris_set_warnings(yeptris_static)
 endif()
 

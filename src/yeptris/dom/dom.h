@@ -56,6 +56,10 @@ typedef struct yep_dnode {
 typedef struct yep_dom {
     const yep_allocator* sys;
     yep_pool* pool; /* owned copies of non-borrowed values */
+    /* handle arena: thread-safe (atomic bump) — query APIs allocate
+     * YeptrisNode wrappers here, so read-only document sharing across
+     * threads is safe; parse-path pools stay single-threaded */
+    struct yep_hpool* handles;
     yep_dnode* nodes;
     uint32_t ncount, ncap;
     uint32_t* docs; /* document root node ids */
@@ -71,6 +75,11 @@ typedef struct yep_dom {
 } yep_dom;
 
 yep_dom* yep_dom_create(const yep_allocator* sys);
+
+/* thread-safe handle arena (see hpool.c) */
+struct yep_hpool* yep_hpool_create(const yep_allocator* sys);
+void yep_hpool_destroy(struct yep_hpool* p);
+void* yep_hpool_alloc(struct yep_hpool* p, size_t size, size_t align);
 
 /* Direct DOM construction from a strict-validated JSON buffer
  * (TODO.impl/27): no engine, no event pipeline. The caller validated
