@@ -111,6 +111,9 @@ int yep_mut_map_add(yep_dom* d, uint32_t map, const char* key, size_t klen, uint
 /* Replace-in-place (json-c semantics: position kept); 1 = replaced. */
 int yep_mut_map_set(yep_dom* d, uint32_t map, const char* key, size_t klen, uint32_t value);
 int yep_mut_seq_del(yep_dom* d, uint32_t seq, uint32_t index);
+/* Replace the entry at index (json-c array_put_idx): unlinks the old
+ * subtree and splices the new node in at the SAME position. */
+int yep_mut_seq_set(yep_dom* d, uint32_t seq, uint32_t index, uint32_t value);
 int yep_mut_map_del(yep_dom* d, uint32_t map, const char* key, size_t klen);
 int yep_mut_add_root(yep_dom* d, uint32_t node);
 void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth);

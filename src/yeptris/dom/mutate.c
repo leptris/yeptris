@@ -281,6 +281,44 @@ int yep_mut_seq_del(yep_dom* d, uint32_t seq, uint32_t index) {
     return unlink_child(d, seq, c);
 }
 
+int yep_mut_seq_set(yep_dom* d, uint32_t seq, uint32_t index, uint32_t value) {
+    if (d == NULL || seq >= d->ncount || d->nodes[seq].kind != YEP_DOM_SEQUENCE) {
+        return MUT_ERR;
+    }
+    yep_dnode* s = &d->nodes[seq];
+    if (index >= s->count) {
+        return MUT_ERR;
+    }
+    uint32_t cur = s->first_child;
+    for (uint32_t i = 0; i < index && cur != UINT32_MAX; i++) {
+        cur = d->nodes[cur].next_sibling;
+    }
+    int rc = mut_attach_ok(d, seq, value);
+    if (rc != 0) {
+        return rc;
+    }
+    /* splice: value takes cur's position (first-child or prev's
+     * next_sibling), cur is detached — same shape as map_set */
+    if (s->first_child == cur) {
+        s->first_child = value;
+    } else {
+        uint32_t prev = s->first_child;
+        while (d->nodes[prev].next_sibling != cur) {
+            prev = d->nodes[prev].next_sibling;
+        }
+        d->nodes[prev].next_sibling = value;
+    }
+    if (s->last_child == cur) {
+        s->last_child = value;
+    }
+    d->nodes[value].next_sibling = d->nodes[cur].next_sibling;
+    d->nodes[cur].next_sibling = UINT32_MAX;
+    d->nodes[cur].attached = 0;
+    d->nodes[value].attached = 1;
+    yep_mut_set_depths(d, value, (uint16_t)(s->depth + 1));
+    return 0;
+}
+
 int yep_mut_map_del(yep_dom* d, uint32_t map, const char* key, size_t klen) {
     if (d == NULL || key == NULL || map >= d->ncount || d->nodes[map].kind != YEP_DOM_MAPPING) {
         return MUT_ERR;

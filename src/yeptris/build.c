@@ -128,6 +128,14 @@ YEPTRIS_API int yeptris_node_seq_add(YeptrisNode handle, YeptrisNode value) {
     return mut_status(yep_mut_seq_add(s->doc->dom, s->id, node_of(value)->id));
 }
 
+YEPTRIS_API int yeptris_node_seq_set(YeptrisNode handle, size_t index, YeptrisNode value) {
+    yeptris_node* s = node_of(handle);
+    if (s == NULL || !same_doc(handle, value)) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    return mut_status(yep_mut_seq_set(s->doc->dom, s->id, (uint32_t)index, node_of(value)->id));
+}
+
 YEPTRIS_API int yeptris_node_seq_del(YeptrisNode handle, size_t index) {
     yeptris_node* s = node_of(handle);
     if (s == NULL) {

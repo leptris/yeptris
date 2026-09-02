@@ -105,6 +105,9 @@ int json_object_object_del(json_object* obj, const char* key);
 int json_object_array_add(json_object* obj, json_object* val);
 int json_object_array_del_idx(json_object* obj, size_t idx, size_t count);
 
+/* index < len replaces in place; index == len appends. */
+int json_object_array_put_idx(json_object* obj, size_t idx, json_object* val);
+
 #ifdef __cplusplus
 }
 #endif

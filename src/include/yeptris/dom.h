@@ -113,6 +113,9 @@ YEPTRIS_API int yeptris_node_map_set(YeptrisNode map, const char* key, size_t ke
 
 YEPTRIS_API int yeptris_node_seq_add(YeptrisNode seq, YeptrisNode value);
 YEPTRIS_API int yeptris_node_seq_del(YeptrisNode seq, size_t index);
+
+/* Replace the entry at index (same position kept). */
+YEPTRIS_API int yeptris_node_seq_set(YeptrisNode seq, size_t index, YeptrisNode value);
 YEPTRIS_API int yeptris_node_map_del(YeptrisNode map, const char* key, size_t key_len);
 
 #ifdef __cplusplus
