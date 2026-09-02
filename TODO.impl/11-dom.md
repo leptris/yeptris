@@ -94,12 +94,22 @@ C. Path queries, alias/merge semantics; psych `test_merge_keys.rb`,
    20k-key map: 217 ns/lookup incl. handle alloc. Divergence note:
    the PARSER accepts duplicate keys (libyaml/Psych parity — Psych
    materializes last-wins, map_get is first-wins; both documented).
-2. Node-size gate (≤64 B target) in validate.sh once the layout settles
-   (mutation added `attached`/`depth` — 88 B → 96 B, recorded).
+2. ~~Node-size gate~~ — LANDED 2026-09-02: node strings are
+   region-tagged (offset,len) pairs (input region zero-copy; the
+   DOM's own contiguous realloc'd string arena for copies — offsets
+   survive the move). yep_dnode **60 B**, `_Static_assert` gate in
+   dom.h. Peak heap/input 25-54x -> 6-54x (ledger); <3x needs
+   finish-free folding + pre-sizing (06). Engine finish pool now
+   released at parse end (nothing in the tree references it).
 3. ~~Mutation + builder API~~ — phase 3 core shipped 2026-09-02 (see
    below); per-kind vtables deferred until polymorphic behavior appears.
-4. Merge-key resolution (<<) in compat mode (with 10).
-5. Node-handle identity guarantees for bindings (12/15).
+4. ~~Merge-key resolution~~ — resolved at MATERIALIZATION (the Ruby
+   Materializer: existing keys win, sequences merge in order —
+   spec'd in spec/psych/loading_spec.rb); yeptris has no C-side
+   to_ruby, so there is no second merge implementation to keep
+   true (MECE by construction).
+5. ~~Node-handle identity~~ — yeptris_node_id (15A); bindings key
+   wrapper caches on it.
 
 ## Phase 3 shipped (2026-09-02)
 

@@ -52,7 +52,7 @@ static yep_midx_tab* tab_build(const struct yep_dom* d, uint32_t map) {
         if (want_key && cur->kind == YEP_DOM_SCALAR) {
             /* |1: the empty marker is key_child, not hash — this
              * just avoids the all-zero-hash clustering of 1-char keys */
-            uint32_t h = yep_view_hash(cur->value) | 1u;
+            uint32_t h = yep_view_hash(yep_dom_view(d, cur->value)) | 1u;
             uint32_t i = h & mask;
             while (t->slots[i].key_child != UINT32_MAX) {
                 i = (i + 1) & mask; /* first key wins: occupied slots keep their entry */
@@ -123,7 +123,7 @@ uint32_t yep_midx_lookup(struct yep_dom* d, uint32_t map, yep_view key) {
         }
         if (t->slots[i].hash == h) {
             const yep_dnode* kn = yep_dom_node(d, child);
-            if (kn != NULL && yep_view_eq(kn->value, key)) {
+            if (kn != NULL && yep_view_eq(yep_dom_view(d, kn->value), key)) {
                 found = child;
                 break;
             }

@@ -272,3 +272,23 @@ i.e. tens of µs. First-use build cost is one pair walk (~150 µs on the
 no pool leak (tables live on the system allocator). Concurrent
 first-lookups serialize on the document index mutex; probes after the
 build are immutable reads (read-sharing contract intact, TSAN-clean).
+
+## 2026-09-02 — compact nodes (11): 96 -> 60 B
+
+Node strings became (region-tagged offset, len) pairs over TWO
+regions: the borrowed input (offsets; zero copy unchanged) and the
+DOM's own contiguous string arena (realloc-grown; offsets survive the
+move — the leptris arena discipline). yep_dnode: **60 B** (static
+gate <= 64 in dom.h). Engine finish pool is now RELEASED at parse end
+(tags/anchors/folded strings all arena-copied or input-borrowed).
+
+- 18B measures, same machine/mode: peak heap/input **25-54x ->
+  6-54x** (scalar-heavy 6.15x, deep-nesting 15.5x, wide-mapping
+  25x; block-heavy unchanged ~37x — folded block scalars produce
+  genuinely new bytes, the copy is semantic). The <3x acceptance
+  remains open: next levers are finish-free folding (borrow when the
+  fold is identity) and node-array pre-sizing (item 06).
+- Throughput: quick matrix unchanged-to-better on every shape
+  (smaller nodes = better locality; wide-mapping DOM 3.56x,
+  scalar-heavy recorder 3.90x same-run vs libyaml).
+- 168/168 Release + ASAN + UBSan; TSAN clean; conformance 395/395.
