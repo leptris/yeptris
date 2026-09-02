@@ -67,6 +67,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
             st = YEPTRIS_ERROR_MEMORY;
             goto jfail;
         }
+        dom->input_base = buf; /* strict JSON is UTF-8 by definition */
         int brc = yep_dom_build_json(dom, buf, len);
         if (brc == -1) {
             yep_dom_destroy(dom);
@@ -209,6 +210,8 @@ engine_enter:
      * dangle at engine teardown (found by ASAN). */
     yep_pool* finish = yep_engine_detach_pool(eng);
     yep_engine_destroy(eng);
+    /* DOM strings are input-offsets or arena copies; nothing in the
+     * tree references the finish pool anymore — release it now */
 
     /* Empty stream (no documents): NULL document with YEPTRIS_OK. */
     if (dom->dcount == 0) {
@@ -229,12 +232,16 @@ engine_enter:
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
     }
+    dom->input_base = transcoded ? (const char*)transcoded : buf;
     doc->dom = dom;
     doc->sys = sys;
     doc->transcoded = transcoded;
     doc->transcoded_len = transcoded_len;
     doc->input = buf;
-    doc->finish_pool = finish;
+    /* the finish pool dies here: every DOM string is an input offset
+     * or an arena copy (dom_ev_str) — nothing references it */
+    yep_pool_destroy(finish);
+    doc->finish_pool = NULL;
     return (YeptrisDocument)doc;
 
 fail:
@@ -318,6 +325,11 @@ YEPTRIS_API YeptrisNodeKind yeptris_node_kind(YeptrisNode handle) {
     }
 }
 
+/* Decodes a node's compact string through its document's regions. */
+static yep_view node_view(const yeptris_node* h, yep_sview sv) {
+    return yep_dom_view(h->doc->dom, sv);
+}
+
 static const char* view_out(yep_view v, size_t* len) {
     if (len != NULL) {
         *len = v.len;
@@ -333,7 +345,7 @@ YEPTRIS_API const char* yeptris_node_value(YeptrisNode handle, size_t* len) {
         }
         return NULL;
     }
-    return view_out(n->value, len);
+    return view_out(node_view((yeptris_node*)handle, n->value), len);
 }
 
 YEPTRIS_API YeptrisScalarStyle yeptris_node_style(YeptrisNode handle) {
@@ -360,10 +372,11 @@ YEPTRIS_API YeptrisTagId yeptris_node_tag_id(YeptrisNode handle) {
 }
 
 /* strips '_' and ',' into dst (nul-terminated); returns length */
-static size_t clean_num(const yep_dnode* n, char* dst, size_t cap) {
+static size_t clean_num(const yeptris_node* h, const yep_dnode* n, char* dst, size_t cap) {
+    yep_view v = node_view(h, n->value);
     size_t o = 0;
-    for (uint32_t i = 0; i < n->value.len && o + 1 < cap; i++) {
-        char c = ((const char*)n->value.p)[i];
+    for (uint32_t i = 0; i < v.len && o + 1 < cap; i++) {
+        char c = ((const char*)v.p)[i];
         if (c == '_' || c == ',') {
             continue;
         }
@@ -382,7 +395,7 @@ YEPTRIS_API YeptrisStatus yeptris_node_int(YeptrisNode handle, int64_t* out) {
         return YEPTRIS_ERROR_PARSE;
     }
     char buf[80];
-    size_t len = clean_num(n, buf, sizeof(buf));
+    size_t len = clean_num((yeptris_node*)handle, n, buf, sizeof(buf));
     if (len == 0) {
         return YEPTRIS_ERROR_PARSE;
     }
@@ -459,7 +472,7 @@ YEPTRIS_API YeptrisStatus yeptris_node_float(YeptrisNode handle, double* out) {
         return YEPTRIS_ERROR_PARSE;
     }
     char buf[80];
-    size_t len = clean_num(n, buf, sizeof(buf));
+    size_t len = clean_num((yeptris_node*)handle, n, buf, sizeof(buf));
     if (len == 0) {
         return YEPTRIS_ERROR_PARSE;
     }
@@ -559,7 +572,8 @@ YEPTRIS_API YeptrisStatus yeptris_node_bool(YeptrisNode handle, int* out) {
                                    "Yes",  "YES",  "on",   "On", "ON"};
     for (size_t i = 0; i < sizeof(k_true) / sizeof(k_true[0]); i++) {
         size_t m = strlen(k_true[i]);
-        if (n->value.len == m && memcmp(n->value.p, k_true[i], m) == 0) {
+        yep_view v = node_view((yeptris_node*)handle, n->value);
+        if (v.len == m && memcmp(v.p, k_true[i], m) == 0) {
             *out = 1;
             return YEPTRIS_OK;
         }
@@ -576,7 +590,7 @@ YEPTRIS_API const char* yeptris_node_tag(YeptrisNode handle, size_t* len) {
         }
         return n ? NULL : NULL;
     }
-    return view_out(n->tag, len);
+    return view_out(node_view((yeptris_node*)handle, n->tag), len);
 }
 
 YEPTRIS_API const char* yeptris_node_anchor(YeptrisNode handle, size_t* len) {
@@ -587,7 +601,7 @@ YEPTRIS_API const char* yeptris_node_anchor(YeptrisNode handle, size_t* len) {
         }
         return NULL;
     }
-    return view_out(n->anchor, len);
+    return view_out(node_view((yeptris_node*)handle, n->anchor), len);
 }
 
 static YeptrisNode wrap(yeptris_node* base, uint32_t id) {
@@ -684,7 +698,7 @@ YEPTRIS_API YeptrisNode yeptris_node_map_get(YeptrisNode handle, const char* key
         }
         if (want_key && cur->kind == YEP_DOM_SCALAR) {
             yep_view kv = {key, (uint32_t)key_len};
-            if (yep_view_eq(cur->value, kv)) {
+            if (yep_view_eq(yep_dom_view(dom, cur->value), kv)) {
                 return wrap((yeptris_node*)handle, cur->next_sibling);
             }
         }

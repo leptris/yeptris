@@ -34,6 +34,9 @@ static int yep_buf_reserve(yep_buf* b, size_t need) {
     if (b->len + need <= b->cap) {
         return 1;
     }
+    if (b->pool == NULL) {
+        return 0; /* fixed buffer: in-place decoding never exceeds cap */
+    }
     size_t ncap = b->cap ? b->cap * 2 : 256;
     while (ncap < b->len + need) {
         ncap *= 2;
@@ -63,9 +66,26 @@ static void yep_buf_put(yep_buf* b, const char* s, size_t n) {
     }
 }
 
+static uint32_t finish_double_body(const char* p, uint32_t start, uint32_t end, int multiline,
+                                   yep_buf* b);
+
 char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multiline, yep_pool* pool,
                         uint32_t* out_len) {
     yep_buf b = {pool, NULL, 0, 0};
+    *out_len = finish_double_body(p, start, end, multiline, &b);
+    return b.data;
+}
+
+/* Decodes into a caller buffer (no pool): decoding only shrinks, so
+ * cap = the raw span is a hard bound. Returns the decoded length. */
+uint32_t yep_finish_double_into(const char* p, uint32_t start, uint32_t end, char* dst,
+                                uint32_t cap) {
+    yep_buf b = {NULL, dst, 0, cap};
+    return finish_double_body(p, start, end, 0, &b);
+}
+
+static uint32_t finish_double_body(const char* p, uint32_t start, uint32_t end, int multiline,
+                                   yep_buf* b) {
     size_t esc_floor = 0; /* decoded bytes below this are escape content */
     size_t i = start;
     while (i < end) {
@@ -94,20 +114,20 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
                     }
                     break;
                 }
-                while (b.len > esc_floor &&
-                       (b.data[b.len - 1] == ' ' || b.data[b.len - 1] == '\t')) {
-                    b.len--; /* raw trailing white space strips; escapes keep */
+                while (b->len > esc_floor &&
+                       (b->data[b->len - 1] == ' ' || b->data[b->len - 1] == '\t')) {
+                    b->len--; /* raw trailing white space strips; escapes keep */
                 }
                 if (breaks == 1) {
-                    yep_buf_putc(&b, ' ');
+                    yep_buf_putc(b, ' ');
                 } else {
                     for (uint32_t k = 1; k < breaks; k++) {
-                        yep_buf_putc(&b, '\n');
+                        yep_buf_putc(b, '\n');
                     }
                 }
                 continue;
             }
-            yep_buf_putc(&b, (char)c);
+            yep_buf_putc(b, (char)c);
             i++;
             continue;
         }
@@ -119,79 +139,79 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
         unsigned char e = (unsigned char)p[i];
         switch (e) {
         case '0':
-            yep_buf_putc(&b, '\0');
+            yep_buf_putc(b, '\0');
             i++;
             break;
         case 'a':
-            yep_buf_putc(&b, '\a');
+            yep_buf_putc(b, '\a');
             i++;
             break;
         case 'b':
-            yep_buf_putc(&b, '\b');
+            yep_buf_putc(b, '\b');
             i++;
             break;
         case 't':
         case '\t':
-            yep_buf_putc(&b, '\t');
+            yep_buf_putc(b, '\t');
             i++;
             break;
         case 'n':
-            yep_buf_putc(&b, '\n');
+            yep_buf_putc(b, '\n');
             i++;
             break;
         case 'v':
-            yep_buf_putc(&b, '\v');
+            yep_buf_putc(b, '\v');
             i++;
             break;
         case 'f':
-            yep_buf_putc(&b, '\f');
+            yep_buf_putc(b, '\f');
             i++;
             break;
         case 'r':
-            yep_buf_putc(&b, '\r');
+            yep_buf_putc(b, '\r');
             i++;
             break;
         case 'e':
-            yep_buf_putc(&b, 0x1B);
+            yep_buf_putc(b, 0x1B);
             i++;
             break;
         case ' ':
-            yep_buf_putc(&b, ' ');
+            yep_buf_putc(b, ' ');
             i++;
             break;
         case '"':
-            yep_buf_putc(&b, '"');
+            yep_buf_putc(b, '"');
             i++;
             break;
         case '/':
-            yep_buf_putc(&b, '/');
+            yep_buf_putc(b, '/');
             i++;
             break;
         case '\\':
-            yep_buf_putc(&b, '\\');
+            yep_buf_putc(b, '\\');
             i++;
             break;
         case 'N': /* U+0085 NEL */ {
             char tmp[2] = {(char)0xC2, (char)0x85};
-            yep_buf_put(&b, tmp, 2);
+            yep_buf_put(b, tmp, 2);
             i++;
             break;
         }
         case '_': /* U+00A0 */ {
             char tmp[2] = {(char)0xC2, (char)0xA0};
-            yep_buf_put(&b, tmp, 2);
+            yep_buf_put(b, tmp, 2);
             i++;
             break;
         }
         case 'L': /* U+2028 */ {
             char tmp[3] = {(char)0xE2, (char)0x80, (char)0xA8};
-            yep_buf_put(&b, tmp, 3);
+            yep_buf_put(b, tmp, 3);
             i++;
             break;
         }
         case 'P': /* U+2029 */ {
             char tmp[3] = {(char)0xE2, (char)0x80, (char)0xA9};
-            yep_buf_put(&b, tmp, 3);
+            yep_buf_put(b, tmp, 3);
             i++;
             break;
         }
@@ -211,8 +231,8 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
                 cp = (cp << 4) | (uint32_t)hv;
             }
             if (!ok) {
-                yep_buf_putc(&b, '\\');
-                yep_buf_putc(&b, (char)e);
+                yep_buf_putc(b, '\\');
+                yep_buf_putc(b, (char)e);
                 i++;
                 break;
             }
@@ -240,7 +260,7 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
             }
             char tmp[4];
             char* o = yep_emit_cp(tmp, cp);
-            yep_buf_put(&b, tmp, (size_t)(o - tmp));
+            yep_buf_put(b, tmp, (size_t)(o - tmp));
             i += 1 + (size_t)digits;
             break;
         }
@@ -260,15 +280,14 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
         }
         default:
             /* unknown escape: keep verbatim */
-            yep_buf_putc(&b, '\\');
-            yep_buf_putc(&b, (char)e);
+            yep_buf_putc(b, '\\');
+            yep_buf_putc(b, (char)e);
             i++;
             break;
         }
-        esc_floor = b.len; /* decoded content is never strippable */
+        esc_floor = b->len; /* decoded content is never strippable */
     }
-    *out_len = (uint32_t)b.len;
-    return b.data;
+    return (uint32_t)b->len;
 }
 
 char* yep_finish_single(const char* p, uint32_t start, uint32_t end, int multiline, yep_pool* pool,

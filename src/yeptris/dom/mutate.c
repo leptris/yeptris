@@ -52,7 +52,7 @@ uint32_t yep_mut_scalar(yep_dom* d, const char* value, size_t len, uint8_t style
         d->ncount--;
         return UINT32_MAX;
     }
-    n->value = v;
+    n->value = yep_dom_str_put(d, v.p ? (const char*)v.p : "", v.len);
     n->style = style;
     n->tag_id = style == YEP_STYLE_PLAIN ? yep_resolver_core12()->resolve(NULL, v.p, v.len)
                                          : YEPTRIS_TAG_STR;
@@ -162,7 +162,8 @@ static uint32_t map_find(const yep_dom* d, uint32_t map, const char* key, size_t
         if (k == NULL) {
             return UINT32_MAX;
         }
-        if (k->value.len == klen && (klen == 0 || memcmp(k->value.p, key, klen) == 0)) {
+        yep_view kv = yep_dom_view(d, k->value);
+        if (kv.len == klen && (klen == 0 || memcmp(kv.p, key, klen) == 0)) {
             return c;
         }
         c = k->next_sibling; /* the value node follows the key */

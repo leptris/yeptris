@@ -24,6 +24,11 @@ extern "C" {
 char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multiline, yep_pool* pool,
                         uint32_t* out_len);
 
+/* In-place variant for fixed buffers (JSON builder's arena path):
+ * cap = the raw span bounds the output; returns the decoded length. */
+uint32_t yep_finish_double_into(const char* p, uint32_t start, uint32_t end, char* dst,
+                                uint32_t cap);
+
 /* Finishes a single-quoted content span: '' → ' '; multi-line folding.
  * Returns a pool-owned buffer, or NULL when nothing changed (borrow ok). */
 char* yep_finish_single(const char* p, uint32_t start, uint32_t end, int multiline, yep_pool* pool,

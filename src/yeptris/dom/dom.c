@@ -46,18 +46,67 @@ int dom_grow_docs(yep_dom* d, uint32_t need) {
     return 1;
 }
 
-/* Copies a non-borrowed value into the DOM pool (borrowed stays a view). */
-static yep_view dom_value(yep_dom* d, const yep_event* ev) {
-    if (ev->borrowed || ev->value.len == 0) {
-        return ev->value;
+/* Doubles the arena until cap bytes fit; 0 on OOM. Offsets stored in
+ * nodes stay valid across the move. */
+static int str_grow(yep_dom* d, uint32_t need) {
+    if (d->str_len + need <= d->str_cap) {
+        return 1;
     }
-    char* cp = yep_pool_alloc(d->pool, ev->value.len, 16);
-    if (cp == NULL) {
-        return ev->value;
+    uint32_t cap = d->str_cap ? d->str_cap : 256;
+    while (cap < d->str_len + need) {
+        cap *= 2;
     }
-    memcpy(cp, ev->value.p, ev->value.len);
-    yep_view v = {cp, ev->value.len};
-    return v;
+    char* ns = yep_alloc(d->sys, cap);
+    if (ns == NULL) {
+        return 0;
+    }
+    if (d->str_len > 0) {
+        memcpy(ns, d->str, d->str_len);
+    }
+    yep_free(d->sys, d->str);
+    d->str = ns;
+    d->str_cap = cap;
+    return 1;
+}
+
+yep_sview yep_dom_str_put(yep_dom* d, const char* p, uint32_t len) {
+    yep_sview sv = {YEP_SV_INPUT, 0}; /* empty: arena offset 0 */
+    if (len == 0 || !str_grow(d, len)) {
+        return sv; /* len 0 or OOM: empty view */
+    }
+    memcpy(d->str + d->str_len, p, len);
+    sv.off = YEP_SV_INPUT | d->str_len;
+    sv.len = len;
+    d->str_len += len;
+    return sv;
+}
+
+char* yep_dom_str_tail(yep_dom* d, uint32_t cap) {
+    if (!str_grow(d, cap)) {
+        return NULL;
+    }
+    return d->str + d->str_len;
+}
+
+yep_sview yep_dom_str_commit(yep_dom* d, uint32_t written) {
+    yep_sview sv = {YEP_SV_INPUT | d->str_len, written};
+    d->str_len += written;
+    return sv;
+}
+
+/* Node string from an engine event: borrowed views stay INPUT
+ * offsets (zero copy); everything the engine produced (folded,
+ * escaped, resolved tags, anchor names) is copied into the arena —
+ * the finish pool is then free to die with the engine. */
+static yep_sview dom_ev_str(yep_dom* d, const yep_event* ev, const yep_view* v, int borrowed) {
+    if (v->len == 0) {
+        yep_sview sv = {0, 0};
+        return sv;
+    }
+    if (borrowed && v->p != NULL && d->input_base != NULL && (const char*)v->p >= d->input_base) {
+        return yep_sv_input(d, *v);
+    }
+    return yep_dom_str_put(d, (const char*)v->p, v->len);
 }
 
 uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
@@ -72,9 +121,9 @@ uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
     n->target = UINT32_MAX;
     n->kind = kind;
     if (ev) {
-        n->tag = ev->tag;
+        n->tag = dom_ev_str(d, ev, &ev->tag, 0);
         n->tag_id = ev->tag_id;
-        n->anchor = ev->anchor;
+        n->anchor = dom_ev_str(d, ev, &ev->anchor, ev->borrowed);
         n->style = ev->style;
         n->implicit = ev->implicit;
         n->flow = ev->flow;
@@ -85,6 +134,9 @@ uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
 }
 
 static int dom_anchor_set(yep_dom* d, yep_view name, uint32_t node) {
+    /* anchor names are always raw input slices (borrowed, stable for
+     * the document's lifetime) — the nametab borrows them directly;
+     * arena copies would dangle when str_grow moves the arena */
     return yep_nametab_set(&d->anchors, name, node);
 }
 
@@ -193,7 +245,7 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
         if (id == UINT32_MAX) {
             return -1;
         }
-        d->nodes[id].value = dom_value(d, ev);
+        d->nodes[id].value = dom_ev_str(d, ev, &ev->value, ev->borrowed);
         if (!yep_view_is_empty(ev->anchor) && !dom_anchor_set(d, ev->anchor, id)) {
             return -1;
         }
@@ -209,7 +261,7 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
         if (id == UINT32_MAX) {
             return -1;
         }
-        d->nodes[id].value = ev->value;
+        d->nodes[id].value = dom_ev_str(d, ev, &ev->value, ev->borrowed);
         d->nodes[id].target = target;
         return dom_place(d, id);
     }
@@ -262,6 +314,7 @@ void yep_dom_destroy(yep_dom* d) {
     if (d == NULL) {
         return;
     }
+    yep_free(d->sys, d->str);
     yep_midx_destroy(d);
     yep_nametab_free(&d->anchors);
     yep_hpool_destroy(d->handles);
@@ -355,15 +408,16 @@ static int jb_string_node(jbuilder* b) {
         return -2;
     }
     if (has_esc) {
-        char* out = yep_finish_double(b->p, (uint32_t)(start + 1), (uint32_t)close, 0, b->d->pool,
-                                      &n->value.len);
-        if (out == NULL) {
+        uint32_t span = (uint32_t)(close - start - 1);
+        char* dst = yep_dom_str_tail(b->d, span);
+        if (dst == NULL) {
             return -1;
         }
-        n->value.p = out;
+        n->value = yep_dom_str_commit(
+            b->d, yep_finish_double_into(b->p, (uint32_t)(start + 1), (uint32_t)close, dst, span));
     } else {
-        n->value.p = b->p + start + 1;
-        n->value.len = (uint32_t)(close - start - 1);
+        yep_view v = {b->p + start + 1, (uint32_t)(close - start - 1)};
+        n->value = yep_sv_input(b->d, v);
     }
     n->style = YEP_STYLE_DOUBLE_QUOTED;
     n->tag_id = 0; /* str */
@@ -402,8 +456,8 @@ static int jb_scalar_node(jbuilder* b, uint32_t tag_id) {
         tag_id = yep_resolver_core12()->resolve(NULL, b->p + start, (uint32_t)(i - start));
     }
     b->i = i;
-    n->value.p = b->p + start;
-    n->value.len = (uint32_t)(i - start);
+    yep_view v = {b->p + start, (uint32_t)(i - start)};
+    n->value = yep_sv_input(b->d, v);
     n->style = YEP_STYLE_PLAIN;
     n->implicit = 1;
     n->tag_id = (uint8_t)tag_id;

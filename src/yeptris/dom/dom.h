@@ -36,6 +36,20 @@ typedef enum {
 
 #define YEP_DOM_MAX_DEPTH 1000
 
+/* Compact node strings: (region-tagged offset, length) instead of
+ * pointers — the node drops to <= 64 B (TODO.impl/11's gate). Two
+ * regions: the borrowed parse input (offset from its base) and the
+ * DOM's own contiguous string arena (offset from its start; the
+ * arena grows by realloc, which MOVES bytes but never invalidates
+ * OFFSETS — the leptris arena discipline). Absence = len 0. */
+#define YEP_SV_INPUT 0x80000000u /* region bit: 1 = arena, 0 = input */
+#define YEP_SV_OFF 0x7FFFFFFFu   /* 31-bit offsets (2 GiB ceiling) */
+
+typedef struct yep_sview {
+    uint32_t off; /* YEP_SV_INPUT | byte offset into the region */
+    uint32_t len;
+} yep_sview;
+
 typedef struct yep_dnode {
     uint8_t kind;
     uint8_t style;
@@ -49,16 +63,24 @@ typedef struct yep_dnode {
     uint32_t next_sibling;
     uint32_t count;  /* children (mappings: 2 × pairs) */
     uint32_t target; /* alias: target node id */
-    yep_view value;  /* scalar content / alias name */
-    yep_view tag;
-    yep_view anchor;
+    yep_sview value; /* scalar content / alias name */
+    yep_sview tag;
+    yep_sview anchor;
     uint32_t line;
     uint32_t col;
 } yep_dnode;
 
+/* 11's node-size gate: compact views keep the dense record <= 64 B. */
+_Static_assert(sizeof(yep_dnode) <= 64, "yep_dnode exceeds the 64 B gate");
+
 typedef struct yep_dom {
     const yep_allocator* sys;
-    yep_pool* pool; /* owned copies of non-borrowed values */
+    yep_pool* pool; /* node/docs arrays (strings live in str) */
+    /* string arena: contiguous, realloc-grown; node strings are
+     * OFFSETS into it, so growth never dangles (dom_str_put) */
+    char* str;
+    uint32_t str_len, str_cap;
+    const char* input_base; /* borrowed parse input (offset base) */
     /* handle arena: thread-safe (atomic bump) — query APIs allocate
      * YeptrisNode wrappers here, so read-only document sharing across
      * threads is safe; parse-path pools stay single-threaded */
@@ -77,6 +99,25 @@ typedef struct yep_dom {
     uint32_t pending_key_id[YEP_DOM_MAX_DEPTH];
     uint32_t pending_key;
 } yep_dom;
+
+/* Decodes to the pointer view callers use (defined after yep_dom).
+ * Absent views (len 0) decode to a valid base pointer with length
+ * 0 — callers test len. */
+static inline yep_view yep_dom_view(const yep_dom* d, yep_sview sv) {
+    yep_view v = {NULL, 0};
+    if (sv.len == 0) {
+        return v; /* NULL+0 would be UB on a regionless document */
+    }
+    v.len = sv.len;
+    v.p = (sv.off & YEP_SV_INPUT ? d->str : d->input_base) + (sv.off & YEP_SV_OFF);
+    return v;
+}
+
+/* Input-region encoding; arena copies go through dom_str_put. */
+static inline yep_sview yep_sv_input(const yep_dom* d, yep_view v) {
+    yep_sview sv = {(uint32_t)((const char*)v.p - d->input_base), v.len};
+    return sv;
+}
 
 yep_dom* yep_dom_create(const yep_allocator* sys);
 
@@ -123,6 +164,17 @@ void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth);
  * with yep_json_document; 0 on success, -1 OOM, -2 grammar surprise
  * (defensive). */
 int yep_dom_build_json(yep_dom* d, const char* buf, size_t len);
+
+/* Appends len bytes to the string arena; returns the ARENA-offset
+ * encoding (input_base-relative encodings use yep_sv_input). */
+yep_sview yep_dom_str_put(yep_dom* d, const char* p, uint32_t len);
+
+/* Reserve/commit for in-place decoding (the JSON builder's escape
+ * path): tail ensures capacity and returns the write position at
+ * str_len; commit advances by the written length and returns the
+ * arena-encoded view. */
+char* yep_dom_str_tail(yep_dom* d, uint32_t cap);
+yep_sview yep_dom_str_commit(yep_dom* d, uint32_t written);
 void yep_dom_destroy(yep_dom* d);
 int yep_dom_on_event(void* ctx, const yep_event* ev);
 

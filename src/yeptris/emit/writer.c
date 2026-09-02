@@ -29,6 +29,17 @@
 #include "float/api.h"
 #include "resolve/resolver.h"
 
+/* Decodes a compact node string for the writer's configured run. */
+static yep_view wv(const yep_writer* w, yep_sview sv) {
+    yep_view v = {NULL, 0};
+    if (sv.len == 0) {
+        return v;
+    }
+    v.len = sv.len;
+    v.p = (sv.off & YEP_SV_INPUT ? w->sv_arena : w->sv_input) + (sv.off & YEP_SV_OFF);
+    return v;
+}
+
 /* Streaming flush (13C): append-only output means any high-water
  * crossing is a safe cut point. */
 static void wr_maybe_flush(yep_writer* w) {
@@ -168,8 +179,9 @@ static void emit_dq_json(yep_writer* w, const char* p, uint32_t n) {
  * The explicit indicator is always '2' because the pad is defined as
  * parent_col+2 everywhere (the contract that keeps it valid). */
 static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
-    const char* p = (const char*)n->value.p;
-    uint32_t len = n->value.len;
+    yep_view vdec = wv(w, n->value);
+    const char* p = (const char*)vdec.p;
+    uint32_t len = vdec.len;
     uint32_t trail = 0;
     while (trail < len && p[len - 1 - trail] == '\n') {
         trail++;
@@ -203,8 +215,9 @@ static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
  * canonical output is a fixed point (parse of canonical re-prints
  * identically — the byte-stability gate). */
 static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
-    const char* p = (const char*)n->value.p;
-    uint32_t len = n->value.len;
+    yep_view vdec = wv(w, n->value);
+    const char* p = (const char*)vdec.p;
+    uint32_t len = vdec.len;
     if (n->tag.len == 0) {
         switch (n->tag_id) {
         case YEPTRIS_TAG_NULL:
@@ -256,8 +269,9 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
 }
 
 static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int as_key) {
-    const char* p = (const char*)n->value.p;
-    uint32_t len = n->value.len;
+    yep_view vdec = wv(w, n->value);
+    const char* p = (const char*)vdec.p;
+    uint32_t len = vdec.len;
     if (w->canonical || w->json) {
         emit_canonical_scalar(w, n);
         return;
@@ -335,36 +349,38 @@ static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
         return;
     }
     wr_byte(w, '&');
+    yep_view adec = wv(w, n->anchor);
     if (w->canonical) {
-        uint32_t idx = yep_nametab_get(&em->canon_names, n->anchor);
+        uint32_t idx = yep_nametab_get(&em->canon_names, adec);
         if (idx == YEP_NAMETAB_NIL) {
             idx = em->canon_names.count;
-            yep_nametab_set(&em->canon_names, n->anchor, idx);
+            yep_nametab_set(&em->canon_names, adec, idx);
         }
         char name[24];
         int nl = snprintf(name, sizeof(name), "a%u", idx);
         wr_put(w, name, (uint32_t)nl);
     } else {
-        wr_put(w, (const char*)n->anchor.p, n->anchor.len);
+        wr_put(w, (const char*)adec.p, adec.len);
     }
     wr_byte(w, ' ');
 }
 
 static void emit_alias_ex(yep_emitter* em, const yep_dnode* n) {
     yep_writer* w = &em->w;
+    yep_view name_v = wv(w, n->value);
     wr_byte(w, '*');
     if (w->canonical) {
-        uint32_t idx = yep_nametab_get(&em->canon_names, n->value);
+        uint32_t idx = yep_nametab_get(&em->canon_names, name_v);
         char name[24];
         int nl;
         if (idx == YEP_NAMETAB_NIL) {
-            nl = snprintf(name, sizeof(name), "%.*s", (int)n->value.len, (const char*)n->value.p);
+            nl = snprintf(name, sizeof(name), "%.*s", (int)name_v.len, (const char*)name_v.p);
         } else {
             nl = snprintf(name, sizeof(name), "a%u", idx);
         }
         wr_put(w, name, (uint32_t)nl);
     } else {
-        wr_put(w, (const char*)n->value.p, n->value.len);
+        wr_put(w, (const char*)name_v.p, name_v.len);
     }
 }
 
@@ -377,7 +393,8 @@ static void emit_tag(yep_writer* w, const yep_dnode* n) {
     }
     wr_byte(w, '!');
     wr_byte(w, '<');
-    wr_put(w, (const char*)n->tag.p, n->tag.len);
+    yep_view tdec = wv(w, n->tag);
+    wr_put(w, (const char*)tdec.p, tdec.len);
     wr_byte(w, '>');
     wr_byte(w, ' ');
 }
@@ -388,15 +405,17 @@ static void emit_tag(yep_writer* w, const yep_dnode* n) {
 static void emit_props_tail(yep_writer* w, const yep_dnode* n) {
     if (n->tag.len > 0) {
         wr_byte(w, ' ');
+        yep_view tdec2 = wv(w, n->tag);
         wr_byte(w, '!');
         wr_byte(w, '<');
-        wr_put(w, (const char*)n->tag.p, n->tag.len);
+        wr_put(w, (const char*)tdec2.p, tdec2.len);
         wr_byte(w, '>');
     }
     if (n->anchor.len > 0) {
         wr_byte(w, ' ');
+        yep_view adec2 = wv(w, n->anchor);
         wr_byte(w, '&');
-        wr_put(w, (const char*)n->anchor.p, n->anchor.len);
+        wr_put(w, (const char*)adec2.p, adec2.len);
     }
 }
 
@@ -636,14 +655,16 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
             /* root block-collection props ride their own leading line;
              * scalars and flow collections carry them inline */
             if (root->tag.len > 0) {
+                yep_view tdec3 = wv(w, root->tag);
                 wr_byte(w, '!');
                 wr_byte(w, '<');
-                wr_put(w, (const char*)root->tag.p, root->tag.len);
+                wr_put(w, (const char*)tdec3.p, tdec3.len);
                 wr_byte(w, '>');
             }
             if (root->anchor.len > 0) {
+                yep_view adec3 = wv(w, root->anchor);
                 wr_byte(w, '&');
-                wr_put(w, (const char*)root->anchor.p, root->anchor.len);
+                wr_put(w, (const char*)adec3.p, adec3.len);
             }
             wr_byte(w, '\n');
         }
