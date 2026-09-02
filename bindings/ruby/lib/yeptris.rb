@@ -9,6 +9,7 @@ module Yeptris
   autoload :Document, "yeptris/document"
   autoload :Node, "yeptris/node"
   autoload :YAML, "yeptris/yaml"
+  autoload :Materializer, "yeptris/materializer"
 end
 
 # Eager native-library resolution (leptris-ruby lesson): fail at

@@ -98,6 +98,7 @@ int yep_rec_on_event(void* ctx, const yep_event* ev) {
     case YEP_EV_SCALAR:
         r->type = YEPTRIS_EV_SCALAR;
         r->style = ev->style;
+        r->tag_id = ev->tag_id; /* the resolver's verdict, once */
         if (ev->implicit) {
             r->flags |= YEPTRIS_EF_IMPLICIT;
         }

@@ -10,6 +10,7 @@
 
 #include "../../include/yeptris/events.h"
 #include "../parse/engine.h"
+#include "../resolve/resolver.h"
 #include "capture.h"
 
 struct yeptris_recorder {
@@ -18,15 +19,21 @@ struct yeptris_recorder {
     size_t input_len, input_cap;
     int ran;
     int final_fed;
+    int compat11;
     YeptrisStatus status;
     uint32_t err_line;
     uint32_t err_col;
 };
 
 YEPTRIS_API YeptrisRecorder yeptris_recorder_new(void) {
+    return yeptris_recorder_new_ex(YEPTRIS_SCHEMA_12_CORE);
+}
+
+YEPTRIS_API YeptrisRecorder yeptris_recorder_new_ex(YeptrisSchema schema) {
     struct yeptris_recorder* r = calloc(1, sizeof(*r));
     if (r != NULL) {
         yep_rec_init(&r->store);
+        r->compat11 = schema == YEPTRIS_SCHEMA_11_COMPAT;
     }
     return r;
 }
@@ -64,6 +71,8 @@ YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char*
     if (eng == NULL) {
         return YEPTRIS_ERROR_MEMORY;
     }
+    yep_engine_set_resolver(eng, rec->compat11 ? yep_resolver_compat11()
+                                               : yep_resolver_core12());
     yep_sink sink = {yep_rec_on_event, &rec->store};
     int rc = yep_engine_run(eng, rec->input, rec->input_len, &sink);
     const yep_error* err = yep_engine_error(eng);

@@ -99,6 +99,15 @@ module Yeptris
 
     attach_function :yeptris_tag_uri, [:int], :string
 
+    # recorder (TODO.impl/12): bulk records + string arena, one drain
+    attach_function :yeptris_recorder_new, [], :pointer
+    attach_function :yeptris_recorder_new_ex, [:int], :pointer
+    attach_function :yeptris_recorder_feed,
+                    %i[pointer pointer size_t int], :int
+    attach_function :yeptris_recorder_records, %i[pointer pointer], :pointer
+    attach_function :yeptris_recorder_arena, %i[pointer pointer], :pointer
+    attach_function :yeptris_recorder_free, [:pointer], :void
+
     attach_function :yeptris_serialize, %i[yeptris_document pointer], :pointer
     attach_function :yeptris_serialize_ex,
                     %i[yeptris_document pointer pointer], :pointer
