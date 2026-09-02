@@ -262,7 +262,9 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
         emit_canonical_scalar(w, n);
         return;
     }
-    int multiline = (memchr(p, '\n', len) != NULL);
+    /* p may be NULL for an empty view; memchr(NULL, .., 0) is UB by
+     * the nonnull attribute even though it reads nothing */
+    int multiline = (len > 0 && memchr(p, '\n', len) != NULL);
     int blockable = 0;
     if (multiline && !as_key) {
         /* A block whose body is all whitespace parses back empty, and a
@@ -409,6 +411,12 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
     int map = (n->kind == 2);
     wr_byte(w, map ? '{' : '[');
     int flow_indent = w->col;
+    if (w->json_pretty && n->count > 0) {
+        w->pretty_depth++;
+        flow_indent = w->pretty_depth * 2; /* 2 spaces per level */
+        wr_byte(w, '\n');
+        wr_indent(w, flow_indent);
+    }
     uint32_t child = n->first_child;
     uint32_t idx = 0;
     while (child != UINT32_MAX) {
@@ -417,7 +425,10 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
             /* 13B: past best_width, break AFTER the previous value
              * (value boundaries only, never inside a scalar) and
              * re-indent to the opening bracket's column */
-            if (w->json_compact) {
+            if (w->json_pretty) {
+                wr_put(w, ",\n", 2);
+                wr_indent(w, w->pretty_depth * 2);
+            } else if (w->json_compact) {
                 wr_byte(w, ',');
             } else if (w->best_width > 0 && w->col > w->best_width) {
                 wr_byte(w, ',');
@@ -435,7 +446,9 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
                 wr_put(w, " : ", 3);
             } else {
                 emit_node(em, child, 0, 1);
-                if (w->json_compact) {
+                if (w->json_pretty) {
+                    wr_put(w, ": ", 2);
+                } else if (w->json_compact) {
                     wr_byte(w, ':');
                 } else {
                     wr_put(w, ": ", 2);
@@ -449,6 +462,11 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
         }
         idx++;
         child = cn->next_sibling;
+    }
+    if (w->json_pretty && idx > 0) {
+        wr_byte(w, '\n');
+        wr_indent(w, (w->pretty_depth - 1) * 2);
+        w->pretty_depth--;
     }
     wr_byte(w, map ? '}' : ']');
 }

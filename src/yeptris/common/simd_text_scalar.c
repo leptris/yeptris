@@ -57,6 +57,12 @@ void yep_text_count3_scalar(const char* s, size_t len, char c0, char c1, char c2
 
 void yep_text_copy_count3_scalar(char* dst, const char* src, size_t len, char c0, char c1, char c2,
                                  size_t* n0, size_t* n1, size_t* n2) {
+    /* len 0 with NULL dst (count-only callers) must not reach memcpy:
+     * the nonnull attribute makes the call UB even for size 0 */
+    if (len == 0) {
+        *n0 = *n1 = *n2 = 0;
+        return;
+    }
     memcpy(dst, src, len);
     yep_text_count3_scalar(dst, len, c0, c1, c2, n0, n1, n2);
 }
