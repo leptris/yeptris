@@ -1,7 +1,7 @@
 /* api.h — the emitter-facing float printer boundary (TODO.impl/14).
  *
- * Thin adaptation over the vendored ryu TUs (d2s/f2s/d2fixed, kept
- * pristine; upstream hidden symbols, adapted ONLY here). Non-finite
+ * Thin adaptation over the clean-room float printer TUs
+ * (TODO.impl/14 — no third-party code). Non-finite
  * values print as the YAML core-schema words (.inf/-.inf/.nan), never
  * ryu's "Infinity"/"NaN" — the resolver and the printer agree.
  *

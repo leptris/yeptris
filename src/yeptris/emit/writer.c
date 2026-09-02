@@ -417,7 +417,9 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
             /* 13B: past best_width, break AFTER the previous value
              * (value boundaries only, never inside a scalar) and
              * re-indent to the opening bracket's column */
-            if (w->best_width > 0 && w->col > w->best_width) {
+            if (w->json_compact) {
+                wr_byte(w, ',');
+            } else if (w->best_width > 0 && w->col > w->best_width) {
                 wr_byte(w, ',');
                 wr_byte(w, '\n');
                 wr_indent(w, flow_indent);
@@ -433,7 +435,11 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
                 wr_put(w, " : ", 3);
             } else {
                 emit_node(em, child, 0, 1);
-                wr_put(w, ": ", 2);
+                if (w->json_compact) {
+                    wr_byte(w, ':');
+                } else {
+                    wr_put(w, ": ", 2);
+                }
             }
             emit_node(em, cn->next_sibling, 0, 0);
             child = cn->next_sibling;

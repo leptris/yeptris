@@ -25,7 +25,9 @@ set(YEPTRIS_SOURCES
     yeptris/parse/engine.c
     yeptris/dom/dom.c
     yeptris/dom/hpool.c
+    yeptris/dom/mutate.c
     yeptris/parse.c
+    yeptris/build.c
     yeptris/events/capture.c
     yeptris/events/push.c
     yeptris/events/pull.c
@@ -78,6 +80,9 @@ if(YEPTRIS_BUILD_JSONC_COMPAT AND YEPTRIS_BUILD_STATIC)
     target_link_libraries(yeptris_jsonc PUBLIC yeptris_static)
     target_include_directories(yeptris_jsonc PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+    # internal headers (emit/writer.h, float/api.h): PRIVATE — they
+    # never leak into the compat library's public interface
+    target_include_directories(yeptris_jsonc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris)
     yeptris_set_warnings(yeptris_jsonc)
     add_library(yeptris::jsonc ALIAS yeptris_jsonc)
 endif()

@@ -29,6 +29,7 @@ typedef struct yep_writer {
                        * quoted strings, typed words, shortest floats */
     int json;         /* 21: JSON output — canonical minus YAML words:
                        * null (not ~), no document markers, JSON escapes */
+    int json_compact; /* json-c to_json_string: no padding spaces */
     int best_width;   /* 13B: 0 = default 80; flow lines wrap after a
                        * value past this width */
     int col;          /* current output column (wr_* maintains) */
@@ -42,5 +43,9 @@ typedef struct yep_emitter {
 
 /* One pass over the document set. dry=1 counts exactly. */
 size_t yep_emit_run(yep_emitter* em, int dry);
+
+/* Compact single-line JSON, malloc'd NUL-terminated (internal entry
+ * for the json-c compat layer's to_json_string). */
+char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len);
 
 #endif /* YEP_EMIT_WRITER_H */

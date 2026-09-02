@@ -41,6 +41,8 @@ typedef struct yep_dnode {
     uint8_t implicit;
     uint8_t tag_id;       /* resolved tag (resolve/resolver.h) */
     uint8_t flow;         /* collection opened in flow style */
+    uint8_t attached;     /* mutation: linked under a parent or a root */
+    uint16_t depth;       /* mutation: root 0, child parent+1 (capped 1000) */
     uint32_t first_child; /* child link (mappings: key,value,key,value…) */
     uint32_t last_child;
     uint32_t next_sibling;
@@ -76,10 +78,40 @@ typedef struct yep_dom {
 
 yep_dom* yep_dom_create(const yep_allocator* sys);
 
+/* builder helpers shared with mutate.c (dom-internal) */
+int dom_grow_nodes(yep_dom* d, uint32_t need);
+int dom_grow_docs(yep_dom* d, uint32_t need);
+uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind);
+void dom_link(yep_dom* d, uint32_t parent, uint32_t child);
+
 /* thread-safe handle arena (see hpool.c) */
 struct yep_hpool* yep_hpool_create(const yep_allocator* sys);
 void yep_hpool_destroy(struct yep_hpool* p);
 void* yep_hpool_alloc(struct yep_hpool* p, size_t size, size_t align);
+
+/* mutate.c — the from-scratch builder (TODO.impl/11 phase 3).
+ *
+ * Values passed at runtime have no input buffer to borrow from, so
+ * they are copied into the DOM pool. Plain scalars are typed by the
+ * core12 resolver (the typing SSOT — mutation never invents types);
+ * quoted/block styles are strings. Synthesized documents resolve with
+ * the default schema; a compat-mode constructor arrives with 15.
+ *
+ * Returns: node ids (UINT32_MAX = OOM); statuses 0 ok, -1 invalid
+ * argument / OOM, -2 duplicate key (add), -3 would exceed
+ * YEP_DOM_MAX_DEPTH, -4 node already attached (would alias a parent).
+ */
+uint32_t yep_mut_scalar(yep_dom* d, const char* value, size_t len, uint8_t style);
+uint32_t yep_mut_seq(yep_dom* d, uint8_t flow);
+uint32_t yep_mut_map(yep_dom* d, uint8_t flow);
+int yep_mut_seq_add(yep_dom* d, uint32_t seq, uint32_t child);
+int yep_mut_map_add(yep_dom* d, uint32_t map, const char* key, size_t klen, uint32_t value);
+/* Replace-in-place (json-c semantics: position kept); 1 = replaced. */
+int yep_mut_map_set(yep_dom* d, uint32_t map, const char* key, size_t klen, uint32_t value);
+int yep_mut_seq_del(yep_dom* d, uint32_t seq, uint32_t index);
+int yep_mut_map_del(yep_dom* d, uint32_t map, const char* key, size_t klen);
+int yep_mut_add_root(yep_dom* d, uint32_t node);
+void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth);
 
 /* Direct DOM construction from a strict-validated JSON buffer
  * (TODO.impl/27): no engine, no event pipeline. The caller validated

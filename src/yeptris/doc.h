@@ -21,4 +21,14 @@ typedef struct yeptris_document {
                           document */
 } yeptris_document;
 
+/* Node handle: a (document, node-id) pair so nodes stay usable even if
+ * the node pool grows (ids are stable; pointers are not). Defined here
+ * (not parse.c) since the query layer and the builder share it. */
+typedef struct yeptris_node {
+    yeptris_document* doc;
+    uint32_t id;
+} yeptris_node;
+
+yeptris_node* yep_handle_new(yeptris_document* doc, uint32_t id);
+
 #endif /* YEP_DOC_H */

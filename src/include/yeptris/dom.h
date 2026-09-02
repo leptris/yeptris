@@ -70,6 +70,46 @@ YEPTRIS_API YeptrisNode yeptris_node_map_get(YeptrisNode node, const char* key, 
 YEPTRIS_API int yeptris_node_map_at(YeptrisNode node, size_t index, YeptrisNode* key,
                                     YeptrisNode* value);
 
+/* ---- Construction (TODO.impl/11 phase 3) ----
+ *
+ * Build documents from scratch and mutate them; the emitter and every
+ * query API above work on synthesized documents unchanged. All values
+ * are COPIED into the document — nothing is borrowed from the caller.
+ * Nodes belong to exactly one parent (or one document root); a node
+ * already attached, a duplicate map key (add), cross-document links,
+ * and trees deeper than the nesting cap (YEPTRIS_ERROR_DEPTH) are
+ * rejected. Deletion unlinks but keeps arena lifetime: handles stay
+ * valid until yeptris_document_free. */
+
+/* An empty document with no input; build nodes and set the root. */
+YEPTRIS_API YeptrisDocument yeptris_document_new(void);
+
+/* Records a detached node as document i's root. */
+YEPTRIS_API int yeptris_document_set_root(YeptrisDocument doc, YeptrisNode root);
+
+YEPTRIS_API YeptrisNode yeptris_node_new_mapping(YeptrisDocument doc);
+YEPTRIS_API YeptrisNode yeptris_node_new_sequence(YeptrisDocument doc);
+
+/* Memory: value copied (document lifetime). Plain style types the copy
+ * through the schema resolver exactly like parse; quoted/block styles
+ * force string. */
+YEPTRIS_API YeptrisNode yeptris_node_new_scalar(YeptrisDocument doc, const char* value, size_t len,
+                                                YeptrisScalarStyle style);
+
+/* YEPTRIS_OK, or ERROR_ARG (cross-document/detached misuse),
+ * ERROR_MEMORY, ERROR_DEPTH, ERROR_PARSE (duplicate key). */
+YEPTRIS_API int yeptris_node_map_add(YeptrisNode map, const char* key, size_t key_len,
+                                     YeptrisNode value);
+
+/* Replace-or-add: an existing key keeps its position and swaps the
+ * value; a new key appends. */
+YEPTRIS_API int yeptris_node_map_set(YeptrisNode map, const char* key, size_t key_len,
+                                     YeptrisNode value);
+
+YEPTRIS_API int yeptris_node_seq_add(YeptrisNode seq, YeptrisNode value);
+YEPTRIS_API int yeptris_node_seq_del(YeptrisNode seq, size_t index);
+YEPTRIS_API int yeptris_node_map_del(YeptrisNode map, const char* key, size_t key_len);
+
 #ifdef __cplusplus
 }
 #endif

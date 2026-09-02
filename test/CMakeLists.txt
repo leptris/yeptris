@@ -34,6 +34,7 @@ add_executable(test_unit
     unit/test_string_view.cpp
     unit/test_json_hpp.cpp
     unit/test_jsonc_compat.cpp
+    unit/test_mutate.cpp
     unit/test_yaml_compat.cpp
 )
 find_package(Threads REQUIRED)
