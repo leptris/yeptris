@@ -222,6 +222,19 @@ static int attach(json_object* parent, json_object* val, const char* key) {
             return -1;
         }
         yeptris_document_free(val->doc);
+        /* the standalone root died with its document: its old registry
+         * and cached output die too (borrowed refs die with the root —
+         * the caller's val pointer is the one that stays valid) */
+        for (size_t i = 0; i < val->nchild; i++) {
+            free(val->children[i]->json_out);
+            free(val->children[i]);
+        }
+        free(val->children);
+        val->children = NULL;
+        val->nchild = 0;
+        val->capchild = 0;
+        free(val->json_out);
+        val->json_out = NULL;
     } else {
         return -1; /* already attached to a parent: two parents is a bug */
     }
