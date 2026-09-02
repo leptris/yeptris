@@ -1,6 +1,6 @@
 # TODO.impl/18 — Benchmarks: matrix, corpora, CI artifacts, perf ledger
 
-Status: phase A COMPLETE (matrix harness, libyaml race, realworld corpus, PERF-LEDGER baseline 2026-09-01 — every shape >2.1x on every measure; CI bench.yml PR #34, libyaml pinned, artifacts + job summary); B (ruby bench, alloc/RSS measures, cross-commit delta) remains · Depends: 06+ · Layer: `benchmarks` · PLAN.md phase: 2+
+Status: COMPLETE (A: matrix+CI+ledger; B: memory measures 2026-09-02 — allocs/MB, churn, deterministic peak-heap ledger via size-prefixed counting allocator; FINDING: peak/input 25-54x vs 11's <3x target — see PERF-LEDGER entry; compact-node arena is the follow-up). Ruby bench lands with 15 (matrix harness, libyaml race, realworld corpus, PERF-LEDGER baseline 2026-09-01 — every shape >2.1x on every measure; CI bench.yml PR #34, libyaml pinned, artifacts + job summary); B (ruby bench, alloc/RSS measures, cross-commit delta) remains · Depends: 06+ · Layer: `benchmarks` · PLAN.md phase: 2+
 
 ## Goal
 

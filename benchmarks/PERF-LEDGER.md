@@ -227,3 +227,37 @@ no resolver call) and node-field initialization trimmed to the
 fields JSON uses. yaml-mode flow spans could adopt the same builder
 by widening the validator's index, but anchors/tags/aliases make
 that a separate design.
+
+### 2026-09-02 — 18B memory measures landed (FINDING: compactness gap)
+
+The matrix now reports per shape: allocations/MB, cumulative
+allocation churn / input, and PEAK outstanding heap / input (a
+size-prefixed counting allocator keeps an exact live-bytes ledger —
+deterministic, platform-independent; an earlier fork+ru_maxrss
+approach was COW-noise on macOS and was dropped).
+
+First measurements (quiet dev box, --quick corpora):
+
+| shape | allocs/MB | churn/input | peak/input |
+|---|---|---|---|
+| block-heavy | 5 | 36.9x | 36.9x |
+| flow-json | 9 | 32.2x | 32.2x |
+| scalar-heavy | 54 | 6.2x | 6.2x |
+| deep-nesting | 54 | 15.5x | 15.5x |
+| anchor-heavy | 47 | 54.1x | 52.4x |
+| wide-mapping | 7 | 25.2x | 25.2x |
+
+Findings:
+1. allocs/MB is EXCELLENT (5-54 per MB) — amortized growth works;
+   the event pipeline allocates almost nothing per event.
+2. peak == churn on most shapes: allocations stay live until the
+   document is freed (correct — document ownership), so peak IS the
+   memory story.
+3. COMPACTNESS GAP: peak/input 25-54x vs TODO.impl/11's <3x
+   acceptance target. Dominated by the 56 B yep_dnode (8x input on
+   scalar-dense corpora by itself) plus the DOM pool's doubling
+   churn and the finish pool blocks. scalar-heavy's 6.2x shows the
+   floor; block/anchor-heavy's ~37-54x shows pools + node overhead
+   compounding. This is the top memory lever: arena-allocated
+   compact nodes (the 11 board's original design: int32 offsets,
+   per-kind tails) would land ~3-6x. Recorded as the follow-up unit.
