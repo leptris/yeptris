@@ -88,7 +88,10 @@ C. `sizing` fused counters wired to arena reserve; allocation-count gate.
    deep-nesting 15.5x -> 10.9x (ledger). The 0-allocs-after-reserve
    ideal remains open: undershooting shapes still grow (deep-nesting
    allocs 54 -> 80 — reserve + chain when hints miss).
-2. Streaming window contract: the scanner currently assumes a whole
-   buffer; chunk-boundary state-carry lands with item 12's feed API.
+2. ~~Streaming window contract~~ — **RESOLVED BY 07**: the engine's
+   stepping cuts chunks at --- boundaries, so the scanner only ever
+   sees whole-document buffers; no scanner-level chunk state exists
+   or is needed. The pending buffer between cuts holds at most one
+   document — the streaming memory bound.
 3. Line-table throughput gate (≥2 GB/s ledger entry) once sizing is wired.
 4. NEL/LS/PS line-break recognition (currently \n/\r\n/\r only).
