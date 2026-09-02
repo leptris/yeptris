@@ -71,6 +71,12 @@ typedef struct yep_dom {
 } yep_dom;
 
 yep_dom* yep_dom_create(const yep_allocator* sys);
+
+/* Direct DOM construction from a strict-validated JSON buffer
+ * (TODO.impl/27): no engine, no event pipeline. The caller validated
+ * with yep_json_document; 0 on success, -1 OOM, -2 grammar surprise
+ * (defensive). */
+int yep_dom_build_json(yep_dom* d, const char* buf, size_t len);
 void yep_dom_destroy(yep_dom* d);
 int yep_dom_on_event(void* ctx, const yep_event* ev);
 

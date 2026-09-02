@@ -1,6 +1,6 @@
 # TODO.impl/21 — JSON API compatibility layers + best-API synthesis
 
-Status: CORE LANDED 2026-09-02 — writer JSON flavor (JSON escapes incl \uXXXX, null words, single root; ASAN caught a named-table OOB the unit tests missed), yeptris_serialize_json; jsonc_compat read path (real json-c symbols, -lyeptris-jsonc, enum values pinned; building API awaits DOM mutation, 11p3); json.hpp nlohmann-flavored C++17 (RAII, move-only, exceptions at the boundary, view children). REMAINING: json_object_new_* building (needs 11p3), to_json_string PRETTY variants, yajl_compat gen API, json-c test-suite port breadth · Depends: 08, 11, 13, 18 · Layer: `src/yeptris/jsonapi` + `include/yeptris/json*.h` · PLAN.md phase: 6
+Status: CORE LANDED 2026-09-02 — writer JSON flavor (JSON escapes incl \uXXXX, null words, single root; ASAN caught a named-table OOB the unit tests missed), yeptris_serialize_json; jsonc_compat read path (real json-c symbols, -lyeptris-jsonc, enum values pinned; building API awaits DOM mutation, 11p3); json.hpp nlohmann-flavored C++17 (RAII, move-only, exceptions at the boundary, view children). REMAINING: json_object_new_* building (needs 11p3), to_json_string PRETTY variants, yajl_compat gen API, json-c test-suite port breadth. 2026-09-02: direct-from-index DOM landed (yep_dom_build_json: JSON entry 63 -> 136 MB/s, 2.2x — see PERF-LEDGER) · Depends: 08, 11, 13, 18 · Layer: `src/yeptris/jsonapi` + `include/yeptris/json*.h` · PLAN.md phase: 6
 
 ## Goal
 

@@ -201,3 +201,29 @@ node array from validation token counts) — the measured per-event wall
 (~80 ns/event) is the same wall documented 2026-09-01; that unit is
 the single next lever for the JSON race and reuses scan/json.c's
 validator to produce the index.
+
+### 2026-09-02 — direct-from-index JSON DOM (WIN: 2.2x on JSON entry)
+
+yeptris_parse_json now builds the DOM straight from the validated
+buffer (yep_dom_build_json): one walk creates and links nodes with no
+engine, no event structs, no sink dispatch, no deferral machinery —
+strings unescape directly into the DOM pool (one copy; the engine
+path pays two), numbers resolve through the core12 resolver (typing
+SSOT), count semantics match the event sink exactly (children,
+halved by the accessors).
+
+Measured (2.8 MB strict-JSON array, 40k objects / 160k pairs,
+min-of-50 x 10 iters): 63.0 -> 135.9 MB/s = 2.16x. Post-format
+re-run 122.1 (noise band; CI artifacts track). Structure verified:
+tree shape, values, serialize->reparse roundtrip; all 131 gates
+green including both jsonsuite gates, jsonc, json.hpp (they exercise
+this path). A builder/validator disagreement defers to the engine
+(belt and braces; unreachable in-tree).
+
+Remaining JSON-gap analysis: the walk still pays resolver calls on
+numbers and per-node memset; the simdjson-class next steps are
+table-driven tag classification (grammar position implies the tag —
+no resolver call) and node-field initialization trimmed to the
+fields JSON uses. yaml-mode flow spans could adopt the same builder
+by widening the validator's index, but anchors/tags/aliases make
+that a separate design.

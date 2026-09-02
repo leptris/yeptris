@@ -63,9 +63,44 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
         st = YEPTRIS_ERROR_ENCODING;
         goto jfail;
     }
-    /* validated pure JSON: no BOM sniff, no printable check (JSON
-     * strings allow DEL), straight into the engine */
-    return parse_impl(buf, len, NULL, 1, status);
+    /* Direct DOM construction (TODO.impl/27): the validated buffer
+     * needs no engine — one walk builds the tree, skipping the event
+     * pipeline. A builder/validator disagreement defers to the engine
+     * (never happens in-tree; belt and braces). */
+    {
+        const yep_allocator* sys = yep_system_allocator();
+        yep_dom* dom = yep_dom_create(sys);
+        if (dom == NULL) {
+            st = YEPTRIS_ERROR_MEMORY;
+            goto jfail;
+        }
+        int brc = yep_dom_build_json(dom, buf, len);
+        if (brc == -1) {
+            yep_dom_destroy(dom);
+            st = YEPTRIS_ERROR_MEMORY;
+            goto jfail;
+        }
+        if (brc == -2) {
+            yep_dom_destroy(dom);
+            return parse_impl(buf, len, NULL, 1, status);
+        }
+        yeptris_document* doc = yep_alloc(sys, sizeof(yeptris_document));
+        if (doc == NULL) {
+            yep_dom_destroy(dom);
+            st = YEPTRIS_ERROR_MEMORY;
+            goto jfail;
+        }
+        doc->dom = dom;
+        doc->sys = sys;
+        doc->transcoded = NULL;
+        doc->transcoded_len = 0;
+        doc->input = buf;
+        doc->finish_pool = NULL;
+        if (status != NULL) {
+            *status = YEPTRIS_OK;
+        }
+        return (YeptrisDocument)doc;
+    }
 jfail:
     if (status != NULL) {
         *status = st;
