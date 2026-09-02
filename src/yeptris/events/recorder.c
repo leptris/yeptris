@@ -71,8 +71,7 @@ YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char*
     if (eng == NULL) {
         return YEPTRIS_ERROR_MEMORY;
     }
-    yep_engine_set_resolver(eng, rec->compat11 ? yep_resolver_compat11()
-                                               : yep_resolver_core12());
+    yep_engine_set_resolver(eng, rec->compat11 ? yep_resolver_compat11() : yep_resolver_core12());
     yep_sink sink = {yep_rec_on_event, &rec->store};
     int rc = yep_engine_run(eng, rec->input, rec->input_len, &sink);
     const yep_error* err = yep_engine_error(eng);

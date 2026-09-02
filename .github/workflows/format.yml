@@ -1,0 +1,33 @@
+name: Format Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  clang-format:
+    name: clang-format (LLVM 18)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+
+      # first-party code only: test/conformance/data holds fetched
+      # third-party corpora (cJSON, rapidjson, ...) — never formatted
+      - name: Check formatting
+        run: |
+          CF="$(command -v clang-format-18 || command -v clang-format)"
+          echo "using $CF"
+          find src test benchmarks tools \
+            -path 'test/conformance/data' -prune -o \
+            \( -name '*.c' -o -name '*.h' -o -name '*.cpp' \) -print \
+            | xargs "$CF" --dry-run --Werror
