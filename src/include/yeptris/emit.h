@@ -26,11 +26,13 @@ extern "C" {
 /* Emission options (13B). Versioned by size: initialize with
  * {sizeof(yeptris_emit_options)} so future fields stay optional. */
 typedef struct yeptris_emit_options {
-    uint32_t size; /* sizeof(yeptris_emit_options) */
-    int canonical; /* fixed form: flow collections, quoted strings,
-                    * typed words, shortest floats; a parse of the
-                    * output re-serializes byte-identically */
-    int reserved;  /* width/folding arrive here (13B continuation) */
+    uint32_t size;  /* sizeof(yeptris_emit_options) */
+    int canonical;  /* fixed form: flow collections, quoted strings,
+                     * typed words, shortest floats; a parse of the
+                     * output re-serializes byte-identically */
+    int best_width; /* 0 = library default (80): flow collections
+                     * wrap after a value when the current line
+                     * exceeds the width (13B) */
 } yeptris_emit_options;
 
 /* Options-aware entries; opts == NULL selects the fidelity mode

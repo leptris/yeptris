@@ -14,6 +14,13 @@ static int opts_canonical(const yeptris_emit_options* opts) {
     return opts != NULL && opts->size >= sizeof(*opts) && opts->canonical;
 }
 
+static int opts_width(const yeptris_emit_options* opts) {
+    if (opts == NULL || opts->size < sizeof(*opts) || opts->best_width <= 0) {
+        return 80; /* libyaml best_width parity */
+    }
+    return opts->best_width;
+}
+
 YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
                                              const yeptris_emit_options* opts, char* buf,
                                              size_t cap) {
@@ -27,6 +34,8 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
     em.w.json = 0;
+    em.w.best_width = opts_width(opts);
+    em.w.col = 0;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -58,6 +67,8 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
     em.w.json = 0;
+    em.w.best_width = opts_width(opts);
+    em.w.col = 0;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -91,6 +102,8 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     em.w.force_flow = 0;
     em.w.canonical = 0;
     em.w.json = 1;
+    em.w.best_width = 0; /* JSON: no folding (single-line output) */
+    em.w.col = 0;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -138,6 +151,8 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
     em.w.json = 0;
+    em.w.best_width = opts_width(opts);
+    em.w.col = 0;
     em.w.sink = sink;
     em.w.sink_ctx = ctx;
     em.w.watermark = YEP_EMIT_WATERMARK;

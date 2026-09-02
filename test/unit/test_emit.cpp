@@ -255,3 +255,60 @@ TEST(EmitStream, AbortPropagates) {
     EXPECT_EQ(slen, 0u); /* aborted: reported as nothing written */
     yeptris_document_free(doc);
 }
+
+/* ---- width folding (13B) --------------------------------------------- */
+
+TEST(EmitFold, FlowWrapsPastBestWidth) {
+    const char* y = "list: [aaaa, bbbb, cccc, dddd, eeee, ffff, gggg, hhhh]\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    yeptris_emit_options opts = {sizeof(opts), 0, 30};
+    size_t len = 0;
+    char* out = yeptris_serialize_ex(doc, &opts, &len);
+    ASSERT_NE(out, nullptr);
+    /* every line must respect the width (indent + content) */
+    int over = 0;
+    int col = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (out[i] == '\n') {
+            col = 0;
+        } else {
+            col++;
+            if (col > 40) { /* 30 + bracket indent + one value slack */
+                over = 1;
+            }
+        }
+    }
+    EXPECT_EQ(over, 0);
+    /* must have wrapped (multiple lines) */
+    EXPECT_NE(memchr(out, '\n', len), nullptr);
+    /* and must re-parse to the same content */
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(out, len, &st2);
+    EXPECT_NE(doc2, nullptr);
+    if (doc2 != nullptr) {
+        YeptrisNode a = yeptris_document_root(doc2, 0);
+        YeptrisNode b = yeptris_document_root(doc, 0);
+        YeptrisNode la = yeptris_node_map_get(a, "list", 4);
+        YeptrisNode lb = yeptris_node_map_get(b, "list", 4);
+        EXPECT_EQ(yeptris_node_seq_count(la), yeptris_node_seq_count(lb));
+    }
+    yeptris_document_free(doc2);
+    free(out);
+    yeptris_document_free(doc);
+}
+
+TEST(EmitFold, DefaultUnfoldsSmall) {
+    const char* y = "a: [1, 2, 3]\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    yeptris_emit_options opts = {sizeof(opts), 0, 0};
+    size_t len = 0;
+    char* out = yeptris_serialize_ex(doc, &opts, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), "a: [1, 2, 3]\n");
+    free(out);
+    yeptris_document_free(doc);
+}
