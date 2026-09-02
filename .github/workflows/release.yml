@@ -1,0 +1,63 @@
+name: Release
+
+# TODO.impl/20: releases are the automated workflow's job, never a
+# manual tag. workflow_dispatch(next_version) -> release/vX.Y.Z branch
+# -> version bump (CMakeLists VERSION is the SSOT; vcpkg.json +
+# CHANGELOG sync) -> PR -> on merge: tag + GitHub Release. The exact
+# version number always comes from the dispatching human.
+
+on:
+  workflow_dispatch:
+    inputs:
+      next_version:
+        description: "Exact version to release (e.g. 0.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate version shape
+        run: |
+          echo "${{ inputs.next_version }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "not X.Y.Z"; exit 1; }
+
+      - name: Bump version (SSOT: CMakeLists project VERSION)
+        run: |
+          V="${{ inputs.next_version }}"
+          sed -i "s/    VERSION [0-9]*\.[0-9]*\.[0-9]*/    VERSION $V/" CMakeLists.txt
+          sed -i "s/\"version\": \"[0-9.]*\"/\"version\": \"$V\"/" vcpkg.json
+          sed -i "s/\"version\": \"[0-9.]*\"/\"version\": \"$V\"/" ports/yeptris/vcpkg.json
+          TODAY=$(date +%Y-%m-%d)
+          if [ -f CHANGELOG.md ]; then
+            sed -i "0,/^## \[Unreleased\]/s//## \[$V\] - $TODAY/" CHANGELOG.md
+          fi
+
+      - name: Create release PR
+        run: |
+          V="${{ inputs.next_version }}"
+          git config user.name "release-workflow"
+          git config user.email "release@yeptris.invalid"
+          git checkout -b "release/v$V"
+          git add CMakeLists.txt vcpkg.json ports/yeptris/vcpkg.json CHANGELOG.md 2>/dev/null || git add CMakeLists.txt vcpkg.json ports/yeptris/vcpkg.json
+          git commit -m "release: v$V"
+          git push origin "release/v$V"
+          gh pr create --title "release: v$V" --body "Automated release branch for v$V. On merge, the workflow tags and publishes the GitHub Release." --base main
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Tag on merge (manual trigger of the second phase)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          V="${{ inputs.next_version }}"
+          gh release create "v$V" --title "v$V" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
