@@ -349,6 +349,24 @@ int yep_mut_seq_set(yep_dom* d, uint32_t seq, uint32_t index, uint32_t value) {
     return 0;
 }
 
+int yep_mut_map_add_node(yep_dom* d, uint32_t map, uint32_t key, uint32_t value) {
+    if (d == NULL || map >= d->ncount || d->nodes[map].kind != YEP_DOM_MAPPING) {
+        return MUT_ERR;
+    }
+    yep_view kv = yep_dom_view(d, d->nodes[key].value);
+    if (map_find(d, map, (const char*)kv.p, kv.len) != UINT32_MAX) {
+        return MUT_DUP;
+    }
+    int rc = mut_attach_ok(d, map, value);
+    if (rc != 0) {
+        return rc;
+    }
+    dom_link(d, map, key);
+    dom_link(d, map, value);
+    yep_midx_invalidate(d, map);
+    return 0;
+}
+
 int yep_mut_map_del(yep_dom* d, uint32_t map, const char* key, size_t klen) {
     if (d == NULL || key == NULL || map >= d->ncount || d->nodes[map].kind != YEP_DOM_MAPPING) {
         return MUT_ERR;

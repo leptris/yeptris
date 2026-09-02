@@ -261,3 +261,109 @@ TEST(JsonCBuild, ArrayPutIdx) {
     json_object_put(beyond);
     json_object_put(arr);
 }
+
+/* ---- json-c suite breadth (ports of test_parse/test_basic classes) ---- */
+
+TEST(JsonCCompat, IntegerEdges) {
+    /* values from json-c's own parsing tests */
+    struct {
+        const char* in;
+        int64_t want;
+    } cases[] = {
+        {"0", 0},
+        {"-1", -1},
+        {"2147483647", 2147483647},
+        {"-2147483648", -2147483648},
+        {"9223372036854775807", 9223372036854775807LL},
+        {"-9223372036854775808", INT64_MIN},
+        {"1e2", 100}, /* exponent form is a double; json-c truncates */
+        {"-0", 0},
+    };
+    for (const auto& c : cases) {
+        json_object* o = json_tokener_parse(c.in);
+        ASSERT_NE(o, nullptr) << c.in;
+        EXPECT_EQ(json_object_get_int64(o), c.want) << c.in;
+        json_object_put(o);
+    }
+}
+
+TEST(JsonCCompat, DoubleEdges) {
+    struct {
+        const char* in;
+        double want;
+    } cases[] = {
+        {"0.0", 0.0},
+        {"-1.5", -1.5},
+        {"1e10", 1e10},
+        {"1E-10", 1e-10},
+        {"1.7976931348623157e308", 1.7976931348623157e308},
+        {"4.9406564584124654e-324", 4.9406564584124654e-324},
+    };
+    for (const auto& c : cases) {
+        json_object* o = json_tokener_parse(c.in);
+        ASSERT_NE(o, nullptr) << c.in;
+        EXPECT_DOUBLE_EQ(json_object_get_double(o), c.want) << c.in;
+        json_object_put(o);
+    }
+}
+
+TEST(JsonCCompat, NestedAccess) {
+    json_object* root = json_tokener_parse(R"({"a":{"b":[{"c":1},{"c":2}]}})");
+    ASSERT_NE(root, nullptr);
+    json_object* a = nullptr;
+    json_object* arr = nullptr;
+    ASSERT_TRUE(json_object_object_get_ex(root, "a", &a));
+    ASSERT_TRUE(json_object_object_get_ex(a, "b", &arr));
+    ASSERT_EQ(json_object_array_length(arr), 2u);
+    json_object* second = json_object_array_get_idx(arr, 1);
+    ASSERT_NE(second, nullptr);
+    json_object* c = nullptr;
+    ASSERT_TRUE(json_object_object_get_ex(second, "c", &c));
+    EXPECT_EQ(json_object_get_int(c), 2);
+    /* deep misses stay clean */
+    EXPECT_FALSE(json_object_object_get_ex(root, "z", nullptr));
+    EXPECT_FALSE(json_object_object_get_ex(a, "c", nullptr));
+    json_object_put(root);
+}
+
+TEST(JsonCCompat, Utf8StringsRoundTrip) {
+    const char* cases[] = {
+        R"("héllo")",
+        R"("日本語")",
+        R"("emoji 👍 here")",
+        R"("tab\tnewline\nquote\"backslash\\")",
+    };
+    for (const char* c : cases) {
+        json_object* o = json_tokener_parse(c);
+        ASSERT_NE(o, nullptr) << c;
+        const char* back = json_object_to_json_string(o);
+        ASSERT_NE(back, nullptr);
+        EXPECT_STREQ(back, c) << c; /* escapes preserved verbatim */
+        json_object_put(o);
+    }
+}
+
+TEST(JsonCCompat, MutationOnParsedDocuments) {
+    json_object* root = json_tokener_parse(R"({"keep":1,"drop":2})");
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(json_object_object_del(root, "drop"), 0);
+    EXPECT_EQ(json_object_object_length(root), 1u);
+    EXPECT_EQ(json_object_object_add(root, "added", json_object_new_string("v")), 0);
+    EXPECT_EQ(json_object_object_length(root), 2u);
+    EXPECT_STREQ(json_object_to_json_string(root), R"({"keep":1,"added":"v"})");
+    /* replace */
+    EXPECT_EQ(json_object_object_add(root, "keep", json_object_new_int(9)), 1);
+    EXPECT_STREQ(json_object_to_json_string(root), R"({"keep":9,"added":"v"})");
+    json_object_put(root);
+}
+
+TEST(JsonCCompat, ArrayDelIdxOnParsed) {
+    json_object* root = json_tokener_parse("[0,1,2,3,4]");
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(json_object_array_del_idx(root, 1, 2), 0); /* remove 1,2 */
+    EXPECT_EQ(json_object_array_length(root), 3u);
+    EXPECT_EQ(json_object_get_int(json_object_array_get_idx(root, 1)), 3);
+    EXPECT_EQ(json_object_array_del_idx(root, 3, 5), -1); /* out of range */
+    EXPECT_STREQ(json_object_to_json_string(root), "[0,3,4]");
+    json_object_put(root);
+}

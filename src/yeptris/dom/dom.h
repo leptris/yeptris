@@ -180,6 +180,11 @@ uint32_t yep_mut_new_alias(yep_dom* d, uint32_t target, const char* name, size_t
  * subtree and splices the new node in at the SAME position. */
 int yep_mut_seq_set(yep_dom* d, uint32_t seq, uint32_t index, uint32_t value);
 int yep_mut_map_del(yep_dom* d, uint32_t map, const char* key, size_t klen);
+
+/* Appends a pre-built (key,value) pair (the generator path: keys are
+ * constructed nodes, not caller strings). Duplicate keys are
+ * REJECTED like map_add. */
+int yep_mut_map_add_node(yep_dom* d, uint32_t map, uint32_t key, uint32_t value);
 int yep_mut_add_root(yep_dom* d, uint32_t node);
 void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth);
 

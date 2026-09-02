@@ -34,13 +34,15 @@ add_executable(test_unit
     unit/test_string_view.cpp
     unit/test_json_hpp.cpp
     unit/test_jsonc_compat.cpp
+    unit/test_yajl_compat.cpp
     unit/test_mutate.cpp
     unit/test_mapindex.cpp
     unit/test_limits.cpp
     unit/test_yaml_compat.cpp
 )
 find_package(Threads REQUIRED)
-target_link_libraries(test_unit PRIVATE yeptris_static Threads::Threads $<TARGET_NAME_IF_EXISTS:yeptris_jsonc> GTest::gtest_main)
+target_link_libraries(test_unit PRIVATE yeptris_static Threads::Threads
+    $<TARGET_NAME_IF_EXISTS:yeptris_jsonc> $<TARGET_NAME_IF_EXISTS:yeptris_yajl> GTest::gtest_main)
 target_include_directories(test_unit PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
 yeptris_set_warnings(test_unit)
 

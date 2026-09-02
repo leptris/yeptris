@@ -75,6 +75,19 @@ set(YEPTRIS_INCLUDE_DIRS
 
 # json-c drop-in (TODO.impl/21): REAL json-c symbol names in its own
 # library — users link -lyeptris-jsonc instead of -ljson-c.
+option(YEPTRIS_BUILD_YAJL_COMPAT
+    "Build libyeptris-yajl: the yajl generator drop-in (TODO.impl/21)" ON)
+if(YEPTRIS_BUILD_YAJL_COMPAT AND YEPTRIS_BUILD_STATIC)
+    add_library(yeptris_yajl STATIC yeptris/jsonapi/yajl_compat.c)
+    set_target_properties(yeptris_yajl PROPERTIES OUTPUT_NAME yeptris-yajl)
+    target_link_libraries(yeptris_yajl PUBLIC yeptris_static)
+    target_include_directories(yeptris_yajl PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+    target_include_directories(yeptris_yajl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris)
+    yeptris_set_warnings(yeptris_yajl)
+    add_library(yeptris::yajl ALIAS yeptris_yajl)
+endif()
+
 if(YEPTRIS_BUILD_JSONC_COMPAT AND YEPTRIS_BUILD_STATIC)
     add_library(yeptris_jsonc STATIC yeptris/jsonapi/jsonc_compat.c)
     set_target_properties(yeptris_jsonc PROPERTIES OUTPUT_NAME yeptris-jsonc)
