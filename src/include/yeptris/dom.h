@@ -42,6 +42,11 @@ YEPTRIS_API YeptrisNode yeptris_document_root(YeptrisDocument doc, size_t index)
 
 YEPTRIS_API YeptrisNodeKind yeptris_node_kind(YeptrisNode node);
 
+/* Stable identity of the node within its document (bindings key
+ * wrapper caches on it; query handles are transient, ids are not).
+ * Only for equality — not an index into any public structure. */
+YEPTRIS_API uint32_t yeptris_node_id(YeptrisNode node);
+
 /* Scalar content / alias name. Returns NULL for collections.
  * Memory: borrowed from the input (or document-owned when the value was
  * folded/escaped) — valid until yeptris_document_free. */
