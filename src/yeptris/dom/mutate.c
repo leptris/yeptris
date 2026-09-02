@@ -191,6 +191,7 @@ static int map_place_pair(yep_dom* d, uint32_t map, const char* key, size_t klen
     }
     dom_link(d, map, k);
     dom_link(d, map, value);
+    yep_midx_invalidate(d, map);
     return 0;
 }
 
@@ -231,6 +232,7 @@ int yep_mut_map_set(yep_dom* d, uint32_t map, const char* key, size_t klen, uint
     }
     d->nodes[value].attached = 1;
     yep_mut_set_depths(d, value, (uint16_t)(kn->depth + 1));
+    yep_midx_invalidate(d, map);
     return 1;
 }
 
@@ -291,7 +293,9 @@ int yep_mut_map_del(yep_dom* d, uint32_t map, const char* key, size_t klen) {
     if (unlink_child(d, map, k) != 0) {
         return MUT_ERR;
     }
-    return unlink_child(d, map, v);
+    int rc = unlink_child(d, map, v);
+    yep_midx_invalidate(d, map);
+    return rc;
 }
 
 int yep_mut_add_root(yep_dom* d, uint32_t node) {
