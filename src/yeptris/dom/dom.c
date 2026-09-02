@@ -4,7 +4,7 @@
 
 #include "dom.h"
 
-static int dom_grow_nodes(yep_dom* d, uint32_t need) {
+int dom_grow_nodes(yep_dom* d, uint32_t need) {
     if (d->ncount + need <= d->ncap) {
         return 1;
     }
@@ -24,7 +24,7 @@ static int dom_grow_nodes(yep_dom* d, uint32_t need) {
     return 1;
 }
 
-static int dom_grow_docs(yep_dom* d, uint32_t need) {
+int dom_grow_docs(yep_dom* d, uint32_t need) {
     if (d->dcount + need <= d->dcap) {
         return 1;
     }
@@ -58,7 +58,7 @@ static yep_view dom_value(yep_dom* d, const yep_event* ev) {
     return v;
 }
 
-static uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
+uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
     if (!dom_grow_nodes(d, 1)) {
         return UINT32_MAX;
     }
@@ -90,7 +90,10 @@ static uint32_t dom_anchor_get(const yep_dom* d, yep_view name) {
     return yep_nametab_get(&d->anchors, name);
 }
 
-static void dom_link(yep_dom* d, uint32_t parent, uint32_t child) {
+/* The one place links form (builder and mutation both): records
+ * attachment and depth so mutation can reject double-parents and cap
+ * nesting without parent pointers. */
+void dom_link(yep_dom* d, uint32_t parent, uint32_t child) {
     yep_dnode* p = &d->nodes[parent];
     if (p->count == 0) {
         p->first_child = child;
@@ -99,6 +102,8 @@ static void dom_link(yep_dom* d, uint32_t parent, uint32_t child) {
     }
     p->last_child = child;
     p->count++;
+    d->nodes[child].attached = 1;
+    d->nodes[child].depth = (uint16_t)(p->depth + 1);
 }
 
 /* Places a completed node: value for a pending key, child of the top
@@ -108,6 +113,8 @@ static int dom_place(yep_dom* d, uint32_t id) {
         if (!dom_grow_docs(d, 1)) {
             return -1;
         }
+        d->nodes[id].attached = 1;
+        d->nodes[id].depth = 0;
         d->docs[d->dcount++] = id;
         return 0;
     }
@@ -135,11 +142,19 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
     yep_dom* d = (yep_dom*)ctx;
     switch (ev->type) {
     case YEP_EV_STREAM_START:
-    case YEP_EV_STREAM_END:
     case YEP_EV_DOCUMENT_START:
     case YEP_EV_DOCUMENT_END:
         /* bindings are document-scoped, like the engine's names */
         yep_nametab_clear(&d->anchors);
+        return 0;
+    case YEP_EV_STREAM_END:
+        yep_nametab_clear(&d->anchors);
+        /* links formed bottom-up: depths were local until now — one
+         * walk per root makes them global (mutation's depth cap and
+         * the recursive writer both rely on them) */
+        for (uint32_t i = 0; i < d->dcount; i++) {
+            yep_mut_set_depths(d, d->docs[i], 0);
+        }
         return 0;
 
     case YEP_EV_SEQ_START:
@@ -291,6 +306,8 @@ static int jb_place(jbuilder* b, uint32_t id) {
         if (!dom_grow_docs(d, 1)) {
             return -1;
         }
+        d->nodes[id].attached = 1;
+        d->nodes[id].depth = 0;
         d->docs[d->dcount++] = id;
         return 0;
     }

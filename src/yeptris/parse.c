@@ -18,13 +18,6 @@
 
 #include <yeptris.h>
 
-/* Node handle: a (document, node-id) pair so nodes stay usable even if
- * the node pool grows (ids are stable; pointers are not). */
-typedef struct yeptris_node {
-    yeptris_document* doc;
-    uint32_t id;
-} yeptris_node;
-
 YEPTRIS_API const char* yeptris_last_error(uint32_t* line, uint32_t* col) {
     const yep_error* tls = yep_error_tls();
     if (line != NULL) {
@@ -273,14 +266,18 @@ YEPTRIS_API size_t yeptris_document_count(YeptrisDocument handle) {
     return doc ? doc->dom->dcount : 0;
 }
 
-static YeptrisNode node_new_handle(yeptris_document* doc, uint32_t id) {
+yeptris_node* yep_handle_new(yeptris_document* doc, uint32_t id) {
     yeptris_node* n = yep_hpool_alloc(doc->dom->handles, sizeof(yeptris_node), 16);
     if (n == NULL) {
         return NULL;
     }
     n->doc = doc;
     n->id = id;
-    return (YeptrisNode)n;
+    return n;
+}
+
+static YeptrisNode node_new_handle(yeptris_document* doc, uint32_t id) {
+    return (YeptrisNode)yep_handle_new(doc, id);
 }
 
 YEPTRIS_API YeptrisNode yeptris_document_root(YeptrisDocument handle, size_t index) {

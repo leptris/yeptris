@@ -5,9 +5,9 @@
  *
  * Scope (v1, the read path): parsing, type queries, value getters,
  * object/array access, and JSON output. The building API
- * (json_object_new_ etc.) lands with the DOM
- * mutation API (TODO.impl/11 phase 3) — declared here only when it
- * works.
+ * (json_object_new_ etc.) landed with DOM mutation
+ * (TODO.impl/11 phase 3): the new_object family, object_add,
+ * array_add, and the delete entry points.
  *
  * Lifetime: the object returned by json_tokener_parse owns the
  * document; json_object_put frees it. Objects obtained by reference
@@ -75,9 +75,35 @@ size_t json_object_array_length(const json_object* obj);
 json_object* json_object_array_get_idx(const json_object* obj, size_t idx);
 
 /* Output: strict JSON. The returned pointer is owned by the object
- * (freed with it) — json-c's contract. */
+ * (freed with it) — json-c's contract. Roots only in v1: serializing
+ * an attached child returns NULL (subtree output arrives with the
+ * pretty printer). */
 const char* json_object_to_json_string(json_object* obj);
 const char* json_object_to_json_string_ext(json_object* obj, int flags);
+
+/* ---- Building (TODO.impl/21 v2, over DOM mutation 11/3) ----
+ *
+ * json-c semantics: new_* returns an unowned object; adding it to a
+ * parent transfers ownership (a put on it afterwards is a no-op); the
+ * caller's pointer stays valid until the ROOT is put. Values are
+ * copied. Duplicate keys replace in place (position kept). NULL val
+ * to object_add deletes the key (legacy json-c behavior). */
+json_object* json_object_new_object(void);
+json_object* json_object_new_array(void);
+json_object* json_object_new_string(const char* s);
+json_object* json_object_new_string_len(const char* s, int len);
+json_object* json_object_new_int(int32_t i);
+json_object* json_object_new_int64(int64_t i);
+json_object* json_object_new_double(double d);
+json_object* json_object_new_boolean(int b);
+
+/* 0 added, 1 replaced, -1 error (obj not an object, or OOM). */
+int json_object_object_add(json_object* obj, const char* key, json_object* val);
+int json_object_object_del(json_object* obj, const char* key);
+
+/* 0 ok, -1 error (obj not an array, or OOM). */
+int json_object_array_add(json_object* obj, json_object* val);
+int json_object_array_del_idx(json_object* obj, size_t idx, size_t count);
 
 #ifdef __cplusplus
 }

@@ -86,7 +86,31 @@ C. Path queries, alias/merge semantics; psych `test_merge_keys.rb`,
 
 1. Key interning + O(1) map lookup (currently linear scan) — the
    open-addressing table from the item design.
-2. Node-size gate (≤64 B target) in validate.sh once the layout settles.
-3. Per-kind vtables (with mutation + emitter integration).
+2. Node-size gate (≤64 B target) in validate.sh once the layout settles
+   (mutation added `attached`/`depth` — 88 B → 96 B, recorded).
+3. ~~Mutation + builder API~~ — phase 3 core shipped 2026-09-02 (see
+   below); per-kind vtables deferred until polymorphic behavior appears.
 4. Merge-key resolution (<<) in compat mode (with 10).
 5. Node-handle identity guarantees for bindings (12/15).
+
+## Phase 3 shipped (2026-09-02)
+
+- `dom/mutate.c`: from-scratch construction with parse-identical
+  semantics — runtime values copied into the DOM pool, plain scalars
+  typed by the core12 resolver (typing SSOT), links form only through
+  `dom_link`. Invariants enforced at attach: one parent per node,
+  balanced map pairs, duplicate `map_add` = error (strict) while
+  `map_set` replaces in place (json-c position semantics), depth
+  capped at YEP_DOM_MAX_DEPTH (the writer recurses — the cap is
+  load-bearing), cross-document links rejected.
+- `build.c` public surface: `yeptris_document_new/set_root`,
+  `node_new_{mapping,sequence,scalar}`, `map_add/set/del`,
+  `seq_add/del`. Statuses map to ERROR_ARG/MEMORY/DEPTH/PARSE.
+- Depth truth: builder links form bottom-up, so `yep_mut_set_depths`
+  runs per root at STREAM_END (one O(n) walk) — synthesized and parsed
+  trees share the same global-depth invariant.
+- json-c building API (21 v2) rides on it: new_object family,
+  object_add (replace-on-duplicate, NULL-deletes), array_add/del_idx;
+  pending wrappers materialize lazily (O(1) attach, no copies);
+  compact JSON output (`json_compact` writer flag — json-c
+  to_json_string spacing). 13 tests (Mutate + JsonCBuild), 152/152.

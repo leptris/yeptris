@@ -107,3 +107,121 @@ TEST(JsonCCompat, ArrayRoot) {
     EXPECT_EQ(json_object_get_int(json_object_array_get_idx(root, 2)), 3);
     json_object_put(root);
 }
+
+/* ---- building (TODO.impl/21 v2 over DOM mutation 11/3) ---- */
+
+TEST(JsonCBuild, ObjectFromScratch) {
+    json_object* root = json_object_new_object();
+    ASSERT_NE(root, nullptr);
+    ASSERT_EQ(json_object_object_add(root, "name", json_object_new_string("yeptris")), 0);
+    ASSERT_EQ(json_object_object_add(root, "version", json_object_new_int(1)), 0);
+    ASSERT_EQ(json_object_object_add(root, "fast", json_object_new_boolean(1)), 0);
+    ASSERT_EQ(json_object_object_add(root, "ratio", json_object_new_double(2.5)), 0);
+    ASSERT_EQ(json_object_object_add(root, "tags", json_object_new_array()), 0);
+
+    json_object* tags = nullptr;
+    ASSERT_TRUE(json_object_object_get_ex(root, "tags", &tags));
+    ASSERT_EQ(json_object_array_add(tags, json_object_new_string("yaml")), 0);
+    ASSERT_EQ(json_object_array_add(tags, json_object_new_int64(42)), 0);
+
+    const char* out = json_object_to_json_string(root);
+    ASSERT_NE(out, nullptr);
+    EXPECT_STREQ(out,
+                 R"({"name":"yeptris","version":1,"fast":true,"ratio":2.5,"tags":["yaml",42]})");
+
+    /* read back through the json-c surface */
+    json_object* v = nullptr;
+    ASSERT_TRUE(json_object_object_get_ex(root, "name", &v));
+    EXPECT_STREQ(json_object_get_string(v), "yeptris");
+    ASSERT_TRUE(json_object_object_get_ex(root, "ratio", &v));
+    EXPECT_DOUBLE_EQ(json_object_get_double(v), 2.5);
+    ASSERT_TRUE(json_object_object_get_ex(root, "tags", &v));
+    EXPECT_EQ(json_object_array_length(v), 2u);
+    EXPECT_EQ(json_object_get_int(json_object_array_get_idx(v, 1)), 42);
+
+    /* the emitted bytes reparse identically */
+    json_object* back = json_tokener_parse(out);
+    ASSERT_NE(back, nullptr);
+    EXPECT_STREQ(json_object_to_json_string(back), out);
+    json_object_put(back);
+    json_object_put(root);
+}
+
+TEST(JsonCBuild, ReplaceDeleteAndNullLegacy) {
+    json_object* root = json_object_new_object();
+    ASSERT_NE(root, nullptr);
+    ASSERT_EQ(json_object_object_add(root, "k", json_object_new_int(1)), 0);
+    /* duplicate add returns 1 (replaced) and keeps position */
+    EXPECT_EQ(json_object_object_add(root, "k", json_object_new_int(2)), 1);
+    json_object* v = nullptr;
+    ASSERT_TRUE(json_object_object_get_ex(root, "k", &v));
+    EXPECT_EQ(json_object_get_int(v), 2);
+    EXPECT_EQ(json_object_object_length(root), 1u);
+    /* legacy: NULL val deletes the key */
+    EXPECT_EQ(json_object_object_add(root, "k", nullptr), 0);
+    EXPECT_FALSE(json_object_object_get_ex(root, "k", &v));
+    EXPECT_EQ(json_object_object_length(root), 0u);
+    EXPECT_NE(json_object_object_del(root, "k"), 0);
+    json_object_put(root);
+}
+
+TEST(JsonCBuild, ArrayDelAndStandaloneScalars) {
+    json_object* arr = json_object_new_array();
+    ASSERT_NE(arr, nullptr);
+    for (int i = 0; i < 4; i++) {
+        ASSERT_EQ(json_object_array_add(arr, json_object_new_int(i)), 0);
+    }
+    ASSERT_EQ(json_object_array_del_idx(arr, 1, 2), 0);
+    EXPECT_EQ(json_object_array_length(arr), 2u);
+    EXPECT_EQ(json_object_get_int(json_object_array_get_idx(arr, 1)), 3);
+    EXPECT_NE(json_object_array_del_idx(arr, 1, 5), 0);
+    EXPECT_STREQ(json_object_to_json_string(arr), "[0,3]");
+    json_object_put(arr);
+
+    /* a standalone scalar queried before any attach materializes its
+     * own document */
+    json_object* s = json_object_new_string_len("hi", 2);
+    ASSERT_NE(s, nullptr);
+    EXPECT_TRUE(json_object_is_type(s, json_type_string));
+    EXPECT_STREQ(json_object_get_string(s), "hi");
+    json_object_put(s);
+
+    json_object* d = json_object_new_double(0.1);
+    ASSERT_NE(d, nullptr);
+    EXPECT_DOUBLE_EQ(json_object_get_double(d), 0.1);
+    /* shortest round-trip text */
+    EXPECT_STREQ(json_object_to_json_string(d), "0.1");
+    json_object_put(d);
+}
+
+TEST(JsonCBuild, AttachAfterStandaloneQuery) {
+    /* the rare path: a value materialized standalone (via a query)
+     * then attached — duplicated into the parent, pointer stays valid */
+    json_object* inner = json_object_new_object();
+    ASSERT_NE(inner, nullptr);
+    ASSERT_EQ(json_object_object_add(inner, "x", json_object_new_int(7)), 0);
+    EXPECT_EQ(json_object_object_length(inner), 1u); /* query: materializes */
+
+    json_object* root = json_object_new_object();
+    ASSERT_NE(root, nullptr);
+    ASSERT_EQ(json_object_object_add(root, "inner", inner), 0);
+    EXPECT_STREQ(json_object_to_json_string(root), R"({"inner":{"x":7}})");
+    /* the caller's pointer is retargeted at the attached copy */
+    EXPECT_EQ(json_object_object_length(inner), 1u);
+    json_object* v = nullptr;
+    ASSERT_TRUE(json_object_object_get_ex(inner, "x", &v));
+    EXPECT_EQ(json_object_get_int(v), 7);
+    json_object_put(root); /* frees inner with it (json-c lifetime) */
+}
+
+TEST(JsonCBuild, MixedParseAndMutate) {
+    /* mutation applies to PARSED documents too */
+    json_object* root = json_tokener_parse(R"({"a":1,"b":[true]})");
+    ASSERT_NE(root, nullptr);
+    ASSERT_EQ(json_object_object_add(root, "c", json_object_new_string("z")), 0);
+    json_object* b = nullptr;
+    ASSERT_TRUE(json_object_object_get_ex(root, "b", &b));
+    ASSERT_EQ(json_object_array_add(b, json_object_new_double(1.5)), 0);
+    EXPECT_STREQ(json_object_to_json_string(root), R"({"a":1,"b":[true,1.5],"c":"z"})");
+    json_object_put(root);
+}
