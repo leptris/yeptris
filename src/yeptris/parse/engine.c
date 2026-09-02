@@ -52,6 +52,7 @@ struct yep_engine {
     size_t line_start;      /* offset of the current line start */
     yep_line_info li_cache; /* flow loop's per-line scan_line memo */
     uint32_t li_cache_line; /* 0 = no entry (line numbers are 1-based) */
+    uint32_t line_base;     /* lines consumed by earlier stepped runs */
     yep_error err;
     const yep_sink* sink;
 
@@ -81,6 +82,7 @@ struct yep_engine {
     } tagmap[8];
     int tagmap_n;
     int saw_yaml; /* %YAML seen for the pending document */
+    void* step;   /* yep_stepstate: resumable stepping (07) */
 
     /* Flow single-pair deferral: a sequence entry's events are buffered
      * until we know whether ':' follows ("[a: b]" needs MAP_START before
@@ -2569,16 +2571,6 @@ yep_engine* yep_engine_create(const yep_allocator* sys) {
     return e;
 }
 
-void yep_engine_destroy(yep_engine* e) {
-    if (e == NULL) {
-        return;
-    }
-    yep_nametab_free(&e->anchors);
-    yep_free(e->sys, e->norm_buf);
-    yep_pool_destroy(e->pool);
-    yep_free(e->sys, e);
-}
-
 /* YAML 1.2 line breaks beyond \n/\r: NEL, LS, PS. When present, the
  * input is copied with each normalized to a single '\n' (libyaml reader
  * behavior); inputs without them keep the zero-copy path. */
@@ -2623,7 +2615,224 @@ static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len) 
     return out;
 }
 
+typedef struct yep_stepstate {
+    char* buf;
+    size_t len, cap;
+    size_t scanned;     /* bytes folded into quote/flow/comment state */
+    int in_flow;        /* open [ { depth */
+    int quote;          /* 0 none, else the opening quote char */
+    int in_comment;     /* inside a # comment (until the line break) */
+    int saw_directive;  /* a % line awaits its --- document */
+    int started;        /* STREAM_START emitted */
+    uint32_t line_base; /* whole-stream lines consumed by earlier runs */
+} yep_stepstate;
+
+static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep_sink* sink,
+                           int emit_start, int emit_end);
+
 int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* sink) {
+    return engine_run_impl(e, buf, len, sink, 1, 1);
+}
+
+void yep_engine_destroy(yep_engine* e) {
+    if (e == NULL) {
+        return;
+    }
+    if (e->step != NULL) {
+        yep_stepstate* st = e->step;
+        free(st->buf);
+        free(st);
+        e->step = NULL;
+    }
+    yep_nametab_free(&e->anchors);
+    yep_free(e->sys, e->norm_buf);
+    yep_pool_destroy(e->pool);
+    yep_free(e->sys, e);
+}
+
+/* ---- resumable stepping (TODO.impl/07) --------------------------------
+ *
+ * The pending buffer holds raw bytes; each step parses the complete-
+ * document prefix and keeps the tail. A cut is safe only at the start
+ * of a column-0 document marker (--- / ...) while no quoted scalar,
+ * comment, or flow collection spans it — tracked incrementally as
+ * chunks arrive. Anything ambiguous (lone-\r line breaks, an
+ * unterminated marker at the buffer edge, quote pairs split by the
+ * chunk boundary) merely delays the cut: buffering, never a wrong
+ * split. Cuts land only at --- lines (never ...: that would orphan
+ * an explicit DOCUMENT_END) and only when no % directive is pending:
+ * directives travel with their document. Line numbers stay
+ * stream-absolute: each run starts at the base derived from the
+ * engine's own line counter, so stepped events are byte-identical to
+ * whole-buffer ones. */
+
+/* A quote opens a scalar only where a value can begin; anywhere else
+ * it is literal plain text (the apostrophe in "don't"). This is exact
+ * on valid YAML: a quote at a value position always opens. */
+static int quote_opens(char prev) {
+    return prev == '\n' || prev == ' ' || prev == '\t' || prev == '-' || prev == ':' ||
+           prev == '?' || prev == ',' || prev == '[' || prev == '{' || prev == '&' || prev == '*' ||
+           prev == '!';
+}
+
+/* Advances quote/flow/comment state over buf[scanned, len) and returns
+ * the offset of the LAST safe cut (0 = none). When the final bytes'
+ * meaning depends on bytes not yet fed (a quote that may be doubled,
+ * a marker missing its terminator), scanned is held back so the next
+ * scan re-reads them with context. */
+static size_t step_scan(yep_stepstate* st) {
+    const char* p = st->buf;
+    size_t last_cut = 0;
+    size_t hold = st->len;
+    size_t i = st->scanned;
+    for (; i < st->len; i++) {
+        char c = p[i];
+        if (st->in_comment) {
+            if (c == '\n') {
+                st->in_comment = 0;
+            }
+            continue;
+        }
+        if (st->quote != 0) {
+            if (st->quote == '\'') {
+                if (c == '\'') {
+                    if (i + 1 >= st->len) {
+                        hold = i; /* '' or close? wait for the next byte */
+                        break;
+                    }
+                    if (p[i + 1] == '\'') {
+                        i++; /* escaped quote: still inside */
+                        continue;
+                    }
+                    st->quote = 0;
+                }
+                continue;
+            }
+            if (c == '\\') {
+                if (i + 1 >= st->len) {
+                    hold = i; /* the escaped byte is unknown */
+                    break;
+                }
+                i++;
+                continue;
+            }
+            if (c == '"') {
+                st->quote = 0;
+            }
+            continue;
+        }
+        if (c == '#') {
+            char prev = i > 0 ? p[i - 1] : '\n';
+            if (prev == '\n' || prev == ' ' || prev == '\t') {
+                st->in_comment = 1;
+                continue;
+            }
+        }
+        if ((c == '\'' || c == '"') && quote_opens(i > 0 ? p[i - 1] : '\n')) {
+            st->quote = c;
+            continue;
+        }
+        if (c == '[' || c == '{') {
+            st->in_flow++;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            if (st->in_flow > 0) {
+                st->in_flow--;
+            }
+            continue;
+        }
+        if (st->in_flow == 0) {
+            char prev = i > 0 ? p[i - 1] : '\n';
+            if (prev != '\n') {
+                continue;
+            }
+            if (c == '%') {
+                st->saw_directive = 1; /* must stay with its --- line */
+                continue;
+            }
+            if (c == '-') {
+                if (i + 3 >= st->len) {
+                    hold = i; /* --- possibly truncated by the chunk */
+                    break;
+                }
+                if (p[i + 1] == '-' && p[i + 2] == '-') {
+                    char after = p[i + 3];
+                    if (after == '\n' || after == ' ' || after == '\t' || after == '\r') {
+                        if (st->saw_directive == 0 && i > 0) {
+                            last_cut = i; /* interior document boundary */
+                        }
+                        st->saw_directive = 0; /* this --- owns the directives */
+                    }
+                }
+            }
+        }
+    }
+    st->scanned = hold < st->len ? hold : st->len;
+    return last_cut;
+}
+
+int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, const yep_sink* sink) {
+    if (e == NULL || (chunk == NULL && len != 0)) {
+        return -1;
+    }
+    if (e->step == NULL) {
+        e->step = calloc(1, sizeof(yep_stepstate));
+        if (e->step == NULL) {
+            return -1;
+        }
+    }
+    yep_stepstate* st = e->step;
+    if (len > 0) {
+        if (st->len + len > st->cap) {
+            size_t cap = st->cap ? st->cap : 4096;
+            while (cap < st->len + len) {
+                cap *= 2;
+            }
+            char* nb = realloc(st->buf, cap);
+            if (nb == NULL) {
+                return -1;
+            }
+            st->buf = nb;
+            st->cap = cap;
+        }
+        memcpy(st->buf + st->len, chunk, len);
+        st->len += len;
+    }
+    if (!final) {
+        size_t cut = step_scan(st);
+        if (cut == 0 || cut >= st->len) {
+            return 0; /* no complete document yet */
+        }
+        e->line_base = st->line_base;
+        int rc = engine_run_impl(e, st->buf, cut, sink, !st->started, 0);
+        if (rc != 0) {
+            return rc;
+        }
+        st->started = 1;
+        st->line_base = e->line - 1; /* the engine consumed to here */
+        memmove(st->buf, st->buf + cut, st->len - cut);
+        st->len -= cut;
+        st->scanned = 0;
+        /* the tail began at a --- line in a clean state */
+        st->in_flow = 0;
+        st->quote = 0;
+        st->in_comment = 0;
+        st->saw_directive = 0;
+        return 0;
+    }
+    /* final: parse everything that remains and close the stream */
+    e->line_base = st->line_base;
+    int rc = engine_run_impl(e, st->buf, st->len, sink, !st->started, 1);
+    free(st->buf);
+    free(st);
+    e->step = NULL;
+    e->line_base = 0;
+    return rc;
+}
+
+static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep_sink* sink,
+                           int emit_start, int emit_end) {
     if (e == NULL || (buf == NULL && len != 0)) {
         return -1;
     }
@@ -2632,7 +2841,8 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     e->p = e_normalize_breaks(e, buf, len);
     e->len = (e->norm_buf != NULL) ? strlen(e->norm_buf) : len;
     e->pos = 0;
-    e->line = 1;
+    e->line = 1 + e->line_base;
+    e->line_base = 0;
     e->line_start = 0;
     e->li_cache_line = 0;
     e->depth = 0;
@@ -2649,9 +2859,11 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
     }
 
     yep_event ev;
-    e_event_init(&ev, YEP_EV_STREAM_START);
-    if (emit_now(e, &ev) != 0) {
-        return -2;
+    if (emit_start) {
+        e_event_init(&ev, YEP_EV_STREAM_START);
+        if (emit_now(e, &ev) != 0) {
+            return -2;
+        }
     }
 
     int doc_open = 0;
@@ -2982,9 +3194,11 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
         e->tagmap_n = 0;
         yep_nametab_clear(&e->anchors);
     }
-    e_event_init(&ev, YEP_EV_STREAM_END);
-    if (emit_now(e, &ev) != 0) {
-        return -2;
+    if (emit_end) {
+        e_event_init(&ev, YEP_EV_STREAM_END);
+        if (emit_now(e, &ev) != 0) {
+            return -2;
+        }
     }
     return 0;
 

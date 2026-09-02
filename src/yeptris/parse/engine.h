@@ -27,6 +27,15 @@ void yep_engine_destroy(yep_engine* e);
  * success, -1 on parse error (see yep_engine_error), -2 sink abort. */
 int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* sink);
 
+/* Resumable stepping (TODO.impl/07): chunks accumulate; every feed
+ * parses the complete DOCUMENTS received so far (cut at `---` / `...`
+ * boundaries at column 0, outside quotes and flow) and keeps the
+ * trailing partial document buffered. final != 0 flushes it and ends
+ * the stream. STREAM markers bracket the whole stepped stream, not
+ * each step; each document's events arrive exactly once, in order.
+ * Returns 0, -1 parse error, -2 sink abort. */
+int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, const yep_sink* sink);
+
 /* Detaches the finish pool (ownership moves to the caller; the engine
  * allocates a fresh one if reused). Returns NULL when absent. */
 yep_pool* yep_engine_detach_pool(yep_engine* e);

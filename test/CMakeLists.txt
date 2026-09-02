@@ -23,6 +23,7 @@ add_executable(test_unit
     unit/test_cpu.cpp
     unit/test_encoding.cpp
     unit/test_events.cpp
+    unit/test_stepping.cpp
     unit/test_emit.cpp
     unit/test_float.cpp
     unit/test_resolve.cpp
