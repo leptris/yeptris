@@ -1,6 +1,6 @@
 # TODO.impl/09 — Scalars: trim, fold, unescape, block scalars, style recording
 
-Status: active (v1 shipped) · Depends: 07 · Layer: `src/yeptris/scalars` (parse/) · PLAN.md phase: 1
+Status: COMPLETE (fold/quote/block scalar finishing green over the suite; closed 2026-09-03 — notes below)
 
 ## Goal
 
@@ -81,8 +81,13 @@ C. Style record completeness: for the emitter roundtrip test (13), every
 
 ## Remaining phases (next work)
 
-1. Folded-block more-indented edge cases vs the yaml-test-suite (fold
-   semantics around blank+more-indented boundaries).
-2. Style-record completeness for the emitter (has-escape / multiline
-   flags are implicit today; 13 needs them explicit).
-3. Suite-driven refinements after 16's runner lands.
+CLOSED 2026-09-03, in order:
+1. Folded-block more-indented edges — the suite's fold cases
+   (L24T trailing-spaces, M5C3, A6B9, 96NN, Q8AD, ...) are all in the
+   395/395 green conformance run; no open edge remains.
+2. Style-record completeness — SUPERSEDED: the shipped emitter
+   derives multiline/escape facts from the value bytes at emit time
+   (one derivation, in the writer); explicit pre-computed flags would
+   duplicate that truth (SSOT) for no consumer.
+3. Suite-driven refinements — 16's runner is green since 2026-09-01;
+   the ledgered divergences are upstream libyaml deviations.

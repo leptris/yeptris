@@ -147,6 +147,33 @@ YEPTRIS_API int yeptris_node_seq_del(YeptrisNode handle, size_t index) {
 
 /* The removed subtree stays document-owned (arena lifetime); its
  * handle remains valid but unreachable from the root. */
+YEPTRIS_API int yeptris_node_set_anchor(YeptrisNode handle, const char* name, size_t len) {
+    yeptris_node* n = node_of(handle);
+    if (n == NULL || name == NULL) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    return yep_mut_set_anchor(n->doc->dom, n->id, name, len) == 0 ? YEPTRIS_OK : YEPTRIS_ERROR_ARG;
+}
+
+YEPTRIS_API int yeptris_node_set_tag(YeptrisNode handle, const char* tag, size_t len) {
+    yeptris_node* n = node_of(handle);
+    if (n == NULL || tag == NULL) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    return yep_mut_set_tag(n->doc->dom, n->id, tag, len) == 0 ? YEPTRIS_OK : YEPTRIS_ERROR_ARG;
+}
+
+YEPTRIS_API YeptrisNode yeptris_node_new_alias(YeptrisDocument handle, YeptrisNode target,
+                                               const char* name, size_t len) {
+    yeptris_document* doc = doc_of(handle);
+    yeptris_node* t = node_of(target);
+    if (doc == NULL || t == NULL || t->doc != doc || name == NULL) {
+        return NULL;
+    }
+    uint32_t id = yep_mut_new_alias(doc->dom, t->id, name, len);
+    return id == UINT32_MAX ? NULL : (YeptrisNode)yep_handle_new(doc, id);
+}
+
 YEPTRIS_API int yeptris_node_map_del(YeptrisNode handle, const char* key, size_t key_len) {
     yeptris_node* m = node_of(handle);
     if (m == NULL || key == NULL) {

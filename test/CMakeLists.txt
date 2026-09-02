@@ -145,6 +145,13 @@ if(YEPTRIS_ENABLE_FUZZING)
     target_link_libraries(fuzz_transcode_lf PRIVATE yeptris_static)
     target_include_directories(fuzz_transcode_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
     yeptris_set_warnings(fuzz_transcode_lf)
+
+    if(YEPTRIS_LIBYAML_ROOT)
+        # differential under fuzzing: libyaml linked into the harness
+        add_executable(fuzz_diff_lf fuzz/fuzz_diff.c)
+        target_link_libraries(fuzz_diff_lf PRIVATE diff_core)
+        yeptris_set_warnings(fuzz_diff_lf)
+    endif()
 endif()
 
 # ---- JSONTestSuite under YAML semantics (TODO.impl/08C) ---------------

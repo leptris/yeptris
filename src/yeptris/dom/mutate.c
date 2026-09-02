@@ -282,6 +282,35 @@ int yep_mut_seq_del(yep_dom* d, uint32_t seq, uint32_t index) {
     return unlink_child(d, seq, c);
 }
 
+int yep_mut_set_anchor(yep_dom* d, uint32_t node, const char* name, size_t len) {
+    if (d == NULL || node >= d->ncount || name == NULL) {
+        return MUT_ERR;
+    }
+    d->nodes[node].anchor = yep_dom_str_put(d, name, (uint32_t)len);
+    return 0;
+}
+
+int yep_mut_set_tag(yep_dom* d, uint32_t node, const char* tag, size_t len) {
+    if (d == NULL || node >= d->ncount || tag == NULL) {
+        return MUT_ERR;
+    }
+    d->nodes[node].tag = yep_dom_str_put(d, tag, (uint32_t)len);
+    return 0;
+}
+
+uint32_t yep_mut_new_alias(yep_dom* d, uint32_t target, const char* name, size_t len) {
+    if (d == NULL || name == NULL) {
+        return UINT32_MAX;
+    }
+    uint32_t id = dom_new_node(d, NULL, YEP_DOM_ALIAS);
+    if (id == UINT32_MAX) {
+        return UINT32_MAX;
+    }
+    d->nodes[id].target = target;
+    d->nodes[id].value = yep_dom_str_put(d, name, (uint32_t)len);
+    return id;
+}
+
 int yep_mut_seq_set(yep_dom* d, uint32_t seq, uint32_t index, uint32_t value) {
     if (d == NULL || seq >= d->ncount || d->nodes[seq].kind != YEP_DOM_SEQUENCE) {
         return MUT_ERR;

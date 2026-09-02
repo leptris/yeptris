@@ -78,6 +78,10 @@ module Yeptris
     attach_function :yeptris_node_map_del, %i[yeptris_node pointer size_t], :int
     attach_function :yeptris_node_seq_add, %i[yeptris_node yeptris_node], :int
     attach_function :yeptris_node_seq_del, %i[yeptris_node size_t], :int
+    attach_function :yeptris_node_set_anchor, %i[yeptris_node pointer size_t], :int
+    attach_function :yeptris_node_set_tag, %i[yeptris_node pointer size_t], :int
+    attach_function :yeptris_node_new_alias,
+                    %i[yeptris_document yeptris_node pointer size_t], :yeptris_node
 
     attach_function :yeptris_node_kind, [:yeptris_node], :int
     attach_function :yeptris_node_id, [:yeptris_node], :uint32

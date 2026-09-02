@@ -118,6 +118,13 @@ YEPTRIS_API int yeptris_node_seq_del(YeptrisNode seq, size_t index);
 YEPTRIS_API int yeptris_node_seq_set(YeptrisNode seq, size_t index, YeptrisNode value);
 YEPTRIS_API int yeptris_node_map_del(YeptrisNode map, const char* key, size_t key_len);
 
+/* Props on synthesized nodes (copied in). An alias node carries its
+ * display name and resolves to `target` for queries/serialization. */
+YEPTRIS_API int yeptris_node_set_anchor(YeptrisNode node, const char* name, size_t len);
+YEPTRIS_API int yeptris_node_set_tag(YeptrisNode node, const char* tag, size_t len);
+YEPTRIS_API YeptrisNode yeptris_node_new_alias(YeptrisDocument doc, YeptrisNode target,
+                                               const char* name, size_t len);
+
 #ifdef __cplusplus
 }
 #endif

@@ -219,6 +219,15 @@ class Yeptris::Node
     self
   end
 
+  # Props on synthesized nodes (15's YAMLTree); values copied in.
+  def set_anchor(name)
+    alive { Yeptris::FFI.yeptris_node_set_anchor(@c_ptr, name, name.bytesize) }.zero?
+  end
+
+  def set_tag(tag)
+    alive { Yeptris::FFI.yeptris_node_set_tag(@c_ptr, tag, tag.bytesize) }.zero?
+  end
+
   def seq_del(index)
     alive { Yeptris::FFI.yeptris_node_seq_del(@c_ptr, index) }.zero?
   end
@@ -233,7 +242,20 @@ class Yeptris::Node
     alive { Yeptris::FFI.yeptris_node_id(@c_ptr) }
   end
 
-  def to_ruby(memo = {})
+  def to_ruby(memo = nil)
+    # readonly documents memoize per node: repeated materialization
+    # of a shared subtree returns the SAME object at zero walk cost
+    if @document.readonly?
+      rm = @document.readonly_memo
+      cached = rm[node_id]
+      return cached if cached
+
+      return rm[node_id] = to_ruby_walk({})
+    end
+    to_ruby_walk(memo || {})
+  end
+
+  def to_ruby_walk(memo)
     cached = memo[node_id]
     return cached if cached
 
@@ -273,7 +295,7 @@ class Yeptris::Node
     when :bool then to_bool
     when :int then to_i
     when :float then to_f
-    when :timestamp then parse_timestamp(value)
+    when :timestamp then ::Yeptris::Materializer.parse_timestamp(value)
     else value
     end
   end
@@ -289,16 +311,7 @@ class Yeptris::Node
     v.length <= 1 ? :"" : v[1..].to_sym
   end
 
-  # Psych: date-only -> Date; with a time component -> Time.
-  def parse_timestamp(text)
-    Date.parse(text)
-  rescue ArgumentError
-    begin
-      Time.xmlschema(text)
-    rescue ArgumentError
-      text
-    end
-  end
+
 
   def alive
     @document.ensure_alive!

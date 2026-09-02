@@ -88,6 +88,13 @@ class Yeptris::Document
     @readonly
   end
 
+  # @api private — memo table for readonly materialization: node ids
+  # that already produced their Ruby object keep it (leptris pattern:
+  # readonly documents never change, so the memo is forever valid).
+  def readonly_memo
+    @readonly_memo ||= {}
+  end
+
   # @api private — the single Node construction path. Query handles
   # are transient C allocations; the wrapper cache is keyed on the
   # STABLE node id (yeptris_node_id), so the same node always yields
@@ -168,6 +175,13 @@ class Yeptris::Document
     text = text.to_s
     n = Yeptris::FFI.yeptris_node_new_scalar(@c_ptr, text, text.bytesize, code)
     wrap_node(n) or raise Yeptris::Error, "yeptris_node_new_scalar failed"
+  end
+
+  # An alias node: display name + the target it resolves to.
+  def new_alias(target, name)
+    ensure_alive!
+    n = Yeptris::FFI.yeptris_node_new_alias(@c_ptr, target.c_ptr, name, name.bytesize)
+    wrap_node(n) or raise Yeptris::Error, "yeptris_node_new_alias failed"
   end
 
   def set_root(node)

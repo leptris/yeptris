@@ -23,19 +23,29 @@ static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
     yd_verdict v = yd_diff_classify((const char*)data, size, &ydump, &ldump);
-    if (v == YD_DIFFER || v == YD_YEPTRIS_ONLY || v == YD_LIBYAML_ONLY) {
-        if (probe_id != NULL && yd_ledger_has(probe_id)) {
-            /* a documented upstream deviation: the suite disagrees
-             * with libyaml, and yeptris follows the suite */
-            free(ydump);
-            free(ldump);
-            return;
-        }
+    int split = v == YD_YEPTRIS_ONLY || v == YD_LIBYAML_ONLY;
+#ifdef YEP_FUZZ_STANDALONE
+    /* corpus walker: splits are enforced against the ledger (an
+     * unledgered split is a conformance regression) */
+    if ((v == YD_DIFFER || split) && !(probe_id != NULL && yd_ledger_has(probe_id))) {
         fprintf(stderr, "fuzz_diff: %s%s%s on input:\n--- yeptris:\n%s\n--- libyaml:\n%s\n",
                 yd_verdict_name(v), probe_id ? " (" : "", probe_id ? probe_id : "",
                 ydump ? ydump : "(error)", ldump ? ldump : "(error)");
         abort();
     }
+#else
+    /* libFuzzer entry (mutated bytes, no corpus id): only a true
+     * semantic divergence aborts — BOTH accepted but the event
+     * streams differ. Random-byte splits live in the suite-gray
+     * zone the ledger documents by input, not by mutation. */
+    (void)split;
+    (void)probe_id;
+    if (v == YD_DIFFER) {
+        fprintf(stderr, "fuzz_diff: %s on mutated input:\n--- yeptris:\n%s\n--- libyaml:\n%s\n",
+                yd_verdict_name(v), ydump ? ydump : "(error)", ldump ? ldump : "(error)");
+        abort();
+    }
+#endif
     free(ydump);
     free(ldump);
 }
