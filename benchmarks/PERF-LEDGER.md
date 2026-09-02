@@ -319,3 +319,19 @@ Throughput unchanged (2.6-3.3x libyaml DOM, same-run). The <3x
 acceptance gate: scalar-heavy within reach; block/anchor shapes
 remain bounded by semantic copies (folds) and nametab storage.
 168/168 Release + ASAN + UBSan + TSAN.
+
+## 2026-09-03 — number kernel (08B): typed-access fast paths
+
+clean_num returns the BORROWED view when the value carries no
+separators (the common case — the copy vanished); ints parse in
+place (only the 0o rewrite path copies). Floats gain a
+Clinger-bounded exact fast path: <= 15 significant mantissa digits
+and adjusted exponent within +-22 convert via a 23-entry pow10
+table and one multiply/divide — provably correctly rounded in that
+range; everything outside falls back to strtod. 20k randomized
+mantissa/exponent cross-checks against strtod: bit-identical
+(test_number_kernel).
+
+Micro-bench (4 typed reads x 2M, incl. map_get): 40 -> 33 ns/read
+(-17%); the accessor's remaining cost is dominated by the map lookup
+handle allocation. 185/185 gates.
