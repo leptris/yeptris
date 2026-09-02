@@ -19,7 +19,7 @@ measured-dead; record it, keep the numbers — do not delete history).
 | 10 | [Schema resolvers: 1.2 core, 1.1 compat, options](TODO.impl/10-schema-resolvers.md) | 09 | pending |
 | 11 | [DOM: compact nodes, vtables, interning, O(1) access](TODO.impl/11-dom.md) | 07, 10 | active (v1) |
 | 12 | [Event delivery](TODO.impl/12-event-delivery.md) | 07, 11 | COMPLETE (pull/push/recorder/iterparse + yaml_compat adapter) |
-| 13 | [Emitter](TODO.impl/13-emitter.md) | 11, 09, 10 | A + canonical + streaming done; width folding remains |
+| 13 | [Emitter](TODO.impl/13-emitter.md) | 11, 09, 10 | COMPLETE (A, canonical, streaming, width folding) |
 | 14 | [Float printer](TODO.impl/14-float-printer.md) | 13 | clean-room v1 landed; cached-power perf queued |
 | 15 | [Ruby binding: FFI gem + Psych compatibility](TODO.impl/15-ruby-binding.md) | 11–13 | pending |
 | 16 | [Conformance harness: test-suite + divergence ledger](TODO.impl/16-conformance-harness.md) | 07, 12 | active (corpus) |

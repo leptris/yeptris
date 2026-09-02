@@ -43,10 +43,21 @@ static void wr_maybe_flush(yep_writer* w) {
     w->len = 0;
 }
 
+static void wr_col_update(yep_writer* w, const char* p, uint32_t n) {
+    for (uint32_t i = n; i > 0; i--) { /* last newline wins */
+        if (p[i - 1] == '\n') {
+            w->col = (int)(n - i);
+            return;
+        }
+    }
+    w->col += (int)n;
+}
+
 static void wr_put(yep_writer* w, const char* p, uint32_t n) {
     if (n > 0) {
         w->last = p[n - 1];
     }
+    wr_col_update(w, p, n);
     if (w->dry) {
         w->len += n;
         return;
@@ -58,6 +69,11 @@ static void wr_put(yep_writer* w, const char* p, uint32_t n) {
 
 static void wr_byte(yep_writer* w, char c) {
     w->last = c;
+    if (c == '\n') {
+        w->col = 0;
+    } else {
+        w->col++;
+    }
     if (w->dry) {
         w->len++;
         return;
@@ -392,12 +408,22 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
     emit_anchor_ex(em, n);
     int map = (n->kind == 2);
     wr_byte(w, map ? '{' : '[');
+    int flow_indent = w->col;
     uint32_t child = n->first_child;
     uint32_t idx = 0;
     while (child != UINT32_MAX) {
         const yep_dnode* cn = yep_dom_node(d, child);
         if (idx > 0) {
-            wr_put(w, ", ", 2);
+            /* 13B: past best_width, break AFTER the previous value
+             * (value boundaries only, never inside a scalar) and
+             * re-indent to the opening bracket's column */
+            if (w->best_width > 0 && w->col > w->best_width) {
+                wr_byte(w, ',');
+                wr_byte(w, '\n');
+                wr_indent(w, flow_indent);
+            } else {
+                wr_put(w, ", ", 2);
+            }
         }
         if (map) {
             int explicit_key = cn->anchor.len > 0 || cn->tag.len > 0 || cn->kind != 0;
@@ -562,6 +588,7 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     w->force_flow = 0;
     w->flushed = 0;
     w->sink_aborted = 0;
+    w->col = 0;
     yep_nametab_clear(&em->canon_names);
     if (w->json) {
         /* JSON has no multi-document streams: exactly one root */

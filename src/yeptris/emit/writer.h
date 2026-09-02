@@ -29,6 +29,9 @@ typedef struct yep_writer {
                        * quoted strings, typed words, shortest floats */
     int json;         /* 21: JSON output — canonical minus YAML words:
                        * null (not ~), no document markers, JSON escapes */
+    int best_width;   /* 13B: 0 = default 80; flow lines wrap after a
+                       * value past this width */
+    int col;          /* current output column (wr_* maintains) */
 } yep_writer;
 
 typedef struct yep_emitter {
