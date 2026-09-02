@@ -68,6 +68,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
             goto jfail;
         }
         dom->input_base = buf; /* strict JSON is UTF-8 by definition */
+        yep_dom_prepare(dom, buf, len);
         int brc = yep_dom_build_json(dom, buf, len);
         if (brc == -1) {
             yep_dom_destroy(dom);
@@ -187,6 +188,7 @@ engine_enter:
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
     }
+    yep_dom_prepare(dom, buf, len);
 
     yep_sink sink = {yep_dom_on_event, dom};
     int rc = yep_engine_run(eng, data, data_len, &sink);

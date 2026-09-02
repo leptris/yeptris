@@ -126,6 +126,18 @@ static inline yep_sview yep_sv_input(const yep_dom* d, yep_view v) {
 
 yep_dom* yep_dom_create(const yep_allocator* sys);
 
+/* Pre-sizes the node array and string arena from content-derived
+ * hints (TODO.impl/06: one SIMD count pass -> reserves -> at most
+ * logarithmic growth remains instead of doubling from empty).
+ * Hints are advisory: overshoot wastes memory, undershoot falls
+ * back to normal growth. 0 hint skips that reserve. */
+void yep_dom_reserve(yep_dom* d, uint32_t node_hint, uint32_t str_hint);
+
+/* One-shot sizing from the input (count passes + reserve above) —
+ * the single home of the heuristic; parse_impl and the memory bench
+ * both call it so the measure and the product can't drift. */
+void yep_dom_prepare(yep_dom* d, const char* buf, size_t len);
+
 /* builder helpers shared with mutate.c (dom-internal) */
 int dom_grow_nodes(yep_dom* d, uint32_t need);
 int dom_grow_docs(yep_dom* d, uint32_t need);

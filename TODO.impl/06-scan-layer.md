@@ -79,9 +79,15 @@ C. `sizing` fused counters wired to arena reserve; allocation-count gate.
 
 ## Remaining phases (next work)
 
-1. Fuse the arena-sizing counters (count3 of `\n`, `:`, quotes) into
-   yeptris_parse and feed yep_sizing_hints — the 0-allocs-after-reserve
-   gate (item 03's acceptance) is not yet exercised by parse.
+1. ~~Arena-sizing fusion~~ — LANDED 2026-09-02 as yep_dom_prepare
+   (dom.c): three SIMD count3 passes feed one reserve (node capacity
+   from structural bytes; arena capacity only when content copies —
+   borrowed-only docs allocate no arena). The formula has ONE home;
+   parse_impl and the memory bench call the same seam. Peak
+   heap/input: scalar-heavy 6.15x -> 4.33x, flow-json 32x -> 19.4x,
+   deep-nesting 15.5x -> 10.9x (ledger). The 0-allocs-after-reserve
+   ideal remains open: undershooting shapes still grow (deep-nesting
+   allocs 54 -> 80 — reserve + chain when hints miss).
 2. Streaming window contract: the scanner currently assumes a whole
    buffer; chunk-boundary state-carry lands with item 12's feed API.
 3. Line-table throughput gate (≥2 GB/s ledger entry) once sizing is wired.

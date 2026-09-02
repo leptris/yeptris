@@ -87,6 +87,9 @@ static mem_stats measure_mem(const Corpus& c) {
     yep_dom* dom = yep_dom_create(&counter);
     mem_stats ms = {0, 0, 0};
     if (eng != NULL && dom != NULL) {
+        /* the same sizing seam as parse_impl: the measure must
+         * exercise the product's reserve path, not a bare engine */
+        yep_dom_prepare(dom, c.data.data(), c.data.size());
         yep_sink sink = {yep_dom_on_event, dom};
         int rc = yep_engine_run(eng, c.data.data(), c.data.size(), &sink);
         if (rc == 0 && dom->ncount > 0) {

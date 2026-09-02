@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "common/simd_text.h"
+
 #include <pthread.h>
 
 #include "dom.h"
@@ -269,6 +271,40 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
     default:
         return -1;
     }
+}
+
+void yep_dom_reserve(yep_dom* d, uint32_t node_hint, uint32_t str_hint) {
+    if (d == NULL) {
+        return;
+    }
+    if (node_hint > d->ncount) {
+        /* capacity for node_hint TOTAL nodes; growth remains on OOM */
+        (void)dom_grow_nodes(d, node_hint - d->ncount);
+    }
+    if (str_hint > d->str_cap) {
+        (void)str_grow(d, str_hint);
+    }
+}
+
+/* Content-derived sizing (TODO.impl/06): three SIMD count passes,
+ * then reserves. Every structural byte bounds a node boundary; the
+ * arena reserve only pays when the content copies (quoted scalars
+ * escape, block scalars fold) — borrowed-only documents must not
+ * allocate an arena at all. Hints are advisory. */
+void yep_dom_prepare(yep_dom* d, const char* buf, size_t len) {
+    if (d == NULL || buf == NULL) {
+        return;
+    }
+    const yep_text_kernels* k = yep_text_active();
+    size_t nl = 0, commas = 0, dashes = 0;
+    size_t colons = 0, brackets = 0, braces = 0;
+    size_t dq = 0, sq = 0, pipes = 0;
+    k->count3(buf, len, '\n', ',', '-', &nl, &commas, &dashes);
+    k->count3(buf, len, ':', '[', '{', &colons, &brackets, &braces);
+    k->count3(buf, len, '"', '\'', '|', &dq, &sq, &pipes);
+    uint32_t node_hint = (uint32_t)(nl + commas + dashes - colons + brackets + braces + 8);
+    uint32_t str_hint = (dq + sq + pipes) > 0 ? (uint32_t)(dq * 16 + sq * 8 + pipes * 128 + 64) : 0;
+    yep_dom_reserve(d, node_hint, str_hint);
 }
 
 yep_dom* yep_dom_create(const yep_allocator* sys) {
