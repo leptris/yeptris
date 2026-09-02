@@ -43,6 +43,9 @@ jobs:
       - name: Run binding specs
         working-directory: bindings/ruby
         run: |
-          ext="$(case "$(uname -s)" in Darwin) echo dylib ;; *) echo so ;; esac)"
-          export YEPTRIS_LIB_PATH="$GITHUB_WORKSPACE/build-bind/src/libyeptris.$ext"
+          if [ "$(uname -s)" = "Darwin" ]; then
+            export YEPTRIS_LIB_PATH="$GITHUB_WORKSPACE/build-bind/src/libyeptris.dylib"
+          else
+            export YEPTRIS_LIB_PATH="$GITHUB_WORKSPACE/build-bind/src/libyeptris.so"
+          fi
           bundle exec rspec
