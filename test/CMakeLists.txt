@@ -93,6 +93,18 @@ yeptris_set_warnings(fuzz_parse)
 add_executable(fuzz_roundtrip fuzz/fuzz_roundtrip.c)
 target_link_libraries(fuzz_roundtrip PRIVATE yeptris_static)
 target_compile_definitions(fuzz_roundtrip PRIVATE YEP_FUZZ_STANDALONE)
+
+add_executable(fuzz_feed fuzz/fuzz_feed.c)
+target_link_libraries(fuzz_feed PRIVATE yeptris_static)
+target_include_directories(fuzz_feed PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+target_compile_definitions(fuzz_feed PRIVATE YEP_FUZZ_STANDALONE)
+yeptris_set_warnings(fuzz_feed)
+
+add_executable(fuzz_transcode fuzz/fuzz_transcode.c)
+target_link_libraries(fuzz_transcode PRIVATE yeptris_static)
+target_include_directories(fuzz_transcode PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+target_compile_definitions(fuzz_transcode PRIVATE YEP_FUZZ_STANDALONE)
+yeptris_set_warnings(fuzz_transcode)
 yeptris_set_warnings(fuzz_roundtrip)
 
 add_test(
@@ -102,6 +114,14 @@ add_test(
 add_test(
     NAME fuzz-roundtrip-corpus
     COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+)
+add_test(
+    NAME fuzz-feed-corpus
+    COMMAND fuzz_feed ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+)
+add_test(
+    NAME fuzz-transcode-corpus
+    COMMAND fuzz_transcode ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
 )
 
 if(YEPTRIS_ENABLE_FUZZING)
@@ -113,6 +133,16 @@ if(YEPTRIS_ENABLE_FUZZING)
     add_executable(fuzz_roundtrip_lf fuzz/fuzz_roundtrip.c)
     target_link_libraries(fuzz_roundtrip_lf PRIVATE yeptris_static)
     yeptris_set_warnings(fuzz_roundtrip_lf)
+
+    add_executable(fuzz_feed_lf fuzz/fuzz_feed.c)
+    target_link_libraries(fuzz_feed_lf PRIVATE yeptris_static)
+    target_include_directories(fuzz_feed_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+    yeptris_set_warnings(fuzz_feed_lf)
+
+    add_executable(fuzz_transcode_lf fuzz/fuzz_transcode.c)
+    target_link_libraries(fuzz_transcode_lf PRIVATE yeptris_static)
+    target_include_directories(fuzz_transcode_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+    yeptris_set_warnings(fuzz_transcode_lf)
 endif()
 
 # ---- JSONTestSuite under YAML semantics (TODO.impl/08C) ---------------

@@ -51,6 +51,12 @@ jobs:
       - name: fuzz_roundtrip (10 min)
         run: ./build/test/fuzz_roundtrip_lf -max_total_time=600 -rss_limit_mb=4096 corpus
 
+      - name: fuzz_feed (10 min)
+        run: ./build/test/fuzz_feed_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+
+      - name: fuzz_transcode (10 min)
+        run: ./build/test/fuzz_transcode_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+
       - name: Retain crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4
