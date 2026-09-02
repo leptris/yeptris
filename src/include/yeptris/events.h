@@ -23,6 +23,7 @@
 
 #include <yeptris/api.h>
 #include <yeptris/error.h> /* YeptrisStatus */
+#include <yeptris/resolve.h> /* YeptrisSchema */
 #include <yeptris/types.h>
 
 #ifdef __cplusplus
@@ -97,9 +98,12 @@ YEPTRIS_API void yeptris_pull_free(YeptrisPullParser pull);
 
 /* Fixed-size record; strings slice the arena by offset+length. */
 typedef struct {
-    uint8_t type; /* YeptrisEventType */
+    uint8_t type;   /* YeptrisEventType */
     uint8_t style;
-    uint8_t flags; /* YEPTRIS_EF_* */
+    uint8_t flags;  /* YEPTRIS_EF_* */
+    uint8_t tag_id; /* resolved implicit tag (YeptrisTagId, resolve.h) —
+                     * the typing SSOT, so hosts never re-scan. Uses the
+                     * struct's pad byte: sizeof stays 36 (ABI-pinned) */
     uint32_t line;
     uint32_t col;
     uint32_t value_off;
@@ -111,6 +115,10 @@ typedef struct {
 } YeptrisEventRecord;
 
 YEPTRIS_API YeptrisRecorder yeptris_recorder_new(void);
+
+/* Same, with the implicit-typing schema for the parse (bindings pass
+ * compat_11 to reproduce Psych's typing). */
+YEPTRIS_API YeptrisRecorder yeptris_recorder_new_ex(YeptrisSchema schema);
 
 /* Accumulates input; the parse runs when final != 0 (v1: the engine is
  * whole-buffer; the streaming feed keeps this signature). Returns

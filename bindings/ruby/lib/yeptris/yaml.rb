@@ -11,20 +11,12 @@ module Yeptris
     # schema: :compat_11 selects Psych/libyaml implicit typing
     # (yes/no, 0o/octal, sexagesimal); :core_12 (default) is YAML 1.2.
     def load(yaml, schema: :compat_11)
-      doc = Document.parse(yaml, schema: schema)
-      return nil if doc.document_count.zero?
-
-      doc.to_ruby(0)
-    ensure
-      doc&.free
+      Materializer.load(yaml, schema: schema)
     end
 
     # Every document in the stream, in order.
     def load_stream(yaml, schema: :compat_11)
-      doc = Document.parse(yaml, schema: schema)
-      Array.new(doc.document_count) { |i| doc.to_ruby(i) }
-    ensure
-      doc&.free
+      Materializer.load_stream(yaml, schema: schema)
     end
 
     def load_file(path, schema: :compat_11)

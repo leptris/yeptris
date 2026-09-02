@@ -144,8 +144,10 @@ RSpec.describe Yeptris::YAML do
     expect(described_class.load("num: 0o17\n")).to eq("num" => "0o17")
   end
 
-  it "matches Psych's y/n boolean quirk, keys included" do
-    expect(described_class.load("n: 1\n")).to eq(false => 1)
+  it "matches Psych's boolean words exactly (no single-char y/n)" do
+    expect(described_class.load("yes: 1\noff: 2\nOn: 3\nyES: 4\n"))
+      .to eq(true => 1, false => 2, true => 3, true => 4)
+    expect(described_class.load("n: 1\ny: 2\n")).to eq("n" => 1, "y" => 2)
   end
 
   it "loads with core 1.2 typing on request" do
@@ -153,6 +155,18 @@ RSpec.describe Yeptris::YAML do
       .to eq("flag" => "yes")
     expect(described_class.load("flag: yes\n", schema: :compat_11))
       .to eq("flag" => true)
+  end
+
+  it "resolves merge keys like Psych (existing keys win)" do
+    yaml = <<~Y
+      base: &b
+        a: 1
+        b: 2
+      merged:
+        <<: *b
+        b: 20
+    Y
+    expect(described_class.load(yaml)["merged"]).to eq("a" => 1, "b" => 20)
   end
 
   it "load_stream returns every document" do
