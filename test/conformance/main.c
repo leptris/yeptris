@@ -83,6 +83,7 @@ static yts_result run_case(const yts_case* c, char** got_tree) {
 
 int main(int argc, char** argv) {
     const char* dir = "../test/conformance/data/yaml-test-suite/src";
+    int dump = 0;
     int verbose = 0;
     int progress = 0;
     const char* only = NULL;
@@ -91,6 +92,8 @@ int main(int argc, char** argv) {
             verbose = 1;
         } else if (strcmp(argv[i], "--progress") == 0) {
             progress = 1;
+        } else if (strcmp(argv[i], "--dump") == 0) {
+            dump = 1;
         } else if (strcmp(argv[i], "--id") == 0 && i + 1 < argc) {
             only = argv[++i];
         } else {
@@ -127,6 +130,15 @@ int main(int argc, char** argv) {
         }
         char* got = NULL;
         yts_result r = run_case(&cases[i], verbose || fails ? &got : NULL);
+        if (dump) {
+            /* id, expect (fail|ok), our verdict, input repr — the
+             * ledger tooling joins libyaml splits to suite truth */
+            printf("DUMP %s expect=%s got=%s\n", cases[i].id,
+                   (cases[i].fail && strcmp(cases[i].fail, "true\n") == 0) || cases[i].error != NULL
+                       ? "fail"
+                       : "ok",
+                   r == R_PASS ? "pass" : result_name(r));
+        }
         counts[r]++;
         if (r != R_PASS) {
             if (verbose) {
