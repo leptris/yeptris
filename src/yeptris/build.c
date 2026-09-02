@@ -174,6 +174,15 @@ YEPTRIS_API YeptrisNode yeptris_node_new_alias(YeptrisDocument handle, YeptrisNo
     return id == UINT32_MAX ? NULL : (YeptrisNode)yep_handle_new(doc, id);
 }
 
+YEPTRIS_API int yeptris_node_map_add_node(YeptrisNode handle, YeptrisNode key, YeptrisNode value) {
+    yeptris_node* m = node_of(handle);
+    if (m == NULL || !same_doc(handle, key) || !same_doc(handle, value)) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    return mut_status(
+        yep_mut_map_add_node(m->doc->dom, m->id, node_of(key)->id, node_of(value)->id));
+}
+
 YEPTRIS_API int yeptris_node_map_del(YeptrisNode handle, const char* key, size_t key_len) {
     yeptris_node* m = node_of(handle);
     if (m == NULL || key == NULL) {
