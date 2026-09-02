@@ -327,6 +327,87 @@ YEPTRIS_API YeptrisNodeKind yeptris_node_kind(YeptrisNode handle) {
     }
 }
 
+/* Exact decimal fast path (TODO.impl/08B): [-+]?digits[.digits]
+ * [(eE)[-+]?digits] with <= 15 significant mantissa digits and an
+ * adjusted exponent within +-22 converts with one multiplication by
+ * a table power of ten — provably correctly rounded in that range
+ * (Clinger); libc strtod stays the fallback outside it. */
+static const double k_pow10[23] = {
+    1e0,  1e1,  1e2,  1e3,  1e4,  1e5,  1e6,  1e7,  1e8,  1e9,  1e10, 1e11,
+    1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22,
+};
+
+static int fast_double(const char* s, size_t len, double* out) {
+    size_t i = 0;
+    int neg = 0;
+    if (i < len && (s[i] == '-' || s[i] == '+')) {
+        neg = s[i] == '-';
+        i++;
+    }
+    uint64_t m = 0;
+    int digits = 0;
+    int dot = -1;
+    for (; i < len; i++) {
+        char c = s[i];
+        if (c == '.') {
+            if (dot >= 0) {
+                return 0;
+            }
+            dot = (int)digits;
+            continue;
+        }
+        if (c < '0' || c > '9') {
+            break;
+        }
+        if (digits >= 15) {
+            return 0; /* outside the exact range */
+        }
+        m = m * 10u + (uint64_t)(c - '0');
+        digits++;
+    }
+    if (digits == 0 || (i < len && s[i] != 'e' && s[i] != 'E')) {
+        return 0; /* empty mantissa or trailing junk */
+    }
+    int e10 = 0;
+    if (i < len) {
+        i++; /* e/E */
+        int eneg = 0;
+        if (i < len && (s[i] == '-' || s[i] == '+')) {
+            eneg = s[i] == '-';
+            i++;
+        }
+        if (i >= len) {
+            return 0;
+        }
+        for (; i < len; i++) {
+            if (s[i] < '0' || s[i] > '9') {
+                return 0;
+            }
+            e10 = e10 * 10 + (s[i] - '0');
+            if (e10 > 308) {
+                return 0;
+            }
+        }
+        if (eneg) {
+            e10 = -e10;
+        }
+    }
+    if (dot >= 0) {
+        e10 -= digits - dot;
+    }
+    if (e10 > 22 || e10 < -22 || m >= (1ull << 53)) {
+        return 0; /* outside Clinger's exact range */
+    }
+    if (e10 >= 0) {
+        double v = (double)m * k_pow10[e10];
+        *out = neg ? -v : v;
+    } else {
+        double v = (double)m / k_pow10[-e10];
+        *out = neg ? -v : v;
+    }
+    return 1;
+}
+
 /* Decodes a node's compact string through its document's regions. */
 static yep_view node_view(const yeptris_node* h, yep_sview sv) {
     return yep_dom_view(h->doc->dom, sv);
@@ -373,9 +454,21 @@ YEPTRIS_API YeptrisTagId yeptris_node_tag_id(YeptrisNode handle) {
     return (YeptrisTagId)n->tag_id;
 }
 
-/* strips '_' and ',' into dst (nul-terminated); returns length */
-static size_t clean_num(const yeptris_node* h, const yep_dnode* n, char* dst, size_t cap) {
+/* strips '_' and ',' into dst (nul-terminated); returns length.
+ * The COMMON case (no separators) returns the borrowed view — no
+ * copy, no nul-termination needed by the in-place parsers. */
+static size_t clean_num(const yeptris_node* h, const yep_dnode* n, char* dst, size_t cap,
+                        const char** text) {
     yep_view v = node_view(h, n->value);
+    if (v.len == 0) {
+        *text = dst;
+        dst[0] = '\0';
+        return 0;
+    }
+    if (memchr(v.p, '_', v.len) == NULL && memchr(v.p, ',', v.len) == NULL) {
+        *text = (const char*)v.p; /* zero-copy fast path (08B) */
+        return v.len;
+    }
     size_t o = 0;
     for (uint32_t i = 0; i < v.len && o + 1 < cap; i++) {
         char c = ((const char*)v.p)[i];
@@ -385,6 +478,7 @@ static size_t clean_num(const yeptris_node* h, const yep_dnode* n, char* dst, si
         dst[o++] = c;
     }
     dst[o] = '\0';
+    *text = dst;
     return o;
 }
 
@@ -397,9 +491,20 @@ YEPTRIS_API YeptrisStatus yeptris_node_int(YeptrisNode handle, int64_t* out) {
         return YEPTRIS_ERROR_PARSE;
     }
     char buf[80];
-    size_t len = clean_num((yeptris_node*)handle, n, buf, sizeof(buf));
+    const char* num = NULL;
+    size_t len = clean_num((yeptris_node*)handle, n, buf, sizeof(buf), &num);
     if (len == 0) {
         return YEPTRIS_ERROR_PARSE;
+    }
+    /* the 0o mutation path below rewrites the text; copy borrowed
+     * views into buf first so the input is never touched */
+    if (num != buf) {
+        if (len >= sizeof(buf)) {
+            return YEPTRIS_ERROR_PARSE;
+        }
+        memcpy(buf, num, len);
+        buf[len] = '\0';
+        num = buf;
     }
     int base = 10;
     const char* s = buf;
@@ -474,9 +579,28 @@ YEPTRIS_API YeptrisStatus yeptris_node_float(YeptrisNode handle, double* out) {
         return YEPTRIS_ERROR_PARSE;
     }
     char buf[80];
-    size_t len = clean_num((yeptris_node*)handle, n, buf, sizeof(buf));
+    const char* num = NULL;
+    size_t len = clean_num((yeptris_node*)handle, n, buf, sizeof(buf), &num);
     if (len == 0) {
         return YEPTRIS_ERROR_PARSE;
+    }
+    /* 08B fast path: the common decimal shape converts exactly with
+     * integer arithmetic (Clinger bounds: mantissa < 2^53, adjusted
+     * exponent within +-22); everything else falls to strtod */
+    {
+        double fast;
+        if (fast_double(num, len, &fast)) {
+            *out = fast;
+            return YEPTRIS_OK;
+        }
+    }
+    if (num != buf) {
+        if (len >= sizeof(buf)) {
+            return YEPTRIS_ERROR_PARSE;
+        }
+        memcpy(buf, num, len);
+        buf[len] = '\0';
+        num = buf;
     }
     /* .inf / .nan family (sign allowed on inf) */
     {
