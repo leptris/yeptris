@@ -169,6 +169,13 @@ int yep_mut_map_add(yep_dom* d, uint32_t map, const char* key, size_t klen, uint
 /* Replace-in-place (json-c semantics: position kept); 1 = replaced. */
 int yep_mut_map_set(yep_dom* d, uint32_t map, const char* key, size_t klen, uint32_t value);
 int yep_mut_seq_del(yep_dom* d, uint32_t seq, uint32_t index);
+
+/* Node props on synthesized trees (15's YAMLTree): values are copied
+ * into the arena. set_alias_target links an alias node at the target
+ * (the emitter resolves and re-emits the name). */
+int yep_mut_set_anchor(yep_dom* d, uint32_t node, const char* name, size_t len);
+int yep_mut_set_tag(yep_dom* d, uint32_t node, const char* tag, size_t len);
+uint32_t yep_mut_new_alias(yep_dom* d, uint32_t target, const char* name, size_t len);
 /* Replace the entry at index (json-c array_put_idx): unlinks the old
  * subtree and splices the new node in at the SAME position. */
 int yep_mut_seq_set(yep_dom* d, uint32_t seq, uint32_t index, uint32_t value);

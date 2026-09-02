@@ -391,9 +391,16 @@ static void emit_tag(yep_writer* w, const yep_dnode* n) {
     if (n->tag.len == 0) {
         return;
     }
+    yep_view tdec = wv(w, n->tag);
+    if (tdec.len > 0 && tdec.p[0] == '!') {
+        /* already a shorthand ("!ruby/object:K", "!foo"): verbatim —
+         * the !<...> wrapper is for verbatim URIs only */
+        wr_put(w, (const char*)tdec.p, tdec.len);
+        wr_byte(w, ' ');
+        return;
+    }
     wr_byte(w, '!');
     wr_byte(w, '<');
-    yep_view tdec = wv(w, n->tag);
     wr_put(w, (const char*)tdec.p, tdec.len);
     wr_byte(w, '>');
     wr_byte(w, ' ');

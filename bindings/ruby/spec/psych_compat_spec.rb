@@ -55,3 +55,16 @@ RSpec.describe "Yeptris::Psych drop-in" do
     expect(Psych.dump("a" => 1)).to eq("a: 1\n")
   end
 end
+
+RSpec.describe "readonly documents" do
+  it "memoizes materialization per node" do
+    doc = Yeptris::Document.parse("a: &x {k: 1}\nb: *x\nc: *x\n").readonly!
+    root = doc.root
+    first = root.to_ruby
+    again = root.to_ruby
+    expect(again).to equal(first) # the whole tree, one walk
+    obj = first
+    expect(obj["b"]).to equal(obj["c"])
+    expect(obj["b"]).to equal(obj["a"]) # aliases all one object
+  end
+end

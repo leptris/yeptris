@@ -28,12 +28,23 @@ jobs:
       - name: Fetch corpora
         run: scripts/fetch-corpora.sh
 
+      - name: Fetch libyaml (pinned 90a56d4, for the differential)
+        run: |
+          git clone --depth 1 https://github.com/yaml/libyaml deps/libyaml || true
+          git -C deps/libyaml fetch --depth 1 origin 90a56d4500aa1a1798514c5cb55c3ad4cb095f94
+          git -C deps/libyaml checkout 90a56d4500aa1a1798514c5cb55c3ad4cb095f94
+          cmake -B deps/libyaml/build -S deps/libyaml \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+            -DYAML_BUILD_SHARED_LIBS=OFF -DYAML_STATIC_LIB_NAME=yaml
+          cmake --build deps/libyaml/build
+
       - name: Configure
         run: |
           cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_COMPILER=clang \
-            -DYEPTRIS_ENABLE_FUZZING=ON
+            -DYEPTRIS_ENABLE_FUZZING=ON \
+            -DYEPTRIS_LIBYAML_ROOT=$GITHUB_WORKSPACE/deps/libyaml
 
       - name: Build
         run: cmake --build build
@@ -57,6 +68,10 @@ jobs:
       - name: fuzz_transcode (10 min)
         run: ./build/test/fuzz_transcode_lf -max_total_time=600 -rss_limit_mb=4096 corpus
 
+      # semantic differential: both libraries accept, streams differ
+      - name: fuzz_diff (10 min)
+        run: ./build/test/fuzz_diff_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+
       - name: Retain crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4
@@ -67,3 +82,35 @@ jobs:
             leak-*
             timeout-*
           if-no-files-found: ignore
+
+  valgrind:
+    name: Valgrind memcheck (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build valgrind
+
+      - name: Fetch conformance corpora
+        run: scripts/fetch-corpora.sh
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DBUILD_TESTING=ON -DYEPTRIS_BUILD_CLI=ON \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Unit tests under valgrind
+        run: |
+          valgrind --error-exitcode=99 --leak-check=full \
+            --errors-for-leak-kinds=definite,indirect \
+            --suppressions=.github/valgrind.supp \
+            ./build/test/test_unit --gtest_filter='-Float.DoubleRoundtripRandom:Float.ShortestIsShortest:MapIndex.LargeMapHitsAndMisses:MapIndex.ConcurrentFirstLookupsBuildOnce:Limits.*'
+
+      - name: Conformance under valgrind
+        run: valgrind --error-exitcode=99 --leak-check=full ./build/test_conformance

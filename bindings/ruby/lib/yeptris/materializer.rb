@@ -71,6 +71,18 @@ module Yeptris
       # through sexagesimal to String.
       PSYCH_TRUE = %w[y yes true on].freeze
 
+      def parse_timestamp(v)
+        return Date.parse(v) unless v.match?(/[Tt ]\d/)
+
+        # normalize the YAML 1.1 space forms onto iso8601 for
+        # xmlschema: "2001-12-14 21:59:43.10 -05:00" ->
+        # "2001-12-14T21:59:43.10-05:00" (Psych's scanner does the
+        # same dance)
+        Time.xmlschema(v.sub(/ (\d)/, 'T\1').sub(/ ([+-]\d)/, '\1'))
+      rescue ArgumentError
+        v
+      end
+
       def scan_by_tag(value, tag_id, implicit)
         case tag_id
         when TAG_STR
@@ -134,17 +146,7 @@ module Yeptris
         total
       end
 
-      def parse_timestamp(v)
-        return Date.parse(v) unless v.match?(/[Tt ]\d/)
 
-        # normalize the YAML 1.1 space forms onto iso8601 for
-        # xmlschema: "2001-12-14 21:59:43.10 -05:00" ->
-        # "2001-12-14T21:59:43.10-05:00" (Psych's scanner does the
-        # same dance)
-        Time.xmlschema(v.sub(/ (\d)/, 'T\1').sub(/ ([+-]\d)/, '\1'))
-      rescue ArgumentError
-        v
-      end
     end
 
     def initialize(schema: :compat_11)

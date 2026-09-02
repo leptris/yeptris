@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "yeptris"
+require "yeptris/psych/coder_shim"
+require "yeptris/psych/visitors"
 
 # The Psych drop-in namespace (TODO.impl/15 phase C).
 #
@@ -42,8 +44,14 @@ module Yeptris
         safe_load(yaml, permitted_classes: permitted_classes, aliases: aliases)
       end
 
+      # Full revival over the Nodes tree: !ruby/object, !ruby/struct,
+      # !ruby/set, encode_with/init_with, alias identity. Plain-data
+      # loads should use load/safe_load (the Materializer fast path).
       def unsafe_load(yaml, **)
-        Yeptris::YAML.load(yaml)
+        tree = parse(yaml)
+        return nil if tree.nil?
+
+        Visitors::ToRuby.visit(tree.children.first)
       end
 
       def safe_load(yaml, permitted_classes: [], aliases: false, **)
@@ -84,8 +92,20 @@ module Yeptris
         doc&.free if doc && !stream
       end
 
+      # Arbitrary object graphs through the YAMLTree visitor
+      # (anchors, !ruby/ tags); plain data rides the fast builder.
       def dump(obj, io = nil)
-        out = Yeptris::YAML.dump(obj)
+        # scalars take the fast builder; EVERYTHING else (including
+        # plain containers — they may nest custom objects) goes
+        # through the visitor, which builds the same DOM for plain
+        # data anyway
+        out =
+          case obj
+          when nil, true, false, String, Integer, Float, Symbol, Date, Time
+            Yeptris::YAML.dump(obj)
+          else
+            Visitors::YAMLTree.new.push(obj).finish
+          end
         return out unless io
 
         io.write(out)
