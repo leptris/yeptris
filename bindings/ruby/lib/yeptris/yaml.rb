@@ -19,6 +19,11 @@ module Yeptris
       Materializer.load_stream(yaml, schema: schema)
     end
 
+    # The Psych-suite port's spelling (spec/psych/): compat typing.
+    def parse_yaml(yaml)
+      load(yaml)
+    end
+
     def load_file(path, schema: :compat_11)
       File.open(path, "rb") { |f| load(f, schema: schema) }
     end
