@@ -137,7 +137,11 @@ module Yeptris
       def parse_timestamp(v)
         return Date.parse(v) unless v.match?(/[Tt ]\d/)
 
-        Time.xmlschema(v)
+        # normalize the YAML 1.1 space forms onto iso8601 for
+        # xmlschema: "2001-12-14 21:59:43.10 -05:00" ->
+        # "2001-12-14T21:59:43.10-05:00" (Psych's scanner does the
+        # same dance)
+        Time.xmlschema(v.sub(/ (\d)/, 'T\1').sub(/ ([+-]\d)/, '\1'))
       rescue ArgumentError
         v
       end
@@ -164,7 +168,8 @@ module Yeptris
         count = count_p.read_uint64
         arena_len = ::FFI::MemoryPointer.new(:size_t)
         arena_ptr = Yeptris::FFI.yeptris_recorder_arena(rec, arena_len)
-        arena = arena_ptr.read_bytes(arena_len.read_uint64)
+        arena_len_v = arena_len.read_uint64
+        arena = arena_ptr.null? || arena_len_v.zero? ? +"" : arena_ptr.read_bytes(arena_len_v)
         # ONE bulk read + one unpack: per-field FFI reads cost 5-8
         # calls per record; the flat array is cheaper than the calls
         flat = records.read_bytes(count * RECORD_SIZE)
@@ -191,6 +196,10 @@ module Yeptris
       stack = []
       anchors = {}
       pending_key = []
+      # per open container: the map to merge into when this container
+      # closes (inline `<<:` values), nil otherwise
+      merge_target = []
+
       i = 0
       n = flat.length
       while i < n
@@ -226,13 +235,13 @@ module Yeptris
         when MAPPING_START
           h = {}
           remember_anchor(arena, flat, i, anchors, h)
-          place(docs, stack, pending_key, h)
+          merge_target.push(place(docs, stack, pending_key, h))
           stack.push(h)
           pending_key.push(nil)
         when SEQUENCE_START
           a = []
           remember_anchor(arena, flat, i, anchors, a)
-          place(docs, stack, pending_key, a)
+          merge_target.push(place(docs, stack, pending_key, a))
           stack.push(a)
           pending_key.push(nil)
         when ALIAS
@@ -242,8 +251,10 @@ module Yeptris
 
           place(docs, stack, pending_key, obj)
         when MAPPING_END, SEQUENCE_END
-          stack.pop
+          done = stack.pop
           pending_key.pop
+          target = merge_target.pop
+          merge_into(target, done) if target
         when DOCUMENT_START
           docs.push(nil)
         end
@@ -254,26 +265,33 @@ module Yeptris
 
     # Attaches obj: as the current document's root when nothing is
     # open, as a sequence entry, or as the pending mapping key/value.
+    # Returns the merge TARGET when obj is a container placed under a
+    # "<<" key — the caller defers the merge to the container's END
+    # (an inline map's contents arrive after its start event); scalar
+    # and alias merges apply immediately.
     def place(docs, stack, pending_key, obj)
       if stack.empty?
         docs[-1] = obj
-        return
+        return nil
       end
       parent = stack.last
       if parent.is_a?(Hash)
         if pending_key.last.nil?
           pending_key[-1] = obj
+          return nil
+        end
+        key = pending_key.last
+        pending_key[-1] = nil
+        if merge_key?(key)
+          merge_into(parent, obj)
+          parent
         else
-          key = pending_key.last
-          pending_key[-1] = nil
-          if merge_key?(key)
-            merge_into(parent, obj)
-          else
-            parent[key] = obj
-          end
+          parent[key] = obj
+          nil
         end
       else # Array
         parent.push(obj)
+        nil
       end
     end
 
