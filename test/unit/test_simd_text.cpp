@@ -192,7 +192,9 @@ TEST(SimdText, Count3AndCopyCount3) {
         EXPECT_EQ(b1, naive_count(b.data(), b.size(), c1));
         EXPECT_EQ(c1n, naive_count(b.data(), b.size(), c2));
 
-        std::vector<char> dst(b.size());
+        /* +1: an empty input must not hand the kernel a NULL dst
+         * (nonnull attribute: the call itself is UB at size 0) */
+        std::vector<char> dst(b.size() + 1);
         k->copy_count3(dst.data(), b.data(), b.size(), c0, c1, c2, &a2, &b2, &c2n);
         EXPECT_EQ(0, memcmp(dst.data(), b.data(), b.size())) << "copy corrupted data";
         EXPECT_EQ(a2, a1);

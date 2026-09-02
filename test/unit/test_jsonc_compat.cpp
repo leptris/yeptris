@@ -254,7 +254,10 @@ TEST(JsonCBuild, ArrayPutIdx) {
     /* append at len */
     ASSERT_EQ(json_object_array_put_idx(arr, 3, json_object_new_int(9)), 0);
     EXPECT_STREQ(json_object_to_json_string(arr), "[0,\"x\",2,9]");
-    /* beyond len errors */
-    EXPECT_NE(json_object_array_put_idx(arr, 9, json_object_new_int(1)), 0);
+    /* beyond len errors; the caller keeps ownership of the value on
+     * failure (json-c contract) — put it or the wrapper leaks */
+    json_object* beyond = json_object_new_int(1);
+    EXPECT_NE(json_object_array_put_idx(arr, 9, beyond), 0);
+    json_object_put(beyond);
     json_object_put(arr);
 }
