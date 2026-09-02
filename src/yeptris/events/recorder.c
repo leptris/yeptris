@@ -1,9 +1,10 @@
 /* recorder.c — chunked event recorder (TODO.impl/12).
  *
  * Feed chunks, drain bulk: fixed-size records plus one string arena,
- * reset at every feed entry. v1 buffers input until the final chunk
- * (the engine is whole-buffer); the streaming feed machinery keeps
- * this exact wire shape when the engine gains resumable stepping. */
+ * reset at every feed entry. The engine's resumable stepping (07)
+ * advances the parse as complete documents arrive — each feed's
+ * records are the events for documents closed by that chunk, so a
+ * stream watcher holds one document of memory, not the whole stream. */
 
 #include <stdlib.h>
 #include <string.h>
@@ -15,9 +16,7 @@
 
 struct yeptris_recorder {
     yep_rec_store store;
-    char* input;
-    size_t input_len, input_cap;
-    int ran;
+    yep_engine* eng; /* created on first feed; steps per feed */
     int final_fed;
     int compat11;
     YeptrisStatus status;
@@ -44,43 +43,33 @@ YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char*
         return YEPTRIS_ERROR_ARG;
     }
     if (rec->final_fed) {
-        return YEPTRIS_ERROR_ARG; /* one document per recorder (v1) */
+        return YEPTRIS_ERROR_ARG; /* one stream per recorder */
     }
-    if (len > 0) {
-        if (rec->input_len + len > rec->input_cap) {
-            size_t cap = rec->input_cap ? rec->input_cap : 4096;
-            while (rec->input_len + len > cap) {
-                cap *= 2;
-            }
-            char* nb = realloc(rec->input, cap);
-            if (nb == NULL) {
-                return YEPTRIS_ERROR_MEMORY;
-            }
-            rec->input = nb;
-            rec->input_cap = cap;
+    if (rec->eng == NULL) {
+        rec->eng = yep_engine_create(yep_system_allocator());
+        if (rec->eng == NULL) {
+            return YEPTRIS_ERROR_MEMORY;
         }
-        memcpy(rec->input + rec->input_len, chunk, len);
-        rec->input_len += len;
+        yep_engine_set_resolver(rec->eng,
+                                rec->compat11 ? yep_resolver_compat11() : yep_resolver_core12());
     }
-    if (!final) {
-        return YEPTRIS_OK;
+    if (final) {
+        rec->final_fed = 1;
     }
-    rec->final_fed = 1;
     yep_rec_reset(&rec->store);
-    yep_engine* eng = yep_engine_create(yep_system_allocator());
-    if (eng == NULL) {
-        return YEPTRIS_ERROR_MEMORY;
-    }
-    yep_engine_set_resolver(eng, rec->compat11 ? yep_resolver_compat11() : yep_resolver_core12());
     yep_sink sink = {yep_rec_on_event, &rec->store};
-    int rc = yep_engine_run(eng, rec->input, rec->input_len, &sink);
-    const yep_error* err = yep_engine_error(eng);
-    if (err != NULL && rc != 0) {
-        rec->err_line = err->line;
-        rec->err_col = err->col;
+    int rc = yep_engine_step(rec->eng, chunk, len, final, &sink);
+    if (rc != 0) {
+        const yep_error* err = yep_engine_error(rec->eng);
+        if (err != NULL) {
+            rec->err_line = err->line;
+            rec->err_col = err->col;
+        }
+        rec->final_fed = 1; /* a parse error kills the stream */
+        rec->status = YEPTRIS_ERROR_PARSE;
+        return rec->status;
     }
-    yep_engine_destroy(eng);
-    rec->status = rc == 0 ? YEPTRIS_OK : YEPTRIS_ERROR_PARSE;
+    rec->status = YEPTRIS_OK;
     return rec->status;
 }
 
@@ -108,7 +97,7 @@ YEPTRIS_API void yeptris_recorder_free(YeptrisRecorder rec) {
     if (rec == NULL) {
         return;
     }
+    yep_engine_destroy(rec->eng);
     yep_rec_free(&rec->store);
-    free(rec->input);
     free(rec);
 }

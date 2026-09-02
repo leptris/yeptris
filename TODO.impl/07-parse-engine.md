@@ -95,13 +95,27 @@ C. Chunked feed + streaming state-carry tests (adversarial split points).
 
 ## Remaining phases (next work)
 
-1. Resumable stepping (yep_engine_step) — required by pull/recorder
-   (12); the whole-buffer run() is the v1 shape.
-2. Event-parity vs yaml-test-suite (16's runner; corpus is fetched at
-   test/conformance/data/yaml-test-suite — 352 cases) — drive fixes from
-   failures; target ≥90% per the phase gate.
+1. ~~Resumable stepping (yep_engine_step)~~ — **LANDED**. Chunks
+   accumulate in a pending buffer; every feed parses the complete-
+   document prefix and keeps the tail. Cut rules (all conservative —
+   ambiguity delays a cut, never mis-splits): column-0 `---` lines
+   only (never `...`: that would orphan an explicit DOCUMENT_END), no
+   `%` directive pending (directives travel with their document), and
+   only while no quoted scalar, comment, or flow collection spans the
+   position (tracked incrementally; quotes open only at value
+   positions, `''`/`\` escapes and truncated markers hold back until
+   more bytes arrive). Line numbers stay stream-absolute via a line
+   base taken from the engine's own counter; STREAM_START/END bracket
+   the whole stepped stream exactly once. The recorder (12) drives
+   yep_engine_step per feed; fuzz_feed asserts the stepped stream is
+   record-for-record identical to whole-buffer across 1091 corpus
+   inputs, and test_stepping covers the adversarial splits (byte-
+   by-byte, quote spanning a marker line, plain-text apostrophes,
+   flow spanning, directive attach, explicit-end orphaning).
+2. ~~Event-parity vs yaml-test-suite~~ — landed with 16 (395/395).
 3. Single-pair map in a sequence whose value is a nested collection
    ("[a: [1]]") — known gap, events unbalanced.
 4. Simple-key 1024-char limit; %YAML version validation; %TAG handle
    expansion; merge-key "<<" marking (resolver hook, 10).
-5. Chunked feed (streaming) with carried state (with 12).
+5. Chunked feed (streaming) with carried state — **LANDED** (with 12):
+   yeptris_recorder_feed steps the engine per feed.

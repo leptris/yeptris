@@ -120,10 +120,13 @@ YEPTRIS_API YeptrisRecorder yeptris_recorder_new(void);
  * compat_11 to reproduce Psych's typing). */
 YEPTRIS_API YeptrisRecorder yeptris_recorder_new_ex(YeptrisSchema schema);
 
-/* Accumulates input; the parse runs when final != 0 (v1: the engine is
- * whole-buffer; the streaming feed keeps this signature). Returns
- * YEPTRIS_OK, YEPTRIS_ERROR_PARSE (drain what was recorded before the
- * error; the last record is the failure point) or YEPTRIS_ERROR_ARG. */
+/* Accumulates input; the parse advances whenever a complete document
+ * has arrived (its closing --- / ... marker line), and final != 0
+ * flushes the trailing document. Each feed's records — fixed-size
+ * array plus the arena — hold the documents closed by that chunk and
+ * are valid until the next feed: drain per chunk. Returns
+ * YEPTRIS_OK, YEPTRIS_ERROR_PARSE (terminal; drain what this feed
+ * recorded) or YEPTRIS_ERROR_ARG. */
 YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char* chunk, size_t len,
                                                 int final);
 
