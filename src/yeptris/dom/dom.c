@@ -218,6 +218,12 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
     memset(d, 0, sizeof(*d));
     d->sys = sys;
     d->pool = pool;
+    d->handles = yep_hpool_create(sys);
+    if (d->handles == NULL) {
+        yep_pool_destroy(pool);
+        yep_free(sys, d);
+        return NULL;
+    }
     if (!yep_nametab_init(&d->anchors, sys)) {
         yep_pool_destroy(pool);
         yep_free(sys, d);
@@ -231,6 +237,7 @@ void yep_dom_destroy(yep_dom* d) {
         return;
     }
     yep_nametab_free(&d->anchors);
+    yep_hpool_destroy(d->handles);
     yep_pool_destroy(d->pool);
     yep_free(d->sys, d);
 }

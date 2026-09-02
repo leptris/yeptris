@@ -1,6 +1,6 @@
 # TODO.impl/19 — Hardening: sanitizers, fuzzing, differential fuzzing, limits, threads
 
-Status: STARTED 2026-09-02 — fuzz_parse + fuzz_roundtrip harnesses (standalone corpus walkers in ctest + libFuzzer targets under YEPTRIS_ENABLE_FUZZING) and the nightly fuzz workflow (10 min/harness, seeds = all corpora, crash artifacts retained). REMAINING: fuzz_feed (chunked streaming), fuzz_transcode, allocation-failure injection, thread contract tests, TSAN/UBSAN/valgrind CI jobs, limit-boundary tests, differential fuzzing via yepdiff · Depends: 07+ · Layer: `test/{fuzz,concurrency}` + CI · PLAN.md phase: 5
+Status: CORE LANDED 2026-09-02 — fuzz harnesses + nightly workflow + allocation-failure injection (every-Nth across a real parse: clean failure or success, clean teardown, engine reusable — ASAN-verified) + thread contract (one-doc-per-thread, error isolation, read-only sharing) with a REAL RACE fixed: query APIs allocated handles from the single-threaded parse pool — read-sharing raced the bump allocator; a mutex-guarded handle arena (dom/hpool.c, document lifetime, parse pools stay lock-free) restores the contract. REMAINING: fuzz_feed (chunked streaming), fuzz_transcode, TSAN/UBSAN/valgrind CI jobs, limit-boundary tests, differential fuzzing via yepdiff · Depends: 07+ · Layer: `test/{fuzz,concurrency}` + CI · PLAN.md phase: 5
 
 ## Goal
 
