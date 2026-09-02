@@ -1,6 +1,6 @@
 # TODO.impl/20 — Packaging, ABI policy, automated release, distribution
 
-Status: pending · Depends: all · Layer: repo-wide · PLAN.md phase: 6
+Status: CORE LANDED 2026-09-02 (PR #49: install rules + find_package + pkg-config + vcpkg port + release workflow + ABI.md; see item notes) · 2026-09-02 polish: docs/FFI.md (the binding contract — bulk drains, identity-by-node-id, ownership, Psych quirk table) + format.yml (clang-format gate over FIRST-PARTY code only — test/conformance/data holds fetched third-party corpora; the baseline was formatted to clean in the same change) · REMAINING: brew tap, distro submissions · Depends: all · Layer: repo-wide · PLAN.md phase: 6
 
 ## Goal
 

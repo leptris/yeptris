@@ -41,8 +41,8 @@ TEST(Float, DoubleRoundtripRandom) {
         int len = yep_d2s_shortest(d, buf);
         buf[len] = '\0';
         double back = strtod(buf, NULL);
-        EXPECT_EQ(memcmp(&back, &d, 8), 0) << "printed [" << buf << "] for bits " << std::hex
-                                           << bits;
+        EXPECT_EQ(memcmp(&back, &d, 8), 0)
+            << "printed [" << buf << "] for bits " << std::hex << bits;
         if (HasFailure()) {
             return;
         }
@@ -51,17 +51,30 @@ TEST(Float, DoubleRoundtripRandom) {
 
 TEST(Float, DoubleRoundtripBoundary) {
     const double cases[] = {
-        0.0, -0.0, 1.0, -1.0, 0.5, -0.5, 0.1, 1.0 / 3.0, 2.0 / 3.0,
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        0.5,
+        -0.5,
+        0.1,
+        1.0 / 3.0,
+        2.0 / 3.0,
         4.9406564584124654e-324, /* min denormal */
         2.2250738585072009e-308, /* max denormal */
         2.2250738585072014e-308, /* min normal */
         1.7976931348623157e308,  /* max */
         1.7976931348623155e308,
-        9007199254740992.0,      /* 2^53 */
-        9007199254740993.0,      /* 2^53+1 (rounded on load; still roundtrips) */
-        1e23, 1e-23, 1234567890123456.0, 5e-310, 123.4567890123456789,
+        9007199254740992.0, /* 2^53 */
+        9007199254740993.0, /* 2^53+1 (rounded on load; still roundtrips) */
+        1e23,
+        1e-23,
+        1234567890123456.0,
+        5e-310,
+        123.4567890123456789,
         3.14159265358979323846264338327950288,
-        6.02214076e23, 1.602176634e-19,
+        6.02214076e23,
+        1.602176634e-19,
     };
     char buf[64];
     for (double d : cases) {
@@ -181,8 +194,8 @@ TEST(Float, CommonYamlDoubles) {
         double d;
         const char* want;
     } cases[] = {
-        {1.0, "1.0"},   {-1.0, "-1.0"}, {0.5, "0.5"},    {3.0, "3.0"},
-        {0.1, "0.1"},   {100.0, "100.0"}, {0.25, "0.25"}, {1e100, "1.0e+100"},
+        {1.0, "1.0"}, {-1.0, "-1.0"},   {0.5, "0.5"},   {3.0, "3.0"},
+        {0.1, "0.1"}, {100.0, "100.0"}, {0.25, "0.25"}, {1e100, "1.0e+100"},
     };
     char buf[64];
     for (const auto& c : cases) {

@@ -22,7 +22,7 @@
 #include <stdint.h>
 
 #include <yeptris/api.h>
-#include <yeptris/error.h> /* YeptrisStatus */
+#include <yeptris/error.h>   /* YeptrisStatus */
 #include <yeptris/resolve.h> /* YeptrisSchema */
 #include <yeptris/types.h>
 
@@ -98,7 +98,7 @@ YEPTRIS_API void yeptris_pull_free(YeptrisPullParser pull);
 
 /* Fixed-size record; strings slice the arena by offset+length. */
 typedef struct {
-    uint8_t type;   /* YeptrisEventType */
+    uint8_t type; /* YeptrisEventType */
     uint8_t style;
     uint8_t flags;  /* YEPTRIS_EF_* */
     uint8_t tag_id; /* resolved implicit tag (YeptrisTagId, resolve.h) —
