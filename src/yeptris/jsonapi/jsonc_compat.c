@@ -427,6 +427,65 @@ int json_object_array_add(json_object* obj, json_object* val) {
     return attach(obj, val, NULL);
 }
 
+/* json-c: index < len replaces in place; index == len appends;
+ * beyond that errors. */
+int json_object_array_put_idx(json_object* obj, size_t idx, json_object* val) {
+    if (obj == NULL || val == NULL || ensure_materialized(obj) != 0 ||
+        yeptris_node_kind(obj->node) != YEPTRIS_NODE_SEQUENCE) {
+        return -1;
+    }
+    size_t len = yeptris_node_seq_count(obj->node);
+    if (idx > len) {
+        return -1;
+    }
+    if (idx == len) {
+        return attach(obj, val, NULL);
+    }
+    /* replace in place: duplicate-then-splice for pending/standalone
+     * values, mirroring attach's retarget contract */
+    if (ensure_materialized(val) != 0) {
+        return -1;
+    }
+    json_object* root = obj->root;
+    YeptrisNode vnode;
+    if (val->pending) {
+        vnode = pending_node(root->doc, val);
+        if (vnode == NULL) {
+            return -1;
+        }
+        free(val->sval);
+        val->sval = NULL;
+        val->pending = 0;
+    } else if (val->owns_doc) {
+        vnode = dup_into(root->doc, val->node);
+        if (vnode == NULL) {
+            return -1;
+        }
+        yeptris_document_free(val->doc);
+        for (size_t i = 0; i < val->nchild; i++) {
+            free(val->children[i]->json_out);
+            free(val->children[i]);
+        }
+        free(val->children);
+        val->children = NULL;
+        val->nchild = 0;
+        val->capchild = 0;
+        free(val->json_out);
+        val->json_out = NULL;
+    } else {
+        return -1;
+    }
+    if (yeptris_node_seq_set(obj->node, idx, vnode) != YEPTRIS_OK) {
+        return -1;
+    }
+    val->doc = root->doc;
+    val->node = vnode;
+    val->root = root;
+    val->owns_doc = 0;
+    register_child(root, val);
+    return 0;
+}
+
 int json_object_array_del_idx(json_object* obj, size_t idx, size_t count) {
     if (obj == NULL || ensure_materialized(obj) != 0 ||
         yeptris_node_kind(obj->node) != YEPTRIS_NODE_SEQUENCE) {
@@ -599,7 +658,6 @@ json_object* json_object_array_get_idx(const json_object* obj, size_t idx) {
 }
 
 const char* json_object_to_json_string_ext(json_object* obj, int flags) {
-    (void)flags; /* spacing variants arrive with the pretty printer */
     if (obj == NULL) {
         return NULL;
     }
@@ -615,7 +673,9 @@ const char* json_object_to_json_string_ext(json_object* obj, int flags) {
         return NULL;
     }
     size_t len = 0;
-    obj->json_out = yep_serialize_json_compact((const yeptris_document*)obj->doc, &len);
+    int pretty = (flags & JSON_C_TO_STRING_PRETTY) != 0 && !(flags & JSON_C_TO_STRING_PLAIN);
+    obj->json_out = pretty ? yep_serialize_json_pretty((const yeptris_document*)obj->doc, &len)
+                           : yep_serialize_json_compact((const yeptris_document*)obj->doc, &len);
     if (obj->json_out != NULL && len > 0 && obj->json_out[len - 1] == '\n') {
         obj->json_out[len - 1] = '\0'; /* json-c output carries no newline */
     }

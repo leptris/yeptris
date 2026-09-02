@@ -225,3 +225,36 @@ TEST(JsonCBuild, MixedParseAndMutate) {
     EXPECT_STREQ(json_object_to_json_string(root), R"({"a":1,"b":[true,1.5],"c":"z"})");
     json_object_put(root);
 }
+
+TEST(JsonCBuild, PrettyOutput) {
+    json_object* root = json_tokener_parse(R"({"a":1,"b":[true,null],"c":{"d":"x"}})");
+    ASSERT_NE(root, nullptr);
+    const char* out = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
+    ASSERT_NE(out, nullptr);
+    /* json-c's pretty layout: every entry on its own line, 2 spaces
+     * per nesting level, arrays exploded too */
+    EXPECT_STREQ(out, "{\n  \"a\": 1,\n  \"b\": [\n    true,\n    null\n  ],\n  \"c\": {\n"
+                      "    \"d\": \"x\"\n  }\n}");
+    /* empty containers stay compact, like json-c */
+    json_object* empty = json_object_new_object();
+    EXPECT_STREQ(json_object_to_json_string_ext(empty, JSON_C_TO_STRING_PRETTY), "{}");
+    json_object_put(empty);
+    json_object_put(root);
+}
+
+TEST(JsonCBuild, ArrayPutIdx) {
+    json_object* arr = json_object_new_array();
+    ASSERT_NE(arr, nullptr);
+    for (int i = 0; i < 3; i++) {
+        ASSERT_EQ(json_object_array_add(arr, json_object_new_int(i)), 0);
+    }
+    /* replace in place */
+    ASSERT_EQ(json_object_array_put_idx(arr, 1, json_object_new_string("x")), 0);
+    EXPECT_STREQ(json_object_to_json_string(arr), "[0,\"x\",2]");
+    /* append at len */
+    ASSERT_EQ(json_object_array_put_idx(arr, 3, json_object_new_int(9)), 0);
+    EXPECT_STREQ(json_object_to_json_string(arr), "[0,\"x\",2,9]");
+    /* beyond len errors */
+    EXPECT_NE(json_object_array_put_idx(arr, 9, json_object_new_int(1)), 0);
+    json_object_put(arr);
+}

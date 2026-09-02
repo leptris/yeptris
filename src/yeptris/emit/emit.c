@@ -35,6 +35,8 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.canonical = opts_canonical(opts);
     em.w.json = 0;
     em.w.json_compact = 0;
+    em.w.json_pretty = 0;
+    em.w.pretty_depth = 0;
     em.w.best_width = opts_width(opts);
     em.w.col = 0;
     em.w.sink = NULL;
@@ -69,6 +71,8 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.canonical = opts_canonical(opts);
     em.w.json = 0;
     em.w.json_compact = 0;
+    em.w.json_pretty = 0;
+    em.w.pretty_depth = 0;
     em.w.best_width = opts_width(opts);
     em.w.col = 0;
     em.w.sink = NULL;
@@ -105,6 +109,8 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     em.w.canonical = 0;
     em.w.json = 1;
     em.w.json_compact = 0;
+    em.w.json_pretty = 0;
+    em.w.pretty_depth = 0;
     em.w.best_width = 0; /* JSON: no folding (single-line output) */
     em.w.col = 0;
     em.w.sink = NULL;
@@ -142,6 +148,47 @@ char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
     em.w.canonical = 0;
     em.w.json = 1;
     em.w.json_compact = 1;
+    em.w.json_pretty = 0;
+    em.w.pretty_depth = 0;
+    em.w.best_width = 0;
+    em.w.col = 0;
+    em.w.sink = NULL;
+    em.w.watermark = 0;
+    em.w.sink_aborted = 0;
+    em.w.flushed = 0;
+    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+        return NULL;
+    }
+    size_t need = yep_emit_run(&em, 1);
+    char* out = malloc(need + 1);
+    if (out == NULL) {
+        yep_nametab_free(&em.canon_names);
+        return NULL;
+    }
+    em.w.p = out;
+    size_t wrote = yep_emit_run(&em, 0);
+    yep_nametab_free(&em.canon_names);
+    out[wrote] = '\0';
+    if (len != NULL) {
+        *len = wrote;
+    }
+    return out;
+}
+
+char* yep_serialize_json_pretty(const yeptris_document* doc, size_t* len) {
+    if (doc == NULL) {
+        return NULL;
+    }
+    yep_emitter em;
+    em.doc = doc;
+    em.w.p = NULL;
+    em.w.last = 0;
+    em.w.force_flow = 0;
+    em.w.canonical = 0;
+    em.w.json = 1;
+    em.w.json_compact = 0;
+    em.w.json_pretty = 1;
+    em.w.pretty_depth = 0;
     em.w.best_width = 0;
     em.w.col = 0;
     em.w.sink = NULL;
@@ -192,6 +239,8 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     em.w.canonical = opts_canonical(opts);
     em.w.json = 0;
     em.w.json_compact = 0;
+    em.w.json_pretty = 0;
+    em.w.pretty_depth = 0;
     em.w.best_width = opts_width(opts);
     em.w.col = 0;
     em.w.sink = sink;
