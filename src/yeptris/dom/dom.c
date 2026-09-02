@@ -225,6 +225,7 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
         return NULL;
     }
     if (!yep_nametab_init(&d->anchors, sys)) {
+        yep_hpool_destroy(d->handles);
         yep_pool_destroy(pool);
         yep_free(sys, d);
         return NULL;
