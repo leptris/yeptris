@@ -24,14 +24,14 @@ typedef enum {
     yajl_gen_keys_must_be_strings, /* 1 */
     yajl_max_depth_exceeded,       /* unused: depth-guarded builder */
     yajl_gen_in_error_state = 3,
-    yajl_gen_generation_complete,  /* 4: gen after get_buf without clear */
-    yajl_gen_invalid_string = 5    /* NULL bytes with len 0 handled; reserved */
+    yajl_gen_generation_complete, /* 4: gen after get_buf without clear */
+    yajl_gen_invalid_string = 5   /* NULL bytes with len 0 handled; reserved */
 } yajl_gen_status;
 
 typedef enum {
-    yajl_gen_beautify = 1,    /* int: pretty output */
+    yajl_gen_beautify = 1,      /* int: pretty output */
     yajl_gen_indent_string = 2, /* const char*: reserved (fixed 2-space) */
-    yajl_gen_validate_utf8 = 3 /* int: always on (the front-end validates) */
+    yajl_gen_validate_utf8 = 3  /* int: always on (the front-end validates) */
 } yajl_gen_option;
 
 typedef struct yajl_gen_t* yajl_gen;
