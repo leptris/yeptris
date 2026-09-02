@@ -20,9 +20,13 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
         return 0;
     }
     switch (p[0]) {
+    case ':':
+        /* libyaml (Psych symbol dumps ":name"): a leading colon only
+         * indicates when followed by a blank/EOL — the interior rule
+         * below covers it; ":name" stays plain */
+        break;
     case '-':
     case '?':
-    case ':':
     case ',':
     case '[':
     case ']':
@@ -40,7 +44,7 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
     case '@':
     case '`':
         /* "-?" only indicate when followed by a blank; a safe subset
-         * still avoids them all as FIRST bytes for re-emit simplicity */
+         * still avoids them as FIRST bytes for re-emit simplicity */
         return 0;
     default:
         break;
@@ -69,13 +73,8 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
 }
 
 int yep_style_plain_key_safe(const char* p, uint32_t len) {
-    if (!yep_style_plain_safe(p, len)) {
-        return 0;
-    }
-    for (uint32_t i = 0; i < len; i++) {
-        if (p[i] == ':') {
-            return 0; /* any colon in a plain key invites ambiguity */
-        }
-    }
-    return 1;
+    /* plain_safe's colon rule is the key rule too: a colon only ends a
+     * key when followed by a blank/EOL, so "a:b" and ":name" are plain
+     * keys (libyaml emits Psych's symbol dumps exactly this way) */
+    return yep_style_plain_safe(p, len);
 }

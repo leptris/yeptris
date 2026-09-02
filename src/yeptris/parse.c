@@ -296,6 +296,11 @@ static const yep_dnode* node_of(YeptrisNode handle) {
     return yep_dom_node(n->doc->dom, n->id);
 }
 
+YEPTRIS_API uint32_t yeptris_node_id(YeptrisNode handle) {
+    yeptris_node* n = (yeptris_node*)handle;
+    return n == NULL ? UINT32_MAX : n->id;
+}
+
 YEPTRIS_API YeptrisNodeKind yeptris_node_kind(YeptrisNode handle) {
     const yep_dnode* n = node_of(handle);
     if (n == NULL) {

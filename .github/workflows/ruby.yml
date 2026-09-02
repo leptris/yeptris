@@ -1,0 +1,48 @@
+name: Ruby Binding Test Suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Ruby Binding on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        ruby: ["3.4"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+          working-directory: bindings/ruby
+
+      - name: Build shared library
+        run: |
+          cmake -B build-bind -S . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DYEPTRIS_BUILD_TESTING=OFF \
+            -DYEPTRIS_BUILD_CLI=OFF -DYEPTRIS_BUILD_SHARED=ON
+          cmake --build build-bind
+
+      - name: Run binding specs
+        working-directory: bindings/ruby
+        run: |
+          ext="$(case "$(uname -s)" in Darwin) echo dylib ;; *) echo so ;; esac)"
+          export YEPTRIS_LIB_PATH="$GITHUB_WORKSPACE/build-bind/src/libyeptris.$ext"
+          bundle exec rspec
