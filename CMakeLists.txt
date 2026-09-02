@@ -153,3 +153,55 @@ endif()
 if(YEPTRIS_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
 endif()
+
+# --------------------------------------------------------------- install --
+# (TODO.impl/20) targets, headers, pkg-config, and the find_package
+# config; relative paths keep relocatable installs.
+include(GNUInstallDirs)
+
+install(TARGETS yeptris_static
+    EXPORT yeptris-targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+if(TARGET yeptris_jsonc)
+    install(TARGETS yeptris_jsonc
+        EXPORT yeptris-targets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()
+if(YEPTRIS_BUILD_CLI AND TARGET yeptris)
+    install(TARGETS yeptris DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+)
+install(FILES ${CMAKE_BINARY_DIR}/generated/yeptris/version.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/yeptris
+)
+
+# pkg-config
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/yeptris.pc.in
+    ${CMAKE_BINARY_DIR}/yeptris.pc @ONLY)
+install(FILES ${CMAKE_BINARY_DIR}/yeptris.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
+# find_package(yeptris) config
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    ${CMAKE_BINARY_DIR}/yeptris-config-version.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(EXPORT yeptris-targets
+    NAMESPACE yeptris::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/yeptris)
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/yeptris-config.cmake.in
+    ${CMAKE_BINARY_DIR}/yeptris-config.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/yeptris)
+install(FILES ${CMAKE_BINARY_DIR}/yeptris-config.cmake
+    ${CMAKE_BINARY_DIR}/yeptris-config-version.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/yeptris)
+
