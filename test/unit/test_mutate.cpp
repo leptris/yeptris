@@ -7,11 +7,14 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <cstring>
+#include <map>
 #include <string>
 
 #include <yeptris.h>
 #include <yeptris/json.h>
+#include <yeptris/values.h>
 
 namespace {
 
@@ -380,4 +383,49 @@ TEST(BulkBuild, EmptyContainersAndDeepNesting) {
     st = YEPTRIS_OK;
     build_dump(over, "", &st);
     EXPECT_EQ(st, YEPTRIS_ERROR_DEPTH);
+}
+
+TEST(ValueStream, TypedDrainMatchesNodeAccessors) {
+    /* the value stream and the DOM typed accessors must agree —
+     * they ride the same number kernels */
+    const char* y = "i: 42\nf: 1.5\nb: on\nn: ~\ns: text\nhex: 0x1F\noct: 010\n"
+                    "sex: 190:20:30\nneg: -7\nbig: 9223372036854775807\nz: &a x\nr: *a\n";
+    YeptrisValue* vals = NULL;
+    size_t n = 0;
+    char* arena = NULL;
+    size_t alen = 0;
+    ASSERT_EQ(yeptris_value_drain(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n, &arena, &alen),
+              YEPTRIS_OK);
+    /* collect by key text */
+    std::map<std::string, const YeptrisValue*> by;
+    const YeptrisValue* key = nullptr;
+    for (size_t i = 0; i < n; i++) {
+        const YeptrisValue* v = &vals[i];
+        if (v->is_key) {
+            key = v;
+        } else if (key != nullptr && v->kind != YEP_V_CLOSE && v->kind != YEP_V_ANCHOR &&
+                   v->kind != YEP_V_MAP_OPEN) {
+            by[std::string(arena + key->off, key->len)] = v;
+            key = nullptr;
+        }
+    }
+    EXPECT_EQ(by["i"]->kind, YEP_V_INT);
+    EXPECT_EQ(by["i"]->i, 42);
+    EXPECT_EQ(by["f"]->kind, YEP_V_FLOAT);
+    EXPECT_DOUBLE_EQ(by["f"]->d, 1.5);
+    EXPECT_EQ(by["b"]->kind, YEP_V_BOOL);
+    EXPECT_EQ(by["b"]->b, 1);
+    EXPECT_EQ(by["n"]->kind, YEP_V_NULL);
+    EXPECT_EQ(by["s"]->kind, YEP_V_STR);
+    EXPECT_EQ(std::string(arena + by["s"]->off, by["s"]->len), "text");
+    EXPECT_EQ(by["hex"]->i, 31);
+    EXPECT_EQ(by["oct"]->i, 8);
+    EXPECT_EQ(by["sex"]->i, 685230);
+    EXPECT_EQ(by["neg"]->i, -7);
+    EXPECT_EQ(by["big"]->i, INT64_MAX);
+    /* quirk layer: raw text always present */
+    EXPECT_EQ(std::string(arena + by["b"]->off, by["b"]->len), "on");
+    /* anchor + alias identity */
+    EXPECT_EQ(by["z"]->kind, YEP_V_STR);
+    yeptris_value_free(vals, arena);
 }
