@@ -43,22 +43,23 @@ typedef enum {
     YEP_V_ANCHOR, /* off/len: the name */
 } YeptrisValueKind;
 
-/* 32 bytes, ABI-pinned. Every scalar carries its raw bytes (off/len)
- * next to the typed payload. */
+/* 24 bytes, ABI-pinned. Every scalar carries its raw bytes (off/len)
+ * next to a typed payload; `p` holds the INT bits or the FLOAT bits
+ * (reinterpreted by kind — hosts unpack it as ONE 64-bit field, so
+ * the record costs 7 values, not 8). */
 typedef struct {
     uint8_t kind;   /* YeptrisValueKind */
     uint8_t tag_id; /* the resolver's verdict for this scalar */
-    uint8_t is_key; /* scalar completes the inner map's key slot */
-    uint8_t b;      /* BOOL payload */
-    int64_t i;      /* INT payload */
-    double d;       /* FLOAT payload */
+    uint8_t is_key; /* the entry lands in the inner map's key slot */
+    uint8_t b;      /* BOOL payload; implicit-plain flag otherwise */
     uint32_t off;   /* STR/TIMESTAMP/ALIAS/anchor bytes */
     uint32_t len;
+    uint64_t p;     /* INT or FLOAT payload, by kind */
 } YeptrisValue;
 #if defined(__cplusplus)
-static_assert(sizeof(YeptrisValue) == 32, "value layout pinned");
+static_assert(sizeof(YeptrisValue) == 24, "value layout pinned");
 #else
-_Static_assert(sizeof(YeptrisValue) == 32, "value layout pinned");
+_Static_assert(sizeof(YeptrisValue) == 24, "value layout pinned");
 #endif
 
 /* Parses `yaml` and drains the typed value stream. On success sets

@@ -22,6 +22,9 @@ int yep_num_f64(const char* p, uint32_t len, double* out);
  * On/ON); anything else the BOOL tag accepted is false. */
 int yep_num_bool(const char* p, uint32_t len);
 
+/* Case-insensitive truth (the compat resolver's matching rule). */
+int yep_num_bool_ci(const char* p, uint32_t len);
+
 #ifdef __cplusplus
 }
 #endif

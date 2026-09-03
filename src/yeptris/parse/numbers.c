@@ -313,3 +313,24 @@ int yep_num_bool(const char* p, uint32_t len) {
     }
     return 0;
 }
+
+int yep_num_bool_ci(const char* p, uint32_t len) {
+    /* the compat resolver matches bool words case-insensitively;
+     * truth follows the same rule (Psych's scanner downcases) */
+    static const char* k_true[] = {"y", "yes", "true", "on"};
+    char buf[8];
+    if (len == 0 || len > 5) {
+        return 0;
+    }
+    for (uint32_t i = 0; i < len; i++) {
+        char c = p[i];
+        buf[i] = (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
+    }
+    for (size_t i = 0; i < sizeof(k_true) / sizeof(k_true[0]); i++) {
+        size_t m = strlen(k_true[i]);
+        if (len == m && memcmp(buf, k_true[i], m) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}

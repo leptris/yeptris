@@ -83,7 +83,7 @@ static void slot(yep_value_ctx* c, YeptrisValue* v) {
 }
 
 static void anchor_entry(yep_value_ctx* c, const char* name, uint32_t len) {
-    YeptrisValue a = {YEP_V_ANCHOR, 0, 0, 0, 0, 0.0, 0, len};
+    YeptrisValue a = {YEP_V_ANCHOR, 0, 0, 0, 0, len, 0};
     a.off = arena_put(c, name, len);
     put(c, &a);
 }
@@ -96,7 +96,7 @@ static int transform(yep_value_ctx* c) {
         if (r->anchor_len != 0 && r->type != YEPTRIS_EV_ALIAS) {
             anchor_entry(c, ra + r->anchor_off, r->anchor_len);
         }
-        YeptrisValue v = {0, 0, 0, 0, 0, 0.0, 0, 0};
+        YeptrisValue v = {0, 0, 0, 0, 0, 0, 0};
         switch (r->type) {
         case YEPTRIS_EV_STREAM_START:
         case YEPTRIS_EV_STREAM_END:
@@ -141,6 +141,8 @@ static int transform(yep_value_ctx* c) {
         case YEPTRIS_EV_SCALAR: {
             const char* text = ra + r->value_off;
             uint32_t len = r->value_len;
+            int64_t vi = 0;
+            double vd = 0.0;
             v.tag_id = r->tag_id;
             /* EVERY scalar carries its raw bytes: hosts with schema
              * quirks (Psych's single-char y/n, PyYAML's dot-required
@@ -148,27 +150,36 @@ static int transform(yep_value_ctx* c) {
              * a conversion grammar */
             v.off = arena_put(c, text, len);
             v.len = len;
+            if (r->tag_id != YEPTRIS_TAG_BOOL) {
+                /* b doubles as the implicit-plain flag for the other
+                 * kinds (host symbol scans and friends key on it) */
+                v.b = (r->flags & 4) ? 1 : 0;
+            }
             switch (r->tag_id) {
             case YEPTRIS_TAG_NULL:
                 v.kind = YEP_V_NULL;
                 break;
             case YEPTRIS_TAG_BOOL:
                 v.kind = YEP_V_BOOL;
-                v.b = (uint8_t)yep_num_bool(text, len);
+                v.b = (uint8_t)yep_num_bool_ci(text, len);
                 break;
             case YEPTRIS_TAG_INT:
                 v.kind = YEP_V_INT;
-                if (yep_num_i64(text, len, &v.i) != 0) {
+                if (yep_num_i64(text, len, &vi) != 0) {
                     /* the resolver tagged it but the kernel rejects:
                      * degrade to STR — host policy decides */
                     v.kind = YEP_V_STR;
-                    v.i = 0;
+                    v.p = 0;
+                } else {
+                    v.p = (uint64_t)vi;
                 }
                 break;
             case YEPTRIS_TAG_FLOAT:
                 v.kind = YEP_V_FLOAT;
-                if (yep_num_f64(text, len, &v.d) != 0) {
+                if (yep_num_f64(text, len, &vd) != 0) {
                     v.kind = YEP_V_STR;
+                } else {
+                    memcpy(&v.p, &vd, sizeof(v.p));
                 }
                 break;
             case YEPTRIS_TAG_TIMESTAMP:
