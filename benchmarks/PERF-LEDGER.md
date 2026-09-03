@@ -136,6 +136,30 @@ slimming — smaller `yep_event`, batch sink entry point (`on_events(ev[],
 n)` vtable slot, DOM overrides with a tight loop) — a wider unit;
 this fast path is the foundation strict-JSON mode (08C) builds on.
 
+### 2026-09-03 — sink devirtualization / batch dispatch (DEAD END, measured)
+
+The ledgered "event-pipeline slimming" hypothesis predicted the
+engine->sink indirect call was a meaningful share of the ~80 ns/event
+pipeline, and an `on_events(ev[], n)` batch slot would pay 2x. Direct
+experiment: emit_now's `e->sink->on_event(...)` replaced by a hard
+direct call to yep_dom_on_event (full devirtualization — the upper
+bound of what batching can recover at the dispatch level), three-run
+--quick A/B on the dev box:
+
+  block-heavy DOM  89.3 -> 87.9 MB/s  (noise band)
+  flow-json  DOM   66.0 -> 65.2 MB/s  (noise band)
+  scalar-heavy DOM 196.0 -> 196.5 MB/s (flat)
+
+The dispatch cost is unmeasurable — branch prediction absorbs it; the
+batch slot's call-overhead saving is bounded by this same zero. The
+pipeline's ~80 ns/event lives in event init, DOM node create + link,
+and string materialization (dom_new_node / dom_ev_str), not in the
+call. Next lever if flow-json DOM is pursued: trimmed node init and
+batched arena copies inside dom.c (the direct-from-index JSON builder
+already proved that seam: 63 -> 136 MB/s). The recorder-vs-DOM gap
+bounds the whole DOM-side cost at ~12% (flow-json) to ~25%
+(block-heavy) of parse time.
+
 ### 2026-09-01 — float printer: clean-room two-tier interval printer (LANDED)
 
 TODO.impl/14 rewritten clean-room after the licensing decision: NO

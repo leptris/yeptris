@@ -14,7 +14,7 @@ measured-dead; record it, keep the numbers — do not delete history).
 | 05 | [Encoding front-end: BOM, UTF-8 validation, transcode](TODO.impl/05-encoding-frontend.md) | 03, 04 | done |
 | 06 | [Scan layer: line table, indentation, indicators, spans](TODO.impl/06-scan-layer.md) | 04, 05 | active (v1) |
 | 07 | [Parse engine: one resumable state machine](TODO.impl/07-parse-engine.md) | 06 | active (v1) |
-| 08 | [Flow kernel](TODO.impl/08-flow-kernel.md) | 07 | v1 in 07 + 08C strict JSON mode done (jsonsuite 95/95+188/188); number kernel + SIMD hardening remain |
+| 08 | [Flow kernel](TODO.impl/08-flow-kernel.md) | 07 | COMPLETE (A/B/C: fast path, number kernel, strict JSON; SIMD dispatch measured dead — ledger) |
 | 09 | [Scalars: trim, fold, unescape, style recording](TODO.impl/09-scalars.md) | 07 | active (v1) |
 | 10 | [Schema resolvers: 1.2 core, 1.1 compat, options](TODO.impl/10-schema-resolvers.md) | 09 | pending |
 | 11 | [DOM: compact nodes, vtables, interning, O(1) access](TODO.impl/11-dom.md) | 07, 10 | active (v1) |
