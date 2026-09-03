@@ -12,22 +12,22 @@ measured-dead; record it, keep the numbers — do not delete history).
 | 03 | [Memory: pool, compact allocator, content-sized arena](TODO.impl/03-memory-allocators.md) | 02 | done |
 | 04 | [SIMD kernel framework (AOT TUs + dispatch)](TODO.impl/04-simd-kernels.md) | 02 | done |
 | 05 | [Encoding front-end: BOM, UTF-8 validation, transcode](TODO.impl/05-encoding-frontend.md) | 03, 04 | done |
-| 06 | [Scan layer: line table, indentation, indicators, spans](TODO.impl/06-scan-layer.md) | 04, 05 | active (v1) |
-| 07 | [Parse engine: one resumable state machine](TODO.impl/07-parse-engine.md) | 06 | active (v1) |
+| 06 | [Scan layer](TODO.impl/06-scan-layer.md) | 04, 05 | v1 complete (arena-sizing fusion landed; streaming window resolved by 07); line-table 2GB/s gate + NEL/LS/PS scan-layer note remain |
+| 07 | [Parse engine](TODO.impl/07-parse-engine.md) | 06 | v1 complete incl. resumable stepping; edge grammar items remain ([a: [1]] single-pair, simple-key limit, %TAG expansion) |
 | 08 | [Flow kernel](TODO.impl/08-flow-kernel.md) | 07 | COMPLETE (A/B/C: fast path, number kernel, strict JSON; SIMD dispatch measured dead — ledger) |
-| 09 | [Scalars: trim, fold, unescape, style recording](TODO.impl/09-scalars.md) | 07 | active (v1) |
-| 10 | [Schema resolvers: 1.2 core, 1.1 compat, options](TODO.impl/10-schema-resolvers.md) | 09 | pending |
-| 11 | [DOM: compact nodes, vtables, interning, O(1) access](TODO.impl/11-dom.md) | 07, 10 | active (v1) |
+| 09 | [Scalars](TODO.impl/09-scalars.md) | 07 | COMPLETE (fold/quote/block finishing green over the suite) |
+| 10 | [Schema resolvers](TODO.impl/10-schema-resolvers.md) | 09 | COMPLETE (core12, compat11, parse options) |
+| 11 | [DOM](TODO.impl/11-dom.md) | 07, 10 | v1 complete (60B nodes, O(1) mapindex, mutation, JSON direct-build); trimmed-init lever ledgered |
 | 12 | [Event delivery](TODO.impl/12-event-delivery.md) | 07, 11 | COMPLETE (pull/push/recorder/iterparse + yaml_compat adapter) |
 | 13 | [Emitter](TODO.impl/13-emitter.md) | 11, 09, 10 | COMPLETE (A, canonical, streaming, width folding) |
-| 14 | [Float printer](TODO.impl/14-float-printer.md) | 13 | clean-room v1 landed; cached-power perf queued |
-| 15 | [Ruby binding: FFI gem + Psych compatibility](TODO.impl/15-ruby-binding.md) | 11–13 | pending |
-| 16 | [Conformance harness: test-suite + divergence ledger](TODO.impl/16-conformance-harness.md) | 07, 12 | active (corpus) |
-| 17 | [libyaml test port](TODO.impl/17-libyaml-test-port.md) | 12, 16 | parse + emitter differentials green (279 .ly goldens); yepdiff tool |
+| 14 | [Float printer](TODO.impl/14-float-printer.md) | 13 | COMPLETE (clean-room two-tier); cached-power perf queued in ledger |
+| 15 | [Ruby binding](TODO.impl/15-ruby-binding.md) | 11–13 | phases A–E landed (gem, materializer, Psych drop-in, object serialization, event API, .tml corpora); gem publishing/version = USER release decisions |
+| 16 | [Conformance harness](TODO.impl/16-conformance-harness.md) | 07, 12 | COMPLETE (395/395 suite + 67/67 psych-pure, strict-gated) |
+| 17 | [libyaml test port](TODO.impl/17-libyaml-test-port.md) | 12, 16 | COMPLETE (405-snapshot parse differential, 279 emitter goldens, yepdiff, 67-divergence ledger) |
 | 18 | [Benchmarks](TODO.impl/18-benchmarks.md) | 06+ | COMPLETE (matrix+CI+ledger+mem measures); compactness gap logged |
-| 19 | [Hardening](TODO.impl/19-hardening.md) | 07+ | fuzz+nightly+alloc-inject+threads landed (read-share race fixed); TSAN/UBSAN jobs remain |
-| 20 | [Packaging, ABI policy, automated release](TODO.impl/20-packaging-release.md) | all | pending |
-| 21 | [JSON API compat](TODO.impl/21-json-compat-api.md) | 08, 11, 13, 18 | core + direct DOM landed (JSON entry 2.2x faster, 136 MB/s) |
+| 19 | [Hardening](TODO.impl/19-hardening.md) | 07+ | COMPLETE (fuzz+nightly+alloc-inject+threads+TSAN/UBSAN/valgrind+differential fuzz) |
+| 20 | [Packaging, ABI policy, automated release](TODO.impl/20-packaging-release.md) | all | core landed (install/pkg-config/vcpkg/release workflow/ABI+FFI docs); brew tap + distro submissions EXCLUDED by user |
+| 21 | [JSON API compat](TODO.impl/21-json-compat-api.md) | 08, 11, 13, 18 | COMPLETE (strict JSON, jsonc drop-in incl. pretty/building, json.hpp, yajl gen + SAX, direct DOM) |
 
 Rules inherited from libleptris: one executed plan per item; each phase
 gate in the item file must pass before the item closes; performance
