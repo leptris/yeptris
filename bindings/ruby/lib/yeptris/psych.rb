@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "yeptris"
+require "yeptris/psych/handler"
+require "yeptris/psych/parser"
 require "yeptris/psych/coder_shim"
 require "yeptris/psych/visitors"
 
