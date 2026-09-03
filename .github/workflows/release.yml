@@ -30,7 +30,7 @@ jobs:
         run: |
           echo "${{ inputs.next_version }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "not X.Y.Z"; exit 1; }
 
-      - name: Bump version (SSOT: CMakeLists project VERSION)
+      - name: "Bump version (CMakeLists project VERSION is the SSOT)"
         run: |
           V="${{ inputs.next_version }}"
           sed -i "s/    VERSION [0-9]*\.[0-9]*\.[0-9]*/    VERSION $V/" CMakeLists.txt
