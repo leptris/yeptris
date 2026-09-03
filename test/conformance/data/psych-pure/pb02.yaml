@@ -1,0 +1,14 @@
+---
+- name: Mapping value on next line (psych-pure parse-block.tml)
+  yaml: |
+    foo:
+      bar
+  tree: |
+    +STR
+     +DOC
+      +MAP
+       =VAL :foo
+       =VAL :bar
+      -MAP
+     -DOC
+    -STR

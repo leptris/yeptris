@@ -1,0 +1,15 @@
+---
+- name: Map in block seq (psych-pure parse-block.tml)
+  yaml: |
+    - foo: bar
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       +MAP
+        =VAL :foo
+        =VAL :bar
+       -MAP
+      -SEQ
+     -DOC
+    -STR

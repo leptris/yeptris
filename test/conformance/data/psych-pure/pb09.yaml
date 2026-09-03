@@ -1,0 +1,15 @@
+---
+- name: Flow mapping in block sequence (psych-pure parse-block.tml)
+  yaml: |
+    - {foo: 42}
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       +MAP {}
+        =VAL :foo
+        =VAL :42
+       -MAP
+      -SEQ
+     -DOC
+    -STR
