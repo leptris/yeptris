@@ -54,7 +54,7 @@ typedef struct {
     uint8_t b;      /* BOOL payload; implicit-plain flag otherwise */
     uint32_t off;   /* STR/TIMESTAMP/ALIAS/anchor bytes */
     uint32_t len;
-    uint64_t p;     /* INT or FLOAT payload, by kind */
+    uint64_t p; /* INT or FLOAT payload, by kind */
 } YeptrisValue;
 #if defined(__cplusplus)
 static_assert(sizeof(YeptrisValue) == 24, "value layout pinned");
