@@ -168,6 +168,19 @@ void gen_flow(std::string* out, Rng& r, int entries) {
     }
 }
 
+/* One giant ONE-LINE flow collection: the shape that hid the
+ * jx_advance_line quadratic (a single long line rescanned per token)
+ * — the many-small-collections shape could never catch it. */
+void gen_flow_single(std::string* out, Rng& r, int entries) {
+    out->append("[");
+    for (int i = 0; i < entries; i++) {
+        out->append((i ? ", " : "") + std::string("{ \"id\": ") + std::to_string(i) +
+                    ", \"name\": \"" + word(r) + "\", \"ok\": " + (r.pick(2) ? "true" : "false") +
+                    " }");
+    }
+    out->append(" ]\n");
+}
+
 void gen_scalar(std::string* out, Rng& r, int entries) {
     for (int i = 0; i < entries; i++) {
         out->append("k" + std::to_string(i) + ": " + sentence(r, 12) + "\n");
@@ -517,6 +530,11 @@ int main(int argc, char** argv) {
         std::string s;
         gen_flow(&s, r, entries);
         corpora.push_back({"flow-json", s});
+    }
+    {
+        std::string s;
+        gen_flow_single(&s, r, entries / 4);
+        corpora.push_back({"flow-single", s});
     }
     {
         std::string s;
