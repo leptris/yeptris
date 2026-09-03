@@ -185,6 +185,7 @@ int yep_mut_map_del(yep_dom* d, uint32_t map, const char* key, size_t klen);
  * constructed nodes, not caller strings). Duplicate keys are
  * REJECTED like map_add. */
 int yep_mut_map_add_node(yep_dom* d, uint32_t map, uint32_t key, uint32_t value);
+int yep_mut_map_append(yep_dom* d, uint32_t map, uint32_t key, uint32_t value);
 int yep_mut_add_root(yep_dom* d, uint32_t node);
 void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth);
 

@@ -330,14 +330,17 @@ TEST(BulkBuild, ImbalanceRejected) {
     st = YEPTRIS_OK;
     EXPECT_EQ(build_dump({{3, 0, 0, 0}, {1, 1, 0, 1}, {4, 0, 0, 0}}, "k", &st), "");
     EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
-    /* duplicate keys reject like map_add */
+    /* duplicate keys: kept like the parser keeps them (both pairs
+     * serialize; map_get stays first-wins) — the check-free pairing
+     * exists because map_add's linear dup scan was O(n^2) on wide
+     * maps */
     st = YEPTRIS_OK;
     EXPECT_EQ(
         build_dump(
             {{3, 0, 0, 0}, {1, 1, 0, 1}, {1, 1, 1, 1}, {1, 1, 0, 1}, {1, 1, 1, 1}, {4, 0, 0, 0}},
             "k12", &st),
-        "");
-    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+        "k: 1\nk: 1\n");
+    EXPECT_EQ(st, YEPTRIS_OK);
     /* out-of-range slice */
     st = YEPTRIS_OK;
     EXPECT_EQ(build_dump({{1, 1, 2, 5}}, "ab", &st), "");

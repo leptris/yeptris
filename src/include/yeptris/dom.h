@@ -151,7 +151,9 @@ _Static_assert(sizeof(YeptrisBuildEntry) == 12, "build entry layout pinned");
  * container, END closes it; after the last entry exactly one root
  * must remain open-free and becomes the document root. Scalars copy
  * their bytes from the blob (nothing is borrowed). Duplicate keys
- * reject like map_add. Returns YEPTRIS_OK, ERROR_ARG (NULL inputs),
+ * keep the LAST value, exactly as the parser accepts them (host
+ * mappings cannot produce one; the check would cost O(n^2) on wide
+ * maps). Returns YEPTRIS_OK, ERROR_ARG (NULL inputs),
  * ERROR_PARSE (imbalanced walk: END on an empty stack, entries after
  * the root closed, an unclosed container, a dangling key, a bad op
  * or out-of-range slice), ERROR_DEPTH, or ERROR_MEMORY. */
