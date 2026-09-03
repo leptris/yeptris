@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include <yeptris/api.h>
+#include <yeptris/error.h>
 #include <yeptris/types.h>
 
 #ifdef __cplusplus
@@ -117,6 +118,46 @@ YEPTRIS_API int yeptris_node_seq_del(YeptrisNode seq, size_t index);
 /* Replace the entry at index (same position kept). */
 YEPTRIS_API int yeptris_node_seq_set(YeptrisNode seq, size_t index, YeptrisNode value);
 YEPTRIS_API int yeptris_node_map_del(YeptrisNode map, const char* key, size_t key_len);
+
+/* ---- bulk build (TODO.impl/15 phase D: the dump-side mirror of the
+ * recorder's bulk drain — ONE call builds a whole document, so
+ * bindings never pay per-node FFI) ------------------------------------- */
+
+typedef enum {
+    YEPTRIS_BUILD_SCALAR = 1, /* push a scalar (value bytes in the blob) */
+    YEPTRIS_BUILD_SEQ = 2,    /* open a sequence */
+    YEPTRIS_BUILD_MAP = 3,    /* open a mapping */
+    YEPTRIS_BUILD_END = 4,    /* close the innermost open container */
+} YeptrisBuildOp;
+
+/* 12 bytes, ABI-pinned: op, style (scalar: YeptrisScalarStyle;
+ * ignored for containers), reserved, then the value slice. */
+typedef struct {
+    uint8_t op;
+    uint8_t style;
+    uint16_t reserved;
+    uint32_t off;
+    uint32_t len;
+} YeptrisBuildEntry;
+#if defined(__cplusplus)
+static_assert(sizeof(YeptrisBuildEntry) == 12, "build entry layout pinned");
+#else
+_Static_assert(sizeof(YeptrisBuildEntry) == 12, "build entry layout pinned");
+#endif
+
+/* Walks the entries in order — the same document-order grammar as the
+ * event stream: scalars link into the innermost open container (in a
+ * mapping, entries alternate key/value), SEQ/MAP open a child
+ * container, END closes it; after the last entry exactly one root
+ * must remain open-free and becomes the document root. Scalars copy
+ * their bytes from the blob (nothing is borrowed). Duplicate keys
+ * reject like map_add. Returns YEPTRIS_OK, ERROR_ARG (NULL inputs),
+ * ERROR_PARSE (imbalanced walk: END on an empty stack, entries after
+ * the root closed, an unclosed container, a dangling key, a bad op
+ * or out-of-range slice), ERROR_DEPTH, or ERROR_MEMORY. */
+YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument doc,
+                                                 const YeptrisBuildEntry* entries, size_t count,
+                                                 const char* blob, size_t blob_len);
 
 /* Appends a pre-built key node (duplicate rejected). */
 YEPTRIS_API int yeptris_node_map_add_node(YeptrisNode map, YeptrisNode key, YeptrisNode value);

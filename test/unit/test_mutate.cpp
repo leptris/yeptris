@@ -231,3 +231,150 @@ TEST(Mutate, EmptyScalarsAndEmptyKeys) {
     EXPECT_NE(yeptris_node_bool(empty, &b), YEPTRIS_OK);
     yeptris_document_free(doc);
 }
+
+/* ---- bulk build ------------------------------------------------------- */
+
+namespace {
+
+struct Entry {
+    uint8_t op;
+    uint8_t style;
+    uint32_t off;
+    uint32_t len;
+};
+
+std::string build_dump(const std::vector<Entry>& entries, const std::string& blob,
+                       YeptrisStatus* st) {
+    std::vector<YeptrisBuildEntry> flat;
+    flat.reserve(entries.size());
+    for (const Entry& e : entries) {
+        flat.push_back({e.op, e.style, 0, e.off, e.len});
+    }
+    YeptrisDocument doc = yeptris_document_new();
+    *st = yeptris_document_build(doc, flat.data(), flat.size(), blob.data(), blob.size());
+    if (*st != YEPTRIS_OK) {
+        yeptris_document_free(doc);
+        return "";
+    }
+    size_t len = 0;
+    char* out = yeptris_serialize(doc, &len);
+    std::string text(out ? out : "", out ? len : 0);
+    free(out);
+    yeptris_document_free(doc);
+    return text;
+}
+
+} // namespace
+
+TEST(BulkBuild, NestedDocument) {
+    /* {a: [1, 2], b: {c: x}} in document order:
+     * MAP, k=a, SEQ, 1, 2, END, k=b, MAP, k=c, x, END, END */
+    std::vector<Entry> es = {
+        {3, 0, 0, 0},  // MAP
+        {1, 1, 0, 1},  // a
+        {2, 0, 0, 0},  // SEQ
+        {1, 1, 2, 1},  // 1
+        {1, 1, 4, 1},  // 2
+        {4, 0, 0, 0},  // END seq
+        {1, 1, 6, 1},  // b
+        {3, 0, 0, 0},  // MAP
+        {1, 1, 8, 1},  // c
+        {1, 1, 10, 1}, // x
+        {4, 0, 0, 0},  // END inner map
+        {4, 0, 0, 0},  // END root
+    };
+    std::string blob = "a12bcx";
+    /* offsets above: a=0,1=2,2=4,b=6,c=8,x=10 */
+    blob = "a\x001\x002\x00b\x00c\x00x\x00"; /* not used; simple offsets below */
+    blob = "a12bcx";
+    es[1] = {1, 1, 0, 1}; /* a */
+    es[3] = {1, 1, 1, 1}; /* 1 */
+    es[4] = {1, 1, 2, 1}; /* 2 */
+    es[6] = {1, 1, 3, 1}; /* b */
+    es[8] = {1, 1, 4, 1}; /* c */
+    es[9] = {1, 1, 5, 1}; /* x */
+    YeptrisStatus st = YEPTRIS_OK;
+    std::string out = build_dump(es, blob, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    EXPECT_EQ(out, "a:\n  - 1\n  - 2\nb:\n  c: x\n");
+}
+
+TEST(BulkBuild, ScalarRoot) {
+    std::vector<Entry> es = {{1, 1, 0, 5}};
+    YeptrisStatus st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump(es, "hello", &st), "hello\n");
+    ASSERT_EQ(st, YEPTRIS_OK);
+}
+
+TEST(BulkBuild, QuotedStyle) {
+    std::vector<Entry> es = {{1, 3, 0, 3}}; /* double-quoted "yes" */
+    YeptrisStatus st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump(es, "yes", &st), "\"yes\"\n");
+    ASSERT_EQ(st, YEPTRIS_OK);
+}
+
+TEST(BulkBuild, ImbalanceRejected) {
+    YeptrisStatus st = YEPTRIS_OK;
+    /* END with nothing open */
+    EXPECT_EQ(build_dump({{4, 0, 0, 0}}, "", &st), "");
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    /* entries after the root closed */
+    st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump({{1, 1, 0, 1}, {1, 1, 1, 1}}, "ab", &st), "");
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    /* an unclosed container */
+    st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump({{2, 0, 0, 0}}, "", &st), "");
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    /* a key without its value */
+    st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump({{3, 0, 0, 0}, {1, 1, 0, 1}, {4, 0, 0, 0}}, "k", &st), "");
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    /* duplicate keys reject like map_add */
+    st = YEPTRIS_OK;
+    EXPECT_EQ(
+        build_dump(
+            {{3, 0, 0, 0}, {1, 1, 0, 1}, {1, 1, 1, 1}, {1, 1, 0, 1}, {1, 1, 1, 1}, {4, 0, 0, 0}},
+            "k12", &st),
+        "");
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    /* out-of-range slice */
+    st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump({{1, 1, 2, 5}}, "ab", &st), "");
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    /* unknown op */
+    st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump({{9, 0, 0, 0}}, "", &st), "");
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+}
+
+TEST(BulkBuild, EmptyContainersAndDeepNesting) {
+    YeptrisStatus st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump({{2, 0, 0, 0}, {4, 0, 0, 0}}, "", &st), "[]\n");
+    ASSERT_EQ(st, YEPTRIS_OK);
+    st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump({{3, 0, 0, 0}, {4, 0, 0, 0}}, "", &st), "{}\n");
+    ASSERT_EQ(st, YEPTRIS_OK);
+
+    /* depth: 999 nested sequences must build, 1001 must reject */
+    std::vector<Entry> deep;
+    for (int i = 0; i < 999; i++) {
+        deep.push_back({2, 0, 0, 0});
+    }
+    deep.push_back({1, 1, 0, 1});
+    for (int i = 0; i < 999; i++) {
+        deep.push_back({4, 0, 0, 0});
+    }
+    st = YEPTRIS_OK;
+    std::string out = build_dump(deep, "x", &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    EXPECT_NE(out.find("x"), std::string::npos);
+
+    std::vector<Entry> over;
+    for (int i = 0; i < 1001; i++) {
+        over.push_back({2, 0, 0, 0});
+    }
+    st = YEPTRIS_OK;
+    build_dump(over, "", &st);
+    EXPECT_EQ(st, YEPTRIS_ERROR_DEPTH);
+}
