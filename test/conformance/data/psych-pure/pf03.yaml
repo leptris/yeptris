@@ -1,0 +1,14 @@
+---
+- name: Flow sequence trailing comma (psych-pure parse-flow.tml)
+  yaml: |
+    [1,2,3,]
+  tree: |
+    +STR
+     +DOC
+      +SEQ []
+       =VAL :1
+       =VAL :2
+       =VAL :3
+      -SEQ
+     -DOC
+    -STR

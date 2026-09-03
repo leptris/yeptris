@@ -1,0 +1,14 @@
+---
+- name: Block sequence (psych-pure parse-block.tml)
+  yaml: |
+    - foo
+    - bar
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       =VAL :foo
+       =VAL :bar
+      -SEQ
+     -DOC
+    -STR

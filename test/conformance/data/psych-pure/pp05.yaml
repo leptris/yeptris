@@ -1,0 +1,14 @@
+---
+- name: Anchors on map and elements (psych-pure parse-props.tml)
+  yaml: |
+    &a1
+    &a2 foo: &a3 bar
+  tree: |
+    +STR
+     +DOC
+      +MAP &a1
+       =VAL &a2 :foo
+       =VAL &a3 :bar
+      -MAP
+     -DOC
+    -STR

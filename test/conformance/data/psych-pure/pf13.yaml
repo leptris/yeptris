@@ -1,0 +1,13 @@
+---
+- name: Flow mapping with empty value (psych-pure parse-flow.tml)
+  yaml: |
+    {foo:}
+  tree: |
+    +STR
+     +DOC
+      +MAP {}
+       =VAL :foo
+       =VAL :
+      -MAP
+     -DOC
+    -STR

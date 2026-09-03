@@ -4,7 +4,9 @@ build*/
 
 # Generated
 compile_commands.json
-test/conformance/data/
+# fetched corpora live here; psych-pure fixtures are checked in
+test/conformance/data/*
+!test/conformance/data/psych-pure/
 
 # Artifacts
 *.o
@@ -19,3 +21,5 @@ test/conformance/data/
 # OS / editor
 .DS_Store
 *~
+__pycache__/
+conformance-failures.txt

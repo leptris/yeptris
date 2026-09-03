@@ -1,0 +1,10 @@
+---
+- name: Top plain scalar (psych-pure parse-scalar.tml)
+  yaml: |
+    foo
+  tree: |
+    +STR
+     +DOC
+      =VAL :foo
+     -DOC
+    -STR

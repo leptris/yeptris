@@ -1,0 +1,12 @@
+---
+- name: Anchor and alias (psych-pure parse-props.tml)
+  yaml: |
+    --- &a1 [*a1]
+  tree: |
+    +STR
+     +DOC ---
+      +SEQ [] &a1
+       =ALI *a1
+      -SEQ
+     -DOC
+    -STR

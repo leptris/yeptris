@@ -1,0 +1,12 @@
+---
+- name: Tag (psych-pure parse-props.tml)
+  yaml: |
+    - !t1 foo
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       =VAL <!t1> :foo
+      -SEQ
+     -DOC
+    -STR

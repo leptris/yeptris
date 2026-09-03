@@ -1,0 +1,14 @@
+---
+- name: Literal scalar with indent (psych-pure parse-scalar.tml)
+  yaml: |
+    - |2
+        foo
+        bar
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       =VAL |  foo\n  bar\n
+      -SEQ
+     -DOC
+    -STR

@@ -1,0 +1,10 @@
+---
+- name: Stream with just header (psych-pure parse-stream.tml)
+  yaml: |
+    ---
+  tree: |
+    +STR
+     +DOC ---
+      =VAL :
+     -DOC
+    -STR

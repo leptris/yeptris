@@ -1,0 +1,7 @@
+---
+- name: Empty stream with footer; no final newline (psych-pure parse-stream.tml)
+  yaml: |
+    ...
+  tree: |
+    +STR
+    -STR
