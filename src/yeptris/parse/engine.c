@@ -30,6 +30,9 @@
 
 #define YEP_MAX_DEPTH 1000
 #define YEP_MAX_FOLD_LINES 8192
+#define YEP_MAX_SIMPLE_KEY                                                                         \
+    1024 /* YAML 1.2: simple keys are one line,                                                    \
+          * at most 1024 characters (libyaml parity) */
 
 typedef enum { YEP_FRAME_SEQ = 0, YEP_FRAME_MAP } yep_frame_kind;
 
@@ -114,6 +117,16 @@ static uint32_t e_col(const yep_engine* e, size_t at) {
 static int e_fail(yep_engine* e, yep_err_code code, size_t at) {
     yep_error_set(&e->err, code, e->line, e_col(e, at) + 1, at, NULL);
     return -1;
+}
+
+/* A simple key (no explicit '?') is limited to one line and 1024
+ * characters. The span runs from the node's first byte (opening
+ * quote, alias star — not its anchor/tag properties) to the ':'. */
+static int e_simple_key_ok(yep_engine* e, size_t key_at, size_t colon_at) {
+    if (colon_at - key_at > YEP_MAX_SIMPLE_KEY) {
+        return e_fail(e, YEP_ERR_KEY_TOO_LONG, key_at);
+    }
+    return 0;
 }
 
 static void e_event_init(yep_event* ev, yep_event_type t) {
@@ -1463,6 +1476,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
         ev.line = cur_line;
         ev.col = (uint32_t)(i - cur_ls) + 1;
         size_t vstart = i;
+        size_t raw_end = i; /* span end (past the closing quote for strings) */
         if (c == '"') {
             int he = 0;
             size_t vclose;
@@ -1470,6 +1484,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
                 return -1; /* validated: cannot happen */
             }
             size_t vend = vclose; /* the closing quote */
+            raw_end = vclose + 1;
             ev.style = YEP_STYLE_DOUBLE_QUOTED;
             if (he) {
                 ev.multiline = 0;
@@ -1504,6 +1519,14 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
             ev.borrowed = 1;
             ev.style = YEP_STYLE_PLAIN;
             ev.implicit = 1;
+        }
+        /* a map's first scalar of a pair is a KEY: the 1024-character
+         * simple-key limit applies (raw span, quotes included) */
+        if (stk[sd - 1] && kpending[sd - 1] == 0) {
+            size_t kspan = raw_end - vstart;
+            if (kspan > YEP_MAX_SIMPLE_KEY) {
+                return e_fail(e, YEP_ERR_KEY_TOO_LONG, vstart);
+            }
         }
         if (emit_now(e, &ev) != 0) {
             return -2;
@@ -1727,6 +1750,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 e->pos = save_pos; /* not a key; the caller re-reads */
             }
             if (colon && st[n - 1].kind == 1 && st[n - 1].pending_key == 0) {
+                if (!q_key && quoted && ev.value.len + 2 > YEP_MAX_SIMPLE_KEY) {
+                    return e_fail(e, YEP_ERR_KEY_TOO_LONG, e->pos);
+                }
+                if (!q_key && !quoted && ev.value.len > YEP_MAX_SIMPLE_KEY) {
+                    return e_fail(e, YEP_ERR_KEY_TOO_LONG, e->pos);
+                }
                 e->pos++;
                 st[n - 1].pending_key = 1;
                 if (emit_now(e, &ev) != 0) {
@@ -1736,6 +1765,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
                 continue;
             }
             if (colon && st[n - 1].kind == 0) {
+                if (!q_key && quoted && ev.value.len + 2 > YEP_MAX_SIMPLE_KEY) {
+                    return e_fail(e, YEP_ERR_KEY_TOO_LONG, e->pos);
+                }
+                if (!q_key && !quoted && ev.value.len > YEP_MAX_SIMPLE_KEY) {
+                    return e_fail(e, YEP_ERR_KEY_TOO_LONG, e->pos);
+                }
                 if (st[n - 1].buf_from >= 0 && !quoted && !q_key &&
                     (save_pos < e->line_start || ev.multiline)) {
                     /* "[a\n: b]": an IMPLICIT key cannot span lines ("? " may) */
@@ -2222,6 +2257,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }
         if (is_key) {
+            if (e_simple_key_ok(e, node_at, e->pos) != 0) {
+                return -1;
+            }
             uint16_t key_col = e_col(e, node_at);
             int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t);
             if (rc != 0) {
@@ -2260,6 +2298,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             if (ctx == YEP_CTX_AFTER_COLON || ev.multiline) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
             }
+            if (e_simple_key_ok(e, node_at, e->pos) != 0) {
+                return -1;
+            }
             uint16_t key_col = e_col(e, node_at);
             int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t);
             if (rc != 0) {
@@ -2287,6 +2328,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (e_colon_at(e, e->pos)) {
             if (ctx == YEP_CTX_AFTER_COLON || ev.multiline) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+            }
+            if (e_simple_key_ok(e, node_at, e->pos) != 0) {
+                return -1;
             }
             uint16_t key_col = e_col(e, node_at);
             int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t);
@@ -2337,6 +2381,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         }
         if (node_at > 0 && e->p[node_at - 1] == '\t') {
             return e_fail(e, YEP_ERR_UNEXPECTED, node_at); /* ":\tkey:" */
+        }
+        if (e_simple_key_ok(e, s.start, s.end) != 0) {
+            return -1;
         }
         if (e->doc_inline && (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "--- &a k: v" */

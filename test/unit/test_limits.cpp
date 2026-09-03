@@ -150,3 +150,51 @@ TEST(Limits, ThousandDocumentStream) {
     EXPECT_EQ(v, 999);
     yeptris_document_free(doc);
 }
+
+TEST(Limits, SimpleKey1024Boundary) {
+    /* YAML 1.2: a simple key is one line, at most 1024 characters —
+     * libyaml counts the RAW span (quotes included); verified
+     * against libyaml directly: 1024 passes, 1025 rejects */
+    auto key = [](size_t n) { return std::string(n, 'x'); };
+    struct {
+        std::string yaml;
+        bool ok;
+    } cases[] = {
+        {key(1024) + ": v\n", true},             /* exact: accepted */
+        {key(1025) + ": v\n", false},            /* one over: rejected */
+        {"\"" + key(1022) + "\": v\n", true},    /* 1024 raw with quotes */
+        {"\"" + key(1024) + "\": v\n", false},   /* 1026 raw */
+        {"{" + key(1025) + ": 1}\n", false},     /* flow plain */
+        {"{\"" + key(1024) + "\": 1}\n", false}, /* flow quoted (fast path) */
+        {"[{" + key(1025) + ": 1}]\n", false},   /* fast path single-pair */
+        {"? " + key(1025) + "\n: v\n", true},    /* explicit key: no limit */
+        {"k: " + key(1025) + "\n", true},        /* long VALUE: no limit */
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.yaml.data(), c.yaml.size(), &st);
+        if (c.ok) {
+            EXPECT_EQ(st, YEPTRIS_OK) << c.yaml.substr(0, 20);
+            ASSERT_NE(doc, nullptr);
+        } else {
+            EXPECT_EQ(doc, nullptr) << c.yaml.substr(0, 20);
+        }
+        yeptris_document_free(doc);
+    }
+}
+
+TEST(Limits, SinglePairMapWithNestedCollection) {
+    /* 07's known gap, since fixed by the entry buffer: balanced
+     * events, correct DOM, single- and multi-pair forms */
+    const char* yaml = "[a: [1]]\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(yaml, strlen(yaml), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(doc, nullptr);
+    size_t len = 0;
+    char* out = yeptris_serialize(doc, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), "[{a: [1]}]\n");
+    free(out);
+    yeptris_document_free(doc);
+}

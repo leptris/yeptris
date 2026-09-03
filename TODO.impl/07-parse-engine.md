@@ -113,9 +113,22 @@ C. Chunked feed + streaming state-carry tests (adversarial split points).
    by-byte, quote spanning a marker line, plain-text apostrophes,
    flow spanning, directive attach, explicit-end orphaning).
 2. ~~Event-parity vs yaml-test-suite~~ — landed with 16 (395/395).
-3. Single-pair map in a sequence whose value is a nested collection
-   ("[a: [1]]") — known gap, events unbalanced.
-4. Simple-key 1024-char limit; %YAML version validation; %TAG handle
-   expansion; merge-key "<<" marking (resolver hook, 10).
+3. ~~Single-pair map in a sequence whose value is a nested
+   collection ("[a: [1]]")~~ — STALE: fixed by the entry buffer
+   (e_buf_wrap); events balanced, DOM correct, single- AND multi-pair
+   forms ([a: [1], b: 2]); regression test in test_limits
+   (SinglePairMapWithNestedCollection).
+4. ~~Simple-key 1024-char limit; %YAML version validation; %TAG
+   handle expansion; merge-key "<<" marking~~ — ALL LANDED/CLOSED
+   2026-09-03: the 1024 limit is enforced at every simple-key commit
+   site (block plain, block quoted, alias, flow general, flow
+   JSON fast path — raw span INCLUDING quotes, matching libyaml's
+   count verified case-by-case: 1024 raw passes, 1025 rejects;
+   explicit '?' keys exempt; the error code existed, enforcement
+   had never landed). %TAG handle expansion verified working
+   (!e!x -> tag:example.com,2000:x). %YAML validation landed with
+   MUS6. Merge marking: compat11 tags '<<' (TAG_MERGE), core12 stays
+   spec-faithful (the core schema has no merge type), and the Ruby
+   materializer matches by VALUE — schema-independent merges.
 5. Chunked feed (streaming) with carried state — **LANDED** (with 12):
    yeptris_recorder_feed steps the engine per feed.
