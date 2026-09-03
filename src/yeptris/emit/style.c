@@ -27,6 +27,9 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
         break;
     case '-':
     case '?':
+        /* indicators only before a blank or EOL: "-5" and "?x" are
+         * plain (libyaml emits negative numbers plain; Psych, too) */
+        return !(len == 1 || is_blank(p[1]));
     case ',':
     case '[':
     case ']':
@@ -43,8 +46,6 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
     case '%':
     case '@':
     case '`':
-        /* "-?" only indicate when followed by a blank; a safe subset
-         * still avoids them as FIRST bytes for re-emit simplicity */
         return 0;
     default:
         break;
