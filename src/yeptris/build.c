@@ -191,3 +191,164 @@ YEPTRIS_API int yeptris_node_map_del(YeptrisNode handle, const char* key, size_t
     return yep_mut_map_del(m->doc->dom, m->id, key, key_len) == 0 ? YEPTRIS_OK
                                                                   : YEPTRIS_ERROR_PARSE;
 }
+
+/* ---- bulk build --------------------------------------------------------
+ *
+ * One call, one tree: entries walk in document order (the same shape
+ * as the event stream), pairing and linking ride the mutation
+ * primitives unchanged — dup checks, depth caps, and per-link depth
+ * fixups all come along for free (DRY with the public builder). */
+YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
+                                                 const YeptrisBuildEntry* entries, size_t count,
+                                                 const char* blob, size_t blob_len) {
+    yeptris_document* doc = doc_of(handle);
+    if (doc == NULL || (entries == NULL && count != 0) || (blob == NULL && blob_len != 0)) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    struct frame {
+        uint32_t id;
+        uint8_t is_map;
+        uint8_t key_pending;
+    };
+    if (count > (SIZE_MAX / 2) / sizeof(struct frame)) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    struct frame* st = yep_alloc(doc->dom->sys, (count + 1) * sizeof(*st));
+    if (st == NULL) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    int depth = 0;
+    uint32_t root = UINT32_MAX;
+    uint32_t root_closed = 0;
+    uint32_t pending_key = UINT32_MAX; /* map frame's buffered key */
+    YeptrisStatus rc = YEPTRIS_OK;
+    for (size_t i = 0; i < count && rc == YEPTRIS_OK; i++) {
+        const YeptrisBuildEntry* e = &entries[i];
+        if (root_closed) {
+            rc = YEPTRIS_ERROR_PARSE; /* the document ended; more entries */
+            break;
+        }
+        if (e->off > blob_len || e->len > blob_len - e->off) {
+            rc = YEPTRIS_ERROR_PARSE; /* slice out of range */
+            break;
+        }
+        uint32_t id;
+        switch (e->op) {
+        case YEPTRIS_BUILD_SCALAR: {
+            id = yep_mut_scalar(doc->dom, blob + e->off, e->len, e->style);
+            if (id == UINT32_MAX) {
+                rc = YEPTRIS_ERROR_MEMORY;
+                break;
+            }
+            break;
+        }
+        case YEPTRIS_BUILD_SEQ:
+            id = yep_mut_seq(doc->dom, 0);
+            if (id == UINT32_MAX) {
+                rc = YEPTRIS_ERROR_MEMORY;
+                break;
+            }
+            break;
+        case YEPTRIS_BUILD_MAP:
+            id = yep_mut_map(doc->dom, 0);
+            if (id == UINT32_MAX) {
+                rc = YEPTRIS_ERROR_MEMORY;
+                break;
+            }
+            break;
+        case YEPTRIS_BUILD_END:
+            if (depth == 0) {
+                rc = YEPTRIS_ERROR_PARSE; /* END with nothing open */
+                break;
+            }
+            depth--;
+            if (depth == 0) {
+                root_closed = 1; /* the root just completed */
+            }
+            if (st[depth].is_map && st[depth].key_pending) {
+                st[depth].key_pending = 0; /* a closed container was the value */
+            }
+            continue;
+        default:
+            rc = YEPTRIS_ERROR_PARSE; /* unknown op */
+            break;
+        }
+        if (rc != YEPTRIS_OK) {
+            break;
+        }
+        /* place the fresh node */
+        if (depth == 0) {
+            if (root != UINT32_MAX) {
+                rc = YEPTRIS_ERROR_PARSE; /* two roots */
+                break;
+            }
+            root = id; /* a single scalar root needs no END */
+            root_closed = (e->op != YEPTRIS_BUILD_SEQ && e->op != YEPTRIS_BUILD_MAP) ? 1 : 0;
+            if (!root_closed) {
+                st[depth].id = id;
+                st[depth].is_map = (e->op == YEPTRIS_BUILD_MAP);
+                st[depth].key_pending = 0;
+                depth = 1;
+            }
+            continue;
+        }
+        struct frame* top = &st[depth - 1];
+        if (top->is_map) {
+            if (!top->key_pending) {
+                top->key_pending = 1;
+                pending_key = id;
+                continue;
+            }
+            int mrc = yep_mut_map_add_node(doc->dom, top->id, pending_key, id);
+            if (mrc == -2) {
+                rc = YEPTRIS_ERROR_PARSE; /* duplicate key */
+            } else if (mrc != 0) {
+                rc = (mrc == -3) ? YEPTRIS_ERROR_DEPTH
+                                 : (mrc == -1 ? YEPTRIS_ERROR_ARG : YEPTRIS_ERROR_MEMORY);
+            } else {
+                top->key_pending = 0;
+                pending_key = UINT32_MAX;
+            }
+        } else {
+            int src_ = yep_mut_seq_add(doc->dom, top->id, id);
+            if (src_ != 0) {
+                rc = (src_ == -3) ? YEPTRIS_ERROR_DEPTH
+                                  : (src_ == -1 ? YEPTRIS_ERROR_ARG : YEPTRIS_ERROR_MEMORY);
+            }
+        }
+        if (rc == YEPTRIS_OK && (e->op == YEPTRIS_BUILD_SEQ || e->op == YEPTRIS_BUILD_MAP)) {
+            if ((size_t)depth >= (size_t)YEP_DOM_MAX_DEPTH) {
+                rc = YEPTRIS_ERROR_DEPTH;
+                break;
+            }
+            st[depth].id = id;
+            st[depth].is_map = (e->op == YEPTRIS_BUILD_MAP);
+            st[depth].key_pending = 0;
+            depth++;
+        }
+    }
+    if (rc == YEPTRIS_OK) {
+        if (depth > 1 || (depth == 1)) {
+            rc = YEPTRIS_ERROR_PARSE; /* an unclosed container */
+        } else if (root == UINT32_MAX) {
+            rc = YEPTRIS_ERROR_PARSE; /* no root */
+        } else if (pending_key != UINT32_MAX) {
+            rc = YEPTRIS_ERROR_PARSE; /* a key without its value */
+        } else {
+            int arc = yep_mut_add_root(doc->dom, root);
+            if (arc == 0) {
+                rc = YEPTRIS_OK;
+            } else if (arc == -4) {
+                rc = YEPTRIS_ERROR_PARSE;
+            } else if (arc == -3) {
+                rc = YEPTRIS_ERROR_DEPTH;
+            } else if (arc == -1) {
+                rc = YEPTRIS_ERROR_MEMORY;
+            } else {
+                rc = YEPTRIS_ERROR_ARG;
+            }
+        }
+    }
+    yep_free(doc->dom->sys, st);
+    return rc;
+}

@@ -160,6 +160,26 @@ already proved that seam: 63 -> 136 MB/s). The recorder-vs-DOM gap
 bounds the whole DOM-side cost at ~12% (flow-json) to ~25%
 (block-heavy) of parse time.
 
+### 2026-09-03 — bulk build: ONE call raises a document (WIN, dump 9.5x)
+
+yeptris_document_build (include/yeptris/dom.h): a flat 12-byte
+entry array (op/style/off/len, document order — the same grammar as
+the event stream) plus one string blob raise the whole tree in ONE
+FFI call — the dump-side mirror of the recorder's bulk drain. Pairing,
+dup checks, depth caps, and per-link depth fixups ride the mutation
+primitives unchanged (DRY with the public builder). Motivation:
+yeptris-py's dumper made 1-3 ctypes calls PER NODE — 2.79 s for a
+20k-node document, 18x SLOWER than PyYAML's CDumper. On the bulk
+build: ~290-480 ms (box-load dependent; the shared dev box swings
+2x today), 1.7x faster than pure-Python PyYAML, ~2x behind
+CDumper — which is a C extension doing its whole walk in C; a
+no-C-extension design's ceiling is the host-language walk itself.
+Honest position, stated rather than chased. Also en route: the
+Python loader walk (iter_unpack + byte-level int()/float() fast
+paths + inlined placement) went 14.9 -> 18-23 MB/s scalar-heavy,
+and with the jx quadratic fix under it the binding reads at
+28-39x pure PyYAML and 3.8-6.1x CSafeLoader across shapes.
+
 ### 2026-09-01 — float printer: clean-room two-tier interval printer (LANDED)
 
 TODO.impl/14 rewritten clean-room after the licensing decision: NO
