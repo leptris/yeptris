@@ -94,4 +94,7 @@ C. `sizing` fused counters wired to arena reserve; allocation-count gate.
    or is needed. The pending buffer between cuts holds at most one
    document — the streaming memory bound.
 3. Line-table throughput gate (≥2 GB/s ledger entry) once sizing is wired.
-4. NEL/LS/PS line-break recognition (currently \n/\r\n/\r only).
+4. ~~NEL/LS/PS line-break recognition~~ — STALE: the ENGINE
+   normalizes them to '\n' before any scan (e_normalize_breaks), so
+   the scan layer never sees one by construction; the note described
+   a pre-normalization design.
