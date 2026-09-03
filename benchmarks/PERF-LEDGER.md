@@ -179,10 +179,29 @@ Honest position, stated rather than chased.
 Ruby follow-up (same-process A/B): bulk == the old per-node builder
 in yeptris-ruby (231 vs 230 ms, 20k nodes) — ruby-ffi calls are
 cheap enough that the Ruby WALK dominates both; ctypes' per-call
-cost is what made the 9.5x real in Python. Both Ruby paths sit ~2.6x
-behind Psych's C extension on this hash-heavy shape (the old '1.6x
-Psych' ledger figure was a different document shape — the walk is
-the lever now, not the FFI). Also en route: the
+cost is what made the 9.5x real in Python. Both Ruby paths sat ~2.6x
+behind Psych's C extension on this hash-heavy shape.
+
+### 2026-09-03 — bulk build's O(n^2) map pairing (WIN: dump now BEATS the C extensions)
+
+Split measurement inverted the assumption: the Python host walk was
+60 ms of a 259 ms dump; C document_build alone was 187 ms
+(serialize: 2.4 ms). The pairing rode yep_mut_map_add_node, whose
+duplicate check is a LINEAR scan of the map's children per pair —
+O(n^2) on wide maps. The parser's own builder never scans; neither
+does the bulk walk now: yep_mut_map_append is the check-free pairing
+twin (same invariants via mut_attach_ok, links via dom_link whose
+O(1) depth assignment is correct for top-down entry order). Duplicate
+keys keep the parser's semantics (both pairs stored, map_get first
+wins) — host mappings cannot produce one, and the scan's cost was
+the whole point.
+
+Numbers (same process, 20k-node hash-of-hashes document):
+  Python dump  259 -> 63 ms: 2.0x FASTER than CDumper (125 ms),
+                            8.2x pure PyYAML
+  Ruby  dump  231 -> 47 ms: 1.9x FASTER than Psych (92 ms); load
+                            stays 2.2x Psych. Both directions lead.
+  C build+emit       190 -> ~10 ms Also en route: the
 Python loader walk (iter_unpack + byte-level int()/float() fast
 paths + inlined placement) went 14.9 -> 18-23 MB/s scalar-heavy,
 and with the jx quadratic fix under it the binding reads at

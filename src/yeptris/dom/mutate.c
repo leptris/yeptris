@@ -367,6 +367,25 @@ int yep_mut_map_add_node(yep_dom* d, uint32_t map, uint32_t key, uint32_t value)
     return 0;
 }
 
+/* The bulk-build pairing twin of map_add_node: same invariants,
+ * without the duplicate scan — document-order entries from a host
+ * mapping cannot carry a duplicate, and the linear scan is O(n^2)
+ * on wide maps (187 ms of a 20k-node build). Last wins, as at
+ * parse. Depths come from dom_link (top-down links, O(1) each). */
+int yep_mut_map_append(yep_dom* d, uint32_t map, uint32_t key, uint32_t value) {
+    if (d == NULL || map >= d->ncount || d->nodes[map].kind != YEP_DOM_MAPPING) {
+        return MUT_ERR;
+    }
+    int rc = mut_attach_ok(d, map, value);
+    if (rc != 0) {
+        return rc;
+    }
+    dom_link(d, map, key);
+    dom_link(d, map, value);
+    yep_midx_invalidate(d, map);
+    return 0;
+}
+
 int yep_mut_map_del(yep_dom* d, uint32_t map, const char* key, size_t klen) {
     if (d == NULL || key == NULL || map >= d->ncount || d->nodes[map].kind != YEP_DOM_MAPPING) {
         return MUT_ERR;

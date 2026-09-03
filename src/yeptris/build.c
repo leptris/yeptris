@@ -299,15 +299,16 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
                 pending_key = id;
                 continue;
             }
-            int mrc = yep_mut_map_add_node(doc->dom, top->id, pending_key, id);
-            if (mrc == -2) {
-                rc = YEPTRIS_ERROR_PARSE; /* duplicate key */
-            } else if (mrc != 0) {
-                rc = (mrc == -3) ? YEPTRIS_ERROR_DEPTH
-                                 : (mrc == -1 ? YEPTRIS_ERROR_ARG : YEPTRIS_ERROR_MEMORY);
-            } else {
+            /* the check-free pairing twin: document-order entries
+             * from a host mapping cannot duplicate, and map_add's
+             * linear dup scan is O(n^2) on wide maps */
+            int mrc = yep_mut_map_append(doc->dom, top->id, pending_key, id);
+            if (mrc == 0) {
                 top->key_pending = 0;
                 pending_key = UINT32_MAX;
+            } else {
+                rc = (mrc == -3) ? YEPTRIS_ERROR_DEPTH
+                                 : (mrc == -1 ? YEPTRIS_ERROR_ARG : YEPTRIS_ERROR_MEMORY);
             }
         } else {
             int src_ = yep_mut_seq_add(doc->dom, top->id, id);
