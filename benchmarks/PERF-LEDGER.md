@@ -174,7 +174,15 @@ build: ~290-480 ms (box-load dependent; the shared dev box swings
 2x today), 1.7x faster than pure-Python PyYAML, ~2x behind
 CDumper — which is a C extension doing its whole walk in C; a
 no-C-extension design's ceiling is the host-language walk itself.
-Honest position, stated rather than chased. Also en route: the
+Honest position, stated rather than chased.
+
+Ruby follow-up (same-process A/B): bulk == the old per-node builder
+in yeptris-ruby (231 vs 230 ms, 20k nodes) — ruby-ffi calls are
+cheap enough that the Ruby WALK dominates both; ctypes' per-call
+cost is what made the 9.5x real in Python. Both Ruby paths sit ~2.6x
+behind Psych's C extension on this hash-heavy shape (the old '1.6x
+Psych' ledger figure was a different document shape — the walk is
+the lever now, not the FFI). Also en route: the
 Python loader walk (iter_unpack + byte-level int()/float() fast
 paths + inlined placement) went 14.9 -> 18-23 MB/s scalar-heavy,
 and with the jx quadratic fix under it the binding reads at
