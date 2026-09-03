@@ -6,9 +6,16 @@
  * builds a Yeptris document; get_buf serializes JSON (beautify
  * selects the pretty writer, default compact).
  *
- * v1 scope: the generator API (yajl_gen_*). The incremental SAX
- * parser side (yajl_parse/yajl_handle) is served by 12's push API —
- * its yajl-shaped wrapper rides a later pass.
+ * v2 scope: the generator (yajl_gen_*) and the SAX parser
+ * (yajl_alloc/yajl_parse/...). The parser accumulates yajl_parse
+ * feeds and delivers all callbacks at yajl_complete_parse (the core
+ * parses whole documents; timing is batched, order and content are
+ * yajl's). Strict RFC 8259 always; yajl_allow_comments masks
+ * JavaScript comments (block star-slash, line double-slash) outside
+ * strings before the strict parse — offsets preserved, yajl's exact
+ * semantics. Unsupported options (trailing garbage / multiple
+ * values / partial values) are rejected at yajl_config time: zero,
+ * per yajl's own error contract.
  */
 #ifndef YEPTRIS_YAJL_COMPAT_H
 #define YEPTRIS_YAJL_COMPAT_H
@@ -63,6 +70,63 @@ yajl_gen_status yajl_gen_bool(yajl_gen g, int b);
  * next generating call or reset). Empty until the ROOT closes. */
 const unsigned char* yajl_gen_get_buf(yajl_gen g, size_t* len);
 void yajl_gen_clear(yajl_gen g);
+
+/* ---- SAX parser ------------------------------------------------------- */
+
+typedef enum { yajl_status_ok = 0, yajl_status_client_canceled, yajl_status_error } yajl_status;
+
+const char* yajl_status_to_string(yajl_status code);
+
+/* Zero return from a callback cancels the parse
+ * (yajl_status_client_canceled). When yajl_number is set it carries
+ * EVERY number in string form; yajl_integer/yajl_double are then
+ * ignored (yajl's own precedence). */
+typedef struct {
+    int (*yajl_null)(void* ctx);
+    int (*yajl_boolean)(void* ctx, int boolVal);
+    int (*yajl_integer)(void* ctx, long long integerVal);
+    int (*yajl_double)(void* ctx, double doubleVal);
+    int (*yajl_number)(void* ctx, const char* numberVal, size_t numberLen);
+    int (*yajl_string)(void* ctx, const unsigned char* stringVal, size_t stringLen);
+    int (*yajl_start_map)(void* ctx);
+    int (*yajl_map_key)(void* ctx, const unsigned char* key, size_t stringLen);
+    int (*yajl_end_map)(void* ctx);
+    int (*yajl_start_array)(void* ctx);
+    int (*yajl_end_array)(void* ctx);
+} yajl_callbacks;
+
+typedef enum {
+    yajl_allow_comments = 0x01,        /* JS comments masked, offsets kept */
+    yajl_dont_validate_strings = 0x02, /* accepted no-op: always on */
+    yajl_allow_trailing_garbage = 0x04,
+    yajl_allow_multiple_values = 0x08,
+    yajl_allow_partial_values = 0x10
+} yajl_option;
+
+typedef struct yajl_handle_t* yajl_handle;
+
+/* callbacks may be NULL (pure validation). afs accepted, ignored. */
+yajl_handle yajl_alloc(const yajl_callbacks* callbacks, yajl_alloc_funcs* afs, void* ctx);
+void yajl_free(yajl_handle handle);
+
+/* var-args int option: 1 on, 0 off. Returns 0 on unknown/unsupported
+ * options (trailing garbage / multiple values / partial values). */
+int yajl_config(yajl_handle h, yajl_option opt, ...);
+
+/* Accumulates feeds; callbacks fire at complete_parse. After an
+ * error or cancel the handle stays in that state. */
+yajl_status yajl_parse(yajl_handle hand, const unsigned char* jsonText, size_t jsonTextLength);
+yajl_status yajl_complete_parse(yajl_handle hand);
+
+/* Malloc'd message (free with yajl_free_error); NULL when no error.
+ * verbose adds the offending line and a caret. */
+unsigned char* yajl_get_error(yajl_handle hand, int verbose, const unsigned char* jsonText,
+                              size_t jsonTextLength);
+void yajl_free_error(yajl_handle hand, unsigned char* str);
+
+/* Bytes consumed: the whole input once complete; on error, the
+ * offset of the violation. */
+size_t yajl_get_bytes_consumed(yajl_handle hand);
 
 #ifdef __cplusplus
 }
