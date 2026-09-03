@@ -312,3 +312,30 @@ TEST(EmitFold, DefaultUnfoldsSmall) {
     free(out);
     yeptris_document_free(doc);
 }
+
+TEST(Emit, PlainNegativeNumbers) {
+    /* '-' only indicates before a blank: -5 and -.inf are plain
+     * (libyaml parity; the old table quoted every '-'-leading text) */
+    struct {
+        const char* value;
+        const char* want;
+    } cases[] = {
+        {"-5", "-5"},   {"-.inf", "-.inf"}, {"-2.5e+300", "-2.5e+300"}, {"?x", "?x"},
+        {"-", "\"-\""}, {"- x", "\"- x\""}, {"? x", "\"? x\""},
+    };
+    for (const auto& c : cases) {
+        YeptrisDocument doc = yeptris_document_new();
+        ASSERT_NE(doc, nullptr);
+        YeptrisNode root = yeptris_node_new_mapping(doc);
+        ASSERT_EQ(yeptris_document_set_root(doc, root), YEPTRIS_OK);
+        YeptrisNode v = yeptris_node_new_scalar(doc, c.value, strlen(c.value), YEPTRIS_STYLE_PLAIN);
+        ASSERT_NE(v, nullptr);
+        ASSERT_EQ(yeptris_node_map_add(root, "k", 1, v), YEPTRIS_OK);
+        size_t len = 0;
+        char* out = yeptris_serialize(doc, &len);
+        ASSERT_NE(out, nullptr);
+        EXPECT_EQ(std::string(out, len), std::string("k: ") + c.want + "\n") << c.value;
+        free(out);
+        yeptris_document_free(doc);
+    }
+}
