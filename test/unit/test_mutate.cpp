@@ -410,19 +410,21 @@ TEST(ValueStream, TypedDrainMatchesNodeAccessors) {
         }
     }
     EXPECT_EQ(by["i"]->kind, YEP_V_INT);
-    EXPECT_EQ(by["i"]->i, 42);
+    EXPECT_EQ((int64_t)by["i"]->p, 42);
     EXPECT_EQ(by["f"]->kind, YEP_V_FLOAT);
-    EXPECT_DOUBLE_EQ(by["f"]->d, 1.5);
+    double fd = 0.0;
+    memcpy(&fd, &by["f"]->p, sizeof(fd));
+    EXPECT_DOUBLE_EQ(fd, 1.5);
     EXPECT_EQ(by["b"]->kind, YEP_V_BOOL);
     EXPECT_EQ(by["b"]->b, 1);
     EXPECT_EQ(by["n"]->kind, YEP_V_NULL);
     EXPECT_EQ(by["s"]->kind, YEP_V_STR);
     EXPECT_EQ(std::string(arena + by["s"]->off, by["s"]->len), "text");
-    EXPECT_EQ(by["hex"]->i, 31);
-    EXPECT_EQ(by["oct"]->i, 8);
-    EXPECT_EQ(by["sex"]->i, 685230);
-    EXPECT_EQ(by["neg"]->i, -7);
-    EXPECT_EQ(by["big"]->i, INT64_MAX);
+    EXPECT_EQ((int64_t)by["hex"]->p, 31);
+    EXPECT_EQ((int64_t)by["oct"]->p, 8);
+    EXPECT_EQ((int64_t)by["sex"]->p, 685230);
+    EXPECT_EQ((int64_t)by["neg"]->p, -7);
+    EXPECT_EQ((int64_t)by["big"]->p, INT64_MAX);
     /* quirk layer: raw text always present */
     EXPECT_EQ(std::string(arena + by["b"]->off, by["b"]->len), "on");
     /* anchor + alias identity */
