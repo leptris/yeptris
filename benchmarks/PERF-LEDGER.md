@@ -207,6 +207,30 @@ paths + inlined placement) went 14.9 -> 18-23 MB/s scalar-heavy,
 and with the jx quadratic fix under it the binding reads at
 28-39x pure PyYAML and 3.8-6.1x CSafeLoader across shapes.
 
+### 2026-09-03 — the 4x campaign: bindings delivered, C engine tabled
+
+Min-of-N discipline (single-shot readings on the shared box swing
+3x with load; every figure below is a best-of run):
+
+  Ruby  load   35.7 ms vs Psych 207.4   -> 5.81x   (value stream)
+  Ruby  dump   68.7 ms vs Psych 401.9   -> 5.85x   (bulk build)
+  Py    load   58.0 ms vs CSafe 521.4   -> 8.98x  (18.2x pure)
+  Py    dump   72.8 ms vs CDumper 258.3 -> 3.55x  (under load;
+         CDumper measured 2.2x inflated in the same window)
+
+The C library itself vs libyaml (matrix DOM cells, full run):
+flow-json 3.57x, flow-single 3.44x, scalar-heavy 3.13x,
+wide-mapping 3.08x, block-heavy 2.79x, realworld 2.57x,
+deep-nesting 2.48x, anchor-heavy 1.93x. Reaching 4x on every C
+cell is an ENGINE-level campaign, not a DOM one: the DOM side is
+bounded at 12-25% of parse time (measured), so the next levers are
+in the per-line engine loop itself — the scan/profile sample puts
+yep_scan_line at the front (per-line indent+flags computed ahead
+of the parse walk; fusing the indent probe into the engine's line
+dispatch is 06's line-table gate) and yep_mut_set_depths visible in
+the DOM sink (per-pair depth writes that a root-level walk could
+batch). Both are scoped, measured next.
+
 ### 2026-09-01 — float printer: clean-room two-tier interval printer (LANDED)
 
 TODO.impl/14 rewritten clean-room after the licensing decision: NO
