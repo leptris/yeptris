@@ -1248,15 +1248,20 @@ enum {
     JX_COMMA_OR_CLOSE      /* after a value — ',' or close */
 };
 
-/* Line/col across a gap [from, to): count breaks once, keep the last. */
-static void jx_advance_line(yep_engine* e, size_t from, size_t to, uint32_t* line,
+/* Line/col across a gap: scan ONLY the unscanned bytes. *from is
+ * the start of the unscanned region (in: the previous call's to;
+ * out: this call's to). Scanning from the line start instead is
+ * quadratic on one-line flow collections: a single long line
+ * rescans from its beginning for every emitted token. */
+static void jx_advance_line(yep_engine* e, size_t* from, size_t to, uint32_t* line,
                             size_t* line_start) {
-    for (size_t i = from; i < to; i++) {
+    for (size_t i = *from; i < to; i++) {
         if (e->p[i] == '\n') {
             (*line)++;
             *line_start = i + 1;
         }
     }
+    *from = to;
 }
 
 /* Returns 1 = events emitted and consumed (e->pos past the close),
@@ -1405,6 +1410,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
     /* ---- pass 2: emit events from the validated span ---- */
     uint32_t cur_line = e->line;
     size_t cur_ls = e->line_start;
+    size_t cur_scan = e->pos; /* unscanned region starts at the span */
     {
         yep_event ev;
         e_event_init(&ev, kind[0] ? YEP_EV_MAP_START : YEP_EV_SEQ_START);
@@ -1433,7 +1439,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
             e_event_init(&ev, stk[sd - 1] ? YEP_EV_MAP_END : YEP_EV_SEQ_END);
             /* flow=1 only on START events (kernel convention: the style
              * belongs to the opening bracket, END events stay plain) */
-            jx_advance_line(e, cur_ls < open_pos ? open_pos : cur_ls, i, &cur_line, &cur_ls);
+            jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
             ev.line = cur_line;
             ev.col = (uint32_t)(i - cur_ls) + 1;
             if (emit_now(e, &ev) != 0) {
@@ -1453,7 +1459,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
             yep_event ev;
             e_event_init(&ev, c == '[' ? YEP_EV_SEQ_START : YEP_EV_MAP_START);
             ev.flow = 1;
-            jx_advance_line(e, cur_ls < open_pos ? open_pos : cur_ls, i, &cur_line, &cur_ls);
+            jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
             ev.line = cur_line;
             ev.col = (uint32_t)(i + 1 - cur_ls) + 1;
             if (emit_now(e, &ev) != 0) {
@@ -1472,7 +1478,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
         /* scalar: quoted, number, or literal */
         yep_event ev;
         e_event_init(&ev, YEP_EV_SCALAR);
-        jx_advance_line(e, cur_ls < open_pos ? open_pos : cur_ls, i, &cur_line, &cur_ls);
+        jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
         ev.line = cur_line;
         ev.col = (uint32_t)(i - cur_ls) + 1;
         size_t vstart = i;
@@ -1537,7 +1543,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
     }
 
     /* engine position: past the close; line state reflects the span */
-    jx_advance_line(e, cur_ls < open_pos ? open_pos : cur_ls, close + 1, &cur_line, &cur_ls);
+    jx_advance_line(e, &cur_scan, close + 1, &cur_line, &cur_ls);
     e->line = cur_line;
     e->line_start = cur_ls;
     e->pos = close + 1;
