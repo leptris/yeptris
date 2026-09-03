@@ -1,10 +1,11 @@
 name: Release
 
 # TODO.impl/20: releases are the automated workflow's job, never a
-# manual tag. workflow_dispatch(next_version) -> release/vX.Y.Z branch
-# -> version bump (CMakeLists VERSION is the SSOT; vcpkg.json +
-# CHANGELOG sync) -> PR -> on merge: tag + GitHub Release. The exact
-# version number always comes from the dispatching human.
+# manual tag. Phase 1 (workflow_dispatch with next_version) bumps the
+# version (CMakeLists project VERSION is the SSOT; vcpkg.json +
+# CHANGELOG sync) and opens the release PR. Phase 2 fires when that
+# PR merges: tag + GitHub Release. The exact version number always
+# comes from the dispatching human.
 
 on:
   workflow_dispatch:
@@ -13,13 +14,17 @@ on:
         description: "Exact version to release (e.g. 0.2.0)"
         required: true
         type: string
+  pull_request:
+    branches: [main]
+    types: [closed]
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  release:
+  cut:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -54,10 +59,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Tag on merge (manual trigger of the second phase)
-        if: github.ref == 'refs/heads/main'
+  publish:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Tag and publish the GitHub Release
         run: |
-          V="${{ inputs.next_version }}"
+          V="${{ github.event.pull_request.head.ref }}"
+          V="${V#release/v}"
+          echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "bad version: $V"; exit 1; }
+          git config user.name "release-workflow"
+          git config user.email "release@yeptris.invalid"
+          git tag "v$V"
+          git push origin "v$V"
           gh release create "v$V" --title "v$V" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
