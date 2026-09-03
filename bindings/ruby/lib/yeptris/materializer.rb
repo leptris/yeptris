@@ -59,6 +59,36 @@ module Yeptris
         new(schema: schema).materialize(yaml)
       end
 
+      # The shared drain seam: one parse, records + arena read once,
+      # ONE unpack into a flat Integer array (12 fields per record:
+      # type style flags tag_id line col v_off v_len a_off a_len
+      # t_off t_len). Both consumers ride it — the stack machine
+      # (materialize) and the Psych::Parser dispatch loop.
+      def drain(yaml, schema: :compat_11)
+        rec = Yeptris::FFI.yeptris_recorder_new_ex(
+          schema == :compat_11 ? Yeptris::FFI::SCHEMA_11_COMPAT : Yeptris::FFI::SCHEMA_12_CORE
+        )
+        begin
+          status = Yeptris::FFI.yeptris_recorder_feed(rec, yaml, yaml.bytesize, 1)
+          if status != Yeptris::FFI::OK
+            raise Yeptris::ParseError,
+                  "parse failed: #{Yeptris::FFI.last_error_message}"
+          end
+          count_p = ::FFI::MemoryPointer.new(:size_t)
+          records = Yeptris::FFI.yeptris_recorder_records(rec, count_p)
+          count = count_p.read_uint64
+          arena_len = ::FFI::MemoryPointer.new(:size_t)
+          arena_ptr = Yeptris::FFI.yeptris_recorder_arena(rec, arena_len)
+          arena_len_v = arena_len.read_uint64
+          arena = arena_ptr.null? || arena_len_v.zero? ? +"" : arena_ptr.read_bytes(arena_len_v)
+          flat = records.read_bytes(count * RECORD_SIZE)
+                     .unpack(RECORD_UNPACK * count)
+          [flat, arena]
+        ensure
+          Yeptris::FFI.yeptris_recorder_free(rec)
+        end
+      end
+
       # The Ruby value of a scalar per schema — the ScalarScanner rule
       # set, spec-verified against Psych case by case. Only implicit
       # PLAIN scalars scan; quoting is the escape hatch.
@@ -156,30 +186,8 @@ module Yeptris
     def materialize(yaml)
       yaml = yaml.read if yaml.respond_to?(:read)
       yaml = yaml.to_s
-      rec = Yeptris::FFI.yeptris_recorder_new_ex(
-        @schema == :compat_11 ? Yeptris::FFI::SCHEMA_11_COMPAT : Yeptris::FFI::SCHEMA_12_CORE
-      )
-      begin
-        status = Yeptris::FFI.yeptris_recorder_feed(rec, yaml, yaml.bytesize, 1)
-        if status != Yeptris::FFI::OK
-          raise Yeptris::ParseError,
-                "parse failed: #{Yeptris::FFI.last_error_message}"
-        end
-        count_p = ::FFI::MemoryPointer.new(:size_t)
-        records = Yeptris::FFI.yeptris_recorder_records(rec, count_p)
-        count = count_p.read_uint64
-        arena_len = ::FFI::MemoryPointer.new(:size_t)
-        arena_ptr = Yeptris::FFI.yeptris_recorder_arena(rec, arena_len)
-        arena_len_v = arena_len.read_uint64
-        arena = arena_ptr.null? || arena_len_v.zero? ? +"" : arena_ptr.read_bytes(arena_len_v)
-        # ONE bulk read + one unpack: per-field FFI reads cost 5-8
-        # calls per record; the flat array is cheaper than the calls
-        flat = records.read_bytes(count * RECORD_SIZE)
-                   .unpack(RECORD_UNPACK * count)
-        walk(flat, arena)
-      ensure
-        Yeptris::FFI.yeptris_recorder_free(rec)
-      end
+      flat, arena = Materializer.drain(yaml, schema: @schema)
+      walk(flat, arena)
     end
 
     private
