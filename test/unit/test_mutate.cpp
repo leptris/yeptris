@@ -431,3 +431,39 @@ TEST(ValueStream, TypedDrainMatchesNodeAccessors) {
     EXPECT_EQ(by["z"]->kind, YEP_V_STR);
     yeptris_value_free(vals, arena);
 }
+
+TEST(ValueStream, ColumnarDrainMatchesRecords) {
+    /* the columnar projection is byte-faithful to the record stream:
+     * same kinds, same payloads, same arena — column i == record i */
+    const char* y = "i: 42\nf: 1.5\nb: on\nn: ~\ns: text\nseq:\n  - 1\n  - two\nz: &a x\n"
+                    "r: *a\n";
+    YeptrisValue* vals = NULL;
+    size_t n = 0;
+    char* arena = NULL;
+    size_t alen = 0;
+    ASSERT_EQ(yeptris_value_drain(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n, &arena, &alen),
+              YEPTRIS_OK);
+    YeptrisValueColumns cols;
+    ASSERT_EQ(yeptris_value_drain_columns(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, &cols),
+              YEPTRIS_OK);
+    ASSERT_EQ(cols.count, n);
+    ASSERT_EQ(cols.arena_len, alen);
+    EXPECT_TRUE(memcmp(cols.arena, arena, alen) == 0);
+    for (size_t i = 0; i < n; i++) {
+        EXPECT_EQ(cols.kinds[i], vals[i].kind) << i;
+        EXPECT_EQ(cols.tags[i], vals[i].tag_id) << i;
+        EXPECT_EQ(cols.is_keys[i], vals[i].is_key) << i;
+        EXPECT_EQ(cols.bools[i], vals[i].b) << i;
+        EXPECT_EQ(cols.offs[i], vals[i].off) << i;
+        EXPECT_EQ(cols.lens[i], vals[i].len) << i;
+        EXPECT_EQ((uint64_t)cols.payloads[i], vals[i].p) << i;
+    }
+    yeptris_value_free(vals, arena);
+    yeptris_value_free_columns(&cols);
+
+    /* empty stream: zero entries, free-safe */
+    YeptrisValueColumns e;
+    ASSERT_EQ(yeptris_value_drain_columns("", 0, YEPTRIS_SCHEMA_11_COMPAT, &e), YEPTRIS_OK);
+    EXPECT_EQ(e.count, 0u);
+    yeptris_value_free_columns(&e);
+}
