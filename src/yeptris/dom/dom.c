@@ -135,15 +135,38 @@ uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
     return d->ncount++;
 }
 
-static int dom_anchor_set(yep_dom* d, yep_view name, uint32_t node) {
-    /* anchor names are always raw input slices (borrowed, stable for
-     * the document's lifetime) — the nametab borrows them directly;
-     * arena copies would dangle when str_grow moves the arena */
-    return yep_nametab_set(&d->anchors, name, node);
+static int dom_anchor_set(yep_dom* d, uint32_t ordinal, uint32_t node) {
+    if (ordinal == 0) {
+        return -1;
+    }
+    if (ordinal > d->anchor_nodes_cap) {
+        uint32_t cap = d->anchor_nodes_cap ? d->anchor_nodes_cap * 2 : 64;
+        while (cap < ordinal) {
+            cap *= 2;
+        }
+        uint32_t* na = yep_alloc(d->sys, cap * sizeof(*na));
+        if (na == NULL) {
+            return -1;
+        }
+        if (d->anchor_nodes != NULL) {
+            memcpy(na, d->anchor_nodes, d->anchor_nodes_cap * sizeof(*na));
+            yep_free(d->sys, d->anchor_nodes);
+        }
+        d->anchor_nodes = na;
+        d->anchor_nodes_cap = cap;
+    }
+    d->anchor_nodes[ordinal - 1] = node;
+    if (ordinal > d->anchor_max) {
+        d->anchor_max = ordinal;
+    }
+    return 0;
 }
 
-static uint32_t dom_anchor_get(const yep_dom* d, yep_view name) {
-    return yep_nametab_get(&d->anchors, name);
+static uint32_t dom_anchor_get(const yep_dom* d, uint32_t ordinal) {
+    if (ordinal == 0 || ordinal > d->anchor_max) {
+        return UINT32_MAX;
+    }
+    return d->anchor_nodes[ordinal - 1];
 }
 
 /* The one place links form (builder and mutation both): records
@@ -201,16 +224,18 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
     case YEP_EV_DOCUMENT_START:
     case YEP_EV_DOCUMENT_END:
         /* bindings are document-scoped, like the engine's names */
-        yep_nametab_clear(&d->anchors);
+        if (d->anchor_max != 0) {
+            memset(d->anchor_nodes, 0, d->anchor_max * sizeof(*d->anchor_nodes));
+            d->anchor_max = 0;
+        }
         return 0;
     case YEP_EV_STREAM_END:
-        yep_nametab_clear(&d->anchors);
-        /* links formed bottom-up: depths were local until now — one
-         * walk per root makes them global (mutation's depth cap and
-         * the recursive writer both rely on them) */
-        for (uint32_t i = 0; i < d->dcount; i++) {
-            yep_mut_set_depths(d, d->docs[i], 0);
-        }
+        /* no depth walk: the parse links TOP-DOWN (every child is
+         * linked the moment it starts, under a parent whose depth is
+         * final), so dom_link's O(1) assignment already globalizes
+         * them. The walk remains the MUTATION builder's job — it
+         * attaches pre-built subtrees whose descendants keep local
+         * depths (yep_mut_set_depths after attach). */
         return 0;
 
     case YEP_EV_SEQ_START:
@@ -223,7 +248,7 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
         if (id == UINT32_MAX) {
             return -1;
         }
-        if (!yep_view_is_empty(ev->anchor) && !dom_anchor_set(d, ev->anchor, id)) {
+        if (ev->anchor_id != 0 && dom_anchor_set(d, ev->anchor_id, id) != 0) {
             return -1;
         }
         if (dom_place(d, id) != 0) {
@@ -248,14 +273,14 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
             return -1;
         }
         d->nodes[id].value = dom_ev_str(d, ev, &ev->value, ev->borrowed);
-        if (!yep_view_is_empty(ev->anchor) && !dom_anchor_set(d, ev->anchor, id)) {
+        if (ev->anchor_id != 0 && dom_anchor_set(d, ev->anchor_id, id) != 0) {
             return -1;
         }
         return dom_place(d, id);
     }
 
     case YEP_EV_ALIAS: {
-        uint32_t target = dom_anchor_get(d, ev->value);
+        uint32_t target = dom_anchor_get(d, ev->anchor_id);
         if (target == UINT32_MAX) {
             return -1;
         }
@@ -302,7 +327,13 @@ void yep_dom_prepare(yep_dom* d, const char* buf, size_t len) {
     k->count3(buf, len, '\n', ',', '-', &nl, &commas, &dashes);
     k->count3(buf, len, ':', '[', '{', &colons, &brackets, &braces);
     k->count3(buf, len, '"', '\'', '|', &dq, &sq, &pipes);
-    uint32_t node_hint = (uint32_t)(nl + commas + dashes - colons + brackets + braces + 8);
+    /* a block line carries at least TWO nodes (a key and its value,
+     * or a dash and its entry): nl-colons cancels to ~zero on plain
+     * scalar maps, so the old hint undershot by 200k nodes on
+     * anchor-heavy (the growth memmove profiled at 5% of parse) */
+    size_t structural = commas + dashes + brackets + braces + 8;
+    size_t by_line = nl * 2 + 8;
+    uint32_t node_hint = (uint32_t)(structural > by_line ? structural : by_line);
     uint32_t str_hint = (dq + sq + pipes) > 0 ? (uint32_t)(dq * 16 + sq * 8 + pipes * 128 + 64) : 0;
     yep_dom_reserve(d, node_hint, str_hint);
 }
@@ -329,14 +360,8 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
         yep_free(sys, d);
         return NULL;
     }
-    if (!yep_nametab_init(&d->anchors, sys)) {
-        yep_hpool_destroy(d->handles);
-        yep_pool_destroy(pool);
-        yep_free(sys, d);
-        return NULL;
-    }
     if (pthread_mutex_init(&d->midx.mu, NULL) != 0) {
-        yep_nametab_free(&d->anchors);
+        yep_free(d->sys, d->anchor_nodes);
         yep_hpool_destroy(d->handles);
         yep_pool_destroy(pool);
         yep_free(sys, d);
@@ -352,7 +377,7 @@ void yep_dom_destroy(yep_dom* d) {
     }
     yep_free(d->sys, d->str);
     yep_midx_destroy(d);
-    yep_nametab_free(&d->anchors);
+    yep_free(d->sys, d->anchor_nodes);
     yep_hpool_destroy(d->handles);
     yep_pool_destroy(d->pool);
     yep_free(d->sys, d);

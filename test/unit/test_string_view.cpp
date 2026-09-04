@@ -4,6 +4,7 @@
 
 #include <cstring>
 
+#include "common/nametab.h"
 #include "common/string_view.h"
 
 static yep_view v(const char* s) {
@@ -58,18 +59,20 @@ TEST(View, Slice) {
     EXPECT_TRUE(yep_view_eq(yep_view_slice(s, 8, 2), v("89")));
 }
 
-TEST(View, FnvHashes) {
-    /* Known FNV-1a vectors. */
-    EXPECT_EQ(yep_view_hash32(v("")), 2166136261u);
-    EXPECT_EQ(yep_view_hash64(v("")), 14695981039346656037ull);
-    EXPECT_EQ(yep_view_hash32(v("a")), 0xE40C292Cu);
-    EXPECT_EQ(yep_view_hash32(v("foobar")), 0xBF9CF968u);
-
-    /* Deterministic and prefix-sensitive. */
-    EXPECT_EQ(yep_view_hash32(v("abc")), yep_view_hash32(v("abc")));
-    EXPECT_NE(yep_view_hash32(v("abc")), yep_view_hash32(v("abd")));
-    EXPECT_NE(yep_view_hash32(v("ab")), yep_view_hash32(v("abc")));
-    /* Hash of a slice equals the hash of the same content elsewhere. */
-    EXPECT_EQ(yep_view_hash32(v("abc")), yep_view_hash32(yep_view_slice(v("xxabcxx"), 2, 3)));
-    EXPECT_EQ(yep_view_hash64(v("abc")), yep_view_hash64(yep_view_slice(v("xxabcxx"), 2, 3)));
+TEST(View, Hash) {
+    /* The interner hash (nametab.h): deterministic, content-only,
+     * prefix-sensitive, and slice-transparent. */
+    EXPECT_EQ(yep_view_hash(v("abc")), yep_view_hash(v("abc")));
+    EXPECT_NE(yep_view_hash(v("abc")), yep_view_hash(v("abd")));
+    EXPECT_NE(yep_view_hash(v("ab")), yep_view_hash(v("abc")));
+    EXPECT_NE(yep_view_hash(v("")), yep_view_hash(v("a")));
+    EXPECT_EQ(yep_view_hash(v("abc")), yep_view_hash(yep_view_slice(v("xxabcxx"), 2, 3)));
+    /* Length-class boundaries: 8/16 straddle the load paths. */
+    EXPECT_EQ(yep_view_hash(v("12345678")), yep_view_hash(yep_view_slice(v("x12345678x"), 1, 8)));
+    EXPECT_NE(yep_view_hash(v("12345678")), yep_view_hash(v("123456789")));
+    EXPECT_EQ(yep_view_hash(v("1234567890123456")),
+              yep_view_hash(yep_view_slice(v("y1234567890123456y"), 1, 16)));
+    EXPECT_NE(yep_view_hash(v("1234567890123456")), yep_view_hash(v("12345678901234567")));
+    EXPECT_NE(yep_view_hash(v("long key with many bytes past sixteen")),
+              yep_view_hash(v("long key with many bytes past sevente")));
 }

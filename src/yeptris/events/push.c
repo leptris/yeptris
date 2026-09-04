@@ -83,6 +83,7 @@ YEPTRIS_API YeptrisStatus yeptris_push_parse(const char* buf, size_t len, yeptri
     }
     yep_push_ctx p = {on_event, ctx};
     yep_sink sink = {push_on_event, &p};
+    yep_engine_prepare(eng, buf, len);
     int rc = yep_engine_run(eng, buf, len, &sink);
     yep_engine_destroy(eng);
     if (rc == 0) {

@@ -53,7 +53,9 @@ struct yep_engine {
     size_t pos;
     uint32_t line;          /* 1-based current line */
     size_t line_start;      /* offset of the current line start */
-    yep_line_info li_cache; /* flow loop's per-line scan_line memo */
+    yep_line_info li_cache; /* per-line scan_line memo: every site
+       positioned at line_start reads it (plain continuation checks,
+       literal blocks, the main loop), so a line is scanned once */
     uint32_t li_cache_line; /* 0 = no entry (line numbers are 1-based) */
     uint32_t line_base;     /* lines consumed by earlier stepped runs */
     yep_error err;
@@ -66,13 +68,15 @@ struct yep_engine {
     } frames[YEP_MAX_DEPTH];
     int depth;
 
-    yep_nametab anchors; /* name interning: O(1) define/lookup at any scale */
+    yep_nametab anchors;    /* name interning: O(1) define/lookup at any scale */
+    uint32_t anchor_serial; /* 1-based ordinals; the value IS the id */
 
     yep_fold_line fold[YEP_MAX_FOLD_LINES];
     size_t fold_n;
 
     /* properties that belong to a value parsed on following lines */
     yep_view pend_anchor, pend_tag;
+    uint32_t pend_anchor_id; /* the pend anchor's ordinal */
 
     int doc_content;     /* any node emitted for the current document */
     int q_key_pending;   /* an explicit '?' key awaits its ':' value line */
@@ -259,14 +263,19 @@ static int e_colon_at(yep_engine* e, size_t at) {
 
 /* -------------------------------------------------------------- anchors */
 
-static int anchor_defined(yep_engine* e, yep_view name) {
-    return yep_nametab_get(&e->anchors, name) != YEP_NAMETAB_NIL;
+/* The ordinal the nametab assigned at define time (0 when absent). */
+static uint32_t anchor_id_of(const yep_engine* e, yep_view name) {
+    uint32_t id = yep_nametab_get(&e->anchors, name);
+    return id == YEP_NAMETAB_NIL ? 0 : id;
 }
 
-static void anchor_define(yep_engine* e, yep_view name) {
+static uint32_t anchor_define(yep_engine* e, yep_view name) {
     /* Last definition wins (libyaml parity); OOM leaves the anchor
-     * undefined so its alias errors. */
-    yep_nametab_set(&e->anchors, name, 1);
+     * undefined so its alias errors. The VALUE is the anchor's 1-based
+     * ordinal — sinks key on it and skip the name hash entirely. */
+    uint32_t id = ++e->anchor_serial;
+    yep_nametab_set(&e->anchors, name, id);
+    return id;
 }
 
 /* --------------------------------------------------------------- frames */
@@ -275,7 +284,7 @@ static void anchor_define(yep_engine* e, yep_view name) {
  * exactly this column (sibling entries reuse it). anchor/tag ride the
  * START event. Returns 0 on success. */
 static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln, yep_view anchor,
-                      yep_view tag) {
+                      yep_view tag, uint32_t anchor_id) {
     if (e->depth > 0 && e->frames[e->depth - 1].kind == YEP_FRAME_SEQ &&
         e->frames[e->depth - 1].col == col) {
         return 0;
@@ -291,6 +300,7 @@ static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     yep_event ev;
     e_event_init(&ev, YEP_EV_SEQ_START);
     ev.anchor = anchor;
+    ev.anchor_id = anchor_id;
     ev.tag = tag;
     ev.line = line;
     ev.col = coln;
@@ -298,7 +308,7 @@ static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
 }
 
 static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln, yep_view anchor,
-                      yep_view tag) {
+                      yep_view tag, uint32_t anchor_id) {
     if (e->depth > 0 && e->frames[e->depth - 1].kind == YEP_FRAME_MAP &&
         e->frames[e->depth - 1].col == col) {
         return 0;
@@ -314,6 +324,7 @@ static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     yep_event ev;
     e_event_init(&ev, YEP_EV_MAP_START);
     ev.anchor = anchor;
+    ev.anchor_id = anchor_id;
     ev.tag = tag;
     ev.line = line;
     ev.col = coln;
@@ -591,7 +602,10 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
     int max_blank_indent = -1;
 
     while (e->pos < e->len) {
-        yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
+        /* trailing spaces after "|-" leave pos mid-line: scan from pos
+         * (the header tail), never the memo's full line */
+        yep_line_info li =
+            e->pos == e->line_start ? e_line_info_here(e) : yep_scan_line(e->p, e->len, e->pos);
         int blank = (li.flags & YEP_LF_BLANK) != 0;
         if (!blank) {
             if (saw_content && parent_col < 0 &&
@@ -665,6 +679,7 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
                         e->pos = at + br;
                         e->line++;
                         e->line_start = e->pos;
+                        e->li_cache_line = 0;
                     } else {
                         e->pos = at;
                     }
@@ -763,7 +778,7 @@ static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, 
         }
         breaks++;
         e_line_done(e, e->pos);
-        yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
+        yep_line_info li = e_line_info_here(e);
         if (li.flags & YEP_LF_BLANK) {
             /* Park at the line end: the loop's next break consumption
              * counts this blank line's own break. */
@@ -988,12 +1003,14 @@ static int e_alias(yep_engine* e, yep_event* ev) {
     if (name.len == 0) {
         return e_fail(e, YEP_ERR_UNEXPECTED, star);
     }
-    if (!anchor_defined(e, name)) {
+    uint32_t target = anchor_id_of(e, name);
+    if (target == 0) {
         e->pos = star;
         return e_fail(e, YEP_ERR_UNDEFINED_ALIAS, star);
     }
     ev->type = YEP_EV_ALIAS;
     ev->value = name;
+    ev->anchor_id = target;
     e_skip_inline_space(e);
     return 0;
 }
@@ -1127,7 +1144,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     ev->anchor = anchor;
     ev->tag = tag;
     if (!yep_view_is_empty(anchor)) {
-        anchor_define(e, anchor);
+        ev->anchor_id = anchor_define(e, anchor);
     }
     if (e_flow_ws(e) != 0) {
         return -1;
@@ -1188,7 +1205,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
             e_line_done(e, e->pos);
             crossed_break = 1;
             {
-                yep_line_info cl = yep_scan_line(e->p, e->len, e->pos);
+                yep_line_info cl = e_line_info_here(e);
                 if (cl.flags & YEP_LF_COMMENT) {
                     e_line_done(e, cl.end);
                     break; /* a comment line ends the scalar too */
@@ -1266,7 +1283,7 @@ static void jx_advance_line(yep_engine* e, size_t* from, size_t to, uint32_t* li
 
 /* Returns 1 = events emitted and consumed (e->pos past the close),
  * 0 = not JSON-class (fall back), -1 = error set, -2 = sink abort. */
-static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
+static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_id) {
     const char* p = e->p;
     size_t len = e->len;
     size_t open_pos = e->pos;
@@ -1416,6 +1433,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag) {
         e_event_init(&ev, kind[0] ? YEP_EV_MAP_START : YEP_EV_SEQ_START);
         ev.flow = 1;
         ev.anchor = anchor;
+        ev.anchor_id = anchor_id;
         ev.tag = tag;
         ev.line = cur_line;
         ev.col = (uint32_t)(open_pos + 1 - cur_ls) + 1;
@@ -1579,7 +1597,7 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
     st[idx].entries = 0;
 }
 
-static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
+static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_id) {
     struct {
         uint8_t kind;        /* 0 seq, 1 map */
         uint8_t pending_key; /* map: 1 key seen awaiting ':' value; 2 key emitted w/o ':' */
@@ -1600,6 +1618,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
     e_event_init(&ev, open == '[' ? YEP_EV_SEQ_START : YEP_EV_MAP_START);
     ev.flow = 1;
     ev.anchor = anchor;
+    ev.anchor_id = anchor_id;
     ev.tag = tag;
     ev.line = e->line;
     ev.col = e_col(e, e->pos);
@@ -1698,9 +1717,11 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
             unsigned char oc = (unsigned char)e->p[e->pos];
             e->pos++;
             yep_view pa = ev.anchor, pt = ev.tag; /* props before the opener */
+            uint32_t paid = ev.anchor_id;
             e_event_init(&ev, oc == '[' ? YEP_EV_SEQ_START : YEP_EV_MAP_START);
             ev.flow = 1;
             ev.anchor = pa;
+            ev.anchor_id = paid;
             ev.tag = pt;
             ev.line = e->line;
             ev.col = e_col(e, e->pos);
@@ -2120,8 +2141,10 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag) {
 static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     size_t node_at = e->pos;
     yep_view pend_a = e->pend_anchor, pend_t = e->pend_tag;
+    uint32_t pend_aid = e->pend_anchor_id;
     e->pend_anchor.p = NULL;
     e->pend_anchor.len = 0;
+    e->pend_anchor_id = 0;
     e->pend_tag.p = NULL;
     e->pend_tag.len = 0;
     yep_view anchor = {0}, tag = {0};
@@ -2129,8 +2152,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     if (e->err.code != YEP_ERR_NONE) {
         return -1; /* e_props failed (unresolved tag handle) */
     }
+    uint32_t anchor_ordinal = 0;
     if (!yep_view_is_empty(anchor)) {
-        anchor_define(e, anchor);
+        anchor_ordinal = anchor_define(e, anchor);
     }
     /* Node-level props for scalar/alias/flow VALUE events: same-line
      * wins over pend. */
@@ -2141,6 +2165,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     yep_event ev;
     e_event_init(&ev, YEP_EV_SCALAR);
     ev.anchor = node_a;
+    ev.anchor_id = anchor_ordinal;
     ev.tag = node_t;
     ev.line = e->line;
     ev.col = e_col(e, node_at) + 1;
@@ -2148,6 +2173,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     if (e_at_eol(e)) {
         /* properties with the value on following lines */
         e->pend_anchor = node_a;
+        e->pend_anchor_id = anchor_ordinal;
         e->pend_tag = node_t;
         e->doc_inline = 0; /* the node starts on a later line */
         return e_parse_value(e, ctx, floor_col);
@@ -2169,7 +2195,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "&a - x" */
         }
         uint16_t col = e_col(e, e->pos);
-        int rc = e_open_seq(e, col, e->line, col + 1, node_a, node_t);
+        int rc = e_open_seq(e, col, e->line, col + 1, node_a, node_t, anchor_ordinal);
         if (rc != 0) {
             return rc;
         }
@@ -2186,7 +2212,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "?\t-" (Y79Y) */
         }
         uint16_t col = e_col(e, e->pos);
-        int rc = e_open_map(e, col, e->line, col + 1, pend_a, pend_t);
+        int rc = e_open_map(e, col, e->line, col + 1, pend_a, pend_t, pend_aid);
         if (rc != 0) {
             return rc;
         }
@@ -2236,7 +2262,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
              * close, replacing e_skip_flow's pre-scan when it applies. */
             e->flow_floor = floor_col;
             e->flow_enforce = (e->depth > 0);
-            int fast = e_flow_json(e, node_a, node_t);
+            int fast = e_flow_json(e, node_a, node_t, anchor_ordinal);
             e->flow_enforce = 0;
             if (fast == 1) {
                 if (!e_at_eol(e)) {
@@ -2267,11 +2293,11 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 return -1;
             }
             uint16_t key_col = e_col(e, node_at);
-            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t);
+            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid);
             if (rc != 0) {
                 return rc;
             }
-            rc = e_flow(e, node_a, node_t);
+            rc = e_flow(e, node_a, node_t, anchor_ordinal);
             if (rc != 0) {
                 return rc;
             }
@@ -2281,7 +2307,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         {
             e->flow_floor = floor_col;
             e->flow_enforce = (e->depth > 0);
-            int rc = e_flow(e, node_a, node_t);
+            int rc = e_flow(e, node_a, node_t, anchor_ordinal);
             e->flow_enforce = 0;
             if (rc != 0) {
                 return rc;
@@ -2308,7 +2334,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 return -1;
             }
             uint16_t key_col = e_col(e, node_at);
-            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t);
+            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid);
             if (rc != 0) {
                 return rc;
             }
@@ -2339,7 +2365,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 return -1;
             }
             uint16_t key_col = e_col(e, node_at);
-            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t);
+            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid);
             if (rc != 0) {
                 return rc;
             }
@@ -2395,7 +2421,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "--- &a k: v" */
         }
         uint16_t key_col = e_col(e, node_at);
-        int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t);
+        int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid);
         if (rc != 0) {
             return rc;
         }
@@ -2453,12 +2479,14 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
             /* "- :" — a compact pair with an empty key */
             uint16_t col = e_col(e, e->pos);
-            int rc = e_open_map(e, col, e->line, col + 1, e->pend_anchor, e->pend_tag);
+            int rc = e_open_map(e, col, e->line, col + 1, e->pend_anchor, e->pend_tag,
+                                e->pend_anchor_id);
             if (rc != 0) {
                 return rc;
             }
             e->pend_anchor.p = NULL;
             e->pend_anchor.len = 0;
+            e->pend_anchor_id = 0;
             e->pend_tag.p = NULL;
             e->pend_tag.len = 0;
             yep_event kv;
@@ -2567,8 +2595,10 @@ empty_value: {
     ev.implicit = 1;
     ev.anchor = e->pend_anchor;
     ev.tag = e->pend_tag;
+    ev.anchor_id = e->pend_anchor_id;
     e->pend_anchor.p = NULL;
     e->pend_anchor.len = 0;
+    e->pend_anchor_id = 0;
     e->pend_tag.p = NULL;
     e->pend_tag.len = 0;
     return emit_now(e, &ev) == 0 ? 0 : -2;
@@ -2596,6 +2626,16 @@ yep_pool* yep_engine_detach_pool(yep_engine* e) {
     yep_pool* p = e->pool;
     e->pool = yep_pool_create(e->sys, 8192); /* fresh: engine stays usable */
     return p;
+}
+
+void yep_engine_prepare(yep_engine* e, const char* buf, size_t len) {
+    if (e == NULL || buf == NULL || len == 0) {
+        return;
+    }
+    size_t amps = yep_text_active()->count_char(buf, len, '&');
+    if (amps > 0) {
+        yep_nametab_reserve(&e->anchors, (uint32_t)amps);
+    }
 }
 
 yep_engine* yep_engine_create(const yep_allocator* sys) {
@@ -2922,7 +2962,12 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     int doc_open = 0;
 
     while (e->pos < e->len) {
-        yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
+        /* pos may sit MID-line here (e.g. at a comment left by the
+         * "--- # c" inline path, whose e_line_done was a no-op): the
+         * memo scans line_start and would rewind — scan from pos, the
+         * pre-memo semantics */
+        yep_line_info li =
+            e->pos == e->line_start ? e_line_info_here(e) : yep_scan_line(e->p, e->len, e->pos);
         if ((li.flags & YEP_LF_TAB) && !(li.flags & YEP_LF_BLANK)) {
             size_t t = li.offset + li.indent;
             while (t < li.end && (e->p[t] == ' ' || e->p[t] == '\t')) {
@@ -3171,7 +3216,8 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 goto fail; /* a root flow node cannot become a key */
             }
             if (e->depth == 0 || e->frames[e->depth - 1].kind != YEP_FRAME_MAP) {
-                rc = e_open_map(e, c, e->line, c + 1, e->pend_anchor, e->pend_tag);
+                rc = e_open_map(e, c, e->line, c + 1, e->pend_anchor, e->pend_tag,
+                                e->pend_anchor_id);
                 if (rc != 0) {
                     if (rc == -2) {
                         return -2;

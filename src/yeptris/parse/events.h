@@ -44,13 +44,16 @@ typedef struct yep_event {
     yep_view value;  /* scalar content / alias name */
     yep_view anchor; /* node properties, empty when absent */
     yep_view tag;
-    uint8_t style;     /* yep_scalar_style */
-    uint8_t implicit;  /* scalar written without quotes/tag (plain implicit) */
-    uint8_t flow;      /* collection opened in flow context */
-    uint8_t multiline; /* scalar spanned lines: may not be a simple key */
-    uint8_t tag_id;    /* resolved implicit/explicit tag (resolve/resolver.h) */
-    uint8_t borrowed;  /* 1: value borrows the INPUT; 0: engine finish pool */
-    uint32_t line;     /* 1-based position of the node start */
+    uint8_t style;      /* yep_scalar_style */
+    uint8_t implicit;   /* scalar written without quotes/tag (plain implicit) */
+    uint8_t flow;       /* collection opened in flow context */
+    uint8_t multiline;  /* scalar spanned lines: may not be a simple key */
+    uint8_t tag_id;     /* resolved implicit/explicit tag (resolve/resolver.h) */
+    uint8_t borrowed;   /* 1: value borrows the INPUT; 0: engine finish pool */
+    uint32_t anchor_id; /* 1-based anchor ordinal (the engine's serial);
+                         * on ALIAS: the TARGET's ordinal. 0 = none. Sinks
+                         * that key on it skip the name hash entirely. */
+    uint32_t line;      /* 1-based position of the node start */
     uint32_t col;
 } yep_event;
 

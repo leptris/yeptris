@@ -40,6 +40,11 @@ int yep_nametab_set(yep_nametab* t, yep_view key, uint32_t value);
 /* Drops all entries, keeping the allocations. */
 void yep_nametab_clear(yep_nametab* t);
 
+/* Pre-sizes for n inserts: no rehash while count stays <= n. The slots
+ * table is rebuilt (ids keep their insertion order); the keys/values
+ * arrays are only grown. Returns 0 only on allocation failure. */
+int yep_nametab_reserve(yep_nametab* t, uint32_t n);
+
 /* YEP_NAMETAB_NIL when absent. */
 uint32_t yep_nametab_get(const yep_nametab* t, yep_view key);
 

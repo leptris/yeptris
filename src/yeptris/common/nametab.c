@@ -13,16 +13,54 @@
 #define NT_MIN_CAP 64u
 #define NT_LOAD_PCT 70u
 
-uint32_t yep_view_hash(yep_view s) {
-    uint32_t h = 2166136261u;
-    for (uint32_t i = 0; i < s.len; i++) {
-        h ^= (unsigned char)s.p[i];
-        h *= 16777619u;
-    }
-    h ^= h >> 15;
-    h *= 2246822519u;
-    h ^= h >> 13;
+static uint64_t hash_round(uint64_t h, uint64_t k) {
+    h ^= k;
+    h *= 0x9E3779B97F4A7C15ull;
+    h ^= h >> 29;
     return h;
+}
+
+/* Word-at-a-time, constant-size loads only (a variable-length memcpy
+ * lowers to a memmove call — one per probe cost ~3% of anchor-heavy
+ * parse). Hash values are build-internal: nothing persists them. */
+static uint64_t load_small(const char* p, uint32_t n) {
+    uint64_t k = 0;
+    if (n & 4) {
+        uint32_t v;
+        memcpy(&v, p, 4);
+        k = v;
+        p += 4;
+    }
+    if (n & 2) {
+        uint16_t v;
+        memcpy(&v, p, 2);
+        k = (k << 16) | v;
+        p += 2;
+    }
+    if (n & 1) {
+        k = (k << 8) | (unsigned char)*p;
+    }
+    return k;
+}
+
+uint32_t yep_view_hash(yep_view s) {
+    uint64_t h = 0x9E3779B97F4A7C15ull ^ (uint64_t)s.len;
+    if (s.len <= 8) {
+        h = hash_round(h, load_small(s.p, s.len));
+    } else if (s.len <= 16) {
+        uint64_t k0;
+        memcpy(&k0, s.p, 8);
+        h = hash_round(hash_round(h, k0), load_small(s.p + 8, s.len - 8));
+    } else {
+        uint64_t k0, kn;
+        memcpy(&k0, s.p, 8);
+        memcpy(&kn, s.p + s.len - 8, 8);
+        h = hash_round(hash_round(hash_round(h, k0), kn), (uint64_t)s.len * 0x85EBCA77ull);
+    }
+    h ^= h >> 32;
+    h *= 0xBF58476D1CE4E5B9ull;
+    h ^= h >> 29;
+    return (uint32_t)(h ^ (h >> 32));
 }
 
 int yep_nametab_init(yep_nametab* t, const yep_allocator* sys) {
@@ -80,6 +118,36 @@ static int nt_rehash(yep_nametab* t, uint32_t newcap) {
 
 static int nt_grow(yep_nametab* t) {
     uint32_t newcap = t->cap * 2;
+    yep_view* keys = yep_alloc(t->sys, newcap * sizeof(*keys));
+    uint32_t* values = yep_alloc(t->sys, newcap * sizeof(*values));
+    if (keys == NULL || values == NULL) {
+        yep_free(t->sys, keys);
+        yep_free(t->sys, values);
+        return 0;
+    }
+    if (t->count > 0) {
+        memcpy(keys, t->keys, (size_t)t->count * sizeof(*keys));
+        memcpy(values, t->values, (size_t)t->count * sizeof(*values));
+    }
+    yep_free(t->sys, t->keys);
+    yep_free(t->sys, t->values);
+    t->keys = keys;
+    t->values = values;
+    return nt_rehash(t, newcap);
+}
+
+int yep_nametab_reserve(yep_nametab* t, uint32_t n) {
+    if (t == NULL || t->cap == 0) {
+        return 0;
+    }
+    if ((uint64_t)n * 100 <= (uint64_t)t->cap * NT_LOAD_PCT) {
+        return 1; /* already room for n at load <= NT_LOAD_PCT */
+    }
+    uint64_t need = ((uint64_t)n * 100 + NT_LOAD_PCT - 1) / NT_LOAD_PCT;
+    uint32_t newcap = NT_MIN_CAP;
+    while ((uint64_t)newcap < need) {
+        newcap *= 2;
+    }
     yep_view* keys = yep_alloc(t->sys, newcap * sizeof(*keys));
     uint32_t* values = yep_alloc(t->sys, newcap * sizeof(*values));
     if (keys == NULL || values == NULL) {
