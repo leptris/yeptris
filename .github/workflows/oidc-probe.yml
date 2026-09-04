@@ -1,0 +1,38 @@
+name: OIDC probe
+
+# One-shot diagnostics for the RubyGems trusted-publisher exchange in
+# release.yml (the gem-push step saw a non-JSON token response).
+on: workflow_dispatch
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe the OIDC token endpoint
+        run: |
+          set -x
+          echo "token-url SET: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+          for AUD in rubygems.org https://rubygems.org/ ; do
+            RESP=$(curl -sS -w "\n%{http_code}" \
+              -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUD}")
+            CODE="${RESP##*$'\n'}"
+            BODY="${RESP%$'\n'*}"
+            echo "== audience=${AUD} http=${CODE}"
+            echo "$BODY" | jq -r 'if .value then "TOKEN OK len=\(.value|length) head=\(.value[0:24])..." else .[0:300] end' || echo "$BODY" | head -c 300
+          done
+      - name: Probe the api_key exchange (audience that worked)
+        run: |
+          set -x
+          OIDC=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=rubygems.org" | jq -r .value)
+          if [ -z "$OIDC" ] || [ "$OIDC" = "null" ]; then echo "no token"; exit 0; fi
+          RESP=$(curl -sS -w "\n%{http_code}" -X POST "https://rubygems.org/api/v1/api_key" \
+            -H "Authorization: Bearer $OIDC" -H "Content-Type: application/json" \
+            -d '{"name":"github-actions-probe","scopes":["push_rubygem"]}')
+          CODE="${RESP##*$'\n'}"
+          BODY="${RESP%$'\n'*}"
+          echo "== api_key http=${CODE}"
+          echo "$BODY" | jq -r 'if .rubygem_api_key then "KEY OK (value hidden)" else .[0:300] end' || echo "$BODY" | head -c 300
