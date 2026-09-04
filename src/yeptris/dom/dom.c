@@ -316,25 +316,20 @@ void yep_dom_reserve(yep_dom* d, uint32_t node_hint, uint32_t str_hint) {
  * arena reserve only pays when the content copies (quoted scalars
  * escape, block scalars fold) — borrowed-only documents must not
  * allocate an arena at all. Hints are advisory. */
-void yep_dom_prepare(yep_dom* d, const char* buf, size_t len) {
-    if (d == NULL || buf == NULL) {
+void yep_dom_prepare(yep_dom* d, const yep_text_stats* st) {
+    if (d == NULL || st == NULL) {
         return;
     }
-    const yep_text_kernels* k = yep_text_active();
-    size_t nl = 0, commas = 0, dashes = 0;
-    size_t colons = 0, brackets = 0, braces = 0;
-    size_t dq = 0, sq = 0, pipes = 0;
-    k->count3(buf, len, '\n', ',', '-', &nl, &commas, &dashes);
-    k->count3(buf, len, ':', '[', '{', &colons, &brackets, &braces);
-    k->count3(buf, len, '"', '\'', '|', &dq, &sq, &pipes);
     /* a block line carries at least TWO nodes (a key and its value,
      * or a dash and its entry): nl-colons cancels to ~zero on plain
      * scalar maps, so the old hint undershot by 200k nodes on
      * anchor-heavy (the growth memmove profiled at 5% of parse) */
-    size_t structural = commas + dashes + brackets + braces + 8;
-    size_t by_line = nl * 2 + 8;
+    size_t structural = st->comma + st->dash + st->bracket + st->brace + 8;
+    size_t by_line = st->nl * 2 + 8;
     uint32_t node_hint = (uint32_t)(structural > by_line ? structural : by_line);
-    uint32_t str_hint = (dq + sq + pipes) > 0 ? (uint32_t)(dq * 16 + sq * 8 + pipes * 128 + 64) : 0;
+    uint32_t str_hint = (st->dq + st->sq + st->pipe) > 0
+                            ? (uint32_t)(st->dq * 16 + st->sq * 8 + st->pipe * 128 + 64)
+                            : 0;
     yep_dom_reserve(d, node_hint, str_hint);
 }
 

@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "../../include/yeptris/events.h"
+#include "../common/simd_text.h"
 #include "../parse/engine.h"
 #include "capture.h"
 
@@ -35,7 +36,9 @@ YEPTRIS_API YeptrisPullParser yeptris_pull_new(const char* buf, size_t len) {
         return NULL;
     }
     yep_sink sink = {yep_rec_on_event, &p->store};
-    yep_engine_prepare(eng, buf, len);
+    yep_text_stats pst;
+    yep_text_active()->scan_stats(buf, len, &pst);
+    yep_engine_prepare(eng, &pst);
     int rc = yep_engine_run(eng, buf, len, &sink);
     const yep_error* err = yep_engine_error(eng);
     if (err != NULL && rc != 0) {

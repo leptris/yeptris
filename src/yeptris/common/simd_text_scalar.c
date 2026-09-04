@@ -111,8 +111,63 @@ ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has
     return -1;
 }
 
+void yep_text_scan_stats_scalar(const char* s, size_t len, yep_text_stats* out) {
+    if (s == NULL || len == 0) {
+        memset(out, 0, sizeof(*out));
+        return;
+    }
+
+    yep_text_stats st = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c >= 0x80) {
+            st.nonascii = 1;
+            continue;
+        }
+        switch (c) {
+        case '\n':
+            st.nl++;
+            break;
+        case ',':
+            st.comma++;
+            break;
+        case '-':
+            st.dash++;
+            break;
+        case ':':
+            st.colon++;
+            break;
+        case '[':
+            st.bracket++;
+            break;
+        case '{':
+            st.brace++;
+            break;
+        case '"':
+            st.dq++;
+            break;
+        case '\'':
+            st.sq++;
+            break;
+        case '|':
+            st.pipe++;
+            break;
+        case '&':
+            st.amp++;
+            break;
+        default:
+            break;
+        }
+        if ((c < 0x20 && c != 9 && c != 10 && c != 13) || c == 0x7F) {
+            st.bad_printable = 1;
+        }
+    }
+    *out = st;
+}
+
 const yep_text_kernels yep_text_kernels_scalar = {
     yep_text_contains_scalar,   yep_text_find_scalar,         yep_text_find3_scalar,
     yep_text_count_char_scalar, yep_text_count3_scalar,       yep_text_copy_count3_scalar,
     yep_text_find_not_scalar,   yep_text_stopset_find_scalar, yep_text_quote_scan_scalar,
+    yep_text_scan_stats_scalar,
 };

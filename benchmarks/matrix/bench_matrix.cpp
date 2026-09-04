@@ -39,6 +39,7 @@ extern "C" {
 #include "dom/dom.h"
 #include "memory/allocator.h"
 #include "parse/engine.h"
+#include "common/simd_text.h"
 }
 
 typedef struct {
@@ -89,7 +90,9 @@ static mem_stats measure_mem(const Corpus& c) {
     if (eng != NULL && dom != NULL) {
         /* the same sizing seam as parse_impl: the measure must
          * exercise the product's reserve path, not a bare engine */
-        yep_dom_prepare(dom, c.data.data(), c.data.size());
+        yep_text_stats st;
+        yep_text_active()->scan_stats(c.data.data(), c.data.size(), &st);
+        yep_dom_prepare(dom, &st);
         yep_sink sink = {yep_dom_on_event, dom};
         int rc = yep_engine_run(eng, c.data.data(), c.data.size(), &sink);
         if (rc == 0 && dom->ncount > 0) {

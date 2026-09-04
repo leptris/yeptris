@@ -2634,13 +2634,12 @@ yep_pool* yep_engine_detach_pool(yep_engine* e) {
     return p;
 }
 
-void yep_engine_prepare(yep_engine* e, const char* buf, size_t len) {
-    if (e == NULL || buf == NULL || len == 0) {
+void yep_engine_prepare(yep_engine* e, const yep_text_stats* st) {
+    if (e == NULL || st == NULL) {
         return;
     }
-    size_t amps = yep_text_active()->count_char(buf, len, '&');
-    if (amps > 0) {
-        yep_nametab_reserve(&e->anchors, (uint32_t)amps);
+    if (st->amp > 0) {
+        yep_nametab_reserve(&e->anchors, (uint32_t)st->amp);
     }
 }
 

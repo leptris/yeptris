@@ -203,6 +203,104 @@ TEST(SimdText, Count3AndCopyCount3) {
     }
 }
 
+static void naive_scan_stats(const char* s, size_t len, yep_text_stats* out) {
+    memset(out, 0, sizeof(*out));
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c >= 0x80) {
+            out->nonascii = 1;
+        } else if ((c < 0x20 && c != 9 && c != 10 && c != 13) || c == 0x7F) {
+            out->bad_printable = 1;
+        }
+        switch (c) {
+        case '\n':
+            out->nl++;
+            break;
+        case ',':
+            out->comma++;
+            break;
+        case '-':
+            out->dash++;
+            break;
+        case ':':
+            out->colon++;
+            break;
+        case '[':
+            out->bracket++;
+            break;
+        case '{':
+            out->brace++;
+            break;
+        case '"':
+            out->dq++;
+            break;
+        case '\'':
+            out->sq++;
+            break;
+        case '|':
+            out->pipe++;
+            break;
+        case '&':
+            out->amp++;
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+TEST(SimdText, ScanStats) {
+    const yep_text_kernels* k = yep_text_active();
+    for (const std::string& b : buffers()) {
+        yep_text_stats got, want, ref;
+        k->scan_stats(b.data(), b.size(), &got);
+        naive_scan_stats(b.data(), b.size(), &want);
+        yep_text_scan_stats_scalar(b.data(), b.size(), &ref);
+        EXPECT_EQ(got.nl, want.nl);
+        EXPECT_EQ(got.comma, want.comma);
+        EXPECT_EQ(got.dash, want.dash);
+        EXPECT_EQ(got.colon, want.colon);
+        EXPECT_EQ(got.bracket, want.bracket);
+        EXPECT_EQ(got.brace, want.brace);
+        EXPECT_EQ(got.dq, want.dq);
+        EXPECT_EQ(got.sq, want.sq);
+        EXPECT_EQ(got.pipe, want.pipe);
+        EXPECT_EQ(got.amp, want.amp);
+        EXPECT_EQ(got.nonascii, want.nonascii);
+        EXPECT_EQ(got.bad_printable, want.bad_printable);
+        EXPECT_EQ(0, memcmp(&ref, &want, sizeof(want))) << "scalar reference diverges";
+    }
+    /* targeted shapes: every count char, controls, DEL, non-ASCII, empty */
+    struct {
+        const char* s;
+        size_t nl, comma, dash, colon, bracket, brace, dq, sq, pipe, amp;
+        int nonascii, bad;
+    } cases[] = {
+        {"", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {"\n,-:[]{}\"'|&", 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
+        {"a\tb\nc\rd ok", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {"caf\xc3\xa9", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0},
+        {"x\x01y\x02", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {"&v0 &v1 *v0", 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0},
+    };
+    for (const auto& c : cases) {
+        yep_text_stats got;
+        k->scan_stats(c.s, strlen(c.s), &got);
+        EXPECT_EQ(got.nl, c.nl);
+        EXPECT_EQ(got.comma, c.comma);
+        EXPECT_EQ(got.dash, c.dash);
+        EXPECT_EQ(got.colon, c.colon);
+        EXPECT_EQ(got.bracket, c.bracket);
+        EXPECT_EQ(got.brace, c.brace);
+        EXPECT_EQ(got.dq, c.dq);
+        EXPECT_EQ(got.sq, c.sq);
+        EXPECT_EQ(got.pipe, c.pipe);
+        EXPECT_EQ(got.amp, c.amp);
+        EXPECT_EQ(got.nonascii, c.nonascii);
+        EXPECT_EQ(got.bad_printable, c.bad);
+    }
+}
+
 TEST(SimdText, QuoteScan) {
     const yep_text_kernels* k = yep_text_active();
     for (const std::string& b : buffers()) {

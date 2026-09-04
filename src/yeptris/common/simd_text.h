@@ -24,6 +24,17 @@
 extern "C" {
 #endif
 
+/* One-pass pre-scan statistics: the ten occurrence counts every
+ * content-derived sizing rule needs (arena/node pre-reserve, engine
+ * anchor pre-reserve) plus the ASCII/printable flags that gate the
+ * UTF-8 validator. Fills the role of four separate full-buffer
+ * passes (printable_validate's SWAR loop + three count3 calls). */
+typedef struct yep_text_stats {
+    size_t nl, comma, dash, colon, bracket, brace, dq, sq, pipe, amp;
+    int nonascii;      /* any byte >= 0x80 present */
+    int bad_printable; /* an ASCII byte violating c-printable (not 9/10/13/0x20..0x7E) */
+} yep_text_stats;
+
 /* The kernel table. One struct = one dispatch point (OCP: a new ISA is a
  * new TU exporting a new table; nothing else changes). */
 typedef struct yep_text_kernels {
@@ -58,6 +69,9 @@ typedef struct yep_text_kernels {
      * quote q honoring backslash escapes, or -1 if unterminated.
      * *has_escape is set to 1 iff a backslash occurred (0 otherwise). */
     ptrdiff_t (*quote_scan)(const char* s, size_t len, char q, int* has_escape);
+
+    /* the fused pre-scan above (results bit-identical across ISAs) */
+    void (*scan_stats)(const char* s, size_t len, yep_text_stats* out);
 } yep_text_kernels;
 
 /* The best table for this CPU (atomic-lazy, like yep_cpu_detect). */
@@ -77,6 +91,7 @@ void yep_text_copy_count3_scalar(char* dst, const char* src, size_t len, char c0
 ptrdiff_t yep_text_find_not_scalar(const char* s, size_t len, char c);
 ptrdiff_t yep_text_stopset_find_scalar(const char* s, size_t len, const unsigned char set[32]);
 ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has_escape);
+void yep_text_scan_stats_scalar(const char* s, size_t len, yep_text_stats* out);
 
 /* Stopset bitmap helpers: a 256-bit bitmap is the wire form of a byte
  * class; build with yep_stopset_clear + yep_stopset_add. */

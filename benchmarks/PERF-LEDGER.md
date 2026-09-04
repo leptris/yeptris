@@ -481,3 +481,30 @@ libyaml snapshot corpus swept clean. Next levers, ledgered for pass 2:
 e_parse_value self-time (~20% of anchor parse remains), sink batching
 (one indirect call + struct copy per event), SIMD printable_validate
 + count fusion (4 pre-engine passes today).
+
+## 2026-09-04 — fused pre-scan: one SIMD pass replaces four
+
+yep_text_stats / scan_stats (new kernel, all three ISA TUs +
+differential suite): ONE memory pass produces the ten occurrence
+counts the sizing rules need (nl , - : [ { " ' | &) plus the
+nonascii / bad-printable ASCII flags. Consumers:
+
+- the encoding front-end: pure printable-ASCII input skips the SWAR
+  validator entirely (any non-ASCII or violation falls through for
+  the authoritative answer + error position); transcoded input scans
+  its own bytes after validation
+- yep_dom_prepare: node/str hints from the shared stats (three
+  count3 passes gone)
+- yep_engine_prepare: the '&' pre-reserve (count_char gone)
+
+parse_impl computes stats once and hands them to all three — the
+events paths (pull/push/iterparse/values) run the kernel themselves
+(one pass replacing their one count_char). Benchmarked on a heavily
+contended box (load ~7-160 from an unrelated job): ratios unchanged
+within noise; the expected 4-7% (SWAR loop + 3 SIMD passes -> 1) is
+deferred to a clean-machine run. Gates: Release 231/231, ASAN
+231/231, UBSAN pending at ledger time.
+
+Same batch: the release workflow now publishes the lockstep gem
+(yeptris-ruby's matching vX.Y.Z.* tag) through the RubyGems trusted
+publisher the owner configured for this repo — id-token: write.
