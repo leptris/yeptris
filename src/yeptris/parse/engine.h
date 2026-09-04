@@ -10,6 +10,7 @@
 #define YEP_ENGINE_H
 
 #include "common/error.h"
+#include "common/simd_text.h"
 #include "memory/allocator.h"
 #include "memory/pool.h"
 #include "parse/events.h"
@@ -28,9 +29,9 @@ void yep_engine_destroy(yep_engine* e);
 int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* sink);
 
 /* Content-derived pre-sizing before run(): reserves the anchor interner
- * from the buffer's '&' occurrences (every anchor definition carries
+ * from the stream's '&' occurrences (every anchor definition carries
  * exactly one, so the count never undershoots). */
-void yep_engine_prepare(yep_engine* e, const char* buf, size_t len);
+void yep_engine_prepare(yep_engine* e, const yep_text_stats* st);
 
 /* Resumable stepping (TODO.impl/07): chunks accumulate; every feed
  * parses the complete DOCUMENTS received so far (cut at `---` / `...`

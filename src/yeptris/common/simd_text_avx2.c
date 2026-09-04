@@ -177,12 +177,85 @@ static ptrdiff_t yep_avx2_quote_scan(const char* s, size_t len, char q, int* has
     return -1;
 }
 
+static void yep_avx2_scan_stats(const char* s, size_t len, yep_text_stats* out) {
+    if (s == NULL || len == 0) {
+        memset(out, 0, sizeof(*out));
+        return;
+    }
+
+    const __m256i ktab = _mm256_set1_epi8('\n'), kcomma = _mm256_set1_epi8(','),
+                  kdash = _mm256_set1_epi8('-'), kcolon = _mm256_set1_epi8(':'),
+                  kbrk = _mm256_set1_epi8('['), kbrce = _mm256_set1_epi8('{'),
+                  kdq = _mm256_set1_epi8('"'), ksq = _mm256_set1_epi8('\''),
+                  kpipe = _mm256_set1_epi8('|'), kamp = _mm256_set1_epi8('&');
+    const __m256i kflip = _mm256_set1_epi8((char)0x80), klow = _mm256_set1_epi8((char)0xA0),
+                  ktab9 = _mm256_set1_epi8('\t'), klf = _mm256_set1_epi8('\n'),
+                  kcr = _mm256_set1_epi8('\r'), kdel = _mm256_set1_epi8((char)0x7F);
+    size_t c_nl = 0, c_co = 0, c_da = 0, c_cl = 0, c_br = 0, c_bc = 0, c_dq = 0, c_sq = 0, c_pi = 0,
+           c_am = 0;
+    uint32_t bad = 0, hi = 0;
+    size_t i = 0;
+    for (; i + YEP_AVX2_CHUNK <= len; i += YEP_AVX2_CHUNK) {
+        const __m256i* pp = (const __m256i*)(const void*)(s + i);
+        __m256i v = _mm256_loadu_si256(pp);
+        hi |= (uint32_t)_mm256_movemask_epi8(v); /* sign bit = bit7 = non-ASCII */
+        c_nl +=
+            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ktab)));
+        c_co += (size_t)__builtin_popcount(
+            (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kcomma)));
+        c_da +=
+            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdash)));
+        c_cl += (size_t)__builtin_popcount(
+            (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kcolon)));
+        c_br +=
+            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrk)));
+        c_bc +=
+            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrce)));
+        c_dq +=
+            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdq)));
+        c_sq +=
+            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ksq)));
+        c_pi +=
+            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kpipe)));
+        c_am +=
+            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kamp)));
+        /* c-printable ASCII violations: b < 0x20 (signed trick: flip
+         * the sign bit, then b < 0x20 <=> w < 0xA0), except TAB/LF/CR;
+         * plus DEL. Non-ASCII is tracked separately in `hi`. */
+        __m256i flipped = _mm256_xor_si256(v, kflip);
+        __m256i lo = _mm256_cmpgt_epi8(klow, flipped); /* w < 0xA0 signed */
+        __m256i allowed =
+            _mm256_or_si256(_mm256_cmpeq_epi8(v, ktab9),
+                            _mm256_or_si256(_mm256_cmpeq_epi8(v, klf), _mm256_cmpeq_epi8(v, kcr)));
+        /* non-ASCII bytes are the validator's business, not the
+         * c-printable-ASCII rule — mask them out (flipped < 0 <=> b < 0x80) */
+        __m256i is_ascii = _mm256_cmpgt_epi8(_mm256_setzero_si256(), flipped);
+        __m256i badv = _mm256_and_si256(is_ascii, _mm256_or_si256(_mm256_andnot_si256(allowed, lo),
+                                                                  _mm256_cmpeq_epi8(v, kdel)));
+        bad |= (uint32_t)_mm256_movemask_epi8(badv);
+    }
+    yep_text_stats tail = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    yep_text_scan_stats_scalar(s + i, len - i, &tail);
+    out->nl = c_nl + tail.nl;
+    out->comma = c_co + tail.comma;
+    out->dash = c_da + tail.dash;
+    out->colon = c_cl + tail.colon;
+    out->bracket = c_br + tail.bracket;
+    out->brace = c_bc + tail.brace;
+    out->dq = c_dq + tail.dq;
+    out->sq = c_sq + tail.sq;
+    out->pipe = c_pi + tail.pipe;
+    out->amp = c_am + tail.amp;
+    out->nonascii = (hi != 0) || tail.nonascii;
+    out->bad_printable = (bad != 0) || tail.bad_printable;
+}
+
 const yep_text_kernels yep_text_kernels_avx2 = {
     yep_avx2_contains,   yep_avx2_find,
     yep_avx2_find3,      yep_avx2_count,
     yep_avx2_count3,     yep_avx2_copy_count3,
     yep_avx2_find_not,   yep_text_stopset_find_scalar, /* deferred — see file header */
-    yep_avx2_quote_scan,
+    yep_avx2_quote_scan, yep_avx2_scan_stats,
 };
 
 #endif /* YEP_ARCH_X86 */

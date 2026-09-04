@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "common/simd_text.h"
 #include "doc.h"
 #include "dom/dom.h"
 #include "encoding/encoding.h"
@@ -68,7 +69,9 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
             goto jfail;
         }
         dom->input_base = buf; /* strict JSON is UTF-8 by definition */
-        yep_dom_prepare(dom, buf, len);
+        yep_text_stats jst;
+        yep_text_active()->scan_stats(buf, len, &jst);
+        yep_dom_prepare(dom, &jst);
         int brc = yep_dom_build_json(dom, buf, len);
         if (brc == -1) {
             yep_dom_destroy(dom);
@@ -116,6 +119,7 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
     /* Encoding front-end: BOM sniff; borrow UTF-8, transcode the rest. */
     const char* data = buf;
     size_t data_len = len;
+    yep_text_stats pre_stats = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     unsigned char* transcoded = NULL;
     size_t transcoded_len = 0;
     yep_encoding enc = YEP_ENC_UNKNOWN;
@@ -154,13 +158,23 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
             st = YEPTRIS_ERROR_ENCODING;
             goto fail;
         }
+        yep_text_active()->scan_stats(data, data_len, &pre_stats);
     } else {
-        size_t verr = 0;
-        if (!yep_printable_validate((const unsigned char*)data, data_len, &verr)) {
-            yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, verr,
-                          "ill-formed or non-printable UTF-8 at byte %zu", verr);
-            st = YEPTRIS_ERROR_ENCODING;
-            goto fail;
+        /* one fused SIMD pass answers everything the pre-engine
+         * machinery asks: pure printable-ASCII input skips the SWAR
+         * validator entirely (any non-ASCII or violation falls to it
+         * for the authoritative answer + error position) */
+        yep_text_stats pst;
+        yep_text_active()->scan_stats(data, data_len, &pst);
+        pre_stats = pst;
+        if (pst.nonascii || pst.bad_printable) {
+            size_t verr = 0;
+            if (!yep_printable_validate((const unsigned char*)data, data_len, &verr)) {
+                yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, verr,
+                              "ill-formed or non-printable UTF-8 at byte %zu", verr);
+                st = YEPTRIS_ERROR_ENCODING;
+                goto fail;
+            }
         }
     }
 
@@ -188,8 +202,8 @@ engine_enter:
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
     }
-    yep_dom_prepare(dom, buf, len);
-    yep_engine_prepare(eng, buf, len);
+    yep_dom_prepare(dom, &pre_stats);
+    yep_engine_prepare(eng, &pre_stats);
 
     yep_sink sink = {yep_dom_on_event, dom};
     int rc = yep_engine_run(eng, data, data_len, &sink);

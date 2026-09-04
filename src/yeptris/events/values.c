@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "../../include/yeptris/values.h"
+#include "../common/simd_text.h"
 #include "../parse/engine.h"
 #include "../parse/numbers.h"
 #include "../resolve/resolver.h"
@@ -221,7 +222,9 @@ static YeptrisStatus drain_records(const char* yaml, size_t len, YeptrisSchema s
 
     YeptrisStatus st = YEPTRIS_OK;
     yep_sink sink = {yep_rec_on_event, &c->store};
-    yep_engine_prepare(eng, yaml, len);
+    yep_text_stats pst;
+    yep_text_active()->scan_stats(yaml, len, &pst);
+    yep_engine_prepare(eng, &pst);
     if (yep_engine_run(eng, yaml, len, &sink) != 0) {
         st = YEPTRIS_ERROR_PARSE;
     } else if (transform(c) != 0) {
@@ -305,13 +308,17 @@ YEPTRIS_API YeptrisStatus yeptris_value_drain_columns(const char* yaml, size_t l
     cols->count = n;
     cols->arena_len = c->arena_len;
     cols->arena = c->arena;
-    cols->payloads = block;
-    cols->offs = (uint32_t*)(block + n);
-    cols->lens = cols->offs + n;
-    cols->kinds = (uint8_t*)(cols->lens + n);
-    cols->tags = cols->kinds + n;
-    cols->is_keys = cols->tags + n;
-    cols->bools = cols->is_keys + n;
+    /* a zero-entry drain keeps every column NULL (pointer arithmetic
+     * on a null block is UB — caught by UBSan on the empty stream) */
+    if (block != NULL) {
+        cols->payloads = block;
+        cols->offs = (uint32_t*)(block + n);
+        cols->lens = cols->offs + n;
+        cols->kinds = (uint8_t*)(cols->lens + n);
+        cols->tags = cols->kinds + n;
+        cols->is_keys = cols->tags + n;
+        cols->bools = cols->is_keys + n;
+    }
     for (size_t i = 0; i < n; i++) {
         const YeptrisValue* v = &c->vals[i];
         cols->payloads[i] = (int64_t)v->p;

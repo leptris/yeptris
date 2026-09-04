@@ -17,6 +17,8 @@
 
 #include <stdint.h>
 
+#include "../common/simd_text.h"
+
 #include "common/nametab.h"
 #include "dom/mapindex.h"
 #include "memory/allocator.h"
@@ -140,7 +142,7 @@ void yep_dom_reserve(yep_dom* d, uint32_t node_hint, uint32_t str_hint);
 /* One-shot sizing from the input (count passes + reserve above) —
  * the single home of the heuristic; parse_impl and the memory bench
  * both call it so the measure and the product can't drift. */
-void yep_dom_prepare(yep_dom* d, const char* buf, size_t len);
+void yep_dom_prepare(yep_dom* d, const yep_text_stats* st);
 
 /* builder helpers shared with mutate.c (dom-internal) */
 int dom_grow_nodes(yep_dom* d, uint32_t need);

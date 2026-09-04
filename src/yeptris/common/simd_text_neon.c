@@ -199,12 +199,67 @@ static ptrdiff_t yep_neon_quote_scan(const char* s, size_t len, char q, int* has
     return -1;
 }
 
+static void yep_neon_scan_stats(const char* s, size_t len, yep_text_stats* out) {
+    if (s == NULL || len == 0) {
+        memset(out, 0, sizeof(*out));
+        return;
+    }
+
+    const uint8x16_t ktab = vdupq_n_u8('\n'), kcomma = vdupq_n_u8(','), kdash = vdupq_n_u8('-'),
+                     kcolon = vdupq_n_u8(':'), kbrk = vdupq_n_u8('['), kbrce = vdupq_n_u8('{'),
+                     kdq = vdupq_n_u8('"'), ksq = vdupq_n_u8('\''), kpipe = vdupq_n_u8('|'),
+                     kamp = vdupq_n_u8('&');
+    const uint8x16_t kzero = vdupq_n_u8(0), k80 = vdupq_n_u8(0x80), k9f = vdupq_n_u8(0x9F),
+                     ktab9 = vdupq_n_u8('\t'), klf = vdupq_n_u8('\n'), kcr = vdupq_n_u8('\r'),
+                     kdel = vdupq_n_u8(0x7F);
+    size_t c_nl = 0, c_co = 0, c_da = 0, c_cl = 0, c_br = 0, c_bc = 0, c_dq = 0, c_sq = 0, c_pi = 0,
+           c_am = 0;
+    uint64_t bad = 0, hi = 0;
+    size_t i = 0;
+    for (; i + 16 <= len; i += 16) {
+        uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(s + i));
+        hi |= (uint64_t)vmaxvq_u8(vcgeq_u8(v, k80)); /* any non-ASCII byte */
+        c_nl += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, ktab), vdupq_n_u8(1)));
+        c_co += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kcomma), vdupq_n_u8(1)));
+        c_da += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kdash), vdupq_n_u8(1)));
+        c_cl += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kcolon), vdupq_n_u8(1)));
+        c_br += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kbrk), vdupq_n_u8(1)));
+        c_bc += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kbrce), vdupq_n_u8(1)));
+        c_dq += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kdq), vdupq_n_u8(1)));
+        c_sq += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, ksq), vdupq_n_u8(1)));
+        c_pi += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kpipe), vdupq_n_u8(1)));
+        c_am += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kamp), vdupq_n_u8(1)));
+        /* c-printable-ASCII violations, non-ASCII masked out:
+         * b < 0x20 except TAB/LF/CR, plus DEL */
+        uint8x16_t is_ascii = vcltzq_s8(vreinterpretq_s8_u8(veorq_u8(v, k80)));
+        uint8x16_t lo = vcltq_u8(v, vdupq_n_u8(0x20));
+        uint8x16_t allowed =
+            vorrq_u8(vceqq_u8(v, ktab9), vorrq_u8(vceqq_u8(v, klf), vceqq_u8(v, kcr)));
+        uint8x16_t badv = vandq_u8(is_ascii, vorrq_u8(vbicq_u8(lo, allowed), vceqq_u8(v, kdel)));
+        bad |= (uint64_t)vaddvq_u8(badv);
+    }
+    yep_text_stats tail = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    yep_text_scan_stats_scalar(s + i, len - i, &tail);
+    out->nl = c_nl + tail.nl;
+    out->comma = c_co + tail.comma;
+    out->dash = c_da + tail.dash;
+    out->colon = c_cl + tail.colon;
+    out->bracket = c_br + tail.bracket;
+    out->brace = c_bc + tail.brace;
+    out->dq = c_dq + tail.dq;
+    out->sq = c_sq + tail.sq;
+    out->pipe = c_pi + tail.pipe;
+    out->amp = c_am + tail.amp;
+    out->nonascii = (hi != 0) || tail.nonascii;
+    out->bad_printable = (bad != 0) || tail.bad_printable;
+}
+
 const yep_text_kernels yep_text_kernels_neon = {
     yep_neon_contains,   yep_neon_find,
     yep_neon_find3,      yep_neon_count,
     yep_neon_count3,     yep_neon_copy_count3,
     yep_neon_find_not,   yep_text_stopset_find_scalar, /* deferred — see AVX2 header note */
-    yep_neon_quote_scan,
+    yep_neon_quote_scan, yep_neon_scan_stats,
 };
 
 #endif /* YEP_ARCH_AARCH64 */

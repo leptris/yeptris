@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "../../include/yeptris/events.h"
+#include "../common/simd_text.h"
 #include "../parse/engine.h"
 #include "capture.h"
 
@@ -140,7 +141,9 @@ YEPTRIS_API const YeptrisEvent* yeptris_iterparse_next(YeptrisIterparse it, size
             return NULL;
         }
         yep_sink sink = {iter_on_event, &s};
-        yep_engine_prepare(eng, it->buf + it->cursor, it->len - it->cursor);
+        yep_text_stats pst;
+        yep_text_active()->scan_stats(it->buf + it->cursor, it->len - it->cursor, &pst);
+        yep_engine_prepare(eng, &pst);
         int rc = yep_engine_run(eng, it->buf + it->cursor, it->len - it->cursor, &sink);
         size_t pos = yep_engine_pos(eng);
         const yep_error* err = yep_engine_error(eng);
