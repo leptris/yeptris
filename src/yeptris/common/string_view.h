@@ -12,6 +12,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "port.h"
 
@@ -36,7 +37,45 @@ static inline bool yep_view_is_empty(yep_view v) {
     return v.len == 0;
 }
 
-bool yep_view_eq(yep_view a, yep_view b);
+/* True if a and b are the same bytes. Word-at-a-time: interner probes
+ * compare tiny keys millions of times per parse and a libc memcmp call
+ * per probe cost ~5% of anchor-heavy parse. */
+static inline bool yep_view_eq(yep_view a, yep_view b) {
+    if (a.len != b.len) {
+        return false;
+    }
+    uint32_t n = a.len;
+    const char* p = a.p;
+    const char* q = b.p;
+    while (n >= 8) {
+        uint64_t x, y;
+        memcpy(&x, p, 8);
+        memcpy(&y, q, 8);
+        if (x != y) {
+            return false;
+        }
+        p += 8;
+        q += 8;
+        n -= 8;
+    }
+    if (n >= 4) {
+        uint32_t x, y;
+        memcpy(&x, p, 4);
+        memcpy(&y, q, 4);
+        if (x != y) {
+            return false;
+        }
+        p += 4;
+        q += 4;
+        n -= 4;
+    }
+    while (n--) {
+        if (*p++ != *q++) {
+            return false;
+        }
+    }
+    return true;
+}
 
 /* True if a equals the NUL-terminated s (without including its NUL). */
 bool yep_view_eq_cstr(yep_view a, const char* s);
@@ -46,10 +85,6 @@ bool yep_view_starts_with(yep_view v, const char* prefix);
 
 /* Sub-view [off, off + len). Invalid bounds yield the empty view. */
 yep_view yep_view_slice(yep_view v, uint32_t off, uint32_t len);
-
-/* FNV-1a hashes, the interning primitives (TODO.impl/11). */
-uint32_t yep_view_hash32(yep_view v);
-uint64_t yep_view_hash64(yep_view v);
 
 #ifdef __cplusplus
 }

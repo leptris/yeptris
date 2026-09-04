@@ -430,3 +430,54 @@ mantissa/exponent cross-checks against strtod: bit-identical
 Micro-bench (4 typed reads x 2M, incl. map_get): 40 -> 33 ns/read
 (-17%); the accessor's remaining cost is dominated by the map lookup
 handle allocation. 185/185 gates.
+
+## 2026-09-04 — engine pass 1: interner, line memo, node sizing
+
+Same-binary min-of-20 vs libyaml (this machine), all four synthetic
+shapes, before -> after:
+
+| shape | before | after |
+|---|---|---|
+| anchor | 1.27x | **1.96x** |
+| block | 2.06x | **2.18x** |
+| scalar | 2.43x | **2.94x** |
+| wide | 1.87x | **2.24x** |
+
+Levers, in impact order:
+
+- anchor ordinals end to end: the engine stamps 1-based serial ids at
+  definition (the nametab value IS the id), events carry anchor_id,
+  the DOM binds by direct-indexed array — the DOM's second name-keyed
+  table and its per-alias hash are gone.
+- yep_engine_prepare counts '&' (every anchor def carries exactly one,
+  so the count never undershoots) and pre-reserves the interner; the
+  64..128k doubling chain (rehash + memmove + madvise churn) was ~16%
+  of anchor-heavy parse.
+- yep_view_hash: word-at-a-time with constant-size loads only — a
+  variable-length memcpy lowers to a memmove CALL, one per probe was
+  measurable. yep_view_eq moved to the header as a word-compare
+  inline (libc memcmp per probe cost ~5% of alias resolution). The
+  dead FNV hash32/64 in string_view deleted: the interner hash is the
+  ONE view hash.
+- dom node-hint floor 2*nl: nl-colons cancels to zero on plain scalar
+  maps — the hint undershot by 200k nodes and the array-growth
+  memmove chain showed in every profile.
+- per-line scan memo widened beyond the flow loop: every site
+  positioned at line_start reads it (plain continuation checks,
+  literal blocks, the main loop) — a line is scanned once, not twice.
+  Loop heads that can see MID-LINE pos (main loop: the "--- # c"
+  inline path leaves pos at the comment whose e_line_done is a no-op;
+  literal blocks: trailing spaces after "|-") keep the scan-from-pos
+  semantics — the memo alone rewound pos and spun forever on
+  5TYM.in (directive + "--- # comment" + tagged scalar). Found by
+  the roundtrip harness spinning at 99% CPU; fixed with a
+  pos==line_start guard at both loop heads.
+- core12 resolver word checks: constant-size compares keyed on
+  length (the per-word strlen loop + memcmp call chain ran once per
+  scalar event).
+
+Gates: 228/228 Release, ASAN 228/228, UBSAN 229/229; the 405-file
+libyaml snapshot corpus swept clean. Next levers, ledgered for pass 2:
+e_parse_value self-time (~20% of anchor parse remains), sink batching
+(one indirect call + struct copy per event), SIMD printable_validate
++ count fusion (4 pre-engine passes today).

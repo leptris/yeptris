@@ -13,23 +13,32 @@
 
 #include "resolver.h"
 
-static int tag_is(const char* p, uint32_t n, const char* s) {
-    uint32_t m = 0;
-    while (s[m] != '\0') {
-        m++;
-    }
-    return n == m && (n == 0 || memcmp(p, s, n) == 0);
-}
+/* Word-class checks use constant-size memcmp only: a per-word strlen
+ * loop (tag_is) cost measurable percent of scalar-heavy parse — the
+ * resolver runs once per scalar event. */
+#define TAG_IS4(p, a, b, c) (memcmp(p, a, 4) == 0 || memcmp(p, b, 4) == 0 || memcmp(p, c, 4) == 0)
+#define TAG_IS5(p, a, b, c) (memcmp(p, a, 5) == 0 || memcmp(p, b, 5) == 0 || memcmp(p, c, 5) == 0)
 
 static yep_tag_id core12(void* ctx, const char* p, uint32_t n) {
     (void)ctx;
-    if (n == 0 || tag_is(p, n, "~") || tag_is(p, n, "null") || tag_is(p, n, "Null") ||
-        tag_is(p, n, "NULL")) {
+    if (n == 0) {
         return 4; /* null */
     }
-    if (tag_is(p, n, "true") || tag_is(p, n, "True") || tag_is(p, n, "TRUE") ||
-        tag_is(p, n, "false") || tag_is(p, n, "False") || tag_is(p, n, "FALSE")) {
-        return 3; /* bool */
+    if (n == 1) {
+        if (p[0] == '~') {
+            return 4; /* null */
+        }
+    } else if (n == 4) {
+        if (TAG_IS4(p, "null", "Null", "NULL")) {
+            return 4; /* null */
+        }
+        if (TAG_IS4(p, "true", "True", "TRUE")) {
+            return 3; /* bool */
+        }
+    } else if (n == 5) {
+        if (TAG_IS5(p, "false", "False", "FALSE")) {
+            return 3; /* bool */
+        }
     }
     uint32_t i = 0;
     if (p[0] == '-' || p[0] == '+') {
@@ -42,11 +51,10 @@ static yep_tag_id core12(void* ctx, const char* p, uint32_t n) {
     {
         const char* r = p + i;
         uint32_t rn = n - i;
-        if (rn > 1 && r[0] == '.') {
-            int inf = tag_is(r, rn, ".inf") || tag_is(r, rn, ".Inf") || tag_is(r, rn, ".INF");
-            int nan = tag_is(r, rn, ".nan") || tag_is(r, rn, ".NaN") || tag_is(r, rn, ".NAN");
-            if (inf || (nan && i == 0)) { /* NaN carries no sign */
-                return 2;                 /* float */
+        if (rn == 4 && r[0] == '.') {
+            if (TAG_IS4(r, ".inf", ".Inf", ".INF") ||
+                (i == 0 && TAG_IS4(r, ".nan", ".NaN", ".NAN"))) {
+                return 2; /* float */ /* NaN carries no sign */
             }
         }
     }

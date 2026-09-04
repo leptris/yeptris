@@ -35,6 +35,7 @@ YEPTRIS_API YeptrisPullParser yeptris_pull_new(const char* buf, size_t len) {
         return NULL;
     }
     yep_sink sink = {yep_rec_on_event, &p->store};
+    yep_engine_prepare(eng, buf, len);
     int rc = yep_engine_run(eng, buf, len, &sink);
     const yep_error* err = yep_engine_error(eng);
     if (err != NULL && rc != 0) {

@@ -228,6 +228,7 @@ YEPTRIS_API YeptrisStatus yeptris_value_drain(const char* yaml, size_t len, Yept
 
     YeptrisStatus st = YEPTRIS_OK;
     yep_sink sink = {yep_rec_on_event, &c->store};
+    yep_engine_prepare(eng, yaml, len);
     if (yep_engine_run(eng, yaml, len, &sink) != 0) {
         st = YEPTRIS_ERROR_PARSE;
     } else if (transform(c) != 0) {

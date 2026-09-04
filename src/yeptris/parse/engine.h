@@ -27,6 +27,11 @@ void yep_engine_destroy(yep_engine* e);
  * success, -1 on parse error (see yep_engine_error), -2 sink abort. */
 int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* sink);
 
+/* Content-derived pre-sizing before run(): reserves the anchor interner
+ * from the buffer's '&' occurrences (every anchor definition carries
+ * exactly one, so the count never undershoots). */
+void yep_engine_prepare(yep_engine* e, const char* buf, size_t len);
+
 /* Resumable stepping (TODO.impl/07): chunks accumulate; every feed
  * parses the complete DOCUMENTS received so far (cut at `---` / `...`
  * boundaries at column 0, outside quotes and flow) and keeps the

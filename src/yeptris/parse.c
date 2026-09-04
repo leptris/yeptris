@@ -189,6 +189,7 @@ engine_enter:
         goto fail;
     }
     yep_dom_prepare(dom, buf, len);
+    yep_engine_prepare(eng, buf, len);
 
     yep_sink sink = {yep_dom_on_event, dom};
     int rc = yep_engine_run(eng, data, data_len, &sink);
