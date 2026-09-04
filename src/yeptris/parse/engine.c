@@ -2160,12 +2160,18 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
      * wins over pend. */
     yep_view node_a = yep_view_is_empty(anchor) ? pend_a : anchor;
     yep_view node_t = yep_view_is_empty(tag) ? pend_t : tag;
+    /* the id rides the SAME precedence as the view: same-line props win
+     * over pend — a props-only line followed by its node ("&a\n- x",
+     * "&a\n[b]") carried the pend VIEW with a zero id and the DOM never
+     * bound the ordinal (found by the self-referencing-structures spec:
+     * "--- &id001\n- *id001" failed with an EMPTY error message) */
+    uint32_t node_aid = anchor_ordinal != 0 ? anchor_ordinal : pend_aid;
     e_skip_inline_space(e);
 
     yep_event ev;
     e_event_init(&ev, YEP_EV_SCALAR);
     ev.anchor = node_a;
-    ev.anchor_id = anchor_ordinal;
+    ev.anchor_id = node_aid;
     ev.tag = node_t;
     ev.line = e->line;
     ev.col = e_col(e, node_at) + 1;
@@ -2195,7 +2201,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "&a - x" */
         }
         uint16_t col = e_col(e, e->pos);
-        int rc = e_open_seq(e, col, e->line, col + 1, node_a, node_t, anchor_ordinal);
+        int rc = e_open_seq(e, col, e->line, col + 1, node_a, node_t, node_aid);
         if (rc != 0) {
             return rc;
         }
@@ -2297,7 +2303,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             if (rc != 0) {
                 return rc;
             }
-            rc = e_flow(e, node_a, node_t, anchor_ordinal);
+            rc = e_flow(e, node_a, node_t, node_aid);
             if (rc != 0) {
                 return rc;
             }
@@ -2307,7 +2313,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         {
             e->flow_floor = floor_col;
             e->flow_enforce = (e->depth > 0);
-            int rc = e_flow(e, node_a, node_t, anchor_ordinal);
+            int rc = e_flow(e, node_a, node_t, node_aid);
             e->flow_enforce = 0;
             if (rc != 0) {
                 return rc;
