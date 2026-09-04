@@ -21,6 +21,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write # RubyGems trusted publisher (OIDC)
 
 jobs:
   cut:
@@ -79,3 +80,43 @@ jobs:
           gh release create "v$V" --title "v$V" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
+
+      # The lockstep gem: publish the yeptris-ruby tag matching this C
+      # version ({c-full-semver}.{small-patch}) through the RubyGems
+      # trusted publisher configured for THIS repo + workflow. No
+      # matching tag (or the version already on RubyGems) -> skip.
+      - name: Find the lockstep gem tag
+        id: gemtag
+        run: |
+          V="${{ github.event.pull_request.head.ref }}"
+          V="${V#release/v}"
+          git clone --quiet https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/yeptris-ruby"
+          cd "$RUNNER_TEMP/yeptris-ruby"
+          BEST="$(git tag | grep -E "^v${V//./\.}\.[0-9]+$" | sort -V | tail -1 || true)"
+          if [ -z "$BEST" ]; then
+            echo "no lockstep gem tag v${V}.* — skipping gem publish"
+            echo "found=" >> "$GITHUB_OUTPUT"
+          else
+            echo "lockstep gem: $BEST"
+            echo "found=$BEST" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Ruby
+        if: steps.gemtag.outputs.found != ''
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Build the gem
+        if: steps.gemtag.outputs.found != ''
+        working-directory: ${{ runner.temp }}/yeptris-ruby
+        run: |
+          git checkout --quiet "${{ steps.gemtag.outputs.found }}"
+          gem build yeptris.gemspec
+
+      - name: Push to RubyGems (trusted publisher)
+        if: steps.gemtag.outputs.found != ''
+        working-directory: ${{ runner.temp }}/yeptris-ruby
+        uses: rubygems/release-gem@v1
+        with:
+          gem: yeptris-*.gem
