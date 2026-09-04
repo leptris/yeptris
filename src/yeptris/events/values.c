@@ -200,18 +200,11 @@ static int transform(yep_value_ctx* c) {
     return c->oom ? -1 : 0;
 }
 
-YEPTRIS_API YeptrisStatus yeptris_value_drain(const char* yaml, size_t len, YeptrisSchema schema,
-                                              YeptrisValue** vals, size_t* count, char** arena,
-                                              size_t* arena_len) {
-    if (vals == NULL || count == NULL || arena == NULL || arena_len == NULL ||
-        (yaml == NULL && len != 0)) {
-        return YEPTRIS_ERROR_ARG;
-    }
-    *vals = NULL;
-    *count = 0;
-    *arena = NULL;
-    *arena_len = 0;
-
+/* Shared core of both drain flavors: run the engine, convert, and
+ * hand the record array + arena to the caller (ownership moves). */
+static YeptrisStatus drain_records(const char* yaml, size_t len, YeptrisSchema schema,
+                                   yep_value_ctx** out) {
+    *out = NULL;
     yep_engine* eng = yep_engine_create(yep_system_allocator());
     if (eng == NULL) {
         return YEPTRIS_ERROR_MEMORY;
@@ -250,6 +243,26 @@ YEPTRIS_API YeptrisStatus yeptris_value_drain(const char* yaml, size_t len, Yept
             return YEPTRIS_ERROR_MEMORY;
         }
     }
+    *out = c;
+    return YEPTRIS_OK;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_value_drain(const char* yaml, size_t len, YeptrisSchema schema,
+                                              YeptrisValue** vals, size_t* count, char** arena,
+                                              size_t* arena_len) {
+    if (vals == NULL || count == NULL || arena == NULL || arena_len == NULL ||
+        (yaml == NULL && len != 0)) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    *vals = NULL;
+    *count = 0;
+    *arena = NULL;
+    *arena_len = 0;
+    yep_value_ctx* c = NULL;
+    YeptrisStatus st = drain_records(yaml, len, schema, &c);
+    if (st != YEPTRIS_OK) {
+        return st;
+    }
     *vals = c->vals;
     *count = c->n;
     *arena = c->arena;
@@ -261,4 +274,73 @@ YEPTRIS_API YeptrisStatus yeptris_value_drain(const char* yaml, size_t len, Yept
 YEPTRIS_API void yeptris_value_free(YeptrisValue* vals, char* arena) {
     free(vals);
     free(arena);
+}
+
+YEPTRIS_API YeptrisStatus yeptris_value_drain_columns(const char* yaml, size_t len,
+                                                      YeptrisSchema schema,
+                                                      YeptrisValueColumns* cols) {
+    if (cols == NULL || (yaml == NULL && len != 0)) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    memset(cols, 0, sizeof(*cols));
+    yep_value_ctx* c = NULL;
+    YeptrisStatus st = drain_records(yaml, len, schema, &c);
+    if (st != YEPTRIS_OK) {
+        return st;
+    }
+    size_t n = c->n;
+    /* one carved block, widest-first so every column is naturally
+     * aligned: payloads(8n) offs(4n) lens(4n) kinds tags is_keys bools */
+    size_t total = n * (8 + 4 + 4 + 1 + 1 + 1 + 1);
+    int64_t* block = NULL;
+    if (n > 0) {
+        block = malloc(total);
+        if (block == NULL) {
+            free(c->vals);
+            free(c->arena);
+            free(c);
+            return YEPTRIS_ERROR_MEMORY;
+        }
+    }
+    cols->count = n;
+    cols->arena_len = c->arena_len;
+    cols->arena = c->arena;
+    cols->payloads = block;
+    cols->offs = (uint32_t*)(block + n);
+    cols->lens = cols->offs + n;
+    cols->kinds = (uint8_t*)(cols->lens + n);
+    cols->tags = cols->kinds + n;
+    cols->is_keys = cols->tags + n;
+    cols->bools = cols->is_keys + n;
+    for (size_t i = 0; i < n; i++) {
+        const YeptrisValue* v = &c->vals[i];
+        cols->payloads[i] = (int64_t)v->p;
+        cols->offs[i] = v->off;
+        cols->lens[i] = v->len;
+        cols->kinds[i] = v->kind;
+        cols->tags[i] = v->tag_id;
+        cols->is_keys[i] = v->is_key;
+        cols->bools[i] = v->b;
+    }
+    free(c->vals);
+    free(c);
+    return YEPTRIS_OK;
+}
+
+YEPTRIS_API void yeptris_value_free_columns(YeptrisValueColumns* cols) {
+    if (cols == NULL) {
+        return;
+    }
+    free(cols->payloads); /* the carved block base */
+    free(cols->arena);
+    cols->payloads = NULL;
+    cols->offs = NULL;
+    cols->lens = NULL;
+    cols->kinds = NULL;
+    cols->tags = NULL;
+    cols->is_keys = NULL;
+    cols->bools = NULL;
+    cols->arena = NULL;
+    cols->count = 0;
+    cols->arena_len = 0;
 }
