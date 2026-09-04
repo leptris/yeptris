@@ -113,10 +113,12 @@ jobs:
         run: |
           git checkout --quiet "${{ steps.gemtag.outputs.found }}"
           gem build yeptris.gemspec
+          GEM_FILE="$(ls yeptris-*.gem | head -1)"
+          echo "path=${RUNNER_TEMP}/yeptris-ruby/${GEM_FILE}" >> "$GITHUB_OUTPUT"
+        id: gembuild
 
       - name: Push to RubyGems (trusted publisher)
         if: steps.gemtag.outputs.found != ''
-        working-directory: ${{ runner.temp }}/yeptris-ruby
         uses: rubygems/release-gem@v1
         with:
-          gem: yeptris-*.gem
+          gem: ${{ steps.gembuild.outputs.path }}
