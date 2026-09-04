@@ -508,3 +508,27 @@ deferred to a clean-machine run. Gates: Release 231/231, ASAN
 Same batch: the release workflow now publishes the lockstep gem
 (yeptris-ruby's matching vX.Y.Z.* tag) through the RubyGems trusted
 publisher the owner configured for this repo — id-token: write.
+
+## 2026-09-04 — scan_line rides the SIMD kernels (with a short-line gate)
+
+yep_scan_line's line-end + indentation loops were the last hot
+scalar byte scan in the block path (the engine's per-line memo
+still fills once per line; ~10% of anchor-heavy parse). The fill
+now rides stopset_find (\n/\r set) + find_not (spaces) — with a
+span threshold: below 64 bytes the dispatch cost exceeds the loop
+(anchor-heavy's ~18-byte lines REGRESSED without the gate: 1.85x ->
+1.72x; with it, all shapes improve). Same-binary min-of-25:
+
+| shape | before | after |
+|---|---|---|
+| anchor | 1.85x | 1.92x |
+| block | 2.22x | 2.23x |
+| scalar | 2.85x | 2.97x |
+| wide | 2.16x | 2.23x |
+
+Semantics identical (the flags/doc-marker logic is untouched scalar
+code after the SIMD end+indent); conformance + roundtrip + diff
+suites green. Also ledgered: e_alias self-time (~14% of anchor
+parse) is dominated by nametab-GET cache misses — the next lever is
+16-byte slots carrying the key's first 8 bytes inline (one line per
+probe instead of slot + keys-array), sketched for pass 3.

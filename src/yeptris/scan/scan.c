@@ -30,19 +30,35 @@ yep_line_info yep_scan_line(const char* p, size_t len, size_t pos) {
     li.flags = 0;
     li.first = 0;
 
-    /* Find the line end (any break form). */
-    size_t i = pos;
-    while (i < len && p[i] != '\n' && p[i] != '\r') {
-        i++;
-    }
-    li.end = (uint32_t)i;
-
-    /* Indentation: spaces only; a tab in the indent is flagged. */
+    /* Line end + indentation ride the SIMD kernels: this runs once
+     * per line (the engine's memo) and was the last hot scalar byte
+     * loop in the block path. The 256-bit stopset marks \n and \r. */
+    static const unsigned char k_break_set[32] = {
+        0x00, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    };
     size_t j = pos;
-    while (j < li.end && p[j] == ' ') {
-        j++;
+    if (len - pos >= 64) {
+        /* SIMD pays for its dispatch only past a vector or two of
+         * bytes; short lines (anchor-heavy's ~18B) keep the loop */
+        const yep_text_kernels* k = yep_text_active();
+        ptrdiff_t br = k->stopset_find(p + pos, len - pos, k_break_set);
+        li.end = br < 0 ? (uint32_t)len : (uint32_t)(pos + (size_t)br);
+        ptrdiff_t ind = k->find_not(p + pos, li.end - pos, ' ');
+        j = ind < 0 ? li.end : (size_t)pos + (size_t)ind;
+        li.indent = (uint16_t)(j - pos);
+    } else {
+        size_t i = pos;
+        while (i < len && p[i] != '\n' && p[i] != '\r') {
+            i++;
+        }
+        li.end = (uint32_t)i;
+        while (j < li.end && p[j] == ' ') {
+            j++;
+        }
+        li.indent = (uint16_t)(j - pos);
     }
-    li.indent = (uint16_t)(j - pos);
     if (j < li.end && p[j] == '\t') {
         size_t k = j;
         while (k < li.end && (p[k] == ' ' || p[k] == '\t')) {
