@@ -121,7 +121,7 @@ TEST(AllocFail, EmitSurvivesInjection) {
 }
 
 TEST(AllocFail, NoAllocationNoFailure) {
-    fail_ctx ctx = {0, 0, 0}; /* every = 0: never fail */
+    fail_ctx ctx = {0, 0, 0, 0}; /* every = 0: never fail */
     yep_allocator a = {fail_alloc, fail_free, &ctx};
     yep_engine* eng = yep_engine_create(&a);
     yep_dom* dom = yep_dom_create(&a);
