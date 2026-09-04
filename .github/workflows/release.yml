@@ -117,8 +117,23 @@ jobs:
           echo "path=${RUNNER_TEMP}/yeptris-ruby/${GEM_FILE}" >> "$GITHUB_OUTPUT"
         id: gembuild
 
+      # release-gem@v1 assumes a rake/Gemfile release task in THIS
+      # workspace (the C checkout has neither — its first run failed on
+      # "Could not locate Gemfile"). The direct flow the action performs
+      # internally: exchange the OIDC token for a scoped API key, then
+      # push the prebuilt gem.
       - name: Push to RubyGems (trusted publisher)
         if: steps.gemtag.outputs.found != ''
-        uses: rubygems/release-gem@v1
-        with:
-          gem: ${{ steps.gembuild.outputs.path }}
+        run: |
+          set -euo pipefail
+          OIDC=$(curl -sLS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=rubygems.org" | jq -r .value)
+          KEY=$(curl -sLS -X POST "https://rubygems.org/api/v1/api_key" \
+            -H "Authorization: Bearer $OIDC" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"github-actions-release","scopes":["push_rubygem"]}' | jq -r .rubygem_api_key)
+          if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
+            echo "OIDC-to-API-key exchange failed" >&2
+            exit 1
+          fi
+          gem push "${{ steps.gembuild.outputs.path }}" --host https://rubygems.org -k "$KEY"
