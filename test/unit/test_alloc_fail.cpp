@@ -25,10 +25,12 @@ typedef struct {
     size_t countdown; /* fail when it hits 0, then reset to every */
     size_t every;
     size_t failures;
+    size_t attempts;
 } fail_ctx;
 
 static void* fail_alloc(void* ctx, size_t size) {
     fail_ctx* c = (fail_ctx*)ctx;
+    c->attempts++;
     if (c->every > 0 && c->countdown == 0) {
         c->countdown = c->every;
         c->failures++;
@@ -58,7 +60,7 @@ const char* kDoc = "root:\n"
 
 TEST(AllocFail, EveryNthAcrossAParse) {
     for (size_t every = 1; every <= 24; every++) {
-        fail_ctx ctx = {every, every, 0};
+        fail_ctx ctx = {every, every, 0, 0};
         yep_allocator a = {fail_alloc, fail_free, &ctx};
         yep_engine* eng = yep_engine_create(&a);
         if (eng == NULL) {
@@ -76,11 +78,12 @@ TEST(AllocFail, EveryNthAcrossAParse) {
         yep_engine_run(eng, kDoc, strlen(kDoc), &sink);
         /* failure (or, before the countdown hits, success) is fine;
          * a crash or ASAN finding is not */
-        /* a small doc parses in <= 13 allocations; beyond that the
-         * countdown may simply never reach zero — firing is only
-         * guaranteed when a clean parse out-allocates the stride */
-        if (ctx.failures == 0 && every <= 12) {
-            FAIL() << "injection never fired at every=" << every;
+        /* firing is guaranteed exactly when this run's allocation
+         * attempts out-lived the stride (counts are layout-dependent —
+         * a separate clean pass disagreed with this run by one) */
+        if (ctx.failures == 0 && ctx.attempts > every) {
+            FAIL() << "injection never fired at every=" << every
+                   << " with attempts=" << ctx.attempts;
         }
         /* the contract: memory failure or success — never a crash;
          * teardown must be clean (ASAN/valgrind verify) and the engine

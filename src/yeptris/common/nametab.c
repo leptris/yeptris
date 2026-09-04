@@ -1,9 +1,16 @@
 /* nametab.c — open-addressing view→id interner (TODO.impl/18A).
  *
- * FNV-1a with a murmur-style finalizer (FNV alone has weak low bits,
- * fatal under power-of-two masking); linear probing for cache locality.
- * Rehashes at 70% load. Replaces the O(n) anchor scans that made
- * anchor-heavy documents quadratic (40k anchors: 0.5 MB/s → linear).
+ * FNV-lineage word hash (murmur-style finalizer — FNV alone has weak
+ * low bits, fatal under power-of-two masking); linear probing. The
+ * slot is 16 bytes and carries the key's zero-padded first-8-byte
+ * prefix plus its length: for keys of <=8 bytes — the dominant
+ * anchor-name shape — prefix+length identify the key EXACTLY, the
+ * caller's value sits INLINE in the slot, and a probe touches ONE
+ * cache line (the previous layout paid a slot line plus a random
+ * keys[] line per get — nametab-GET misses were ~14% of anchor-heavy
+ * parse). Longer keys keep insertion-ordered keys[]/values[] side
+ * tables and confirm via a full compare, distinguished by klen1.
+ * No deletes; upsert of an existing key overwrites (last wins).
  */
 
 #include "common/nametab.h"
@@ -63,19 +70,26 @@ uint32_t yep_view_hash(yep_view s) {
     return (uint32_t)(h ^ (h >> 32));
 }
 
+/* The zero-padded first-8-byte prefix: with the length it identifies
+ * keys of <=8 bytes EXACTLY (no confirmation ever needed). */
+static uint64_t key_prefix(yep_view k) {
+    return k.len >= 8 ? load_small(k.p, 8) : load_small(k.p, k.len);
+}
+
 int yep_nametab_init(yep_nametab* t, const yep_allocator* sys) {
     if (t == NULL || sys == NULL) {
         return 0;
     }
     t->sys = sys;
     t->slots = yep_alloc(sys, NT_MIN_CAP * sizeof(*t->slots));
-    t->keys = yep_alloc(sys, NT_MIN_CAP * sizeof(*t->keys));
-    t->values = yep_alloc(sys, NT_MIN_CAP * sizeof(*t->values));
-    if (t->slots == NULL || t->keys == NULL || t->values == NULL) {
-        yep_nametab_free(t);
+    t->keys = NULL;
+    t->values = NULL;
+    if (t->slots == NULL) {
         return 0;
     }
     memset(t->slots, 0, NT_MIN_CAP * sizeof(*t->slots));
+    t->ext_count = 0;
+    t->ext_cap = 0;
     t->count = 0;
     t->cap = NT_MIN_CAP;
     return 1;
@@ -88,27 +102,67 @@ void yep_nametab_free(yep_nametab* t) {
     yep_free(t->sys, t->slots);
     yep_free(t->sys, t->keys);
     yep_free(t->sys, t->values);
-    t->slots = NULL;
-    t->keys = NULL;
-    t->values = NULL;
-    t->count = 0;
-    t->cap = 0;
+    memset(t, 0, sizeof(*t));
 }
 
-/* Reinserts every entry into newcap slots; call only with a power of two. */
+static int nt_ext_grow(yep_nametab* t, uint32_t need) {
+    if (need <= t->ext_cap) {
+        return 1;
+    }
+    uint32_t cap = t->ext_cap ? t->ext_cap * 2 : 16;
+    while (cap < need) {
+        cap *= 2;
+    }
+    yep_view* keys = yep_alloc(t->sys, cap * sizeof(*keys));
+    uint32_t* values = yep_alloc(t->sys, cap * sizeof(*values));
+    if (keys == NULL || values == NULL) {
+        yep_free(t->sys, keys);
+        yep_free(t->sys, values);
+        return 0;
+    }
+    if (t->ext_count > 0) {
+        memcpy(keys, t->keys, (size_t)t->ext_count * sizeof(*keys));
+        memcpy(values, t->values, (size_t)t->ext_count * sizeof(*values));
+    }
+    yep_free(t->sys, t->keys);
+    yep_free(t->sys, t->values);
+    t->keys = keys;
+    t->values = values;
+    t->ext_cap = cap;
+    return 1;
+}
+
+/* Replaces every entry into newcap slots. Inline entries rebuild
+ * their key bytes from the prefix (lossless for <=8-byte keys);
+ * external entries re-hash from keys[]. */
 static int nt_rehash(yep_nametab* t, uint32_t newcap) {
-    uint32_t* slots = yep_alloc(t->sys, newcap * sizeof(*slots));
+    yep_nt_slot* slots = yep_alloc(t->sys, newcap * sizeof(*slots));
     if (slots == NULL) {
         return 0;
     }
     memset(slots, 0, newcap * sizeof(*slots));
     uint32_t mask = newcap - 1;
-    for (uint32_t i = 0; i < t->count; i++) {
-        uint32_t j = yep_view_hash(t->keys[i]) & mask;
-        while (slots[j] != 0) {
+    for (uint32_t i = 0; i < t->cap; i++) {
+        yep_nt_slot src = t->slots[i];
+        if (src.klen1 == 0) {
+            continue;
+        }
+        uint32_t h;
+        if (src.klen1 > 9) {
+            h = yep_view_hash(t->keys[src.val - 1]);
+        } else {
+            char buf[8];
+            uint64_t p = src.prefix;
+            uint32_t len = src.klen1 - 1;
+            memcpy(buf, &p, 8); /* same little-endian round-trip as load_small */
+            yep_view kb = {buf, len};
+            h = yep_view_hash(kb);
+        }
+        uint32_t j = h & mask;
+        while (slots[j].klen1 != 0) {
             j = (j + 1) & mask;
         }
-        slots[j] = i + 1;
+        slots[j] = src;
     }
     yep_free(t->sys, t->slots);
     t->slots = slots;
@@ -116,69 +170,27 @@ static int nt_rehash(yep_nametab* t, uint32_t newcap) {
     return 1;
 }
 
-static int nt_grow(yep_nametab* t) {
-    uint32_t newcap = t->cap * 2;
-    yep_view* keys = yep_alloc(t->sys, newcap * sizeof(*keys));
-    uint32_t* values = yep_alloc(t->sys, newcap * sizeof(*values));
-    if (keys == NULL || values == NULL) {
-        yep_free(t->sys, keys);
-        yep_free(t->sys, values);
-        return 0;
-    }
-    if (t->count > 0) {
-        memcpy(keys, t->keys, (size_t)t->count * sizeof(*keys));
-        memcpy(values, t->values, (size_t)t->count * sizeof(*values));
-    }
-    yep_free(t->sys, t->keys);
-    yep_free(t->sys, t->values);
-    t->keys = keys;
-    t->values = values;
-    return nt_rehash(t, newcap);
-}
-
-int yep_nametab_reserve(yep_nametab* t, uint32_t n) {
-    if (t == NULL || t->cap == 0) {
-        return 0;
-    }
-    if ((uint64_t)n * 100 <= (uint64_t)t->cap * NT_LOAD_PCT) {
-        return 1; /* already room for n at load <= NT_LOAD_PCT */
-    }
-    uint64_t need = ((uint64_t)n * 100 + NT_LOAD_PCT - 1) / NT_LOAD_PCT;
-    uint32_t newcap = NT_MIN_CAP;
-    while ((uint64_t)newcap < need) {
-        newcap *= 2;
-    }
-    yep_view* keys = yep_alloc(t->sys, newcap * sizeof(*keys));
-    uint32_t* values = yep_alloc(t->sys, newcap * sizeof(*values));
-    if (keys == NULL || values == NULL) {
-        yep_free(t->sys, keys);
-        yep_free(t->sys, values);
-        return 0;
-    }
-    if (t->count > 0) {
-        memcpy(keys, t->keys, (size_t)t->count * sizeof(*keys));
-        memcpy(values, t->values, (size_t)t->count * sizeof(*values));
-    }
-    yep_free(t->sys, t->keys);
-    yep_free(t->sys, t->values);
-    t->keys = keys;
-    t->values = values;
-    return nt_rehash(t, newcap);
-}
-
 uint32_t yep_nametab_get(const yep_nametab* t, yep_view key) {
     if (t == NULL || t->cap == 0) {
         return YEP_NAMETAB_NIL;
     }
+    uint32_t klen1 = key.len + 1;
+    uint64_t prefix = key_prefix(key);
     uint32_t mask = t->cap - 1;
     uint32_t j = yep_view_hash(key) & mask;
     for (;;) {
-        uint32_t entry = t->slots[j];
-        if (entry == 0) {
+        const yep_nt_slot* s = &t->slots[j];
+        if (s->klen1 == 0) {
             return YEP_NAMETAB_NIL;
         }
-        if (yep_view_eq(t->keys[entry - 1], key)) {
-            return t->values[entry - 1];
+        if (s->klen1 == klen1 && s->prefix == prefix) {
+            if (klen1 <= 9) {
+                return s->val; /* inline: prefix+len identify the key */
+            }
+            /* external: confirm the full key (prefix collisions) */
+            if (yep_view_eq(t->keys[s->val - 1], key)) {
+                return t->values[s->val - 1];
+            }
         }
         j = (j + 1) & mask;
     }
@@ -190,38 +202,74 @@ void yep_nametab_clear(yep_nametab* t) {
     }
     memset(t->slots, 0, (size_t)t->cap * sizeof(*t->slots));
     t->count = 0;
+    t->ext_count = 0;
 }
 
 int yep_nametab_set(yep_nametab* t, yep_view key, uint32_t value) {
     if (t == NULL || t->cap == 0) {
         return 0;
     }
+    uint32_t klen1 = key.len + 1;
+    uint64_t prefix = key_prefix(key);
     uint32_t mask = t->cap - 1;
     uint32_t j = yep_view_hash(key) & mask;
     for (;;) {
-        uint32_t entry = t->slots[j];
-        if (entry == 0) {
-            break;
+        yep_nt_slot* s = &t->slots[j];
+        if (s->klen1 == 0) {
+            break; /* insert below */
         }
-        if (yep_view_eq(t->keys[entry - 1], key)) {
-            t->values[entry - 1] = value; /* last definition wins */
-            return 1;
+        if (s->klen1 == klen1 && s->prefix == prefix) {
+            if (klen1 <= 9) {
+                s->val = value; /* last definition wins */
+                return 1;
+            }
+            if (yep_view_eq(t->keys[s->val - 1], key)) {
+                t->values[s->val - 1] = value;
+                return 1;
+            }
         }
         j = (j + 1) & mask;
     }
     if ((uint64_t)(t->count + 1) * 100 > (uint64_t)t->cap * NT_LOAD_PCT) {
-        if (!nt_grow(t)) {
+        if (!nt_rehash(t, t->cap * 2)) {
             return 0;
         }
         mask = t->cap - 1;
         j = yep_view_hash(key) & mask;
-        while (t->slots[j] != 0) {
+        while (t->slots[j].klen1 != 0) {
             j = (j + 1) & mask;
         }
     }
-    t->keys[t->count] = key;
-    t->values[t->count] = value;
-    t->slots[j] = t->count + 1;
+    if (klen1 > 9) {
+        if (!nt_ext_grow(t, t->ext_count + 1)) {
+            return 0;
+        }
+        t->keys[t->ext_count] = key;
+        t->values[t->ext_count] = value;
+        t->ext_count++;
+        t->slots[j].prefix = prefix;
+        t->slots[j].val = t->ext_count; /* entry index + 1 */
+        t->slots[j].klen1 = klen1;
+    } else {
+        t->slots[j].prefix = prefix;
+        t->slots[j].val = value; /* inline */
+        t->slots[j].klen1 = klen1;
+    }
     t->count++;
     return 1;
+}
+
+int yep_nametab_reserve(yep_nametab* t, uint32_t n) {
+    if (t == NULL || t->cap == 0) {
+        return 0;
+    }
+    if ((uint64_t)n * 100 <= (uint64_t)t->cap * NT_LOAD_PCT) {
+        return 1;
+    }
+    uint64_t need = ((uint64_t)n * 100 + NT_LOAD_PCT - 1) / NT_LOAD_PCT;
+    uint32_t newcap = NT_MIN_CAP;
+    while ((uint64_t)newcap < need) {
+        newcap *= 2;
+    }
+    return nt_rehash(t, newcap);
 }

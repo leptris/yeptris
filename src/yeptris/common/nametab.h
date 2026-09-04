@@ -21,12 +21,20 @@ extern "C" {
 /* get() miss sentinel; never a stored value (ids are array indices). */
 #define YEP_NAMETAB_NIL UINT32_MAX
 
+typedef struct yep_nt_slot {
+    uint64_t prefix; /* the key's first 8 bytes, zero-padded */
+    uint32_t val;    /* <=8B keys: the value INLINE; longer: entry index+1 */
+    uint32_t klen1;  /* key length + 1; 0 = empty slot */
+} yep_nt_slot;       /* 16 bytes: one cache line per probe */
+
 typedef struct yep_nametab {
     const yep_allocator* sys;
-    uint32_t* slots; /* entry id + 1; 0 = empty */
-    yep_view* keys;  /* borrowed, insertion-ordered */
+    yep_nt_slot* slots;
+    yep_view* keys; /* >8-byte keys only, insertion-ordered */
     uint32_t* values;
-    uint32_t count; /* live entries */
+    uint32_t ext_count; /* live entries in keys/values */
+    uint32_t ext_cap;
+    uint32_t count; /* live entries (inline + external) */
     uint32_t cap;   /* slot count, power of two */
 } yep_nametab;
 

@@ -532,3 +532,27 @@ suites green. Also ledgered: e_alias self-time (~14% of anchor
 parse) is dominated by nametab-GET cache misses — the next lever is
 16-byte slots carrying the key's first 8 bytes inline (one line per
 probe instead of slot + keys-array), sketched for pass 3.
+
+## 2026-09-04 — prefix-slot interner: one cache line per probe
+
+The nametab slot is now 16 bytes and carries the key's zero-padded
+first-8-byte prefix plus its length+1: for keys of <=8 bytes — every
+anchor name in the corpus — prefix+length identify the key EXACTLY
+and the caller's value sits INLINE in the slot, so a get or set
+touches ONE cache line (the old layout paid the slot line plus a
+random keys[] line per get; nametab-GET misses were ~14% of
+anchor-heavy parse, isolated by sampling e_alias). Keys longer than
+8 bytes keep the insertion-ordered side tables and confirm with a
+full compare, distinguished by the length field; rehash rebuilds
+inline keys' bytes from the prefix (lossless at <=8). Empty keys are
+representable (klen+1 encoding).
+
+Best absolute times yet on every shape (min-of-25): anchor 14.13 ms,
+block 28.63, scalar 6.58, wide 5.86 — ratios 1.86-2.94x this round
+(libyaml ran unusually fast; the absolute deltas are the signal).
+
+Also: the alloc-failure harness now counts THIS run's allocation
+attempts (a clean-pass count disagreed by one — layout-dependent),
+and firing is asserted exactly when attempts > stride (the countdown
+ignites on the (N+1)-th call — the old hardcoded bound encoded that
+off-by-one silently). Release 231/231.
