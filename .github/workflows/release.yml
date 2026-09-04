@@ -117,23 +117,15 @@ jobs:
           echo "path=${RUNNER_TEMP}/yeptris-ruby/${GEM_FILE}" >> "$GITHUB_OUTPUT"
         id: gembuild
 
-      # release-gem@v1 assumes a rake/Gemfile release task in THIS
-      # workspace (the C checkout has neither — its first run failed on
-      # "Could not locate Gemfile"). The direct flow the action performs
-      # internally: exchange the OIDC token for a scoped API key, then
-      # push the prebuilt gem.
-      - name: Push to RubyGems (trusted publisher)
+      # The exchange is rubygems' own action (the same one release-gem
+      # composes): it mints a scoped API key from this job's OIDC token
+      # and exports GEM_HOST_API_KEY — the hand-rolled curl hit the
+      # wrong endpoint shape ("HTTP Basic: Access denied" on
+      # /api/v1/api_key; the OIDC probe workflow proved the token
+      # itself fine).
+      - name: Configure RubyGems credentials (trusted publisher)
         if: steps.gemtag.outputs.found != ''
-        run: |
-          set -euo pipefail
-          OIDC=$(curl -sLS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=rubygems.org" | jq -r .value)
-          KEY=$(curl -sLS -X POST "https://rubygems.org/api/v1/api_key" \
-            -H "Authorization: Bearer $OIDC" \
-            -H "Content-Type: application/json" \
-            -d '{"name":"github-actions-release","scopes":["push_rubygem"]}' | jq -r .rubygem_api_key)
-          if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
-            echo "OIDC-to-API-key exchange failed" >&2
-            exit 1
-          fi
-          gem push "${{ steps.gembuild.outputs.path }}" --host https://rubygems.org -k "$KEY"
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
+      - name: Push to RubyGems
+        if: steps.gemtag.outputs.found != ''
+        run: gem push "${{ steps.gembuild.outputs.path }}"
