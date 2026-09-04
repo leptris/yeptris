@@ -209,9 +209,8 @@ static void yep_neon_scan_stats(const char* s, size_t len, yep_text_stats* out) 
                      kcolon = vdupq_n_u8(':'), kbrk = vdupq_n_u8('['), kbrce = vdupq_n_u8('{'),
                      kdq = vdupq_n_u8('"'), ksq = vdupq_n_u8('\''), kpipe = vdupq_n_u8('|'),
                      kamp = vdupq_n_u8('&');
-    const uint8x16_t kzero = vdupq_n_u8(0), k80 = vdupq_n_u8(0x80), k9f = vdupq_n_u8(0x9F),
-                     ktab9 = vdupq_n_u8('\t'), klf = vdupq_n_u8('\n'), kcr = vdupq_n_u8('\r'),
-                     kdel = vdupq_n_u8(0x7F);
+    const uint8x16_t k80 = vdupq_n_u8(0x80), ktab9 = vdupq_n_u8('\t'), klf = vdupq_n_u8('\n'),
+                     kcr = vdupq_n_u8('\r'), kdel = vdupq_n_u8(0x7F), klow20 = vdupq_n_u8(0x20);
     size_t c_nl = 0, c_co = 0, c_da = 0, c_cl = 0, c_br = 0, c_bc = 0, c_dq = 0, c_sq = 0, c_pi = 0,
            c_am = 0;
     uint64_t bad = 0, hi = 0;
@@ -232,7 +231,7 @@ static void yep_neon_scan_stats(const char* s, size_t len, yep_text_stats* out) 
         /* c-printable-ASCII violations, non-ASCII masked out:
          * b < 0x20 except TAB/LF/CR, plus DEL */
         uint8x16_t is_ascii = vcltzq_s8(vreinterpretq_s8_u8(veorq_u8(v, k80)));
-        uint8x16_t lo = vcltq_u8(v, vdupq_n_u8(0x20));
+        uint8x16_t lo = vcltq_u8(v, klow20);
         uint8x16_t allowed =
             vorrq_u8(vceqq_u8(v, ktab9), vorrq_u8(vceqq_u8(v, klf), vceqq_u8(v, kcr)));
         uint8x16_t badv = vandq_u8(is_ascii, vorrq_u8(vbicq_u8(lo, allowed), vceqq_u8(v, kdel)));

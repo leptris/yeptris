@@ -36,10 +36,10 @@ struct Corpus {
  * path minus the encoding front-end, which allocates nothing on the
  * borrow path). */
 extern "C" {
+#include "common/simd_text.h"
 #include "dom/dom.h"
 #include "memory/allocator.h"
 #include "parse/engine.h"
-#include "common/simd_text.h"
 }
 
 typedef struct {
