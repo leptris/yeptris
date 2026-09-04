@@ -556,3 +556,27 @@ attempts (a clean-pass count disagreed by one — layout-dependent),
 and firing is asserted exactly when attempts > stride (the countdown
 ignites on the (N+1)-th call — the old hardcoded bound encoded that
 off-by-one silently). Release 231/231.
+
+## 2026-09-05 — vectorized stopset_find: MEASURED DEAD (the nibble method)
+
+The last hot scalar byte loop was stopset_find's bitmap probe (~17%
+of scalar-heavy parse; every plain scalar and line scan rides it).
+Vectorized with the nibble-table method in both ISA TUs (two vtbl/
+pshufb lookups select the set byte via (hi<<1)|(lo>>3), a 1<<(lo&7)
+nibble-LUT mask replaces the per-lane shift, first hit = min-index /
+movemask+tzcnt). Correct after three compounding bugs — the mask LUT
+must mirror entries 8..15 to lo&7 (the index is the FULL nibble);
+bit01 masks are 0x00/0xFF not 0/1 (the XOR-1 miss-derivation was
+garbage; an exact vbsl select fixed it); and a 32-byte span gate
+covered the table-build overhead on short spans.
+
+MEASURED NET LOSS on this machine (Apple silicon, min-of-25):
+scalar -0.6ms (-9%) but block +3.4ms (+12%), wide +0.4ms — the
+nibble kernel's per-chunk dependency chain (~11 serial cycles)
+loses to the branch-predicted scalar loop on block's span mix.
+REVERTED; the scalar kernels stay. The HARDENED differential stays:
+the old test's set of rare bytes let every bug above pass (probe
+buffers never hit in vector chunks) — the set now includes frequent
+bytes, every prefix length, and all 256 bytes as probes both alone
+and past lane 15. A future attempt needs ILP across chunks (two
+independent chains) to beat the latency wall.

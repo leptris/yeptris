@@ -339,15 +339,52 @@ TEST(SimdText, QuoteScanSemantics) {
 
 TEST(SimdText, StopsetFind) {
     const yep_text_kernels* k = yep_text_active();
+    /* the set MUST contain bytes that actually OCCUR in the probe
+     * buffers at every lane position — a set of rare bytes once let a
+     * broken vector path pass (the probes never hit in full chunks) */
     unsigned char set[32];
     yep_stopset_clear(set);
-    for (unsigned char c : {':', ',', '[', ']', '{', '}', '\n'}) {
+    for (unsigned char c : {':', ',', '[', ']', '{', '}', '\n', 'a', 'e', 'x', '0', ' '}) {
         yep_stopset_add(set, c);
     }
     for (const std::string& b : buffers()) {
         ptrdiff_t want = naive_stopset_find(b.data(), b.size(), set);
         EXPECT_EQ(k->stopset_find(b.data(), b.size(), set), want);
         EXPECT_EQ(yep_text_stopset_find_scalar(b.data(), b.size(), set), want);
+    }
+    /* every prefix length: the first hit must track the span's edge */
+    const std::string probe = "base: &b\n  x: 1\nsame: *b\n";
+    for (size_t L = 0; L <= probe.size(); L++) {
+        EXPECT_EQ(k->stopset_find(probe.data(), L, set), naive_stopset_find(probe.data(), L, set))
+            << "len=" << L;
+    }
+    /* all 256 bytes as single probes, alone and embedded past lane 15 */
+    for (unsigned c = 0; c < 256; c++) {
+        unsigned char one[2] = {(unsigned char)c, 'z'};
+        unsigned char late[18] = {'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  'q',
+                                  (unsigned char)c,
+                                  'z'};
+        EXPECT_EQ(k->stopset_find((const char*)one, 2, set),
+                  naive_stopset_find((const char*)one, 2, set))
+            << "byte " << c;
+        EXPECT_EQ(k->stopset_find((const char*)late, 18, set),
+                  naive_stopset_find((const char*)late, 18, set))
+            << "byte " << c << " late";
     }
     /* Empty set never matches. */
     unsigned char none[32] = {0};
