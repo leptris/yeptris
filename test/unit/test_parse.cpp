@@ -265,6 +265,55 @@ TEST(Parse, AnchorsAndAliases) {
     yeptris_document_free(doc);
 }
 
+/* A props-only line followed by its node: the pend anchor VIEW and its
+ * ordinal id must ride together (same-line-wins) into block sequences,
+ * flow collections, and scalars — the id alone reaching the DOM was the
+ * self-referencing-structures bug (empty error, found by the Ruby port
+ * spec: "--- &id001\n- *id001"). */
+TEST(Parse, PendAnchorIdRidesTheView) {
+    struct {
+        const char* yaml;
+        const char* key;
+        YeptrisNodeKind kind;
+    } cases[] = {
+        {"--- &id001\n- *id001\n", NULL, YEPTRIS_NODE_SEQUENCE},
+        {"k: &a\n  [b, 1]\nr: *a\n", "k", YEPTRIS_NODE_SEQUENCE},
+        {"k: &a\n  {b: 1}\nr: *a\n", "k", YEPTRIS_NODE_MAPPING},
+        {"k: &a\n  word\nr: *a\n", "k", YEPTRIS_NODE_SCALAR},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(c.yaml, strlen(c.yaml), &st);
+        ASSERT_NE(doc, nullptr) << c.yaml << " -> " << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        YeptrisNode node = c.key ? yeptris_node_map_get(root, c.key, strlen(c.key)) : root;
+        ASSERT_NE(node, nullptr) << c.yaml;
+        EXPECT_EQ(yeptris_node_kind(node), c.kind) << c.yaml;
+        size_t alen = 0;
+        const char* an = yeptris_node_anchor(node, &alen);
+        ASSERT_NE(an, nullptr) << c.yaml;
+        EXPECT_EQ(std::string(an, alen), c.key ? "a" : "id001") << c.yaml;
+        const char* ref_name = c.key ? "r" : NULL;
+        YeptrisNode ref = ref_name ? yeptris_node_map_get(root, ref_name, 1) : nullptr;
+        if (ref_name) {
+            ASSERT_NE(ref, nullptr) << c.yaml;
+            EXPECT_EQ(yeptris_node_kind(ref), YEPTRIS_NODE_ALIAS) << c.yaml;
+            YeptrisNode target = yeptris_node_alias_target(ref);
+            ASSERT_NE(target, nullptr) << c.yaml;
+            EXPECT_EQ(yeptris_node_id(target), yeptris_node_id(node)) << c.yaml;
+        } else {
+            /* the self-referencing sequence: element 0 aliases the root */
+            YeptrisNode el = yeptris_node_seq_at(node, 0);
+            ASSERT_NE(el, nullptr) << c.yaml;
+            EXPECT_EQ(yeptris_node_kind(el), YEPTRIS_NODE_ALIAS) << c.yaml;
+            EXPECT_EQ(yeptris_node_id(yeptris_node_alias_target(el)), yeptris_node_id(node))
+                << c.yaml;
+        }
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, Tags) {
     const char* y = "a: !!str 123\nb: !custom v\n";
     YeptrisStatus st;
