@@ -2400,7 +2400,6 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     if (!yep_plain_first_ok((unsigned char)e->p[e->pos])) {
         return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* lone "]" / "}" / "," */
     }
-    size_t start = e->pos;
     yep_span s = yep_scan_plain(e->p, e->len, e->pos, 0);
     if (s.term != YEP_TERM_COLON && !yep_view_is_empty(pend_a) && !yep_view_is_empty(anchor)) {
         /* two anchors on ONE scalar ("&a
