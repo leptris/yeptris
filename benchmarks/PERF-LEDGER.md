@@ -589,3 +589,30 @@ the fold. The span now passes through (scan_plain is buffer-pure;
 the single caller computed it moments earlier). Best numbers yet on
 every shape (min-of-25): anchor 14.58 ms / 1.85x, block 28.55 /
 2.28x, scalar 6.06 / 3.23x, wide 5.72 / 2.34x.
+
+## 2026-09-05 — the simple-pair fast path: MEASURED DEAD (bail costs)
+
+Built the guarded main-loop fast path for [plain key][':' blank][plain
+value][EOL] inside an open map: every check before any state change,
+strict bail-to-normal, byte-identical event sequence. The first cut
+had a real semantic bug the suite caught in minutes — plain_first_ok
+rejects only six trailing indicators, so quoted/flow/block/dash values
+slipped into a plain scan (the correct predicate excludes every
+earlier dispatch trigger; '-'/'?'/':' are indicators only before a
+blank). With the predicate right, all 231 gates passed — and the
+measurement said NO:
+
+- wide (the pure hit case): 5.72 -> 5.32-5.62 ms (+4-8%)
+- anchor (the pure bail case): 14.58 -> 16.4-17.7 ms (-12%+): every
+  anchored/aliased value pays the guard chain, the key scan, and the
+  colon pre-filter before falling through — and the pre-filter that
+  cheapened the bail taxed the hit path too
+- scalar/block: flat to slightly worse
+
+NET LOSS across the corpus mix. REVERTED. The lesson for pass 4: after
+four tuning passes e_node/e_parse_value's per-line choreography is
+already lean — a fast path must amortize its guard chain across BOTH
+hit and bail lines, and anchor-heavy corpora make the bail the common
+case. A future attempt wants the cheap classification hoisted into
+the line scan itself (one byte-class pass deciding the dispatch, not
+a guarded duplicate grammar).
