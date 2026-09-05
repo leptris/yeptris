@@ -741,11 +741,12 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
 }
 
 /* Multi-line plain scalar continuation in block context. */
-static int e_plain_multiline(yep_engine* e, size_t start, uint32_t block_floor, yep_event* ev,
+static int e_plain_multiline(yep_engine* e, yep_span s0, uint32_t block_floor, yep_event* ev,
                              int root_ctx) {
+    /* the caller already scanned this exact span for its colon/term
+     * decision — the rescan doubled every plain value's scan cost */
     e->fold_n = 0;
     {
-        yep_span s0 = yep_scan_plain(e->p, e->len, start, 0);
         e->fold[0].content.p = e->p + s0.start;
         e->fold[0].content.len = s0.end - s0.start;
         e->fold[0].breaks_before = 0;
@@ -2462,7 +2463,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     ev.style = YEP_STYLE_PLAIN;
     ev.implicit = 1;
     e->pos = s.end;
-    if (e_plain_multiline(e, start, floor_col, &ev, e->depth == 0) != 0) {
+    if (e_plain_multiline(e, s, floor_col, &ev, e->depth == 0) != 0) {
         return -1;
     }
     if (e->fold_n == 1 && s.term == YEP_TERM_COMMENT) {

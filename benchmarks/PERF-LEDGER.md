@@ -580,3 +580,12 @@ buffers never hit in vector chunks) — the set now includes frequent
 bytes, every prefix length, and all 256 bytes as probes both alone
 and past lane 15. A future attempt needs ILP across chunks (two
 independent chains) to beat the latency wall.
+
+## 2026-09-05 — plain-value spans scan once, not twice
+
+e_node scans every plain value with scan_plain for its colon/term
+decision, then e_plain_multiline re-scanned the IDENTICAL span for
+the fold. The span now passes through (scan_plain is buffer-pure;
+the single caller computed it moments earlier). Best numbers yet on
+every shape (min-of-25): anchor 14.58 ms / 1.85x, block 28.55 /
+2.28x, scalar 6.06 / 3.23x, wide 5.72 / 2.34x.
