@@ -9,20 +9,35 @@ header consumers, or a hypothetical Rust one).
 The FFI tax is the crossing, not the work. The binding's hot paths
 are bulk-shaped by design:
 
-- **Loading** = the recorder: two reads (record array + string
-  arena), then a host-side walk. Never call per-event or per-node
-  accessors in a load loop — measured at 2–3 FFI calls per node on
-  the phase-A DOM path, which is why `Yeptris::Materializer` exists.
+- **Loading** has an adoption ladder; take the highest rung the
+  loaded library offers (feature-detect the symbol, fall back):
+  1. **Recorder** (always present): two reads (record array + string
+     arena), then a host-side walk. Never call per-event/per-node
+     accessors in a load loop — measured 2-3 FFI calls per node on
+     the phase-A DOM path.
+  2. **Value drain** (`yeptris_value_drain`, v0.1.1+): typed
+     24-byte records — the C side pre-converts scalars through the
+     number kernels; the host never re-parses text. `is_key` carries
+     the pair alternation; anchors decorate the following value.
+  3. **Columnar drain** (`yeptris_value_drain_columns`, v0.1.2+):
+     the same stream as parallel typed buffers (payloads/offs/lens/
+     kinds/tags/is_keys/bools) carved from ONE allocation — each
+     column unpacks in a single host call, and int/float scalars
+     arrive pre-converted. The Ruby and Python bindings' fast path;
+     column i is byte-faithful to record i (equivalence-pinned).
 - **Typing is C's verdict**: `YeptrisEventRecord.tag_id` (the pad
   byte; `sizeof` stays 36) carries the resolver's answer. The host
   converts (`Kernel#Integer`/`Float`) but never re-derives grammar.
   Psych-quirk overrides live in ONE place (`Materializer.scan_by_tag`)
   with a comment each.
-- **Dumping** = the DOM builder (`yeptris_document_new`,
-  `node_new_*`, `map_add`/`seq_add`, `set_root`): N calls for N
-  values, one `serialize` at the end. Strings are copied in; the
-  resolver types plain scalars, so a `"12"` that must stay a string
-  takes a quoted style — round-trip by construction.
+- **Dumping** = `yeptris_document_build` (v0.1.1): a flat entry
+  array (12 bytes/op-style-off-len, ABI-pinned) plus one string
+  blob — ONE call raises the tree, one `serialize` emits. The host
+  decides a string's plain-safety (the reading schema is the host's
+  contract; a "12" that must stay a string takes a quoted style —
+  round-trip by construction). The per-node builder
+  (`node_new_*`, `map_add`/`seq_add`, `set_root`) remains the
+  MUTATION-flow tool, never the bulk dump path.
 
 ## Identity and lifetime
 
