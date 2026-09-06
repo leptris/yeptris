@@ -8,6 +8,9 @@
 #include <string>
 
 #include <yeptris.h>
+
+#include "common/simd_text.h"
+#include "scan/scan.h"
 #include <yeptris/json.h>
 
 namespace {
@@ -229,6 +232,24 @@ TEST(Parse, BlockScalars) {
     EXPECT_EQ(map_str(root, "strip"), "no newline");
     EXPECT_EQ(map_str(root, "keep"), "keep\n\n\n");
     yeptris_document_free(doc);
+}
+
+TEST(Parse, PlainStopSetsMatchRuntimeBuild) {
+    /* the constants must equal what the old per-call build produced */
+    unsigned char b[32], f[32];
+    yep_stopset_clear(b);
+    yep_stopset_add(b, '\n');
+    yep_stopset_add(b, '\r');
+    yep_stopset_add(b, ':');
+    yep_stopset_add(b, '#');
+    yep_stopset_clear(f);
+    memcpy(f, b, 32);
+    const unsigned char fs[5] = {',', '[', ']', '{', '}'};
+    for (int i = 0; i < 5; i++) {
+        yep_stopset_add(f, fs[i]);
+    }
+    EXPECT_EQ(0, memcmp(k_plain_stop_block, b, 32));
+    EXPECT_EQ(0, memcmp(k_plain_stop_flow, f, 32));
 }
 
 TEST(Parse, AnchorsAndAliases) {
