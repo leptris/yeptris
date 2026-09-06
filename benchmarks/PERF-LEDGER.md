@@ -616,3 +616,15 @@ hit and bail lines, and anchor-heavy corpora make the bail the common
 case. A future attempt wants the cheap classification hoisted into
 the line scan itself (one byte-class pass deciding the dispatch, not
 a guarded duplicate grammar).
+
+## 2026-09-06 — the plain-scalar stop sets become constants
+
+yep_scan_plain rebuilt its 32-byte stop bitmap on EVERY call — clear
+plus 4-9 adds, ~2 calls per line (≈3M ops on a 100k-line document).
+Two generated constants now cover the block and flow variants; a new
+unit test pins both bitmaps against a runtime build (a hand-written
+bitmap drift here would silently end every plain scalar early — the
+first hand-written attempt was in fact wrong and this test caught
+the correction). scalar 3.36x (best ever), all shapes at or near
+their best: anchor 15.3 ms, block 28.65, scalar 6.01, wide 5.77
+(min-of-25). Release 232/232.
