@@ -298,17 +298,17 @@ int yep_json_literal(const char* p, size_t len, size_t* i, const char* word) {
  * stopset walk {'"', '\\', '\n', '\r'} decides close/escape/break —
  * no second scan. On success *i sits just past the close, *close_out
  * is the close quote index, *has_esc reports backslashes. */
+static const unsigned char k_json_string_stop[32] = {
+    0xff, 0xff, 0xff, 0xff, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
 int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out, int* has_esc) {
     const yep_text_kernels* k = yep_text_active();
-    unsigned char stop[32];
-    yep_stopset_clear(stop);
-    yep_stopset_add(stop, '"');
-    yep_stopset_add(stop, '\\');
-    for (unsigned c = 0; c < 0x20; c++) {
-        /* RFC 8259: raw C0 controls are invalid inside strings; DEL
-         * (0x7F) is NOT a control in JSON and stays legal */
-        yep_stopset_add(stop, (unsigned char)c);
-    }
+    /* generated once: '"', '\\', and every C0 control (RFC 8259: DEL
+     * is NOT a control in JSON and stays legal) — the per-call build
+     * cleared and set 34 bits on every JSON string */
+    const unsigned char* stop = k_json_string_stop;
     size_t j = *i + 1;
     int esc = 0;
     for (;;) {
