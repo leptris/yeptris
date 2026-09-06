@@ -414,10 +414,7 @@ static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int
     uint32_t breaks = 0; /* '\n' occurrences, folded with detection */
     {
         const yep_text_kernels* k = yep_text_active();
-        unsigned char brk[32];
-        yep_stopset_clear(brk);
-        yep_stopset_add(brk, '\n');
-        yep_stopset_add(brk, '\r');
+        const unsigned char* brk = yep_break_set; /* scan's SSOT */
         size_t i = start;
         while (i < end) {
             ptrdiff_t r = k->stopset_find(e->p + i, end - i, brk);

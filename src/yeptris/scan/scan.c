@@ -23,6 +23,14 @@ size_t yep_scan_break_len(const char* p, size_t len, size_t pos) {
     return 0;
 }
 
+/* ONE home for the \n/\r break set (scan owns the concept): the
+ * engine's quote path shares it — it had rebuilt a duplicate per
+ * quoted scalar. */
+const unsigned char yep_break_set[32] = {
+    0x00, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
 yep_line_info yep_scan_line(const char* p, size_t len, size_t pos) {
     yep_line_info li;
     li.offset = (uint32_t)pos;
@@ -33,17 +41,12 @@ yep_line_info yep_scan_line(const char* p, size_t len, size_t pos) {
     /* Line end + indentation ride the SIMD kernels: this runs once
      * per line (the engine's memo) and was the last hot scalar byte
      * loop in the block path. The 256-bit stopset marks \n and \r. */
-    static const unsigned char k_break_set[32] = {
-        0x00, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    };
     size_t j = pos;
     if (len - pos >= 64) {
         /* SIMD pays for its dispatch only past a vector or two of
          * bytes; short lines (anchor-heavy's ~18B) keep the loop */
         const yep_text_kernels* k = yep_text_active();
-        ptrdiff_t br = k->stopset_find(p + pos, len - pos, k_break_set);
+        ptrdiff_t br = k->stopset_find(p + pos, len - pos, yep_break_set);
         li.end = br < 0 ? (uint32_t)len : (uint32_t)(pos + (size_t)br);
         ptrdiff_t ind = k->find_not(p + pos, li.end - pos, ' ');
         j = ind < 0 ? li.end : (size_t)pos + (size_t)ind;
