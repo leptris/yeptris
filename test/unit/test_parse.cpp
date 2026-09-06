@@ -250,6 +250,13 @@ TEST(Parse, PlainStopSetsMatchRuntimeBuild) {
     }
     EXPECT_EQ(0, memcmp(k_plain_stop_block, b, 32));
     EXPECT_EQ(0, memcmp(k_plain_stop_flow, f, 32));
+
+    /* the break set (\n/\r) — the engine's quote path shares it */
+    unsigned char brk[32];
+    yep_stopset_clear(brk);
+    yep_stopset_add(brk, '\n');
+    yep_stopset_add(brk, '\r');
+    EXPECT_EQ(0, memcmp(yep_break_set, brk, 32));
 }
 
 TEST(Parse, AnchorsAndAliases) {

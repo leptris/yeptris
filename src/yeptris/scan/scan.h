@@ -67,6 +67,7 @@ int yep_plain_first_ok(unsigned char c);
  * Externally linked so the unit suite can pin them against a runtime
  * build — a hand-written bitmap drift here would silently end every
  * plain scalar early. */
+extern const unsigned char yep_break_set[32];
 extern const unsigned char k_plain_stop_block[32];
 extern const unsigned char k_plain_stop_flow[32];
 
