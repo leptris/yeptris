@@ -121,20 +121,22 @@ int yep_plain_first_ok(unsigned char c) {
     return !(c == ',' || c == ']' || c == '}' || c == '%' || c == '@' || c == '`');
 }
 
+/* The two stop sets are constants — they were rebuilt on EVERY scan
+   (~2 per line; clear + 4-9 adds ≈ 3M ops on a 100k-line document).
+   Generated: set[c>>3] |= 1 << (c&7) for the stop chars below. */
+const unsigned char k_plain_stop_block[32] = {
+    0x00, 0x24, 0x00, 0x00, 0x08, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+const unsigned char k_plain_stop_flow[32] = {
+    0x00, 0x24, 0x00, 0x00, 0x08, 0x10, 0x00, 0x04, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x28,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
 yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow) {
     const yep_text_kernels* k = yep_text_active();
-    unsigned char stop[32];
-    yep_stopset_clear(stop);
-    yep_stopset_add(stop, '\n');
-    yep_stopset_add(stop, '\r');
-    yep_stopset_add(stop, ':');
-    yep_stopset_add(stop, '#');
-    if (flow) {
-        static const unsigned char flow_stops[5] = {',', '[', ']', '{', '}'};
-        for (size_t f = 0; f < 5; f++) {
-            yep_stopset_add(stop, flow_stops[f]);
-        }
-    }
+    const unsigned char* stop = flow ? k_plain_stop_flow : k_plain_stop_block;
 
     yep_span s;
     s.start = (uint32_t)pos;
