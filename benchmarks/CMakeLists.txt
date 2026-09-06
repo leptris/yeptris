@@ -12,11 +12,16 @@ add_executable(bench_float float/bench_float.cpp)
 target_link_libraries(bench_float PRIVATE yeptris_static)
 target_include_directories(bench_float PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
 target_compile_features(bench_float PRIVATE cxx_std_11)
+# the measurement harness obeys the same warnings law as its subject
+yeptris_set_warnings(bench_float)
+
 target_link_libraries(bench_matrix PRIVATE yeptris_static)
 target_include_directories(bench_matrix PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
 target_compile_definitions(bench_matrix PRIVATE
     YEP_BENCH_SNAPSHOT_DIR="${CMAKE_SOURCE_DIR}/test/port/libyaml/snapshots")
 target_compile_features(bench_matrix PRIVATE cxx_std_11)
+# same law as every other target in the tree
+yeptris_set_warnings(bench_matrix)
 
 if(YEPTRIS_BENCH_LIBYAML_ROOT)
     target_compile_definitions(bench_matrix PRIVATE YEP_BENCH_LIBYAML=1)
