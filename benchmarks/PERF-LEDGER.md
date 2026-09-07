@@ -628,3 +628,64 @@ first hand-written attempt was in fact wrong and this test caught
 the correction). scalar 3.36x (best ever), all shapes at or near
 their best: anchor 15.3 ms, block 28.65, scalar 6.01, wide 5.77
 (min-of-25). Release 232/232.
+
+## 2026-09-07 — Marshal 4.8 emission: the binding's object-graph floor
+
+User benchmark (151 KB JSON corpus, 29.4 k values, min-of-10):
+
+| path                            | before  | after  |   vs `JSON.parse` |
+| ------------------------------- | ------- | ------ | ----------------- |
+| `Yeptris::YAML.load(json)`      | 13.67ms | 5.81ms | 8.9×              |
+| `parse_json + FFI DOM walk`     | 111ms   | 5.87ms | 9.0×              |
+| `Psych.load(json)`              | n/a     | 38.6ms | 59× (we're 6.6× Psych) |
+
+The split before: C drain 1.51 + column unpack 1.50 + Ruby walk 9.39
+— 87% of the time was host-side materialization, and the 111ms path
+was the per-node FFI anti-pattern (`Node#to_ruby_walk`: `node_id`/
+`kind`/`each_pair`/`tag_id` per node, ~4 FFI calls per value).
+
+The fix: the recorder's trick one level up — the C side emits Ruby
+Marshal 4.8 bytes directly from the value records; one
+`Marshal.load` (core C) materializes the whole graph. No C extension
+required (the binding stays pure FFI). Alias identity preserved
+through `@` links; merge keys and timestamps return UNSUPPORTED for
+the record-walk fallback.
+
+Stage cost (152 KB JSON, min-of-30):
+  - C `yeptris_marshal`: 1.73 ms (validate 0.26 + build 0.52 +
+    linearize+pre_scan+pass1+pass2 ≈ 0.95)
+  - `Marshal.load`: 3.90 ms on 225 KB of output
+  - Ruby overhead: ~0.24 ms
+
+The Marshal.load floor is intrinsic to the format (link tables, ivar
+processing, per-string symbol registration — ~59 MB/s on this
+machine). My bytes are 225 KB vs Ruby's `Marshal.dump` 131 KB because
+JSON.parse creates distinct key-string objects per hash (YAML.load
+produces distinct strings too — the binding's record walk matches
+Psych exactly, and that's the right invariant). `:E` symlink
+deduplication would save ~15 KB; deferred as a small follow-up.
+
+The end-to-end ~6 ms is ~9× `JSON.parse` and ~6× `Psych.load` on the
+same input. `JSON.parse` (0.61 ms) is a dedicated C materializer and
+sets the physical floor for a pure-FFI binding — closing that gap
+would need a C extension (forbidden) or a fundamentally different
+wire format. The remaining C-side fat (~0.6 ms of the 1.73) is
+worth keeping inside the two-pass exact-size emitter discipline
+(records are the SSOT; drift-free guarantee).
+
+Also lifted the YAML-shaped binding load on Psych:
+  scalar 2.75× (was 2.4×), ints 6.05× (was 3.2×), mixed 4.97×
+  (was 3.74×) — the Marshal path took every shape, no fallback
+  regressions (timestamps in `mixed` fall through to the walk and
+  still improve).
+
+ASAN fuzz_roundtrip 1091 libyaml snapshots clean (after catching one
+nested-anchor stale-index write — fixed by making the pending-anchor
+index a local rather than a state field that recursion clobbers).
+Ruby 173/173 specs, 2.7 k-corpus differential ALL MATCH
+(marshal path == record walk on every input). Zero leaks over
+160 k marshal/drain/document cycles.
+
+Net: the 29× and 165× disasters are fixed. The 9×-of-JSON.parse and
+6×-of-Psych are the binding's honest ceiling; the ledger records
+the boundary.

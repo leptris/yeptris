@@ -40,6 +40,7 @@ set(YEPTRIS_SOURCES
     yeptris/resolve/compat11.c
     yeptris/parse/numbers.c
     yeptris/events/values.c
+    yeptris/marshal.c
     yeptris/emit/style.c
     yeptris/emit/writer.c
     yeptris/emit/emit.c
@@ -67,6 +68,7 @@ set(YEPTRIS_PUBLIC_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/resolve.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/parse.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/values.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/marshal.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/json.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/types.h
 )
