@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.13] - 2026-09-07
 ### Added
 - `yep_json_number_scan` (scan/json.c): the JSON number grammar walk
   FUSED with conversion — one scan validates and converts (integer
