@@ -11,8 +11,12 @@ on:
   workflow_dispatch:
     inputs:
       next_version:
-        description: "Exact version to release (e.g. 0.2.0)"
-        required: true
+        description: "Exact version to release (e.g. 0.2.0); omit when republishing"
+        required: false
+        type: string
+      republish_version:
+        description: "Re-publish an already-tagged version (gem + native asset); skips the cut"
+        required: false
         type: string
   pull_request:
     branches: [main]
@@ -25,7 +29,7 @@ permissions:
 
 jobs:
   cut:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.next_version != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -71,7 +75,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   publish:
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.republish_version != '')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -80,14 +86,23 @@ jobs:
 
       - name: Tag and publish the GitHub Release
         run: |
-          V="${{ github.event.pull_request.head.ref }}"
-          V="${V#release/v}"
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
           echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "bad version: $V"; exit 1; }
-          git config user.name "release-workflow"
-          git config user.email "release@yeptris.invalid"
-          git tag "v$V"
-          git push origin "v$V"
-          gh release create "v$V" --title "v$V" --generate-notes
+          if git ls-remote --exit-code --tags origin "v$V" >/dev/null; then
+            echo "tag v$V exists (republish mode): skipping tag/create"
+            gh release view "v$V" >/dev/null 2>&1 || gh release create "v$V" --title "v$V" --generate-notes
+            SKIP_TAG=1
+          else
+            git config user.name "release-workflow"
+            git config user.email "release@yeptris.invalid"
+            git tag "v$V"
+            git push origin "v$V"
+            gh release create "v$V" --title "v$V" --generate-notes
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -99,8 +114,11 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq cmake ninja-build >/dev/null
       - name: Build and attach the native asset
         run: |
-          V="${{ github.event.pull_request.head.ref }}"
-          V="${V#release/v}"
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
           scripts/build-native-asset.sh "$V" https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/native-asset"
           gh release upload "v$V" "$RUNNER_TEMP/native-asset"/yeptris-native-*.tar.gz --clobber
         env:
@@ -113,8 +131,11 @@ jobs:
       - name: Find the lockstep gem tag
         id: gemtag
         run: |
-          V="${{ github.event.pull_request.head.ref }}"
-          V="${V#release/v}"
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
           git clone --quiet https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/yeptris-ruby"
           cd "$RUNNER_TEMP/yeptris-ruby"
           BEST="$(git tag | grep -E "^v${V//./\.}\.[0-9]+$" | sort -V | tail -1 || true)"
