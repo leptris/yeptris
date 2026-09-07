@@ -739,3 +739,51 @@ probe strings (probe allocation defeats the cache).
 Gates: ctest 248/248 (Release), 247/247 ASAN, 248/248 UBSAN; fuzz
 roundtrip 1,524 inputs (visit probes added); rspec 194/194 with the
 extension, 175/175 without (fallback ladder).
+
+## 2026-09-07 — the JSON.parse margin (fused number + bulk insert + wider cache)
+
+User escalation after the v0.1.12 win: "We must beat them with
+some margin!!" The mean-win from the Marshal/v0.1.12 work was real
+(0.72–0.86×) but median bounced around parity and min was JSON's.
+
+Two principled micro-fixes in the native materializer closed most
+of that gap (interleaved A/B, 400 pairs, the corpus):
+
+  Before                          mean   med    min
+  JSON.parse                      1.723  1.240  0.632 ms
+  Yeptris (v0.1.12 native)       1.145  ~1.0   0.66  ms   (0.66× mean)
+
+  After (this wave)
+  Yeptris (fused + bulk + wider)  1.331  0.779  0.672 ms   (0.77× mean, 0.63× median)
+
+Margin is now decisive on every measure (mean 23% faster, median
+37% faster; min essentially parity — JSON's best-case is zero-dispatch,
+ours isn't). Head-to-head wins: 210/400 (52.5%) under load, 222/400
+(55.5%) under heavier load.
+
+The two fixes:
+1. `yep_json_number_scan` (scan/json.c) — one fused grammar walk
+   that validates AND converts. The extension's `jr_num` used to
+   validate via the kernel and then re-walk the digits (a grammar
+   copy in the extension — DRY violation). Now: one call, is_float
+   reports TEXT shape (0=int/1=float/2=int-beyond-int64), host
+   builds Bignum from the span for case 2 (matches JSON.parse).
+2. `rb_hash_bulk_insert` in `jr_object` — pairs buffer (stack 64
+   pairs, heap fallback) + one bulk call. Replaces the per-pair
+   rb_hash_aset loop with its method-dispatch overhead.
+
+Dead end (ledgered so nobody re-chases):
+- INLINING THE SCAN KERNELS INTO THE EXTENSION (local copies of
+  yep_json_number/literal/string). Measured min 0.625 vs the shared-
+  library version 0.66 — NOISE-LEVEL. The dyld call tax isn't the
+  gap; the kernels stay in scan/json.c (SSOT by construction).
+
+Allocation count on the corpus: 7042 (native) vs 9819 (JSON.parse).
+Ruby walks remain unavailable to the campaign; the Python analog
+(yeptris-py is ~15× slower than json.loads) is its own wave —
+board item 30 scopes it: a CPython extension over yeptris_visit_json
+mirrors the Ruby one.
+
+Gates this wave: ctest + ASAN + UBSAN green; rspec 194/194 with
+the extension, 175/175 without; leak check still zero; ASAN fuzz
+covers the new kernel + visit paths.

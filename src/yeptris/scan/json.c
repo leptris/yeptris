@@ -12,6 +12,7 @@
 #include "common/chartype.h"
 #include "common/simd_text.h"
 
+#include "parse/numbers.h"
 #include "parse/scalars.h"
 #include "scan/json.h"
 
@@ -229,23 +230,44 @@ int yep_json_ws(const char* p, size_t len, size_t* i, int* saw_tab) {
     return -1; /* EOF */
 }
 
-/* Strict RFC 8259 number: -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)? */
-int yep_json_number(const char* p, size_t len, size_t* i) {
+/* Strict RFC 8259 number: -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?
+ *
+ * THE grammar walk, fused with conversion (TODO.restructure/26): one
+ * pass validates and converts — digits accumulate into the uint64
+ * magnitude with overflow promotion, so integer JSON numbers (the
+ * hot case) never get a second scan. Any '.'/'e' marks the value a
+ * float; the CONVERTER for an already-validated span stays the
+ * number-kernel SSOT (yep_num_f64) — grammar here, conversion there,
+ * exactly one of each. Out params may be NULL (pure validation). */
+int yep_json_number_scan(const char* p, size_t len, size_t* i, int* is_float, int64_t* iv,
+                         double* dv) {
     size_t k = *i;
+    int neg = 0;
     if (p[k] == '-') {
+        neg = 1;
         k++;
     }
     if (k >= len || p[k] < '0' || p[k] > '9') {
         return 0;
     }
+    uint64_t mag = 0;
+    int overflow = 0;
     if (p[k] == '0') {
         k++;
     } else {
         while (k < len && p[k] >= '0' && p[k] <= '9') {
+            unsigned d = (unsigned)(p[k] - '0');
+            if (mag > (UINT64_MAX - d) / 10) {
+                overflow = 1; /* keep scanning the grammar; promote */
+            } else {
+                mag = mag * 10 + d;
+            }
             k++;
         }
     }
+    int flt = 0;
     if (k < len && p[k] == '.') {
+        flt = 1;
         k++;
         if (k >= len || p[k] < '0' || p[k] > '9') {
             return 0;
@@ -255,6 +277,7 @@ int yep_json_number(const char* p, size_t len, size_t* i) {
         }
     }
     if (k < len && (p[k] == 'e' || p[k] == 'E')) {
+        flt = 1;
         k++;
         if (k < len && (p[k] == '-' || p[k] == '+')) {
             k++;
@@ -272,8 +295,43 @@ int yep_json_number(const char* p, size_t len, size_t* i) {
             return 0; /* "1x" is YAML, not JSON */
         }
     }
+    /* promotion first, outputs once. is_float reports TEXT shape:
+     *   0 = integer, iv exact (INT64_MIN included)
+     *   1 = float text (dot/exponent), dv converted
+     *   2 = integer text beyond int64 — dv carries the approximate
+     *       double; exact-Bignum hosts rebuild from the span
+     * (overflow tracks uint64 saturation; the int64 bound is the
+     * value test below) */
+    uint64_t limit = neg ? (uint64_t)INT64_MAX + 1 : (uint64_t)INT64_MAX;
+    if (flt) {
+        if (is_float != NULL) {
+            *is_float = 1;
+        }
+        if (dv != NULL) {
+            yep_num_f64(p + *i, (uint32_t)(k - *i), dv);
+        }
+    } else if (overflow || mag > limit) {
+        if (is_float != NULL) {
+            *is_float = 2;
+        }
+        if (dv != NULL) {
+            yep_num_f64(p + *i, (uint32_t)(k - *i), dv);
+        }
+    } else {
+        if (is_float != NULL) {
+            *is_float = 0;
+        }
+        if (iv != NULL) {
+            *iv = (neg && mag == (uint64_t)INT64_MAX + 1) ? INT64_MIN
+                                                          : (neg ? -(int64_t)mag : (int64_t)mag);
+        }
+    }
     *i = k;
     return 1;
+}
+
+int yep_json_number(const char* p, size_t len, size_t* i) {
+    return yep_json_number_scan(p, len, i, NULL, NULL, NULL);
 }
 
 int yep_json_literal(const char* p, size_t len, size_t* i, const char* word) {

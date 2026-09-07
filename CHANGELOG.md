@@ -6,6 +6,20 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- `yep_json_number_scan` (scan/json.c): the JSON number grammar walk
+  FUSED with conversion — one scan validates and converts (integer
+  fast-path into int64, INT64_MIN exact; `*is_float` reports the text
+  shape: 0=int, 1=float, 2=integer-beyond-int64 with an approximate
+  `*dv`). `yep_json_number` is now a thin wrapper. The Ruby native
+  materializer's number path is one call — no more validate-then-
+  reconvert double walk.
+- `scripts/build-native-asset.sh` + release.yml: every GitHub Release
+  carries a prebuilt native-materializer tarball for the publish
+  runner's platform (build recipe versioned in scripts/, never inline
+  workflow YAML).
+
 ## [0.1.12] - 2026-09-07
 ### Added
 - The visit API (`yeptris/visit.h`): `yeptris_visit`,
