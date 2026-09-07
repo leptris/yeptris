@@ -236,7 +236,12 @@ jobs:
       - name: Push the platform gem
         run: |
           GEM="$(cat "$RUNNER_TEMP/pgem/gempath" | cut -d= -f2)"
-          if gem fetch yeptris --platform "$(ruby -e 'print Gem::Platform.local.to_s')" --version "$(basename "$GEM" | sed -E 's/^yeptris-([0-9.]+)-.*/\1/')" >/dev/null 2>&1; then
+          VER="$(basename "$GEM" | sed -E 's/^yeptris-([0-9.]+)-.*/\1/')"
+          PLAT="$(ruby -e 'print Gem::Platform.local.to_s')"
+          # gem fetch exits 0 spuriously on the runners; the versions
+          # API with an exact number+platform match is authoritative
+          if curl -sf https://rubygems.org/api/v1/versions/yeptris.json | \
+              ruby -rjson -e 'exit(JSON.parse(STDIN.read).any? { |v| v["number"]==ARGV[0] && v["platform"]==ARGV[1] } ? 0 : 1)' "$VER" "$PLAT"; then
             echo "already pushed; skipping"
           else
             gem push "$GEM"
