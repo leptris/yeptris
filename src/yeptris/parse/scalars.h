@@ -10,6 +10,7 @@
 #define YEP_SCALARS_H
 
 #include <stddef.h>
+#include <yeptris/api.h>
 
 #include "common/string_view.h"
 #include "memory/pool.h"
@@ -26,7 +27,7 @@ char* yep_finish_double(const char* p, uint32_t start, uint32_t end, int multili
 
 /* In-place variant for fixed buffers (JSON builder's arena path):
  * cap = the raw span bounds the output; returns the decoded length. */
-uint32_t yep_finish_double_into(const char* p, uint32_t start, uint32_t end, char* dst,
+YEPTRIS_API uint32_t yep_finish_double_into(const char* p, uint32_t start, uint32_t end, char* dst,
                                 uint32_t cap);
 
 /* Finishes a single-quoted content span: '' → ' '; multi-line folding.

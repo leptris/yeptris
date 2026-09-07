@@ -14,6 +14,7 @@
 
 #include <yeptris.h>
 #include <yeptris/marshal.h>
+#include <yeptris/visit.h>
 
 static int probe_one(const uint8_t* data, size_t size) {
     YeptrisStatus st = YEPTRIS_OK;
@@ -33,6 +34,14 @@ static int probe_one(const uint8_t* data, size_t size) {
             __builtin_trap(); /* Marshal 4.8 header */
         }
         yeptris_marshal_free(out);
+    }
+    /* TODO.restructure/24: the visit API must accept anything the
+     * engine parsed (OK or the same failure class — never a crash);
+     * strict-JSON inputs additionally take the fused scan. */
+    {
+        static const YeptrisVisitVTable none = {0};
+        (void)yeptris_visit((const char*)data, size, YEPTRIS_SCHEMA_11_COMPAT, &none, NULL);
+        (void)yeptris_visit_json((const char*)data, size, &none, NULL);
     }
     size_t l1 = 0;
     char* s1 = yeptris_serialize(doc, &l1);
