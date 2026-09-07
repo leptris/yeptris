@@ -865,3 +865,13 @@ referee — natural regressed both platforms (mac h2h 170->82/200,
 ubuntu 0.941->1.112x); the local win was load-noise. Default stays
 :pre. The re-confirmed lesson: saturated dev boxes are not measurement
 instruments; the fresh-runner gate is.
+
+## 2026-09-08 — item 32: core_12 typing follows the spec table
+
+The dot-required float was Psych 1.1-COMPAT policy applied
+unconditionally; under core_12 the spec's float regexp (optional dot)
+makes 1e3/+12e03/-2E+05 Floats (Example 10.9's exact values). Now
+schema-conditioned on every surface (walks, Marshal emitter, Node
+path); the schema is a document property. The spec table is pinned
+verbatim in spec/core12_typing_spec.rb; compat is unchanged (Psych
+suite green). CI gate tightened to 1.00 — a loss to stdlib fails CI.

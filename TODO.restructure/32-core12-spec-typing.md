@@ -1,6 +1,6 @@
 # 32 — core_12 typing must follow the spec table, not the Psych quirk
 
-Status: pending
+Status: complete
 
 ## Why
 
@@ -42,3 +42,21 @@ and WRONG for core_12.
 - `compat_11` behavior byte-identical to today (Psych parity suite
   green).
 - docs/spec/yaml-grammar-citations.md updated with the outcome.
+
+## Outcome (2026-09-08)
+
+Landed as designed — plan option (a): the quirk is HOST policy,
+schema-conditioned at every surface in lockstep:
+- both record walks (ValueML.walk / walk_columns, `compat` param),
+- the Marshal emitter (C: E.compat from the marshal schema param and
+  the document's schema for node marshaling),
+- Node#scalar_to_ruby (Document#parse_schema).
+The schema became a DOCUMENT PROPERTY (Document#parse_schema /
+wrap_schema; C yeptris_document.schema set by both parse paths) —
+host policies ask the model.
+
+spec/core12_typing_spec.rb pins spec 10.3.2 / Example 10.9 VERBATIM
+(0.->0.0, .5->0.5, +12e03->12000.0, -2E+05->-200000.0, 1e3->1000.0,
+0o7->7, 0x3A->58) plus the compat spot-table; the ported Psych suite
+stays green (compat byte-identical). The CI referee gate tightened
+1.05 -> 1.00: losing to JSON.parse now fails CI outright.
