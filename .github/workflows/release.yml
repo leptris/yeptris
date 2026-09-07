@@ -143,8 +143,18 @@ jobs:
             echo "no lockstep gem tag v${V}.* — skipping gem publish"
             echo "found=" >> "$GITHUB_OUTPUT"
           else
-            echo "lockstep gem: $BEST"
-            echo "found=$BEST" >> "$GITHUB_OUTPUT"
+            # idempotence: the RubyGems versions API is authoritative
+            # (gem fetch --version exits 0 spuriously for missing
+            # versions on the runners); repushing is forbidden forever
+            gem_version="${BEST#v}"
+            if curl -sf https://rubygems.org/api/v1/versions/yeptris.json \
+                | grep -q "\"number\":\"$gem_version\""; then
+              echo "yeptris $gem_version already on RubyGems — skipping push"
+              echo "found=" >> "$GITHUB_OUTPUT"
+            else
+              echo "lockstep gem: $BEST"
+              echo "found=$BEST" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Set up Ruby
