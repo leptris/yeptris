@@ -787,3 +787,43 @@ mirrors the Ruby one.
 Gates this wave: ctest + ASAN + UBSAN green; rspec 194/194 with
 the extension, 175/175 without; leak check still zero; ASAN fuzz
 covers the new kernel + visit paths.
+
+## 2026-09-07 — the loaded-box "why": page growth vs GC cadence (the GC referee wave)
+
+User question: "raw parse ~on-par idle; comparison slower on my
+loaded box — why?" Answer, proven at the mechanism level by the
+profile's gc-footprint phase:
+
+- disable mode: yeptris grows **+478 heap pages / 50 iterations with
+  ZERO minor GCs** — GC paused for the window means nothing recycles;
+  every parse consumes fresh pages. JSON.parse in the same process:
+  −135 pages, 7 minors (continuous slot reuse).
+- none mode: yeptris **+0 pages, 16 minors** — byte-for-byte the
+  stdlib's own GC cadence.
+
+Fresh pages are cheap on an idle box or a fresh CI VM and expensive
+exactly under memory contention (faults, bandwidth, TLB) — that IS
+"on-par idle, slower loaded".
+
+Three CI rounds (modes in SEPARATE processes; in-process switching
+measurably contaminates both sides, and :start — in-window gc_start —
+is catastrophic at 8×):
+
+| platform | disable | none |
+| --- | --- | --- |
+| macos (arm64) | 0.899/0.937/0.899× | **0.718/0.745/0.749× (h2h up to 91%)** |
+| ubuntu (x86_64) | **0.911/0.922/0.961×** | 1.059/1.199/1.083× |
+
+The split is reproducible: arm64 favors none; fresh x86 VMs favor
+disable. Decision: per-arch defaults (arm64: none; x86_64: disable),
+YEPTRIS_NATIVE_GC documented for loaded x86 boxes (pick none),
+insert-strategy knob (bulk/aset) as standing evidence rows.
+
+THE GATE (the referee now enforces the win): the default combination
+runs GATED at 1.05 on both platforms. Round-3 verdict — ubuntu
+(disable) 0.961×, macos (none) 0.718× — both green.
+
+Engineering gotchas ledgered: GHA matrices with top-level keys AND
+include entries MERGE instead of adding rows (2 of 5 jobs ran);
+ENV[""] is truthy in Ruby; gh per-job --log needs the logs API after
+run completion.
