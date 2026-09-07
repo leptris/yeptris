@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.11] - 2026-09-07
 ### Added
 - `yeptris_marshal`/`yeptris_marshal_node`/`yeptris_marshal_free`
   (TODO.restructure/21): the C side converts value records into Ruby
