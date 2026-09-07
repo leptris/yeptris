@@ -6,16 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- The visit API (`yeptris/visit.h`): `yeptris_visit`,
+  `yeptris_visit_json` (fused RFC 8259 scan — no DOM, no records),
+  `yeptris_visit_node`; the JSON scan kernels and number converters
+  are exported for host materializers. The Ruby native materializer
+  riding this beats JSON.parse (mean 0.72x on the 152 KB corpus).
+
 ## [0.1.11] - 2026-09-07
 ### Added
-- **Visit API** (`yeptris/visit.h`, TODO.restructure/24):
-  `yeptris_visit` (YAML engine → vtable), `yeptris_visit_json`
-  (fused RFC 8259 scan → vtable — no DOM, no records), and
-  `yeptris_visit_node` (DOM subtree → vtable). A language-agnostic
-  push sink so host materializers (Ruby C-API, CPython, …) build
-  native objects in the same pass. The JSON scan kernels
-  (`yep_json_*`, `yep_num_i64/f64/bool*`, `yep_finish_double_into`)
-  are now exported for the same consumers.
 - `yeptris_marshal`/`yeptris_marshal_node`/`yeptris_marshal_free`
   (TODO.restructure/21): the C side converts value records into Ruby
   Marshal 4.8 bytes; the binding materializes the whole object graph
