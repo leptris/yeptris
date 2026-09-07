@@ -11,6 +11,15 @@ are bulk-shaped by design:
 
 - **Loading** has an adoption ladder; take the highest rung the
   loaded library offers (feature-detect the symbol, fall back):
+  0. **Native materializer** (host extension over `yeptris/visit.h`,
+     v0.1.11+): hosts that can link the Ruby C API implement the
+     visit vtable and materialize in the same C pass (`yeptris_visit`
+     for YAML, the fused `yeptris_visit_json` for strict JSON — no
+     DOM, no records). The Ruby extension (`ext/yeptris_native`)
+     beats `JSON.parse` on JSON input (mean 0.72×). The scan kernels
+     (`yep_json_*`, `yep_num_*`, `yep_finish_double_into`) are
+     exported for exactly this: the extension inlines a tight
+     JSON→VALUE descent without pulling the static archive.
   1. **Recorder** (always present): two reads (record array + string
      arena), then a host-side walk. Never call per-event/per-node
      accessors in a load loop — measured 2-3 FFI calls per node on

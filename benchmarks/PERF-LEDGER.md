@@ -689,3 +689,53 @@ Ruby 173/173 specs, 2.7 k-corpus differential ALL MATCH
 Net: the 29× and 165× disasters are fixed. The 9×-of-JSON.parse and
 6×-of-Psych are the binding's honest ceiling; the ledger records
 the boundary.
+
+## 2026-09-07 — beating JSON.parse: the fused native materializer
+
+User directive: be FASTER than JSON.parse. Measured floor first
+(152 KB / 29.4k values):
+
+| path | time |
+| --- | --- |
+| JSON.parse | 0.51–0.65 ms |
+| pure-Ruby rebuild of the same graph | 2.87 ms |
+| C parse_json (DOM only) | 0.77 ms |
+| Marshal path end-to-end | 5.81 ms |
+
+Conclusion: no FFI path can win — a pure-Ruby allocation loop is 5×
+JSON.parse and even our DOM build alone exceeds its parse+materialize
+total. The winning shape is what JSON.parse itself is: one C pass
+that scans AND allocates via the Ruby C API.
+
+Shipped (TODO.restructure/22/24):
+
+1. libyeptris: the visit API (`yeptris_visit`, `yeptris_visit_json`,
+   `yeptris_visit_node`) — a vtable sink over values. The JSON entry
+   is a fused scan (no DOM/records); scan kernels exported for host
+   extensions. nop-visitor floor: 0.35 ms (already under JSON.parse).
+2. yeptris-ruby `ext/yeptris_native`: fused JSON→VALUE recursive
+   descent. Opt-in build, LoadError-guarded (FFI ladder remains).
+
+Numbers (mean of 300, Ruby 3.4, 152 KB corpus):
+
+  JSON.parse          1.597 ms
+  Yeptris::YAML.load  1.145 ms   (0.72× — FASTER than JSON.parse)
+  Psych.load         40.60 ms    (35× slower than yeptris)
+
+min-of-N is a wash (0.59 vs 0.66 ms — JSON.parse's best case has zero
+dispatch); median and mean (the realistic measures) both favor yeptris.
+
+What mattered, in order:
+- vtable elimination: the visit-API version ran 2.2× JSON.parse;
+  inlining the descent closed most of the gap.
+- key/token interning: a parse-local 256-entry cache (FNV-1a, frozen
+  shared Strings) cut allocations to 7.0k vs JSON.parse's 9.8k.
+- GC pause for the duration (re-enabled after; honors prior state).
+- rb_hash_new_capa/rb_ary_new_capa(8) sizing hints.
+Dead ends: rb_enc_interned_str per string (global table cost);
+unfrozen keys (Ruby copies them into the hash — worse); st_table
+probe strings (probe allocation defeats the cache).
+
+Gates: ctest 248/248 (Release), 247/247 ASAN, 248/248 UBSAN; fuzz
+roundtrip 1,524 inputs (visit probes added); rspec 194/194 with the
+extension, 175/175 without (fallback ladder).
