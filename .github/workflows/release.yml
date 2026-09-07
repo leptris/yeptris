@@ -182,7 +182,9 @@ jobs:
   # beats JSON.parse with zero compilation and zero env vars. The
   # recipe lives in the ruby repo's scripts/build-platform-gem.sh.
   platform-gems:
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.republish_version != '')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -210,8 +212,11 @@ jobs:
 
       - name: Build the platform gem
         run: |
-          V="${{ github.event.pull_request.head.ref }}"
-          V="${V#release/v}"
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
           git clone --quiet https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/rubyrepo"
           bash "$RUNNER_TEMP/rubyrepo/scripts/build-platform-gem.sh" "$V" https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/pgem"
 
