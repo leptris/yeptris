@@ -37,3 +37,21 @@ and reviewed like code, never inline YAML, per the GHA-scripts rule).
 Still open (the full platform-gem matrix): vendoring the dylib+bundle
 PAIR into per-OS platform gems with `$ORIGIN`/`@loader_path` rpath —
 needs runner-by-runner validation; tracked here, next wave.
+
+## Outcome 2 (2026-09-08): THE PLATFORM GEMS ARE LIVE
+
+`yeptris-0.1.13.4-{x86_64-linux,arm64-darwin-23}` on RubyGems via
+`scripts/build-platform-gem.sh` (ruby repo) + the release.yml
+platform-gems job. The distribution link shape is the precompiled-gem
+standard: NO libruby DT_NEEDED (empty LIBRUBYARG; -undefined
+dynamic_lookup on macOS) so Ruby API symbols resolve from the host
+ruby; relative rpath ($ORIGIN/@loader_path) pairs the bundle with the
+vendored libyeptris at the gem root (ffi.rb's existing ladder);
+MACOSX_DEPLOYMENT_TARGET pinned so runner SDKs newer than user macOS
+don't set a newer min-OS; the script hard-fails if a libruby
+reference survives otool/ldd.
+
+VERIFIED end-to-end: `gem install yeptris` on a stock machine ->
+`Yeptris::Native` loaded, parity holds, no compiler, no env vars.
+Idempotence is the RubyGems versions API with an exact number+platform
+match (gem fetch's exit code lies on the runners — twice now).

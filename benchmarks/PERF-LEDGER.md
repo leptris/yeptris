@@ -850,3 +850,18 @@ GATED referee rows after the fix:
 
 ubuntu went 0.96-0.99× → 0.745×: BOTH platforms now ship ~25%
 faster than the stdlib. That is the margin.
+
+## 2026-09-08 — platform gems live: the win ships by default
+
+`gem install yeptris` (0.1.13.4+) now carries the native materializer
++ vendored libyeptris for x86_64-linux and arm64-darwin. The
+distribution link shape is the precompiled-gem standard: no libruby
+DT_NEEDED (dynamic_lookup on macOS — the first CI-built bundle
+recorded the runner's absolute libruby path and failed dlopen on user
+machines), relative-rpath pairing, pinned deployment target.
+
+Also this wave: item 39 (:natural allocation shapes) RULED OUT by the
+referee — natural regressed both platforms (mac h2h 170->82/200,
+ubuntu 0.941->1.112x); the local win was load-noise. Default stays
+:pre. The re-confirmed lesson: saturated dev boxes are not measurement
+instruments; the fresh-runner gate is.
