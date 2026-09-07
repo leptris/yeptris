@@ -827,3 +827,26 @@ Engineering gotchas ledgered: GHA matrices with top-level keys AND
 include entries MERGE instead of adding rows (2 of 5 jobs ran);
 ENV[""] is truthy in Ruby; gh per-job --log needs the logs API after
 run completion.
+
+## 2026-09-07 — the x86 margin: prefix-hash the token cache
+
+The decomposition (Native.scan_time + cache knob, CI referee):
+
+- scan-only 0.35-0.40 ms INCLUDING all cross-DSO kernel calls — the
+  scan and the calls were never the gap.
+- cache=off regresses BOTH platforms (ubuntu 0.99→1.31×, mac
+  0.76→1.51×) — the token cache is a large net win everywhere.
+- The x86 deficit was the cached path itself: byte-wise FNV per
+  token (~15k tokens/parse × 15-20 ns ≈ 0.3 ms).
+
+The fix (TODO.restructure/38): jr_hash = one 8-byte-prefix load +
+multiply mix (the leptris nametab interner's proven shape); full
+memcmp still resolves collisions.
+
+GATED referee rows after the fix:
+
+  ubuntu (disable/bulk/cache=on)  mean 0.745×  head-to-head 200/200
+  macos  (none/bulk/cache=on)     mean 0.759×  head-to-head 169/200
+
+ubuntu went 0.96-0.99× → 0.745×: BOTH platforms now ship ~25%
+faster than the stdlib. That is the margin.
