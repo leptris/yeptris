@@ -39,6 +39,7 @@ echo "::endgroup::"
 echo "::group::Pack"
 ARTIFACT=native.so
 [ -f "$ARTIFACT" ] || ARTIFACT=native.bundle
-tar -czf "$OUT" -C ext/yeptris_native "$ARTIFACT"
+# cwd is ext/yeptris_native here
+tar -czf "$OUT" "$ARTIFACT"
 echo "artifact=$OUT"
 echo "::endgroup::"
