@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.12] - 2026-09-07
 ### Added
 - The visit API (`yeptris/visit.h`): `yeptris_visit`,
   `yeptris_visit_json` (fused RFC 8259 scan — no DOM, no records),
