@@ -91,6 +91,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+      # TODO.restructure/28: prebuilt native materializer for this
+      # runner's platform, attached to the release. The recipe lives
+      # in a versioned script (scripts/build-native-asset.sh) — kept
+      # out of the workflow, reviewed like any other code.
+      - name: Install build tooling
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq cmake ninja-build >/dev/null
+      - name: Build and attach the native asset
+        run: |
+          V="${{ github.event.pull_request.head.ref }}"
+          V="${V#release/v}"
+          scripts/build-native-asset.sh "$V" https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/native-asset"
+          gh release upload "v$V" "$RUNNER_TEMP/native-asset"/yeptris-native-*.tar.gz --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       # The lockstep gem: publish the yeptris-ruby tag matching this C
       # version ({c-full-semver}.{small-patch}) through the RubyGems
       # trusted publisher configured for THIS repo + workflow. No
