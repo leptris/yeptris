@@ -175,3 +175,54 @@ jobs:
       - name: Push to RubyGems
         if: steps.gemtag.outputs.found != ''
         run: gem push "${{ steps.gembuild.outputs.path }}"
+
+  # TODO.restructure/28's remainder: PLATFORM GEMS — the ruby gem +
+  # vendored libyeptris + the compiled native materializer with a
+  # RELATIVE rpath ($ORIGIN/@loader_path), so `gem install yeptris`
+  # beats JSON.parse with zero compilation and zero env vars. The
+  # recipe lives in the ruby repo's scripts/build-platform-gem.sh.
+  platform-gems:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build tooling
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq cmake ninja-build >/dev/null
+
+      - name: Install build tooling (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Build the platform gem
+        run: |
+          V="${{ github.event.pull_request.head.ref }}"
+          V="${V#release/v}"
+          git clone --quiet https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/rubyrepo"
+          bash "$RUNNER_TEMP/rubyrepo/scripts/build-platform-gem.sh" "$V" https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/pgem"
+
+      - name: Configure RubyGems credentials (trusted publisher)
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
+
+      - name: Push the platform gem
+        run: |
+          GEM="$(cat "$RUNNER_TEMP/pgem/gempath" | cut -d= -f2)"
+          if gem fetch yeptris --platform "$(ruby -e 'print Gem::Platform.local.to_s')" --version "$(basename "$GEM" | sed -E 's/^yeptris-([0-9.]+)-.*/\1/')" >/dev/null 2>&1; then
+            echo "already pushed; skipping"
+          else
+            gem push "$GEM"
+          fi
