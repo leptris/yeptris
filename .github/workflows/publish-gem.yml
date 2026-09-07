@@ -69,7 +69,7 @@ jobs:
 
       - name: Configure RubyGems credentials (trusted publisher)
         if: steps.gemtag.outputs.push == 'true'
-        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954e # v2.1.0
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
 
       - name: Push to RubyGems
         if: steps.gemtag.outputs.push == 'true'
