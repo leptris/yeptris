@@ -2,7 +2,10 @@
  *
  * Property: for any input that parses, serialize(doc) must re-parse,
  * and the re-serialization must be byte-stable — emitter/parser
- * asymmetries surface here.
+ * asymmetries surface here. TODO.restructure/21: parseable inputs
+ * must also marshal without error (OK or UNSUPPORTED, never a crash
+ * or an unexpected status) — format-level properties are pinned by
+ * the Ruby binding's differential corpus; memory safety lives here.
  */
 
 #include <stdint.h>
@@ -10,12 +13,26 @@
 #include <string.h>
 
 #include <yeptris.h>
+#include <yeptris/marshal.h>
 
 static int probe_one(const uint8_t* data, size_t size) {
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse((const char*)data, size, &st);
     if (doc == NULL) {
         return 0;
+    }
+    {
+        char* out = NULL;
+        size_t olen = 0;
+        YeptrisStatus ms = yeptris_marshal((const char*)data, size, YEPTRIS_SCHEMA_11_COMPAT,
+                                           YEPTRIS_MARSHAL_ALL_DOCS, &out, &olen);
+        if (ms != YEPTRIS_OK && ms != YEPTRIS_ERROR_UNSUPPORTED) {
+            __builtin_trap(); /* parseable input must be marshalable */
+        }
+        if (ms == YEPTRIS_OK && (olen < 2 || (uint8_t)out[0] != 0x04 || (uint8_t)out[1] != 0x08)) {
+            __builtin_trap(); /* Marshal 4.8 header */
+        }
+        yeptris_marshal_free(out);
     }
     size_t l1 = 0;
     char* s1 = yeptris_serialize(doc, &l1);

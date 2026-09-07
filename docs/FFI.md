@@ -25,6 +25,17 @@ are bulk-shaped by design:
      column unpacks in a single host call, and int/float scalars
      arrive pre-converted. The Ruby and Python bindings' fast path;
      column i is byte-faithful to record i (equivalence-pinned).
+  4. **Marshal emission** (`yeptris_marshal`/`yeptris_marshal_node`,
+     v0.1.11+): the C side converts the value stream into Ruby
+     Marshal 4.8 bytes; one `Marshal.load` (core C) materializes
+     the whole object graph. ~10× faster than the columnar walk on
+     JSON-shaped input, ~5× on YAML, ~50× on the per-node DOM walk
+     (`Node#to_ruby` becomes bulk). Falls back to the columnar walk
+     on constructs the format cannot express (merge keys,
+     timestamps); alias identity is preserved through `@` links.
+     The Ruby binding's fast path; the Python binding's columnar
+     path stays the default until an analogous pickle emitter ships
+     (see TODO.restructure/21's follow-ups).
 - **Typing is C's verdict**: `YeptrisEventRecord.tag_id` (the pad
   byte; `sizeof` stays 36) carries the resolver's answer. The host
   converts (`Kernel#Integer`/`Float`) but never re-derives grammar.

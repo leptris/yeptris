@@ -5,32 +5,29 @@
  * kernels (parse/numbers.c — the same converters the node typed
  * accessors ride). The host walks a flat typed array: no per-scalar
  * parsing, no pending-key bookkeeping (is_key), anchor names arrive
- * as uniform YEP_V_ANCHOR entries decorating the value they bind. */
+ * as uniform YEP_V_ANCHOR entries decorating the value they bind.
+ *
+ * TODO.restructure/21: the record machinery is shared (values_priv.h)
+ * with the Marshal emitter, a DOM linearizer produces the same records
+ * from a built tree, and the input entry sniffs strict JSON to build
+ * through the JSON scanner — any grammar surprise defers to the engine
+ * so records stay byte-identical across routes. */
 
 #include <stdlib.h>
 #include <string.h>
 
 #include "../../include/yeptris/values.h"
 #include "../common/simd_text.h"
+#include "../dom/dom.h"
+#include "../memory/allocator.h"
 #include "../parse/engine.h"
 #include "../parse/numbers.h"
 #include "../resolve/resolver.h"
+#include "../scan/json.h"
 #include "capture.h"
+#include "values_priv.h"
 
-#define YEP_V_MAX_DEPTH 1024
-
-typedef struct {
-    yep_rec_store store;
-    YeptrisValue* vals;
-    size_t n, cap;
-    char* arena;
-    size_t arena_len, arena_cap;
-    int oom;
-    uint8_t key_pend[YEP_V_MAX_DEPTH]; /* per open map: key slot taken */
-    int depth;
-} yep_value_ctx;
-
-static uint32_t arena_put(yep_value_ctx* c, const char* p, uint32_t len) {
+uint32_t yep_val_arena_put(yep_value_ctx* c, const char* p, uint32_t len) {
     if (c->arena_len + len + 1 > c->arena_cap) {
         size_t cap = c->arena_cap ? c->arena_cap : 256;
         while (cap < c->arena_len + len + 1) {
@@ -53,7 +50,7 @@ static uint32_t arena_put(yep_value_ctx* c, const char* p, uint32_t len) {
     return off;
 }
 
-static void put(yep_value_ctx* c, const YeptrisValue* v) {
+void yep_val_put(yep_value_ctx* c, const YeptrisValue* v) {
     if (c->n == c->cap) {
         size_t cap = c->cap ? c->cap * 2 : 256;
         YeptrisValue* nv = realloc(c->vals, cap * sizeof(*nv));
@@ -71,7 +68,7 @@ static void put(yep_value_ctx* c, const YeptrisValue* v) {
  * entry landing in an empty key slot is the key (is_key set), the
  * next completes the pair. Applies to scalars, aliases, and
  * collection opens (complex keys) alike. */
-static void slot(yep_value_ctx* c, YeptrisValue* v) {
+void yep_val_slot(yep_value_ctx* c, YeptrisValue* v) {
     if (c->depth > 0 && c->depth <= YEP_V_MAX_DEPTH) {
         int di = c->depth - 1;
         if (c->key_pend[di] == 0) {
@@ -85,14 +82,72 @@ static void slot(yep_value_ctx* c, YeptrisValue* v) {
 
 static void anchor_entry(yep_value_ctx* c, const char* name, uint32_t len) {
     YeptrisValue a = {YEP_V_ANCHOR, 0, 0, 0, 0, len, 0};
-    a.off = arena_put(c, name, len);
-    put(c, &a);
+    a.off = yep_val_arena_put(c, name, len);
+    yep_val_put(c, &a);
 }
 
-static int transform(yep_value_ctx* c) {
-    const YeptrisEventRecord* rs = c->store.recs;
-    const char* ra = c->store.arena ? c->store.arena : "";
-    for (size_t i = 0; i < c->store.n; i++) {
+/* The scalar conversion SSOT: tag verdict + raw bytes → typed record.
+ * The engine transform and the DOM linearizer both land here, so the
+ * routes cannot drift. */
+static void val_scalar(yep_value_ctx* c, uint8_t tag_id, int implicit_plain, const char* text,
+                       uint32_t len) {
+    YeptrisValue v = {0, 0, 0, 0, 0, 0, 0};
+    int64_t vi = 0;
+    double vd = 0.0;
+    v.tag_id = tag_id;
+    /* EVERY scalar carries its raw bytes: hosts with schema quirks
+     * (Psych's single-char y/n, PyYAML's dot-required floats)
+     * re-decide from tag_id + text without re-running a conversion
+     * grammar */
+    v.off = yep_val_arena_put(c, text, len);
+    v.len = len;
+    if (tag_id != YEPTRIS_TAG_BOOL) {
+        /* b doubles as the implicit-plain flag for the other kinds
+         * (host symbol scans and friends key on it) */
+        v.b = implicit_plain ? 1 : 0;
+    }
+    switch (tag_id) {
+    case YEPTRIS_TAG_NULL:
+        v.kind = YEP_V_NULL;
+        break;
+    case YEPTRIS_TAG_BOOL:
+        v.kind = YEP_V_BOOL;
+        v.b = (uint8_t)yep_num_bool_ci(text, len);
+        break;
+    case YEPTRIS_TAG_INT:
+        v.kind = YEP_V_INT;
+        if (yep_num_i64(text, len, &vi) != 0) {
+            /* the resolver tagged it but the kernel rejects:
+             * degrade to STR — host policy decides */
+            v.kind = YEP_V_STR;
+            v.p = 0;
+        } else {
+            v.p = (uint64_t)vi;
+        }
+        break;
+    case YEPTRIS_TAG_FLOAT:
+        v.kind = YEP_V_FLOAT;
+        if (yep_num_f64(text, len, &vd) != 0) {
+            v.kind = YEP_V_STR;
+        } else {
+            memcpy(&v.p, &vd, sizeof(v.p));
+        }
+        break;
+    case YEPTRIS_TAG_TIMESTAMP:
+        v.kind = YEP_V_TIMESTAMP;
+        break;
+    default:
+        v.kind = YEP_V_STR;
+        break;
+    }
+    yep_val_slot(c, &v);
+    yep_val_put(c, &v);
+}
+
+static int transform(yep_value_ctx* c, const yep_rec_store* store) {
+    const YeptrisEventRecord* rs = store->recs;
+    const char* ra = store->arena ? store->arena : "";
+    for (size_t i = 0; i < store->n; i++) {
         const YeptrisEventRecord* r = &rs[i];
         if (r->anchor_len != 0 && r->type != YEPTRIS_EV_ALIAS) {
             anchor_entry(c, ra + r->anchor_off, r->anchor_len);
@@ -104,13 +159,13 @@ static int transform(yep_value_ctx* c) {
             continue;
         case YEPTRIS_EV_DOCUMENT_START:
             v.kind = YEP_V_DOC;
-            put(c, &v);
+            yep_val_put(c, &v);
             continue;
         case YEPTRIS_EV_SEQUENCE_START:
             v.kind = YEP_V_SEQ_OPEN;
             v.tag_id = r->tag_id;
-            slot(c, &v);
-            put(c, &v);
+            yep_val_slot(c, &v);
+            yep_val_put(c, &v);
             if (c->depth < YEP_V_MAX_DEPTH) {
                 c->key_pend[c->depth] = 0;
             }
@@ -119,8 +174,8 @@ static int transform(yep_value_ctx* c) {
         case YEPTRIS_EV_MAPPING_START:
             v.kind = YEP_V_MAP_OPEN;
             v.tag_id = r->tag_id;
-            slot(c, &v);
-            put(c, &v);
+            yep_val_slot(c, &v);
+            yep_val_put(c, &v);
             if (c->depth < YEP_V_MAX_DEPTH) {
                 c->key_pend[c->depth] = 0;
             }
@@ -129,69 +184,21 @@ static int transform(yep_value_ctx* c) {
         case YEPTRIS_EV_SEQUENCE_END:
         case YEPTRIS_EV_MAPPING_END:
             v.kind = YEP_V_CLOSE;
-            put(c, &v);
+            yep_val_put(c, &v);
             c->depth--;
             continue;
         case YEPTRIS_EV_ALIAS:
             v.kind = YEP_V_ALIAS;
-            v.off = arena_put(c, ra + r->value_off, r->value_len);
+            v.off = yep_val_arena_put(c, ra + r->value_off, r->value_len);
             v.len = r->value_len;
-            slot(c, &v);
-            put(c, &v);
+            yep_val_slot(c, &v);
+            yep_val_put(c, &v);
             continue;
         case YEPTRIS_EV_SCALAR: {
             const char* text = ra + r->value_off;
             uint32_t len = r->value_len;
-            int64_t vi = 0;
-            double vd = 0.0;
-            v.tag_id = r->tag_id;
-            /* EVERY scalar carries its raw bytes: hosts with schema
-             * quirks (Psych's single-char y/n, PyYAML's dot-required
-             * floats) re-decide from tag_id + text without re-running
-             * a conversion grammar */
-            v.off = arena_put(c, text, len);
-            v.len = len;
-            if (r->tag_id != YEPTRIS_TAG_BOOL) {
-                /* b doubles as the implicit-plain flag for the other
-                 * kinds (host symbol scans and friends key on it) */
-                v.b = (r->flags & 4) ? 1 : 0;
-            }
-            switch (r->tag_id) {
-            case YEPTRIS_TAG_NULL:
-                v.kind = YEP_V_NULL;
-                break;
-            case YEPTRIS_TAG_BOOL:
-                v.kind = YEP_V_BOOL;
-                v.b = (uint8_t)yep_num_bool_ci(text, len);
-                break;
-            case YEPTRIS_TAG_INT:
-                v.kind = YEP_V_INT;
-                if (yep_num_i64(text, len, &vi) != 0) {
-                    /* the resolver tagged it but the kernel rejects:
-                     * degrade to STR — host policy decides */
-                    v.kind = YEP_V_STR;
-                    v.p = 0;
-                } else {
-                    v.p = (uint64_t)vi;
-                }
-                break;
-            case YEPTRIS_TAG_FLOAT:
-                v.kind = YEP_V_FLOAT;
-                if (yep_num_f64(text, len, &vd) != 0) {
-                    v.kind = YEP_V_STR;
-                } else {
-                    memcpy(&v.p, &vd, sizeof(v.p));
-                }
-                break;
-            case YEPTRIS_TAG_TIMESTAMP:
-                v.kind = YEP_V_TIMESTAMP;
-                break;
-            default:
-                v.kind = YEP_V_STR;
-                break;
-            }
-            slot(c, &v);
-            put(c, &v);
+            int plain = (r->flags & YEPTRIS_EF_IMPLICIT) != 0;
+            val_scalar(c, r->tag_id, plain, text, len);
             continue;
         }
         default:
@@ -201,53 +208,218 @@ static int transform(yep_value_ctx* c) {
     return c->oom ? -1 : 0;
 }
 
-/* Shared core of both drain flavors: run the engine, convert, and
- * hand the record array + arena to the caller (ownership moves). */
-static YeptrisStatus drain_records(const char* yaml, size_t len, YeptrisSchema schema,
-                                   yep_value_ctx** out) {
-    *out = NULL;
-    yep_engine* eng = yep_engine_create(yep_system_allocator());
-    if (eng == NULL) {
-        return YEPTRIS_ERROR_MEMORY;
-    }
-    yep_engine_set_resolver(eng, schema == YEPTRIS_SCHEMA_11_COMPAT ? yep_resolver_compat11()
-                                                                    : yep_resolver_core12());
+static yep_value_ctx* ctx_create(void) {
+    return calloc(1, sizeof(yep_value_ctx));
+}
 
-    yep_value_ctx* c = calloc(1, sizeof(*c));
+void yep_value_ctx_free(yep_value_ctx* c) {
     if (c == NULL) {
-        yep_engine_destroy(eng);
-        return YEPTRIS_ERROR_MEMORY;
+        return;
     }
-    yep_rec_init(&c->store);
+    free(c->vals);
+    free(c->arena);
+    free(c);
+}
 
-    YeptrisStatus st = YEPTRIS_OK;
-    yep_sink sink = {yep_rec_on_event, &c->store};
-    yep_text_stats pst;
-    yep_text_active()->scan_stats(yaml, len, &pst);
-    yep_engine_prepare(eng, &pst);
-    if (yep_engine_run(eng, yaml, len, &sink) != 0) {
-        st = YEPTRIS_ERROR_PARSE;
-    } else if (transform(c) != 0) {
-        st = YEPTRIS_ERROR_MEMORY;
-    }
-    yep_engine_destroy(eng);
-    yep_rec_free(&c->store);
-    if (st != YEPTRIS_OK) {
-        free(c->vals);
-        free(c->arena);
-        free(c);
-        return st;
+static int ctx_finalize(yep_value_ctx* c, yep_value_ctx** out) {
+    if (c->oom) {
+        yep_value_ctx_free(c);
+        return -1;
     }
     if (c->arena == NULL) {
         c->arena = malloc(1); /* non-NULL so hosts can free blindly */
         if (c->arena == NULL) {
-            free(c->vals);
-            free(c);
-            return YEPTRIS_ERROR_MEMORY;
+            yep_value_ctx_free(c);
+            return -1;
         }
     }
     *out = c;
-    return YEPTRIS_OK;
+    return 0;
+}
+
+/* ---- the DOM linearizer (21): preorder walk, same records ---- */
+
+static int lin_node(yep_value_ctx* c, const yep_dom* d, uint32_t id);
+
+static int lin_children(yep_value_ctx* c, const yep_dom* d, const yep_dnode* n) {
+    for (uint32_t cid = n->first_child; cid != UINT32_MAX; cid = d->nodes[cid].next_sibling) {
+        if (lin_node(c, d, cid) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int lin_node(yep_value_ctx* c, const yep_dom* d, uint32_t id) {
+    const yep_dnode* n = yep_dom_node(d, id);
+    if (n == NULL) {
+        return -1;
+    }
+    if (n->anchor.len != 0 && n->kind != YEP_DOM_ALIAS) {
+        yep_view a = yep_dom_view(d, n->anchor);
+        anchor_entry(c, a.p, (uint32_t)a.len);
+    }
+    YeptrisValue v = {0, 0, 0, 0, 0, 0, 0};
+    switch (n->kind) {
+    case YEP_DOM_SCALAR: {
+        yep_view s = yep_dom_view(d, n->value);
+        val_scalar(c, n->tag_id, n->implicit, s.p, (uint32_t)s.len);
+        return 0;
+    }
+    case YEP_DOM_ALIAS: {
+        yep_view s = yep_dom_view(d, n->value);
+        v.kind = YEP_V_ALIAS;
+        v.off = yep_val_arena_put(c, s.p, (uint32_t)s.len);
+        v.len = (uint32_t)s.len;
+        yep_val_slot(c, &v);
+        yep_val_put(c, &v);
+        return 0;
+    }
+    default:
+        break;
+    }
+    v.kind = n->kind == YEP_DOM_SEQUENCE ? YEP_V_SEQ_OPEN : YEP_V_MAP_OPEN;
+    v.tag_id = n->tag_id;
+    yep_val_slot(c, &v);
+    yep_val_put(c, &v);
+    if (c->depth < YEP_V_MAX_DEPTH) {
+        c->key_pend[c->depth] = 0;
+    }
+    c->depth++;
+    if (lin_children(c, d, n) != 0) {
+        return -1;
+    }
+    v.kind = YEP_V_CLOSE;
+    v.tag_id = 0;
+    v.is_key = 0;
+    yep_val_put(c, &v);
+    c->depth--;
+    return 0;
+}
+
+int yep_values_from_dom(const yep_dom* d, uint32_t root_id, int with_doc, yep_value_ctx** out) {
+    *out = NULL;
+    if (d == NULL) {
+        return -1;
+    }
+    yep_value_ctx* c = ctx_create();
+    if (c == NULL) {
+        return -1;
+    }
+    if (with_doc) {
+        YeptrisValue dv = {YEP_V_DOC, 0, 0, 0, 0, 0, 0};
+        yep_val_put(c, &dv);
+    }
+    if (root_id != UINT32_MAX && lin_node(c, d, root_id) != 0) {
+        yep_value_ctx_free(c);
+        return -1;
+    }
+    return ctx_finalize(c, out);
+}
+
+/* ---- the input entry: strict-JSON sniff, else the engine ---- */
+
+static int looks_strict_json(const char* p, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        char ch = p[i];
+        if (ch == '{' || ch == '[') {
+            return 1;
+        }
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+            continue;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+/* JSON route: validate + direct build + linearize. Returns 0 taken,
+ * 1 not applicable (grammar surprise — engine decides), -1 fatal. */
+static int drain_json_route(const char* yaml, size_t len, yep_value_ctx** out) {
+    size_t verr = 0;
+    if (!yep_json_document(yaml, len, &verr)) {
+        return 1; /* not strict JSON: YAML flow, tags, or junk — engine */
+    }
+    const yep_allocator* sys = yep_system_allocator();
+    yep_dom* dom = yep_dom_create(sys);
+    if (dom == NULL) {
+        return -1;
+    }
+    dom->input_base = yaml; /* strict JSON is UTF-8 by definition */
+    yep_text_stats jst;
+    yep_text_active()->scan_stats(yaml, len, &jst);
+    yep_dom_prepare(dom, &jst);
+    int rc = yep_dom_build_json(dom, yaml, len);
+    if (rc != 0) {
+        /* builder/validator disagreement: belt and braces, engine wins */
+        yep_dom_destroy(dom);
+        return rc == -1 ? -1 : 1;
+    }
+    yep_value_ctx* c = ctx_create();
+    if (c == NULL) {
+        yep_dom_destroy(dom);
+        return -1;
+    }
+    int bad = 0;
+    for (uint32_t i = 0; i < dom->dcount && !bad; i++) {
+        YeptrisValue dv = {YEP_V_DOC, 0, 0, 0, 0, 0, 0};
+        yep_val_put(c, &dv);
+        bad = lin_node(c, dom, dom->docs[i]) != 0;
+    }
+    yep_dom_destroy(dom);
+    if (bad) {
+        yep_value_ctx_free(c);
+        return -1;
+    }
+    return ctx_finalize(c, out) == 0 ? 0 : -1;
+}
+
+/* Shared core of both drain flavors and the Marshal input path: one
+ * record array + arena, ownership moves to the caller. */
+int yep_values_from_input(const char* yaml, size_t len, int schema_compat, yep_value_ctx** out) {
+    *out = NULL;
+    if (looks_strict_json(yaml, len)) {
+        int jrc = drain_json_route(yaml, len, out);
+        if (jrc <= 0) {
+            return jrc == 0 ? 0 : -1;
+        }
+        /* fall through: engine */
+    }
+    yep_engine* eng = yep_engine_create(yep_system_allocator());
+    if (eng == NULL) {
+        return -1;
+    }
+    yep_engine_set_resolver(eng, schema_compat ? yep_resolver_compat11() : yep_resolver_core12());
+
+    yep_value_ctx* c = ctx_create();
+    if (c == NULL) {
+        yep_engine_destroy(eng);
+        return -1;
+    }
+    yep_rec_store store;
+    yep_rec_init(&store);
+
+    int prc = -2;
+    yep_sink sink = {yep_rec_on_event, &store};
+    yep_text_stats pst;
+    yep_text_active()->scan_stats(yaml, len, &pst);
+    yep_engine_prepare(eng, &pst);
+    if (yep_engine_run(eng, yaml, len, &sink) == 0 && transform(c, &store) == 0) {
+        prc = 0;
+    } else if (c->oom) {
+        prc = -1;
+    }
+    yep_engine_destroy(eng);
+    yep_rec_free(&store);
+    if (prc != 0) {
+        yep_value_ctx_free(c);
+        return prc == -1 ? -1 : -2;
+    }
+    return ctx_finalize(c, out) == 0 ? 0 : -1;
+}
+
+static YeptrisStatus map_status(int rc) {
+    return rc == 0 ? YEPTRIS_OK : (rc == -1 ? YEPTRIS_ERROR_MEMORY : YEPTRIS_ERROR_PARSE);
 }
 
 YEPTRIS_API YeptrisStatus yeptris_value_drain(const char* yaml, size_t len, YeptrisSchema schema,
@@ -262,9 +434,9 @@ YEPTRIS_API YeptrisStatus yeptris_value_drain(const char* yaml, size_t len, Yept
     *arena = NULL;
     *arena_len = 0;
     yep_value_ctx* c = NULL;
-    YeptrisStatus st = drain_records(yaml, len, schema, &c);
-    if (st != YEPTRIS_OK) {
-        return st;
+    int rc = yep_values_from_input(yaml, len, schema == YEPTRIS_SCHEMA_11_COMPAT, &c);
+    if (rc != 0) {
+        return map_status(rc);
     }
     *vals = c->vals;
     *count = c->n;
@@ -287,9 +459,9 @@ YEPTRIS_API YeptrisStatus yeptris_value_drain_columns(const char* yaml, size_t l
     }
     memset(cols, 0, sizeof(*cols));
     yep_value_ctx* c = NULL;
-    YeptrisStatus st = drain_records(yaml, len, schema, &c);
-    if (st != YEPTRIS_OK) {
-        return st;
+    int rc = yep_values_from_input(yaml, len, schema == YEPTRIS_SCHEMA_11_COMPAT, &c);
+    if (rc != 0) {
+        return map_status(rc);
     }
     size_t n = c->n;
     /* one carved block, widest-first so every column is naturally
@@ -299,9 +471,7 @@ YEPTRIS_API YeptrisStatus yeptris_value_drain_columns(const char* yaml, size_t l
     if (n > 0) {
         block = malloc(total);
         if (block == NULL) {
-            free(c->vals);
-            free(c->arena);
-            free(c);
+            yep_value_ctx_free(c);
             return YEPTRIS_ERROR_MEMORY;
         }
     }

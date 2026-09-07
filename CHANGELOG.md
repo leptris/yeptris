@@ -7,6 +7,32 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Added
+- `yeptris_marshal`/`yeptris_marshal_node`/`yeptris_marshal_free`
+  (TODO.restructure/21): the C side converts value records into Ruby
+  Marshal 4.8 bytes; the binding materializes the whole object graph
+  with one `Marshal.load` call. ~10× faster than the columnar walk on
+  JSON-shaped input and ~5× on YAML, ~50× on the per-node DOM walk
+  (`Node#to_ruby` becomes bulk). Alias identity preserved through `@`
+  links; merge keys and timestamps return `ERROR_UNSUPPORTED` for the
+  record-walk fallback.
+
+### Changed
+- The value-drain entry (`yep_values_from_input`) sniffs strict-JSON
+  (`{`/`[` as the first non-space byte) and routes through the JSON
+  scanner + DOM linearizer on the same path the YAML engine takes;
+  any grammar surprise defers to the engine. Records stay byte-
+  identical across routes (the Ruby binding's 2.7k-corpus
+  differential pins the equivalence).
+
+### Fixed
+- DOM `lin_node` linearizer: pending anchors decorate the value that
+  *follows* them, even inside a container; nested anchor bindings no
+  longer clobber the outer pending index (ASAN caught a stale-index
+  write on `&a [&b x]`).
+- Marshal `anchor_find`: YAML lets a later `&anchor` shadow an earlier
+  one of the same name; lookup scans newest-first
+  (libyaml snapshot 3GZX).
 
 ## [0.1.10] - 2026-09-06
 ### Fixed
