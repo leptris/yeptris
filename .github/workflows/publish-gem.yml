@@ -43,7 +43,10 @@ jobs:
           fi
           echo "lockstep gem: $BEST"
           gem_version="${BEST#v}"
-          if gem fetch "yeptris" --version "$gem_version" >/dev/null 2>&1; then
+          # gem fetch exits 0 spuriously for missing versions on some
+          # runners — the RubyGems API is the authoritative check
+          if curl -sf https://rubygems.org/api/v1/versions/yeptris.json \
+              | grep -q "\"number\":\"$gem_version\""; then
             echo "yeptris $gem_version already on RubyGems"
             echo "push=false" >> "$GITHUB_OUTPUT"
             exit 0
