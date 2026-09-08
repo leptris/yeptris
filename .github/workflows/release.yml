@@ -147,8 +147,9 @@ jobs:
             # (gem fetch --version exits 0 spuriously for missing
             # versions on the runners); repushing is forbidden forever
             gem_version="${BEST#v}"
-            if curl -sf https://rubygems.org/api/v1/versions/yeptris.json \
-                | grep -q "\"number\":\"$gem_version\""; then
+            # platform gems share the NUMBER - match number+platform
+            if curl -sf https://rubygems.org/api/v1/versions/yeptris.json | \
+                ruby -rjson -e 'exit(JSON.parse(STDIN.read).any? { |v| v["number"]==ARGV[0] && v["platform"]=="ruby" } ? 0 : 1)' "$gem_version"; then
               echo "yeptris $gem_version already on RubyGems — skipping push"
               echo "found=" >> "$GITHUB_OUTPUT"
             else
