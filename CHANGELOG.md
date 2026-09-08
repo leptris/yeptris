@@ -6,6 +6,13 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- The escape grammar is ONE authority: `yep_json_string`'s escape
+  validation extracted to a single validator (TODO.restructure/47's
+  survivor; the structural-index descent itself was measured dead —
+  every benchmark shape regressed — and reverted, ledgered in full).
+
 ## [0.1.16] - 2026-09-08
 ### Added
 - TODO.restructure/46: `qbc_find` — a one-pass SIMD string-stop
@@ -17,8 +24,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.15] - 2026-09-08
 ### Added
-
-
 - TODO.restructure/43 (canon parity): Psych's sexagesimal weights —
   the fold is now weight-based (component e weighs 60^|e-2|, sign on
   the first component): 2-component values are H:M (`1:30` = 5400,

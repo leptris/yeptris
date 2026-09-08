@@ -357,6 +357,56 @@ int yep_json_literal(const char* p, size_t len, size_t* i, const char* word) {
  * reject — one SIMD pass, no second scan. On success *i sits just
  * past the close, *close_out is the close quote index, *has_esc
  * reports backslashes. */
+/* The escape grammar, ONE authority for the string scans (the
+ * TODO.restructure/47 index descent was measured dead and reverted;
+ * re-exporting this is a one-liner if a consumer ever returns). */
+static int yep_json_escape(const char* p, size_t len, size_t at, size_t* next) {
+    if (at + 1 >= len) {
+        return 0;
+    }
+    char e2 = p[at + 1];
+    if (e2 == 'u') {
+        for (size_t h = 2; h <= 5; h++) {
+            if (at + h >= len || !yep_ct_is((unsigned char)p[at + h], YEP_CT_HEXDIGIT)) {
+                return 0;
+            }
+        }
+        uint32_t cp = 0;
+        for (size_t h = 2; h <= 5; h++) {
+            cp = (cp << 4) | (uint32_t)hexval((unsigned char)p[at + h]);
+        }
+        if (cp >= 0xD800 && cp <= 0xDBFF) {
+            /* high surrogate must pair */
+            if (at + 12 >= len || p[at + 6] != '\\' || p[at + 7] != 'u') {
+                return 0;
+            }
+            uint32_t lo = 0;
+            for (size_t h = 8; h <= 11; h++) {
+                if (!yep_ct_is((unsigned char)p[at + h], YEP_CT_HEXDIGIT)) {
+                    return 0;
+                }
+                lo = (lo << 4) | (uint32_t)hexval((unsigned char)p[at + h]);
+            }
+            if (lo < 0xDC00 || lo > 0xDFFF) {
+                return 0;
+            }
+            *next = at + 12;
+            return 1;
+        }
+        if (cp >= 0xDC00 && cp <= 0xDFFF) {
+            return 0; /* lone low surrogate */
+        }
+        *next = at + 6;
+        return 1;
+    }
+    if (e2 != '"' && e2 != '\\' && e2 != '/' && e2 != 'b' && e2 != 'f' && e2 != 'n' && e2 != 'r' &&
+        e2 != 't') {
+        return 0; /* YAML-only escape (\a, \x…): not JSON */
+    }
+    *next = at + 2;
+    return 1;
+}
+
 int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out, int* has_esc) {
     const yep_text_kernels* k = yep_text_active();
     size_t j = *i + 1;
@@ -381,51 +431,11 @@ int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out, int
         if (c != '\\') {
             return 0; /* raw C0 control (incl. breaks) inside a string */
         }
-        /* escape: validate the escaped byte inline */
-        if (at + 1 >= len) {
+        /* escape: the shared grammar authority (the index-driven
+         * descents walk the same rules — TODO.restructure/47) */
+        esc = 1;
+        if (!yep_json_escape(p, len, at, &j)) {
             return 0;
         }
-        esc = 1;
-        char e2 = p[at + 1];
-        if (e2 == 'u') {
-            for (int h = 2; h <= 5; h++) {
-                if (at + (size_t)h >= len ||
-                    !yep_ct_is((unsigned char)p[at + (size_t)h], YEP_CT_HEXDIGIT)) {
-                    return 0;
-                }
-            }
-            uint32_t cp = 0;
-            for (int h = 2; h <= 5; h++) {
-                cp = (cp << 4) | (uint32_t)hexval((unsigned char)p[at + (size_t)h]);
-            }
-            if (cp >= 0xD800 && cp <= 0xDBFF) {
-                /* high surrogate must pair; the general kernel reports */
-                if (at + 12 >= len || p[at + 6] != '\\' || p[at + 7] != 'u') {
-                    return 0;
-                }
-                uint32_t lo = 0;
-                for (int h = 8; h <= 11; h++) {
-                    if (!yep_ct_is((unsigned char)p[at + (size_t)h], YEP_CT_HEXDIGIT)) {
-                        return 0;
-                    }
-                    lo = (lo << 4) | (uint32_t)hexval((unsigned char)p[at + (size_t)h]);
-                }
-                if (lo < 0xDC00 || lo > 0xDFFF) {
-                    return 0;
-                }
-                j = at + 12;
-                continue;
-            }
-            if (cp >= 0xDC00 && cp <= 0xDFFF) {
-                return 0; /* lone low surrogate */
-            }
-            j = at + 6;
-            continue;
-        }
-        if (e2 != '"' && e2 != '\\' && e2 != '/' && e2 != 'b' && e2 != 'f' && e2 != 'n' &&
-            e2 != 'r' && e2 != 't') {
-            return 0; /* YAML-only escape (\a, \x…): not JSON */
-        }
-        j = at + 2;
     }
 }
