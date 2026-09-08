@@ -146,21 +146,27 @@ int yep_num_i64(const char* p, uint32_t len, int64_t* out) {
         base = 8; /* compat leading-0 octal */
     }
     if (memchr(buf, ':', l) != NULL) {
-        /* compat sexagesimal: [-+]?d+(:dd){1,2} */
-        long long sign = 1;
+        /* Psych's sexagesimal fold, verbatim (scalar_scanner.rb):
+         * component e weighs 60 ** |e - 2| and the SIGN rides the
+         * first component only (-1:30 -> -3600 + 1800 = -1800, not
+         * -5400). A 2-component value is H:M, seconds implicitly
+         * zero (1:30 -> 5400). TODO.restructure/43 / issue #30. */
         const char* q = buf;
-        if (q[0] == '-') {
-            sign = -1;
-            q++;
-        } else if (q[0] == '+') {
+        long long sign = 1;
+        if (q[0] == '-' || q[0] == '+') {
+            if (q[0] == '-')
+                sign = -1;
             q++;
         }
         long long v = 0;
-        int groups = 0;
         while (*q >= '0' && *q <= '9') {
             v = v * 10 + (*q - '0');
             q++;
         }
+        v *= 3600; /* e0 weight */
+        if (sign < 0)
+            v = -v;
+        int groups = 0;
         while (*q == ':' && groups < 2) {
             q++;
             long long g = 0;
@@ -173,13 +179,13 @@ int yep_num_i64(const char* p, uint32_t len, int64_t* out) {
             if (d == 0) {
                 return 1;
             }
-            v = v * 60 + g;
+            v += g * (groups == 0 ? 60 : 1); /* e1 then e2 */
             groups++;
         }
         if (groups == 0 || *q != '\0') {
             return 1;
         }
-        *out = sign * v;
+        *out = v;
         return 0;
     }
     char* end = NULL;
@@ -240,24 +246,31 @@ int yep_num_f64(const char* p, uint32_t len, double* out) {
             }
         }
     }
-    /* sexagesimal: [-+]?d+(:dd){1,2}(.d*)? */
+    /* sexagesimal float — Psych's fold: weights 60**|e-2|, sign on
+     * the first component, the fraction on the LAST component
+     * (1:30.5 -> 1*3600 + 30.5*60 = 5430.0). */
     if (memchr(buf, ':', l) != NULL) {
-        double sign = 1.0;
         const char* s = buf;
-        if (s[0] == '-') {
-            sign = -1.0;
-            s++;
-        } else if (s[0] == '+') {
+        double sign = 1.0;
+        if (s[0] == '-' || s[0] == '+') {
+            if (s[0] == '-')
+                sign = -1.0;
             s++;
         }
         double v = 0.0;
         const char* q = s;
-        int groups = 0;
         while (*q >= '0' && *q <= '9') {
             v = v * 10.0 + (*q - '0');
             q++;
         }
-        while (*q == ':' && groups < 2) {
+        v *= 3600.0;
+        v *= sign;
+        int groups = 0;
+        double last = 0.0;
+        double weight = 60.0;
+        for (;;) {
+            if (*q != ':' || groups >= 2)
+                break;
             q++;
             double g = 0.0;
             int d = 0;
@@ -269,26 +282,26 @@ int yep_num_f64(const char* p, uint32_t len, double* out) {
             if (d == 0) {
                 return 1;
             }
-            v = v * 60.0 + g;
+            if (*q == '.') {
+                double frac = 0.0, scale = 0.1;
+                q++;
+                while (*q >= '0' && *q <= '9') {
+                    frac += (*q - '0') * scale;
+                    scale /= 10.0;
+                    q++;
+                }
+                g += frac;
+            }
+            v += g * weight;
+            weight = 1.0; /* e2 */
+            last = g;
             groups++;
         }
-        if (groups == 0 || (*q != '\0' && *q != '.')) {
+        (void)last;
+        if (groups == 0 || *q != '\0') {
             return 1;
         }
-        if (*q == '.') {
-            double frac = 0.0, scale = 0.1;
-            q++;
-            while (*q >= '0' && *q <= '9') {
-                frac += (*q - '0') * scale;
-                scale /= 10.0;
-                q++;
-            }
-            v += frac;
-        }
-        if (*q != '\0') {
-            return 1;
-        }
-        *out = sign * v;
+        *out = v;
         return 0;
     }
     char* end = NULL;

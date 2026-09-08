@@ -260,6 +260,73 @@ static int anchor_add(E* e, const char* name, uint32_t len) {
     return 0;
 }
 
+/* Psych's integer shape (scalar_scanner): optional sign, no
+ * leading zero, digits with '_' / ',' separators only BETWEEN
+ * digits. Ints within int64 arrive as V_INT; this rebuilds the
+ * BEYOND-int64 texts Psych materializes as Integer (issue #31,
+ * TODO.restructure/43). */
+static int psych_int_text(const char* p, uint32_t len) {
+    if (len == 0)
+        return 0;
+    if (p[0] == '-' || p[0] == '+') {
+        p++;
+        len--;
+    }
+    if (len == 0 || p[0] == '0')
+        return 0;
+    for (uint32_t i = 0; i < len; i++) {
+        char c = p[i];
+        if (c >= '0' && c <= '9')
+            continue;
+        if ((c == '_' || c == ',') && i + 1 < len && p[i + 1] >= '0' && p[i + 1] <= '9')
+            continue;
+        return 0;
+    }
+    return 1;
+}
+
+/* decimal text -> bignum limbs (base 2^16 LE), then Marshal's 'l':
+ * sign + w_long(limb count) + limbs. 128 limbs = 2048 bits covers
+ * ~616 decimal digits; longer texts stay Strings (pathological). */
+static void e_bignum_text(E* e, const char* p, uint32_t len) {
+    int neg = 0;
+    if (p[0] == '-' || p[0] == '+') {
+        neg = p[0] == '-';
+        p++;
+        len--;
+    }
+    uint16_t limbs[128];
+    memset(limbs, 0, sizeof(limbs));
+    int nl = 1;
+    for (uint32_t i = 0; i < len; i++) {
+        char c = p[i];
+        if (c == '_' || c == ',')
+            continue;
+        uint32_t carry = (uint32_t)(c - '0');
+        for (int j = 0; j < nl; j++) {
+            uint32_t t = (uint32_t)limbs[j] * 10u + carry;
+            limbs[j] = (uint16_t)(t & 0xffffu);
+            carry = t >> 16;
+        }
+        while (carry != 0 && nl < 128) {
+            limbs[nl++] = (uint16_t)(carry & 0xffffu);
+            carry >>= 16;
+        }
+    }
+    while (nl > 1 && limbs[nl - 1] == 0)
+        nl--;
+    e->last_was_reg = 0;
+    e_byte(e, 'l');
+    e_byte(e, neg ? '-' : '+');
+    e_long(e, nl);
+    unsigned char b[256];
+    for (int i = 0; i < nl; i++) {
+        b[2 * i] = (unsigned char)(limbs[i] & 0xff);
+        b[2 * i + 1] = (unsigned char)(limbs[i] >> 8);
+    }
+    e_put(e, b, (size_t)nl * 2);
+}
+
 static int e_scalar(E* e, const YeptrisValue* v) {
     const char* p = e_text(e, v);
     switch (v->kind) {
@@ -286,6 +353,10 @@ static int e_scalar(E* e, const YeptrisValue* v) {
         }
         return 0;
     case YEP_V_STR:
+        if (v->b == 1 && v->len < 1300 && v->len > 18 && psych_int_text(p, v->len)) {
+            e_bignum_text(e, p, v->len);
+            return 0;
+        }
         if (v->b == 1 && sym_scan(p, v->len)) {
             e_sym(e, p + 1, v->len - 1);
         } else {
