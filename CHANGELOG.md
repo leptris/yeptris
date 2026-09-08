@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   survivor; the structural-index descent itself was measured dead —
   every benchmark shape regressed — and reverted, ledgered in full).
 
+## [0.1.16] - 2026-09-08
+### Added
 - TODO.restructure/46: `qbc_find` — a one-pass SIMD string-stop
   kernel (first quote, backslash, or C0 control; AVX2/NEON/scalar
   TUs + dispatch) now backs `yep_json_string`. Hardened
@@ -22,8 +24,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.15] - 2026-09-08
 ### Added
-
-
 - TODO.restructure/43 (canon parity): Psych's sexagesimal weights —
   the fold is now weight-based (component e weighs 60^|e-2|, sign on
   the first component): 2-component values are H:M (`1:30` = 5400,
