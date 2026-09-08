@@ -56,12 +56,23 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=OFF
           cmake --build deps/libyaml/build
 
+      - name: Fetch and build rapidyaml (pinned; the field benchmark, item 44)
+        run: |
+          git clone --depth 1 --branch v0.16.0 --recurse-submodules --shallow-submodules \
+            https://github.com/biojppm/rapidyaml deps/ryml
+          test "$(git -C deps/ryml rev-parse HEAD)" = "f8ac8dd50f4f7916579d55a05ebf9c6488e52670"
+          cmake -B deps/ryml/build -S deps/ryml -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DRYML_BUILD_TESTS=OFF \
+            -DRYML_BUILD_BENCHMARKS=OFF -DRYML_BUILD_TOOLS=OFF
+          cmake --build deps/ryml/build
+
       - name: Configure
         run: |
           cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DYEPTRIS_BUILD_BENCHMARKS=ON \
-            -DYEPTRIS_BENCH_LIBYAML_ROOT="$PWD/deps/libyaml"
+            -DYEPTRIS_BENCH_LIBYAML_ROOT="$PWD/deps/libyaml" \
+            -DYEPTRIS_BENCH_RYML_ROOT="$PWD/deps/ryml"
 
       - name: Build
         run: cmake --build build
@@ -76,7 +87,7 @@ jobs:
           {
             echo "# Benchmark matrix — ${{ matrix.os }}"
             echo
-            echo "Commit: ${{ github.sha }} (libyaml pinned at 90a56d4)"
+            echo "Commit: ${{ github.sha }} (libyaml 90a56d4, rapidyaml v0.16.0 f8ac8dd)"
             echo
             cat benchmarks/results/bench-matrix.md
           } >> "$GITHUB_STEP_SUMMARY"
