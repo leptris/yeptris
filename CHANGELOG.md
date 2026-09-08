@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Added
+- TODO.restructure/43 (canon parity): Psych's sexagesimal weights —
+  the fold is now weight-based (component e weighs 60^|e-2|, sign on
+  the first component): 2-component values are H:M (`1:30` = 5400,
+  not 90; `-1:30` = -1800; `1:30.5` = 5430.0); 3-component unchanged.
+- Beyond-int64 integers marshal as Integer (Psych parity): the
+  emitter rebuilds Bignum limbs from the decimal text under Psych's
+  integer shape (no leading zeros, `_`/`,` separators).
+
+### Changed
+- yeptris_node_int/float delegate to the yep_num_* kernels — the
+  typed accessors carried a THIRD copy of the number conversion
+  (clean + bases + inf/nan + sexagesimal); numbers.c is the one
+  fold (MECE), ~150 duplicated lines deleted.
+
 - TODO.restructure/41 (Python binding): yeptris.json.loads — the
   native JSON loader over the exported scan kernels beats json.loads
   (CI-gated 1.00: ubuntu 0.785x mean 198/200, macos 0.699x 181/200;

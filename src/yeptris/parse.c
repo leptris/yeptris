@@ -9,6 +9,7 @@
 #include "memory/allocator.h"
 #include "memory/pool.h"
 #include "parse/engine.h"
+#include "parse/numbers.h"
 #include "resolve/resolver.h"
 #include "scan/json.h"
 
@@ -356,77 +357,6 @@ static const double k_pow10[23] = {
     1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22,
 };
 
-static int fast_double(const char* s, size_t len, double* out) {
-    size_t i = 0;
-    int neg = 0;
-    if (i < len && (s[i] == '-' || s[i] == '+')) {
-        neg = s[i] == '-';
-        i++;
-    }
-    uint64_t m = 0;
-    int digits = 0;
-    int dot = -1;
-    for (; i < len; i++) {
-        char c = s[i];
-        if (c == '.') {
-            if (dot >= 0) {
-                return 0;
-            }
-            dot = (int)digits;
-            continue;
-        }
-        if (c < '0' || c > '9') {
-            break;
-        }
-        if (digits >= 15) {
-            return 0; /* outside the exact range */
-        }
-        m = m * 10u + (uint64_t)(c - '0');
-        digits++;
-    }
-    if (digits == 0 || (i < len && s[i] != 'e' && s[i] != 'E')) {
-        return 0; /* empty mantissa or trailing junk */
-    }
-    int e10 = 0;
-    if (i < len) {
-        i++; /* e/E */
-        int eneg = 0;
-        if (i < len && (s[i] == '-' || s[i] == '+')) {
-            eneg = s[i] == '-';
-            i++;
-        }
-        if (i >= len) {
-            return 0;
-        }
-        for (; i < len; i++) {
-            if (s[i] < '0' || s[i] > '9') {
-                return 0;
-            }
-            e10 = e10 * 10 + (s[i] - '0');
-            if (e10 > 308) {
-                return 0;
-            }
-        }
-        if (eneg) {
-            e10 = -e10;
-        }
-    }
-    if (dot >= 0) {
-        e10 -= digits - dot;
-    }
-    if (e10 > 22 || e10 < -22 || m >= (1ull << 53)) {
-        return 0; /* outside Clinger's exact range */
-    }
-    if (e10 >= 0) {
-        double v = (double)m * k_pow10[e10];
-        *out = neg ? -v : v;
-    } else {
-        double v = (double)m / k_pow10[-e10];
-        *out = neg ? -v : v;
-    }
-    return 1;
-}
-
 /* Decodes a node's compact string through its document's regions. */
 static yep_view node_view(const yeptris_node* h, yep_sview sv) {
     return yep_dom_view(h->doc->dom, sv);
@@ -476,32 +406,9 @@ YEPTRIS_API YeptrisTagId yeptris_node_tag_id(YeptrisNode handle) {
 /* strips '_' and ',' into dst (nul-terminated); returns length.
  * The COMMON case (no separators) returns the borrowed view — no
  * copy, no nul-termination needed by the in-place parsers. */
-static size_t clean_num(const yeptris_node* h, const yep_dnode* n, char* dst, size_t cap,
-                        const char** text) {
-    yep_view v = node_view(h, n->value);
-    if (v.len == 0) {
-        *text = dst;
-        dst[0] = '\0';
-        return 0;
-    }
-    if (memchr(v.p, '_', v.len) == NULL && memchr(v.p, ',', v.len) == NULL) {
-        *text = (const char*)v.p; /* zero-copy fast path (08B) */
-        return v.len;
-    }
-    size_t o = 0;
-    for (uint32_t i = 0; i < v.len && o + 1 < cap; i++) {
-        char c = ((const char*)v.p)[i];
-        if (c == '_' || c == ',') {
-            continue;
-        }
-        dst[o++] = c;
-    }
-    dst[o] = '\0';
-    *text = dst;
-    return o;
-}
-
 YEPTRIS_API YeptrisStatus yeptris_node_int(YeptrisNode handle, int64_t* out) {
+    /* conversion is the number kernel's alone (MECE: one fold, one
+     * fast path, one Psych-sexagesimal weight table) */
     const yep_dnode* n = node_of(handle);
     if (n == NULL || out == NULL) {
         return YEPTRIS_ERROR_ARG;
@@ -509,84 +416,8 @@ YEPTRIS_API YeptrisStatus yeptris_node_int(YeptrisNode handle, int64_t* out) {
     if (n->tag_id != YEPTRIS_TAG_INT) {
         return YEPTRIS_ERROR_PARSE;
     }
-    char buf[80];
-    const char* num = NULL;
-    size_t len = clean_num((yeptris_node*)handle, n, buf, sizeof(buf), &num);
-    if (len == 0) {
-        return YEPTRIS_ERROR_PARSE;
-    }
-    /* the 0o mutation path below rewrites the text; copy borrowed
-     * views into buf first so the input is never touched */
-    if (num != buf) {
-        if (len >= sizeof(buf)) {
-            return YEPTRIS_ERROR_PARSE;
-        }
-        memcpy(buf, num, len);
-        buf[len] = '\0';
-        num = buf;
-    }
-    int base = 10;
-    const char* s = buf;
-    if (buf[0] == '-' || buf[0] == '+') {
-        s++;
-    }
-    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
-        base = 16;
-    } else if (s[0] == '0' && (s[1] == 'b' || s[1] == 'B')) {
-        base = 2;
-    } else if (s[0] == '0' && s[1] == 'o') {
-        memmove(buf + (size_t)(s - buf) + 1, s + 2, len - (size_t)(s - buf) - 1);
-        len -= 1;
-        buf[len] = '\0';
-        base = 8; /* 0o17 -> 017 octal */
-    } else if (s[0] == '0' && s[1] != '\0' && s[1] != '.') {
-        base = 8; /* compat leading-0 octal */
-    }
-    if (memchr(buf, ':', len) != NULL) {
-        /* compat sexagesimal: [-+]?d+(:dd){1,2} */
-        long long sign = 1;
-        const char* p = buf;
-        if (p[0] == '-') {
-            sign = -1;
-            p++;
-        } else if (p[0] == '+') {
-            p++;
-        }
-        long long v = 0;
-        int groups = 0;
-        while (*p >= '0' && *p <= '9') {
-            v = v * 10 + (*p - '0');
-            p++;
-        }
-        while (*p == ':' && groups < 2) {
-            p++;
-            long long g = 0;
-            int d = 0;
-            while (*p >= '0' && *p <= '9') {
-                g = g * 10 + (*p - '0');
-                p++;
-                d++;
-            }
-            if (d == 0) {
-                return YEPTRIS_ERROR_PARSE;
-            }
-            v = v * 60 + g;
-            groups++;
-        }
-        if (groups == 0 || *p != '\0') {
-            return YEPTRIS_ERROR_PARSE;
-        }
-        *out = sign * v;
-        return YEPTRIS_OK;
-    }
-    char* end = NULL;
-    errno = 0;
-    long long v = strtoll(buf, &end, base);
-    if (end == buf || *end != '\0' || errno == ERANGE) {
-        return YEPTRIS_ERROR_PARSE;
-    }
-    *out = (int64_t)v;
-    return YEPTRIS_OK;
+    yep_view v = node_view((yeptris_node*)handle, n->value);
+    return yep_num_i64((const char*)v.p, v.len, out) == 0 ? YEPTRIS_OK : YEPTRIS_ERROR_PARSE;
 }
 
 YEPTRIS_API YeptrisStatus yeptris_node_float(YeptrisNode handle, double* out) {
@@ -597,113 +428,9 @@ YEPTRIS_API YeptrisStatus yeptris_node_float(YeptrisNode handle, double* out) {
     if (n->tag_id != YEPTRIS_TAG_FLOAT) {
         return YEPTRIS_ERROR_PARSE;
     }
-    char buf[80];
-    const char* num = NULL;
-    size_t len = clean_num((yeptris_node*)handle, n, buf, sizeof(buf), &num);
-    if (len == 0) {
-        return YEPTRIS_ERROR_PARSE;
-    }
-    /* 08B fast path: the common decimal shape converts exactly with
-     * integer arithmetic (Clinger bounds: mantissa < 2^53, adjusted
-     * exponent within +-22); everything else falls to strtod */
-    {
-        double fast;
-        if (fast_double(num, len, &fast)) {
-            *out = fast;
-            return YEPTRIS_OK;
-        }
-    }
-    if (num != buf) {
-        if (len >= sizeof(buf)) {
-            return YEPTRIS_ERROR_PARSE;
-        }
-        memcpy(buf, num, len);
-        buf[len] = '\0';
-        num = buf;
-    }
-    /* .inf / .nan family (sign allowed on inf) */
-    {
-        const char* s = buf;
-        size_t sl = len;
-        if (s[0] == '-' || s[0] == '+') {
-            s++;
-            sl--;
-        }
-        if (sl == 4 && s[0] == '.') {
-            if ((s[1] == 'i' || s[1] == 'I') && (s[2] == 'n' || s[2] == 'N') &&
-                (s[3] == 'f' || s[3] == 'F')) {
-                *out = (buf[0] == '-') ? -INFINITY : INFINITY;
-                return YEPTRIS_OK;
-            }
-            if ((s[1] == 'n' || s[1] == 'N') && (s[2] == 'a' || s[2] == 'A') &&
-                (s[3] == 'n' || s[3] == 'N')) {
-                *out = NAN;
-                return YEPTRIS_OK;
-            }
-        }
-    }
-    /* sexagesimal: [-+]?d+(:dd){1,2}(.d*)? */
-    if (memchr(buf, ':', len) != NULL) {
-        double sign = 1.0;
-        const char* s = buf;
-        if (s[0] == '-') {
-            sign = -1.0;
-            s++;
-        } else if (s[0] == '+') {
-            s++;
-        }
-        double v = 0.0;
-        const char* p = s;
-        int groups = 0;
-        while (*p >= '0' && *p <= '9') {
-            v = v * 10.0 + (*p - '0');
-            p++;
-        }
-        while (*p == ':' && groups < 2) {
-            p++;
-            double g = 0.0;
-            int d = 0;
-            while (*p >= '0' && *p <= '9') {
-                g = g * 10.0 + (*p - '0');
-                p++;
-                d++;
-            }
-            if (d == 0) {
-                return YEPTRIS_ERROR_PARSE;
-            }
-            v = v * 60.0 + g;
-            groups++;
-        }
-        if (groups == 0 || (*p != '\0' && *p != '.')) {
-            return YEPTRIS_ERROR_PARSE;
-        }
-        if (*p == '.') {
-            double frac = 0.0, scale = 0.1;
-            p++;
-            while (*p >= '0' && *p <= '9') {
-                frac += (*p - '0') * scale;
-                scale /= 10.0;
-                p++;
-            }
-            v += frac;
-        }
-        if (*p != '\0') {
-            return YEPTRIS_ERROR_PARSE;
-        }
-        *out = sign * v;
-        return YEPTRIS_OK;
-    }
-    char* end = NULL;
-    errno = 0;
-    double v = strtod(buf, &end);
-    if (end == buf || *end != '\0') {
-        return YEPTRIS_ERROR_PARSE;
-    }
-    (void)errno;
-    *out = v;
-    return YEPTRIS_OK;
+    yep_view v = node_view((yeptris_node*)handle, n->value);
+    return yep_num_f64((const char*)v.p, v.len, out) == 0 ? YEPTRIS_OK : YEPTRIS_ERROR_PARSE;
 }
-
 YEPTRIS_API YeptrisStatus yeptris_node_bool(YeptrisNode handle, int* out) {
     const yep_dnode* n = node_of(handle);
     if (n == NULL || out == NULL) {

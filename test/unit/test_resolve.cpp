@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <string>
 
 #include <yeptris.h>
 
@@ -124,6 +125,55 @@ TEST(Compat11, PsychScalarScanner) {
     run_vecs(v, sizeof(v) / sizeof(v[0]), &opts);
 }
 
+TEST(Compat11, PsychSexagesimalWeights) {
+    /* Psych's fold is weight-based (60 ** |e - 2|): a 2-component
+     * value is H:M with seconds implicitly zero -- 1:30 -> 5400, not
+     * 90. 3-component already matches the positional fold. Pinned
+     * against Psych's scanner verbatim (issue #30,
+     * TODO.restructure/43). */
+    const struct {
+        const char* text;
+        int64_t want;
+    } ints[] = {
+        {"1:30", 5400}, {"-1:30", -1800}, {"0:30", 1800}, {"190:20:30", 685230}, {"1:2:3", 3723},
+    };
+    const struct {
+        const char* text;
+        double want;
+    } floats[] = {
+        {"1:30.5", 5430.0},
+        {"190:20:30.15", 685230.15},
+    };
+    YeptrisParseOptions opts = {};
+    opts.schema = YEPTRIS_SCHEMA_11_COMPAT;
+    for (size_t k = 0; k < sizeof(ints) / sizeof(ints[0]); k++) {
+        std::string y = std::string("k: ") + ints[k].text + "\n";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse_ex(y.c_str(), y.size(), &opts, &st);
+        ASSERT_EQ(st, YEPTRIS_OK) << ints[k].text;
+        int64_t got = 0;
+        EXPECT_EQ(
+            yeptris_node_int(yeptris_node_map_get(yeptris_document_root(doc, 0), "k", 1), &got),
+            YEPTRIS_OK)
+            << ints[k].text;
+        EXPECT_EQ(got, ints[k].want) << ints[k].text;
+        yeptris_document_free(doc);
+    }
+    for (size_t k = 0; k < sizeof(floats) / sizeof(floats[0]); k++) {
+        std::string y = std::string("k: ") + floats[k].text + "\n";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse_ex(y.c_str(), y.size(), &opts, &st);
+        ASSERT_EQ(st, YEPTRIS_OK) << floats[k].text;
+        double got = 0;
+        EXPECT_EQ(
+            yeptris_node_float(yeptris_node_map_get(yeptris_document_root(doc, 0), "k", 1), &got),
+            YEPTRIS_OK)
+            << floats[k].text;
+        EXPECT_DOUBLE_EQ(got, floats[k].want) << floats[k].text;
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Resolve, TypedAccessors) {
     const char* y = "i: 42\nf: 3.5\nb: true\ns: hi\n";
     YeptrisStatus st = YEPTRIS_OK;
@@ -171,10 +221,11 @@ TEST(Resolve, CompatTypedConversion) {
     EXPECT_EQ(yeptris_node_int(yeptris_node_map_get(root, "oct", 3), &i), YEPTRIS_OK);
     EXPECT_EQ(i, 15);
     EXPECT_EQ(yeptris_node_int(yeptris_node_map_get(root, "sex", 3), &i), YEPTRIS_OK);
-    EXPECT_EQ(i, 90);
+    /* Psych's H:M weights (issue #30): 1:30 is 5400s, 1:30.5 is 5430.0s */
+    EXPECT_EQ(i, 5400);
     double f = 0;
     EXPECT_EQ(yeptris_node_float(yeptris_node_map_get(root, "sexf", 4), &f), YEPTRIS_OK);
-    EXPECT_DOUBLE_EQ(f, 90.5);
+    EXPECT_DOUBLE_EQ(f, 5430.0);
     EXPECT_EQ(yeptris_node_int(yeptris_node_map_get(root, "big", 3), &i), YEPTRIS_OK);
     EXPECT_EQ(i, 1000);
     yeptris_document_free(doc);
