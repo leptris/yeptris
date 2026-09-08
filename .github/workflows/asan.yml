@@ -3,16 +3,8 @@ name: Sanitizers (ASAN + TSAN)
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '**.adoc'
-      - 'docs/**'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '**.adoc'
-      - 'docs/**'
 
 permissions:
   contents: read
