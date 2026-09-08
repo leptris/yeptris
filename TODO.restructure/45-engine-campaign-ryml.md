@@ -72,3 +72,26 @@ This is the standing campaign item — scoped, decomposed, ceiling-
 measured, CI-gated (the ryml columns ride every bench run). Like
 item 30's Python wave, it is its own wave; the session that picks
 it up starts from this file's measurements, not from re-discovery.
+
+## Campaign intel update (2026-09-08, session 2)
+
+Three new measurements reshape the phases (min-of-5, same corpus:
+40k × `{ "id": i, "name": "alpha", "vals": [1, 2, 3], "ok": true }`):
+
+- flow-whole via yeptris_parse (the ENGINE + e_flow_json): 89.7 MB/s
+- block-of-flow via yeptris_parse (the BENCH shape):    56.6 MB/s
+- flow-whole via yeptris_parse_json (the "direct" seam): 77.7 MB/s
+
+READINGS: (1) the block-seq wrapper (`- ` lines) costs 37% — the
+per-line engine choreography is the sharpest single lever on the
+bench shapes (Phase B promotes to first). (2) e_flow_json BEATS
+yep_dom_build_json on string-heavy flow — the "direct seam is the
+ceiling" assumption from the first session's corpus does not hold
+generally; Phase A's ceiling on THIS corpus is BELOW the engine's
+flow path. (3) e_flow_json is two-pass by design (pass 1 strict-
+validates + finds the close; pass 2 re-walks to emit) — any direct-
+build variant would hang off pass 1's validated span, but (2) says
+the win is not there on string-heavy content. Phase B first: the
+line classifier from milestone 58's pass-4 note, aimed at the
+`- <flow>` and `<key>: <flow>` line shapes that dominate real
+configs and the bench both.
