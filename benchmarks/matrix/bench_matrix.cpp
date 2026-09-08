@@ -553,8 +553,7 @@ Result bench_ryml(const Corpus& c, int iters) {
     }
     ryml::reset_callbacks();
     double mb = (double)c.data.size() / (1024.0 * 1024.0);
-    return {c.name + " (ryml)", best_ms < 1e9 ? mb * 1000.0 / best_ms : 0, best_ms,
-            c.data.size()};
+    return {c.name + " (ryml)", best_ms < 1e9 ? mb * 1000.0 / best_ms : 0, best_ms, c.data.size()};
 }
 #endif
 
