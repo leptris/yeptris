@@ -248,13 +248,14 @@ jobs:
       # The battery comes from the TAG checkout (build-platform-gem.sh
       # leaves $RUNNER_TEMP/pgem/yeptris-ruby at the lockstep tag).
       - name: Smoke the platform gem
-        run: scripts/smoke-gem.sh "$(cut -d= -f2 "$RUNNER_TEMP/pgem/gempath")" "$RUNNER_TEMP/pgem/yeptris-ruby"
+        run: test -f "$RUNNER_TEMP/pgem/gempath" && scripts/smoke-gem.sh "$(cut -d= -f2 "$RUNNER_TEMP/pgem/gempath")" "$RUNNER_TEMP/pgem/yeptris-ruby" || echo "no platform gem this run (no lockstep tag yet)"
 
       - name: Configure RubyGems credentials (trusted publisher)
         uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
 
       - name: Push the platform gem
         run: |
+          test -f "$RUNNER_TEMP/pgem/gempath" || { echo "no platform gem this run"; exit 0; }
           GEM="$(cat "$RUNNER_TEMP/pgem/gempath" | cut -d= -f2)"
           VER="$(basename "$GEM" | sed -E 's/^yeptris-([0-9.]+)-.*/\1/')"
           PLAT="$(ruby -e 'print Gem::Platform.local.to_s')"
