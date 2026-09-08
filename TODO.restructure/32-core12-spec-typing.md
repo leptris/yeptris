@@ -60,3 +60,20 @@ spec/core12_typing_spec.rb pins spec 10.3.2 / Example 10.9 VERBATIM
 0o7->7, 0x3A->58) plus the compat spot-table; the ported Psych suite
 stays green (compat byte-identical). The CI referee gate tightened
 1.05 -> 1.00: losing to JSON.parse now fails CI outright.
+
+## Postmortem addendum (2026-09-08, PR #143 / release v0.1.14)
+
+The 2026-09-07 outcome above overstated completion: the C half
+(yeptris_document.schema, the Marshal emitter's compat threading)
+existed only as working-tree changes and never merged — gems 0.1.13.x
+vendored C v0.1.13, so their native YAML.load returned compat typing
+under core_12 (`1e3` stayed String). The binding's local 255-example
+run was green only against the uncommitted fix; binding PR #44's CI
+was red (4 failing runs) and merged anyway.
+
+Actually landed 2026-09-08: C PR #143 (schema field + compat
+threading + Marshal.SchemaConditionedFloatTyping, bytes locked for
+both marshal routes) → release v0.1.14 → binding 0.1.14.1 (all three
+platforms on RubyGems, verified on the installed gem: core_12 1e3 =>
+1000.0, compat_11 => "1e3", JSON => 1000.0). Follow-ups live in
+[[40-release-integrity]].
