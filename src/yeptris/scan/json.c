@@ -399,8 +399,8 @@ static int yep_json_escape(const char* p, size_t len, size_t at, size_t* next) {
         *next = at + 6;
         return 1;
     }
-    if (e2 != '"' && e2 != '\\' && e2 != '/' && e2 != 'b' && e2 != 'f' && e2 != 'n' &&
-        e2 != 'r' && e2 != 't') {
+    if (e2 != '"' && e2 != '\\' && e2 != '/' && e2 != 'b' && e2 != 'f' && e2 != 'n' && e2 != 'r' &&
+        e2 != 't') {
         return 0; /* YAML-only escape (\a, \x…): not JSON */
     }
     *next = at + 2;
