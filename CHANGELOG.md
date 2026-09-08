@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Added
+- TODO.restructure/41 (Python binding): yeptris.json.loads — the
+  native JSON loader over the exported scan kernels beats json.loads
+  (CI-gated 1.00: ubuntu 0.785x mean 198/200, macos 0.699x 181/200;
+  was ~15x behind). The ledger records the intern-tax and
+  NaN-parity corrections; the next lever (kernel TUs compiled into
+  the extension) is scoped for item 42's wave.
+
 - Release integrity (TODO.restructure/40): `scripts/smoke-gem.sh` —
   every gem (ruby + platform) is installed into an isolated GEM_HOME
   and must pass the binding artifact battery BEFORE `gem push`; the
