@@ -347,16 +347,6 @@ YEPTRIS_API YeptrisNodeKind yeptris_node_kind(YeptrisNode handle) {
     }
 }
 
-/* Exact decimal fast path (TODO.impl/08B): [-+]?digits[.digits]
- * [(eE)[-+]?digits] with <= 15 significant mantissa digits and an
- * adjusted exponent within +-22 converts with one multiplication by
- * a table power of ten — provably correctly rounded in that range
- * (Clinger); libc strtod stays the fallback outside it. */
-static const double k_pow10[23] = {
-    1e0,  1e1,  1e2,  1e3,  1e4,  1e5,  1e6,  1e7,  1e8,  1e9,  1e10, 1e11,
-    1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22,
-};
-
 /* Decodes a node's compact string through its document's regions. */
 static yep_view node_view(const yeptris_node* h, yep_sview sv) {
     return yep_dom_view(h->doc->dom, sv);
