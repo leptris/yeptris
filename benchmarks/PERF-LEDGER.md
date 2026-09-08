@@ -875,3 +875,27 @@ schema-conditioned on every surface (walks, Marshal emitter, Node
 path); the schema is a document property. The spec table is pinned
 verbatim in spec/core12_typing_spec.rb; compat is unchanged (Psych
 suite green). CI gate tightened to 1.00 — a loss to stdlib fails CI.
+
+## 2026-09-08 — item 44: rapidyaml measured (the field benchmark)
+
+rapidyaml v0.16.0 (f8ac8dd, pinned in bench.yml), same-binary
+min-of-N, quick matrix, Apple silicon dev box (fresh-runner gate
+pending CI):
+
+| shape | yeptris DOM | ryml | vs ryml |
+|---|---|---|---|
+| block-heavy | 108.9 | 112.8 | 0.97x |
+| flow-json | 94.1 | 195.2 | 0.48x |
+| flow-single | 102.0 | 232.8 | 0.44x |
+| scalar-heavy | 246.5 | 344.7 | 0.72x |
+| anchor-heavy | 95.4 | 209.9 | 0.45x |
+| deep-nesting | 277.8 | 428.2 | 0.65x |
+| wide-mapping | 133.1 | 167.9 | 0.79x |
+| realworld-suite | 74.3 | n/a | (ryml rejects suite-valid inputs — 236B et al.; its default error callback aborts, the harness installs a throwing one) |
+
+THE DECOMPOSITION (the scoping fact): pull ≈ DOM ≈ recorder ≈
+95-111 MB/s on the flow shape — the DOM sink is NOT the wall; the
+engine loop itself is. Our strict-JSON seam (yeptris_parse_json,
+no engine) hits 161-166 MB/s on the same scalar mix — still 0.70x
+of ryml's 232. ryml's whole-engine directness (in-place substrs,
+no event layer) is the remaining 2x. The campaign is item 45.

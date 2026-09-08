@@ -23,6 +23,21 @@ target_compile_features(bench_matrix PRIVATE cxx_std_11)
 # same law as every other target in the tree
 yeptris_set_warnings(bench_matrix)
 
+# rapidyaml — the mission's FIELD benchmark (TODO.restructure/44):
+# same discipline as the libyaml column; pin the checkout SHA.
+set(YEPTRIS_BENCH_RYML_ROOT "" CACHE PATH "built rapidyaml checkout (with build/libryml.a)")
+
+if(YEPTRIS_BENCH_RYML_ROOT)
+    target_compile_definitions(bench_matrix PRIVATE YEP_BENCH_RYML=1)
+    target_include_directories(bench_matrix PRIVATE ${YEPTRIS_BENCH_RYML_ROOT}/src
+        ${YEPTRIS_BENCH_RYML_ROOT}/ext/c4core.src)
+    if(EXISTS ${YEPTRIS_BENCH_RYML_ROOT}/build/libryml.a)
+        target_link_libraries(bench_matrix PRIVATE ${YEPTRIS_BENCH_RYML_ROOT}/build/libryml.a)
+    else()
+        message(FATAL_ERROR "YEPTRIS_BENCH_RYML_ROOT has no build/libryml.a — build it first")
+    endif()
+endif()
+
 if(YEPTRIS_BENCH_LIBYAML_ROOT)
     target_compile_definitions(bench_matrix PRIVATE YEP_BENCH_LIBYAML=1)
     target_include_directories(bench_matrix PRIVATE ${YEPTRIS_BENCH_LIBYAML_ROOT}/include)

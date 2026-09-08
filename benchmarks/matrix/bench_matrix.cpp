@@ -21,6 +21,11 @@
 #include <yaml.h>
 #endif
 
+#if defined(YEP_BENCH_RYML)
+#include <ryml.hpp>
+#include <ryml_std.hpp> /* c4::to_substr(std::string&) adapters */
+#endif
+
 namespace {
 
 typedef std::chrono::steady_clock clk;
@@ -82,7 +87,7 @@ typedef struct {
 } mem_stats;
 
 static mem_stats measure_mem(const Corpus& c) {
-    alloc_count cnt = {0, 0};
+    alloc_count cnt = {0, 0, 0, 0};
     yep_allocator counter = {count_alloc, count_free, &cnt};
     yep_engine* eng = yep_engine_create(&counter);
     yep_dom* dom = yep_dom_create(&counter);
@@ -503,6 +508,55 @@ Result bench_libyaml(const Corpus& c, int iters) {
 }
 #endif
 
+#if defined(YEP_BENCH_RYML)
+/* rapidyaml (the mission's field benchmark): in-place parse to its
+ * tree. The per-iteration buffer copy sits OUTSIDE the timed region
+ * (ryml mutates its input; the corpus must be reset fairly). */
+/* ryml's default error callback ABORTS (their contract); a parse
+ * failure on a corpus must be an n/a row, not a dead bench. Their
+ * own test suite throws across the same frames. */
+struct RymlParseFailure {};
+
+Result bench_ryml(const Corpus& c, int iters) {
+    ryml::Callbacks cb = ryml::get_callbacks();
+    cb.m_error_basic = [](ryml::csubstr, ryml::ErrorDataBasic const&, void*) {
+        throw RymlParseFailure();
+    };
+    cb.m_error_parse = [](ryml::csubstr, ryml::ErrorDataParse const&, void*) {
+        throw RymlParseFailure();
+    };
+    cb.m_error_visit = [](ryml::csubstr, ryml::ErrorDataVisit const&, void*) {
+        throw RymlParseFailure();
+    };
+    ryml::set_callbacks(cb);
+    double best_ms = 1e9;
+    std::string scratch;
+    scratch.resize(c.data.size());
+    ryml::Tree tree; /* reused across iterations: their benchmark's */
+    try {
+        for (int i = 0; i < iters; i++) { /* steady-state shape (bm_parse) */
+            memcpy(&scratch[0], c.data.data(), c.data.size());
+            auto t0 = clk::now();
+            ryml::parse_in_place(ryml::csubstr{}, ryml::to_substr(scratch), &tree);
+            auto t1 = clk::now();
+            if (tree.size() <= 1) {
+                break;
+            }
+            double m = ms_of(t0, t1);
+            if (m < best_ms) {
+                best_ms = m;
+            }
+        }
+    } catch (RymlParseFailure&) {
+        ryml::reset_callbacks();
+        return {c.name + " (ryml)", 0, 0, c.data.size()}; /* rejected: n/a */
+    }
+    ryml::reset_callbacks();
+    double mb = (double)c.data.size() / (1024.0 * 1024.0);
+    return {c.name + " (ryml)", best_ms < 1e9 ? mb * 1000.0 / best_ms : 0, best_ms, c.data.size()};
+}
+#endif
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -598,6 +652,9 @@ int main(int argc, char** argv) {
         results.push_back(bench_emit(c, iters));
 #if defined(YEP_BENCH_LIBYAML)
         results.push_back(bench_libyaml(c, iters));
+#endif
+#if defined(YEP_BENCH_RYML)
+        results.push_back(bench_ryml(c, iters));
 #endif
     }
 
