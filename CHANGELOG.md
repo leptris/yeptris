@@ -6,6 +6,15 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- Release integrity (TODO.restructure/40): `scripts/smoke-gem.sh` —
+  every gem (ruby + platform) is installed into an isolated GEM_HOME
+  and must pass the binding artifact battery BEFORE `gem push`; the
+  binding CI checks out the C core at the newest RELEASE TAG (the
+  artifact users get); branch protection on both repos makes red
+  merges structurally impossible.
+
 ## [0.1.14] - 2026-09-08
 ### Fixed
 - core_12 marshal typing (TODO.restructure/32 completion): the parse's

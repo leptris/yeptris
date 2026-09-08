@@ -1,6 +1,6 @@
 # 40 — release integrity: CI must judge the artifact, not the working tree
 
-Status: pending
+Status: complete
 
 ## Why
 
@@ -42,3 +42,30 @@ stacked:
   smoke fails and blocks the push).
 - Merging a PR with failing checks is refused by GitHub, not by
   discipline.
+
+## Outcome (2026-09-08, binding PRs #47/#48 + C PR, gem 0.1.14.2)
+
+COMPLETE — every leg landed:
+
+- Artifact battery: binding `scripts/gem-smoke.rb` (version match,
+  native-bundle activation when shipped, JSON canaries incl. the
+  surrogate-pair combining law, core_12/compat typing, round-trip,
+  node surface). `spec/gem_smoke_spec.rb` runs the same battery
+  against the repo lib — the battery cannot rot.
+- C release.yml smokes BEFORE RubyGems: the platform-gems job
+  installs the built gem into an isolated GEM_HOME via
+  `scripts/smoke-gem.sh` (battery from the LOCKSTEP TAG checkout);
+  the publish job builds the C shared lib from the release ref and
+  smokes the ruby gem with YEPTRIS_LIB_PATH. Missing battery on a
+  pre-40 tag fails loudly.
+- CI judges the artifact: the binding's spec + json-profile jobs
+  check out the C core at the NEWEST RELEASE TAG (a non-blocking
+  ubuntu row keeps C-main as evidence). Binding PRs needing newer
+  C API wait for the C release — enforced ordering.
+- Branch protection on BOTH repos (enforce_admins, required checks:
+  the full C matrix incl. sanitizers + format; the binding's spec +
+  GATE rows). Red merges are now structurally impossible.
+- Released: binding tag v0.1.14.2 + gem (hand-pushed, the
+  binding-patch precedent); verified end-to-end locally — clean-tag
+  gem smokes green on the ffi engine exactly as the publish job
+  will run it.
