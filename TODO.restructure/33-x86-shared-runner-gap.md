@@ -1,6 +1,6 @@
 # 33 — x86_64 shared-runner gap: yeptris JSON slower than the bundled ext
 
-Status: pending
+Status: complete
 
 ## Evidence
 
@@ -44,3 +44,18 @@ steady-state on a loaded machine").
   evidenced explanation of the platform asymmetry.
 - The perf tripwire spec's CI printout becomes the standing record
   of both platforms' ratios.
+
+## Outcome (2026-09-07, items 37-38)
+
+ACCEPTED, with the mechanism found and fixed — not by the guessed
+hypotheses but by the decomposition:
+
+- Hypothesis 1 (GC pause/re-enable window): partially right — item
+  34 proved the page-growth mechanism (+478 pages/50 iters under
+  disable) and item 35 shipped per-arch GC defaults.
+- Hypothesis 2 (build tuning): wrong.
+- Hypothesis 3 (arch-specific cost): RIGHT in essence — the cached
+  token path's byte-wise FNV loop. Item 38's 8-byte-prefix hash took
+  the ubuntu gate from 0.96-0.99x to **0.745x, 200/200 head-to-
+  head** — parity-or-better exceeded; we now BEAT the bundled ext by
+  25% on the same shared runners that reproduced the user's report.
