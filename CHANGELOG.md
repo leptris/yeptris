@@ -7,7 +7,12 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
-### Added
+### Changed
+- The escape grammar is ONE authority: `yep_json_string`'s escape
+  validation extracted to a single validator (TODO.restructure/47's
+  survivor; the structural-index descent itself was measured dead —
+  every benchmark shape regressed — and reverted, ledgered in full).
+
 - TODO.restructure/46: `qbc_find` — a one-pass SIMD string-stop
   kernel (first quote, backslash, or C0 control; AVX2/NEON/scalar
   TUs + dispatch) now backs `yep_json_string`. Hardened

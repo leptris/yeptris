@@ -917,3 +917,36 @@ flat. The measured conclusion stands from item 37: the remaining
 deficit is HOST-OBJECT MATERIALIZATION, not scanning. qbc_find is
 the infrastructure the 45-A' structural index builds on (the same
 masks become the index bits), not the margin itself.
+
+## 2026-09-08 — item 47: the structural index, MEASURED DEAD (reverted)
+
+Built in full: the jsonmark kernel (one SIMD pass, direct-compare
+token marks — struct, quote, backslash, C0, digits, -, t/f/n;
+whitespace deliberately unmarked so gaps cross 64B/probe), the
+hardened differential, the shared escape validator, and the Python
+descent rewritten bit-driven (tzcnt skip with all-whitespace gap
+validation, bit-scanned string closes). 254/254 + parity 216 green.
+
+THE VERDICT (reference corpus, order-alternating):
+
+  reference      0.785x -> 0.961x   WORSE
+  flat str:str   0.95x  -> 1.422x   MUCH WORSE
+  long strings   0.85x  -> 1.250x   MUCH WORSE
+  int array      0.63x  -> 0.884x   WORSE
+
+Why: (1) the index build is a FULL extra pass and its compare-tree
+(13 cmpeq + OR chain + range per chunk) costs more than the byte
+scans it replaces — the mark set is nearly DENSE on numeric JSON
+(digits are marked because every token start must carry a bit for
+the gap validation), so the sparse-index advantage never
+materializes; (2) a per-parse 19KB malloc rides every load;
+(3) string-heavy inputs pay the whole index for the bytes they then
+re-walk anyway. The 45-A' ceiling note predicted this shape: the
+deficit is host-object materialization; the scan side had ~10-15%
+to give and the index SPENT more than that.
+
+KEPT: the escape grammar extracted to one authority
+(yep_json_string's validator); the gap-garbage reject cases in the
+parity spec; the design notes above for any future attempt (the
+simdjson pshufb classification is the only cheaper build, and it
+re-enters the milestone-55 LUT minefield).
