@@ -6,6 +6,23 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- core_12 marshal typing (TODO.restructure/32 completion): the parse's
+  schema is now a document property (`yeptris_document.schema`, set by
+  both parse paths — strict JSON is core by construction), and the
+  Marshal emitter threads it: Psych's dot-required float quirk applies
+  ONLY under `YEPTRIS_SCHEMA_11_COMPAT`. Under core, `1e3` marshals as
+  `{"k"=>1000.0}` (spec 10.3.2: the core float regexp has an OPTIONAL
+  dot); under compat it stays `{"k"=>"1e3"}`, byte-identical to Psych.
+  Regression test: `Marshal.SchemaConditionedFloatTyping` (both the
+  direct `yeptris_marshal` and `yeptris_marshal_node` paths).
+- The Ruby binding's core12 spec suite ran green only against a
+  working-tree C build; the shipped 0.1.13.x gems vendor C v0.1.13,
+  which lacked this fix — the native YAML.load path returned the
+  compat typing under core_12. Fixed by this change; the next lockstep
+  gem release carries it.
+
 ## [0.1.13] - 2026-09-07
 ### Added
 - `yep_json_number_scan` (scan/json.c): the JSON number grammar walk

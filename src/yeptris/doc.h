@@ -13,6 +13,9 @@
 typedef struct yeptris_document {
     yep_dom* dom;
     const yep_allocator* sys;
+    int schema;                /* the parse's schema (YEPTRIS_SCHEMA_*): document
+                                * property — host policies (Psych float quirks) are
+                                * conditioned on it (TODO.restructure/32) */
     unsigned char* transcoded; /* owned when non-NULL */
     size_t transcoded_len;
     const char* input; /* borrowed input (lifetime documentation) */

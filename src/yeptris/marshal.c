@@ -52,6 +52,9 @@ typedef struct {
 
 typedef struct {
     const yep_value_ctx* c;
+    int compat; /* Psych float quirks apply ONLY under 1.1 compat
+                 * (TODO.restructure/32): the core schema's float
+                 * regexp has an OPTIONAL dot - 1e3 IS a core float */
     char* buf;
     size_t len;
     size_t nreg;
@@ -214,7 +217,10 @@ static int sym_scan(const char* p, uint32_t len) {
 
 /* The float dot-quirk, exactly as the walks decide it: without '.',
  * ':' or a leading '.', Psych leaves the scalar a String. */
-static int float_text_ok(const char* p, uint32_t len) {
+static int float_text_ok(const E* e, const char* p, uint32_t len) {
+    if (!e->compat) {
+        return 1; /* core_12: the resolver's verdict is the spec's */
+    }
     if (len == 0 || p[0] == '.') {
         return len != 0;
     }
@@ -271,7 +277,7 @@ static int e_scalar(E* e, const YeptrisValue* v) {
         e_int(e, (int64_t)v->p);
         return 0;
     case YEP_V_FLOAT:
-        if (float_text_ok(p, v->len)) {
+        if (float_text_ok(e, p, v->len)) {
             double d;
             memcpy(&d, &v->p, sizeof(d));
             e_float(e, d);
@@ -520,9 +526,11 @@ static int pre_scan(const yep_value_ctx* c, uint64_t** counts_out, size_t* nopen
     return 0;
 }
 
-static void e_init(E* e, const yep_value_ctx* c, const uint64_t* counts, char* buf, int sizing) {
+static void e_init(E* e, const yep_value_ctx* c, int compat, const uint64_t* counts, char* buf,
+                   int sizing) {
     memset(e, 0, sizeof(*e));
     e->c = c;
+    e->compat = compat;
     e->counts = counts;
     e->buf = buf;
     e->sizing = sizing;
@@ -569,8 +577,8 @@ static YeptrisStatus map_fail(int rc) {
     return rc == -1 ? YEPTRIS_ERROR_MEMORY : YEPTRIS_ERROR_UNSUPPORTED;
 }
 
-static YeptrisStatus marshal_records(const yep_value_ctx* c, YeptrisMarshalMode mode, int node_mode,
-                                     char** out, size_t* out_len) {
+static YeptrisStatus marshal_records(const yep_value_ctx* c, int compat, YeptrisMarshalMode mode,
+                                     int node_mode, char** out, size_t* out_len) {
     *out = NULL;
     *out_len = 0;
     uint64_t* counts = NULL;
@@ -581,7 +589,7 @@ static YeptrisStatus marshal_records(const yep_value_ctx* c, YeptrisMarshalMode 
         return map_fail(prc);
     }
     E e;
-    e_init(&e, c, counts, NULL, 1);
+    e_init(&e, c, compat, counts, NULL, 1);
     int rc = run_pass(&e, mode, node_mode, segs, nsegs);
     size_t total = e.len;
     free(e.anchors);
@@ -596,7 +604,7 @@ static YeptrisStatus marshal_records(const yep_value_ctx* c, YeptrisMarshalMode 
         free(segs);
         return YEPTRIS_ERROR_MEMORY;
     }
-    e_init(&e, c, counts, buf, 0);
+    e_init(&e, c, compat, counts, buf, 0);
     rc = run_pass(&e, mode, node_mode, segs, nsegs);
     free(e.anchors);
     free(counts);
@@ -623,7 +631,8 @@ YEPTRIS_API YeptrisStatus yeptris_marshal(const char* data, size_t len, YeptrisS
     if (rc != 0) {
         return rc == -1 ? YEPTRIS_ERROR_MEMORY : YEPTRIS_ERROR_PARSE;
     }
-    YeptrisStatus st = marshal_records(c, mode, 0, out, out_len);
+    YeptrisStatus st =
+        marshal_records(c, schema == YEPTRIS_SCHEMA_11_COMPAT, mode, 0, out, out_len);
     if (st == YEPTRIS_ERROR_UNSUPPORTED) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
                       "marshal: merge key, timestamp or forward alias not expressible; "
@@ -644,7 +653,8 @@ YEPTRIS_API YeptrisStatus yeptris_marshal_node(YeptrisNode node, char** out, siz
     if (yep_values_from_dom(h->doc->dom, h->id, 0, &c) != 0) {
         return YEPTRIS_ERROR_MEMORY;
     }
-    YeptrisStatus st = marshal_records(c, YEPTRIS_MARSHAL_ALL_DOCS, 1, out, out_len);
+    YeptrisStatus st = marshal_records(c, h->doc->schema == YEPTRIS_SCHEMA_11_COMPAT,
+                                       YEPTRIS_MARSHAL_ALL_DOCS, 1, out, out_len);
     if (st == YEPTRIS_ERROR_UNSUPPORTED) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
                       "marshal: merge key, timestamp or forward alias not expressible; "
