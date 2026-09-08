@@ -85,6 +85,16 @@ ptrdiff_t yep_text_stopset_find_scalar(const char* s, size_t len, const unsigned
     return -1;
 }
 
+ptrdiff_t yep_text_qbc_find_scalar(const char* s, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == '"' || c == '\\' || c < 0x20) {
+            return (ptrdiff_t)i;
+        }
+    }
+    return -1;
+}
+
 ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has_escape) {
     int esc = 0;
     for (size_t i = 0; i < len; i++) {
@@ -169,5 +179,5 @@ const yep_text_kernels yep_text_kernels_scalar = {
     yep_text_contains_scalar,   yep_text_find_scalar,         yep_text_find3_scalar,
     yep_text_count_char_scalar, yep_text_count3_scalar,       yep_text_copy_count3_scalar,
     yep_text_find_not_scalar,   yep_text_stopset_find_scalar, yep_text_quote_scan_scalar,
-    yep_text_scan_stats_scalar,
+    yep_text_scan_stats_scalar, yep_text_qbc_find_scalar,
 };

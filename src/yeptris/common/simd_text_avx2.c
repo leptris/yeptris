@@ -129,6 +129,26 @@ static ptrdiff_t yep_avx2_find3(const char* s, size_t len, char c0, char c1, cha
     return tail < 0 ? -1 : (ptrdiff_t)i + tail;
 }
 
+static ptrdiff_t yep_avx2_qbc_find(const char* s, size_t len) {
+    size_t i = 0;
+    const __m256i dq = _mm256_set1_epi8('"');
+    const __m256i bs = _mm256_set1_epi8('\\');
+    const __m256i c1f = _mm256_set1_epi8(0x1F);
+    for (; i + YEP_AVX2_CHUNK <= len; i += YEP_AVX2_CHUNK) {
+        __m256i v = _mm256_loadu_si256((const __m256i*)(const void*)(s + i));
+        /* unsigned v < 0x20 <=> min_epu8(v, 0x1F) == v */
+        __m256i m =
+            _mm256_or_si256(_mm256_or_si256(_mm256_cmpeq_epi8(v, dq), _mm256_cmpeq_epi8(v, bs)),
+                            _mm256_cmpeq_epi8(_mm256_min_epu8(v, c1f), v));
+        uint32_t bits = (uint32_t)_mm256_movemask_epi8(m);
+        if (bits != 0) {
+            return (ptrdiff_t)(i + (size_t)__builtin_ctz(bits));
+        }
+    }
+    ptrdiff_t r = yep_text_qbc_find_scalar(s + i, len - i);
+    return r < 0 ? r : (ptrdiff_t)i + r;
+}
+
 static ptrdiff_t yep_avx2_quote_scan(const char* s, size_t len, char q, int* has_escape) {
     int esc = 0;
     size_t i = 0;
@@ -256,6 +276,7 @@ const yep_text_kernels yep_text_kernels_avx2 = {
     yep_avx2_count3,     yep_avx2_copy_count3,
     yep_avx2_find_not,   yep_text_stopset_find_scalar, /* deferred — see file header */
     yep_avx2_quote_scan, yep_avx2_scan_stats,
+    yep_avx2_qbc_find,
 };
 
 #endif /* YEP_ARCH_X86 */

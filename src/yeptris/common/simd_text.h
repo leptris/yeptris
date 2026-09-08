@@ -72,6 +72,12 @@ typedef struct yep_text_kernels {
 
     /* the fused pre-scan above (results bit-identical across ISAs) */
     void (*scan_stats)(const char* s, size_t len, yep_text_stats* out);
+
+    /* offset of the first byte that is a double quote, a backslash,
+     * or a C0 control — the JSON string-stop set (scan/json.c owns
+     * the grammar; simd_text owns the finding). One SIMD pass,
+     * three compares OR'd; bit-identical across ISAs. */
+    ptrdiff_t (*qbc_find)(const char* s, size_t len);
 } yep_text_kernels;
 
 /* The best table for this CPU (atomic-lazy, like yep_cpu_detect). */
@@ -88,6 +94,7 @@ void yep_text_count3_scalar(const char* s, size_t len, char c0, char c1, char c2
                             size_t* n1, size_t* n2);
 void yep_text_copy_count3_scalar(char* dst, const char* src, size_t len, char c0, char c1, char c2,
                                  size_t* n0, size_t* n1, size_t* n2);
+ptrdiff_t yep_text_qbc_find_scalar(const char* s, size_t len);
 ptrdiff_t yep_text_find_not_scalar(const char* s, size_t len, char c);
 ptrdiff_t yep_text_stopset_find_scalar(const char* s, size_t len, const unsigned char set[32]);
 ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has_escape);

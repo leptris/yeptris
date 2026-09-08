@@ -145,6 +145,22 @@ static ptrdiff_t yep_neon_find3(const char* s, size_t len, char c0, char c1, cha
     return tail < 0 ? -1 : (ptrdiff_t)i + tail;
 }
 
+static ptrdiff_t yep_neon_qbc_find(const char* s, size_t len) {
+    size_t i = 0;
+    for (; i + YEP_NEON_CHUNK <= len; i += YEP_NEON_CHUNK) {
+        uint8x16_t v = yep_neon_load(s + i);
+        uint8x16_t m =
+            vorrq_u8(vorrq_u8(vceqq_u8(v, vdupq_n_u8('"')), vceqq_u8(v, vdupq_n_u8('\\'))),
+                     vcltq_u8(v, vdupq_n_u8(0x20)));
+        uint16_t bits = yep_neon_bits(m);
+        if (bits != 0) {
+            return (ptrdiff_t)(i + (size_t)__builtin_ctz((uint32_t)bits));
+        }
+    }
+    ptrdiff_t r = yep_text_qbc_find_scalar(s + i, len - i);
+    return r < 0 ? r : (ptrdiff_t)i + r;
+}
+
 static ptrdiff_t yep_neon_quote_scan(const char* s, size_t len, char q, int* has_escape) {
     int esc = 0;
     size_t i = 0;
@@ -259,6 +275,7 @@ const yep_text_kernels yep_text_kernels_neon = {
     yep_neon_count3,     yep_neon_copy_count3,
     yep_neon_find_not,   yep_text_stopset_find_scalar, /* deferred — see AVX2 header note */
     yep_neon_quote_scan, yep_neon_scan_stats,
+    yep_neon_qbc_find,
 };
 
 #endif /* YEP_ARCH_AARCH64 */
