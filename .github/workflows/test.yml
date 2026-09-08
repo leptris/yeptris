@@ -3,16 +3,8 @@ name: C Library & CLI Test Suite
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '**.adoc'
-      - 'docs/**'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '**.adoc'
-      - 'docs/**'
 
 permissions:
   contents: read
