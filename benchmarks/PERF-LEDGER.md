@@ -950,3 +950,20 @@ KEPT: the escape grammar extracted to one authority
 parity spec; the design notes above for any future attempt (the
 simdjson pshufb classification is the only cheaper build, and it
 re-enters the milestone-55 LUT minefield).
+
+## 2026-09-08 — item 45 Phase-B slice: single-line flow spans skip the rescan
+
+e_flow_json walked every single-line span three times (pass-1
+validation, the flow_enforce newline/indent rescan, pass-2 emit)
+and paid per-event jx_advance_line bookkeeping that is provably a
+no-op without a newline. One memchr now decides: single-line spans
+(the dominant `key: {…}` / `- {…}` shapes) skip the rescan and the
+per-event bookkeeping; multi-line spans keep the exact original
+paths. Semantics identical by construction (the skipped work had
+no observable effect without newlines); full ctest 253/253.
+
+VERDICT: LOCAL BOX UNMEASURABLE (load average 126 — both old and
+new binaries swing 28-110 MB/s run to run; the saturated-box rule
+applies). CI's fresh-runner bench with the ryml columns is the
+referee; expected single-digit percent on the block-of-flow shape
+(two redundant span walks removed of ~three).

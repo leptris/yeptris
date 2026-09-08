@@ -1387,6 +1387,13 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
     }
     size_t close = i;
 
+    /* One memchr decides the dominant shape: a SINGLE-LINE span (one
+     * flow collection per block line — the common config/API dump)
+     * skips the flow_enforce rescan AND the per-event line bookkeeping
+     * below; both are no-ops without a newline, and pass 1 already
+     * walked these bytes (TODO.restructure/45, Phase B slice). */
+    int single_line = (memchr(p + open_pos, '\n', close - open_pos) == NULL);
+
     /* A flow node followed by ':' on the same line is a KEY: the caller
      * must wrap it in a mapping first — refuse so the general path's
      * is_key logic runs. */
@@ -1404,7 +1411,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
 
     /* Block-level flow lines must out-indent the parent (9C9N): any
      * line start inside the span at or left of the floor falls back. */
-    if (e->flow_enforce) {
+    if (e->flow_enforce && !single_line) {
         size_t j = open_pos;
         while (j < close) {
             if (p[j] == '\n') {
@@ -1455,7 +1462,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             e_event_init(&ev, stk[sd - 1] ? YEP_EV_MAP_END : YEP_EV_SEQ_END);
             /* flow=1 only on START events (kernel convention: the style
              * belongs to the opening bracket, END events stay plain) */
-            jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
+            if (!single_line) jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
             ev.line = cur_line;
             ev.col = (uint32_t)(i - cur_ls) + 1;
             if (emit_now(e, &ev) != 0) {
@@ -1475,7 +1482,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             yep_event ev;
             e_event_init(&ev, c == '[' ? YEP_EV_SEQ_START : YEP_EV_MAP_START);
             ev.flow = 1;
-            jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
+            if (!single_line) jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
             ev.line = cur_line;
             ev.col = (uint32_t)(i + 1 - cur_ls) + 1;
             if (emit_now(e, &ev) != 0) {
@@ -1494,7 +1501,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
         /* scalar: quoted, number, or literal */
         yep_event ev;
         e_event_init(&ev, YEP_EV_SCALAR);
-        jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
+        if (!single_line) jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
         ev.line = cur_line;
         ev.col = (uint32_t)(i - cur_ls) + 1;
         size_t vstart = i;
