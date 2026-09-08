@@ -19,6 +19,7 @@
 #include <yeptris.h>
 #include <yeptris/dom.h>
 #include <yeptris/marshal.h>
+#include <yeptris/parse.h>
 #include <yeptris/values.h>
 
 namespace {
@@ -34,16 +35,40 @@ std::string hex_to_bytes(const char* hex) {
     return out;
 }
 
-void expect_marshal(const char* in, const char* want_hex, YeptrisMarshalMode mode) {
+void expect_marshal_schema(const char* in, const char* want_hex, YeptrisMarshalMode mode,
+                           YeptrisSchema schema) {
     char* out = nullptr;
     size_t olen = 0;
-    YeptrisStatus st = yeptris_marshal(in, strlen(in), YEPTRIS_SCHEMA_11_COMPAT, mode, &out, &olen);
+    YeptrisStatus st = yeptris_marshal(in, strlen(in), schema, mode, &out, &olen);
     ASSERT_EQ(st, YEPTRIS_OK) << yeptris_last_error(0, 0);
     std::string want = hex_to_bytes(want_hex);
     ASSERT_EQ(olen, want.size());
     EXPECT_EQ(memcmp(out, want.data(), olen), 0)
         << "input=" << in << " got=" << std::string(out, olen);
     yeptris_marshal_free(out);
+}
+
+void expect_marshal(const char* in, const char* want_hex, YeptrisMarshalMode mode) {
+    expect_marshal_schema(in, want_hex, mode, YEPTRIS_SCHEMA_11_COMPAT);
+}
+
+void expect_node_marshal_schema(const char* in, const char* want_hex, YeptrisSchema schema) {
+    YeptrisParseOptions opts = {};
+    opts.schema = schema;
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse_ex(in, strlen(in), &opts, &st);
+    ASSERT_EQ(st, YEPTRIS_OK) << yeptris_last_error(0, 0);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    char* out = nullptr;
+    size_t olen = 0;
+    ASSERT_EQ(yeptris_marshal_node(root, &out, &olen), YEPTRIS_OK);
+    std::string want = hex_to_bytes(want_hex);
+    ASSERT_EQ(olen, want.size());
+    EXPECT_EQ(memcmp(out, want.data(), olen), 0)
+        << "input=" << in << " got=" << std::string(out, olen);
+    yeptris_marshal_free(out);
+    yeptris_document_free(doc);
 }
 
 TEST(Marshal, ByteEqualitySmoke) {
@@ -186,6 +211,21 @@ TEST(Marshal, NodeMarshal) {
     EXPECT_EQ((unsigned char)out[1], 0x08);
     yeptris_marshal_free(out);
     yeptris_document_free(doc);
+}
+
+TEST(Marshal, SchemaConditionedFloatTyping) {
+    /* spec 10.3.2: the core schema's float regexp has an OPTIONAL dot
+     * (1e3 IS a float); Psych's dot-required quirk is compat_11-only
+     * (TODO.restructure/32). Locked-in bytes decode as {"k"=>1000.0}
+     * under core and {"k"=>"1e3"} under compat. */
+    const char* core_hex = "04087b064922066b063a064554660b313030302e30";
+    const char* compat_hex = "04087b064922066b063a064554492208316533063a064554";
+    expect_marshal_schema("k: 1e3\n", core_hex, YEPTRIS_MARSHAL_FIRST_DOC, YEPTRIS_SCHEMA_12_CORE);
+    expect_marshal_schema("k: 1e3\n", compat_hex, YEPTRIS_MARSHAL_FIRST_DOC,
+                          YEPTRIS_SCHEMA_11_COMPAT);
+    /* the node path reads the schema the DOCUMENT was parsed with */
+    expect_node_marshal_schema("k: 1e3\n", core_hex, YEPTRIS_SCHEMA_12_CORE);
+    expect_node_marshal_schema("k: 1e3\n", compat_hex, YEPTRIS_SCHEMA_11_COMPAT);
 }
 
 } // namespace

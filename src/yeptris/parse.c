@@ -90,6 +90,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
         }
         doc->dom = dom;
         doc->sys = sys;
+        doc->schema = YEPTRIS_SCHEMA_12_CORE; /* strict JSON is core by construction */
         doc->transcoded = NULL;
         doc->transcoded_len = 0;
         doc->input = buf;
@@ -252,6 +253,9 @@ engine_enter:
     dom->input_base = transcoded ? (const char*)transcoded : buf;
     doc->dom = dom;
     doc->sys = sys;
+    doc->schema = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
+                      ? YEPTRIS_SCHEMA_11_COMPAT
+                      : YEPTRIS_SCHEMA_12_CORE;
     doc->transcoded = transcoded;
     doc->transcoded_len = transcoded_len;
     doc->input = buf;
