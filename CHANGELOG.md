@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.15] - 2026-09-08
+## [Unreleased]
 ### Added
 - TODO.restructure/46: `qbc_find` — a one-pass SIMD string-stop
   kernel (first quote, backslash, or C0 control; AVX2/NEON/scalar
@@ -15,12 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   +2% on 55-byte-string JSON cells, flat elsewhere (the ledger
   records the host-materialization verdict).
 
-- TODO.restructure/46: `qbc_find` — a one-pass SIMD string-stop
-  kernel (first quote, backslash, or C0 control; AVX2/NEON/scalar
-  TUs + dispatch) now backs `yep_json_string`. Hardened
-  differential + C0-deep-in-vector-path rejection tests; measured
-  +2% on 55-byte-string JSON cells, flat elsewhere (the ledger
-  records the host-materialization verdict).
+## [0.1.15] - 2026-09-08
+### Added
+
 
 - TODO.restructure/43 (canon parity): Psych's sexagesimal weights —
   the fold is now weight-based (component e weighs 60^|e-2|, sign on
