@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.14] - 2026-09-08
 ### Fixed
 - core_12 marshal typing (TODO.restructure/32 completion): the parse's
   schema is now a document property (`yeptris_document.schema`, set by
