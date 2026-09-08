@@ -7,6 +7,8 @@
 #include <string.h>
 
 #include "scan/json.h"
+#include <yeptris/dom.h>
+#include <yeptris/json.h>
 
 namespace {
 
@@ -17,6 +19,41 @@ struct Case {
     int64_t iv;   /* when !is_float */
     double dv;    /* when is_float */
 };
+
+namespace {
+
+/* TODO.restructure/46: the vector string scanner must reject raw C0
+ * controls INSIDE strings deep past chunk boundaries — the exact
+ * blind-spot class the old differential missed (milestone 55). */
+TEST(JsonString, C0DeepInVectorPath) {
+    std::string body(200, 'a'); /* > 6 chunks on every ISA */
+    for (size_t pos : {(size_t)5, (size_t)33, (size_t)40, (size_t)70, (size_t)130, (size_t)199}) {
+        std::string doc = "\"" + body + "\"";
+        doc[pos + 1] = (char)0x0A; /* inside the string content */
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse_json(doc.data(), doc.size(), &st);
+        EXPECT_EQ(st != YEPTRIS_OK || d == nullptr, true) << "pos=" << pos;
+        if (d != nullptr)
+            yeptris_document_free(d);
+    }
+    /* the clean long string parses */
+    std::string doc = "\"" + body + "\"";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_json(doc.data(), doc.size(), &st);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    if (d != nullptr)
+        yeptris_document_free(d);
+    /* DEL is legal inside JSON strings (not a C0 control) */
+    std::string del = "\"" + body + "\"";
+    del[50] = (char)0x7F;
+    st = YEPTRIS_OK;
+    d = yeptris_parse_json(del.data(), del.size(), &st);
+    EXPECT_EQ(st, YEPTRIS_OK) << "DEL must stay legal (RFC 8259)";
+    if (d != nullptr)
+        yeptris_document_free(d);
+}
+
+} // namespace
 
 TEST(JsonNumberScan, Table) {
     static const Case cases[] = {

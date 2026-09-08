@@ -352,25 +352,21 @@ int yep_json_literal(const char* p, size_t len, size_t* i, const char* word) {
     return 1;
 }
 
-/* Strict-JSON quoted scalar: no raw breaks, only JSON escapes. One
- * stopset walk {'"', '\\', '\n', '\r'} decides close/escape/break —
- * no second scan. On success *i sits just past the close, *close_out
- * is the close quote index, *has_esc reports backslashes. */
-static const unsigned char k_json_string_stop[32] = {
-    0xff, 0xff, 0xff, 0xff, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
-
+/* Strict-JSON quoted scalar: no raw breaks, only JSON escapes. The
+ * qbc_find kernel (first '"', '\\', or C0) decides close/escape/
+ * reject — one SIMD pass, no second scan. On success *i sits just
+ * past the close, *close_out is the close quote index, *has_esc
+ * reports backslashes. */
 int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out, int* has_esc) {
     const yep_text_kernels* k = yep_text_active();
-    /* generated once: '"', '\\', and every C0 control (RFC 8259: DEL
-     * is NOT a control in JSON and stays legal) — the per-call build
-     * cleared and set 34 bits on every JSON string */
-    const unsigned char* stop = k_json_string_stop;
     size_t j = *i + 1;
     int esc = 0;
     for (;;) {
-        ptrdiff_t r = k->stopset_find(p + j, len - j, stop);
+        /* the SIMD string-stop kernel (TODO.restructure/46): first
+         * '"', '\\', or C0 — one vector pass, the milestone-55 LUT
+         * lessons absent by construction. The byte at the hit
+         * classifies: quote closes, backslash escapes, else reject. */
+        ptrdiff_t r = k->qbc_find(p + j, len - j);
         if (r < 0) {
             return 0; /* unterminated */
         }
@@ -382,7 +378,7 @@ int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out, int
             *i = at + 1;
             return 1;
         }
-        if (c != '"' && c != '\\') {
+        if (c != '\\') {
             return 0; /* raw C0 control (incl. breaks) inside a string */
         }
         /* escape: validate the escaped byte inline */

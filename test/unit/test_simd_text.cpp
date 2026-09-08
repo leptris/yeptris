@@ -337,6 +337,72 @@ TEST(SimdText, QuoteScanSemantics) {
     EXPECT_EQ(esc, 1);
 }
 
+TEST(SimdText, QbcFind) {
+    /* TODO.restructure/46: the JSON string-stop kernel. The
+     * milestone-55 lesson applied: every stop byte alone at EVERY
+     * lane position (including deep past chunk boundaries), mixed
+     * stops, and pure non-stop runs — active() vs scalar vs naive. */
+    const yep_text_kernels* k = yep_text_active();
+    auto naive = [](const char* s, size_t len) -> ptrdiff_t {
+        for (size_t i = 0; i < len; i++) {
+            unsigned char c = (unsigned char)s[i];
+            if (c == '"' || c == '\\' || c < 0x20)
+                return (ptrdiff_t)i;
+        }
+        return -1;
+    };
+    /* every stop byte alone at every offset (0..71), padded */
+    for (int c : {0x00, 0x01, 0x09, 0x0A, 0x1F, (int)'"', (int)'\\'}) {
+        for (size_t pos = 0; pos < 72; pos++) {
+            std::string b(72, 'x');
+            b[pos] = (char)c;
+            EXPECT_EQ(k->qbc_find(b.data(), b.size()), (ptrdiff_t)pos)
+                << "c=" << c << " pos=" << pos;
+            EXPECT_EQ(yep_text_qbc_find_scalar(b.data(), b.size()), (ptrdiff_t)pos);
+            EXPECT_EQ(naive(b.data(), b.size()), (ptrdiff_t)pos);
+        }
+    }
+    /* non-stop bytes never hit (incl. DEL 0x7F — legal in JSON) */
+    for (int c : {(int)'a', (int)' ', 0x7F, 0x80, 0xFF}) {
+        std::string b(100, (char)c);
+        EXPECT_EQ(k->qbc_find(b.data(), b.size()), (ptrdiff_t)-1) << "c=" << c;
+    }
+    /* exactly at chunk boundaries (31/32, 15/16) and one past */
+    for (size_t pos : {(size_t)15, (size_t)16, (size_t)31, (size_t)32, (size_t)47, (size_t)48,
+                       (size_t)63, (size_t)64}) {
+        for (int c : {0x0A, (int)'"', (int)'\\'}) {
+            std::string b(80, 'x');
+            b[pos] = (char)c;
+            EXPECT_EQ(k->qbc_find(b.data(), b.size()), (ptrdiff_t)pos)
+                << "c=" << c << " pos=" << pos;
+        }
+    }
+    /* all-prefix sweep: a stop at pos, every length >= pos+1 */
+    for (size_t pos = 0; pos < 70; pos++) {
+        std::string b(70, 'x');
+        b[pos] = '\\';
+        for (size_t l = 0; l <= 70; l++) {
+            ptrdiff_t want = (ptrdiff_t)pos < (ptrdiff_t)l ? (ptrdiff_t)pos : (ptrdiff_t)-1;
+            EXPECT_EQ(k->qbc_find(b.data(), l), want) << "pos=" << pos << " len=" << l;
+            EXPECT_EQ(yep_text_qbc_find_scalar(b.data(), l), want);
+        }
+    }
+    /* randomized mixed corpus vs naive (deterministic) */
+    std::mt19937 rng(46);
+    for (int t = 0; t < 500; t++) {
+        size_t len = rng() % 200;
+        std::string b(len, '\0');
+        for (size_t i = 0; i < len; i++) {
+            unsigned char c = rng() % 256;
+            if (c >= 0x20 && c != '"' && c != '\\')
+                c = 'a' + (rng() % 26);
+            b[i] = (char)c;
+        }
+        EXPECT_EQ(k->qbc_find(b.data(), b.size()), naive(b.data(), b.size()));
+        EXPECT_EQ(yep_text_qbc_find_scalar(b.data(), b.size()), naive(b.data(), b.size()));
+    }
+}
+
 TEST(SimdText, StopsetFind) {
     const yep_text_kernels* k = yep_text_active();
     /* the set MUST contain bytes that actually OCCUR in the probe

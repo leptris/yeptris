@@ -899,3 +899,21 @@ engine loop itself is. Our strict-JSON seam (yeptris_parse_json,
 no engine) hits 161-166 MB/s on the same scalar mix — still 0.70x
 of ryml's 232. ryml's whole-engine directness (in-place substrs,
 no event layer) is the remaining 2x. The campaign is item 45.
+
+## 2026-09-08 — item 46: the SIMD string-stop kernel (qbc_find)
+
+yep_json_string now rides a one-pass vector kernel (first '"',
+'\\', or C0 — three compares OR'd; AVX2 min_epu8 unsigned-lt idiom,
+NEON vcltq; tight scalar tail and sub-chunk spans). The milestone-55
+LUT lessons are absent by construction; the hardened differential
+(every stop byte at every lane, boundary positions, all-prefix
+sweep, 500 random cross-checks) and a C0-deep-in-vector-path JSON
+rejection test pin it. 253/253.
+
+HONEST NUMBERS: the C bench flow shapes are flat (their strings are
+all < 32B — inside the scalar span by design); Python long-string
+(55B) cell 0.847 -> 0.865x (+2%, noise edge); reference corpora
+flat. The measured conclusion stands from item 37: the remaining
+deficit is HOST-OBJECT MATERIALIZATION, not scanning. qbc_find is
+the infrastructure the 45-A' structural index builds on (the same
+masks become the index bits), not the margin itself.
