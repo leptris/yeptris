@@ -1,6 +1,6 @@
 # 41 — Python: the native JSON loader (the json.loads beat)
 
-Status: pending
+Status: complete
 
 ## Measurement that motivates (152 KB / 29.4k values, item 30)
 
@@ -67,3 +67,40 @@ SLOWER than hand-driving the exported scan kernels. The proven shape
 Platform WHEELS that vendor libyeptris (so `pip install` users get
 the native loader with zero build) are [[42-python-platform-wheels]]
 — a separate wave with its own distribution work.
+
+## Outcome (2026-09-08, yeptris-py PRs #22/#23, PyPI 0.1.14.1)
+
+COMPLETE — every acceptance leg, with two measured corrections
+en route:
+
+- THE GATE NUMBERS (CI, fresh runners, order-alternating referee,
+  gated at 1.00): ubuntu 0.785x mean 198/200 head-to-head, macos
+  0.699x mean 181/200 — from item 30's ~15x BEHIND. Local runs:
+  0.67-0.87x mean, 83-85% h2h. Shape decomposition: int 0.63x,
+  float 0.77x, long strings 0.85x, repeated keys 0.85x, nested
+  0.94x, unique-key maps 0.95x. Item 30's 1.5x aspiration was set
+  against a RUBY reference; json.loads is a C scanner — beating it
+  21-30% mean with 90-99% h2h is the honest result.
+- MEASURED CORRECTION 1 (the intern tax): the first cut interned
+  cached keys — PyUnicode_InternInPlace registers EVERY key in the
+  interned dict; unique-key corpora measured 2.07x (pure loss when
+  keys never repeat). The cache's identical objects already give
+  dict probes the pointer-equality fast path. Interning dropped:
+  every shape under 1.0.
+- MEASURED CORRECTION 2 (parity over purity): stdlib json.loads
+  ACCEPTS NaN/Infinity by default. Literal arms in the native walk;
+  the fallback delegates exactly that extension (gate-reject +
+  stdlib-accept is precisely the constant case).
+- 142 parity tests vs the stdlib oracle (both engines); CI builds
+  the extension on 3.9+3.13 both OSes, pins the C core to the
+  newest release tag (item 40's policy), and gates both platforms.
+  GOTCHA: py3.13 runners do not bundle setuptools — install it
+  before setup.py.
+- NEXT LEVER (ledgered, not built): compiling the kernel TUs into
+  the extension removes ~20k cross-DSO calls/parse (~5-7% est.) —
+  blocked on distutils lacking per-source compile flags for the
+  ISA-dispatch TUs (scan/json.c depends on simd_text). Would also
+  make the JSON path self-contained (no libyeptris at runtime).
+
+Pure-ctypes contract intact: no env → pure package; platform wheels
+that vendor the lib are [[42-python-platform-wheels]].
