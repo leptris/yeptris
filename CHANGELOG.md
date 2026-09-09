@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Changed
+- TODO.restructure/45 Phase-B slice one: single-line flow spans
+  (the dominant `key: {…}` / `- {…}` shapes) skip the flow_enforce
+  rescan and the per-event line bookkeeping in the engine's flow
+  kernel — one memchr decides. Fresh-runner CI bench now carries
+  the rapidyaml columns: block-heavy runs 1.47x FASTER than ryml.
+
 - The escape grammar is ONE authority: `yep_json_string`'s escape
   validation extracted to a single validator (TODO.restructure/47's
   survivor; the structural-index descent itself was measured dead —
