@@ -967,3 +967,14 @@ new binaries swing 28-110 MB/s run to run; the saturated-box rule
 applies). CI's fresh-runner bench with the ryml columns is the
 referee; expected single-digit percent on the block-of-flow shape
 (two redundant span walks removed of ~three).
+
+## 2026-09-09 — first FRESH-RUNNER table with the ryml columns (CI bench)
+
+With #162's single-line skip merged. CI macOS: block-heavy DOM
+107.8 vs ryml 73.0 = **1.47x FASTER than rapidyaml** (the dev box
+had us 0.97x — CI's slower macs invert that cell). Flow shapes
+remain behind on CI: flow-json 81.6 vs 163.8 (0.50x), flow-single
+90.3 vs 152.4 (0.59x). The campaign's standing target is now the
+flow shapes only; block is won on fresh runners. (First CI run
+carrying ryml — this is the baseline all Phase-B work measures
+against.)
