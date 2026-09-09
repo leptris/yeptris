@@ -124,6 +124,137 @@ int yep_plain_first_ok(unsigned char c) {
     return !(c == ',' || c == ']' || c == '}' || c == '%' || c == '@' || c == '`');
 }
 
+int yep_scan_prop_char(unsigned char c) {
+    return !yep_ct_any(c, YEP_CT_BLANK | YEP_CT_LBREAK | YEP_CT_FLOW_IND) && c != ',' && c != '#';
+}
+
+size_t yep_scan_prop_end(const char* p, size_t len, size_t pos) {
+    while (pos < len && yep_scan_prop_char((unsigned char)p[pos])) {
+        pos++;
+    }
+    return pos;
+}
+
+/* ---- line-shape classification (TODO.restructure/49) ---- */
+
+/* blank/EOL/EOF directly after p[at] (the dash / explicit-key rule). */
+static int shape_blank_next(const char* p, size_t len, size_t at) {
+    return at + 1 >= len || p[at + 1] == ' ' || p[at + 1] == '\t' || p[at + 1] == '\n' ||
+           p[at + 1] == '\r';
+}
+
+/* Value bytes the fast arms do not own: quoted/tagged/block/flow
+ * scalars and the compact-syntax leads whose semantics belong to the
+ * general chain. */
+static int shape_val_bail(unsigned char c, const char* p, size_t len, size_t at) {
+    switch (c) {
+    case '"':
+    case '\'':
+    case '!':
+    case '|':
+    case '>':
+    case '[':
+    case '{':
+    case '*': /* an alias after an anchor is an error shape (SR86) */
+        return 1;
+    case '-':
+    case '?':
+        return shape_blank_next(p, len, at);
+    default:
+        return 0;
+    }
+}
+
+static void shape_value(const char* p, size_t len, const yep_line_info* li, size_t vt,
+                        yep_line_shape* s) {
+    s->val_start = (uint32_t)vt;
+    if (vt >= li->end || p[vt] == '#') { /* '#' here follows a blank by construction */
+        s->val = YEP_LVAL_EMPTY;
+        return;
+    }
+    unsigned char c = (unsigned char)p[vt];
+    if (c == '*') {
+        s->val = YEP_LVAL_ALIAS; /* the engine's alias walk owns name semantics */
+        return;
+    }
+    if (c == '[' || c == '{') {
+        s->val = YEP_LVAL_FLOW;
+        return;
+    }
+    if (c == '&') {
+        size_t a_end = yep_scan_prop_end(p, len, vt + 1);
+        size_t t = a_end;
+        while (t < len && (p[t] == ' ' || p[t] == '\t')) {
+            t++;
+        }
+        if (t < li->end && p[t] != '#' && !shape_val_bail((unsigned char)p[t], p, len, t) &&
+            yep_plain_first_ok((unsigned char)p[t])) {
+            yep_span v = yep_scan_plain(p, len, t, 0);
+            if (v.term != YEP_TERM_COLON && v.end > v.start) {
+                s->val = YEP_LVAL_ANCHOR_PLAIN;
+                s->anchor_end = (uint32_t)a_end;
+                s->val_span = v;
+                return;
+            }
+        }
+        return; /* anchor with a following-lines value / odd content: bail */
+    }
+    if (shape_val_bail(c, p, len, vt) || !yep_plain_first_ok(c)) {
+        return;
+    }
+    yep_span v = yep_scan_plain(p, len, vt, 0);
+    if (v.term == YEP_TERM_COLON) {
+        return; /* a second terminating ':' is compact/error territory */
+    }
+    s->val = YEP_LVAL_PLAIN;
+    s->val_span = v;
+}
+
+void yep_scan_shape(const char* p, size_t len, const yep_line_info* li, yep_line_shape* s) {
+    memset(s, 0, sizeof(*s));
+    s->kind = YEP_LSHAPE_NONE;
+    s->val = YEP_LVAL_NONE;
+    if (li->flags != 0) {
+        return; /* blank/comment/doc/directive/tab lines: general paths */
+    }
+    size_t t = li->offset + li->indent;
+    unsigned char c = (unsigned char)p[t];
+
+    if (c == '-' && shape_blank_next(p, len, t)) {
+        size_t vt = t + 1;
+        while (vt < len && (p[vt] == ' ' || p[vt] == '\t')) {
+            vt++;
+        }
+        s->kind = YEP_LSHAPE_DASH;
+        s->dash = (uint32_t)t;
+        shape_value(p, len, li, vt, s);
+        return;
+    }
+
+    /* '?' / ':' followed by a blank are the explicit-key and bare-colon
+     * lines (the general paths own them); followed by content they are
+     * ordinary plain-first bytes. A dash + blank returned as DASH above. */
+    if (yep_plain_first_ok(c) && c != '&' && c != '!' && c != '*' && c != '\'' && c != '"' &&
+        c != '[' && c != '{' && !((c == '?' || c == ':') && shape_blank_next(p, len, t))) {
+        yep_span k = yep_scan_plain(p, len, t, 0);
+        if (k.term == YEP_TERM_COLON) {
+            size_t colon = k.end;
+            while (p[colon] != ':') { /* spaces may precede the ':' */
+                colon++;
+            }
+            size_t vt = colon + 1;
+            while (vt < len && (p[vt] == ' ' || p[vt] == '\t')) {
+                vt++;
+            }
+            s->kind = YEP_LSHAPE_KEY;
+            s->key_start = k.start;
+            s->key_end = k.end;
+            s->colon = (uint32_t)colon;
+            shape_value(p, len, li, vt, s);
+        }
+    }
+}
+
 /* The two stop sets are constants — they were rebuilt on EVERY scan
    (~2 per line; clear + 4-9 adds ≈ 3M ops on a 100k-line document).
    Generated: set[c>>3] |= 1 << (c&7) for the stop chars below. */
