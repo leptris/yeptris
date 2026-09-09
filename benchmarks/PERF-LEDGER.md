@@ -978,3 +978,13 @@ remain behind on CI: flow-json 81.6 vs 163.8 (0.50x), flow-single
 flow shapes only; block is won on fresh runners. (First CI run
 carrying ryml — this is the baseline all Phase-B work measures
 against.)
+
+## 2026-09-09 — the FULL fresh-runner ryml verdict (CI, macOS DOM)
+
+WON: block-heavy 1.48x, scalar-heavy 1.07x, wide-mapping 1.13x.
+LOST: anchor-heavy 0.33x (worst; ubuntu 0.47x), flow-json 0.50x,
+flow-single 0.59x, deep-nesting 0.67x. Ubuntu confirms the flow
+family (0.51-0.54x). The campaign is item 48: the sink fast-path
+direct build (remove the event pipeline for validated flow spans —
+NOT the scanner rewrite that killed item 47) + an anchor-path
+investigation (the 0.33x cell is block-level machinery, not flow).
