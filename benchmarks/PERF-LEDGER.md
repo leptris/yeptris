@@ -1002,3 +1002,52 @@ one target — the per-line choreography (milestone-58's line
 classifier, Phase B proper) — improves anchor-heavy AND the block
 wrappers of flow-json together; the merge/alias sink work is the
 smaller, second lever.
+
+## 2026-09-10 — items 49+50 landed; the referee itself was the first bug
+
+Two campaign units shipped (PRs #170, #171), and the CI bench's
+ryml columns were REPLACED by an interleaved head-to-head (one
+yeptris parse alternating with one ryml parse per round, median of
+rounds, same machine state both). Why: separate-phase best-of rides
+thermal/cache phase bias and the runners are bimodal — ryml's
+deep-nesting measured 189 and 377 MB/s on consecutive macOS runs of
+identical code, and the "WON" cells of the 2026-09-09 table
+(block-heavy 1.48x, wide 1.13x) do not reproduce under interleaving:
+they were phase artifacts. Every number below is the h2h median.
+
+- **49, the line classifier** (scan facts once per line; engine
+  fast arms for `key:`/plain/alias/anchor/flow values and dash
+  entries; strict bail everywhere — 21 new specs; SR86's
+  anchor+alias bail found by them). Old-phase tables showed
+  anchor-heavy 0.33x -> 0.49x and deep-nesting 1.30x on macOS; the
+  h2h medians below are the standing record.
+- **50, the flow direct build** (optional sink on_flow_json; the DOM
+  walks pass-1-validated spans through its own placement laws; the
+  jbuilder unified onto them; pass-1 key-length guard). flow-json
+  went 0.50x -> **0.92x (mac) / 0.98x (ubuntu)** — the event
+  pipeline removal is worth ~2x on that shape. The permanent
+  flow-direct-diff ctest (848 corpus cases, event vs direct trees)
+  also caught a REAL pre-existing bug: **key-anchored scalars
+  ("&a: k") never bound their ordinal in the DOM** — their aliases
+  resolved to an unwritten anchor slot (node 0 or heap garbage;
+  2SXE/E76Z). Fixed: the key event carries anchor_id.
+
+The h2h standing table after 49+50 (mac / ubuntu):
+
+| shape | vs ryml |
+|---|---|
+| flow-json | 0.92x / 0.98x |
+| flow-single | 0.51x / 0.75x |
+| anchor-heavy | 0.57x / 0.72x |
+| block-heavy | 0.61x / 0.70x |
+| scalar-heavy | 0.96x / 0.41x |
+| deep-nesting | 0.69x / 0.47x |
+| wide-mapping | 0.67x / 0.63x |
+
+NEXT WALLS (profile-first, the 46/47 law): flow-single and
+scalar-heavy-on-ubuntu are SCAN-dominated (the single giant line and
+plain-scalar text) — the direct build has no more to give there;
+anchor/deep/block remain per-line choreography + the emit pipeline
+for BLOCK events (no span shortcut exists — the classifier already
+took the derivation cost). Ubuntu's scalar-heavy 0.41x vs mac 0.96x
+is the sharpest platform asymmetry: profile on a linux box next.
