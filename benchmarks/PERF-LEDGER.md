@@ -988,3 +988,17 @@ family (0.51-0.54x). The campaign is item 48: the sink fast-path
 direct build (remove the event pipeline for validated flow spans —
 NOT the scanner rewrite that killed item 47) + an anchor-path
 investigation (the 0.33x cell is block-level machinery, not flow).
+
+## 2026-09-09 — anchor-heavy PROFILED (macOS sample, 8s, the bench corpus)
+
+~60% of samples in e_node/e_parse_value (the per-line block
+choreography: line scan, dash/key dispatch, value parse); DOM-side
+work (dom_new_node/str_put/place + merge materialization) ~15-20%;
+the resolver (core12) and emit_now visible but secondary. The 0.33x
+cell is the SAME wall as the flow shapes' block wrappers: the
+per-line engine cost — NOT merges, NOT the DOM sink (the earlier
+pull-vs-DOM reading over-weighted the sink). CAMPAIGN CONSEQUENCE:
+one target — the per-line choreography (milestone-58's line
+classifier, Phase B proper) — improves anchor-heavy AND the block
+wrappers of flow-json together; the merge/alias sink work is the
+smaller, second lever.
