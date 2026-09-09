@@ -51,6 +51,47 @@ typedef struct yep_span {
     yep_span_term term;
 } yep_span;
 
+/* Line-shape classification (TODO.restructure/49): byte-class FACTS for
+ * the engine's one-per-line dispatch decision — scan walks, the engine
+ * decides. A shape is only produced for the dominant block line forms;
+ * every other line classifies NONE and keeps the general paths. */
+typedef enum {
+    YEP_LSHAPE_NONE = 0, /* not classified: use the general chain */
+    YEP_LSHAPE_DASH,     /* "- " entry at the content start */
+    YEP_LSHAPE_KEY,      /* plain key + terminating ':' */
+} yep_line_kind;
+
+typedef enum {
+    YEP_LVAL_NONE = 0,     /* value not classified (bail) */
+    YEP_LVAL_EMPTY,        /* EOL or comment after the ':' / '-' */
+    YEP_LVAL_PLAIN,        /* plain scalar (val_span + term) */
+    YEP_LVAL_ALIAS,        /* '*name' at val_start */
+    YEP_LVAL_ANCHOR_PLAIN, /* '&name' then a plain scalar */
+    YEP_LVAL_FLOW,         /* '[' / '{' at val_start: the flow kernel owns it */
+} yep_line_val;
+
+typedef struct yep_line_shape {
+    yep_line_kind kind;
+    yep_line_val val;
+    uint32_t dash;      /* '-' offset (DASH) */
+    uint32_t key_start; /* trimmed plain key span (KEY) */
+    uint32_t key_end;
+    uint32_t colon;      /* the terminating ':' offset (KEY) */
+    uint32_t val_start;  /* first value byte (all non-EMPTY vals) */
+    uint32_t anchor_end; /* ANCHOR_PLAIN: end of the anchor name */
+    yep_span val_span;   /* PLAIN / ANCHOR_PLAIN: the scalar span + term */
+} yep_line_shape;
+
+/* Classifies the content line described by li (its own line; flags must
+ * be clear). Zero-initializes *out, then fills the facts. */
+void yep_scan_shape(const char* p, size_t len, const yep_line_info* li, yep_line_shape* out);
+
+/* ns-anchor-name byte: not blank/break/flow-indicator, not ',' or '#'. */
+int yep_scan_prop_char(unsigned char c);
+
+/* First offset at/after pos that cannot continue an anchor/alias name. */
+size_t yep_scan_prop_end(const char* p, size_t len, size_t pos);
+
 /* Scans a plain scalar starting at pos (must be content, not a comment).
  * flow != 0 adds flow stop characters; in flow, ':' terminates when
  * followed by blank/EOL/flow indicator. Leading whitespace is NOT

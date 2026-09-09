@@ -51,13 +51,16 @@ struct yep_engine {
     const char* p;
     size_t len;
     size_t pos;
-    uint32_t line;          /* 1-based current line */
-    size_t line_start;      /* offset of the current line start */
-    yep_line_info li_cache; /* per-line scan_line memo: every site
-       positioned at line_start reads it (plain continuation checks,
-       literal blocks, the main loop), so a line is scanned once */
-    uint32_t li_cache_line; /* 0 = no entry (line numbers are 1-based) */
-    uint32_t line_base;     /* lines consumed by earlier stepped runs */
+    uint32_t line;              /* 1-based current line */
+    size_t line_start;          /* offset of the current line start */
+    yep_line_info li_cache;     /* per-line scan_line memo: every site
+           positioned at line_start reads it (plain continuation checks,
+           literal blocks, the main loop), so a line is scanned once */
+    uint32_t li_cache_line;     /* 0 = no entry (line numbers are 1-based) */
+    yep_line_shape shape_cache; /* per-line shape memo (TODO.restructure/49):
+                                   the dispatch decision is made once */
+    uint32_t shape_cache_line;  /* 0 = no entry */
+    uint32_t line_base;         /* lines consumed by earlier stepped runs */
     yep_error err;
     const yep_sink* sink;
 
@@ -212,6 +215,7 @@ static void e_line_done(yep_engine* e, size_t at) {
         e->line++;
         e->line_start = e->pos;
         e->li_cache_line = 0;
+        e->shape_cache_line = 0;
     } else {
         e->pos = at;
     }
@@ -225,6 +229,17 @@ static yep_line_info e_line_info_here(yep_engine* e) {
         e->li_cache_line = e->line;
     }
     return e->li_cache;
+}
+
+/* The line's classified shape, memoized beside the line facts: the
+ * engine decides dispatch ONCE per line (TODO.restructure/49). */
+static const yep_line_shape* e_shape_here(yep_engine* e) {
+    e_line_info_here(e);
+    if (e->shape_cache_line != e->line) {
+        yep_scan_shape(e->p, e->len, &e->li_cache, &e->shape_cache);
+        e->shape_cache_line = e->line;
+    }
+    return &e->shape_cache;
 }
 
 static void e_skip_inline_space(yep_engine* e) {
@@ -677,6 +692,7 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
                         e->line++;
                         e->line_start = e->pos;
                         e->li_cache_line = 0;
+                        e->shape_cache_line = 0;
                     } else {
                         e->pos = at;
                     }
@@ -932,10 +948,6 @@ static yep_view e_resolve_tag(yep_engine* e, yep_view tag) {
     return e_tag_uri_decode(e, e_resolve_tag_raw(e, tag));
 }
 
-static int e_prop_char(unsigned char c) {
-    return !yep_ct_any(c, YEP_CT_BLANK | YEP_CT_LBREAK | YEP_CT_FLOW_IND) && c != ',' && c != '#';
-}
-
 /* Parses &anchor / !tag runs at the cursor into *anchor / *tag. */
 static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
     for (;;) {
@@ -945,10 +957,8 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
         }
         unsigned char c = (unsigned char)e->p[e->pos];
         if (c == '&') {
-            size_t start = ++e->pos;
-            while (e->pos < e->len && e_prop_char((unsigned char)e->p[e->pos])) {
-                e->pos++;
-            }
+            size_t start = e->pos + 1;
+            e->pos = yep_scan_prop_end(e->p, e->len, start);
             anchor->p = e->p + start;
             anchor->len = (uint32_t)(e->pos - start);
         } else if (c == '!') {
@@ -962,7 +972,7 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
                     e->pos++;
                 }
             } else {
-                while (e->pos < e->len && e_prop_char((unsigned char)e->p[e->pos])) {
+                while (e->pos < e->len && yep_scan_prop_char((unsigned char)e->p[e->pos])) {
                     e->pos++;
                 }
             }
@@ -984,7 +994,7 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
 static int e_alias(yep_engine* e, yep_event* ev) {
     size_t star = e->pos;
     size_t start = ++e->pos;
-    while (e->pos < e->len && e_prop_char((unsigned char)e->p[e->pos])) {
+    while (e->pos < e->len && yep_scan_prop_char((unsigned char)e->p[e->pos])) {
         if (e->p[e->pos] == ':') {
             /* ':' separates only before blank or flow indicators; at
              * EOL it belongs to the name ("*a:" — 2SXE), and interior
@@ -2138,6 +2148,180 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
 
 /* -------------------------------------------------------- block machine */
 
+/* -------------------------------------------- classified fast arms (49) */
+/* Dispatch decided once per line from scan's shape facts. Each arm
+ * mirrors the general chain's emission sequence exactly; returns
+ * 1 = node complete, 0 = not applicable, <0 error to propagate. */
+
+/* Plain (optionally anchored) value: emit, fold continuations, land at
+ * the line end. root_ctx is 0 — every arm has pushed a frame. */
+static int e_shape_plain_value(yep_engine* e, const yep_line_shape* sh, uint16_t floor,
+                               yep_view anchor, uint32_t anchor_id) {
+    yep_event ev;
+    e_event_init(&ev, YEP_EV_SCALAR);
+    ev.anchor = anchor;
+    ev.anchor_id = anchor_id;
+    ev.value.p = e->p + sh->val_span.start;
+    ev.value.len = sh->val_span.end - sh->val_span.start;
+    ev.borrowed = 1;
+    ev.style = YEP_STYLE_PLAIN;
+    ev.implicit = 1;
+    ev.line = e->line;
+    ev.col = e_col(e, sh->val_start) + 1;
+    e->pos = sh->val_span.end;
+    if (e_plain_multiline(e, sh->val_span, floor, &ev, 0) != 0) {
+        return -1;
+    }
+    if (e->fold_n == 1 && sh->val_span.term == YEP_TERM_COMMENT) {
+        e_skip_to_eol(e); /* single line ending in a comment */
+    }
+    return emit_now(e, &ev) == 0 ? 1 : -2;
+}
+
+/* Flow value: the JSON fast path first; anything else restores the
+ * cursor and runs the value chain (which re-derives the flow arms). */
+static int e_shape_flow_value(yep_engine* e, const yep_line_shape* sh, uint16_t floor,
+                              yep_ctx next) {
+    yep_view none = {NULL, 0};
+    e->pos = sh->val_start;
+    e->flow_floor = floor;
+    e->flow_enforce = (e->depth > 0);
+    int fast = e_flow_json(e, none, none, 0);
+    e->flow_enforce = 0;
+    if (fast == -2) {
+        return -2;
+    }
+    if (fast == 1) {
+        if (!e_at_eol(e)) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "k: [1] x" */
+        }
+        return 1;
+    }
+    e->pos = sh->val_start;
+    int rc = e_parse_value(e, next, floor);
+    return rc == 0 ? 1 : rc;
+}
+
+/* Alias value; a ':' after the name is a compact key under a dash and
+ * the error the general path raises under a key. */
+static int e_shape_alias_value(yep_engine* e, const yep_line_shape* sh, int under_key) {
+    yep_view none = {NULL, 0};
+    e->pos = sh->val_start;
+    yep_event ev;
+    e_event_init(&ev, YEP_EV_SCALAR);
+    ev.line = e->line;
+    ev.col = e_col(e, e->pos) + 1;
+    if (e_alias(e, &ev) != 0) {
+        return -1;
+    }
+    if (e_colon_at(e, e->pos)) {
+        if (under_key || ev.multiline) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
+        if (e_simple_key_ok(e, sh->val_start, e->pos) != 0) {
+            return -1;
+        }
+        uint16_t key_col = e_col(e, sh->val_start);
+        int rc = e_open_map(e, key_col, e->line, key_col + 1, none, none, 0);
+        if (rc != 0) {
+            return rc;
+        }
+        if (emit_now(e, &ev) != 0) {
+            return -2;
+        }
+        e->pos++; /* ':' */
+        rc = e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
+        return rc == 0 ? 1 : rc;
+    }
+    if (!e_at_eol(e)) {
+        return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+    }
+    return emit_now(e, &ev) == 0 ? 1 : -2;
+}
+
+static int e_classified(yep_engine* e, uint16_t floor_col) {
+    yep_line_info li = e_line_info_here(e);
+    if (e->pos != e->line_start + li.indent) {
+        return 0; /* mid-line entry: the chain keeps its dispatch */
+    }
+    const yep_line_shape* sh = e_shape_here(e);
+    if (sh->val == YEP_LVAL_NONE) {
+        return 0; /* classified line, unclassified value: bail whole */
+    }
+    yep_view none = {NULL, 0};
+
+    if (sh->kind == YEP_LSHAPE_DASH) {
+        switch (sh->val) {
+        case YEP_LVAL_EMPTY:
+        case YEP_LVAL_FLOW:
+        case YEP_LVAL_ALIAS:
+        case YEP_LVAL_PLAIN:
+            break; /* the anchored entry and anything else: general chain */
+        default:
+            return 0;
+        }
+        uint16_t col = e_col(e, e->pos);
+        int rc = e_open_seq(e, col, e->line, col + 1, none, none, 0);
+        if (rc != 0) {
+            return rc;
+        }
+        switch (sh->val) {
+        case YEP_LVAL_EMPTY:
+            e->pos = sh->dash + 1;
+            rc = e_parse_value(e, YEP_CTX_AFTER_DASH, col);
+            return rc == 0 ? 1 : rc;
+        case YEP_LVAL_FLOW:
+            return e_shape_flow_value(e, sh, col, YEP_CTX_AFTER_DASH);
+        case YEP_LVAL_ALIAS:
+            return e_shape_alias_value(e, sh, 0);
+        default:
+            return e_shape_plain_value(e, sh, col, none, 0);
+        }
+    }
+
+    /* KEY: plain key + ':' — the mapping workhorse line */
+    if (sh->kind != YEP_LSHAPE_KEY) {
+        return 0;
+    }
+    if (e_simple_key_ok(e, sh->key_start, sh->key_end) != 0) {
+        return -1;
+    }
+    uint16_t key_col = e_col(e, e->pos);
+    int rc = e_open_map(e, key_col, e->line, key_col + 1, none, none, 0);
+    if (rc != 0) {
+        return rc;
+    }
+    yep_event kv;
+    e_event_init(&kv, YEP_EV_SCALAR);
+    kv.style = YEP_STYLE_PLAIN;
+    kv.implicit = 1;
+    kv.value.p = e->p + sh->key_start;
+    kv.value.len = sh->key_end - sh->key_start;
+    kv.borrowed = 1;
+    kv.line = e->line;
+    kv.col = key_col + 1;
+    if (emit_now(e, &kv) != 0) {
+        return -2;
+    }
+    switch (sh->val) {
+    case YEP_LVAL_EMPTY:
+        e->pos = sh->colon + 1;
+        rc = e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
+        return rc == 0 ? 1 : rc;
+    case YEP_LVAL_FLOW:
+        return e_shape_flow_value(e, sh, key_col, YEP_CTX_AFTER_COLON);
+    case YEP_LVAL_ALIAS:
+        return e_shape_alias_value(e, sh, 1);
+    case YEP_LVAL_ANCHOR_PLAIN: {
+        yep_view a = {e->p + sh->val_start + 1, sh->anchor_end - sh->val_start - 1};
+        uint32_t aid = anchor_define(e, a);
+        return e_shape_plain_value(e, sh, key_col, a, aid);
+    }
+    default:
+        return e_shape_plain_value(e, sh, key_col, none, 0);
+    }
+}
+
 /* Parses the node at the cursor (content position). Returns 0 ok,
  * -1 error, -2 sink abort. Collections may remain open (frames).
  *
@@ -2174,6 +2358,18 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
      * bound the ordinal (found by the self-referencing-structures spec:
      * "--- &id001\n- *id001" failed with an EMPTY error message) */
     uint32_t node_aid = anchor_ordinal != 0 ? anchor_ordinal : pend_aid;
+
+    /* One dispatch decision per line (TODO.restructure/49): a fresh
+     * line with no pending props and a classified shape takes the fast
+     * arms; every other entry keeps the chain below unchanged. */
+    if ((ctx == YEP_CTX_FRESH || ctx == YEP_CTX_VALUE_LINE) && yep_view_is_empty(pend_a) &&
+        yep_view_is_empty(pend_t) && pend_aid == 0) {
+        int frc = e_classified(e, floor_col);
+        if (frc != 0) {
+            return frc > 0 ? 0 : frc;
+        }
+    }
+
     e_skip_inline_space(e);
 
     yep_event ev;
@@ -2950,6 +3146,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     e->line_base = 0;
     e->line_start = 0;
     e->li_cache_line = 0;
+    e->shape_cache_line = 0;
     e->depth = 0;
     yep_nametab_clear(&e->anchors);
     e->tagmap_n = 0;
