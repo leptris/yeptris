@@ -1,6 +1,9 @@
 # 49 — the one-pass line classifier (Phase B proper)
 
-Status: implemented — CI fresh-runner bench is the referee
+Status: LANDED (PR #170). Gates: 274/274 ctest, 21 new specs, all
+sanitizers green. Measured under the interleaved h2h referee in the
+2026-09-10 ledger entry (the old phase-biased table overstated the
+"won" cells; h2h is the standing record).
 
 ## Why
 

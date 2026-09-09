@@ -1,6 +1,9 @@
 # 51 — deep-nesting: re-measure, then profile before touching anything
 
-Status: pending
+Status: MEASURED (h2h, 2026-09-10): 0.69x mac / 0.47x ubuntu —
+did NOT ride to 1.0x. The ubuntu DOM runs deep-nesting at half the
+mac MB/s (124 vs 234) while ryml is flat: platform asymmetry, not
+shape. Profile on a linux runner before any code (the 46/47 law).
 
 deep-nesting (0.67x; the ubuntu cell is still blank in the 2026-09-09
 table). The corpus is `lN:` keys at increasing indent — a pure
