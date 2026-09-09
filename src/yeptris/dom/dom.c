@@ -615,6 +615,10 @@ static int dom_flow_walk(yep_dom* d, const char* p, size_t open, size_t close, u
     d->stack[d->depth++] = id;
 
     const yep_resolver* r = dom_resolver(d);
+    /* pass 2's single-line shape: no newline in the span, no per-token
+     * line bookkeeping (mirrored exactly — the walk may not pay what
+     * the event path skipped) */
+    int single_line = (memchr(p + open, '\n', close - open) == NULL);
     int sd = 1; /* frames opened by THIS span (d->depth may be deeper) */
     size_t i = open + 1;
     for (;;) {
@@ -623,7 +627,9 @@ static int dom_flow_walk(yep_dom* d, const char* p, size_t open, size_t close, u
         }
         char c = p[i];
         if (c == ']' || c == '}') {
-            yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
+            if (!single_line) {
+                yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
+            }
             d->depth--;
             sd--;
             if (sd == 0) {
@@ -657,7 +663,9 @@ static int dom_flow_walk(yep_dom* d, const char* p, size_t open, size_t close, u
             continue;
         }
         /* scalar: quoted, number, or literal — the validated walk */
-        yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
+        if (!single_line) {
+            yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
+        }
         uint32_t col = (uint32_t)(i - cur_ls) + 1;
         size_t vstart = i;
         if (c == '"') {
