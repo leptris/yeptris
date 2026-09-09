@@ -67,42 +67,92 @@ static int str_eq(const yep_dom* d, yep_sview a, yep_sview b) {
     return va.p != NULL && vb.p != NULL && memcmp(va.p, vb.p, va.len) == 0;
 }
 
-static int node_eq(const yep_dom* a, const yep_dom* b, uint32_t ia, uint32_t ib, int depth) {
-    if (depth > YEP_DOM_MAX_DEPTH) {
+/* Iterative compare (a permanent gate must not ride the C stack:
+ * corpus inputs reach the depth cap). Pairs of node ids are compared
+ * in tree order: every field, then children via the sibling links. */
+typedef struct {
+    uint32_t a, b;
+} pair_t;
+
+static int node_eq(const yep_dom* a, const yep_dom* b, uint32_t ra, uint32_t rb) {
+    size_t cap = 64, n = 0;
+    pair_t* st = (pair_t*)malloc(cap * sizeof(pair_t));
+    if (st == NULL) {
         return 0;
     }
-    const yep_dnode* x = &a->nodes[ia];
-    const yep_dnode* y = &b->nodes[ib];
-    if (x->kind != y->kind || x->style != y->style || x->implicit != y->implicit ||
-        x->tag_id != y->tag_id || x->flow != y->flow || x->line != y->line || x->col != y->col ||
-        x->count != y->count) {
-        return 0;
-    }
-    if (!str_eq(a, x->value, y->value) || !str_eq(a, x->tag, y->tag) ||
-        !str_eq(a, x->anchor, y->anchor)) {
-        return 0;
-    }
-    if (x->kind == YEP_DOM_ALIAS) {
-        const yep_dnode* xt = &a->nodes[x->target];
-        const yep_dnode* yt = &b->nodes[y->target];
-        if (xt->kind != yt->kind || xt->line != yt->line || xt->col != yt->col ||
-            xt->value.len != yt->value.len) {
-            return 0;
+    st[n++] = (pair_t){ra, rb};
+    int eq = 1;
+    while (n > 0 && eq) {
+        pair_t pr = st[--n];
+        if (pr.a >= a->ncount || pr.b >= b->ncount) {
+            fprintf(stderr, "DIFF oob-id a=%u/%u b=%u/%u\n", pr.a, a->ncount, pr.b, b->ncount);
+            eq = 0;
+            break;
+        }
+        const yep_dnode* x = &a->nodes[pr.a];
+        const yep_dnode* y = &b->nodes[pr.b];
+        if (x->kind != y->kind || x->style != y->style || x->implicit != y->implicit ||
+            x->tag_id != y->tag_id || x->flow != y->flow || x->line != y->line ||
+            x->col != y->col || x->count != y->count) {
+            fprintf(stderr,
+                    "DIFF field a=%u b=%u kind %u/%u style %u/%u impl %u/%u tag %u/%u flow "
+                    "%u/%u line %u/%u col %u/%u cnt %u/%u\n",
+                    pr.a, pr.b, x->kind, y->kind, x->style, y->style, x->implicit, y->implicit,
+                    x->tag_id, y->tag_id, x->flow, y->flow, x->line, y->line, x->col, y->col,
+                    x->count, y->count);
+            eq = 0;
+            break;
+        }
+        if (!str_eq(a, x->value, y->value) || !str_eq(a, x->tag, y->tag) ||
+            !str_eq(a, x->anchor, y->anchor)) {
+            yep_view xv = yep_dom_view(a, x->value);
+            yep_view yv = yep_dom_view(a, y->value);
+            fprintf(stderr, "DIFF str a=%u b=%u vlen %u/%u v=%.*s|%.*s anc %u/%u\n", pr.a, pr.b,
+                    xv.len, yv.len, (int)xv.len, xv.p ? (const char*)xv.p : "", (int)yv.len,
+                    yv.p ? (const char*)yv.p : "", x->anchor.len, y->anchor.len);
+            eq = 0;
+            break;
+        }
+        if (x->kind == YEP_DOM_ALIAS) {
+            if (x->target >= a->ncount || y->target >= b->ncount) {
+                fprintf(stderr, "DIFF oob-target a=%u t=%u/%u b=%u t=%u/%u\n", pr.a, x->target,
+                        a->ncount, pr.b, y->target, b->ncount);
+                eq = 0;
+                break;
+            }
+            const yep_dnode* xt = &a->nodes[x->target];
+            const yep_dnode* yt = &b->nodes[y->target];
+            if (xt->kind != yt->kind || xt->line != yt->line || xt->col != yt->col ||
+                xt->value.len != yt->value.len) {
+                eq = 0;
+                break;
+            }
+        }
+        if (n + (size_t)x->count >= cap) {
+            while (n + (size_t)x->count >= cap) {
+                cap *= 2;
+            }
+            pair_t* ns = (pair_t*)realloc(st, cap * sizeof(pair_t));
+            if (ns == NULL) {
+                free(st);
+                return 0;
+            }
+            st = ns;
+        }
+        uint32_t ca = x->first_child;
+        uint32_t cb = y->first_child;
+        while (ca != UINT32_MAX && cb != UINT32_MAX) {
+            st[n++] = (pair_t){ca, cb};
+            ca = a->nodes[ca].next_sibling;
+            cb = b->nodes[cb].next_sibling;
+        }
+        if (ca != UINT32_MAX || cb != UINT32_MAX) {
+            fprintf(stderr, "DIFF chain-tail a=%u ca=%u cb=%u\n", pr.a, ca, cb);
+            eq = 0; /* child-count mismatch already caught by count, kept safe */
         }
     }
-    uint32_t ca = x->first_child;
-    uint32_t cb = y->first_child;
-    while (ca != UINT32_MAX || cb != UINT32_MAX) {
-        if (ca == UINT32_MAX || cb == UINT32_MAX) {
-            return 0;
-        }
-        if (!node_eq(a, b, ca, cb, depth + 1)) {
-            return 0;
-        }
-        ca = a->nodes[ca].next_sibling;
-        cb = b->nodes[cb].next_sibling;
-    }
-    return 1;
+    free(st);
+    return eq;
 }
 
 static int dom_eq(const yep_dom* a, const yep_dom* b) {
@@ -111,7 +161,7 @@ static int dom_eq(const yep_dom* a, const yep_dom* b) {
     }
     for (uint32_t i = 0; i < a->dcount; i++) {
         if (a->docs[i] == UINT32_MAX || b->docs[i] == UINT32_MAX ||
-            !node_eq(a, b, a->docs[i], b->docs[i], 0)) {
+            !node_eq(a, b, a->docs[i], b->docs[i])) {
             return 0;
         }
     }

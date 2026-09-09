@@ -2659,6 +2659,10 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         yep_event kv;
         e_event_init(&kv, YEP_EV_SCALAR);
         kv.anchor = anchor;
+        kv.anchor_id =
+            anchor_ordinal; /* the KEY binds its anchor; the
+                             * DOM keys on the ordinal (a key-anchored scalar's aliases
+                             * resolved to garbage without it — found by flow-direct-diff) */
         kv.tag = tag;
         kv.style = YEP_STYLE_PLAIN;
         kv.implicit = 1;
