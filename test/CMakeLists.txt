@@ -163,6 +163,17 @@ if(YEPTRIS_ENABLE_FUZZING)
 endif()
 
 # ---- JSONTestSuite under YAML semantics (TODO.impl/08C) ---------------
+add_executable(flow_direct_diff flow/flow_direct_diff.c)
+target_link_libraries(flow_direct_diff PRIVATE yeptris_static)
+target_include_directories(flow_direct_diff PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
+yeptris_set_warnings(flow_direct_diff)
+add_test(
+    NAME flow-direct-diff
+    COMMAND flow_direct_diff ${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/yaml-test-suite/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/psych-pure
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+)
+
 add_executable(test_jsonsuite flow/jsonsuite.c)
 target_link_libraries(test_jsonsuite PRIVATE yeptris_static)
 target_include_directories(test_jsonsuite PRIVATE ${CMAKE_SOURCE_DIR}/src/include)

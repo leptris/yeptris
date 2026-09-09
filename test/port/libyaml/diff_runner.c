@@ -219,7 +219,7 @@ int main(int argc, char** argv) {
         }
         yd_out o = {0};
         yep_engine* eng = yep_engine_create(yep_system_allocator());
-        yep_sink sink = {on_event, &o};
+        yep_sink sink = {on_event, &o, NULL};
         int rc = yep_engine_run(eng, input, ilen, &sink);
         if (rc != 0) {
             yd_put(&o, "!ERROR\n", 7);

@@ -82,7 +82,10 @@ _Static_assert(sizeof(yep_dnode) <= 64, "yep_dnode exceeds the 64 B gate");
 
 typedef struct yep_dom {
     const yep_allocator* sys;
-    yep_pool* pool; /* node/docs arrays (strings live in str) */
+    const struct yep_resolver* resolver; /* implicit typing for direct
+        builders (NULL = core12); parse_impl sets it beside the engine's
+        so the two paths resolve identically (the typing SSOT) */
+    yep_pool* pool;                      /* node/docs arrays (strings live in str) */
     /* string arena: contiguous, realloc-grown; node strings are
      * OFFSETS into it, so growth never dangles (dom_str_put) */
     char* str;
@@ -148,6 +151,12 @@ void yep_dom_prepare(yep_dom* d, const yep_text_stats* st);
 int dom_grow_nodes(yep_dom* d, uint32_t need);
 int dom_grow_docs(yep_dom* d, uint32_t need);
 uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind);
+/* Node-init law shared by the event sink, the mutation builder and the
+ * direct builders (no yep_event plumbing): creates and initializes a
+ * node; UINT32_MAX = OOM. */
+uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_view* anchor,
+                       int anchor_borrowed, uint8_t style, uint8_t implicit, uint8_t flow,
+                       uint32_t line, uint32_t col);
 void dom_link(yep_dom* d, uint32_t parent, uint32_t child);
 
 /* thread-safe handle arena (see hpool.c) */
@@ -194,6 +203,13 @@ int yep_mut_map_add_node(yep_dom* d, uint32_t map, uint32_t key, uint32_t value)
 int yep_mut_map_append(yep_dom* d, uint32_t map, uint32_t key, uint32_t value);
 int yep_mut_add_root(yep_dom* d, uint32_t node);
 void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth);
+
+/* The sink's flow fast path (TODO.restructure/50): builds the
+ * strictly-validated span [open, close] directly through the DOM's own
+ * placement/link/anchor laws — node-for-node identical to the event
+ * path (the flow-direct-diff ctest pins it). 1 = built, <0 = abort. */
+int dom_on_flow_json(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
+                     size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id);
 
 /* Direct DOM construction from a strict-validated JSON buffer
  * (TODO.impl/27): no engine, no event pipeline. The caller validated

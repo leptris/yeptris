@@ -1273,20 +1273,12 @@ enum {
     JX_COMMA_OR_CLOSE      /* after a value — ',' or close */
 };
 
-/* Line/col across a gap: scan ONLY the unscanned bytes. *from is
- * the start of the unscanned region (in: the previous call's to;
- * out: this call's to). Scanning from the line start instead is
- * quadratic on one-line flow collections: a single long line
- * rescans from its beginning for every emitted token. */
+/* Line/col across a gap: the walk is scan's SSOT (yep_scan_advance_
+ * line) — the DOM direct builder shares it so line/col cannot drift
+ * between the two paths. */
 static void jx_advance_line(yep_engine* e, size_t* from, size_t to, uint32_t* line,
                             size_t* line_start) {
-    for (size_t i = *from; i < to; i++) {
-        if (e->p[i] == '\n') {
-            (*line)++;
-            *line_start = i + 1;
-        }
-    }
-    *from = to;
+    yep_scan_advance_line(e->p, from, to, line, line_start);
 }
 
 /* Returns 1 = events emitted and consumed (e->pos past the close),
@@ -1304,6 +1296,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
     uint8_t expect[YEP_JSON_MAX_DEPTH];
     int depth = 0;
     int saw_tab = 0;
+    int long_key = 0; /* a map key over the simple-key limit: pass 2 owns the error */
     size_t i = open_pos + 1;
     kind[0] = (p[open_pos] == '[') ? 0 : 1;
     expect[0] = kind[0] ? JX_KEY_OR_CLOSE : JX_VALUE_OR_CLOSE;
@@ -1361,9 +1354,15 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
         /* a value (or, in maps with KEY state, a string key) */
         int he = 0;
         size_t str_close;
+        size_t vstart = i;
         if (c == '"') {
             if (!yep_json_string(p, len, &i, &str_close, &he)) {
                 return 0;
+            }
+            if (kind[depth - 1] == 1 &&
+                (expect[depth - 1] == JX_KEY_OR_CLOSE || expect[depth - 1] == JX_KEY) &&
+                i - vstart > YEP_MAX_SIMPLE_KEY) {
+                long_key = 1;
             }
         } else if (c == '-' || (c >= '0' && c <= '9')) {
             if (!yep_json_number(p, len, &i)) {
@@ -1436,6 +1435,29 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
                 }
             }
             j++;
+        }
+    }
+
+    /* ---- sink fast path (TODO.restructure/50): the DOM builds the
+     * validated span directly, skipping the event pipeline. Only when
+     * pass 2 could take the whole span unchanged: a long key needs
+     * pass 2's error, and flow deferral buffers events. ---- */
+    if (!long_key && e->ev_scopes == 0 && e->sink != NULL && e->sink->on_flow_json != NULL) {
+        int built = e->sink->on_flow_json(e->sink->ctx, p, open_pos, close, e->line, e->line_start,
+                                          anchor, tag, anchor_id);
+        if (built < 0) {
+            return -2;
+        }
+        if (built == 1) {
+            size_t from = open_pos;
+            uint32_t ln = e->line;
+            size_t ls = e->line_start;
+            jx_advance_line(e, &from, close + 1, &ln, &ls);
+            e->line = ln;
+            e->line_start = ls;
+            e->pos = close + 1;
+            e_skip_inline_space(e);
+            return 1;
         }
     }
 
