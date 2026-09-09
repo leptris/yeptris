@@ -80,3 +80,13 @@ top of the engine's own deficit. TWO independent losses to attack:
 measure dom.c's alias node path first); (2) the engine events
 (the same pipeline the flow direct-build removes — block-level
 anchors need the per-event cost cut, not a span shortcut).
+
+## Anchor lead 1, checked (2026-09-09): the ALIAS arm is already O(1)
+
+dom.c's YEP_EV_ALIAS resolves via the event's anchor_id into the
+direct-indexed array (dom_anchor_get) — no name re-resolution, no
+nametab in the sink. The 1.5x DOM-vs-pull penalty is NOT a naive
+lookup; it is spread across alias-node creation, anchor binding,
+dom_ev_str copies, and placement — PROFILE dom_place/dom_new_node
+on the anchor corpus next (Instruments/perf), do not re-read the
+alias arm expecting the smoking gun.
