@@ -204,10 +204,15 @@ engine_enter:
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
     }
+    /* the direct builders resolve with the engine's schema (the typing
+     * SSOT — one resolver decision per scalar, whichever path builds) */
+    dom->resolver = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
+                        ? yep_resolver_compat11()
+                        : yep_resolver_core12();
     yep_dom_prepare(dom, &pre_stats);
     yep_engine_prepare(eng, &pre_stats);
 
-    yep_sink sink = {yep_dom_on_event, dom};
+    yep_sink sink = {yep_dom_on_event, dom, dom_on_flow_json};
     int rc = yep_engine_run(eng, data, data_len, &sink);
     if (rc != 0) {
         const yep_error* ee = yep_engine_error(eng);

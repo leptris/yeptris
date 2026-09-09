@@ -125,6 +125,14 @@ int yep_scan_is_key_start(unsigned char c);
  * \r\n -> 2, lone \r -> 1. */
 size_t yep_scan_break_len(const char* p, size_t len, size_t pos);
 
+/* Line/col bookkeeping across a scanned gap: advances *line and
+ * *line_start over the bytes in [*from, to) (only the unscanned region
+ * is walked — scanning from the line start is quadratic on long
+ * lines). *from becomes `to`. Shared by the flow kernel's event pass
+ * and the DOM direct builder so their line/col facts cannot drift. */
+void yep_scan_advance_line(const char* p, size_t* from, size_t to, uint32_t* line,
+                           size_t* line_start);
+
 #ifdef __cplusplus
 }
 #endif

@@ -23,6 +23,17 @@ size_t yep_scan_break_len(const char* p, size_t len, size_t pos) {
     return 0;
 }
 
+void yep_scan_advance_line(const char* p, size_t* from, size_t to, uint32_t* line,
+                           size_t* line_start) {
+    for (size_t i = *from; i < to; i++) {
+        if (p[i] == '\n') {
+            (*line)++;
+            *line_start = i + 1;
+        }
+    }
+    *from = to;
+}
+
 /* ONE home for the \n/\r break set (scan owns the concept): the
  * engine's quote path shares it — it had rebuilt a duplicate per
  * quoted scalar. */

@@ -96,12 +96,12 @@ yep_sview yep_dom_str_commit(yep_dom* d, uint32_t written) {
     return sv;
 }
 
-/* Node string from an engine event: borrowed views stay INPUT
- * offsets (zero copy); everything the engine produced (folded,
- * escaped, resolved tags, anchor names) is copied into the arena —
- * the finish pool is then free to die with the engine. */
-static yep_sview dom_ev_str(yep_dom* d, const yep_event* ev, const yep_view* v, int borrowed) {
-    if (v->len == 0) {
+/* Node string: borrowed views stay INPUT offsets (zero copy);
+ * everything the engine produced (folded, escaped, resolved tags,
+ * anchor names) is copied into the arena — the finish pool is then
+ * free to die with the engine. */
+static yep_sview dom_str_in(yep_dom* d, const yep_view* v, int borrowed) {
+    if (v == NULL || v->len == 0) {
         yep_sview sv = {0, 0};
         return sv;
     }
@@ -111,7 +111,13 @@ static yep_sview dom_ev_str(yep_dom* d, const yep_event* ev, const yep_view* v, 
     return yep_dom_str_put(d, (const char*)v->p, v->len);
 }
 
-uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
+/* The node-init law (every builder's SSOT): creates one node with the
+ * given metadata; tag/anchor views encode through dom_str_in (tags and
+ * event-path anchors copy to the arena; input-backed views borrow).
+ * tag_id stays 0 — the caller resolves (scalars) or leaves 0. */
+uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_view* anchor,
+                       int anchor_borrowed, uint8_t style, uint8_t implicit, uint8_t flow,
+                       uint32_t line, uint32_t col) {
     if (!dom_grow_nodes(d, 1)) {
         return UINT32_MAX;
     }
@@ -122,17 +128,29 @@ uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
     n->next_sibling = UINT32_MAX;
     n->target = UINT32_MAX;
     n->kind = kind;
-    if (ev) {
-        n->tag = dom_ev_str(d, ev, &ev->tag, 0);
-        n->tag_id = ev->tag_id;
-        n->anchor = dom_ev_str(d, ev, &ev->anchor, ev->borrowed);
-        n->style = ev->style;
-        n->implicit = ev->implicit;
-        n->flow = ev->flow;
-        n->line = ev->line;
-        n->col = ev->col;
-    }
+    n->tag = dom_str_in(d, tag, 0);
+    n->anchor = dom_str_in(d, anchor, anchor_borrowed);
+    n->style = style;
+    n->implicit = implicit;
+    n->flow = flow;
+    n->line = line;
+    n->col = col;
     return d->ncount++;
+}
+
+uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
+    if (ev == NULL) {
+        return dom_open_node(d, kind, NULL, NULL, 0, 0, 0, 0, 0, 0);
+    }
+    /* event-path anchors ride the VALUE's borrowedness (historical
+     * law, kept byte-identical) */
+    uint32_t id = dom_open_node(d, kind, &ev->tag, &ev->anchor, ev->borrowed, ev->style,
+                                ev->implicit, ev->flow, ev->line, ev->col);
+    if (id == UINT32_MAX) {
+        return UINT32_MAX;
+    }
+    d->nodes[id].tag_id = ev->tag_id;
+    return id;
 }
 
 static int dom_anchor_set(yep_dom* d, uint32_t ordinal, uint32_t node) {
@@ -272,7 +290,7 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
         if (id == UINT32_MAX) {
             return -1;
         }
-        d->nodes[id].value = dom_ev_str(d, ev, &ev->value, ev->borrowed);
+        d->nodes[id].value = dom_str_in(d, &ev->value, ev->borrowed);
         if (ev->anchor_id != 0 && dom_anchor_set(d, ev->anchor_id, id) != 0) {
             return -1;
         }
@@ -288,7 +306,7 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
         if (id == UINT32_MAX) {
             return -1;
         }
-        d->nodes[id].value = dom_ev_str(d, ev, &ev->value, ev->borrowed);
+        d->nodes[id].value = dom_str_in(d, &ev->value, ev->borrowed);
         d->nodes[id].target = target;
         return dom_place(d, id);
     }
@@ -378,81 +396,37 @@ void yep_dom_destroy(yep_dom* d) {
     yep_free(d->sys, d);
 }
 
-/* ------------------------------------------------- direct JSON builder */
-
-/* Builds the DOM straight from a strict-validated JSON buffer
- * (TODO.impl/27): scan/json.c validated the grammar; this walk creates
- * nodes and links them with no event pipeline — one node per value,
- * pre-sized from a counting pass. Strings unescape directly into the
- * DOM pool (one copy; the engine path pays two). Numbers resolve
- * through the core12 resolver (typing SSOT). Returns 0 on success, -1
- * on allocation failure, -2 if the buffer is not what the validator
- * promised (defensive: never happens in-tree). */
+/* ------------------------------------------------- direct builders */
+/* Two direct builders, one set of laws: yep_dom_build_json walks a
+ * whole strictly-validated JSON buffer (TODO.impl/27, the parse_json
+ * seam); dom_on_flow_json walks an engine-validated span mid-document
+ * (TODO.restructure/50, the sink fast path). Both create nodes through
+ * dom_open_node and place them through dom_place on the DOM's own
+ * stack — the event sink's pairing/link/anchor laws, shared, so the
+ * trees cannot diverge (the flow-direct-diff ctest pins it). */
 
 #include "parse/scalars.h"
 #include "resolve/resolver.h"
 #include "scan/json.h"
+#include "scan/scan.h"
+
+static const yep_resolver* dom_resolver(const yep_dom* d) {
+    return d->resolver != NULL ? d->resolver : yep_resolver_core12();
+}
 
 typedef struct {
     yep_dom* d;
     const char* p;
     size_t len;
     size_t i;
-    uint32_t parent; /* stack-free: link as we descend via dom_link */
-    uint32_t stack[YEP_DOM_MAX_DEPTH];
-    uint32_t pend_key[YEP_DOM_MAX_DEPTH];
-    int depth;
 } jbuilder;
 
-static uint32_t jb_node(jbuilder* b, uint8_t kind) {
-    if (!dom_grow_nodes(b->d, 1)) {
-        return UINT32_MAX;
-    }
-    yep_dnode* n = &b->d->nodes[b->d->ncount];
-    memset(n, 0, sizeof(*n));
-    n->first_child = UINT32_MAX;
-    n->last_child = UINT32_MAX;
-    n->next_sibling = UINT32_MAX;
-    n->target = UINT32_MAX;
-    n->kind = kind;
-    return b->d->ncount++;
-}
-
-/* Places a completed node: map value consumes the pending key, else
- * child of the top collection or document root. */
-static int jb_place(jbuilder* b, uint32_t id) {
-    yep_dom* d = b->d;
-    if (b->depth == 0) {
-        if (!dom_grow_docs(d, 1)) {
-            return -1;
-        }
-        d->nodes[id].attached = 1;
-        d->nodes[id].depth = 0;
-        d->docs[d->dcount++] = id;
-        return 0;
-    }
-    uint32_t top = b->stack[b->depth - 1];
-    yep_dnode* p = &d->nodes[top];
-    if (p->kind == YEP_DOM_MAPPING) {
-        if (b->pend_key[b->depth - 1] == UINT32_MAX) {
-            b->pend_key[b->depth - 1] = id;
-            return 0;
-        }
-        uint32_t key = b->pend_key[b->depth - 1];
-        b->pend_key[b->depth - 1] = UINT32_MAX;
-        dom_link(d, top, key);
-        dom_link(d, top, id);
-        return 0; /* count semantics match the sink: children, halved
-                     by the public accessors */
-    }
-    dom_link(d, top, id);
-    return 0;
-}
-
+/* Whole-buffer JSON: value-first recursion (the grammar is validated,
+ * the walk only advances). */
 static int jb_value(jbuilder* b);
 
 static int jb_string_node(jbuilder* b) {
-    uint32_t id = jb_node(b, YEP_DOM_SCALAR);
+    uint32_t id = dom_open_node(b->d, YEP_DOM_SCALAR, NULL, NULL, 0, 0, 0, 0, 0, 0);
     if (id == UINT32_MAX) {
         return -1;
     }
@@ -473,51 +447,46 @@ static int jb_string_node(jbuilder* b) {
             b->d, yep_finish_double_into(b->p, (uint32_t)(start + 1), (uint32_t)close, dst, span));
     } else {
         yep_view v = {b->p + start + 1, (uint32_t)(close - start - 1)};
-        n->value = yep_sv_input(b->d, v);
+        n->value = dom_str_in(b->d, &v, 1);
     }
     n->style = YEP_STYLE_DOUBLE_QUOTED;
     n->tag_id = 0; /* str */
-    return jb_place(b, id) == 0 ? 0 : -1;
+    return dom_place(b->d, id) == 0 ? 0 : -1;
 }
 
-static int jb_scalar_node(jbuilder* b, uint32_t tag_id) {
-    uint32_t id = jb_node(b, YEP_DOM_SCALAR);
+static int jb_scalar_node(jbuilder* b) {
+    uint32_t id = dom_open_node(b->d, YEP_DOM_SCALAR, NULL, NULL, 0, 0, 0, 0, 0, 0);
     if (id == UINT32_MAX) {
         return -1;
     }
     yep_dnode* n = &b->d->nodes[id];
     size_t start = b->i;
     size_t i = b->i;
-    /* advance past the literal/number: the shared primitives validate
-     * and move the cursor */
+    const yep_resolver* r = dom_resolver(b->d);
     if (b->p[i] == 't') {
         if (!yep_json_literal(b->p, b->len, &i, "true")) {
             return -2;
         }
-        tag_id = 3; /* bool */
     } else if (b->p[i] == 'f') {
         if (!yep_json_literal(b->p, b->len, &i, "false")) {
             return -2;
         }
-        tag_id = 3;
     } else if (b->p[i] == 'n') {
         if (!yep_json_literal(b->p, b->len, &i, "null")) {
             return -2;
         }
-        tag_id = 4; /* null */
     } else {
         if (!yep_json_number(b->p, b->len, &i)) {
             return -2;
         }
-        tag_id = yep_resolver_core12()->resolve(NULL, b->p + start, (uint32_t)(i - start));
     }
     b->i = i;
     yep_view v = {b->p + start, (uint32_t)(i - start)};
-    n->value = yep_sv_input(b->d, v);
+    n->value = dom_str_in(b->d, &v, 1);
     n->style = YEP_STYLE_PLAIN;
     n->implicit = 1;
-    n->tag_id = (uint8_t)tag_id;
-    return jb_place(b, id) == 0 ? 0 : -1;
+    n->tag_id = r->resolve(NULL, v.p, v.len);
+    return dom_place(b->d, id) == 0 ? 0 : -1;
 }
 
 static void jb_ws(jbuilder* b) {
@@ -532,32 +501,32 @@ static void jb_ws(jbuilder* b) {
 }
 
 static int jb_value(jbuilder* b) {
+    yep_dom* d = b->d;
     jb_ws(b);
     if (b->i >= b->len) {
         return -2;
     }
     char c = b->p[b->i];
     if (c == '{' || c == '[') {
-        if (b->depth >= YEP_DOM_MAX_DEPTH) {
+        if (d->depth >= YEP_DOM_MAX_DEPTH) {
             return -2;
         }
         int map = (c == '{');
         b->i++;
-        uint32_t id = jb_node(b, map ? YEP_DOM_MAPPING : YEP_DOM_SEQUENCE);
+        uint32_t id = dom_open_node(d, map ? YEP_DOM_MAPPING : YEP_DOM_SEQUENCE, NULL, NULL, 0, 0,
+                                    0, 1, 0, 0);
         if (id == UINT32_MAX) {
             return -1;
         }
-        b->d->nodes[id].flow = 1;
-        if (jb_place(b, id) != 0) {
+        if (dom_place(d, id) != 0) {
             return -1;
         }
-        b->stack[b->depth] = id;
-        b->pend_key[b->depth] = UINT32_MAX;
-        b->depth++;
+        d->map_pending_key[d->depth] = 0;
+        d->stack[d->depth++] = id;
         jb_ws(b);
         if (b->i < b->len && b->p[b->i] == (map ? '}' : ']')) {
             b->i++;
-            b->depth--;
+            d->depth--;
             return 0;
         }
         for (;;) {
@@ -569,7 +538,7 @@ static int jb_value(jbuilder* b) {
             if (map) {
                 /* a value must be followed by , or } — the map's key
                  * slot is pending until the ':' value completes */
-                if (b->i < b->len && b->p[b->i] == ':' && b->pend_key[b->depth - 1] != UINT32_MAX) {
+                if (b->i < b->len && b->p[b->i] == ':' && d->map_pending_key[d->depth - 1] != 0) {
                     b->i++;
                     rc = jb_value(b);
                     if (rc != 0) {
@@ -587,7 +556,7 @@ static int jb_value(jbuilder* b) {
             }
             if (b->p[b->i] == (map ? '}' : ']')) {
                 b->i++;
-                b->depth--;
+                d->depth--;
                 return 0;
             }
             return -2;
@@ -596,11 +565,11 @@ static int jb_value(jbuilder* b) {
     if (c == '"') {
         return jb_string_node(b);
     }
-    return jb_scalar_node(b, 0);
+    return jb_scalar_node(b);
 }
 
 int yep_dom_build_json(yep_dom* d, const char* buf, size_t len) {
-    jbuilder b = {d, buf, len, 0, 0, {0}, {0}, 0};
+    jbuilder b = {d, buf, len, 0};
     int rc = jb_value(&b);
     if (rc != 0) {
         return rc;
@@ -610,6 +579,146 @@ int yep_dom_build_json(yep_dom* d, const char* buf, size_t len) {
         return -2;
     }
     return 0;
+}
+
+/* --- the flow fast path (TODO.restructure/50) --- */
+
+/* One walk of an engine-validated JSON-class span, mirroring
+ * e_flow_json's pass-2 emission order and line/col choreography
+ * node-for-node: placement rides the DOM's live stack (the same
+ * dom_place the event sink uses), scalars resolve through the
+ * document's resolver (the typing SSOT), escaped strings unescape
+ * straight into the arena (one copy where the event path pays two).
+ * Returns 0 built, -1 abort (OOM / depth), -2 validator surprise. */
+static int dom_flow_walk(yep_dom* d, const char* p, size_t open, size_t close, uint32_t line,
+                         size_t line_start, const yep_view* anchor, const yep_view* tag,
+                         uint32_t anchor_id) {
+    if (d->depth >= YEP_DOM_MAX_DEPTH) {
+        return -1; /* the event sink's per-START cap, checked at root */
+    }
+    uint32_t cur_line = line;
+    size_t cur_ls = line_start;
+    size_t cur_scan = open; /* unscanned region starts at the span */
+
+    uint32_t id = dom_open_node(d, p[open] == '[' ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, tag, anchor,
+                                0, 0, 0, 1, cur_line, (uint32_t)(open + 1 - cur_ls) + 1);
+    if (id == UINT32_MAX) {
+        return -1;
+    }
+    if (anchor_id != 0 && dom_anchor_set(d, anchor_id, id) != 0) {
+        return -1;
+    }
+    if (dom_place(d, id) != 0) {
+        return -1;
+    }
+    d->map_pending_key[d->depth] = 0;
+    d->stack[d->depth++] = id;
+
+    const yep_resolver* r = dom_resolver(d);
+    int sd = 1; /* frames opened by THIS span (d->depth may be deeper) */
+    size_t i = open + 1;
+    for (;;) {
+        while (i < close && (p[i] == ' ' || p[i] == '\n' || p[i] == '\r')) {
+            i++;
+        }
+        char c = p[i];
+        if (c == ']' || c == '}') {
+            yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
+            d->depth--;
+            sd--;
+            if (sd == 0) {
+                return 0;
+            }
+            i++;
+            continue;
+        }
+        if (c == '{' || c == '[') {
+            if (d->depth >= YEP_DOM_MAX_DEPTH) {
+                return -1;
+            }
+            yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
+            uint32_t cid =
+                dom_open_node(d, c == '[' ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, NULL, NULL, 0, 0, 0,
+                              1, cur_line, (uint32_t)(i + 1 - cur_ls) + 1);
+            if (cid == UINT32_MAX) {
+                return -1;
+            }
+            if (dom_place(d, cid) != 0) {
+                return -1;
+            }
+            d->map_pending_key[d->depth] = 0;
+            d->stack[d->depth++] = cid;
+            sd++;
+            i++;
+            continue;
+        }
+        if (c == ',' || c == ':') {
+            i++;
+            continue;
+        }
+        /* scalar: quoted, number, or literal — the validated walk */
+        yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
+        uint32_t col = (uint32_t)(i - cur_ls) + 1;
+        size_t vstart = i;
+        if (c == '"') {
+            uint32_t sid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_DOUBLE_QUOTED,
+                                         0, 0, cur_line, col);
+            if (sid == UINT32_MAX) {
+                return -1;
+            }
+            size_t vclose;
+            int he = 0;
+            if (!yep_json_string(p, close + 1, &i, &vclose, &he)) {
+                return -2; /* validated: cannot happen */
+            }
+            yep_dnode* n = &d->nodes[sid];
+            if (he) {
+                uint32_t span = (uint32_t)(vclose - vstart - 1);
+                char* dst = yep_dom_str_tail(d, span);
+                if (dst == NULL) {
+                    return -1;
+                }
+                n->value =
+                    yep_dom_str_commit(d, yep_finish_double_into(p, (uint32_t)(vstart + 1),
+                                                                 (uint32_t)vclose, dst, span));
+            } else {
+                yep_view v = {p + vstart + 1, (uint32_t)(vclose - vstart - 1)};
+                n->value = dom_str_in(d, &v, 1);
+            }
+            if (dom_place(d, sid) != 0) {
+                return -1;
+            }
+            continue;
+        }
+        /* number or literal: walk the exact token like pass 2 */
+        uint32_t sid =
+            dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0, cur_line, col);
+        if (sid == UINT32_MAX) {
+            return -1;
+        }
+        if (c == 't' || c == 'f' || c == 'n') {
+            i += (c == 't') ? 4 : (c == 'f') ? 5 : 4;
+        } else {
+            i++;
+            while (i < close && ((p[i] >= '0' && p[i] <= '9') || p[i] == '.' || p[i] == 'e' ||
+                                 p[i] == 'E' || p[i] == '+' || p[i] == '-')) {
+                i++;
+            }
+        }
+        yep_view v = {p + vstart, (uint32_t)(i - vstart)};
+        d->nodes[sid].value = dom_str_in(d, &v, 1);
+        d->nodes[sid].tag_id = r->resolve(NULL, v.p, v.len);
+        if (dom_place(d, sid) != 0) {
+            return -1;
+        }
+    }
+}
+
+int dom_on_flow_json(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
+                     size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id) {
+    yep_dom* d = (yep_dom*)ctx;
+    int rc = dom_flow_walk(d, p, open, close, line, line_start, &anchor, &tag, anchor_id);
+    return rc == 0 ? 1 : -1;
 }
 
 const yep_dnode* yep_dom_node(const yep_dom* d, uint32_t id) {

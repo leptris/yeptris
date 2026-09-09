@@ -61,6 +61,16 @@ typedef struct yep_sink {
     /* Returns 0 to continue, nonzero to abort the parse (sink error). */
     int (*on_event)(void* ctx, const yep_event* ev);
     void* ctx;
+    /* Optional flow fast path (TODO.restructure/50): called right
+     * after the engine strictly validates a JSON-class flow span
+     * [open, close] and rules out the key/fallback shapes. p is the
+     * parse buffer; line/line_start are the engine's position facts at
+     * `open` (for node line/col). Return 1 = subtree built (the
+     * engine continues past the close), 0 = not handled (the engine
+     * emits the span's events exactly as before), <0 = abort. Sinks
+     * that consume events (pull/push/recorder) leave it NULL. */
+    int (*on_flow_json)(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
+                        size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id);
 } yep_sink;
 
 #ifdef __cplusplus
