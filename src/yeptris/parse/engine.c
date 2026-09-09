@@ -1462,7 +1462,8 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             e_event_init(&ev, stk[sd - 1] ? YEP_EV_MAP_END : YEP_EV_SEQ_END);
             /* flow=1 only on START events (kernel convention: the style
              * belongs to the opening bracket, END events stay plain) */
-            if (!single_line) jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
+            if (!single_line)
+                jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
             ev.line = cur_line;
             ev.col = (uint32_t)(i - cur_ls) + 1;
             if (emit_now(e, &ev) != 0) {
@@ -1482,7 +1483,8 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             yep_event ev;
             e_event_init(&ev, c == '[' ? YEP_EV_SEQ_START : YEP_EV_MAP_START);
             ev.flow = 1;
-            if (!single_line) jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
+            if (!single_line)
+                jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
             ev.line = cur_line;
             ev.col = (uint32_t)(i + 1 - cur_ls) + 1;
             if (emit_now(e, &ev) != 0) {
@@ -1501,7 +1503,8 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
         /* scalar: quoted, number, or literal */
         yep_event ev;
         e_event_init(&ev, YEP_EV_SCALAR);
-        if (!single_line) jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
+        if (!single_line)
+            jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
         ev.line = cur_line;
         ev.col = (uint32_t)(i - cur_ls) + 1;
         size_t vstart = i;
