@@ -64,3 +64,19 @@ measured ~80ns/event wall) is what ryml does not have.
 ## Acceptance
 
 Every ryml-comparable shape > 1.0x on BOTH CI platforms.
+
+## Anchor-heavy decomposition (from the same CI run — a concrete lead)
+
+| measure | MB/s | reading |
+|---|---|---|
+| pull | 65.9 | engine + events, no tree — 0.48x of ryml |
+| recorder | 45.6 | ≈ DOM |
+| DOM | 44.8 | **0.68x of our OWN pull** |
+
+Every other shape has DOM ≈ pull; anchor-heavy alone pays 1.5x in
+the DOM SINK (alias/anchor node creation + resolution in dom.c) on
+top of the engine's own deficit. TWO independent losses to attack:
+(1) the dom-side anchor/alias penalty (unique to this shape —
+measure dom.c's alias node path first); (2) the engine events
+(the same pipeline the flow direct-build removes — block-level
+anchors need the per-event cost cut, not a span shortcut).
