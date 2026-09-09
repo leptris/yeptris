@@ -98,7 +98,7 @@ static mem_stats measure_mem(const Corpus& c) {
         yep_text_stats st;
         yep_text_active()->scan_stats(c.data.data(), c.data.size(), &st);
         yep_dom_prepare(dom, &st);
-        yep_sink sink = {yep_dom_on_event, dom};
+        yep_sink sink = {yep_dom_on_event, dom, NULL};
         int rc = yep_engine_run(eng, c.data.data(), c.data.size(), &sink);
         if (rc == 0 && dom->ncount > 0) {
             ms.allocs_per_mb = (double)cnt.allocs / ((double)c.data.size() / 1e6);
@@ -555,6 +555,63 @@ Result bench_ryml(const Corpus& c, int iters) {
     double mb = (double)c.data.size() / (1024.0 * 1024.0);
     return {c.name + " (ryml)", best_ms < 1e9 ? mb * 1000.0 / best_ms : 0, best_ms, c.data.size()};
 }
+
+/* Interleaved head-to-head: one yeptris parse then one ryml parse per
+ * round, same machine state for both, median of per-round ratios.
+ * Separate-phase best-of rides thermal/cache phase bias (and runners
+ * are bimodal); the interleaved median is the campaign referee. */
+double h2h_ratio(const Corpus& c, int rounds, double* yep_mb) {
+    ryml::Callbacks cb = ryml::get_callbacks();
+    cb.m_error_basic = [](ryml::csubstr, ryml::ErrorDataBasic const&, void*) {
+        throw RymlParseFailure();
+    };
+    cb.m_error_parse = [](ryml::csubstr, ryml::ErrorDataParse const&, void*) {
+        throw RymlParseFailure();
+    };
+    cb.m_error_visit = [](ryml::csubstr, ryml::ErrorDataVisit const&, void*) {
+        throw RymlParseFailure();
+    };
+    ryml::set_callbacks(cb);
+    std::string scratch;
+    scratch.resize(c.data.size());
+    ryml::Tree tree;
+    std::vector<double> ratios;
+    double best_yep = 1e9;
+    YeptrisStatus st = YEPTRIS_OK;
+    try {
+        for (int i = 0; i < rounds; i++) {
+            auto a0 = clk::now();
+            YeptrisDocument d = yeptris_parse(c.data.data(), c.data.size(), &st);
+            auto a1 = clk::now();
+            yeptris_document_free(d);
+            memcpy(&scratch[0], c.data.data(), c.data.size());
+            auto b0 = clk::now();
+            ryml::parse_in_place(ryml::csubstr{}, ryml::to_substr(scratch), &tree);
+            auto b1 = clk::now();
+            if (tree.size() <= 1) {
+                break; /* rejected corpus: no h2h */
+            }
+            double ty = ms_of(a0, a1);
+            double tr = ms_of(b0, b1);
+            if (ty < best_yep) {
+                best_yep = ty;
+            }
+            ratios.push_back(tr / ty); /* >1: yeptris faster */
+        }
+    } catch (RymlParseFailure&) {
+        ryml::reset_callbacks();
+        return 0;
+    }
+    ryml::reset_callbacks();
+    if (ratios.empty()) {
+        return 0;
+    }
+    std::sort(ratios.begin(), ratios.end());
+    double med = ratios[ratios.size() / 2];
+    double mb = (double)c.data.size() / (1024.0 * 1024.0);
+    *yep_mb = best_yep < 1e9 ? mb * 1000.0 / best_yep : 0;
+    return med;
+}
 #endif
 
 } // namespace
@@ -657,6 +714,22 @@ int main(int argc, char** argv) {
         results.push_back(bench_ryml(c, iters));
 #endif
     }
+
+#if defined(YEP_BENCH_RYML)
+    /* Interleaved head-to-head vs ryml (the campaign referee, item 48). */
+    printf("\n# head-to-head vs rapidyaml (interleaved, median of rounds)\n\n"
+           "| shape | yeptris DOM MB/s | vs ryml |\n|---|---|---|\n");
+    for (const Corpus& c : corpora) {
+        double yep_mb = 0;
+        double med = h2h_ratio(c, full ? 9 : 5, &yep_mb);
+        if (med == 0) {
+            printf("| %s | n/a | n/a |\n", c.name.c_str());
+            continue;
+        }
+        printf("| %s | %.2f | %.2fx |\n", c.name.c_str(), yep_mb, med);
+    }
+    printf("\n");
+#endif
 
     /* Markdown + JSON */
     std::string md = "# yeptris benchmark matrix\n\nMachine-relative: MB/s on this "
