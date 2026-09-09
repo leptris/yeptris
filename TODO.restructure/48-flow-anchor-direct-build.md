@@ -1,6 +1,9 @@
 # 48 — the flow/anchor direct build: beat ryml on the four lost shapes
 
-Status: pending
+Status: IN FLIGHT. 49+50 landed (see the 2026-09-10 ledger entry
+for the h2h standing table and the named next walls). The 2026-09-09
+WON/LOST table above is superseded: its columns were phase-biased
+(interleaved medians are the referee). Acceptance unchanged.
 
 ## The full CI verdict (2026-09-09 baseline, macOS DOM vs ryml)
 

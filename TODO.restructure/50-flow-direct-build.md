@@ -1,6 +1,11 @@
 # 50 — the flow sink fast-path: direct DOM build on validated spans
 
-Status: pending
+Status: LANDED (PR #171). flow-json 0.50x -> 0.92x/0.98x (h2h
+median mac/ubuntu); the differential caught and a companion fix
+landed a pre-existing DOM bug (key-anchored scalars never bound
+their ordinal — aliases resolved to garbage). Remaining margin for
+this shape family: flow-single is scan-bound (see the ledger's next
+walls).
 
 ## Why
 
