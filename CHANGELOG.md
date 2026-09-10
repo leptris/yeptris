@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.20] - 2026-09-10
 ### Fixed
 - The zero-copy borrow (TODO.restructure/56): dom->input_base is now
   set BEFORE the engine run — input-slice scalars, keys, and anchor
