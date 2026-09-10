@@ -31,6 +31,7 @@ typedef struct yep_json_tok {
     size_t end;     /* token end (past the closing quote for strings) */
     char cls;       /* '"' string, '#' number, 'a' literal, '[', '{', ']', '}' */
     int has_escape; /* strings: a backslash escape is present */
+    int is_float;   /* numbers (cls '#'): the text has '.' or an exponent */
 } yep_json_tok;
 
 typedef struct yep_json_walk {
