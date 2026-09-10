@@ -114,7 +114,12 @@ static yep_tag_id core12(void* ctx, const char* p, uint32_t n) {
     return 0; /* str */
 }
 
-static const yep_resolver k_core12 = {core12, NULL};
+static yep_tag_id core12_number(void* ctx, int is_float) {
+    (void)ctx;
+    return is_float ? 2 : 1;
+}
+
+static const yep_resolver k_core12 = {core12, core12_number, NULL};
 
 const yep_resolver* yep_resolver_core12(void) {
     return &k_core12;

@@ -327,7 +327,7 @@ static yep_tag_id compat11(void* ctx, const char* p, uint32_t n) {
     return 0; /* str */
 }
 
-static const yep_resolver k_compat11 = {compat11, NULL};
+static const yep_resolver k_compat11 = {compat11, NULL, NULL};
 
 const yep_resolver* yep_resolver_compat11(void) {
     return &k_compat11;

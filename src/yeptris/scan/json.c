@@ -538,11 +538,19 @@ yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
                 w->long_key = 1;
             }
         } else if (c == '-' || (c >= '0' && c <= '9')) {
+            size_t n0 = w->i;
             if (!yep_json_number(p, len, &w->i)) {
                 return YEP_JW_REJECT;
             }
             t->cls = '#';
             t->end = w->i;
+            t->is_float = 0;
+            for (size_t k = n0; k < w->i; k++) {
+                if (p[k] == '.' || p[k] == 'e' || p[k] == 'E') {
+                    t->is_float = 1;
+                    break;
+                }
+            }
         } else if (c == 't' || c == 'f' || c == 'n') {
             const char* word = (c == 't') ? "true" : (c == 'f') ? "false" : "null";
             if (!yep_json_literal(p, len, &w->i, word)) {

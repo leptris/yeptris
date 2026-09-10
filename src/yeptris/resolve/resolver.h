@@ -20,8 +20,21 @@ typedef uint8_t yep_tag_id;
 typedef struct yep_resolver {
     /* Returns the implicit tag for a PLAIN, untagged scalar. */
     yep_tag_id (*resolve)(void* ctx, const char* p, uint32_t len);
+    /* Optional fast path for spans a validator already classified as
+     * strict numbers (is_float: the text contains '.' or an exponent):
+     * skips the digit re-walk resolve() would pay. NULL = resolve(). */
+    yep_tag_id (*resolve_number)(void* ctx, int is_float);
     void* ctx;
 } yep_resolver;
+
+/* Typing for a validated number span, through whichever hook the
+ * schema provides (the typing SSOT either way). */
+static inline yep_tag_id yep_resolve_number(const yep_resolver* r, int is_float) {
+    if (r->resolve_number != NULL) {
+        return r->resolve_number(NULL, is_float);
+    }
+    return is_float ? 2 /* float */ : 1 /* int */;
+}
 
 /* The two built-in resolvers (no ctx). */
 const yep_resolver* yep_resolver_core12(void);
