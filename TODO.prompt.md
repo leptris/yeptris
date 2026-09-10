@@ -1,64 +1,48 @@
-# TODO.prompt.md — the beat-rapidyaml execution prompt (wave 4)
+# TODO.prompt.md — the beat-rapidyaml execution prompt (wave 5)
 
-Paste this into a fresh session. Self-contained: context, targets,
-designs, gates, release. Release cadence: 0.1.18-0.1.20 (lockstep
-.1 gems/wheels each).
+Paste this into a fresh session. Self-contained. Release cadence:
+0.1.18-0.1.22 (lockstep .1 gems/wheels each).
 
 ---
 
-MISSION: beat rapidyaml on every comparable shape WITH MARGIN on
-BOTH CI platforms. Standing (CI h2h medians after waves 1-4):
-WON flow-json (1.05-1.69x), block-heavy (~1.0x), anchor-heavy
-(~1.0x), wide-mapping (~1.0x), deep-nesting (~1.0x); flow-single
-0.69-0.99x and scalar-heavy 0.51-0.81x remain behind — BOTH are
-dominated by ryml's laziness advantages: ryml does NOT type
-scalars at parse (we resolve every scalar) and its node init is
-leaner. Zero open issues on all three repos — keep it.
+MISSION STATE: after five waves, every cheap cut is taken and
+verified (classifier 49, fused flow 50+53, block batches 54+57,
+zero-copy borrow 56, short-span walks + memo seeding 58, number
+hook 59; items 61/62 closed by measurement — see the ledger's
+2026-09-10 entries). Local head-to-head: flow-json 2.04x,
+deep-nesting 1.03x, flow-single ~1.0x, block/anchor/wide
+0.88-0.98x, scalar-heavy ~0.78-0.81x. Zero open issues anywhere.
 
-READ FIRST (merged): TODO.restructure/49,50,53,54,56,57,58 — the
-landed designs (line classifier, fused flow walk, block pair/open
-batches, zero-copy borrow, short-span walks + memo seeding).
-benchmarks/PERF-LEDGER.md last five entries (the h2h referee, the
-bounded-parse law, every dead end). src/yeptris/parse/events.h
-(the sink contracts), scan/json.h (the walker), scan/scan.h
-(line shapes).
+THE ONE REMAINING LEVER IS STRUCTURAL and needs the owner's
+sanction BEFORE building (rewrite-class, ABI + the 64B node gate):
 
-IMPLEMENT next (measure-first; a unit that regresses reverts):
+**63 — compact nodes / one-walk build.** ryml's residual margin is
+(a) two 64B node records per `k: v` line vs leaner records, and
+(b) ~2 byte-walks per line (end-find + span walks) vs one. Design
+space: 32-40B node records (pack style/implicit/tag_id/kind into
+one word; sviews stay), or an arena-of-words representation;
+fuse scan_line+scan_shape into ONE stopset pass recording
+{eol, colon, comment} offsets. Gates unchanged: both
+differentials, 279/279, the h2h referee (2-3 dispatches, read the
+spread), the bounded-parse law on any new growth path.
 
-1. **Lazy typing (61)** — the one structural gap left: our DOM
-   stores tag_id at parse; ryml defers typing to access. Design:
-   tag_id becomes computed-on-demand at the ACCESS seams (marshal/
-   emit/visitors) with the parse-side resolve() removed from the
-   hot paths (pair/open/fused builders). The resolver stays the
-   typing SSOT — it just runs at access. Differential gates stay
-   green because they compare trees INCLUDING tag_id (both sides
-   then compute lazily at comparison). BIG: touches every tag_id
-   consumer; spec-first.
+IF SANCTIONED, implement in this order: the one-walk line scan
+first (contained, scan.c), then the node compaction behind the
+existing dom.h seam (public ABI untouched — handles are opaque).
 
-2. **Node-init trim (62)** — dom_open_node memsets 64B per node;
-   ryml's node init is field-selective. Split the init: the fields
-   every kind needs vs kind-specific. Profile via the h2h delta.
-
-3. **The ubuntu asymmetry (55)** — scalar-heavy 0.51x ubuntu vs
-   0.79x mac persists at identical allocs; the CI profile artifact
-   (scripts/profile-linux.sh, still to be added) names the cause.
-
-RULES (unchanged, hard-won): ulimit+wall-kill wrapper on EVERY
-binary run (four 130-240GB incidents); CI h2h medians referee —
-dispatch bench.yml 2-3x and read the spread; differential gates
-are PERMANENT (any new fast path grows its must-fire list);
-measure before building; designated sink literals; GCC AND clang
+RULES (standing): ulimit+wall-kill wrapper on EVERY binary run;
+CI h2h medians referee; differentials are PERMANENT; measure
+before building; designated sink literals; GCC AND clang
 warning-clean; explicit-path git adds; no AI attribution; MECE/
-DRY/OCP; the bounded-parse law covers any new growth path.
+DRY/OCP; specs for every behavior.
 
-RELEASE (rebase merges): as waves 1-3 did — C CHANGELOG
-[Unreleased] -> version PR -> release.yml next_version ->
-approve action_required (silent POST — re-list to verify) ->
-merge; Ruby version PR -> tag v<X.Y.Z>.1 -> C-repo release.yml
+RELEASE (rebase merges): as every wave — C CHANGELOG
+[Unreleased] -> version PR -> release.yml next_version -> approve
+action_required (silent POST — re-list to verify) -> merge; Ruby
+version PR -> tag v<X.Y.Z>.1 -> C-repo release.yml
 republish_version (SMOKE PASS required); Python version PR ->
 tag -> wheels -> twine -> clean-venv verify. Lockstep
 {c-semver}.{patch}.
 
-DONE MEANS: every shape > 1.0x with >= 1.15x margin on BOTH
-platforms, gates green, zero issues, ledger current, releases
-shipped.
+DONE MEANS: every shape >= 1.15x on BOTH CI platforms, gates
+green, zero issues, ledger current, lockstep releases shipped.
