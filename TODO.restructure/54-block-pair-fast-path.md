@@ -1,6 +1,10 @@
 # 54 — the block pair fast path: batch the classifier's line events
 
-Status: pending — profile first
+Status: LANDED (PR #173). block-pair-diff gate added (shares
+tree_diff.h with the flow gate); the differential caught two bugs
+pre-landing. CI h2h after: wide 0.74x mac (from 0.67), flow-single
+0.80x mac (from 0.51); the margin to 1.0x remains — item 53 and the
+linux profile are next.
 
 ## Why
 
