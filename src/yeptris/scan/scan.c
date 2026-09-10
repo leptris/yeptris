@@ -282,6 +282,10 @@ const unsigned char k_plain_stop_flow[32] = {
 yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow) {
     const yep_text_kernels* k = yep_text_active();
     const unsigned char* stop = flow ? k_plain_stop_flow : k_plain_stop_block;
+    /* Short spans keep the scalar walk: the kernel dispatch costs more
+     * than it saves below a vector (block keys run 2-8 bytes — the
+     * same gate scan_line uses for its end-find). */
+    const int tiny = (len - pos) < 64;
 
     yep_span s;
     s.start = (uint32_t)pos;
@@ -290,7 +294,16 @@ yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow) {
 
     size_t i = pos;
     while (i < len) {
-        ptrdiff_t hit = k->stopset_find(p + i, len - i, stop);
+        ptrdiff_t hit;
+        if (tiny) {
+            size_t at = i;
+            while (at < len && !((stop[p[at] >> 3] >> (p[at] & 7)) & 1)) {
+                at++;
+            }
+            hit = (at < len) ? (ptrdiff_t)(at - i) : -1;
+        } else {
+            hit = k->stopset_find(p + i, len - i, stop);
+        }
         size_t at = (hit < 0) ? len : i + (size_t)hit;
         unsigned char c = (at < len) ? (unsigned char)p[at] : 0;
 
