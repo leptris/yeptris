@@ -6,6 +6,14 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- The resolver number hook: spans the walker already validated as
+  strict numbers skip resolve()'s digit re-walk (the walker reports
+  is_float as a fact; the schema decides the tag — the typing SSOT
+  holds). Local head-to-head: flow-json 2.04x, flow-single 1.00x,
+  deep-nesting 1.03x vs rapidyaml.
+
 ## [0.1.21] - 2026-09-10
 ### Changed
 - TODO.restructure/58: line-fact memo seeding (block lines were
