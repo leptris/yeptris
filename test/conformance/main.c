@@ -39,7 +39,12 @@ static yts_result run_case(const yts_case* c, char** got_tree) {
     yts_tree tree;
     yts_tree_init(&tree);
     yep_engine* eng = yep_engine_create(yep_system_allocator());
-    yep_sink sink = {.on_event = yts_tree_on_event, .ctx = &tree, .on_flow_build = NULL, .on_flow_commit = NULL};
+    yep_sink sink = {.on_event = yts_tree_on_event,
+                     .ctx = &tree,
+                     .on_flow_build = NULL,
+                     .on_flow_commit = NULL,
+                     .on_flow_rollback = NULL,
+                     .on_block_pair = NULL};
     int rc = yep_engine_run(eng, input, strlen(input), &sink);
     free(input);
 

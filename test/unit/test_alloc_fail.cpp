@@ -74,7 +74,12 @@ TEST(AllocFail, EveryNthAcrossAParse) {
             yep_engine_destroy(eng);
             continue;
         }
-        yep_sink sink = {.on_event = yep_dom_on_event, .ctx = dom, .on_flow_build = NULL, .on_flow_commit = NULL};
+        yep_sink sink = {.on_event = yep_dom_on_event,
+                         .ctx = dom,
+                         .on_flow_build = NULL,
+                         .on_flow_commit = NULL,
+                         .on_flow_rollback = NULL,
+                         .on_block_pair = NULL};
         yep_engine_run(eng, kDoc, strlen(kDoc), &sink);
         /* failure (or, before the countdown hits, success) is fine;
          * a crash or ASAN finding is not */
@@ -95,7 +100,12 @@ TEST(AllocFail, EveryNthAcrossAParse) {
          * allocator succeeds */
         yep_engine* e2 = yep_engine_create(yep_system_allocator());
         yep_dom* d2 = yep_dom_create(yep_system_allocator());
-        yep_sink s2 = {.on_event = yep_dom_on_event, .ctx = d2, .on_flow_build = NULL, .on_flow_commit = NULL};
+        yep_sink s2 = {.on_event = yep_dom_on_event,
+                       .ctx = d2,
+                       .on_flow_build = NULL,
+                       .on_flow_commit = NULL,
+                       .on_flow_rollback = NULL,
+                       .on_block_pair = NULL};
         EXPECT_EQ(yep_engine_run(e2, kDoc, strlen(kDoc), &s2), 0) << "every=" << every;
         EXPECT_GT(d2->ncount, 0u);
         yep_dom_destroy(d2);
@@ -125,7 +135,12 @@ TEST(AllocFail, NoAllocationNoFailure) {
     yep_allocator a = {fail_alloc, fail_free, &ctx};
     yep_engine* eng = yep_engine_create(&a);
     yep_dom* dom = yep_dom_create(&a);
-    yep_sink sink = {.on_event = yep_dom_on_event, .ctx = dom, .on_flow_build = NULL, .on_flow_commit = NULL};
+    yep_sink sink = {.on_event = yep_dom_on_event,
+                     .ctx = dom,
+                     .on_flow_build = NULL,
+                     .on_flow_commit = NULL,
+                     .on_flow_rollback = NULL,
+                     .on_block_pair = NULL};
     EXPECT_EQ(yep_engine_run(eng, kDoc, strlen(kDoc), &sink), 0);
     EXPECT_GT(dom->ncount, 0u);
     yep_dom_destroy(dom);
