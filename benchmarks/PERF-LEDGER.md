@@ -1118,3 +1118,33 @@ Consistent gaps remain exactly where the wave-3 prompt aims them:
 deep-nesting 0.59/0.62, scalar-heavy 0.51/0.77, flow-single
 0.69/0.83 (items 58-60: one-walk line scan, root-flow dispatch,
 resolver table; the linux profile for the asymmetry).
+
+## 2026-09-10 — items 61/62 closed by measurement; the residual gap named
+
+61 (lazy typing): resolve() is NOT the parse-side cost it was
+assumed to be — core12 length-gates and O(1)-rejects wordy scalars
+(verified by reading the chain: a 70-byte sentence fails in ~4
+compares), numbers ride the resolve_number hook since #189, and
+keys reject in the first compare. Lazy typing would move the bench
+~0 and cost the access seams a re-resolve (no mutation-on-read
+caching — thread contract). CLOSED measured-dead; the architecture
+note stays in its TODO for the day typing grows heavier than
+int/float/bool word tables.
+
+62 (node-init trim): the 64B memset IS the correct zero state;
+selective field writes cost ~the same bytes (links are UINT32_MAX,
+value/tag/anchor views, line/col — ~15 mixed stores vs one 64B
+memset stream). CLOSED by arithmetic, not worth the churn.
+
+THE RESIDUAL (scalar-heavy ~0.78-0.81x local, block/anchor/wide
+~0.88-0.98x): per line we walk the bytes ~2x (line end-find + two
+span walks that share stop classes) and materialize two 64B node
+records; ryml single-passes into leaner nodes. Every cheap cut is
+taken (classifier, batches, fused flow, zero-copy borrow, short-
+span walks, memo seeding, number hook — items 49-59). The next
+move is STRUCTURAL, not a unit: a compact-node representation
+(32-40B records or arena-packed fields) and/or a true one-walk
+line build. That is a rewrite-class decision with ABI and the
+64B-gate implications — it goes to the owner BEFORE anyone builds
+it. Everything else on the board is won or at parity: flow-json
+2.04x, deep-nesting 1.03x, flow-single ~1.0x local h2h.

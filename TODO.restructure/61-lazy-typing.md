@@ -1,6 +1,10 @@
 # 61 — lazy typing: tag_id at the access seams
 
-Status: pending (the wave-4 headliner; spec-first)
+Status: CLOSED measured-dead (2026-09-10) — resolve() is O(1) for the
+shapes that dominate (words reject in ~4 compares; numbers ride the
+resolve_number hook). Lazy typing moves the bench ~0 and costs the
+access seams. See the ledger entry; design kept for the day typing
+grows.
 
 ## Why
 
