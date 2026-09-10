@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.21] - 2026-09-10
 ### Changed
 - TODO.restructure/58: line-fact memo seeding (block lines were
   double-scanned) and short-span scalar walks (the SIMD stopset
