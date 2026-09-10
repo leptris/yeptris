@@ -1,95 +1,64 @@
-# TODO.prompt.md — the beat-rapidyaml execution prompt (wave 3)
+# TODO.prompt.md — the beat-rapidyaml execution prompt (wave 4)
 
-Paste this into a fresh session. It is self-contained: context,
-targets, designs, gates, and the release procedure. Everything it
-references is merged on main. Release cadence so far: 0.1.18,
-0.1.19 (lockstep .1 gems/wheels).
+Paste this into a fresh session. Self-contained: context, targets,
+designs, gates, release. Release cadence: 0.1.18-0.1.20 (lockstep
+.1 gems/wheels each).
 
 ---
 
-MISSION: yeptris must beat rapidyaml on every comparable benchmark
-shape WITH MARGIN on BOTH CI platforms. Won outright: flow-json
-1.11x/1.15x (item 53's fused walk + item 56's zero-copy borrow).
-Still behind (best CI h2h medians, mac/ubuntu): flow-single
-0.68/0.91, scalar-heavy 0.42/0.81, anchor-heavy noisy 0.6-0.9,
-deep-nesting 0.50/0.80, block-heavy 0.71/0.77, wide-mapping
-0.68/0.91. The gap to 1.0x+margin is per-shape engineering with a
-named lever below — not rediscovery. Also standing: fix ALL GitHub
-issues (currently zero open across all three repos — keep it).
+MISSION: beat rapidyaml on every comparable shape WITH MARGIN on
+BOTH CI platforms. Standing (CI h2h medians after waves 1-4):
+WON flow-json (1.05-1.69x), block-heavy (~1.0x), anchor-heavy
+(~1.0x), wide-mapping (~1.0x), deep-nesting (~1.0x); flow-single
+0.69-0.99x and scalar-heavy 0.51-0.81x remain behind — BOTH are
+dominated by ryml's laziness advantages: ryml does NOT type
+scalars at parse (we resolve every scalar) and its node init is
+leaner. Zero open issues on all three repos — keep it.
 
-READ FIRST (merged, ~20 min):
-- TODO.restructure/53,54,56,57 — the landed designs: the fused
-  validate+build (one walk per flow span), the block pair/open
-  batches (one sink call per line), and the zero-copy borrow fix
-  (THE single biggest win: parse.c had set dom->input_base AFTER
-  the run — every string was arena-copied).
-- benchmarks/PERF-LEDGER.md, last four entries — the h2h referee
-  (interleaved medians; separate-phase tables are phase-biased and
-  BANNED), the bounded-parse law, the standing numbers.
-- src/yeptris/scan/json.h (the walker SSOT), scan/scan.h (line
-  shapes), parse/events.h (the sink contracts: flow build/commit/
-  rollback, block pair, block open).
+READ FIRST (merged): TODO.restructure/49,50,53,54,56,57,58 — the
+landed designs (line classifier, fused flow walk, block pair/open
+batches, zero-copy borrow, short-span walks + memo seeding).
+benchmarks/PERF-LEDGER.md last five entries (the h2h referee, the
+bounded-parse law, every dead end). src/yeptris/parse/events.h
+(the sink contracts), scan/json.h (the walker), scan/scan.h
+(line shapes).
 
-IMPLEMENT, in this order (each unit: spec + gates first, CI h2h
-referee, ledger before/after; a unit that regresses reverts):
+IMPLEMENT next (measure-first; a unit that regresses reverts):
 
-1. **One-walk line scan (58)** — fuse scan_line + scan_shape: the
-   classifier makes up to three passes over a line's bytes (SIMD
-   end-find, key scan_plain, value scan_plain). One walk yields li
-   + shape together. Targets scalar-heavy (12-word values) and
-   every block shape's per-line floor.
+1. **Lazy typing (61)** — the one structural gap left: our DOM
+   stores tag_id at parse; ryml defers typing to access. Design:
+   tag_id becomes computed-on-demand at the ACCESS seams (marshal/
+   emit/visitors) with the parse-side resolve() removed from the
+   hot paths (pair/open/fused builders). The resolver stays the
+   typing SSOT — it just runs at access. Differential gates stay
+   green because they compare trees INCLUDING tag_id (both sides
+   then compute lazily at comparison). BIG: touches every tag_id
+   consumer; spec-first.
 
-2. **Root-flow dispatch without the line scan (59)** — a document
-   whose first content byte is '['/'{' pays a full SIMD end-find
-   over a possibly-megabyte line before the fused walk re-walks it.
-   Dispatch flow-at-root directly; the line end falls out of the
-   walk. Targets flow-single (0.68-0.91).
+2. **Node-init trim (62)** — dom_open_node memsets 64B per node;
+   ryml's node init is field-selective. Split the init: the fields
+   every kind needs vs kind-specific. Profile via the h2h delta.
 
-3. **The resolver fast path (60)** — core12's resolve() runs per
-   scalar as a chain of length checks + memcmps; ryml types with a
-   first-byte dispatch. Table-drive the core12 impl (OCP: the
-   resolver interface unchanged). Profile first via item 55's
-   linux artifact. Targets scalar-heavy and every key resolution.
+3. **The ubuntu asymmetry (55)** — scalar-heavy 0.51x ubuntu vs
+   0.79x mac persists at identical allocs; the CI profile artifact
+   (scripts/profile-linux.sh, still to be added) names the cause.
 
-4. **What the linux profile names (55)** — scalar-heavy 0.42x
-   ubuntu vs 0.54x mac at identical allocation counts is still
-   unexplained; deep-nesting 0.50x vs 0.80x likewise. The CI
-   profiling artifact (scripts/profile-linux.sh + the Profile
-   workflow) is the tool.
+RULES (unchanged, hard-won): ulimit+wall-kill wrapper on EVERY
+binary run (four 130-240GB incidents); CI h2h medians referee —
+dispatch bench.yml 2-3x and read the spread; differential gates
+are PERMANENT (any new fast path grows its must-fire list);
+measure before building; designated sink literals; GCC AND clang
+warning-clean; explicit-path git adds; no AI attribution; MECE/
+DRY/OCP; the bounded-parse law covers any new growth path.
 
-RULES OF ENGAGEMENT (hard-won, all in the ledger):
-- NEVER run a test/bench binary unattended: ulimit + wall-kill
-  wrapper (four 130-240GB runaway incidents; the bounded-parse law
-  caps parses at O(input), but the wrapper is still mandatory).
-- The dev box saturates: CI fresh-runner h2h medians referee.
-  Single-run medians swing ±0.15 — dispatch bench.yml 2-3x and read
-  the spread before concluding.
-- The differential gates (flow-direct-diff, block-pair-diff) are
-  PERMANENT: any new fast path grows its must-fire list and reuses
-  the tree comparator (test/flow/tree_diff.h). Divergence = the
-  unit does not land.
-- Measure before building (46/47 precedent). GCC AND clang
-  warning-clean (validate.sh covers both); clang-format-18.
-- All sink literals designated; new sink fields optional (NULL
-  default) — streaming sinks untouched by design.
+RELEASE (rebase merges): as waves 1-3 did — C CHANGELOG
+[Unreleased] -> version PR -> release.yml next_version ->
+approve action_required (silent POST — re-list to verify) ->
+merge; Ruby version PR -> tag v<X.Y.Z>.1 -> C-repo release.yml
+republish_version (SMOKE PASS required); Python version PR ->
+tag -> wheels -> twine -> clean-venv verify. Lockstep
+{c-semver}.{patch}.
 
-RELEASE (rebase merges; `gh pr merge --rebase`): C CHANGELOG
-[Unreleased] entries → version-bump PR → release.yml
-next_version=<X.Y.Z> → approve action_required on release/v* (the
-approve POST is silent — re-list to verify) → merge. Ruby:
-version-bump PR (lib/yeptris.rb) → merge → tag v<X.Y.Z>.1 → C-repo
-release.yml republish_version=<X.Y.Z> (SMOKE PASS must print before
-every gem push). Python: version-bump PR (pyproject.toml) → merge
-→ tag → release-wheels.yml → twine upload the downloaded artifacts
-→ clean-venv pip verify. Versions: lockstep {c-semver}.{patch},
-reasonable increments (0.1.18 → 0.1.19 cadence).
-
-CODE LAWS (standing): C11 warning-clean, designated sink literals,
-explicit-path git adds (never `git add -A`), no AI attribution,
-never push main or tags except the binding flow above, MECE/DRY/
-OCP, specs for every behavior, the bounded-parse law applies to any
-new growth path.
-
-DONE MEANS: every ryml-comparable shape > 1.0x WITH margin (target
-≥1.15x) on BOTH CI platforms, all gates green, zero open issues,
-ledger updated, lockstep releases shipped.
+DONE MEANS: every shape > 1.0x with >= 1.15x margin on BOTH
+platforms, gates green, zero issues, ledger current, releases
+shipped.

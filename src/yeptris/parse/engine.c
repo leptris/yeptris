@@ -2782,7 +2782,14 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (e->pos >= e->len) {
             goto empty_value;
         }
-        yep_line_info li = yep_scan_line(e->p, e->len, e->pos);
+        yep_line_info li;
+        if (e->pos == e->line_start) {
+            /* seed the memo: the fast arms re-read this line's facts —
+             * a direct scan made every following line double-scanned */
+            li = e_line_info_here(e);
+        } else {
+            li = yep_scan_line(e->p, e->len, e->pos);
+        }
         if (li.flags & YEP_LF_BLANK) {
             e_line_done(e, li.end);
             continue;
