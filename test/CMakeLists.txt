@@ -164,12 +164,25 @@ endif()
 
 # ---- JSONTestSuite under YAML semantics (TODO.impl/08C) ---------------
 add_executable(flow_direct_diff flow/flow_direct_diff.c)
+target_include_directories(flow_direct_diff PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/flow)
 target_link_libraries(flow_direct_diff PRIVATE yeptris_static)
 target_include_directories(flow_direct_diff PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
 yeptris_set_warnings(flow_direct_diff)
 add_test(
     NAME flow-direct-diff
     COMMAND flow_direct_diff ${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/yaml-test-suite/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/psych-pure
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+)
+
+add_executable(block_pair_diff flow/block_pair_diff.c)
+target_link_libraries(block_pair_diff PRIVATE yeptris_static)
+target_include_directories(block_pair_diff PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris
+    ${CMAKE_CURRENT_SOURCE_DIR}/flow)
+yeptris_set_warnings(block_pair_diff)
+add_test(
+    NAME block-pair-diff
+    COMMAND block_pair_diff ${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/yaml-test-suite/src
             ${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/psych-pure
             ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
 )

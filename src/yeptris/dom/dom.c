@@ -722,6 +722,58 @@ static int dom_flow_walk(yep_dom* d, const char* p, size_t open, size_t close, u
     }
 }
 
+/* The sink's block fast path (TODO.restructure/54): one classified
+ * `key: value` line becomes two nodes — the key scalar resolved like
+ * every implicit key event, the value through its class — placed with
+ * the shared pairing law. The engine offers the line BEFORE emitting;
+ * returning 0 here (only for an unbound alias target, which cannot
+ * happen when the engine resolved the name) falls back to the two
+ * events with nothing built. */
+int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, uint32_t line,
+                      uint16_t key_col, uint16_t val_col) {
+    yep_dom* d = (yep_dom*)ctx;
+    uint32_t target = 0;
+    if (v->cls == YEP_LVAL_ALIAS) {
+        target = dom_anchor_get(d, v->anchor_id);
+        if (target == UINT32_MAX) {
+            return 0;
+        }
+    }
+    const yep_resolver* r = dom_resolver(d);
+    uint32_t kid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0, line,
+                                 (uint32_t)key_col + 1);
+    if (kid == UINT32_MAX) {
+        return -1;
+    }
+    d->nodes[kid].value = dom_str_in(d, key, 1);
+    d->nodes[kid].tag_id = r->resolve(NULL, key->p, key->len);
+    if (dom_place(d, kid) != 0) {
+        return -1;
+    }
+    if (v->cls == YEP_LVAL_ALIAS) {
+        uint32_t vid =
+            dom_open_node(d, YEP_DOM_ALIAS, NULL, NULL, 0, 0, 0, 0, line, (uint32_t)val_col + 1);
+        if (vid == UINT32_MAX) {
+            return -1;
+        }
+        d->nodes[vid].value = dom_str_in(d, &v->value, 0);
+        d->nodes[vid].target = target;
+        return dom_place(d, vid) == 0 ? 1 : -1;
+    }
+    int anchored = (v->cls == YEP_LVAL_ANCHOR_PLAIN);
+    uint32_t vid = dom_open_node(d, YEP_DOM_SCALAR, NULL, anchored ? &v->anchor : NULL, v->borrowed,
+                                 YEP_STYLE_PLAIN, 1, 0, line, (uint32_t)val_col + 1);
+    if (vid == UINT32_MAX) {
+        return -1;
+    }
+    d->nodes[vid].value = dom_str_in(d, &v->value, v->borrowed);
+    d->nodes[vid].tag_id = r->resolve(NULL, v->value.p, v->value.len);
+    if (anchored && v->anchor_id != 0 && dom_anchor_set(d, v->anchor_id, vid) != 0) {
+        return -1;
+    }
+    return dom_place(d, vid) == 0 ? 1 : -1;
+}
+
 int dom_on_flow_json(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
                      size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id) {
     yep_dom* d = (yep_dom*)ctx;

@@ -2313,6 +2313,11 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
     if (rc != 0) {
         return rc;
     }
+    /* Whole-line fast path (TODO.restructure/54): the sink may build
+     * the key and its classified value as one unit — no events. The
+     * value EVENT is prepared first (folded content, resolved alias,
+     * defined anchor: exactly what the chain below would emit), so a
+     * rejection emits key + prepared value unchanged. */
     yep_event kv;
     e_event_init(&kv, YEP_EV_SCALAR);
     kv.style = YEP_STYLE_PLAIN;
@@ -2322,25 +2327,93 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
     kv.borrowed = 1;
     kv.line = e->line;
     kv.col = key_col + 1;
-    if (emit_now(e, &kv) != 0) {
-        return -2;
+
+    yep_event vv;
+    e_event_init(&vv, YEP_EV_SCALAR);
+    vv.line = e->line;
+    vv.col = e_col(e, sh->val_start) + 1;
+    /* the pair facts are captured BEFORE the fold: e_plain_multiline
+     * advances line/pos across continuations */
+    uint32_t pair_line = e->line;
+    uint16_t pair_val_col = (uint16_t)e_col(e, sh->val_start);
+    yep_block_value v;
+    memset(&v, 0, sizeof(v));
+    v.cls = (uint8_t)sh->val;
+    int prepared = 0;
+    if (sh->val == YEP_LVAL_ALIAS) {
+        e->pos = sh->val_start;
+        if (e_alias(e, &vv) != 0) {
+            return -1; /* undefined alias: the chain's error */
+        }
+        if (e_colon_at(e, e->pos)) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
+        if (!e_at_eol(e)) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
+        v.value = vv.value;
+        v.anchor_id = vv.anchor_id;
+        prepared = 1;
+    } else if (sh->val == YEP_LVAL_PLAIN || sh->val == YEP_LVAL_ANCHOR_PLAIN) {
+        if (sh->val == YEP_LVAL_ANCHOR_PLAIN) {
+            v.anchor.p = e->p + sh->val_start + 1;
+            v.anchor.len = sh->anchor_end - sh->val_start - 1;
+            v.anchor_id = anchor_define(e, v.anchor);
+            vv.anchor = v.anchor;
+            vv.anchor_id = v.anchor_id;
+        }
+        vv.value.p = e->p + sh->val_span.start;
+        vv.value.len = sh->val_span.end - sh->val_span.start;
+        vv.borrowed = 1;
+        vv.style = YEP_STYLE_PLAIN;
+        vv.implicit = 1;
+        e->pos = sh->val_span.end;
+        if (e_plain_multiline(e, sh->val_span, key_col, &vv, 0) != 0) {
+            return -1;
+        }
+        if (e->fold_n == 1 && sh->val_span.term == YEP_TERM_COMMENT) {
+            e_skip_to_eol(e); /* single line ending in a comment */
+        }
+        v.value = vv.value;
+        v.borrowed = vv.borrowed;
+        prepared = 1;
     }
+
+    if (prepared) {
+        if (e->sink != NULL && e->sink->on_block_pair != NULL) {
+            yep_view key = {e->p + sh->key_start, sh->key_end - sh->key_start};
+            int built =
+                e->sink->on_block_pair(e->sink->ctx, &key, &v, pair_line, key_col, pair_val_col);
+            if (built < 0) {
+                return -2;
+            }
+            if (built == 1) {
+                return 1;
+            }
+        }
+        if (emit_now(e, &kv) != 0 || emit_now(e, &vv) != 0) {
+            return -2;
+        }
+        return 1;
+    }
+
+    /* EMPTY / FLOW: no prepared pair — the value is not on this line */
     switch (sh->val) {
     case YEP_LVAL_EMPTY:
+        if (emit_now(e, &kv) != 0) {
+            return -2;
+        }
         e->pos = sh->colon + 1;
         rc = e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
         return rc == 0 ? 1 : rc;
-    case YEP_LVAL_FLOW:
+    case YEP_LVAL_FLOW: {
+        if (emit_now(e, &kv) != 0) {
+            return -2;
+        }
         return e_shape_flow_value(e, sh, key_col, YEP_CTX_AFTER_COLON);
-    case YEP_LVAL_ALIAS:
-        return e_shape_alias_value(e, sh, 1);
-    case YEP_LVAL_ANCHOR_PLAIN: {
-        yep_view a = {e->p + sh->val_start + 1, sh->anchor_end - sh->val_start - 1};
-        uint32_t aid = anchor_define(e, a);
-        return e_shape_plain_value(e, sh, key_col, a, aid);
     }
     default:
-        return e_shape_plain_value(e, sh, key_col, none, 0);
+        return 0; /* PLAIN/ALIAS/ANCHOR_PLAIN handled above (unreachable) */
     }
 }
 

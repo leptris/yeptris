@@ -212,7 +212,7 @@ engine_enter:
     yep_dom_prepare(dom, &pre_stats);
     yep_engine_prepare(eng, &pre_stats);
 
-    yep_sink sink = {yep_dom_on_event, dom, dom_on_flow_json};
+    yep_sink sink = {yep_dom_on_event, dom, dom_on_flow_json, dom_on_block_pair};
     int rc = yep_engine_run(eng, data, data_len, &sink);
     if (rc != 0) {
         const yep_error* ee = yep_engine_error(eng);
