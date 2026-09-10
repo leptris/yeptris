@@ -1,6 +1,9 @@
 # 53 — fused validate+build: one walk for JSON-class flow spans
 
-Status: pending
+Status: LANDED (PR #179). flow-json 1.11x mac / 1.15x ubuntu — WON
+on both platforms (from 0.50x at campaign start). flow-single
+0.68/0.86. The remaining shapes are block-path work: item 54's
+second lever + item 55's linux profile.
 
 ## Why
 

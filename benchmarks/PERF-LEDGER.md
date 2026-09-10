@@ -1090,3 +1090,17 @@ ulimit+wall-kill wrapper, never unattended; throwaway /tmp harnesses
 are deleted when their question is answered. The walker SSOT
 (yep_json_walk in scan/json.c) rides the same PR — stage 1 of item
 53; the fused builder is stage 2, next.
+
+## 2026-09-10 — item 53 LANDED: fused validate+build; flow-json wins both platforms
+
+One walk per JSON-class span (the scan/json.c walker drives the
+DOM's build; scratch-commit/rollback keeps every fallback
+byte-identical; the two-pass callback is deleted). CI h2h after
+(PR #179): **flow-json 1.11x mac / 1.15x ubuntu — the first
+ryml-comparable shape fully WON.** flow-single 0.68/0.86 (ubuntu
+up from 0.70; mac runner-noise down from 0.80 — the single-run
+median still swings). anchor/deep/scalar/wide/block remain behind:
+they are block-path shapes — item 54's second lever (the emit
+pipeline for EMPTY-value lines and map frames) and item 55's
+linux-side profile (scalar-heavy 0.42x ubuntu vs 0.54x mac) are
+the named next units. All sink literals are designated now.
