@@ -1272,6 +1272,40 @@ static void jx_advance_line(yep_engine* e, size_t* from, size_t to, uint32_t* li
     yep_scan_advance_line(e->p, from, to, line, line_start);
 }
 
+/* A flow node followed by ':' on the same line is a KEY: the caller
+ * must wrap it in a mapping first — refuse so the general path's
+ * is_key logic runs. Shared by both fast paths (grammar fact). */
+static int e_flow_key_after(const char* p, size_t len, size_t close) {
+    size_t j = close + 1;
+    while (j < len && p[j] == ' ') {
+        j++;
+    }
+    return j < len && p[j] == ':' &&
+           (j + 1 >= len || p[j + 1] == ' ' || p[j + 1] == '\n' || p[j + 1] == '\r' ||
+            p[j + 1] == '\t');
+}
+
+/* Block-level flow lines must out-indent the parent (9C9N): any line
+ * start inside the span at or left of the floor falls back. */
+static int e_flow_floor_ok(const char* p, size_t open, size_t close, uint16_t floor) {
+    size_t j = open;
+    while (j < close) {
+        if (p[j] == '\n') {
+            size_t k = j + 1;
+            uint32_t ind = 0;
+            while (k < close && p[k] == ' ') {
+                ind++;
+                k++;
+            }
+            if (k < close && p[k] != '\n' && p[k] != '\r' && ind <= floor) {
+                return 0;
+            }
+        }
+        j++;
+    }
+    return 1;
+}
+
 /* Returns 1 = events emitted and consumed (e->pos past the close),
  * 0 = not JSON-class (fall back), -1 = error set, -2 = sink abort. */
 static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_id) {
@@ -1282,10 +1316,46 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
         return 0; /* tiny spans: the general kernel is cheaper */
     }
 
+    /* ---- fused path (TODO.restructure/53): the sink validates AND
+     * builds in one walk; the engine's grammar checks run on the
+     * builder's close, then commit or roll back. ---- */
+    if (e->ev_scopes == 0 && e->sink != NULL && e->sink->on_flow_build != NULL) {
+        size_t bclose = 0;
+        int rc = e->sink->on_flow_build(e->sink->ctx, p, open_pos, len, e->line, e->line_start,
+                                        anchor, tag, anchor_id, e->max_depth, &bclose);
+        if (rc < 0) {
+            return -2;
+        }
+        if (rc == 0) {
+            return 0; /* not JSON-class: the general kernel */
+        }
+        if (rc == 1) {
+            int single = (memchr(p + open_pos, '\n', bclose - open_pos) == NULL);
+            if (e_flow_key_after(p, len, bclose) ||
+                (e->flow_enforce && !single &&
+                 !e_flow_floor_ok(p, open_pos, bclose, e->flow_floor))) {
+                e->sink->on_flow_rollback(e->sink->ctx);
+                return 0;
+            }
+            if (e->sink->on_flow_commit(e->sink->ctx) != 1) {
+                return -2;
+            }
+            size_t from = open_pos;
+            uint32_t ln = e->line;
+            size_t ls = e->line_start;
+            jx_advance_line(e, &from, bclose + 1, &ln, &ls);
+            e->line = ln;
+            e->line_start = ls;
+            e->pos = bclose + 1;
+            e_skip_inline_space(e);
+            return 1;
+        }
+        /* rc == 2: long key — fall to pass 1 + pass 2 for the error */
+    }
+
     /* ---- pass 1: strict-JSON validation via the shared walker ----
      * (the grammar lives in scan/json.c; the engine drives it) */
     uint8_t kind0;
-    int long_key = 0; /* a map key over the simple-key limit: pass 2 owns the error */
     size_t close;
     {
         yep_json_walk w;
@@ -1301,7 +1371,6 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             }
         }
         close = w.close;
-        long_key = w.long_key;
         kind0 = w.kind[0];
     }
 
@@ -1312,62 +1381,11 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
      * walked these bytes (TODO.restructure/45, Phase B slice). */
     int single_line = (memchr(p + open_pos, '\n', close - open_pos) == NULL);
 
-    /* A flow node followed by ':' on the same line is a KEY: the caller
-     * must wrap it in a mapping first — refuse so the general path's
-     * is_key logic runs. */
-    {
-        size_t j = close + 1;
-        while (j < len && p[j] == ' ') {
-            j++;
-        }
-        if (j < len && p[j] == ':' &&
-            (j + 1 >= len || p[j + 1] == ' ' || p[j + 1] == '\n' || p[j + 1] == '\r' ||
-             p[j + 1] == '\t')) {
-            return 0;
-        }
+    if (e_flow_key_after(p, len, close)) {
+        return 0;
     }
-
-    /* Block-level flow lines must out-indent the parent (9C9N): any
-     * line start inside the span at or left of the floor falls back. */
-    if (e->flow_enforce && !single_line) {
-        size_t j = open_pos;
-        while (j < close) {
-            if (p[j] == '\n') {
-                size_t k = j + 1;
-                uint32_t ind = 0;
-                while (k < close && p[k] == ' ') {
-                    ind++;
-                    k++;
-                }
-                if (k < close && p[k] != '\n' && p[k] != '\r' && ind <= e->flow_floor) {
-                    return 0;
-                }
-            }
-            j++;
-        }
-    }
-
-    /* ---- sink fast path (TODO.restructure/50): the DOM builds the
-     * validated span directly, skipping the event pipeline. Only when
-     * pass 2 could take the whole span unchanged: a long key needs
-     * pass 2's error, and flow deferral buffers events. ---- */
-    if (!long_key && e->ev_scopes == 0 && e->sink != NULL && e->sink->on_flow_json != NULL) {
-        int built = e->sink->on_flow_json(e->sink->ctx, p, open_pos, close, e->line, e->line_start,
-                                          anchor, tag, anchor_id);
-        if (built < 0) {
-            return -2;
-        }
-        if (built == 1) {
-            size_t from = open_pos;
-            uint32_t ln = e->line;
-            size_t ls = e->line_start;
-            jx_advance_line(e, &from, close + 1, &ln, &ls);
-            e->line = ln;
-            e->line_start = ls;
-            e->pos = close + 1;
-            e_skip_inline_space(e);
-            return 1;
-        }
+    if (e->flow_enforce && !single_line && !e_flow_floor_ok(p, open_pos, close, e->flow_floor)) {
+        return 0;
     }
 
     /* ---- pass 2: emit events from the validated span ---- */

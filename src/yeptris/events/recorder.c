@@ -57,7 +57,10 @@ YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char*
         rec->final_fed = 1;
     }
     yep_rec_reset(&rec->store);
-    yep_sink sink = {yep_rec_on_event, &rec->store, NULL, NULL};
+    yep_sink sink = {.on_event = yep_rec_on_event,
+                     .ctx = &rec->store,
+                     .on_flow_build = NULL,
+                     .on_flow_commit = NULL};
     int rc = yep_engine_step(rec->eng, chunk, len, final, &sink);
     if (rc != 0) {
         const yep_error* err = yep_engine_error(rec->eng);

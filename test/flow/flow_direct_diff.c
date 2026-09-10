@@ -14,11 +14,18 @@
  * The sink ctx is the DOM itself (the event callback shares it), so
  * the counter lives at file scope — single-threaded harness. */
 static int g_flow_hits_run = 0;
-static int counting_on_flow_json(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
-                                 size_t line_start, yep_view anchor, yep_view tag,
-                                 uint32_t anchor_id) {
+static int counting_build(void* ctx, const char* p, size_t open, size_t len, uint32_t line,
+                          size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id,
+                          int max_depth, size_t* close) {
     g_flow_hits_run++;
-    return dom_on_flow_json(ctx, p, open, close, line, line_start, anchor, tag, anchor_id);
+    return dom_on_flow_build(ctx, p, open, len, line, line_start, anchor, tag, anchor_id, max_depth,
+                             close);
+}
+static int counting_commit(void* ctx) {
+    return dom_on_flow_commit(ctx);
+}
+static void counting_rollback(void* ctx) {
+    dom_on_flow_rollback(ctx);
 }
 
 static int g_fail = 0;
@@ -44,8 +51,12 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
     d2->input_base = buf;
     d2->input_len = len;
 
-    yep_sink ev_only = {yep_dom_on_event, d1, NULL, NULL};
-    yep_sink direct = {yep_dom_on_event, d2, counting_on_flow_json, NULL};
+    yep_sink ev_only = {.on_event = yep_dom_on_event, .ctx = d1};
+    yep_sink direct = {.on_event = yep_dom_on_event,
+                       .ctx = d2,
+                       .on_flow_build = counting_build,
+                       .on_flow_commit = counting_commit,
+                       .on_flow_rollback = counting_rollback};
     int rc1 = yep_engine_run(e1, buf, len, &ev_only);
     int rc2 = yep_engine_run(e2, buf, len, &direct);
 

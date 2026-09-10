@@ -98,7 +98,7 @@ static mem_stats measure_mem(const Corpus& c) {
         yep_text_stats st;
         yep_text_active()->scan_stats(c.data.data(), c.data.size(), &st);
         yep_dom_prepare(dom, &st);
-        yep_sink sink = {yep_dom_on_event, dom, NULL, NULL};
+        yep_sink sink = {.on_event = yep_dom_on_event, .ctx = dom, .on_flow_build = NULL, .on_flow_commit = NULL};
         int rc = yep_engine_run(eng, c.data.data(), c.data.size(), &sink);
         if (rc == 0 && dom->ncount > 0) {
             ms.allocs_per_mb = (double)cnt.allocs / ((double)c.data.size() / 1e6);

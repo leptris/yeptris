@@ -63,16 +63,20 @@ typedef struct yep_sink {
     /* Returns 0 to continue, nonzero to abort the parse (sink error). */
     int (*on_event)(void* ctx, const yep_event* ev);
     void* ctx;
-    /* Optional flow fast path (TODO.restructure/50): called right
-     * after the engine strictly validates a JSON-class flow span
-     * [open, close] and rules out the key/fallback shapes. p is the
-     * parse buffer; line/line_start are the engine's position facts at
-     * `open` (for node line/col). Return 1 = subtree built (the
-     * engine continues past the close), 0 = not handled (the engine
-     * emits the span's events exactly as before), <0 = abort. Sinks
-     * that consume events (pull/push/recorder) leave it NULL. */
-    int (*on_flow_json)(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
-                        size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id);
+    /* Fused flow fast path (TODO.restructure/53): validate AND build
+     * the span at p[open..len) in ONE walk (the grammar walker is
+     * scan/json.c's SSOT). Returns 1 = built and staged, *close set —
+     * the engine runs its close-based grammar checks next, then
+     * COMMITS or ROLLS BACK; 2 = grammar-valid but a map key exceeds
+     * the simple-key limit (nothing staged; the engine's pass 2 owns
+     * that error); 0 = not JSON-class (nothing staged; the general
+     * kernel); <0 = abort. Sinks that consume events (pull/push/
+     * recorder) leave the trio NULL. */
+    int (*on_flow_build)(void* ctx, const char* p, size_t open, size_t len, uint32_t line,
+                         size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id,
+                         int max_depth, size_t* close);
+    int (*on_flow_commit)(void* ctx);
+    void (*on_flow_rollback)(void* ctx);
     /* Optional block fast path (TODO.restructure/54): the engine's
      * classified KEY arm offers the whole line pair — key scalar plus
      * a classified value — before emitting any event. line/cols are
