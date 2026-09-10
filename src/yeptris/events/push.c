@@ -83,7 +83,8 @@ YEPTRIS_API YeptrisStatus yeptris_push_parse(const char* buf, size_t len, yeptri
         return YEPTRIS_ERROR_MEMORY;
     }
     yep_push_ctx p = {on_event, ctx};
-    yep_sink sink = {push_on_event, &p, NULL, NULL};
+    yep_sink sink = {
+        .on_event = push_on_event, .ctx = &p, .on_flow_build = NULL, .on_flow_commit = NULL};
     yep_text_stats pst;
     yep_text_active()->scan_stats(buf, len, &pst);
     yep_engine_prepare(eng, &pst);

@@ -35,8 +35,8 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
     d2->input_base = buf;
     d2->input_len = len;
 
-    yep_sink ev_only = {yep_dom_on_event, d1, dom_on_flow_json, NULL};
-    yep_sink paired = {yep_dom_on_event, d2, dom_on_flow_json, counting_pair};
+    yep_sink ev_only = {.on_event = yep_dom_on_event, .ctx = d1};
+    yep_sink paired = {.on_event = yep_dom_on_event, .ctx = d2, .on_block_pair = counting_pair};
     int rc1 = yep_engine_run(e1, buf, len, &ev_only);
     int rc2 = yep_engine_run(e2, buf, len, &paired);
 

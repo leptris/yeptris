@@ -608,142 +608,157 @@ int yep_dom_build_json(yep_dom* d, const char* buf, size_t len) {
 
 /* --- the flow fast path (TODO.restructure/50) --- */
 
-/* One walk of an engine-validated JSON-class span, mirroring
- * e_flow_json's pass-2 emission order and line/col choreography
- * node-for-node: placement rides the DOM's live stack (the same
- * dom_place the event sink uses), scalars resolve through the
- * document's resolver (the typing SSOT), escaped strings unescape
- * straight into the arena (one copy where the event path pays two).
- * Returns 0 built, -1 abort (OOM / depth), -2 validator surprise. */
-static int dom_flow_walk(yep_dom* d, const char* p, size_t open, size_t close, uint32_t line,
-                         size_t line_start, const yep_view* anchor, const yep_view* tag,
-                         uint32_t anchor_id) {
+/* --- the fused flow build (TODO.restructure/53) --- */
+
+/* One walk validates AND builds: the shared grammar walker drives,
+ * nodes are created through the DOM's own laws (dom_open_node,
+ * dom_place on the live stack above the entry depth). Staging: the
+ * root's placement and anchor binding defer to commit; scratch
+ * nodes live past the caller's ncount until then — ANY deviation
+ * restores both counters with zero live-state mutation, so the
+ * engine's fallback paths are exactly as before. */
+static void dom_flow_stage_reset(yep_dom* d) {
+    d->ncount = d->flow_stage_base;
+    d->str_len = d->flow_stage_str;
+    d->flow_staged = 0;
+}
+
+int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_t line,
+                      size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id,
+                      int max_depth, size_t* close) {
+    yep_dom* d = (yep_dom*)ctx;
     if (d->depth >= YEP_DOM_MAX_DEPTH) {
-        return -1; /* the event sink's per-START cap, checked at root */
+        return 0; /* the event path owns the depth-limit error shape */
     }
+    int entry_depth = d->depth;
+    d->flow_stage_base = d->ncount;
+    d->flow_stage_str = d->str_len;
+
     uint32_t cur_line = line;
     size_t cur_ls = line_start;
-    size_t cur_scan = open; /* unscanned region starts at the span */
-
-    uint32_t id = dom_open_node(d, p[open] == '[' ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, tag, anchor,
-                                0, 0, 0, 1, cur_line, (uint32_t)(open + 1 - cur_ls) + 1);
-    if (id == UINT32_MAX) {
-        return -1;
-    }
-    if (anchor_id != 0 && dom_anchor_set(d, anchor_id, id) != 0) {
-        return -1;
-    }
-    if (dom_place(d, id) != 0) {
-        return -1;
+    size_t cur_scan = open;
+    uint32_t root = dom_open_node(d, p[open] == '[' ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, &tag,
+                                  &anchor, 0, 0, 0, 1, cur_line, (uint32_t)(open + 1 - cur_ls) + 1);
+    if (root == UINT32_MAX) {
+        goto fail;
     }
     d->map_pending_key[d->depth] = 0;
-    d->stack[d->depth++] = id;
+    d->stack[d->depth++] = root;
 
     const yep_resolver* r = dom_resolver(d);
-    /* pass 2's single-line shape: no newline in the span, no per-token
-     * line bookkeeping (mirrored exactly — the walk may not pay what
-     * the event path skipped) */
-    int single_line = (memchr(p + open, '\n', close - open) == NULL);
-    int sd = 1; /* frames opened by THIS span (d->depth may be deeper) */
-    size_t i = open + 1;
+    yep_json_walk w;
+    yep_json_tok t;
+    yep_json_walk_init(&w, p, len, open, max_depth);
     for (;;) {
-        while (i < close && (p[i] == ' ' || p[i] == '\n' || p[i] == '\r')) {
-            i++;
+        yep_jw_status st = yep_json_walk_next(&w, &t);
+        if (st == YEP_JW_REJECT) {
+            d->depth = entry_depth;
+            dom_flow_stage_reset(d);
+            return 0; /* not JSON-class: the general kernel */
         }
-        char c = p[i];
-        if (c == ']' || c == '}') {
-            if (!single_line) {
-                yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
-            }
-            d->depth--;
-            sd--;
-            if (sd == 0) {
-                return 0;
-            }
-            i++;
-            continue;
+        yep_scan_advance_line(p, &cur_scan, t.at, &cur_line, &cur_ls);
+        if (st == YEP_JW_DONE) {
+            break;
         }
-        if (c == '{' || c == '[') {
+        switch (t.cls) {
+        case '[':
+        case '{': {
             if (d->depth >= YEP_DOM_MAX_DEPTH) {
-                return -1;
+                goto fail;
             }
-            yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
             uint32_t cid =
-                dom_open_node(d, c == '[' ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, NULL, NULL, 0, 0, 0,
-                              1, cur_line, (uint32_t)(i + 1 - cur_ls) + 1);
+                dom_open_node(d, t.cls == '[' ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, NULL, NULL, 0,
+                              0, 0, 1, cur_line, (uint32_t)(t.at + 1 - cur_ls) + 1);
             if (cid == UINT32_MAX) {
-                return -1;
+                goto fail;
             }
             if (dom_place(d, cid) != 0) {
-                return -1;
+                goto fail;
             }
             d->map_pending_key[d->depth] = 0;
             d->stack[d->depth++] = cid;
-            sd++;
-            i++;
-            continue;
+            break;
         }
-        if (c == ',' || c == ':') {
-            i++;
-            continue;
-        }
-        /* scalar: quoted, number, or literal — the validated walk */
-        if (!single_line) {
-            yep_scan_advance_line(p, &cur_scan, i, &cur_line, &cur_ls);
-        }
-        uint32_t col = (uint32_t)(i - cur_ls) + 1;
-        size_t vstart = i;
-        if (c == '"') {
+        case ']':
+        case '}':
+            d->depth--;
+            break;
+        case '"': {
             uint32_t sid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_DOUBLE_QUOTED,
-                                         0, 0, cur_line, col);
+                                         0, 0, cur_line, (uint32_t)(t.at - cur_ls) + 1);
             if (sid == UINT32_MAX) {
-                return -1;
+                goto fail;
             }
-            size_t vclose;
-            int he = 0;
-            if (!yep_json_string(p, close + 1, &i, &vclose, &he)) {
-                return -2; /* validated: cannot happen */
-            }
-            yep_dnode* n = &d->nodes[sid];
-            if (he) {
-                uint32_t span = (uint32_t)(vclose - vstart - 1);
+            if (t.has_escape) {
+                uint32_t span = (uint32_t)(t.end - t.at - 2);
                 char* dst = yep_dom_str_tail(d, span);
                 if (dst == NULL) {
-                    return -1;
+                    goto fail;
                 }
-                n->value =
-                    yep_dom_str_commit(d, yep_finish_double_into(p, (uint32_t)(vstart + 1),
-                                                                 (uint32_t)vclose, dst, span));
+                d->nodes[sid].value =
+                    yep_dom_str_commit(d, yep_finish_double_into(p, (uint32_t)(t.at + 1),
+                                                                 (uint32_t)(t.end - 1), dst, span));
             } else {
-                yep_view v = {p + vstart + 1, (uint32_t)(vclose - vstart - 1)};
-                n->value = dom_str_in(d, &v, 1);
+                yep_view v = {p + t.at + 1, (uint32_t)(t.end - t.at - 2)};
+                d->nodes[sid].value = dom_str_in(d, &v, 1);
             }
             if (dom_place(d, sid) != 0) {
-                return -1;
+                goto fail;
             }
-            continue;
+            break;
         }
-        /* number or literal: walk the exact token like pass 2 */
-        uint32_t sid =
-            dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0, cur_line, col);
-        if (sid == UINT32_MAX) {
-            return -1;
-        }
-        if (c == 't' || c == 'f' || c == 'n') {
-            i += (c == 't') ? 4 : (c == 'f') ? 5 : 4;
-        } else {
-            i++;
-            while (i < close && ((p[i] >= '0' && p[i] <= '9') || p[i] == '.' || p[i] == 'e' ||
-                                 p[i] == 'E' || p[i] == '+' || p[i] == '-')) {
-                i++;
+        default: { /* number or literal: the walker validated the span */
+            uint32_t sid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0,
+                                         cur_line, (uint32_t)(t.at - cur_ls) + 1);
+            if (sid == UINT32_MAX) {
+                goto fail;
             }
+            yep_view v = {p + t.at, (uint32_t)(t.end - t.at)};
+            d->nodes[sid].value = dom_str_in(d, &v, 1);
+            d->nodes[sid].tag_id = r->resolve(NULL, v.p, v.len);
+            if (dom_place(d, sid) != 0) {
+                goto fail;
+            }
+            break;
         }
-        yep_view v = {p + vstart, (uint32_t)(i - vstart)};
-        d->nodes[sid].value = dom_str_in(d, &v, 1);
-        d->nodes[sid].tag_id = r->resolve(NULL, v.p, v.len);
-        if (dom_place(d, sid) != 0) {
-            return -1;
         }
+    }
+    d->depth = entry_depth;
+    if (w.long_key) {
+        dom_flow_stage_reset(d);
+        return 2; /* grammar-valid; pass 2 owns the simple-key error */
+    }
+    d->flow_staged = 1;
+    d->flow_stage_root = root;
+    d->flow_stage_anchor = anchor_id;
+    *close = w.close;
+    return 1;
+fail:
+    d->depth = entry_depth;
+    dom_flow_stage_reset(d);
+    return -1;
+}
+
+int dom_on_flow_commit(void* ctx) {
+    yep_dom* d = (yep_dom*)ctx;
+    if (!d->flow_staged) {
+        return 0;
+    }
+    d->flow_staged = 0;
+    if (d->flow_stage_anchor != 0 &&
+        dom_anchor_set(d, d->flow_stage_anchor, d->flow_stage_root) != 0) {
+        return -1;
+    }
+    if (dom_place(d, d->flow_stage_root) != 0) {
+        return -1;
+    }
+    return 1;
+}
+
+void dom_on_flow_rollback(void* ctx) {
+    yep_dom* d = (yep_dom*)ctx;
+    if (d->flow_staged) {
+        dom_flow_stage_reset(d);
     }
 }
 
@@ -797,13 +812,6 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
         return -1;
     }
     return dom_place(d, vid) == 0 ? 1 : -1;
-}
-
-int dom_on_flow_json(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
-                     size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id) {
-    yep_dom* d = (yep_dom*)ctx;
-    int rc = dom_flow_walk(d, p, open, close, line, line_start, &anchor, &tag, anchor_id);
-    return rc == 0 ? 1 : -1;
 }
 
 const yep_dnode* yep_dom_node(const yep_dom* d, uint32_t id) {

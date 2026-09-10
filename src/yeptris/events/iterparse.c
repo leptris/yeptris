@@ -140,7 +140,8 @@ YEPTRIS_API const YeptrisEvent* yeptris_iterparse_next(YeptrisIterparse it, size
             it->status = YEPTRIS_ERROR_MEMORY;
             return NULL;
         }
-        yep_sink sink = {iter_on_event, &s, NULL, NULL};
+        yep_sink sink = {
+            .on_event = iter_on_event, .ctx = &s, .on_flow_build = NULL, .on_flow_commit = NULL};
         yep_text_stats pst;
         yep_text_active()->scan_stats(it->buf + it->cursor, it->len - it->cursor, &pst);
         yep_engine_prepare(eng, &pst);

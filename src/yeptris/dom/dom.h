@@ -88,6 +88,11 @@ typedef struct yep_dom {
      * YEP_ERR_MEMORY instead of ballooning. The mutation API (no input)
      * leaves it 0 and is uncapped. */
     size_t input_len;
+    /* fused-flow staging (TODO.restructure/53): scratch nodes live at
+     * [stage_base, ncount) until commit; rollback restores the counts */
+    int flow_staged;
+    uint32_t flow_stage_base, flow_stage_str;
+    uint32_t flow_stage_root, flow_stage_anchor;
     const struct yep_resolver* resolver; /* implicit typing for direct
         builders (NULL = core12); parse_impl sets it beside the engine's
         so the two paths resolve identically (the typing SSOT) */
@@ -214,8 +219,11 @@ void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth);
  * strictly-validated span [open, close] directly through the DOM's own
  * placement/link/anchor laws — node-for-node identical to the event
  * path (the flow-direct-diff ctest pins it). 1 = built, <0 = abort. */
-int dom_on_flow_json(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
-                     size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id);
+int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_t line,
+                      size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id,
+                      int max_depth, size_t* close);
+int dom_on_flow_commit(void* ctx);
+void dom_on_flow_rollback(void* ctx);
 struct yep_block_value;
 
 int dom_on_block_pair(void* ctx, const yep_view* key, const struct yep_block_value* v,
