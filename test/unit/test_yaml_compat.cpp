@@ -27,7 +27,12 @@ std::string run_first_types(const char* y, yep_ly_event* evs, int max, int* n) {
         (*c->n)++;
         return 0;
     };
-    yep_sink sink = {.on_event = sink_fn, .ctx = &cap, .on_flow_build = NULL, .on_flow_commit = NULL};
+    yep_sink sink = {.on_event = sink_fn,
+                     .ctx = &cap,
+                     .on_flow_build = NULL,
+                     .on_flow_commit = NULL,
+                     .on_flow_rollback = NULL,
+                     .on_block_pair = NULL};
     int rc = yep_engine_run(eng, y, strlen(y), &sink);
     yep_engine_destroy(eng);
     return rc == 0 ? "ok" : "error";
@@ -128,7 +133,12 @@ TEST(YamlCompat, FlowCollectionsAndTags) {
         return 0;
     };
     yep_engine* eng = yep_engine_create(yep_system_allocator());
-    yep_sink sink = {.on_event = sink_fn, .ctx = &cap, .on_flow_build = NULL, .on_flow_commit = NULL};
+    yep_sink sink = {.on_event = sink_fn,
+                     .ctx = &cap,
+                     .on_flow_build = NULL,
+                     .on_flow_commit = NULL,
+                     .on_flow_rollback = NULL,
+                     .on_block_pair = NULL};
     const char* y = "!!seq [1, 2]\n";
     int rc = yep_engine_run(eng, y, strlen(y), &sink);
     yep_engine_destroy(eng);
