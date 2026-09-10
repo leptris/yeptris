@@ -6,6 +6,24 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- The zero-copy borrow (TODO.restructure/56): dom->input_base is now
+  set BEFORE the engine run — input-slice scalars, keys, and anchor
+  names are views instead of arena copies. (The document already kept
+  the transcoded buffer alive for this; the ordering contradicted the
+  design.)
+
+### Added
+- TODO.restructure/57: on_block_open — a `key:` line opening a fresh
+  mapping builds the map and key nodes in one sink call; the engine
+  pushes its frame silently. block-pair-diff extended.
+
+### Changed
+- flow-json 1.05-1.69x, block-heavy/anchor-heavy/wide-mapping cross
+  1.0x on CI head-to-head medians; deep-nesting, scalar-heavy and
+  flow-single remain the active campaign (TODO.prompt.md wave 3).
+
 ## [0.1.19] - 2026-09-10
 ### Added
 - TODO.restructure/53: fused validate+build — one walk per

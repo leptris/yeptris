@@ -1104,3 +1104,17 @@ they are block-path shapes — item 54's second lever (the emit
 pipeline for EMPTY-value lines and map frames) and item 55's
 linux-side profile (scalar-heavy 0.42x ubuntu vs 0.54x mac) are
 the named next units. All sink literals are designated now.
+
+## 2026-09-10 — items 56+57 landed: the zero-copy borrow + block-open batch
+
+56: parse.c had set dom->input_base AFTER the engine run — every
+string was arena-copied during parse while the design (and the
+gates) intended input views. Two lines moved; borrowed strings are
+zero-copy. 57: on_block_open batches the fresh-map `key:` line.
+Merged-main h2h after (PR #183): flow-json 1.05-1.69x, and on the
+favourable platform block block-heavy 1.03x, anchor-heavy 1.09x,
+wide-mapping 1.05x — four shapes over parity alongside flow-json.
+Consistent gaps remain exactly where the wave-3 prompt aims them:
+deep-nesting 0.59/0.62, scalar-heavy 0.51/0.77, flow-single
+0.69/0.83 (items 58-60: one-walk line scan, root-flow dispatch,
+resolver table; the linux profile for the asymmetry).
