@@ -70,6 +70,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
             goto jfail;
         }
         dom->input_base = buf; /* strict JSON is UTF-8 by definition */
+        dom->input_len = len;
         yep_text_stats jst;
         yep_text_active()->scan_stats(buf, len, &jst);
         yep_dom_prepare(dom, &jst);
@@ -256,6 +257,7 @@ engine_enter:
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
     }
+    dom->input_len = data_len;
     dom->input_base = transcoded ? (const char*)transcoded : buf;
     doc->dom = dom;
     doc->sys = sys;

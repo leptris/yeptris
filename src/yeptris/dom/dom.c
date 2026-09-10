@@ -8,9 +8,25 @@
 
 #include "dom.h"
 
+/* The bounded-parse caps: each node consumes at least one input byte
+ * (the grammar guarantees it), so len + 1024 is airtight for valid
+ * documents; docs and anchors are sparser still. The arena copies
+ * content the input already paid for (folds, tags, anchors) — generous
+ * 128x covers pathological tag expansion while still bounding any
+ * loop bug linearly in the input. */
+static int cap_nodes(const yep_dom* d) {
+    return d->input_len == 0 || (size_t)d->ncount <= d->input_len + 1024;
+}
+static int cap_arena(const yep_dom* d, uint32_t need) {
+    return d->input_len == 0 || (size_t)(d->str_len + need) <= d->input_len * 128 + (1u << 20);
+}
+
 int dom_grow_nodes(yep_dom* d, uint32_t need) {
     if (d->ncount + need <= d->ncap) {
         return 1;
+    }
+    if (!cap_nodes(d)) {
+        return 0;
     }
     uint32_t ncap = d->ncap ? d->ncap * 2 : 64;
     while (ncap < d->ncount + need) {
@@ -31,6 +47,9 @@ int dom_grow_nodes(yep_dom* d, uint32_t need) {
 int dom_grow_docs(yep_dom* d, uint32_t need) {
     if (d->dcount + need <= d->dcap) {
         return 1;
+    }
+    if (d->input_len != 0 && (size_t)d->dcount > d->input_len / 2 + 16) {
+        return 0;
     }
     uint32_t ncap = d->dcap ? d->dcap * 2 : 16;
     while (ncap < d->dcount + need) {
@@ -53,6 +72,9 @@ int dom_grow_docs(yep_dom* d, uint32_t need) {
 static int str_grow(yep_dom* d, uint32_t need) {
     if (d->str_len + need <= d->str_cap) {
         return 1;
+    }
+    if (!cap_arena(d, need)) {
+        return 0;
     }
     uint32_t cap = d->str_cap ? d->str_cap : 256;
     while (cap < d->str_len + need) {
@@ -156,6 +178,9 @@ uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
 static int dom_anchor_set(yep_dom* d, uint32_t ordinal, uint32_t node) {
     if (ordinal == 0) {
         return -1;
+    }
+    if (d->input_len != 0 && ordinal > d->input_len + 16) {
+        return -1; /* more anchors than input bytes: a bug, not a doc */
     }
     if (ordinal > d->anchor_nodes_cap) {
         uint32_t cap = d->anchor_nodes_cap ? d->anchor_nodes_cap * 2 : 64;

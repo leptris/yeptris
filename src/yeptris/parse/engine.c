@@ -1264,15 +1264,6 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
 
 #define YEP_JSON_MAX_DEPTH 256
 
-enum {
-    JX_VALUE_OR_CLOSE = 0, /* after '(' or ',' — value or the close */
-    JX_VALUE,              /* value required */
-    JX_KEY_OR_CLOSE,       /* map start or after ',' — key or close */
-    JX_KEY,                /* key required */
-    JX_COLON,              /* ':' required */
-    JX_COMMA_OR_CLOSE      /* after a value — ',' or close */
-};
-
 /* Line/col across a gap: the walk is scan's SSOT (yep_scan_advance_
  * line) — the DOM direct builder shares it so line/col cannot drift
  * between the two paths. */
@@ -1291,110 +1282,28 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
         return 0; /* tiny spans: the general kernel is cheaper */
     }
 
-    /* ---- pass 1: strict-JSON validation, find the matching close ---- */
-    uint8_t kind[YEP_JSON_MAX_DEPTH];
-    uint8_t expect[YEP_JSON_MAX_DEPTH];
-    int depth = 0;
-    int saw_tab = 0;
+    /* ---- pass 1: strict-JSON validation via the shared walker ----
+     * (the grammar lives in scan/json.c; the engine drives it) */
+    uint8_t kind0;
     int long_key = 0; /* a map key over the simple-key limit: pass 2 owns the error */
-    size_t i = open_pos + 1;
-    kind[0] = (p[open_pos] == '[') ? 0 : 1;
-    expect[0] = kind[0] ? JX_KEY_OR_CLOSE : JX_VALUE_OR_CLOSE;
-    depth = 1;
-    for (;;) {
-        int ws = yep_json_ws(p, len, &i, &saw_tab);
-        if (ws != 1) {
-            return 0; /* EOF, or a tab the general kernel should judge */
+    size_t close;
+    {
+        yep_json_walk w;
+        yep_json_tok t;
+        yep_json_walk_init(&w, p, len, open_pos, e->max_depth);
+        for (;;) {
+            yep_jw_status st = yep_json_walk_next(&w, &t);
+            if (st == YEP_JW_REJECT) {
+                return 0;
+            }
+            if (st == YEP_JW_DONE) {
+                break;
+            }
         }
-        char c = p[i];
-        if (c == ']' || c == '}') {
-            int want = (c == ']') ? 0 : 1;
-            if (kind[depth - 1] != want ||
-                (expect[depth - 1] != JX_VALUE_OR_CLOSE && expect[depth - 1] != JX_KEY_OR_CLOSE &&
-                 expect[depth - 1] != JX_COMMA_OR_CLOSE)) {
-                return 0; /* mismatched or premature close */
-            }
-            depth--;
-            if (depth == 0) {
-                break; /* i = the matching close of open_pos */
-            }
-            /* (fall through: inner closes continue the walk) */
-            expect[depth - 1] = JX_COMMA_OR_CLOSE;
-            i++;
-            continue;
-        }
-        switch (expect[depth - 1]) {
-        case JX_COLON:
-            if (c != ':') {
-                return 0;
-            }
-            expect[depth - 1] = JX_VALUE;
-            i++;
-            continue;
-        case JX_COMMA_OR_CLOSE:
-            if (c != ',') {
-                return 0;
-            }
-            expect[depth - 1] = kind[depth - 1] ? JX_KEY : JX_VALUE;
-            i++;
-            continue;
-        default:
-            break;
-        }
-        if (c == '{' || c == '[') {
-            if (depth >= YEP_JSON_MAX_DEPTH || depth >= e->max_depth) {
-                return 0; /* the general kernel reports depth errors */
-            }
-            kind[depth] = (c == '[') ? 0 : 1;
-            expect[depth] = kind[depth] ? JX_KEY_OR_CLOSE : JX_VALUE_OR_CLOSE;
-            depth++;
-            i++;
-            continue;
-        }
-        /* a value (or, in maps with KEY state, a string key) */
-        int he = 0;
-        size_t str_close;
-        size_t vstart = i;
-        if (c == '"') {
-            if (!yep_json_string(p, len, &i, &str_close, &he)) {
-                return 0;
-            }
-            if (kind[depth - 1] == 1 &&
-                (expect[depth - 1] == JX_KEY_OR_CLOSE || expect[depth - 1] == JX_KEY) &&
-                i - vstart > YEP_MAX_SIMPLE_KEY) {
-                long_key = 1;
-            }
-        } else if (c == '-' || (c >= '0' && c <= '9')) {
-            if (!yep_json_number(p, len, &i)) {
-                return 0;
-            }
-        } else if (c == 't') {
-            if (!yep_json_literal(p, len, &i, "true")) {
-                return 0;
-            }
-        } else if (c == 'f') {
-            if (!yep_json_literal(p, len, &i, "false")) {
-                return 0;
-            }
-        } else if (c == 'n') {
-            if (!yep_json_literal(p, len, &i, "null")) {
-                return 0;
-            }
-        } else {
-            return 0; /* YAML plain scalar / comment / indicator */
-        }
-        if (kind[depth - 1] == 1 && expect[depth - 1] == JX_KEY_OR_CLOSE) {
-            expect[depth - 1] = JX_COLON;
-        } else if (kind[depth - 1] == 1 && expect[depth - 1] == JX_KEY) {
-            if (c != '"') {
-                return 0; /* JSON map keys are strings only */
-            }
-            expect[depth - 1] = JX_COLON;
-        } else {
-            expect[depth - 1] = JX_COMMA_OR_CLOSE;
-        }
+        close = w.close;
+        long_key = w.long_key;
+        kind0 = w.kind[0];
     }
-    size_t close = i;
 
     /* One memchr decides the dominant shape: a SINGLE-LINE span (one
      * flow collection per block line — the common config/API dump)
@@ -1467,7 +1376,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
     size_t cur_scan = e->pos; /* unscanned region starts at the span */
     {
         yep_event ev;
-        e_event_init(&ev, kind[0] ? YEP_EV_MAP_START : YEP_EV_SEQ_START);
+        e_event_init(&ev, kind0 ? YEP_EV_MAP_START : YEP_EV_SEQ_START);
         ev.flow = 1;
         ev.anchor = anchor;
         ev.anchor_id = anchor_id;
@@ -1481,9 +1390,9 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
     uint8_t stk[YEP_JSON_MAX_DEPTH]; /* 0 seq, 1 map; key-pending per frame */
     uint8_t kpending[YEP_JSON_MAX_DEPTH];
     int sd = 1;
-    stk[0] = kind[0];
+    stk[0] = kind0;
     kpending[0] = 0;
-    i = open_pos + 1;
+    size_t i = open_pos + 1;
     for (;;) {
         while (i < close && (p[i] == ' ' || p[i] == '\n' || p[i] == '\r')) {
             i++;
