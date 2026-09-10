@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/58: line-fact memo seeding (block lines were
+  double-scanned) and short-span scalar walks (the SIMD stopset
+  dispatch cost more than the 2-8 byte key scans it served; scalar
+  walk below the same 64-byte gate scan_line uses). deep-nesting
+  0.59 -> ~1.0x, flow-single ~0.99x, block-heavy ~0.98x on local
+  head-to-head medians. Unsigned stopset indexing in the short-span
+  walk (multibyte UTF-8 shifted signed-char negative — found by CI
+  sanitizers).
+
 ## [0.1.20] - 2026-09-10
 ### Fixed
 - The zero-copy borrow (TODO.restructure/56): dom->input_base is now
