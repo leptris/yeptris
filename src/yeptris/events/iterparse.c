@@ -145,7 +145,8 @@ YEPTRIS_API const YeptrisEvent* yeptris_iterparse_next(YeptrisIterparse it, size
                          .on_flow_build = NULL,
                          .on_flow_commit = NULL,
                          .on_flow_rollback = NULL,
-                         .on_block_pair = NULL};
+                         .on_block_pair = NULL,
+                         .on_block_open = NULL};
         yep_text_stats pst;
         yep_text_active()->scan_stats(it->buf + it->cursor, it->len - it->cursor, &pst);
         yep_engine_prepare(eng, &pst);

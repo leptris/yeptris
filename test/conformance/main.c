@@ -44,7 +44,8 @@ static yts_result run_case(const yts_case* c, char** got_tree) {
                      .on_flow_build = NULL,
                      .on_flow_commit = NULL,
                      .on_flow_rollback = NULL,
-                     .on_block_pair = NULL};
+                     .on_block_pair = NULL,
+                     .on_block_open = NULL};
     int rc = yep_engine_run(eng, input, strlen(input), &sink);
     free(input);
 

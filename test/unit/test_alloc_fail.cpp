@@ -79,7 +79,8 @@ TEST(AllocFail, EveryNthAcrossAParse) {
                          .on_flow_build = NULL,
                          .on_flow_commit = NULL,
                          .on_flow_rollback = NULL,
-                         .on_block_pair = NULL};
+                         .on_block_pair = NULL,
+                         .on_block_open = NULL};
         yep_engine_run(eng, kDoc, strlen(kDoc), &sink);
         /* failure (or, before the countdown hits, success) is fine;
          * a crash or ASAN finding is not */
@@ -105,7 +106,8 @@ TEST(AllocFail, EveryNthAcrossAParse) {
                        .on_flow_build = NULL,
                        .on_flow_commit = NULL,
                        .on_flow_rollback = NULL,
-                       .on_block_pair = NULL};
+                       .on_block_pair = NULL,
+                       .on_block_open = NULL};
         EXPECT_EQ(yep_engine_run(e2, kDoc, strlen(kDoc), &s2), 0) << "every=" << every;
         EXPECT_GT(d2->ncount, 0u);
         yep_dom_destroy(d2);
@@ -140,7 +142,8 @@ TEST(AllocFail, NoAllocationNoFailure) {
                      .on_flow_build = NULL,
                      .on_flow_commit = NULL,
                      .on_flow_rollback = NULL,
-                     .on_block_pair = NULL};
+                     .on_block_pair = NULL,
+                     .on_block_open = NULL};
     EXPECT_EQ(yep_engine_run(eng, kDoc, strlen(kDoc), &sink), 0);
     EXPECT_GT(dom->ncount, 0u);
     yep_dom_destroy(dom);
