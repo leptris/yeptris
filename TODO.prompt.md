@@ -1,101 +1,95 @@
-# TODO.prompt.md — the beat-rapidyaml execution prompt
+# TODO.prompt.md — the beat-rapidyaml execution prompt (wave 3)
 
 Paste this into a fresh session. It is self-contained: context,
 targets, designs, gates, and the release procedure. Everything it
-references is already merged on main.
+references is merged on main. Release cadence so far: 0.1.18,
+0.1.19 (lockstep .1 gems/wheels).
 
 ---
 
 MISSION: yeptris must beat rapidyaml on every comparable benchmark
-shape with margin. Four cells remain lost (CI fresh runners, macOS
-DOM vs ryml): **anchor-heavy 0.33x, flow-json 0.50x, flow-single
-0.59x, deep-nesting 0.67x**. Won and to be protected: block-heavy
-1.48x, wide-mapping 1.13x, scalar-heavy 1.07x; Ruby/Python JSON
-0.699-0.785x at their 1.00 CI gates; YAML 1.8-5.4x vs
-libyaml/Psych/PyYAML. Zero open issues anywhere — keep it that way.
+shape WITH MARGIN on BOTH CI platforms. Won outright: flow-json
+1.11x/1.15x (item 53's fused walk + item 56's zero-copy borrow).
+Still behind (best CI h2h medians, mac/ubuntu): flow-single
+0.68/0.91, scalar-heavy 0.42/0.81, anchor-heavy noisy 0.6-0.9,
+deep-nesting 0.50/0.80, block-heavy 0.71/0.77, wide-mapping
+0.68/0.91. The gap to 1.0x+margin is per-shape engineering with a
+named lever below — not rediscovery. Also standing: fix ALL GitHub
+issues (currently zero open across all three repos — keep it).
 
-READ FIRST (all merged, ~15 min):
-- TODO.restructure/48-flow-anchor-direct-build.md — the campaign:
-  designs, ceilings, the anchor decomposition, what was already
-  checked (the ALIAS arm is O(1); do not re-read it).
-- TODO.restructure/45-engine-campaign-ryml.md — the intel: block
-  wrapper costs 37%; e_flow_json BEATS parse_json on string-heavy
-  flow; e_flow_json is two-pass by design.
-- benchmarks/PERF-LEDGER.md, last three entries — the full CI ryml
-  table, the anchor profile (~60% in e_node/e_parse_value — the
-  per-line choreography is THE wall for anchor AND flow wrappers),
-  and the negative results that must not be repeated (items 46/47:
-  scanner rewrites are DEAD; the cost is the EVENT PIPELINE).
+READ FIRST (merged, ~20 min):
+- TODO.restructure/53,54,56,57 — the landed designs: the fused
+  validate+build (one walk per flow span), the block pair/open
+  batches (one sink call per line), and the zero-copy borrow fix
+  (THE single biggest win: parse.c had set dom->input_base AFTER
+  the run — every string was arena-copied).
+- benchmarks/PERF-LEDGER.md, last four entries — the h2h referee
+  (interleaved medians; separate-phase tables are phase-biased and
+  BANNED), the bounded-parse law, the standing numbers.
+- src/yeptris/scan/json.h (the walker SSOT), scan/scan.h (line
+  shapes), parse/events.h (the sink contracts: flow build/commit/
+  rollback, block pair, block open).
 
-IMPLEMENT, in this order:
+IMPLEMENT, in this order (each unit: spec + gates first, CI h2h
+referee, ledger before/after; a unit that regresses reverts):
 
-1. **The line classifier (Phase B)** — engine.c, e_node:2149 and
-   e_parse_value:2482. Hoist a one-pass byte-class line
-   classification INTO the line scan (scan.c owns scanning; the
-   engine decides dispatch ONCE per line instead of re-deriving in
-   e_node → e_skip_inline_space → scan_plain → e_parse_value).
-   Target shapes: `key:`, `  <<: *a`, `  x: &a val`, `  y: *a`,
-   `- {…}` — the anchor corpus and the flow block wrapper share
-   this machinery. STRICT bail-to-the-existing-path on ANY
-   deviation (the e_flow_json law). Gate: 253/253 ctest + the
-   405-roundtrip + libyaml-diff + fuzz corpus; then dispatch
-   bench.yml at the branch and read the ryml columns.
+1. **One-walk line scan (58)** — fuse scan_line + scan_shape: the
+   classifier makes up to three passes over a line's bytes (SIMD
+   end-find, key scan_plain, value scan_plain). One walk yields li
+   + shape together. Targets scalar-heavy (12-word values) and
+   every block shape's per-line floor.
 
-2. **The sink fast-path direct build (flow cells)** — yep_sink
-   grows an OPTIONAL `int (*on_flow_json)(void* ctx, const char* p,
-   size_t open, size_t close, yep_view anchor, yep_view tag,
-   uint32_t anchor_id)`. e_flow_json calls it right after pass 1
-   validates [open, close]; return 1 = subtree built (engine
-   continues past the close), 0 = run pass 2 events exactly as
-   today. The DOM sink (dom.c) implements it: one walk of the
-   VALIDATED span creating/linking nodes via the DOM's own helpers
-   (styles, implicit flags identical to the event path; anchor/tag
-   bind at the root; the 1024-byte key limit and depth caps
-   enforced identically). pull/push/recorder leave it NULL —
-   streaming consumers are untouched BY DESIGN. GATE (hard):
-   a tree-equality differential, event-built vs direct-built, over
-   the conformance corpus + yaml-test-suite + fuzz inputs, added
-   as a permanent ctest; any divergence reverts the unit.
+2. **Root-flow dispatch without the line scan (59)** — a document
+   whose first content byte is '['/'{' pays a full SIMD end-find
+   over a possibly-megabyte line before the fused walk re-walks it.
+   Dispatch flow-at-root directly; the line end falls out of the
+   walk. Targets flow-single (0.68-0.91).
 
-3. **deep-nesting** — re-measure after 1+2; it likely rides the
-   same wins. If still <1.0x, profile before touching anything.
+3. **The resolver fast path (60)** — core12's resolve() runs per
+   scalar as a chain of length checks + memcmps; ryml types with a
+   first-byte dispatch. Table-drive the core12 impl (OCP: the
+   resolver interface unchanged). Profile first via item 55's
+   linux artifact. Targets scalar-heavy and every key resolution.
+
+4. **What the linux profile names (55)** — scalar-heavy 0.42x
+   ubuntu vs 0.54x mac at identical allocation counts is still
+   unexplained; deep-nesting 0.50x vs 0.80x likewise. The CI
+   profiling artifact (scripts/profile-linux.sh + the Profile
+   workflow) is the tool.
 
 RULES OF ENGAGEMENT (hard-won, all in the ledger):
-- Measure before building; a unit whose gate fails reverts and gets
-  ledgered (items 46/47 are the precedent — they are why the
-  campaign is now surgical).
-- The local dev box can saturate (load >100): NEVER trust local
-  numbers; CI fresh runners with the ryml columns are the referee.
-  Dispatch workflows at the branch if push events stall
-  (workflow_dispatch is already enabled on test/asan/format/bench).
-- If a dispatch fails a real check, fix it — the workaround runs
-  the true gates.
+- NEVER run a test/bench binary unattended: ulimit + wall-kill
+  wrapper (four 130-240GB runaway incidents; the bounded-parse law
+  caps parses at O(input), but the wrapper is still mandatory).
+- The dev box saturates: CI fresh-runner h2h medians referee.
+  Single-run medians swing ±0.15 — dispatch bench.yml 2-3x and read
+  the spread before concluding.
+- The differential gates (flow-direct-diff, block-pair-diff) are
+  PERMANENT: any new fast path grows its must-fire list and reuses
+  the tree comparator (test/flow/tree_diff.h). Divergence = the
+  unit does not land.
+- Measure before building (46/47 precedent). GCC AND clang
+  warning-clean (validate.sh covers both); clang-format-18.
+- All sink literals designated; new sink fields optional (NULL
+  default) — streaming sinks untouched by design.
 
-RELEASE (rebase merges are enabled on all three repos — use
-`gh pr merge --rebase`):
-1. C repo: ensure CHANGELOG has `## [Unreleased]` entries, then
-   `gh workflow run release.yml -f next_version=<X.Y.Z>`; approve
-   any action_required runs on the release/v* branch (re-list to
-   verify, the approve POST is silent); merge the release PR
-   (--rebase).
-2. Ruby: version-bump PR (lib/yeptris.rb) → CI → merge → tag
-   v<X.Y.Z>.1 → `gh workflow run release.yml -f
-   republish_version=<X.Y.Z>` (the smoke gates must print SMOKE
-   PASS before every gem push).
-3. Python: version-bump PR (pyproject.toml) → CI → merge → tag →
-   release-wheels.yml runs; twine upload dist/* from the repo after
-   the release attaches artifacts; verify `pip install yeptris`
-   shows the native engine in a clean venv.
-4. Update benchmarks/PERF-LEDGER.md with the new ryml table and
-   close TODO.restructure/48 with the outcome.
+RELEASE (rebase merges; `gh pr merge --rebase`): C CHANGELOG
+[Unreleased] entries → version-bump PR → release.yml
+next_version=<X.Y.Z> → approve action_required on release/v* (the
+approve POST is silent — re-list to verify) → merge. Ruby:
+version-bump PR (lib/yeptris.rb) → merge → tag v<X.Y.Z>.1 → C-repo
+release.yml republish_version=<X.Y.Z> (SMOKE PASS must print before
+every gem push). Python: version-bump PR (pyproject.toml) → merge
+→ tag → release-wheels.yml → twine upload the downloaded artifacts
+→ clean-venv pip verify. Versions: lockstep {c-semver}.{patch},
+reasonable increments (0.1.18 → 0.1.19 cadence).
 
-CODE LAWS (standing, unchanged): C11 warning-clean, clang-format-18
-(brew llvm@18 — the PATH clang-format is wrong); Ruby: no
-send/instance_variable_*/respond_to?, autoload not require_relative;
-MECE/DRY/OCP; specs for every behavior; explicit-path git adds,
-never `git add -A`; no AI attribution; never push main or tags
-except the binding-tag flow above; versions follow the lockstep
-{c-semver}.{patch}.
+CODE LAWS (standing): C11 warning-clean, designated sink literals,
+explicit-path git adds (never `git add -A`), no AI attribution,
+never push main or tags except the binding flow above, MECE/DRY/
+OCP, specs for every behavior, the bounded-parse law applies to any
+new growth path.
 
-DONE MEANS: every ryml-comparable shape > 1.0x on BOTH CI
-platforms, all gates green, ledger updated, releases shipped.
+DONE MEANS: every ryml-comparable shape > 1.0x WITH margin (target
+≥1.15x) on BOTH CI platforms, all gates green, zero open issues,
+ledger updated, lockstep releases shipped.

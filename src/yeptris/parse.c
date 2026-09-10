@@ -210,6 +210,11 @@ engine_enter:
     dom->resolver = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
                         ? yep_resolver_compat11()
                         : yep_resolver_core12();
+    /* BEFORE the run: input-slice strings borrow as views (zero copy)
+     * — the document keeps `transcoded` alive for exactly this. Set
+     * after, every scalar was arena-copied (found 2026-09-10). */
+    dom->input_len = data_len;
+    dom->input_base = transcoded ? (const char*)transcoded : buf;
     yep_dom_prepare(dom, &pre_stats);
     yep_engine_prepare(eng, &pre_stats);
 
@@ -218,7 +223,8 @@ engine_enter:
                      .on_flow_build = dom_on_flow_build,
                      .on_flow_commit = dom_on_flow_commit,
                      .on_flow_rollback = dom_on_flow_rollback,
-                     .on_block_pair = dom_on_block_pair};
+                     .on_block_pair = dom_on_block_pair,
+                     .on_block_open = dom_on_block_open};
     int rc = yep_engine_run(eng, data, data_len, &sink);
     if (rc != 0) {
         const yep_error* ee = yep_engine_error(eng);
@@ -262,8 +268,6 @@ engine_enter:
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
     }
-    dom->input_len = data_len;
-    dom->input_base = transcoded ? (const char*)transcoded : buf;
     doc->dom = dom;
     doc->sys = sys;
     doc->schema = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)

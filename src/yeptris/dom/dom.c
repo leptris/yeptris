@@ -762,6 +762,38 @@ void dom_on_flow_rollback(void* ctx) {
     }
 }
 
+/* The sink's block-open fast path (TODO.restructure/57): a `key:` line
+ * whose value follows becomes the map node plus its pending key in one
+ * call — the DOM stack mirrors what the MAP_START event would have
+ * pushed. 0 only for the depth cap (the engine then takes the events,
+ * which own the error). */
+int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col) {
+    yep_dom* d = (yep_dom*)ctx;
+    if (d->depth >= YEP_DOM_MAX_DEPTH) {
+        return 0;
+    }
+    const yep_resolver* r = dom_resolver(d);
+    uint32_t mid =
+        dom_open_node(d, YEP_DOM_MAPPING, NULL, NULL, 0, 0, 0, 0, line, (uint32_t)key_col + 1);
+    if (mid == UINT32_MAX) {
+        return -1;
+    }
+    if (dom_place(d, mid) != 0) {
+        return -1;
+    }
+    d->map_pending_key[d->depth] = 0;
+    d->stack[d->depth++] = mid;
+    uint32_t kid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0, line,
+                                 (uint32_t)key_col + 1);
+    if (kid == UINT32_MAX) {
+        d->depth--;
+        return -1;
+    }
+    d->nodes[kid].value = dom_str_in(d, key, 1);
+    d->nodes[kid].tag_id = r->resolve(NULL, key->p, key->len);
+    return dom_place(d, kid) == 0 ? 1 : -1;
+}
+
 /* The sink's block fast path (TODO.restructure/54): one classified
  * `key: value` line becomes two nodes — the key scalar resolved like
  * every implicit key event, the value through its class — placed with
