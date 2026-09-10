@@ -439,3 +439,130 @@ int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out, int
         }
     }
 }
+
+/* ---- the span walker (TODO.restructure/53) ----
+ * Ported verbatim from the engine's pass-1 state machine: the grammar
+ * is UNCHANGED, it just lives where both consumers reach it. States
+ * mirror the old JX_* set. */
+
+enum { JW_VALUE_OR_CLOSE = 0, JW_VALUE, JW_KEY_OR_CLOSE, JW_KEY, JW_COLON, JW_COMMA_OR_CLOSE };
+
+#define JW_SIMPLE_KEY_MAX 1024 /* YAML 1.2 simple-key limit (libyaml parity) */
+
+void yep_json_walk_init(yep_json_walk* w, const char* p, size_t len, size_t open, int max_depth) {
+    w->p = p;
+    w->len = len;
+    w->max_depth = max_depth;
+    w->i = open + 1;
+    w->close = 0;
+    w->long_key = 0;
+    w->saw_tab = 0;
+    w->depth = 1;
+    w->kind[0] = (p[open] == '[') ? 0 : 1;
+    w->expect[0] = w->kind[0] ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+}
+
+yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
+    const char* p = w->p;
+    size_t len = w->len;
+    for (;;) {
+        if (yep_json_ws(p, len, &w->i, &w->saw_tab) != 1) {
+            return YEP_JW_REJECT; /* EOF or a tab the general kernel judges */
+        }
+        size_t i = w->i;
+        char c = p[i];
+        if (c == ']' || c == '}') {
+            int want = (c == ']') ? 0 : 1;
+            if (w->kind[w->depth - 1] != want || (w->expect[w->depth - 1] != JW_VALUE_OR_CLOSE &&
+                                                  w->expect[w->depth - 1] != JW_KEY_OR_CLOSE &&
+                                                  w->expect[w->depth - 1] != JW_COMMA_OR_CLOSE)) {
+                return YEP_JW_REJECT; /* mismatched or premature close */
+            }
+            t->at = i;
+            t->end = i + 1;
+            t->cls = c;
+            t->has_escape = 0;
+            w->depth--;
+            w->i = i + 1;
+            if (w->depth == 0) {
+                w->close = i;
+                return YEP_JW_DONE;
+            }
+            w->expect[w->depth - 1] = JW_COMMA_OR_CLOSE;
+            return YEP_JW_OK;
+        }
+        switch (w->expect[w->depth - 1]) {
+        case JW_COLON:
+            if (c != ':') {
+                return YEP_JW_REJECT;
+            }
+            w->expect[w->depth - 1] = JW_VALUE;
+            w->i = i + 1;
+            continue;
+        case JW_COMMA_OR_CLOSE:
+            if (c != ',') {
+                return YEP_JW_REJECT;
+            }
+            w->expect[w->depth - 1] = w->kind[w->depth - 1] ? JW_KEY : JW_VALUE;
+            w->i = i + 1;
+            continue;
+        default:
+            break;
+        }
+        if (c == '{' || c == '[') {
+            if (w->depth >= YEP_JSON_WALK_DEPTH || w->depth >= w->max_depth) {
+                return YEP_JW_REJECT; /* the general kernel reports depth errors */
+            }
+            t->at = i;
+            t->end = i + 1;
+            t->cls = c;
+            t->has_escape = 0;
+            w->kind[w->depth] = (c == '[') ? 0 : 1;
+            w->expect[w->depth] = w->kind[w->depth] ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+            w->depth++;
+            w->i = i + 1;
+            return YEP_JW_OK;
+        }
+        t->at = i;
+        t->has_escape = 0;
+        if (c == '"') {
+            size_t close;
+            if (!yep_json_string(p, len, &w->i, &close, &t->has_escape)) {
+                return YEP_JW_REJECT;
+            }
+            t->cls = '"';
+            t->end = w->i;
+            if (w->kind[w->depth - 1] == 1 &&
+                (w->expect[w->depth - 1] == JW_KEY_OR_CLOSE || w->expect[w->depth - 1] == JW_KEY) &&
+                w->i - i > JW_SIMPLE_KEY_MAX) {
+                w->long_key = 1;
+            }
+        } else if (c == '-' || (c >= '0' && c <= '9')) {
+            if (!yep_json_number(p, len, &w->i)) {
+                return YEP_JW_REJECT;
+            }
+            t->cls = '#';
+            t->end = w->i;
+        } else if (c == 't' || c == 'f' || c == 'n') {
+            const char* word = (c == 't') ? "true" : (c == 'f') ? "false" : "null";
+            if (!yep_json_literal(p, len, &w->i, word)) {
+                return YEP_JW_REJECT;
+            }
+            t->cls = 'a';
+            t->end = w->i;
+        } else {
+            return YEP_JW_REJECT; /* YAML plain scalar / comment / indicator */
+        }
+        if (w->kind[w->depth - 1] == 1 && w->expect[w->depth - 1] == JW_KEY_OR_CLOSE) {
+            w->expect[w->depth - 1] = JW_COLON;
+        } else if (w->kind[w->depth - 1] == 1 && w->expect[w->depth - 1] == JW_KEY) {
+            if (t->cls != '"') {
+                return YEP_JW_REJECT; /* JSON map keys are strings only */
+            }
+            w->expect[w->depth - 1] = JW_COLON;
+        } else {
+            w->expect[w->depth - 1] = JW_COMMA_OR_CLOSE;
+        }
+        return YEP_JW_OK;
+    }
+}

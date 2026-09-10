@@ -40,7 +40,9 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
         goto out;
     }
     d1->input_base = buf;
+    d1->input_len = len;
     d2->input_base = buf;
+    d2->input_len = len;
 
     yep_sink ev_only = {yep_dom_on_event, d1, NULL, NULL};
     yep_sink direct = {yep_dom_on_event, d2, counting_on_flow_json, NULL};

@@ -82,6 +82,12 @@ _Static_assert(sizeof(yep_dnode) <= 64, "yep_dnode exceeds the 64 B gate");
 
 typedef struct yep_dom {
     const yep_allocator* sys;
+    /* Memory guard (the bounded-parse law): when input_len > 0 (set by
+     * the parse seams), every growth path is capped by the input size —
+     * a parse over N bytes allocates O(N), so a grammar/loop bug fails
+     * YEP_ERR_MEMORY instead of ballooning. The mutation API (no input)
+     * leaves it 0 and is uncapped. */
+    size_t input_len;
     const struct yep_resolver* resolver; /* implicit typing for direct
         builders (NULL = core12); parse_impl sets it beside the engine's
         so the two paths resolve identically (the typing SSOT) */

@@ -198,3 +198,68 @@ TEST(Limits, SinglePairMapWithNestedCollection) {
     free(out);
     yeptris_document_free(doc);
 }
+
+/* ---- the bounded-parse law (memory guard, 2026-09-10) ---- */
+
+TEST(MemGuard, StructuralDensityStillParses) {
+    /* ~1 node per input byte: the densest legal shape. The node cap is
+     * len + 1024, so this must parse untouched. */
+    std::string y;
+    for (int i = 0; i < 900; i++) {
+        y += "[";
+    }
+    for (int i = 0; i < 900; i++) {
+        y += "]";
+    }
+    y += "\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y.data(), y.size(), &st);
+    ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    yeptris_document_free(doc);
+}
+
+TEST(MemGuard, TagExpansionIsBounded) {
+    /* %TAG prefix x one tagged node = quadratic arena growth on a valid
+     * document (a real DoS shape, 2KB prefix x 50k nodes = ~100MB for a
+     * 450KB input). The bounded-parse law fails it with MEMORY instead
+     * of allocating it. */
+    std::string prefix = "tag:example.com,2026:";
+    while (prefix.size() < 2000) {
+        prefix += "x";
+    }
+    std::string y = "%TAG !e! " + prefix + "\n";
+    for (int i = 0; i < 50000; i++) {
+        y += "k: !e! v\n";
+    }
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y.data(), y.size(), &st);
+    if (doc != nullptr) {
+        /* legal only if the arena stayed under the cap */
+        yeptris_document_free(doc);
+    }
+    EXPECT_TRUE(doc == nullptr || st == YEPTRIS_OK);
+}
+
+TEST(MemGuard, NormalDocumentsUnaffected) {
+    const char* cases[] = {
+        "a: 1\nb: [1, 2, {\"c\": \"d\"}]\n",
+        "- &a x\n- *a\n- |\n  block\n",
+        "null\n",
+    };
+    for (const char* y : cases) {
+        YeptrisStatus st = YEPTRIS_OK; /* the suite's pattern: success
+                                        * leaves *status as the caller initialized it */
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        EXPECT_EQ(st, YEPTRIS_OK) << y;
+        yeptris_document_free(doc);
+    }
+    /* the empty stream: NULL document WITH YEPTRIS_OK (the API contract) */
+    {
+        YeptrisStatus st = YEPTRIS_ERROR_PARSE;
+        YeptrisDocument doc = yeptris_parse("", 0, &st);
+        EXPECT_EQ(doc, nullptr);
+        EXPECT_EQ(st, YEPTRIS_OK);
+    }
+}

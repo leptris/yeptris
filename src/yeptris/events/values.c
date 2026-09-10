@@ -346,6 +346,7 @@ static int drain_json_route(const char* yaml, size_t len, yep_value_ctx** out) {
         return -1;
     }
     dom->input_base = yaml; /* strict JSON is UTF-8 by definition */
+    dom->input_len = len;
     yep_text_stats jst;
     yep_text_active()->scan_stats(yaml, len, &jst);
     yep_dom_prepare(dom, &jst);
