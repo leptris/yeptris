@@ -322,8 +322,10 @@ static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     return emit_now(e, &ev) == 0 ? 0 : -2;
 }
 
+/* silent: the sink's on_block_open built the node — push the frame
+ * without emitting (TODO.restructure/57). */
 static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln, yep_view anchor,
-                      yep_view tag, uint32_t anchor_id) {
+                      yep_view tag, uint32_t anchor_id, int silent) {
     if (e->depth > 0 && e->frames[e->depth - 1].kind == YEP_FRAME_MAP &&
         e->frames[e->depth - 1].col == col) {
         return 0;
@@ -336,6 +338,9 @@ static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     e->frames[e->depth].inline_doc = (uint8_t)e->doc_inline;
     e->doc_inline = 0;
     e->depth++;
+    if (silent) {
+        return 0;
+    }
     yep_event ev;
     e_event_init(&ev, YEP_EV_MAP_START);
     ev.anchor = anchor;
@@ -2171,7 +2176,7 @@ static int e_shape_alias_value(yep_engine* e, const yep_line_shape* sh, int unde
             return -1;
         }
         uint16_t key_col = e_col(e, sh->val_start);
-        int rc = e_open_map(e, key_col, e->line, key_col + 1, none, none, 0);
+        int rc = e_open_map(e, key_col, e->line, key_col + 1, none, none, 0, 0);
         if (rc != 0) {
             return rc;
         }
@@ -2236,7 +2241,29 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
         return -1;
     }
     uint16_t key_col = e_col(e, e->pos);
-    int rc = e_open_map(e, key_col, e->line, key_col + 1, none, none, 0);
+    /* `key:` with the value on following lines, opening a FRESH map:
+     * the sink may build map+key in one call (TODO.restructure/57) —
+     * the engine then opens its frame silently. Sibling keys (the map
+     * already continues at this column) keep the key-only event. */
+    if (sh->val == YEP_LVAL_EMPTY && e->sink != NULL && e->sink->on_block_open != NULL &&
+        !(e->depth > 0 && e->frames[e->depth - 1].kind == YEP_FRAME_MAP &&
+          e->frames[e->depth - 1].col == key_col)) {
+        yep_view okey = {e->p + sh->key_start, sh->key_end - sh->key_start};
+        int built = e->sink->on_block_open(e->sink->ctx, &okey, e->line, key_col);
+        if (built < 0) {
+            return -2;
+        }
+        if (built == 1) {
+            int orc = e_open_map(e, key_col, e->line, key_col + 1, none, none, 0, 1);
+            if (orc != 0) {
+                return orc;
+            }
+            e->pos = sh->colon + 1;
+            orc = e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
+            return orc == 0 ? 1 : orc;
+        }
+    }
+    int rc = e_open_map(e, key_col, e->line, key_col + 1, none, none, 0, 0);
     if (rc != 0) {
         return rc;
     }
@@ -2444,7 +2471,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "?\t-" (Y79Y) */
         }
         uint16_t col = e_col(e, e->pos);
-        int rc = e_open_map(e, col, e->line, col + 1, pend_a, pend_t, pend_aid);
+        int rc = e_open_map(e, col, e->line, col + 1, pend_a, pend_t, pend_aid, 0);
         if (rc != 0) {
             return rc;
         }
@@ -2525,7 +2552,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 return -1;
             }
             uint16_t key_col = e_col(e, node_at);
-            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid);
+            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
             if (rc != 0) {
                 return rc;
             }
@@ -2566,7 +2593,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 return -1;
             }
             uint16_t key_col = e_col(e, node_at);
-            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid);
+            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
             if (rc != 0) {
                 return rc;
             }
@@ -2597,7 +2624,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 return -1;
             }
             uint16_t key_col = e_col(e, node_at);
-            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid);
+            int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
             if (rc != 0) {
                 return rc;
             }
@@ -2652,7 +2679,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "--- &a k: v" */
         }
         uint16_t key_col = e_col(e, node_at);
-        int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid);
+        int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
         if (rc != 0) {
             return rc;
         }
@@ -2715,7 +2742,7 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             /* "- :" — a compact pair with an empty key */
             uint16_t col = e_col(e, e->pos);
             int rc = e_open_map(e, col, e->line, col + 1, e->pend_anchor, e->pend_tag,
-                                e->pend_anchor_id);
+                                e->pend_anchor_id, 0);
             if (rc != 0) {
                 return rc;
             }
@@ -3452,7 +3479,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
             }
             if (e->depth == 0 || e->frames[e->depth - 1].kind != YEP_FRAME_MAP) {
                 rc = e_open_map(e, c, e->line, c + 1, e->pend_anchor, e->pend_tag,
-                                e->pend_anchor_id);
+                                e->pend_anchor_id, 0);
                 if (rc != 0) {
                     if (rc == -2) {
                         return -2;

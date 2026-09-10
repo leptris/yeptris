@@ -85,6 +85,12 @@ typedef struct yep_sink {
      * exactly as before), <0 = abort. */
     int (*on_block_pair)(void* ctx, const yep_view* key, const struct yep_block_value* v,
                          uint32_t line, uint16_t key_col, uint16_t val_col);
+    /* Optional block-open fast path (TODO.restructure/57): a `key:`
+     * line whose value lives on FOLLOWING lines, when the engine is
+     * about to open a FRESH mapping. 1 = the sink built the map node
+     * (placed, stack pushed) and the key node — the engine opens its
+     * frame silently and skips both events; 0 = events as before. */
+    int (*on_block_open)(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col);
 } yep_sink;
 
 /* Value facts for on_block_pair (the classified value classes the

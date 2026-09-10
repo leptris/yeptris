@@ -16,6 +16,11 @@ static int counting_pair(void* ctx, const yep_view* key, const yep_block_value* 
     g_pair_hits++;
     return dom_on_block_pair(ctx, key, v, line, key_col, val_col);
 }
+static int g_open_hits = 0;
+static int counting_open(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col) {
+    g_open_hits++;
+    return dom_on_block_open(ctx, key, line, key_col);
+}
 
 static void diff_one_impl(const char* name, const char* buf, size_t len, int want_pair) {
     g_cases++;
@@ -25,6 +30,7 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
     yep_dom* d1 = yep_dom_create(sys);
     yep_dom* d2 = yep_dom_create(sys);
     g_pair_hits = 0;
+    g_open_hits = 0;
     if (e1 == NULL || e2 == NULL || d1 == NULL || d2 == NULL) {
         fprintf(stderr, "DIFF %s: setup OOM\n", name);
         g_fail++;
@@ -36,7 +42,10 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
     d2->input_len = len;
 
     yep_sink ev_only = {.on_event = yep_dom_on_event, .ctx = d1};
-    yep_sink paired = {.on_event = yep_dom_on_event, .ctx = d2, .on_block_pair = counting_pair};
+    yep_sink paired = {.on_event = yep_dom_on_event,
+                       .ctx = d2,
+                       .on_block_pair = counting_pair,
+                       .on_block_open = counting_open};
     int rc1 = yep_engine_run(e1, buf, len, &ev_only);
     int rc2 = yep_engine_run(e2, buf, len, &paired);
 
@@ -53,11 +62,11 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
         g_fail++;
         goto out;
     }
-    if (want_pair && g_pair_hits == 0) {
+    if (want_pair && g_pair_hits + g_open_hits == 0) {
         fprintf(stderr, "DIFF %s: expected the pair path to fire\n", name);
         g_fail++;
     }
-    g_pair_cases += g_pair_hits;
+    g_pair_cases += g_pair_hits + g_open_hits;
 out:
     yep_dom_destroy(d1);
     yep_dom_destroy(d2);
@@ -70,6 +79,8 @@ static void diff_one(const char* name, const char* buf, size_t len) {
 }
 
 static const char* k_must_fire[] = {
+    "k:\n",
+    "outer:\n  middle:\n    inner: 1\n  sibling: 2\nafter: 3\n",
     "k: word\n",
     "k: a b c d e f g\n",
     "k: word # comment tail\n",

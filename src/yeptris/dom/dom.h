@@ -228,6 +228,7 @@ struct yep_block_value;
 
 int dom_on_block_pair(void* ctx, const yep_view* key, const struct yep_block_value* v,
                       uint32_t line, uint16_t key_col, uint16_t val_col);
+int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col);
 
 /* Direct DOM construction from a strict-validated JSON buffer
  * (TODO.impl/27): no engine, no event pipeline. The caller validated
