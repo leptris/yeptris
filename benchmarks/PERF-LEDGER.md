@@ -1051,3 +1051,26 @@ anchor/deep/block remain per-line choreography + the emit pipeline
 for BLOCK events (no span shortcut exists — the classifier already
 took the derivation cost). Ubuntu's scalar-heavy 0.41x vs mac 0.96x
 is the sharpest platform asymmetry: profile on a linux box next.
+
+## 2026-09-10 — item 54 landed: the block pair fast path
+
+The classifier's KEY arm now offers the whole line to the sink
+(on_block_pair): the DOM builds key+value nodes, resolves both
+through the document schema, binds anchors, and places them with
+the shared pairing law — no event init/dispatch/switch per node.
+EMPTY and FLOW values keep the event chain. Gate: block-pair-diff,
+a PERMANENT differential sharing the tree comparator with the flow
+gate (845 corpus cases, 779 pair lines, 0 failures) — it caught two
+real bugs in development (a class-constant mixup; an emission-order
+bug that dropped EMPTY keys), the second of which briefly sent the
+differential into an unbounded loop (the fix restores the switch
+reachability; the comparator also now bounds-checks).
+
+h2h medians after 54 (mac / ubuntu): block 0.64/0.70, flow-json
+0.86/0.98, flow-single 0.80/0.70, scalar 0.58/0.41, anchor
+0.59/0.70, deep 0.65/0.44, wide 0.74/0.64. Local sanity showed
+bigger gains (anchor 0.86) — CI runner populations still swing
+±0.15 per run; the trend is right, the margin is not yet 1.0x.
+NEXT: item 53 (fused validate+build — one walk for flow spans) and
+the linux-side profile of the scalar-heavy asymmetry (item 55's
+open half).
