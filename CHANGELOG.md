@@ -6,6 +6,39 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- TODO.restructure/49: the one-pass line classifier — scan emits
+  per-line shape facts once; the engine's fast arms dispatch a line
+  in one decision (plain/alias/anchor/flow values, dash entries),
+  strict bail on every deviation. 21 new specs pin the classes.
+
+- TODO.restructure/50: the flow sink fast path — `yep_sink` gains an
+  optional `on_flow_json`; the DOM builds engine-validated JSON-class
+  spans directly through its own placement laws (the parse_json
+  jbuilder unified onto them). PERMANENT flow-direct-diff gate.
+
+- TODO.restructure/54: the block pair fast path — the classified
+  `key: value` line is offered whole to the sink (`on_block_pair`);
+  the DOM builds both nodes with one resolver decision per scalar.
+  PERMANENT block-pair-diff gate (tree comparator shared:
+  test/flow/tree_diff.h).
+
+- The benchmark matrix carries an interleaved head-to-head table vs
+  rapidyaml (median of per-round ratios) — the campaign referee
+  (separate-phase best-of rides phase bias; runners are bimodal).
+
+### Fixed
+- Key-anchored scalars (`&a: key`) now bind their anchor ordinal in
+  the DOM — their aliases previously resolved to an unwritten slot
+  (node 0 or heap garbage; found by flow-direct-diff on 2SXE/E76Z).
+
+### Changed
+- flow-json (block-of-flow) runs 0.50x -> ~0.95x of rapidyaml on
+  the CI head-to-head medians; wide-mapping and flow-single moved up
+  (0.67->0.74x, 0.51->0.80x mac). Full parity remains on the board
+  (TODO.restructure/53, 55).
+
 ## [0.1.17] - 2026-09-09
 ### Changed
 - TODO.restructure/45 Phase-B slice one: single-line flow spans
