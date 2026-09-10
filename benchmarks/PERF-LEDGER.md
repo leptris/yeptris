@@ -1074,3 +1074,19 @@ bigger gains (anchor 0.86) — CI runner populations still swing
 NEXT: item 53 (fused validate+build — one walk for flow spans) and
 the linux-side profile of the scalar-heavy asymmetry (item 55's
 open half).
+
+## 2026-09-10 — the bounded-parse law (after four runaway incidents)
+
+An engine dispatch bug (fixed in #173's development) made one line
+re-parse forever; unattended binaries reached 130-240GB of virtual
+memory. The structural fix is now in (PR #177): every DOM growth
+path is input-capped (nodes ≤ len + 1024 — each node consumes ≥1
+input byte, spec-pinned; docs/anchors sparser; arena 128×) — a
+parse over N bytes allocates O(N) WHATEVER the bug, failing
+YEPTR_MEMORY instead of ballooning. The same cap bounds the
+quadratic %TAG-expansion DoS (~100MB arena for a 450KB input).
+Process rule recorded alongside: test binaries run under a
+ulimit+wall-kill wrapper, never unattended; throwaway /tmp harnesses
+are deleted when their question is answered. The walker SSOT
+(yep_json_walk in scan/json.c) rides the same PR — stage 1 of item
+53; the fused builder is stage 2, next.
