@@ -400,7 +400,7 @@ int yep_values_from_input(const char* yaml, size_t len, int schema_compat, yep_v
     yep_rec_init(&store);
 
     int prc = -2;
-    yep_sink sink = {yep_rec_on_event, &store, NULL};
+    yep_sink sink = {yep_rec_on_event, &store, NULL, NULL};
     yep_text_stats pst;
     yep_text_active()->scan_stats(yaml, len, &pst);
     yep_engine_prepare(eng, &pst);

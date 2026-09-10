@@ -35,7 +35,7 @@ YEPTRIS_API YeptrisPullParser yeptris_pull_new(const char* buf, size_t len) {
         yeptris_pull_free(p);
         return NULL;
     }
-    yep_sink sink = {yep_rec_on_event, &p->store, NULL};
+    yep_sink sink = {yep_rec_on_event, &p->store, NULL, NULL};
     yep_text_stats pst;
     yep_text_active()->scan_stats(buf, len, &pst);
     yep_engine_prepare(eng, &pst);

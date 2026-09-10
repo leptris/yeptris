@@ -57,6 +57,8 @@ typedef struct yep_event {
     uint32_t col;
 } yep_event;
 
+struct yep_block_value; /* value facts for on_block_pair (below) */
+
 typedef struct yep_sink {
     /* Returns 0 to continue, nonzero to abort the parse (sink error). */
     int (*on_event)(void* ctx, const yep_event* ev);
@@ -71,7 +73,26 @@ typedef struct yep_sink {
      * that consume events (pull/push/recorder) leave it NULL. */
     int (*on_flow_json)(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
                         size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id);
+    /* Optional block fast path (TODO.restructure/54): the engine's
+     * classified KEY arm offers the whole line pair — key scalar plus
+     * a classified value — before emitting any event. line/cols are
+     * the engine's position facts. Return 1 = both nodes built and
+     * placed, 0 = not handled (the engine emits the two events
+     * exactly as before), <0 = abort. */
+    int (*on_block_pair)(void* ctx, const yep_view* key, const struct yep_block_value* v,
+                         uint32_t line, uint16_t key_col, uint16_t val_col);
 } yep_sink;
+
+/* Value facts for on_block_pair (the classified value classes the
+ * block arms own; spans are input-borrowed). */
+typedef struct yep_block_value {
+    uint8_t cls;        /* YEP_LVAL_PLAIN / _ALIAS / _ANCHOR_PLAIN */
+    uint8_t borrowed;   /* 1: value borrows the input; 0: engine pool */
+    yep_view value;     /* scalar content / alias name */
+    yep_view anchor;    /* _ANCHOR_PLAIN: the &name span */
+    uint32_t anchor_id; /* engine ordinal: the definition (_ANCHOR_)
+                         * or the resolved TARGET (_ALIAS_) */
+} yep_block_value;
 
 #ifdef __cplusplus
 }

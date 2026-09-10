@@ -97,7 +97,7 @@ static int yd_sem_event(void* ctx, const yep_event* ev) {
 static char* yd_sem_dump(const char* in, size_t len, int* ok) {
     char* out = NULL;
     yep_engine* eng = yep_engine_create(yep_system_allocator());
-    yep_sink sink = {yd_sem_event, &out, NULL};
+    yep_sink sink = {yd_sem_event, &out, NULL, NULL};
     int rc = yep_engine_run(eng, in, len, &sink);
     yep_engine_destroy(eng);
     *ok = (rc == 0);

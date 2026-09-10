@@ -210,6 +210,10 @@ void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth);
  * path (the flow-direct-diff ctest pins it). 1 = built, <0 = abort. */
 int dom_on_flow_json(void* ctx, const char* p, size_t open, size_t close, uint32_t line,
                      size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id);
+struct yep_block_value;
+
+int dom_on_block_pair(void* ctx, const yep_view* key, const struct yep_block_value* v,
+                      uint32_t line, uint16_t key_col, uint16_t val_col);
 
 /* Direct DOM construction from a strict-validated JSON buffer
  * (TODO.impl/27): no engine, no event pipeline. The caller validated
