@@ -297,7 +297,8 @@ yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow) {
         ptrdiff_t hit;
         if (tiny) {
             size_t at = i;
-            while (at < len && !((stop[p[at] >> 3] >> (p[at] & 7)) & 1)) {
+            while (at < len &&
+                   !((stop[(unsigned char)p[at] >> 3] >> ((unsigned char)p[at] & 7)) & 1)) {
                 at++;
             }
             hit = (at < len) ? (ptrdiff_t)(at - i) : -1;
