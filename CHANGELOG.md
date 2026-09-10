@@ -6,6 +6,27 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- TODO.restructure/53: fused validate+build — one walk per
+  JSON-class flow span. The sink contract is a trio (build/commit/
+  rollback); the DOM stages scratch nodes past ncount, pairs them on
+  its live stack, and commits the root only after the engine's
+  grammar checks pass — every fallback stays byte-identical. The
+  grammar walker is scan/json.c's SSOT; the engine's runtime
+  max-depth threads through.
+
+- The bounded-parse law: every DOM growth path is capped by input
+  size (nodes ≤ len + 1024, docs/anchors sparser, arena 128×) — a
+  parse over N bytes allocates O(N) whatever the bug, failing
+  YEPTR_MEMORY instead of ballooning; the quadratic %TAG-expansion
+  DoS is bounded the same way. MemGuard specs pin the caps.
+
+### Changed
+- flow-json runs 1.11x (mac) / 1.15x (ubuntu) of rapidyaml on the CI
+  head-to-head medians — the first ryml-comparable shape fully won.
+  Sink literals are designated initializers throughout.
+
 ## [0.1.18] - 2026-09-10
 ### Added
 - TODO.restructure/49: the one-pass line classifier — scan emits
