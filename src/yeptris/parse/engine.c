@@ -2193,6 +2193,22 @@ static int e_shape_alias_value(yep_engine* e, const yep_line_shape* sh, int unde
     return emit_now(e, &ev) == 0 ? 1 : -2;
 }
 
+/* The classified line's key event — constructed ONLY on paths that
+ * emit it: the pair path takes the whole line without events, and
+ * building kv up front discarded ~48 stores per classified line
+ * (TODO.restructure/63 phase 1). */
+static void e_key_event(const yep_engine* e, const yep_line_shape* sh, uint16_t key_col,
+                        uint32_t line, yep_event* kv) {
+    e_event_init(kv, YEP_EV_SCALAR);
+    kv->style = YEP_STYLE_PLAIN;
+    kv->implicit = 1;
+    kv->value.p = e->p + sh->key_start;
+    kv->value.len = sh->key_end - sh->key_start;
+    kv->borrowed = 1;
+    kv->line = line;
+    kv->col = key_col + 1;
+}
+
 static int e_classified(yep_engine* e, uint16_t floor_col) {
     yep_line_info li = e_line_info_here(e);
     if (e->pos != e->line_start + li.indent) {
@@ -2272,16 +2288,6 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
      * value EVENT is prepared first (folded content, resolved alias,
      * defined anchor: exactly what the chain below would emit), so a
      * rejection emits key + prepared value unchanged. */
-    yep_event kv;
-    e_event_init(&kv, YEP_EV_SCALAR);
-    kv.style = YEP_STYLE_PLAIN;
-    kv.implicit = 1;
-    kv.value.p = e->p + sh->key_start;
-    kv.value.len = sh->key_end - sh->key_start;
-    kv.borrowed = 1;
-    kv.line = e->line;
-    kv.col = key_col + 1;
-
     yep_event vv;
     e_event_init(&vv, YEP_EV_SCALAR);
     vv.line = e->line;
@@ -2345,6 +2351,8 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
                 return 1;
             }
         }
+        yep_event kv;
+        e_key_event(e, sh, key_col, pair_line, &kv);
         if (emit_now(e, &kv) != 0 || emit_now(e, &vv) != 0) {
             return -2;
         }
@@ -2353,14 +2361,19 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
 
     /* EMPTY / FLOW: no prepared pair — the value is not on this line */
     switch (sh->val) {
-    case YEP_LVAL_EMPTY:
+    case YEP_LVAL_EMPTY: {
+        yep_event kv;
+        e_key_event(e, sh, key_col, pair_line, &kv);
         if (emit_now(e, &kv) != 0) {
             return -2;
         }
         e->pos = sh->colon + 1;
         rc = e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
         return rc == 0 ? 1 : rc;
+    }
     case YEP_LVAL_FLOW: {
+        yep_event kv;
+        e_key_event(e, sh, key_col, pair_line, &kv);
         if (emit_now(e, &kv) != 0) {
             return -2;
         }
