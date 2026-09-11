@@ -115,10 +115,17 @@ static int mut_height(const yep_dom* d, uint32_t id, uint32_t* height) {
 /* Descendant depths after a move/relink (one walk); also the
  * stream-end fixup: builder links form bottom-up, so local depths are
  * relative until the tree completes (dom.c calls this per root). */
+/* Mutation links carry the side-table facts parse no longer writes
+ * (64-2a): the attached flag and the child's depth under its parent. */
+static void mut_link(yep_dom* d, uint32_t parent, uint32_t child) {
+    dom_link(d, parent, child);
+    dom_mut_set_att(d, child, 1);
+    dom_mut_set_depth(d, child, (uint16_t)(dom_mut_depth(d, parent) + 1));
+}
+
 void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth) {
-    yep_dnode* n = &d->nodes[id];
-    n->depth = depth;
-    uint32_t c = n->first_child;
+    dom_mut_set_depth(d, id, depth);
+    uint32_t c = d->nodes[id].first_child;
     while (c != UINT32_MAX) {
         yep_mut_set_depths(d, c, (uint16_t)(depth + 1));
         c = d->nodes[c].next_sibling;
@@ -126,14 +133,14 @@ void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth) {
 }
 
 static int mut_attach_ok(yep_dom* d, uint32_t parent, uint32_t child) {
-    if (child >= d->ncount || d->nodes[child].attached) {
+    if (child >= d->ncount || dom_mut_att(d, child)) {
         return MUT_ATTACHED;
     }
     uint32_t h = 0;
     if (mut_height(d, child, &h) != 0) {
         return MUT_ERR;
     }
-    if ((uint32_t)d->nodes[parent].depth + 1 + h > YEP_DOM_MAX_DEPTH) {
+    if ((uint32_t)dom_mut_depth(d, parent) + 1 + h > YEP_DOM_MAX_DEPTH) {
         return MUT_DEPTH;
     }
     return 0;
@@ -147,7 +154,7 @@ int yep_mut_seq_add(yep_dom* d, uint32_t seq, uint32_t child) {
     if (rc != 0) {
         return rc;
     }
-    dom_link(d, seq, child);
+    mut_link(d, seq, child);
     return 0;
 }
 
@@ -190,8 +197,8 @@ static int map_place_pair(yep_dom* d, uint32_t map, const char* key, size_t klen
         d->ncount--; /* the key node never linked: retract */
         return rc;
     }
-    dom_link(d, map, k);
-    dom_link(d, map, value);
+    mut_link(d, map, k);
+    mut_link(d, map, value);
     yep_midx_invalidate(d, map);
     return 0;
 }
@@ -225,14 +232,14 @@ int yep_mut_map_set(yep_dom* d, uint32_t map, const char* key, size_t klen, uint
     if (old == UINT32_MAX) {
         return MUT_ERR; /* unbalanced pair: impossible by construction */
     }
-    d->nodes[old].attached = 0;
+    dom_mut_set_att(d, old, 0);
     d->nodes[value].next_sibling = d->nodes[old].next_sibling;
     kn->next_sibling = value;
     if (m->last_child == old) {
         m->last_child = value;
     }
-    d->nodes[value].attached = 1;
-    yep_mut_set_depths(d, value, (uint16_t)(kn->depth + 1));
+    dom_mut_set_att(d, value, 1);
+    yep_mut_set_depths(d, value, (uint16_t)(dom_mut_depth(d, k) + 1));
     yep_midx_invalidate(d, map);
     return 1;
 }
@@ -262,7 +269,7 @@ static int unlink_child(yep_dom* d, uint32_t parent, uint32_t child) {
         }
     }
     d->nodes[child].next_sibling = UINT32_MAX;
-    d->nodes[child].attached = 0;
+    dom_mut_set_att(d, child, 0);
     p->count--;
     return 0;
 }
@@ -343,9 +350,9 @@ int yep_mut_seq_set(yep_dom* d, uint32_t seq, uint32_t index, uint32_t value) {
     }
     d->nodes[value].next_sibling = d->nodes[cur].next_sibling;
     d->nodes[cur].next_sibling = UINT32_MAX;
-    d->nodes[cur].attached = 0;
-    d->nodes[value].attached = 1;
-    yep_mut_set_depths(d, value, (uint16_t)(s->depth + 1));
+    dom_mut_set_att(d, cur, 0);
+    dom_mut_set_att(d, value, 1);
+    yep_mut_set_depths(d, value, (uint16_t)(dom_mut_depth(d, seq) + 1));
     return 0;
 }
 
@@ -361,8 +368,8 @@ int yep_mut_map_add_node(yep_dom* d, uint32_t map, uint32_t key, uint32_t value)
     if (rc != 0) {
         return rc;
     }
-    dom_link(d, map, key);
-    dom_link(d, map, value);
+    mut_link(d, map, key);
+    mut_link(d, map, value);
     yep_midx_invalidate(d, map);
     return 0;
 }
@@ -371,7 +378,7 @@ int yep_mut_map_add_node(yep_dom* d, uint32_t map, uint32_t key, uint32_t value)
  * without the duplicate scan — document-order entries from a host
  * mapping cannot carry a duplicate, and the linear scan is O(n^2)
  * on wide maps (187 ms of a 20k-node build). Last wins, as at
- * parse. Depths come from dom_link (top-down links, O(1) each). */
+ * parse. Depths come from mut_link (top-down links, O(1) each). */
 int yep_mut_map_append(yep_dom* d, uint32_t map, uint32_t key, uint32_t value) {
     if (d == NULL || map >= d->ncount || d->nodes[map].kind != YEP_DOM_MAPPING) {
         return MUT_ERR;
@@ -380,8 +387,8 @@ int yep_mut_map_append(yep_dom* d, uint32_t map, uint32_t key, uint32_t value) {
     if (rc != 0) {
         return rc;
     }
-    dom_link(d, map, key);
-    dom_link(d, map, value);
+    mut_link(d, map, key);
+    mut_link(d, map, value);
     yep_midx_invalidate(d, map);
     return 0;
 }
@@ -404,7 +411,7 @@ int yep_mut_map_del(yep_dom* d, uint32_t map, const char* key, size_t klen) {
 }
 
 int yep_mut_add_root(yep_dom* d, uint32_t node) {
-    if (d == NULL || node >= d->ncount || d->nodes[node].attached) {
+    if (d == NULL || node >= d->ncount || dom_mut_att(d, node)) {
         return MUT_ATTACHED;
     }
     uint32_t h = 0;
@@ -414,8 +421,8 @@ int yep_mut_add_root(yep_dom* d, uint32_t node) {
     if (!dom_grow_docs(d, 1)) {
         return MUT_ERR;
     }
-    d->nodes[node].attached = 1;
-    d->nodes[node].depth = 0;
+    dom_mut_set_att(d, node, 1);
+    dom_mut_set_depth(d, node, 0);
     yep_mut_set_depths(d, node, 0);
     d->docs[d->dcount++] = node;
     return 0;

@@ -52,14 +52,16 @@ typedef struct yep_sview {
     uint32_t len;
 } yep_sview;
 
+/* Compact header (TODO.restructure/64-2a): kind/style/flow/implicit
+ * pack into one bitfield byte. The mutation-only attached/depth
+ * fields left the record — they live in the DOM's lazily-built side
+ * tables (parse pays nothing; dom.c owns them). */
 typedef struct yep_dnode {
-    uint8_t kind;
-    uint8_t style;
-    uint8_t implicit;
+    uint8_t kind : 2;     /* yep_dom_kind (0-3) */
+    uint8_t style : 3;    /* yep_scalar_style (0-5) */
+    uint8_t flow : 1;     /* collection opened in flow style */
+    uint8_t implicit : 1; /* scalar written without quotes/tag */
     uint8_t tag_id;       /* resolved tag (resolve/resolver.h) */
-    uint8_t flow;         /* collection opened in flow style */
-    uint8_t attached;     /* mutation: linked under a parent or a root */
-    uint16_t depth;       /* mutation: root 0, child parent+1 (capped 1000) */
     uint32_t first_child; /* child link (mappings: key,value,key,value…) */
     uint32_t last_child;
     uint32_t next_sibling;
@@ -75,7 +77,7 @@ typedef struct yep_dnode {
 /* 11's node-size gate: compact views keep the dense record <= 64 B.
  * (_Static_assert is C; this header reaches C++ test TUs.) */
 #if defined(__cplusplus)
-static_assert(sizeof(yep_dnode) <= 64, "yep_dnode exceeds the 64 B gate");
+static_assert(sizeof(yep_dnode) <= 56, "yep_dnode exceeds the 56 B gate");
 #else
 _Static_assert(sizeof(yep_dnode) <= 64, "yep_dnode exceeds the 64 B gate");
 #endif
@@ -88,6 +90,11 @@ typedef struct yep_dom {
      * YEP_ERR_MEMORY instead of ballooning. The mutation API (no input)
      * leaves it 0 and is uncapped. */
     size_t input_len;
+    /* mutation side tables (64-2a): attached bitmap + depths, grown
+     * lazily on first mutation — parse-built docs never pay */
+    uint8_t* mut_att;
+    uint16_t* mut_depth;
+    uint32_t mut_tbl_cap;
     /* fused-flow staging (TODO.restructure/53): scratch nodes live at
      * [stage_base, ncount) until commit; rollback restores the counts */
     int flow_staged;
@@ -169,6 +176,14 @@ uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_
                        int anchor_borrowed, uint8_t style, uint8_t implicit, uint8_t flow,
                        uint32_t line, uint32_t col);
 void dom_link(yep_dom* d, uint32_t parent, uint32_t child);
+
+/* Mutation-only facts (64-2a): the attached flag and node depth read
+ * through lazily-grown side tables; parse-built nodes are unattached
+ * with depth 0 until a mutation touches them. */
+int dom_mut_att(const yep_dom* d, uint32_t id);
+void dom_mut_set_att(yep_dom* d, uint32_t id, int v);
+uint16_t dom_mut_depth(const yep_dom* d, uint32_t id);
+void dom_mut_set_depth(yep_dom* d, uint32_t id, uint16_t depth);
 
 /* thread-safe handle arena (see hpool.c) */
 struct yep_hpool* yep_hpool_create(const yep_allocator* sys);
