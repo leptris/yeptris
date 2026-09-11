@@ -6,6 +6,13 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/63 phase 1: the key-event defer — classified
+  lines stop building-and-discarding the key event (48 stores per
+  line); it constructs only on emitting paths, from the pre-fold
+  line fact. Local head-to-head: block-heavy 1.03x, flow-json 1.25x.
+
 ## [0.1.22] - 2026-09-10
 ### Changed
 - The resolver number hook: spans the walker already validated as
