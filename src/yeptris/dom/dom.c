@@ -194,6 +194,8 @@ static int dom_anchor_set(yep_dom* d, uint32_t ordinal, uint32_t node) {
         if (d->anchor_nodes != NULL) {
             memcpy(na, d->anchor_nodes, d->anchor_nodes_cap * sizeof(*na));
             yep_free(d->sys, d->anchor_nodes);
+            yep_free(d->sys, d->mut_att);
+            yep_free(d->sys, d->mut_depth);
         }
         d->anchor_nodes = na;
         d->anchor_nodes_cap = cap;
@@ -224,8 +226,74 @@ void dom_link(yep_dom* d, uint32_t parent, uint32_t child) {
     }
     p->last_child = child;
     p->count++;
-    d->nodes[child].attached = 1;
-    d->nodes[child].depth = (uint16_t)(p->depth + 1);
+}
+
+/* ---- mutation side tables (64-2a) ---- */
+
+static int dom_mut_grow(yep_dom* d, uint32_t need) {
+    if (need <= d->mut_tbl_cap) {
+        return 1;
+    }
+    uint32_t cap = d->mut_tbl_cap ? d->mut_tbl_cap : 64;
+    while (cap < need) {
+        cap *= 2;
+    }
+    uint8_t* na = yep_alloc(d->sys, (size_t)cap / 8 + 1);
+    uint16_t* nd = yep_alloc(d->sys, (size_t)cap * sizeof(uint16_t));
+    if (na == NULL || nd == NULL) {
+        yep_free(d->sys, na);
+        yep_free(d->sys, nd);
+        return 0;
+    }
+    size_t old_bytes = ((size_t)d->mut_tbl_cap + 7) / 8;
+    if (d->mut_att != NULL) {
+        memcpy(na, d->mut_att, old_bytes);
+        memcpy(nd, d->mut_depth, (size_t)d->mut_tbl_cap * sizeof(uint16_t));
+    } else {
+        memset(na, 0, (size_t)cap / 8 + 1);
+        memset(nd, 0, (size_t)cap * sizeof(uint16_t));
+    }
+    yep_free(d->sys, d->mut_att);
+    yep_free(d->sys, d->mut_depth);
+    d->mut_att = na;
+    d->mut_depth = nd;
+    d->mut_tbl_cap = cap;
+    return 1;
+}
+
+int dom_mut_att(const yep_dom* d, uint32_t id) {
+    yep_dom* m = (yep_dom*)d; /* lazy growth is benign bookkeeping */
+    if (id >= m->mut_tbl_cap && !dom_mut_grow(m, id + 1)) {
+        return 0;
+    }
+    return (m->mut_att[id >> 3] >> (id & 7)) & 1;
+}
+
+void dom_mut_set_att(yep_dom* d, uint32_t id, int v) {
+    if (id >= d->mut_tbl_cap && !dom_mut_grow(d, id + 1)) {
+        return;
+    }
+    uint8_t bit = (uint8_t)(1u << (id & 7));
+    if (v) {
+        d->mut_att[id >> 3] |= bit;
+    } else {
+        d->mut_att[id >> 3] &= (uint8_t)~bit;
+    }
+}
+
+uint16_t dom_mut_depth(const yep_dom* d, uint32_t id) {
+    yep_dom* m = (yep_dom*)d;
+    if (id >= m->mut_tbl_cap && !dom_mut_grow(m, id + 1)) {
+        return 0;
+    }
+    return m->mut_depth[id];
+}
+
+void dom_mut_set_depth(yep_dom* d, uint32_t id, uint16_t depth) {
+    if (id >= d->mut_tbl_cap && !dom_mut_grow(d, id + 1)) {
+        return;
+    }
+    d->mut_depth[id] = depth;
 }
 
 /* Places a completed node: value for a pending key, child of the top
@@ -235,8 +303,6 @@ static int dom_place(yep_dom* d, uint32_t id) {
         if (!dom_grow_docs(d, 1)) {
             return -1;
         }
-        d->nodes[id].attached = 1;
-        d->nodes[id].depth = 0;
         d->docs[d->dcount++] = id;
         return 0;
     }
@@ -400,6 +466,8 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
     }
     if (pthread_mutex_init(&d->midx.mu, NULL) != 0) {
         yep_free(d->sys, d->anchor_nodes);
+        yep_free(d->sys, d->mut_att);
+        yep_free(d->sys, d->mut_depth);
         yep_hpool_destroy(d->handles);
         yep_pool_destroy(pool);
         yep_free(sys, d);
@@ -416,6 +484,8 @@ void yep_dom_destroy(yep_dom* d) {
     yep_free(d->sys, d->str);
     yep_midx_destroy(d);
     yep_free(d->sys, d->anchor_nodes);
+    yep_free(d->sys, d->mut_att);
+    yep_free(d->sys, d->mut_depth);
     yep_hpool_destroy(d->handles);
     yep_pool_destroy(d->pool);
     yep_free(d->sys, d);

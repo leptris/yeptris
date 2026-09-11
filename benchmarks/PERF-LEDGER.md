@@ -1148,3 +1148,16 @@ line build. That is a rewrite-class decision with ABI and the
 64B-gate implications — it goes to the owner BEFORE anyone builds
 it. Everything else on the board is won or at parity: flow-json
 2.04x, deep-nesting 1.03x, flow-single ~1.0x local h2h.
+
+## 2026-09-12 — item 64-2a landed: the 56-byte node
+
+kind/style/flow/implicit pack into one bitfield byte; the
+mutation-only attached/depth fields left the record for lazily-
+grown side tables (parse writes 5 fewer bytes per node and two
+fewer stores per link; mutation pays one NULL-check per access).
+Mutation links carry the facts through mut_link. Local h2h after:
+flow-json 1.46x, anchor-heavy 1.12x, flow-single 0.94x,
+deep-nesting 0.89x — node-dominated shapes move; scalar-heavy
+0.79x (its wall is the span walks, already known). The 64B gate is
+now 56B. Item 64-2b (link packing) stays measure-first; 2c
+(line/col demotion) still needs owner sign-off.
