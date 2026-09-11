@@ -249,10 +249,11 @@ static int dom_mut_grow(yep_dom* d, uint32_t need) {
     if (d->mut_att != NULL) {
         memcpy(na, d->mut_att, old_bytes);
         memcpy(nd, d->mut_depth, (size_t)d->mut_tbl_cap * sizeof(uint16_t));
-    } else {
-        memset(na, 0, (size_t)cap / 8 + 1);
-        memset(nd, 0, (size_t)cap * sizeof(uint16_t));
     }
+    /* the grown region is FRESH facts: unattached, depth 0 (a CI
+     * failure traced to garbage bits here — local mallocs were zero) */
+    memset(na + old_bytes, 0, (size_t)cap / 8 + 1 - old_bytes);
+    memset(nd + d->mut_tbl_cap, 0, (size_t)(cap - d->mut_tbl_cap) * sizeof(uint16_t));
     yep_free(d->sys, d->mut_att);
     yep_free(d->sys, d->mut_depth);
     d->mut_att = na;
