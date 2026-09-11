@@ -6,6 +6,15 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/64-2a: the 56-byte node — kind/style/flow/
+  implicit pack into one bitfield byte and the mutation-only
+  attached/depth fields leave the record for lazily-grown side
+  tables (parse writes five fewer bytes per node, two fewer stores
+  per link). Local head-to-head: flow-json 1.46x, anchor-heavy
+  1.12x. The node-size gate is 56B.
+
 ## [0.1.23] - 2026-09-11
 ### Changed
 - TODO.restructure/63 phase 1: the key-event defer — classified
