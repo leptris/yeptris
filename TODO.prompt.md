@@ -26,9 +26,11 @@ fuse scan_line+scan_shape into ONE stopset pass recording
 differentials, 279/279, the h2h referee (2-3 dispatches, read the
 spread), the bounded-parse law on any new growth path.
 
-IF SANCTIONED, implement in this order: the one-walk line scan
-first (contained, scan.c), then the node compaction behind the
-existing dom.h seam (public ABI untouched — handles are opaque).
+Sanctioned. Execute TODO.restructure/64's sub-phases in order:
+2a (evict attached/depth from the hot record — the measured 3-5%),
+2b (link packing — measure-first), 2c (line/col demotion — needs
+owner sign-off on the accessor join). Wave 6 landed phase 1 (the
+key-event defer, #194) plus the 0.1.23 lockstep release.
 
 RULES (standing): ulimit+wall-kill wrapper on EVERY binary run;
 CI h2h medians referee; differentials are PERMANENT; measure
