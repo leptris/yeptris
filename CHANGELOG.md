@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.24] - 2026-09-11
 ### Changed
 - TODO.restructure/64-2a: the 56-byte node — kind/style/flow/
   implicit pack into one bitfield byte and the mutation-only
