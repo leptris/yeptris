@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/66: the stats pre-pass is dead — the ubuntu perf
+  profile named the whole-buffer multi-class sweep (~12-13 percent
+  on the asymmetry shapes). The encoding gate rides a dedicated
+  gate_scan kernel; DOM sizing rides length heuristics; the nametab
+  reserve keeps a memchr-chain amp count. The 18B allocation table
+  is unchanged. Local head-to-head: deep-nesting 1.00x,
+  flow-single 0.96x, flow-json 1.37x.
+
 ## [0.1.24] - 2026-09-11
 ### Changed
 - TODO.restructure/64-2a: the 56-byte node — kind/style/flow/
