@@ -443,6 +443,13 @@ void yep_dom_prepare(yep_dom* d, const yep_text_stats* st) {
     yep_dom_reserve(d, node_hint, str_hint);
 }
 
+void yep_dom_prepare_len(yep_dom* d, size_t len) {
+    if (d == NULL) {
+        return;
+    }
+    yep_dom_reserve(d, (uint32_t)(len / 2 + 64), (uint32_t)(len / 16 + 256));
+}
+
 yep_dom* yep_dom_create(const yep_allocator* sys) {
     if (sys == NULL) {
         return NULL;

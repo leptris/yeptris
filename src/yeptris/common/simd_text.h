@@ -78,6 +78,13 @@ typedef struct yep_text_kernels {
      * the grammar; simd_text owns the finding). One SIMD pass,
      * three compares OR'd; bit-identical across ISAs. */
     ptrdiff_t (*qbc_find)(const char* s, size_t len);
+
+    /* 0 iff EVERY byte is gate-safe (0x20-0x7E, 09, 0A, 0D) — the
+     * encoding gate's fast answer; 1 means the authoritative validator
+     * must rule (non-ASCII may still be valid UTF-8). Replaces the
+     * multi-class stats sweep at parse entry (TODO.restructure/66).
+     * Bit-identical across ISAs. */
+    int (*gate_scan)(const char* s, size_t len);
 } yep_text_kernels;
 
 /* The best table for this CPU (atomic-lazy, like yep_cpu_detect). */
@@ -99,6 +106,7 @@ ptrdiff_t yep_text_find_not_scalar(const char* s, size_t len, char c);
 ptrdiff_t yep_text_stopset_find_scalar(const char* s, size_t len, const unsigned char set[32]);
 ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has_escape);
 void yep_text_scan_stats_scalar(const char* s, size_t len, yep_text_stats* out);
+int yep_text_gate_scan_scalar(const char* s, size_t len);
 
 /* Stopset bitmap helpers: a 256-bit bitmap is the wire form of a byte
  * class; build with yep_stopset_clear + yep_stopset_add. */

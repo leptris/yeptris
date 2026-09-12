@@ -175,9 +175,19 @@ void yep_text_scan_stats_scalar(const char* s, size_t len, yep_text_stats* out) 
     *out = st;
 }
 
+int yep_text_gate_scan_scalar(const char* s, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (!((c >= 0x20 && c <= 0x7E) || c == 0x09 || c == 0x0A || c == 0x0D)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 const yep_text_kernels yep_text_kernels_scalar = {
     yep_text_contains_scalar,   yep_text_find_scalar,         yep_text_find3_scalar,
     yep_text_count_char_scalar, yep_text_count3_scalar,       yep_text_copy_count3_scalar,
     yep_text_find_not_scalar,   yep_text_stopset_find_scalar, yep_text_quote_scan_scalar,
-    yep_text_scan_stats_scalar, yep_text_qbc_find_scalar,
+    yep_text_scan_stats_scalar, yep_text_qbc_find_scalar,     yep_text_gate_scan_scalar,
 };

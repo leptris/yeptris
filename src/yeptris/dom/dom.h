@@ -165,6 +165,11 @@ void yep_dom_reserve(yep_dom* d, uint32_t node_hint, uint32_t str_hint);
  * both call it so the measure and the product can't drift. */
 void yep_dom_prepare(yep_dom* d, const yep_text_stats* st);
 
+/* Length-heuristic pre-sizing (TODO.restructure/66): real corpora
+ * run ~0.2-0.35 nodes/byte (the legal worst, deep bracket chains,
+ * reaches ~1/byte and regrows once). No input pre-pass needed. */
+void yep_dom_prepare_len(yep_dom* d, size_t len);
+
 /* builder helpers shared with mutate.c (dom-internal) */
 int dom_grow_nodes(yep_dom* d, uint32_t need);
 int dom_grow_docs(yep_dom* d, uint32_t need);

@@ -270,13 +270,40 @@ static void yep_avx2_scan_stats(const char* s, size_t len, yep_text_stats* out) 
     out->bad_printable = (bad != 0) || tail.bad_printable;
 }
 
+static int yep_avx2_gate_scan(const char* s, size_t len) {
+    const __m256i lo = _mm256_set1_epi8(0x1F), hi = _mm256_set1_epi8(0x7F);
+    const __m256i tab = _mm256_set1_epi8(0x09), lf = _mm256_set1_epi8(0x0A),
+                  cr = _mm256_set1_epi8(0x0D);
+    size_t i = 0;
+    for (; i + 32 <= len; i += 32) {
+        __m256i x = _mm256_loadu_si256((const __m256i*)(s + i));
+        __m256i bad = _mm256_or_si256(
+            _mm256_or_si256(_mm256_cmpgt_epi8(lo, x), _mm256_cmpeq_epi8(x, hi)),
+            _mm256_andnot_si256(_mm256_or_si256(_mm256_cmpeq_epi8(x, tab),
+                                                _mm256_or_si256(_mm256_cmpeq_epi8(x, lf),
+                                                                _mm256_cmpeq_epi8(x, cr))),
+                                _mm256_set1_epi8(-1)));
+        /* _mm256_cmpgt_epi8 is SIGNED: bytes > 0x7F compare <= 0x1F is
+         * false — mask them in via the sign bit */
+        __m256i sign = _mm256_movemask_epi8(x);
+        (void)sign;
+        __m256i nonascii = _mm256_and_si256(x, _mm256_set1_epi8((char)0x80));
+        __m256i anynon = _mm256_cmpeq_epi8(nonascii, _mm256_set1_epi8((char)0x80));
+        bad = _mm256_or_si256(bad, anynon);
+        if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(bad, _mm256_set1_epi8(0))) != -1) {
+            return 1;
+        }
+    }
+    return yep_text_gate_scan_scalar(s + i, len - i);
+}
+
 const yep_text_kernels yep_text_kernels_avx2 = {
     yep_avx2_contains,   yep_avx2_find,
     yep_avx2_find3,      yep_avx2_count,
     yep_avx2_count3,     yep_avx2_copy_count3,
     yep_avx2_find_not,   yep_text_stopset_find_scalar, /* deferred — see file header */
     yep_avx2_quote_scan, yep_avx2_scan_stats,
-    yep_avx2_qbc_find,
+    yep_avx2_qbc_find,   yep_avx2_gate_scan,
 };
 
 #endif /* YEP_ARCH_X86 */

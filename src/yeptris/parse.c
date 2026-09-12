@@ -122,7 +122,6 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
     /* Encoding front-end: BOM sniff; borrow UTF-8, transcode the rest. */
     const char* data = buf;
     size_t data_len = len;
-    yep_text_stats pre_stats = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     unsigned char* transcoded = NULL;
     size_t transcoded_len = 0;
     yep_encoding enc = YEP_ENC_UNKNOWN;
@@ -161,16 +160,14 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
             st = YEPTRIS_ERROR_ENCODING;
             goto fail;
         }
-        yep_text_active()->scan_stats(data, data_len, &pre_stats);
     } else {
-        /* one fused SIMD pass answers everything the pre-engine
-         * machinery asks: pure printable-ASCII input skips the SWAR
-         * validator entirely (any non-ASCII or violation falls to it
-         * for the authoritative answer + error position) */
-        yep_text_stats pst;
-        yep_text_active()->scan_stats(data, data_len, &pst);
-        pre_stats = pst;
-        if (pst.nonascii || pst.bad_printable) {
+        /* The encoding gate rides the cheap gate_scan kernel; sizing
+         * rides length heuristics (TODO.restructure/66: the fused
+         * multi-class stats sweep cost ~12% on the ubuntu asymmetry
+         * shapes — ryml pays no pre-pass). Pure gate-safe input skips
+         * the SWAR validator entirely; anything else falls to it for
+         * the authoritative answer + error position. */
+        if (yep_text_active()->gate_scan(data, data_len)) {
             size_t verr = 0;
             if (!yep_printable_validate((const unsigned char*)data, data_len, &verr)) {
                 yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, verr,
@@ -215,8 +212,19 @@ engine_enter:
      * after, every scalar was arena-copied (found 2026-09-10). */
     dom->input_len = data_len;
     dom->input_base = transcoded ? (const char*)transcoded : buf;
-    yep_dom_prepare(dom, &pre_stats);
-    yep_engine_prepare(eng, &pre_stats);
+    yep_dom_prepare_len(dom, data_len);
+    {
+        /* the nametab reserve survives: a memchr chain for '&' is
+         * far cheaper than the class sweep it replaced */
+        yep_text_stats amp_only = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        const char* q = data;
+        const char* end = data + data_len;
+        while ((q = memchr(q, '&', (size_t)(end - q))) != NULL) {
+            amp_only.amp++;
+            q++;
+        }
+        yep_engine_prepare(eng, &amp_only);
+    }
 
     yep_sink sink = {.on_event = yep_dom_on_event,
                      .ctx = dom,
