@@ -225,7 +225,8 @@ int main(int argc, char** argv) {
                          .on_flow_commit = NULL,
                          .on_flow_rollback = NULL,
                          .on_block_pair = NULL,
-                         .on_block_open = NULL};
+                         .on_block_open = NULL,
+                         .on_block_item = NULL};
         int rc = yep_engine_run(eng, input, ilen, &sink);
         if (rc != 0) {
             yd_put(&o, "!ERROR\n", 7);

@@ -104,7 +104,8 @@ static mem_stats measure_mem(const Corpus& c) {
                          .on_flow_commit = NULL,
                          .on_flow_rollback = NULL,
                          .on_block_pair = NULL,
-                         .on_block_open = NULL};
+                         .on_block_open = NULL,
+                         .on_block_item = NULL};
         int rc = yep_engine_run(eng, c.data.data(), c.data.size(), &sink);
         if (rc == 0 && dom->ncount > 0) {
             ms.allocs_per_mb = (double)cnt.allocs / ((double)c.data.size() / 1e6);

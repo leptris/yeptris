@@ -89,7 +89,8 @@ YEPTRIS_API YeptrisStatus yeptris_push_parse(const char* buf, size_t len, yeptri
                      .on_flow_commit = NULL,
                      .on_flow_rollback = NULL,
                      .on_block_pair = NULL,
-                     .on_block_open = NULL};
+                     .on_block_open = NULL,
+                     .on_block_item = NULL};
     yep_text_stats pst;
     yep_text_active()->scan_stats(buf, len, &pst);
     yep_engine_prepare(eng, &pst);
