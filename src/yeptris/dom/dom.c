@@ -138,8 +138,7 @@ static yep_sview dom_str_in(yep_dom* d, const yep_view* v, int borrowed) {
  * event-path anchors copy to the arena; input-backed views borrow).
  * tag_id stays 0 — the caller resolves (scalars) or leaves 0. */
 uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_view* anchor,
-                       int anchor_borrowed, uint8_t style, uint8_t implicit, uint8_t flow,
-                       uint32_t line, uint32_t col) {
+                       int anchor_borrowed, uint8_t style, uint8_t implicit, uint8_t flow) {
     if (!dom_grow_nodes(d, 1)) {
         return UINT32_MAX;
     }
@@ -155,19 +154,17 @@ uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_
     n->style = style;
     n->implicit = implicit;
     n->flow = flow;
-    n->line = line;
-    n->col = col;
     return d->ncount++;
 }
 
 uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind) {
     if (ev == NULL) {
-        return dom_open_node(d, kind, NULL, NULL, 0, 0, 0, 0, 0, 0);
+        return dom_open_node(d, kind, NULL, NULL, 0, 0, 0, 0);
     }
     /* event-path anchors ride the VALUE's borrowedness (historical
      * law, kept byte-identical) */
     uint32_t id = dom_open_node(d, kind, &ev->tag, &ev->anchor, ev->borrowed, ev->style,
-                                ev->implicit, ev->flow, ev->line, ev->col);
+                                ev->implicit, ev->flow);
     if (id == UINT32_MAX) {
         return UINT32_MAX;
     }
@@ -183,7 +180,18 @@ static int dom_anchor_set(yep_dom* d, uint32_t ordinal, uint32_t node) {
         return -1; /* more anchors than input bytes: a bug, not a doc */
     }
     if (ordinal > d->anchor_nodes_cap) {
+        /* First allocation sizes from the input (TODO.restructure/71):
+         * growth from a bare 64 re-copied the table ~18 times on
+         * anchor-heavy (one entry per '&x…' line). len/32 overshoots
+         * only pathological one-anchor-per-2-bytes documents, which
+         * then double as before. */
         uint32_t cap = d->anchor_nodes_cap ? d->anchor_nodes_cap * 2 : 64;
+        if (d->anchor_nodes_cap == 0 && d->input_len > 2048) {
+            uint32_t sized = (uint32_t)(d->input_len / 32) + 64;
+            if (sized > cap) {
+                cap = sized;
+            }
+        }
         while (cap < ordinal) {
             cap *= 2;
         }
@@ -529,7 +537,7 @@ typedef struct {
 static int jb_value(jbuilder* b);
 
 static int jb_string_node(jbuilder* b) {
-    uint32_t id = dom_open_node(b->d, YEP_DOM_SCALAR, NULL, NULL, 0, 0, 0, 0, 0, 0);
+    uint32_t id = dom_open_node(b->d, YEP_DOM_SCALAR, NULL, NULL, 0, 0, 0, 0);
     if (id == UINT32_MAX) {
         return -1;
     }
@@ -558,7 +566,7 @@ static int jb_string_node(jbuilder* b) {
 }
 
 static int jb_scalar_node(jbuilder* b) {
-    uint32_t id = dom_open_node(b->d, YEP_DOM_SCALAR, NULL, NULL, 0, 0, 0, 0, 0, 0);
+    uint32_t id = dom_open_node(b->d, YEP_DOM_SCALAR, NULL, NULL, 0, 0, 0, 0);
     if (id == UINT32_MAX) {
         return -1;
     }
@@ -616,8 +624,8 @@ static int jb_value(jbuilder* b) {
         }
         int map = (c == '{');
         b->i++;
-        uint32_t id = dom_open_node(d, map ? YEP_DOM_MAPPING : YEP_DOM_SEQUENCE, NULL, NULL, 0, 0,
-                                    0, 1, 0, 0);
+        uint32_t id =
+            dom_open_node(d, map ? YEP_DOM_MAPPING : YEP_DOM_SEQUENCE, NULL, NULL, 0, 0, 0, 1);
         if (id == UINT32_MAX) {
             return -1;
         }
@@ -712,11 +720,8 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
     d->flow_stage_base = d->ncount;
     d->flow_stage_str = d->str_len;
 
-    uint32_t cur_line = line;
-    size_t cur_ls = line_start;
-    size_t cur_scan = open;
     uint32_t root = dom_open_node(d, p[open] == '[' ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, &tag,
-                                  &anchor, 0, 0, 0, 1, cur_line, (uint32_t)(open + 1 - cur_ls) + 1);
+                                  &anchor, 0, 0, 0, 1);
     if (root == UINT32_MAX) {
         goto fail;
     }
@@ -734,7 +739,6 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
             dom_flow_stage_reset(d);
             return 0; /* not JSON-class: the general kernel */
         }
-        yep_scan_advance_line(p, &cur_scan, t.at, &cur_line, &cur_ls);
         if (st == YEP_JW_DONE) {
             break;
         }
@@ -744,9 +748,8 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
             if (d->depth >= YEP_DOM_MAX_DEPTH) {
                 goto fail;
             }
-            uint32_t cid =
-                dom_open_node(d, t.cls == '[' ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, NULL, NULL, 0,
-                              0, 0, 1, cur_line, (uint32_t)(t.at + 1 - cur_ls) + 1);
+            uint32_t cid = dom_open_node(d, t.cls == '[' ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, NULL,
+                                         NULL, 0, 0, 0, 1);
             if (cid == UINT32_MAX) {
                 goto fail;
             }
@@ -762,8 +765,8 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
             d->depth--;
             break;
         case '"': {
-            uint32_t sid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_DOUBLE_QUOTED,
-                                         0, 0, cur_line, (uint32_t)(t.at - cur_ls) + 1);
+            uint32_t sid =
+                dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_DOUBLE_QUOTED, 0, 0);
             if (sid == UINT32_MAX) {
                 goto fail;
             }
@@ -786,8 +789,7 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
             break;
         }
         default: { /* number or literal: the walker validated the span */
-            uint32_t sid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0,
-                                         cur_line, (uint32_t)(t.at - cur_ls) + 1);
+            uint32_t sid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0);
             if (sid == UINT32_MAX) {
                 goto fail;
             }
@@ -852,8 +854,7 @@ int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t ke
         return 0;
     }
     const yep_resolver* r = dom_resolver(d);
-    uint32_t mid =
-        dom_open_node(d, YEP_DOM_MAPPING, NULL, NULL, 0, 0, 0, 0, line, (uint32_t)key_col + 1);
+    uint32_t mid = dom_open_node(d, YEP_DOM_MAPPING, NULL, NULL, 0, 0, 0, 0);
     if (mid == UINT32_MAX) {
         return -1;
     }
@@ -862,8 +863,7 @@ int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t ke
     }
     d->map_pending_key[d->depth] = 0;
     d->stack[d->depth++] = mid;
-    uint32_t kid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0, line,
-                                 (uint32_t)key_col + 1);
+    uint32_t kid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0);
     if (kid == UINT32_MAX) {
         d->depth--;
         return -1;
@@ -891,8 +891,7 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
         }
     }
     const yep_resolver* r = dom_resolver(d);
-    uint32_t kid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0, line,
-                                 (uint32_t)key_col + 1);
+    uint32_t kid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0);
     if (kid == UINT32_MAX) {
         return -1;
     }
@@ -902,8 +901,7 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
         return -1;
     }
     if (v->cls == YEP_LVAL_ALIAS) {
-        uint32_t vid =
-            dom_open_node(d, YEP_DOM_ALIAS, NULL, NULL, 0, 0, 0, 0, line, (uint32_t)val_col + 1);
+        uint32_t vid = dom_open_node(d, YEP_DOM_ALIAS, NULL, NULL, 0, 0, 0, 0);
         if (vid == UINT32_MAX) {
             return -1;
         }
@@ -913,7 +911,7 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
     }
     int anchored = (v->cls == YEP_LVAL_ANCHOR_PLAIN);
     uint32_t vid = dom_open_node(d, YEP_DOM_SCALAR, NULL, anchored ? &v->anchor : NULL, v->borrowed,
-                                 YEP_STYLE_PLAIN, 1, 0, line, (uint32_t)val_col + 1);
+                                 YEP_STYLE_PLAIN, 1, 0);
     if (vid == UINT32_MAX) {
         return -1;
     }

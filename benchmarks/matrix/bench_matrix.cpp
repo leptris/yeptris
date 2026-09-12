@@ -586,19 +586,40 @@ double h2h_ratio(const Corpus& c, int rounds, double* yep_mb) {
     YeptrisStatus st = YEPTRIS_OK;
     try {
         for (int i = 0; i < rounds; i++) {
-            auto a0 = clk::now();
-            YeptrisDocument d = yeptris_parse(c.data.data(), c.data.size(), &st);
-            auto a1 = clk::now();
-            yeptris_document_free(d);
-            memcpy(&scratch[0], c.data.data(), c.data.size());
-            auto b0 = clk::now();
-            ryml::parse_in_place(ryml::csubstr{}, ryml::to_substr(scratch), &tree);
-            auto b1 = clk::now();
-            if (tree.size() <= 1) {
-                break; /* rejected corpus: no h2h */
+            /* Order alternates per round: whoever parses second rides the
+             * core the first just warmed (turbo/cache state) — a fixed
+             * order is a systematic bias that scales with ambient clock
+             * (the referee swung ±0.2 across identical builds). */
+            double ty, tr;
+            if (i & 1) {
+                memcpy(&scratch[0], c.data.data(), c.data.size());
+                auto b0 = clk::now();
+                ryml::parse_in_place(ryml::csubstr{}, ryml::to_substr(scratch), &tree);
+                auto b1 = clk::now();
+                if (tree.size() <= 1) {
+                    break; /* rejected corpus: no h2h */
+                }
+                auto a0 = clk::now();
+                YeptrisDocument d = yeptris_parse(c.data.data(), c.data.size(), &st);
+                auto a1 = clk::now();
+                yeptris_document_free(d);
+                ty = ms_of(a0, a1);
+                tr = ms_of(b0, b1);
+            } else {
+                auto a0 = clk::now();
+                YeptrisDocument d = yeptris_parse(c.data.data(), c.data.size(), &st);
+                auto a1 = clk::now();
+                yeptris_document_free(d);
+                memcpy(&scratch[0], c.data.data(), c.data.size());
+                auto b0 = clk::now();
+                ryml::parse_in_place(ryml::csubstr{}, ryml::to_substr(scratch), &tree);
+                auto b1 = clk::now();
+                if (tree.size() <= 1) {
+                    break; /* rejected corpus: no h2h */
+                }
+                ty = ms_of(a0, a1);
+                tr = ms_of(b0, b1);
             }
-            double ty = ms_of(a0, a1);
-            double tr = ms_of(b0, b1);
             if (ty < best_yep) {
                 best_yep = ty;
             }
@@ -625,6 +646,7 @@ double h2h_ratio(const Corpus& c, int rounds, double* yep_mb) {
 int main(int argc, char** argv) {
     const char* out_dir = "bench-out";
     int full = 0;
+    const char* one_shape = NULL; /* --shape NAME: DOM loop only (profiling) */
     unsigned long seed = 0xC0FFEE;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--full") == 0) {
@@ -633,6 +655,8 @@ int main(int argc, char** argv) {
             full = 0;
         } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
             seed = (unsigned long)strtoul(argv[++i], NULL, 0);
+        } else if (strcmp(argv[i], "--shape") == 0 && i + 1 < argc) {
+            one_shape = argv[++i];
         } else {
             out_dir = argv[i];
         }
@@ -695,6 +719,21 @@ int main(int argc, char** argv) {
                 fclose(fp);
             }
         }
+    }
+
+    /* --shape NAME: DOM parse loop on the one corpus, ~30s (sample
+     * target for the perf/profile workflows — one hot path per run) */
+    if (one_shape != NULL) {
+        for (const Corpus& c : corpora) {
+            if (c.name != one_shape) {
+                continue;
+            }
+            Result r = bench_dom(c, 400);
+            printf("%s: DOM %.2f MB/s (%.2f ms)\n", c.name.c_str(), r.mb_s, r.ms);
+            return 0;
+        }
+        fprintf(stderr, "unknown shape: %s\n", one_shape);
+        return 2;
     }
 
     printf("18B measures (parse path)\n\n");

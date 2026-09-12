@@ -70,16 +70,15 @@ typedef struct yep_dnode {
     yep_sview value; /* scalar content / alias name */
     yep_sview tag;
     yep_sview anchor;
-    uint32_t line;
-    uint32_t col;
-} yep_dnode;
+} yep_dnode; /* 48 B: line/col never left the event stream (64-2c) —
+                the pull/push/recorder APIs remain the source */
 
-/* 11's node-size gate: compact views keep the dense record <= 64 B.
+/* 11's node-size gate, tightened by 64-2c: <= 48 B.
  * (_Static_assert is C; this header reaches C++ test TUs.) */
 #if defined(__cplusplus)
-static_assert(sizeof(yep_dnode) <= 56, "yep_dnode exceeds the 56 B gate");
+static_assert(sizeof(yep_dnode) <= 48, "yep_dnode exceeds the 48 B gate");
 #else
-_Static_assert(sizeof(yep_dnode) <= 64, "yep_dnode exceeds the 64 B gate");
+_Static_assert(sizeof(yep_dnode) <= 48, "yep_dnode exceeds the 48 B gate");
 #endif
 
 typedef struct yep_dom {
@@ -178,8 +177,7 @@ uint32_t dom_new_node(yep_dom* d, const yep_event* ev, uint8_t kind);
  * direct builders (no yep_event plumbing): creates and initializes a
  * node; UINT32_MAX = OOM. */
 uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_view* anchor,
-                       int anchor_borrowed, uint8_t style, uint8_t implicit, uint8_t flow,
-                       uint32_t line, uint32_t col);
+                       int anchor_borrowed, uint8_t style, uint8_t implicit, uint8_t flow);
 void dom_link(yep_dom* d, uint32_t parent, uint32_t child);
 
 /* Mutation-only facts (64-2a): the attached flag and node depth read

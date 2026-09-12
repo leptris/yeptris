@@ -5,7 +5,7 @@
  * sizing ops are the ≥8×-vs-scalar acceptance target); position queries
  * reduce through a stack movemask helper — correct first, and the perf
  * ledger records it as a refinement candidate if 06's profiles care.
- * stopset_find is deliberately scalar here too (see the AVX2 header note).
+ * stopset_find is vectorized (TODO.restructure/68, nibble-class tbl).
  */
 
 #include "port.h" /* defines YEP_ARCH_* — must precede the guard below */
@@ -270,18 +270,15 @@ static void yep_neon_scan_stats(const char* s, size_t len, yep_text_stats* out) 
 }
 
 static int yep_neon_gate_scan(const char* s, size_t len) {
-    const uint8x16_t lo = vdupq_n_u8(0x1F), hi = vdupq_n_u8(0x7F);
-    const uint8x16_t tab = vdupq_n_u8(0x09), lf = vdupq_n_u8(0x0A), cr = vdupq_n_u8(0x0D),
-                     zeros = vdupq_n_u8(0), ones = vdupq_n_u8(1);
+    const uint8x16_t sp = vdupq_n_u8(0x20), del = vdupq_n_u8(0x7F), hi = vdupq_n_u8(0x80);
+    const uint8x16_t tab = vdupq_n_u8(0x09), lf = vdupq_n_u8(0x0A), cr = vdupq_n_u8(0x0D);
     size_t i = 0;
     for (; i + 16 <= len; i += 16) {
         uint8x16_t x = vld1q_u8((const uint8_t*)(s + i));
-        uint8x16_t ctrl = vorrq_u8(vcltq_u8(x, lo), vceqq_u8(x, hi));
+        uint8x16_t ctrl = vcltq_u8(x, sp); /* C0 complete: 0x1F included */
         uint8x16_t allow = vorrq_u8(vceqq_u8(x, tab), vorrq_u8(vceqq_u8(x, lf), vceqq_u8(x, cr)));
-        uint8x16_t nonascii = vcgeq_u8(x, vdupq_n_u8(0x80));
-        uint8x16_t bad = vorrq_u8(vorrq_u8(ctrl, nonascii), vandq_u8(vandq_u8(ones, allow), zeros));
-        /* ctrl/nonascii already include only violations; allow-masking is
-         * redundant for them — the vand term is a no-op to keep intent */
+        uint8x16_t nonascii = vcgeq_u8(x, hi);
+        uint8x16_t bad = vorrq_u8(vorrq_u8(vbicq_u8(ctrl, allow), nonascii), vceqq_u8(x, del));
         if (vmaxvq_u32(vreinterpretq_u32_u8(bad)) != 0) {
             return 1;
         }
@@ -289,13 +286,47 @@ static int yep_neon_gate_scan(const char* s, size_t len) {
     return yep_text_gate_scan_scalar(s + i, len - i);
 }
 
+/* First member byte via two tbl lookups per nibble-class group
+ * (TODO.restructure/68): lane matches iff lo[b&15] & hi[b>>4] != 0 —
+ * exact for the whole class, so the first nonzero lane IS the answer.
+ * The hit chunk spills one 16-byte vector and scans it scalar (a span
+ * hits once, at its end). */
+static ptrdiff_t yep_neon_stopset_find(const yep_stopset* ss, const char* s, size_t len) {
+    /* two loaded groups is the sweet spot (every YAML stop class is
+     * 1-2); wider classes take the scalar bitmap walk */
+    if (ss->groups == 0 || ss->groups > 2) {
+        return yep_text_stopset_find_scalar(ss, s, len);
+    }
+    const uint8x16_t tlo0 = vld1q_u8(ss->lo[0]), thi0 = vld1q_u8(ss->hi[0]);
+    const uint8x16_t tlo1 = vld1q_u8(ss->lo[1]), thi1 = vld1q_u8(ss->hi[1]);
+    const uint8x16_t f = vdupq_n_u8(15);
+    const int two = ss->groups > 1;
+    size_t i = 0;
+    for (; i + 16 <= len; i += 16) {
+        uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(s + i));
+        uint8x16_t lo = vandq_u8(v, f), hi = vshrq_n_u8(v, 4);
+        uint8x16_t m = vandq_u8(vqtbl1q_u8(tlo0, lo), vqtbl1q_u8(thi0, hi));
+        if (two) {
+            m = vorrq_u8(m, vandq_u8(vqtbl1q_u8(tlo1, lo), vqtbl1q_u8(thi1, hi)));
+        }
+        if (vmaxvq_u8(m) != 0) {
+            unsigned char hit[16] __attribute__((aligned(16)));
+            vst1q_u8(hit, m);
+            for (int k = 0; k < 16; k++) {
+                if (hit[k] != 0) {
+                    return (ptrdiff_t)(i + (size_t)k);
+                }
+            }
+        }
+    }
+    ptrdiff_t tail = yep_text_stopset_find_scalar(ss, s + i, len - i);
+    return tail < 0 ? -1 : (ptrdiff_t)i + tail;
+}
+
 const yep_text_kernels yep_text_kernels_neon = {
-    yep_neon_contains,   yep_neon_find,
-    yep_neon_find3,      yep_neon_count,
-    yep_neon_count3,     yep_neon_copy_count3,
-    yep_neon_find_not,   yep_text_stopset_find_scalar, /* deferred — see AVX2 header note */
-    yep_neon_quote_scan, yep_neon_scan_stats,
-    yep_neon_qbc_find,   yep_neon_gate_scan,
+    yep_neon_contains,   yep_neon_find,        yep_neon_find3,    yep_neon_count,
+    yep_neon_count3,     yep_neon_copy_count3, yep_neon_find_not, yep_neon_stopset_find,
+    yep_neon_quote_scan, yep_neon_scan_stats,  yep_neon_qbc_find, yep_neon_gate_scan,
 };
 
 #endif /* YEP_ARCH_AARCH64 */

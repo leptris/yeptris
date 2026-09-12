@@ -11,6 +11,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "common/simd_text.h" /* yep_stopset (the stop-class form) */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -103,14 +105,14 @@ yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow);
  * never reach a plain start: the engine dispatches flow first). */
 int yep_plain_first_ok(unsigned char c);
 
-/* The plain-scalar stop bitmaps (scan.c's SSOT; generated once —
- * bitmaps for '\n','\r',':','#' and, in flow, ',','[',']','{','}').
- * Externally linked so the unit suite can pin them against a runtime
- * build — a hand-written bitmap drift here would silently end every
- * plain scalar early. */
-extern const unsigned char yep_break_set[32];
-extern const unsigned char k_plain_stop_block[32];
-extern const unsigned char k_plain_stop_flow[32];
+/* The stop classes (scan.c's SSOT; prebuilt nibble-class tables —
+ * '\n','\r',':','#' and, in flow, ',','[',']','{','}').
+ * Externally linked so the unit suite can pin them against
+ * yep_stopset_init — a hand-written literal drift here would silently
+ * end every plain scalar early. */
+extern const yep_stopset yep_break_stopset;
+extern const yep_stopset yep_plain_stop_block;
+extern const yep_stopset yep_plain_stop_flow;
 
 /* Scans a quoted scalar whose opening quote is at pos. Returns span of
  * the CONTENT (between quotes) and sets *term (EOL on unterminated → the

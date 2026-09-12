@@ -75,14 +75,12 @@ static int node_eq(const yep_dom* a, const yep_dom* b, uint32_t ra, uint32_t rb)
         const yep_dnode* x = &a->nodes[pr.a];
         const yep_dnode* y = &b->nodes[pr.b];
         if (x->kind != y->kind || x->style != y->style || x->implicit != y->implicit ||
-            x->tag_id != y->tag_id || x->flow != y->flow || x->line != y->line ||
-            x->col != y->col || x->count != y->count) {
+            x->tag_id != y->tag_id || x->flow != y->flow || x->count != y->count) {
             fprintf(stderr,
                     "DIFF field a=%u b=%u kind %u/%u style %u/%u impl %u/%u tag %u/%u flow "
-                    "%u/%u line %u/%u col %u/%u cnt %u/%u\n",
+                    "%u/%u cnt %u/%u\n",
                     pr.a, pr.b, x->kind, y->kind, x->style, y->style, x->implicit, y->implicit,
-                    x->tag_id, y->tag_id, x->flow, y->flow, x->line, y->line, x->col, y->col,
-                    x->count, y->count);
+                    x->tag_id, y->tag_id, x->flow, y->flow, x->count, y->count);
             eq = 0;
             break;
         }
@@ -105,8 +103,7 @@ static int node_eq(const yep_dom* a, const yep_dom* b, uint32_t ra, uint32_t rb)
             }
             const yep_dnode* xt = &a->nodes[x->target];
             const yep_dnode* yt = &b->nodes[y->target];
-            if (xt->kind != yt->kind || xt->line != yt->line || xt->col != yt->col ||
-                xt->value.len != yt->value.len) {
+            if (xt->kind != yt->kind || xt->value.len != yt->value.len) {
                 eq = 0;
                 break;
             }

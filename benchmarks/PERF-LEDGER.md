@@ -1180,3 +1180,40 @@ len/K), keep the amp-count nametab reserve (cheap), and let
 dom_grow absorb the difference (the growth memmove it prevented
 was measured at ~5%; the sweep costs more). Gate: the h2h medians
 plus the 18B allocation table (allocs/MB must not regress).
+
+
+## 2026-09-12 — the gate-bug campaign (items 68-72)
+
+Standing at v0.1.26 (interleaved h2h, fair-order referee added this
+session — the old fixed yeptris-first order handed ryml the warmed
+core; ±0.2 of apparent regression was that bias): block 0.58, flow-json
+0.74, flow-single 0.72, scalar 0.67, anchor 0.44-0.48, deep 0.80, wide
+0.85.
+
+Root-cause find: BOTH gate_scan vector masks were broken (AVX2 OR'd
+~allow in — gate always tripped, whole-document SWAR validate on every
+parse, the ubuntu scalar-heavy asymmetry; NEON ANDed allow with zero —
+every TAB/LF/CR tripped it; both missed 0x1F — a real conformance
+hole). No differential spec existed. Shipped v0.1.24-0.1.26 carried it.
+
+Landed:
+- 68 SIMD stopset (nibble-class yep_stopset; NEON tbl / AVX2 pshufb;
+  literals pinned by spec): kernel 2156 → 621 samples on scalar-heavy.
+- 69 gate fix + chunk-gated validator (clean 32B chunks ride the
+  kernel; dirty chunks walk exactly): validate 4-8% → 0 on clean input.
+- 70 48B nodes (line/col removed — written-never-read; flow walker
+  drops per-token line bookkeeping).
+- 71 core12 single-branch (649 → 249 samples anchor-heavy), repeat-
+  alias memo, anchor-table first-alloc sizing (kills ~18 regrowth
+  memcpys/parse).
+- 72 audit: e_node is the nested-map opener, not a fast-arm miss;
+  engine loop rework deferred with numbers.
+
+Session close (2-3 referee runs each, M-series): block 0.70-0.82,
+flow-json 0.90-0.99, flow-single 0.96-1.04, scalar 0.82-1.10, anchor
+0.48-0.50, deep 0.94-1.10, wide 0.94-0.97. CI/ubuntu expected higher:
+the AVX2 gate bug taxed every x86 parse.
+
+Remaining honest gap: anchor-heavy (~0.5x) and block (~0.75x) — the
+engine dispatch loop + nested-map opener machinery (72's deferred
+numbers), the one structural difference left vs ryml's lazier build.

@@ -5,7 +5,12 @@
  * int:  [-+]?[0-9]+ | [-+]?0o[0-7]+ | [-+]?0x[0-9a-fA-F]+
  * float: core float production, [-+]?(\.inf|\.Inf|\.INF), \.nan/\.NaN/\.NAN
  * else str
- * One pass, no allocations; spec-table vectors in test_resolve.cpp.
+ *
+ * Shape (TODO.restructure/71): the first-byte gate, then ONE branch —
+ * word lead letters do the null/true/false compares and return, digits
+ * and signs take the number walk. The old chain tried the word memcmps
+ * for every length-4/5 scalar before ruling (anchor-heavy: 42 cycles
+ * per call on gate-passing strings).
  */
 
 #include <stdint.h>
@@ -13,84 +18,66 @@
 
 #include "resolver.h"
 
-/* Word-class checks use constant-size memcmp only: a per-word strlen
- * loop (tag_is) cost measurable percent of scalar-heavy parse — the
- * resolver runs once per scalar event. */
-#define TAG_IS4(p, a, b, c) (memcmp(p, a, 4) == 0 || memcmp(p, b, 4) == 0 || memcmp(p, c, 4) == 0)
-#define TAG_IS5(p, a, b, c) (memcmp(p, a, 5) == 0 || memcmp(p, b, 5) == 0 || memcmp(p, c, 5) == 0)
-
 static yep_tag_id core12(void* ctx, const char* p, uint32_t n) {
     (void)ctx;
     if (n == 0) {
         return 4; /* null */
     }
-    if (n == 1) {
-        if (p[0] == '~') {
-            return 4; /* null */
-        }
-    } else if (n == 4) {
-        if (TAG_IS4(p, "null", "Null", "NULL")) {
-            return 4; /* null */
-        }
-        if (TAG_IS4(p, "true", "True", "TRUE")) {
-            return 3; /* bool */
-        }
-    } else if (n == 5) {
-        if (TAG_IS5(p, "false", "False", "FALSE")) {
-            return 3; /* bool */
-        }
-    }
-    /* First-byte gate (profile: 6.5% of deep-nesting was the reject
-     * chain). A first byte that can begin no core word — not a digit,
-     * sign, dot, or the lead letters of the null/bool/inf/nan words —
-     * is a string, full stop. */
-    switch (p[0]) {
-    case 'n':
-    case 'N':
-    case '~':
-    case 't':
-    case 'T':
-    case 'f':
-    case 'F':
-    case 'y':
-    case 'Y': /* compat words share the gate harmlessly */
-    case '0':
-    case '1':
-    case '2':
-    case '3':
-    case '4':
-    case '5':
-    case '6':
-    case '7':
-    case '8':
-    case '9':
-    case '-':
-    case '+':
-    case '.':
-        break; /* could be a word or number: the chain rules */
-    default:
-        return 0; /* str */
+    unsigned char c0 = (unsigned char)p[0];
+    unsigned l0 = c0 | 0x20u;
+
+    /* The gate (profile: 6.5% of deep-nesting was the reject chain):
+     * a first byte that can begin no core production is a string. */
+    if (!((c0 >= '0' && c0 <= '9') || c0 == '-' || c0 == '+' || c0 == '.' || l0 == 'n' ||
+          l0 == 't' || l0 == 'f' || l0 == 'y' || c0 == '~')) {
+        return 0;
     }
 
-    uint32_t i = 0;
-    if (p[0] == '-' || p[0] == '+') {
-        i = 1;
+    /* Word leads: the exact casings only; every other spelling (and
+     * every y-word — compat owns those) is a string, no walk. */
+    if (l0 == 'n' || l0 == 't' || l0 == 'f' || l0 == 'y') {
+        if (n == 4 && l0 == 'n') {
+            return (memcmp(p, "null", 4) == 0 || memcmp(p, "Null", 4) == 0 ||
+                    memcmp(p, "NULL", 4) == 0)
+                       ? 4
+                       : 0;
+        }
+        if (n == 4 && l0 == 't') {
+            return (memcmp(p, "true", 4) == 0 || memcmp(p, "True", 4) == 0 ||
+                    memcmp(p, "TRUE", 4) == 0)
+                       ? 3
+                       : 0;
+        }
+        if (n == 5 && l0 == 'f') {
+            return (memcmp(p, "false", 5) == 0 || memcmp(p, "False", 5) == 0 ||
+                    memcmp(p, "FALSE", 5) == 0)
+                       ? 3
+                       : 0;
+        }
+        return 0;
     }
+    if (c0 == '~') {
+        return n == 1 ? 4 : 0;
+    }
+
+    /* Number path: optional sign, then the productions in frequency
+     * order (.inf/.nan, hex, octal, decimal int/float). */
+    uint32_t i = (c0 == '-' || c0 == '+') ? 1 : 0;
     if (i >= n) {
         return 0; /* lone sign */
     }
-    /* .inf / .nan family (sign allowed on inf) */
     {
         const char* r = p + i;
         uint32_t rn = n - i;
         if (rn == 4 && r[0] == '.') {
-            if (TAG_IS4(r, ".inf", ".Inf", ".INF") ||
-                (i == 0 && TAG_IS4(r, ".nan", ".NaN", ".NAN"))) {
-                return 2; /* float */ /* NaN carries no sign */
+            if (memcmp(r, ".inf", 4) == 0 || memcmp(r, ".Inf", 4) == 0 ||
+                memcmp(r, ".INF", 4) == 0 ||
+                (i == 0 && (memcmp(r, ".nan", 4) == 0 || memcmp(r, ".NaN", 4) == 0 ||
+                            memcmp(r, ".NAN", 4) == 0))) {
+                return 2; /* float; NaN carries no sign */
             }
         }
     }
-    /* 0x hex */
     if (n - i > 2 && p[i] == '0' && (p[i + 1] == 'x' || p[i + 1] == 'X')) {
         for (uint32_t k = i + 2; k < n; k++) {
             char c = p[k];
@@ -100,7 +87,6 @@ static yep_tag_id core12(void* ctx, const char* p, uint32_t n) {
         }
         return 1; /* int */
     }
-    /* 0o octal */
     if (n - i > 2 && p[i] == '0' && p[i + 1] == 'o') {
         for (uint32_t k = i + 2; k < n; k++) {
             if (p[k] < '0' || p[k] > '7') {
@@ -109,7 +95,6 @@ static yep_tag_id core12(void* ctx, const char* p, uint32_t n) {
         }
         return 1; /* int */
     }
-    /* decimal int / float */
     int digits = 0, dot = 0, e = 0, edigits = 0;
     for (uint32_t k = i; k < n; k++) {
         char c = p[k];
@@ -143,7 +128,7 @@ static yep_tag_id core12(void* ctx, const char* p, uint32_t n) {
     if (digits && !dot && !e) {
         return 1; /* int */
     }
-    return 0; /* str */
+    return 0;
 }
 
 static yep_tag_id core12_number(void* ctx, int is_float) {

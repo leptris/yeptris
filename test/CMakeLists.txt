@@ -53,7 +53,10 @@ target_include_directories(test_unit PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris)
 yeptris_set_warnings(test_unit)
 
 include(GoogleTest)
-gtest_discover_tests(test_unit)
+# the suite crossed the 5 s default under load (LTO link + parallel
+# ctest) and discovery "terminated due to timeout" — a flaky red, not a
+# real failure
+gtest_discover_tests(test_unit DISCOVERY_TIMEOUT 60)
 
 # ---- emitter roundtrip gate (TODO.impl/13) -----------------------------
 add_executable(test_emit_roundtrip emit_roundtrip.c)
