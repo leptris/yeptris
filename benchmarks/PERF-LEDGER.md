@@ -1292,3 +1292,19 @@ neutral. Referee swings with ambient; CI arbitrates 0.1.29.
 Remaining structural (board 77 + the 76 stage-3 note): value spans
 from facts; dash-item batching; key-typing deferral after the binding
 audit.
+
+
+## 2026-09-12 (v) — 77 closed blocked (the binding audit), 78 landed
+
+77 (key-typing deferral): the audit found key tag_id IS consumed —
+the Ruby materializer reads it for `<<` merge detection (TAG_MERGE)
+and keys materialize through the typed scalar path (Psych parity:
+"123" keys must arrive as Integer). Deferral would change binding
+behavior; closed as blocked with the consumers recorded in the item.
+
+78 (dash-item batch): on_block_item mirrors the pair contract for
+`- value` lines; block-pair-diff extended with dash corpora (trees
+must agree node-for-node). Local block-heavy flat (123-125 MB/s —
+the per-item event chain was already direct); the win is the
+completed fast-path surface + ~400k fewer event structs per
+block-heavy parse. CI arbitrates.

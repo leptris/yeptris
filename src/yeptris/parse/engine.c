@@ -2173,6 +2173,23 @@ static int e_shape_plain_value(yep_engine* e, const yep_line_shape* sh, uint16_t
     if (e->fold_n == 1 && sh->val_span.term == YEP_TERM_COMMENT) {
         e_skip_to_eol(e); /* single line ending in a comment */
     }
+    /* Dash-item fast path (TODO.restructure/78): the prepared value
+     * is offered whole — the same contract as the pair batch; the
+     * top frame is the sequence e_open_seq just opened/continued. */
+    if (e->sink != NULL && e->sink->on_block_item != NULL) {
+        yep_block_value v;
+        memset(&v, 0, sizeof(v));
+        v.cls = YEP_LVAL_PLAIN;
+        v.borrowed = ev.borrowed;
+        v.value = ev.value;
+        int built = e->sink->on_block_item(e->sink->ctx, &v);
+        if (built < 0) {
+            return -2;
+        }
+        if (built == 1) {
+            return 1;
+        }
+    }
     return emit_now(e, &ev) == 0 ? 1 : -2;
 }
 

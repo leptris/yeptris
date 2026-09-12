@@ -29,3 +29,21 @@ mutation-on-read — the thread contract holds: compute, don't cache).
 - Differential gates: the flow/block builders produce identical
   RESOLVED trees (the gates read through the accessor).
 - h2h: pair-heavy shapes up ~2-4%; ledger entry.
+
+## Closure (2026-09-12, phase 0) — measured-blocked by the binding audit
+
+The audit's answer: key tag_id IS consumed by the bindings.
+
+- yeptris-ruby's recorder materializer reads the KEY node's tag_id
+  from the flat record for `<<` merge detection (TAG_MERGE=9,
+  materializer.rb:265) — quoted '<<' vs plain is distinguished ONLY
+  by the tag (a documented comment there).
+- Keys materialize through the same scalar path as values (case
+  tag_id → Integer/Float/...): Psych parity REQUIRES "123" keys to
+  arrive as Integer. Deferral would silently make them Strings.
+
+So the ~2-4% is load-bearing API surface, not waste. Reopening
+requires moving key typing into both bindings' materializers (a
+DRY violation across repos) or an FFI resolve-per-key call (the
+same cost, relocated). Closed as blocked; the ledger records the
+consumers so nobody re-litigates this from a C-only view.

@@ -91,6 +91,11 @@ typedef struct yep_sink {
      * (placed, stack pushed) and the key node — the engine opens its
      * frame silently and skips both events; 0 = events as before. */
     int (*on_block_open)(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col);
+    /* Optional dash-item fast path (TODO.restructure/78): a classified
+     * `- value` plain item after the engine opened (or continued) the
+     * block sequence. 1 = the sink built and placed the item node,
+     * 0 = the engine emits the scalar event as before, <0 = abort. */
+    int (*on_block_item)(void* ctx, const struct yep_block_value* v);
 } yep_sink;
 
 /* Value facts for on_block_pair (the classified value classes the
