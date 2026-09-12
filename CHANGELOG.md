@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/73: alias names borrow in both paths (the event
+  path copied every alias name into the DOM string arena — 266k
+  copies per anchor-heavy parse); node init is one 48-byte template
+  copy.
+- TODO.restructure/74: `stopset_find` / `find_not` walk 32 bytes per
+  NEON iteration (16-byte epilogue keeps every prefix exact).
+- TODO.restructure/75: the engine's unwind loop hoists the dash-blank
+  test and loads the top frame once per iteration.
+
 ## [0.1.27] - 2026-09-12
 ### Changed
 - TODO.restructure/68: SIMD `stopset_find` — the stop class becomes a
