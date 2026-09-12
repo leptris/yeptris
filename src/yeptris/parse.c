@@ -219,9 +219,11 @@ engine_enter:
         yep_text_stats amp_only = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
         const char* q = data;
         const char* end = data + data_len;
-        while ((q = memchr(q, '&', (size_t)(end - q))) != NULL) {
-            amp_only.amp++;
-            q++;
+        if (q != NULL) {
+            while ((q = memchr(q, '&', (size_t)(end - q))) != NULL) {
+                amp_only.amp++;
+                q++;
+            }
         }
         yep_engine_prepare(eng, &amp_only);
     }
