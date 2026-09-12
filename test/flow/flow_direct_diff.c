@@ -51,12 +51,13 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
     d2->input_base = buf;
     d2->input_len = len;
 
-    yep_sink ev_only = {.on_event = yep_dom_on_event, .ctx = d1};
+    yep_sink ev_only = {.on_event = yep_dom_on_event, .ctx = d1, .on_block_item = NULL};
     yep_sink direct = {.on_event = yep_dom_on_event,
                        .ctx = d2,
                        .on_flow_build = counting_build,
                        .on_flow_commit = counting_commit,
-                       .on_flow_rollback = counting_rollback};
+                       .on_flow_rollback = counting_rollback,
+                       .on_block_item = NULL};
     int rc1 = yep_engine_run(e1, buf, len, &ev_only);
     int rc2 = yep_engine_run(e2, buf, len, &direct);
 

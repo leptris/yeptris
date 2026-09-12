@@ -28,6 +28,7 @@ measured-dead; record it, keep the numbers — do not delete history).
 | 19 | [Hardening](TODO.impl/19-hardening.md) | 07+ | COMPLETE (fuzz+nightly+alloc-inject+threads+TSAN/UBSAN/valgrind+differential fuzz) |
 | 20 | [Packaging, ABI policy, automated release](TODO.impl/20-packaging-release.md) | all | core landed (install/pkg-config/vcpkg/release workflow/ABI+FFI docs); brew tap + distro submissions EXCLUDED by user |
 | 21 | [JSON API compat](TODO.impl/21-json-compat-api.md) | 08, 11, 13, 18 | COMPLETE (strict JSON, jsonc drop-in incl. pretty/building, json.hpp, yajl gen + SAX, direct DOM) |
+| 22 | [CBOR (RFC 8949) codec: decode/encode, deterministic profile, sequences](TODO.impl/22-cbor.md) — executed plans in `TODO.cbor/` | 11, 13, 18, 19 | pending |
 
 Rules inherited from libleptris: one executed plan per item; each phase
 gate in the item file must pass before the item closes; performance
