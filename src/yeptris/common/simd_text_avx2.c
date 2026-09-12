@@ -4,10 +4,11 @@
  * 32-byte processing with scalar tails: reads never pass len. The
  * differential suite proves equivalence with the scalar reference.
  *
- * Deferred (recorded in the item ledger): SIMD stopset_find — the runtime
- * bitmap defeats cmpeq-style classification (needs nibble-table tricks);
- * the scalar 256-bit lookup is L1-resident, and item 06's profiles will
- * decide whether the vector version earns its complexity.
+ * Deferred (recorded in the item ledger): SIMD stopset_find returned
+ * with TODO.restructure/68 — the nibble-class kernel above (the
+ * campaign profiles made it the hottest kernel in the block paths).
+ * Still scalar: the runtime-bitmap path never vectorized well; a
+ * consumer that needs it can adopt the yep_stopset form.
  */
 
 #include "port.h" /* defines YEP_ARCH_* — must precede the guard below */
@@ -271,24 +272,21 @@ static void yep_avx2_scan_stats(const char* s, size_t len, yep_text_stats* out) 
 }
 
 static int yep_avx2_gate_scan(const char* s, size_t len) {
-    const __m256i lo = _mm256_set1_epi8(0x1F), hi = _mm256_set1_epi8(0x7F);
+    const __m256i sp = _mm256_set1_epi8(0x20), del = _mm256_set1_epi8(0x7F);
     const __m256i tab = _mm256_set1_epi8(0x09), lf = _mm256_set1_epi8(0x0A),
-                  cr = _mm256_set1_epi8(0x0D);
+                  cr = _mm256_set1_epi8(0x0D), ones = _mm256_set1_epi8(-1);
     size_t i = 0;
     for (; i + 32 <= len; i += 32) {
         __m256i x = _mm256_loadu_si256((const __m256i*)(s + i));
-        __m256i bad = _mm256_or_si256(
-            _mm256_or_si256(_mm256_cmpgt_epi8(lo, x), _mm256_cmpeq_epi8(x, hi)),
-            _mm256_andnot_si256(_mm256_or_si256(_mm256_cmpeq_epi8(x, tab),
-                                                _mm256_or_si256(_mm256_cmpeq_epi8(x, lf),
-                                                                _mm256_cmpeq_epi8(x, cr))),
-                                _mm256_set1_epi8(-1)));
-        /* the range compare is SIGNED: any byte >= 0x80 reads
-         * negative, so 0x1F > it holds — non-ASCII is caught by the
-         * ctrl mask itself, no separate sign test needed */
-        __m256i nonascii = _mm256_and_si256(x, _mm256_set1_epi8((char)0x80));
-        __m256i anynon = _mm256_cmpeq_epi8(nonascii, _mm256_set1_epi8((char)0x80));
-        bad = _mm256_or_si256(bad, anynon);
+        /* ctrl is SIGNED 0x20 > x: catches C0 (0x00-0x1F, the full
+         * range — 0x1F included) AND every byte >= 0x80 (they read
+         * negative); allow clears TAB/LF/CR only; DEL is separate */
+        __m256i ctrl = _mm256_cmpgt_epi8(sp, x);
+        __m256i allow =
+            _mm256_or_si256(_mm256_cmpeq_epi8(x, tab),
+                            _mm256_or_si256(_mm256_cmpeq_epi8(x, lf), _mm256_cmpeq_epi8(x, cr)));
+        __m256i bad = _mm256_or_si256(_mm256_and_si256(ctrl, _mm256_andnot_si256(allow, ones)),
+                                      _mm256_cmpeq_epi8(x, del));
         if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(bad, _mm256_set1_epi8(0))) != -1) {
             return 1;
         }
@@ -296,13 +294,50 @@ static int yep_avx2_gate_scan(const char* s, size_t len) {
     return yep_text_gate_scan_scalar(s + i, len - i);
 }
 
+/* First member byte via two pshufb lookups per nibble-class group
+ * (TODO.restructure/68): lane matches iff lo[b&15] & hi[b>>4] != 0 —
+ * exact for the whole class, so the first nonzero lane IS the answer.
+ * Tables broadcast to both 128-bit halves (pshufb is per-lane);
+ * indices are 0-15 by construction, so no zeroing surprises. */
+static ptrdiff_t yep_avx2_stopset_find(const yep_stopset* ss, const char* s, size_t len) {
+    /* two loaded groups is the sweet spot (every YAML stop class is
+     * 1-2); wider classes take the scalar bitmap walk */
+    if (ss->groups == 0 || ss->groups > 2) {
+        return yep_text_stopset_find_scalar(ss, s, len);
+    }
+    const __m256i tlo0 =
+        _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i*)(const void*)ss->lo[0]));
+    const __m256i thi0 =
+        _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i*)(const void*)ss->hi[0]));
+    const __m256i tlo1 =
+        _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i*)(const void*)ss->lo[1]));
+    const __m256i thi1 =
+        _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i*)(const void*)ss->hi[1]));
+    const __m256i f = _mm256_set1_epi8(15);
+    const int two = ss->groups > 1;
+    size_t i = 0;
+    for (; i + YEP_AVX2_CHUNK <= len; i += YEP_AVX2_CHUNK) {
+        __m256i v = _mm256_loadu_si256((const __m256i*)(const void*)(s + i));
+        __m256i lo = _mm256_and_si256(v, f);
+        __m256i hi = _mm256_and_si256(_mm256_srli_epi16(v, 4), f);
+        __m256i m = _mm256_and_si256(_mm256_shuffle_epi8(tlo0, lo), _mm256_shuffle_epi8(thi0, hi));
+        if (two) {
+            m = _mm256_or_si256(
+                m, _mm256_and_si256(_mm256_shuffle_epi8(tlo1, lo), _mm256_shuffle_epi8(thi1, hi)));
+        }
+        uint32_t nz = (uint32_t)_mm256_movemask_epi8(_mm256_cmpgt_epi8(m, _mm256_setzero_si256()));
+        if (nz != 0) {
+            return (ptrdiff_t)(i + (size_t)__builtin_ctz(nz));
+        }
+    }
+    ptrdiff_t tail = yep_text_stopset_find_scalar(ss, s + i, len - i);
+    return tail < 0 ? -1 : (ptrdiff_t)i + tail;
+}
+
 const yep_text_kernels yep_text_kernels_avx2 = {
-    yep_avx2_contains,   yep_avx2_find,
-    yep_avx2_find3,      yep_avx2_count,
-    yep_avx2_count3,     yep_avx2_copy_count3,
-    yep_avx2_find_not,   yep_text_stopset_find_scalar, /* deferred — see file header */
-    yep_avx2_quote_scan, yep_avx2_scan_stats,
-    yep_avx2_qbc_find,   yep_avx2_gate_scan,
+    yep_avx2_contains,   yep_avx2_find,        yep_avx2_find3,    yep_avx2_count,
+    yep_avx2_count3,     yep_avx2_copy_count3, yep_avx2_find_not, yep_avx2_stopset_find,
+    yep_avx2_quote_scan, yep_avx2_scan_stats,  yep_avx2_qbc_find, yep_avx2_gate_scan,
 };
 
 #endif /* YEP_ARCH_X86 */

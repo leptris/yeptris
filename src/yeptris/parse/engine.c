@@ -73,6 +73,11 @@ struct yep_engine {
 
     yep_nametab anchors;    /* name interning: O(1) define/lookup at any scale */
     uint32_t anchor_serial; /* 1-based ordinals; the value IS the id */
+    /* repeat-alias memo (TODO.restructure/71): offset/len/ordinal of
+     * the last alias resolved — hit by memcmp, not by the table */
+    uint32_t alias_memo_at;
+    uint32_t alias_memo_len;
+    uint32_t alias_memo_ord;
 
     yep_fold_line fold[YEP_MAX_FOLD_LINES];
     size_t fold_n;
@@ -279,9 +284,23 @@ static int e_colon_at(yep_engine* e, size_t at) {
 /* -------------------------------------------------------------- anchors */
 
 /* The ordinal the nametab assigned at define time (0 when absent). */
-static uint32_t anchor_id_of(const yep_engine* e, yep_view name) {
+static uint32_t anchor_id_of(yep_engine* e, yep_view name) {
+    /* Repeat-alias memo (TODO.restructure/71): merge-key YAML re-uses
+     * the same alias thousands of times in a row; the memo answers
+     * those with one input compare, skipping the hash + a likely
+     * cache-missing probe into the (multi-MB, reserved) slots table. */
+    if (e->alias_memo_len == name.len && e->alias_memo_len != 0 &&
+        memcmp(e->p + e->alias_memo_at, name.p, name.len) == 0) {
+        return e->alias_memo_ord;
+    }
     uint32_t id = yep_nametab_get(&e->anchors, name);
-    return id == YEP_NAMETAB_NIL ? 0 : id;
+    if (id == YEP_NAMETAB_NIL) {
+        return 0;
+    }
+    e->alias_memo_at = (uint32_t)(name.p - e->p);
+    e->alias_memo_len = name.len;
+    e->alias_memo_ord = id;
+    return id;
 }
 
 static uint32_t anchor_define(yep_engine* e, yep_view name) {
@@ -434,10 +453,10 @@ static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int
     uint32_t breaks = 0; /* '\n' occurrences, folded with detection */
     {
         const yep_text_kernels* k = yep_text_active();
-        const unsigned char* brk = yep_break_set; /* scan's SSOT */
+        const yep_stopset* brk = &yep_break_stopset; /* scan's SSOT */
         size_t i = start;
         while (i < end) {
-            ptrdiff_t r = k->stopset_find(e->p + i, end - i, brk);
+            ptrdiff_t r = k->stopset_find(brk, e->p + i, end - i);
             if (r < 0) {
                 break; /* single-line span: one SIMD call decided it */
             }

@@ -35,6 +35,41 @@ typedef struct yep_text_stats {
     int bad_printable; /* an ASCII byte violating c-printable (not 9/10/13/0x20..0x7E) */
 } yep_text_stats;
 
+/* A byte-class stop set. The 256-bit bitmap is the truth (the scalar
+ * fallback reads it); lo/hi are derived nibble-class tables the vector
+ * kernels classify lanes with — member #k of group g sets bit k in
+ * lo[g][b&15] and hi[g][b>>4], so a lane matches iff some member has
+ * both nibbles of the lane byte: exact, no false positives (the
+ * SIMD/scalar differential suite pins it). Constant sets embed
+ * prebuilt literals (pinned against this init by StopsetLiterals). */
+#define YEP_STOPSET_GROUPS 4 /* 32 members — every YAML stop class fits */
+
+typedef struct yep_stopset {
+    unsigned char bitmap[32];
+    uint8_t groups; /* nibble-class groups in use; >GROUPS = vector kernels
+                       decline (scalar bitmap walk stays correct) */
+    unsigned char lo[YEP_STOPSET_GROUPS][16];
+    unsigned char hi[YEP_STOPSET_GROUPS][16];
+} yep_stopset;
+
+static inline void yep_stopset_init(yep_stopset* ss, const unsigned char bitmap[32]) {
+    for (size_t i = 0; i < sizeof(*ss); i++) {
+        ((unsigned char*)ss)[i] = 0;
+    }
+    unsigned n = 0;
+    for (unsigned b = 0; b < 256; b++) {
+        if ((bitmap[b >> 3] >> (b & 7)) & 1) {
+            ss->bitmap[b >> 3] |= (unsigned char)(1u << (b & 7));
+            if (n < YEP_STOPSET_GROUPS * 8) {
+                ss->lo[n >> 3][b & 15] |= (unsigned char)(1u << (n & 7));
+                ss->hi[n >> 3][b >> 4] |= (unsigned char)(1u << (n & 7));
+            }
+            n++;
+        }
+    }
+    ss->groups = (uint8_t)((n + 7) >> 3);
+}
+
 /* The kernel table. One struct = one dispatch point (OCP: a new ISA is a
  * new TU exporting a new table; nothing else changes). */
 typedef struct yep_text_kernels {
@@ -61,9 +96,9 @@ typedef struct yep_text_kernels {
     /* offset of the first byte != c, or -1 (indentation column scan) */
     ptrdiff_t (*find_not)(const char* s, size_t len, char c);
 
-    /* offset of the first byte in the 256-bit bitmap set, or -1
-     * (plain-scalar end detection: ": " / " #" / line-break / flow stops) */
-    ptrdiff_t (*stopset_find)(const char* s, size_t len, const unsigned char set[32]);
+    /* offset of the first byte in the stop set, or -1 (plain-scalar
+     * end detection: ": " / " #" / line-break / flow stops) */
+    ptrdiff_t (*stopset_find)(const yep_stopset* ss, const char* s, size_t len);
 
     /* Given the content AFTER an opening quote: offset of the closing
      * quote q honoring backslash escapes, or -1 if unterminated.
@@ -103,7 +138,7 @@ void yep_text_copy_count3_scalar(char* dst, const char* src, size_t len, char c0
                                  size_t* n0, size_t* n1, size_t* n2);
 ptrdiff_t yep_text_qbc_find_scalar(const char* s, size_t len);
 ptrdiff_t yep_text_find_not_scalar(const char* s, size_t len, char c);
-ptrdiff_t yep_text_stopset_find_scalar(const char* s, size_t len, const unsigned char set[32]);
+ptrdiff_t yep_text_stopset_find_scalar(const yep_stopset* ss, const char* s, size_t len);
 ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has_escape);
 void yep_text_scan_stats_scalar(const char* s, size_t len, yep_text_stats* out);
 int yep_text_gate_scan_scalar(const char* s, size_t len);

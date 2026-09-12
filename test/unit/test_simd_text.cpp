@@ -413,15 +413,17 @@ TEST(SimdText, StopsetFind) {
     for (unsigned char c : {':', ',', '[', ']', '{', '}', '\n', 'a', 'e', 'x', '0', ' '}) {
         yep_stopset_add(set, c);
     }
+    yep_stopset ss;
+    yep_stopset_init(&ss, set);
     for (const std::string& b : buffers()) {
         ptrdiff_t want = naive_stopset_find(b.data(), b.size(), set);
-        EXPECT_EQ(k->stopset_find(b.data(), b.size(), set), want);
-        EXPECT_EQ(yep_text_stopset_find_scalar(b.data(), b.size(), set), want);
+        EXPECT_EQ(k->stopset_find(&ss, b.data(), b.size()), want);
+        EXPECT_EQ(yep_text_stopset_find_scalar(&ss, b.data(), b.size()), want);
     }
     /* every prefix length: the first hit must track the span's edge */
     const std::string probe = "base: &b\n  x: 1\nsame: *b\n";
     for (size_t L = 0; L <= probe.size(); L++) {
-        EXPECT_EQ(k->stopset_find(probe.data(), L, set), naive_stopset_find(probe.data(), L, set))
+        EXPECT_EQ(k->stopset_find(&ss, probe.data(), L), naive_stopset_find(probe.data(), L, set))
             << "len=" << L;
     }
     /* all 256 bytes as single probes, alone and embedded past lane 15 */
@@ -445,16 +447,71 @@ TEST(SimdText, StopsetFind) {
                                   'q',
                                   (unsigned char)c,
                                   'z'};
-        EXPECT_EQ(k->stopset_find((const char*)one, 2, set),
+        EXPECT_EQ(k->stopset_find(&ss, (const char*)one, 2),
                   naive_stopset_find((const char*)one, 2, set))
             << "byte " << c;
-        EXPECT_EQ(k->stopset_find((const char*)late, 18, set),
+        EXPECT_EQ(k->stopset_find(&ss, (const char*)late, 18),
                   naive_stopset_find((const char*)late, 18, set))
             << "byte " << c << " late";
     }
-    /* Empty set never matches. */
+    /* Empty set never matches (groups == 0 takes the scalar walk). */
     unsigned char none[32] = {0};
-    EXPECT_EQ(k->stopset_find("abc", 3, none), -1);
+    yep_stopset ss_none;
+    yep_stopset_init(&ss_none, none);
+    EXPECT_EQ(k->stopset_find(&ss_none, "abc", 3), -1);
+}
+
+static int naive_gate_safe(const unsigned char* s, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = s[i];
+        if (!((c >= 0x20 && c <= 0x7E) || c == 0x09 || c == 0x0A || c == 0x0D)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+TEST(SimdText, GateScan) {
+    const yep_text_kernels* k = yep_text_active();
+    /* the gate bytes that distinguish the vector masks: TAB/LF/CR are
+     * ALLOWED (both shipped kernels got this wrong in different ways —
+     * one OR'd ~allow in, one ANDed allow with zero), 0x1F is a
+     * violation (the <0x1F bound missed it), DEL and >=0x80 rule */
+    const std::string probes[] = {
+        "", "plain text 123", "\t\n\r", "a\tb\nc\rd",
+        "with 0x1f: \x1f", "del: \x7F", "utf8: \xC3\xA9",
+        std::string("nul: ") + char(0), "mixed \x1F then \xC3\xA9", "line\nwith\ttabs\r",
+        std::string("\x1F") + "bad\n",
+    };
+    for (const std::string& p : probes) {
+        EXPECT_EQ(k->gate_scan(p.data(), p.size()), naive_gate_safe((const unsigned char*)p.data(), p.size()))
+            << "probe len " << p.size();
+        EXPECT_EQ(yep_text_gate_scan_scalar(p.data(), p.size()),
+                  naive_gate_safe((const unsigned char*)p.data(), p.size()))
+            << "scalar probe len " << p.size();
+    }
+    /* every prefix length: a clean line must stay clean at any cut,
+     * a dirty one must stay dirty */
+    const std::string clean = "key: value 123\nnext: line\n";
+    const std::string dirty = std::string("key: value\n\x1F") + "bad\n";
+    const size_t dirty_at = 11; /* index of the 0x1F */
+    for (size_t L = 0; L <= clean.size(); L++) {
+        EXPECT_EQ(k->gate_scan(clean.data(), L), 0) << "clean len=" << L;
+    }
+    for (size_t L = 0; L <= dirty.size(); L++) {
+        EXPECT_EQ(k->gate_scan(dirty.data(), L), L > dirty_at ? 1 : 0) << "dirty len=" << L;
+    }
+    /* random buffers vs naive */
+    std::mt19937_64 rng(0xDA7E);
+    for (int t = 0; t < 200; t++) {
+        std::string b(rng() % 300, ' ');
+        for (auto& c : b) {
+            c = (char)(rng() % 256);
+        }
+        EXPECT_EQ(k->gate_scan(b.data(), b.size()),
+                  naive_gate_safe((const unsigned char*)b.data(), b.size()))
+            << "random t=" << t;
+    }
 }
 
 TEST(SimdText, Count3PerfSmoke) {

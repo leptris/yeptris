@@ -76,9 +76,9 @@ ptrdiff_t yep_text_find_not_scalar(const char* s, size_t len, char c) {
     return -1;
 }
 
-ptrdiff_t yep_text_stopset_find_scalar(const char* s, size_t len, const unsigned char set[32]) {
+ptrdiff_t yep_text_stopset_find_scalar(const yep_stopset* ss, const char* s, size_t len) {
     for (size_t i = 0; i < len; i++) {
-        if (yep_stopset_test(set, (unsigned char)s[i])) {
+        if (yep_stopset_test(ss->bitmap, (unsigned char)s[i])) {
             return (ptrdiff_t)i;
         }
     }
