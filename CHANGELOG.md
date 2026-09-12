@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.30] - 2026-09-12
 ### Changed
 - TODO.restructure/78: the dash-item batch — `on_block_item` mirrors
   the pair contract for classified `- value` lines (block-pair-diff
