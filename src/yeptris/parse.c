@@ -71,9 +71,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
         }
         dom->input_base = buf; /* strict JSON is UTF-8 by definition */
         dom->input_len = len;
-        yep_text_stats jst;
-        yep_text_active()->scan_stats(buf, len, &jst);
-        yep_dom_prepare(dom, &jst);
+        yep_dom_prepare_len(dom, len);
         int brc = yep_dom_build_json(dom, buf, len);
         if (brc == -1) {
             yep_dom_destroy(dom);

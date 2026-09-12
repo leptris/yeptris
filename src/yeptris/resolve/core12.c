@@ -40,6 +40,38 @@ static yep_tag_id core12(void* ctx, const char* p, uint32_t n) {
             return 3; /* bool */
         }
     }
+    /* First-byte gate (profile: 6.5% of deep-nesting was the reject
+     * chain). A first byte that can begin no core word — not a digit,
+     * sign, dot, or the lead letters of the null/bool/inf/nan words —
+     * is a string, full stop. */
+    switch (p[0]) {
+    case 'n':
+    case 'N':
+    case '~':
+    case 't':
+    case 'T':
+    case 'f':
+    case 'F':
+    case 'y':
+    case 'Y': /* compat words share the gate harmlessly */
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9':
+    case '-':
+    case '+':
+    case '.':
+        break; /* could be a word or number: the chain rules */
+    default:
+        return 0; /* str */
+    }
+
     uint32_t i = 0;
     if (p[0] == '-' || p[0] == '+') {
         i = 1;

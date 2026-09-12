@@ -347,9 +347,7 @@ static int drain_json_route(const char* yaml, size_t len, yep_value_ctx** out) {
     }
     dom->input_base = yaml; /* strict JSON is UTF-8 by definition */
     dom->input_len = len;
-    yep_text_stats jst;
-    yep_text_active()->scan_stats(yaml, len, &jst);
-    yep_dom_prepare(dom, &jst);
+    yep_dom_prepare_len(dom, len);
     int rc = yep_dom_build_json(dom, yaml, len);
     if (rc != 0) {
         /* builder/validator disagreement: belt and braces, engine wins */
@@ -408,9 +406,7 @@ int yep_values_from_input(const char* yaml, size_t len, int schema_compat, yep_v
                      .on_flow_rollback = NULL,
                      .on_block_pair = NULL,
                      .on_block_open = NULL};
-    yep_text_stats pst;
-    yep_text_active()->scan_stats(yaml, len, &pst);
-    yep_engine_prepare(eng, &pst);
+    /* strict JSON carries no anchors: no nametab reserve needed */
     if (yep_engine_run(eng, yaml, len, &sink) == 0 && transform(c, &store) == 0) {
         prc = 0;
     } else if (c->oom) {
