@@ -49,37 +49,23 @@ const yep_stopset yep_break_stopset = {
             0x00, 0x00}},
 };
 
-yep_line_info yep_scan_line(const char* p, size_t len, size_t pos) {
+void yep_scan_facts(const char* p, size_t len, size_t pos, yep_line_facts* out) {
+    yep_text_active()->line_facts(p, len, pos, out);
+}
+
+/* Line facts -> line info (the flags/marker derivation, facts-free).
+ * One kernel pass feeds BOTH this and the shape classifier via the
+ * engine's combined memo (TODO.restructure/76). */
+void yep_scan_line_f(const char* p, size_t len, size_t pos, const yep_line_facts* f,
+                     yep_line_info* out) {
     yep_line_info li;
     li.offset = (uint32_t)pos;
     li.indent = 0;
     li.flags = 0;
     li.first = 0;
-
-    /* Line end + indentation ride the SIMD kernels: this runs once
-     * per line (the engine's memo) and was the last hot scalar byte
-     * loop in the block path. The 256-bit stopset marks \n and \r. */
-    size_t j = pos;
-    if (len - pos >= 64) {
-        /* SIMD pays for its dispatch only past a vector or two of
-         * bytes; short lines (anchor-heavy's ~18B) keep the loop */
-        const yep_text_kernels* k = yep_text_active();
-        ptrdiff_t br = k->stopset_find(&yep_break_stopset, p + pos, len - pos);
-        li.end = br < 0 ? (uint32_t)len : (uint32_t)(pos + (size_t)br);
-        ptrdiff_t ind = k->find_not(p + pos, li.end - pos, ' ');
-        j = ind < 0 ? li.end : (size_t)pos + (size_t)ind;
-        li.indent = (uint16_t)(j - pos);
-    } else {
-        size_t i = pos;
-        while (i < len && p[i] != '\n' && p[i] != '\r') {
-            i++;
-        }
-        li.end = (uint32_t)i;
-        while (j < li.end && p[j] == ' ') {
-            j++;
-        }
-        li.indent = (uint16_t)(j - pos);
-    }
+    li.end = f->end;
+    size_t j = f->indent;
+    li.indent = (uint16_t)(j - pos);
     if (j < li.end && p[j] == '\t') {
         size_t k = j;
         while (k < li.end && (p[k] == ' ' || p[k] == '\t')) {
@@ -90,24 +76,28 @@ yep_line_info yep_scan_line(const char* p, size_t len, size_t pos) {
             if (li.indent == 0) {
                 li.flags |= YEP_LF_TAB;
             }
-            return li;
+            *out = li;
+            return;
         }
         li.flags |= YEP_LF_TAB;
     }
 
     if (j >= li.end) {
         li.flags |= YEP_LF_BLANK;
-        return li;
+        *out = li;
+        return;
     }
 
     li.first = (unsigned char)p[j];
     if (li.first == '#') {
         li.flags |= YEP_LF_COMMENT;
-        return li;
+        *out = li;
+        return;
     }
     if (li.first == '%' && li.indent == 0) {
         li.flags |= YEP_LF_DIRECTIVE;
-        return li;
+        *out = li;
+        return;
     }
 
     /* "---" / "..." at column 0, followed by EOL/space/tab/comment —
@@ -119,6 +109,14 @@ yep_line_info yep_scan_line(const char* p, size_t len, size_t pos) {
                (li.end - j == 3 || p[j + 3] == ' ' || p[j + 3] == '\t')) {
         li.flags |= YEP_LF_DOC_END;
     }
+    *out = li;
+}
+
+yep_line_info yep_scan_line(const char* p, size_t len, size_t pos) {
+    yep_line_info li;
+    yep_line_facts f;
+    yep_scan_facts(p, len, pos, &f);
+    yep_scan_line_f(p, len, pos, &f, &li);
     return li;
 }
 
@@ -228,7 +226,46 @@ static void shape_value(const char* p, size_t len, const yep_line_info* li, size
     s->val_span = v;
 }
 
-void yep_scan_shape(const char* p, size_t len, const yep_line_info* li, yep_line_shape* s) {
+/* The key span straight from the fused facts (TODO.restructure/76):
+ * the common line's key scan becomes zero byte-walking. Rare shapes
+ * (interior ':', embedded '#') fall back to the walking scan — the
+ * two must agree, and the LineShape spec pins them together. */
+static yep_span shape_key_span(const char* p, size_t len, size_t t, const yep_line_facts* f) {
+    yep_span k;
+    k.start = (uint32_t)t;
+    k.term = YEP_TERM_EOF;
+    if (f->stop_set && f->stop >= t) {
+        unsigned char c = (unsigned char)p[f->stop];
+        if (c == ':') {
+            if (yep_colon_terminates(p, len, f->stop, 0)) {
+                k.term = YEP_TERM_COLON;
+                k.end = f->stop;
+                while (k.end > k.start && (p[k.end - 1] == ' ' || p[k.end - 1] == '\t')) {
+                    k.end--;
+                }
+                return k;
+            }
+        } else if (c == '#' && (f->stop == t || p[f->stop - 1] == ' ' || p[f->stop - 1] == '\t')) {
+            k.term = YEP_TERM_COMMENT;
+            k.end = f->stop;
+            while (k.end > k.start && (p[k.end - 1] == ' ' || p[k.end - 1] == '\t')) {
+                k.end--;
+            }
+            return k;
+        }
+        return yep_scan_plain(p, len, t, 0); /* non-terminating stop: the walk owns it */
+    }
+    /* no stop byte before EOL: the span runs to the line end */
+    k.end = f->end;
+    while (k.end > k.start && (p[k.end - 1] == ' ' || p[k.end - 1] == '\t')) {
+        k.end--;
+    }
+    k.term = f->end < len ? YEP_TERM_EOL : YEP_TERM_EOF;
+    return k;
+}
+
+void yep_scan_shape_f(const char* p, size_t len, const yep_line_info* li, const yep_line_facts* f,
+                      yep_line_shape* s) {
     memset(s, 0, sizeof(*s));
     s->kind = YEP_LSHAPE_NONE;
     s->val = YEP_LVAL_NONE;
@@ -254,10 +291,13 @@ void yep_scan_shape(const char* p, size_t len, const yep_line_info* li, yep_line
      * ordinary plain-first bytes. A dash + blank returned as DASH above. */
     if (yep_plain_first_ok(c) && c != '&' && c != '!' && c != '*' && c != '\'' && c != '"' &&
         c != '[' && c != '{' && !((c == '?' || c == ':') && shape_blank_next(p, len, t))) {
-        yep_span k = yep_scan_plain(p, len, t, 0);
+        yep_span k = shape_key_span(p, len, t, f);
         if (k.term == YEP_TERM_COLON) {
+            /* k.end is the TRIMMED span end: the ':' sits past the
+             * trimmed blanks (or past interior stops on the fallback
+             * path) — the forward walk is over spaces, a few bytes */
             size_t colon = k.end;
-            while (p[colon] != ':') { /* spaces may precede the ':' */
+            while (p[colon] != ':') {
                 colon++;
             }
             size_t vt = colon + 1;
@@ -271,6 +311,12 @@ void yep_scan_shape(const char* p, size_t len, const yep_line_info* li, yep_line
             shape_value(p, len, li, vt, s);
         }
     }
+}
+
+void yep_scan_shape(const char* p, size_t len, const yep_line_info* li, yep_line_shape* s) {
+    yep_line_facts f;
+    yep_scan_facts(p, len, li->offset, &f);
+    yep_scan_shape_f(p, len, li, &f, s);
 }
 
 /* The two plain-scalar stop classes are constants — they were rebuilt

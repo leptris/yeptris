@@ -1266,3 +1266,29 @@ wide ~0.90-0.96. The remaining gap is the per-line byte walks
 (scan_line + scan_shape + scan_plain each re-walk the line) and the
 per-node build; the fused-line-kernel item is the next structural
 candidate.
+
+
+## 2026-09-12 (iv) — 76 executed: the facts architecture, the vector
+sweep's honest limit
+
+Landed: yep_line_facts (end/indent/stop) with scalar + NEON kernels
+and a full differential spec; scan_line/scan_shape derive from facts
+through _f variants; the engine's memo computes facts once per line;
+the shape KEY scan is derived from `stop` instead of re-walking the
+span (fallbacks for interior colons/hashes, pinned by LineShape).
+
+Dead ends measured today (kept in the code as gates/notes):
+1. The vector sweep at 16-32B lines: ~2x the scalar loops (per-chunk
+   mask chain + probes). Gated to >=64B remaining — the old scan_line
+   gate. Apple's scalar core is that fast; SIMD pays only on long
+   spans.
+2. Spill-free extraction: no measurable change (the cost was the op
+   chain, not store-forwarding).
+
+Win: anchor-heavy 99-103 -> 116 MB/s (+13%) — short lines, many keys,
+the shape fast path removes the plain re-walk. block flat, flow
+neutral. Referee swings with ambient; CI arbitrates 0.1.29.
+
+Remaining structural (board 77 + the 76 stage-3 note): value spans
+from facts; dash-item batching; key-typing deferral after the binding
+audit.

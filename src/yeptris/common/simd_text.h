@@ -70,6 +70,18 @@ static inline void yep_stopset_init(yep_stopset* ss, const unsigned char bitmap[
     ss->groups = (uint8_t)((n + 7) >> 3);
 }
 
+/* The line-facts sweep's output (one `key: value` line's positions).
+ * end is the first \n/\r at/after pos (or len); indent the first
+ * byte != ' ' (spaces only — tabs are the caller's rule, as in
+ * yep_scan_line); stop the first block-plain stop byte at/after the
+ * indent and strictly before end, stop_set=0 when none exists. */
+typedef struct yep_line_facts {
+    uint32_t end;
+    uint32_t indent;
+    uint32_t stop;
+    uint32_t stop_set;
+} yep_line_facts;
+
 /* The kernel table. One struct = one dispatch point (OCP: a new ISA is a
  * new TU exporting a new table; nothing else changes). */
 typedef struct yep_text_kernels {
@@ -120,6 +132,14 @@ typedef struct yep_text_kernels {
      * multi-class stats sweep at parse entry (TODO.restructure/66).
      * Bit-identical across ISAs. */
     int (*gate_scan)(const char* s, size_t len);
+
+    /* The fused line-facts sweep (TODO.restructure/76): one pass
+     * yields the four positions a block line needs — first break,
+     * first non-space (indent), and the first block-plain stop byte
+     * ({\n \r # :}) at or after the indent. scan.c derives every
+     * line/shape fact from these; the old paths re-walked the same
+     * bytes per fact. Bit-identical across ISAs. */
+    void (*line_facts)(const char* s, size_t len, size_t pos, yep_line_facts* out);
 } yep_text_kernels;
 
 /* The best table for this CPU (atomic-lazy, like yep_cpu_detect). */
@@ -142,6 +162,7 @@ ptrdiff_t yep_text_stopset_find_scalar(const yep_stopset* ss, const char* s, siz
 ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has_escape);
 void yep_text_scan_stats_scalar(const char* s, size_t len, yep_text_stats* out);
 int yep_text_gate_scan_scalar(const char* s, size_t len);
+void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_facts* out);
 
 /* Stopset bitmap helpers: a 256-bit bitmap is the wire form of a byte
  * class; build with yep_stopset_clear + yep_stopset_add. */

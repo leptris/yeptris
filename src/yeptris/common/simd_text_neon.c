@@ -373,10 +373,108 @@ static ptrdiff_t yep_neon_stopset_find(const yep_stopset* ss, const char* s, siz
     return tail < 0 ? -1 : (ptrdiff_t)i + tail;
 }
 
+/* The fused line-facts sweep (TODO.restructure/76): one pass over the
+ * line's chunks produces break/non-space/stop masks; a chunk spills
+ * only when it carries a still-missing fact (usually chunk 0 carries
+ * all three). Any fact the vector loop cannot land falls to one exact
+ * scalar sweep of the whole span — rare (long lines whose break sits
+ * in the tail) and always correct. */
+static void yep_neon_line_facts(const char* s, size_t len, size_t pos, yep_line_facts* out) {
+    /* The vector sweep pays only on long remaining spans (the old
+     * scan_line gate): a 16-32 byte line's tight scalar loops beat
+     * the per-chunk mask chain on this core (measured, 76's ledger).
+     * The scalar path still yields `stop`, so the shape fast path
+     * rides facts at every length. */
+    if (len - pos < 64) {
+        yep_text_line_facts_scalar(s, len, pos, out);
+        return;
+    }
+    const uint8x16_t ksp = vdupq_n_u8(' '), knl = vdupq_n_u8('\n'), kcr = vdupq_n_u8('\r'),
+                     kco = vdupq_n_u8(':'), khash = vdupq_n_u8('#');
+    size_t i = pos;
+    int have_end = 0, have_indent = 0, have_stop = 0;
+    uint32_t end = 0, indent = 0, stop = 0;
+    for (; i + 16 <= len; i += 16) {
+        if (have_end) {
+            break; /* indent <= end, stop < end: settled or absent */
+        }
+        uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(s + i));
+        uint8x16_t br = vorrq_u8(vceqq_u8(v, knl), vceqq_u8(v, kcr));
+        int br_any = (int)vmaxvq_u8(br);
+        if (!have_indent) {
+            if (vmaxvq_u8(vmvnq_u8(vceqq_u8(v, ksp))) != 0) {
+                for (int k = 0; k < 16; k++) {
+                    if (s[i + k] != ' ') { /* extract from source: no spill */
+                        indent = (uint32_t)(i + (size_t)k);
+                        have_indent = 1;
+                        break;
+                    }
+                }
+            }
+        }
+        if (br_any) {
+            for (int k = 0; k < 16; k++) {
+                if (s[i + k] == '\n' || s[i + k] == '\r') {
+                    end = (uint32_t)(i + (size_t)k);
+                    have_end = 1;
+                    break;
+                }
+            }
+        }
+        if (!have_stop && have_indent) {
+            uint8x16_t st = vorrq_u8(br, vorrq_u8(vceqq_u8(v, kco), vceqq_u8(v, khash)));
+            if (vmaxvq_u8(st) != 0) {
+                size_t from = indent > i ? (size_t)(indent - i) : 0;
+                size_t lim = 16;
+                if (have_end && end < (uint32_t)(i + 16)) {
+                    lim = (size_t)(end - i); /* stop is strictly before end */
+                }
+                for (size_t k = from; k < lim; k++) {
+                    char c = s[i + k];
+                    if (c == '\n' || c == '\r' || c == '#' || c == ':') {
+                        stop = (uint32_t)(i + k);
+                        have_stop = 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    uint32_t stop_set = 0;
+    if (!have_end || !have_indent || !have_stop) {
+        /* continuation from the chunk cursor (a 17-31 byte line runs
+         * one vector chunk then at most 15 scalar bytes; a stop in
+         * [indent, i) cannot exist when have_stop is still 0 — that
+         * chunk's set-probe was zero) */
+        yep_line_facts t;
+        yep_text_line_facts_scalar(s, len, i, &t);
+        if (!have_end) {
+            end = t.end;
+        }
+        if (!have_indent) {
+            indent = t.indent;
+        }
+        if (!have_stop) {
+            if (have_end) {
+                stop = end; /* end settled: no stop existed before it */
+                stop_set = 0;
+            } else {
+                stop = t.stop;
+                stop_set = t.stop_set;
+            }
+        }
+    }
+    out->end = end;
+    out->indent = indent;
+    out->stop = stop;
+    out->stop_set = have_stop ? 1u : stop_set;
+}
+
 const yep_text_kernels yep_text_kernels_neon = {
     yep_neon_contains,   yep_neon_find,        yep_neon_find3,    yep_neon_count,
     yep_neon_count3,     yep_neon_copy_count3, yep_neon_find_not, yep_neon_stopset_find,
     yep_neon_quote_scan, yep_neon_scan_stats,  yep_neon_qbc_find, yep_neon_gate_scan,
+    yep_neon_line_facts,
 };
 
 #endif /* YEP_ARCH_AARCH64 */

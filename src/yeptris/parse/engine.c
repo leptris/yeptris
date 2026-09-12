@@ -81,6 +81,10 @@ struct yep_engine {
     uint32_t alias_memo_at;
     uint32_t alias_memo_len;
     uint32_t alias_memo_ord;
+    /* the line-facts memo (TODO.restructure/76): one kernel pass per
+     * line feeds both the line info and the shape */
+    yep_line_facts facts_cache;
+    uint32_t facts_cache_line;
 
     yep_fold_line fold[YEP_MAX_FOLD_LINES];
     size_t fold_n;
@@ -224,16 +228,30 @@ static void e_line_done(yep_engine* e, size_t at) {
         e->line_start = e->pos;
         e->li_cache_line = 0;
         e->shape_cache_line = 0;
+        e->facts_cache_line = 0;
     } else {
         e->pos = at;
     }
 }
 
+/* The line-facts memo (TODO.restructure/76): ONE kernel pass per
+ * line; li and the shape both derive from it. */
+static const yep_line_facts* e_facts_here(yep_engine* e) {
+    if (e->facts_cache_line != e->line) {
+        yep_scan_facts(e->p, e->len, e->line_start, &e->facts_cache);
+        e->facts_cache_line = e->line;
+        e->li_cache_line = 0; /* derived caches are stale now */
+        e->shape_cache_line = 0;
+    }
+    return &e->facts_cache;
+}
+
 /* scan_line for the current line, memoized for the flow loop (the
  * loop head and the post-ws check each need it every line). */
 static yep_line_info e_line_info_here(yep_engine* e) {
+    const yep_line_facts* f = e_facts_here(e);
     if (e->li_cache_line != e->line) {
-        e->li_cache = yep_scan_line(e->p, e->len, e->line_start);
+        yep_scan_line_f(e->p, e->len, e->line_start, f, &e->li_cache);
         e->li_cache_line = e->line;
     }
     return e->li_cache;
@@ -242,9 +260,10 @@ static yep_line_info e_line_info_here(yep_engine* e) {
 /* The line's classified shape, memoized beside the line facts: the
  * engine decides dispatch ONCE per line (TODO.restructure/49). */
 static const yep_line_shape* e_shape_here(yep_engine* e) {
+    const yep_line_facts* f = e_facts_here(e);
     e_line_info_here(e);
     if (e->shape_cache_line != e->line) {
-        yep_scan_shape(e->p, e->len, &e->li_cache, &e->shape_cache);
+        yep_scan_shape_f(e->p, e->len, &e->li_cache, f, &e->shape_cache);
         e->shape_cache_line = e->line;
     }
     return &e->shape_cache;
@@ -3245,6 +3264,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     e->line_start = 0;
     e->li_cache_line = 0;
     e->shape_cache_line = 0;
+    e->facts_cache_line = 0;
     e->depth = 0;
     yep_nametab_clear(&e->anchors);
     e->tagmap_n = 0;

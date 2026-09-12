@@ -87,6 +87,10 @@ typedef struct yep_line_shape {
 /* Classifies the content line described by li (its own line; flags must
  * be clear). Zero-initializes *out, then fills the facts. */
 void yep_scan_shape(const char* p, size_t len, const yep_line_info* li, yep_line_shape* out);
+void yep_scan_shape_f(const char* p, size_t len, const yep_line_info* li, const yep_line_facts* f,
+                      yep_line_shape* out);
+void yep_scan_line_f(const char* p, size_t len, size_t pos, const yep_line_facts* f,
+                     yep_line_info* out);
 
 /* ns-anchor-name byte: not blank/break/flow-indicator, not ',' or '#'. */
 int yep_scan_prop_char(unsigned char c);
@@ -113,6 +117,10 @@ int yep_plain_first_ok(unsigned char c);
 extern const yep_stopset yep_break_stopset;
 extern const yep_stopset yep_plain_stop_block;
 extern const yep_stopset yep_plain_stop_flow;
+
+/* The fused line-facts sweep (kernel-dispatched): end/indent/stop in
+ * one pass — scan_line and scan_shape both consume these. */
+void yep_scan_facts(const char* p, size_t len, size_t pos, yep_line_facts* out);
 
 /* Scans a quoted scalar whose opening quote is at pos. Returns span of
  * the CONTENT (between quotes) and sets *term (EOL on unterminated → the
