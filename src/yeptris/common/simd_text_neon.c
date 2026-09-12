@@ -269,13 +269,33 @@ static void yep_neon_scan_stats(const char* s, size_t len, yep_text_stats* out) 
     out->bad_printable = (bad != 0) || tail.bad_printable;
 }
 
+static int yep_neon_gate_scan(const char* s, size_t len) {
+    const uint8x16_t lo = vdupq_n_u8(0x1F), hi = vdupq_n_u8(0x7F);
+    const uint8x16_t tab = vdupq_n_u8(0x09), lf = vdupq_n_u8(0x0A), cr = vdupq_n_u8(0x0D),
+                     zeros = vdupq_n_u8(0), ones = vdupq_n_u8(1);
+    size_t i = 0;
+    for (; i + 16 <= len; i += 16) {
+        uint8x16_t x = vld1q_u8((const uint8_t*)(s + i));
+        uint8x16_t ctrl = vorrq_u8(vcltq_u8(x, lo), vceqq_u8(x, hi));
+        uint8x16_t allow = vorrq_u8(vceqq_u8(x, tab), vorrq_u8(vceqq_u8(x, lf), vceqq_u8(x, cr)));
+        uint8x16_t nonascii = vcgeq_u8(x, vdupq_n_u8(0x80));
+        uint8x16_t bad = vorrq_u8(vorrq_u8(ctrl, nonascii), vandq_u8(vandq_u8(ones, allow), zeros));
+        /* ctrl/nonascii already include only violations; allow-masking is
+         * redundant for them — the vand term is a no-op to keep intent */
+        if (vmaxvq_u32(vreinterpretq_u32_u8(bad)) != 0) {
+            return 1;
+        }
+    }
+    return yep_text_gate_scan_scalar(s + i, len - i);
+}
+
 const yep_text_kernels yep_text_kernels_neon = {
     yep_neon_contains,   yep_neon_find,
     yep_neon_find3,      yep_neon_count,
     yep_neon_count3,     yep_neon_copy_count3,
     yep_neon_find_not,   yep_text_stopset_find_scalar, /* deferred — see AVX2 header note */
     yep_neon_quote_scan, yep_neon_scan_stats,
-    yep_neon_qbc_find,
+    yep_neon_qbc_find,   yep_neon_gate_scan,
 };
 
 #endif /* YEP_ARCH_AARCH64 */
