@@ -1161,3 +1161,22 @@ deep-nesting 0.89x — node-dominated shapes move; scalar-heavy
 0.79x (its wall is the span walks, already known). The 64B gate is
 now 56B. Item 64-2b (link packing) stays measure-first; 2c
 (line/col demotion) still needs owner sign-off.
+
+## 2026-09-12 — the Linux profile artifact WORKS; it names the stats pre-pass
+
+First real ubuntu perf data (Profile workflow, sudo perf, 199Hz,
+649 samples): top self-time on BOTH asymmetry shapes is the
+TEXT-STATS PRE-PASS — yep_text_scan_stats (~12-13%) and the
+stopset finds (~9%) — the whole-buffer pre-sizing sweep that
+parse.c runs before parsing. The scalar-symbol attribution is
+LTO-unreliable (statics internalized; dispatch verified correct:
+avx2 table selected when the bit is set), but the FACT survives
+attribution: a pre-parse O(n) sweep costs double-digit percent on
+the shapes ryml beats us on. ryml has no such pass.
+
+NEXT (item 66, spec'd with this data): kill or shrink the
+pre-sizing sweep — size from len heuristics (node_hint from
+len/K), keep the amp-count nametab reserve (cheap), and let
+dom_grow absorb the difference (the growth memmove it prevented
+was measured at ~5%; the sweep costs more). Gate: the h2h medians
+plus the 18B allocation table (allocs/MB must not regress).
