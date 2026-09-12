@@ -283,10 +283,9 @@ static int yep_avx2_gate_scan(const char* s, size_t len) {
                                                 _mm256_or_si256(_mm256_cmpeq_epi8(x, lf),
                                                                 _mm256_cmpeq_epi8(x, cr))),
                                 _mm256_set1_epi8(-1)));
-        /* _mm256_cmpgt_epi8 is SIGNED: bytes > 0x7F compare <= 0x1F is
-         * false — mask them in via the sign bit */
-        __m256i sign = _mm256_movemask_epi8(x);
-        (void)sign;
+        /* the range compare is SIGNED: any byte >= 0x80 reads
+         * negative, so 0x1F > it holds — non-ASCII is caught by the
+         * ctrl mask itself, no separate sign test needed */
         __m256i nonascii = _mm256_and_si256(x, _mm256_set1_epi8((char)0x80));
         __m256i anynon = _mm256_cmpeq_epi8(nonascii, _mm256_set1_epi8((char)0x80));
         bad = _mm256_or_si256(bad, anynon);
