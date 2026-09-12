@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/76: the line-facts architecture — `yep_line_facts`
+  (end/indent/plain-stop) computed once per line (scalar for short
+  spans, NEON/AVX2 kernels gated at >=64B); line info and the line
+  shape both derive from it, and the shape's key span comes from the
+  stop byte instead of re-walking the span. anchor-heavy +13 percent
+  absolute (99-103 -> 116 MB/s same-machine); the vector sweep below
+  64B measured 2x SLOWER than the tight scalar loops and is gated —
+  the dead end is recorded in the perf ledger.
+
 ## [0.1.28] - 2026-09-12
 ### Changed
 - TODO.restructure/73: alias names borrow in both paths (the event
