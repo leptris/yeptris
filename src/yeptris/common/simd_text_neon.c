@@ -114,7 +114,22 @@ static void yep_neon_copy_count3(char* dst, const char* src, size_t len, char c0
 }
 
 static ptrdiff_t yep_neon_find_not(const char* s, size_t len, char c) {
+    const uint8x16_t kc = vdupq_n_u8((uint8_t)c);
     size_t i = 0;
+    /* 32 B per iteration (TODO.restructure/74): one shared constant,
+     * one bits-test per two vectors; the hit half re-tests alone */
+    for (; i + 2 * YEP_NEON_CHUNK <= len; i += 2 * YEP_NEON_CHUNK) {
+        uint8x16_t ne0 = vmvnq_u8(vceqq_u8(yep_neon_load(s + i), kc));
+        uint8x16_t ne1 = vmvnq_u8(vceqq_u8(yep_neon_load(s + i + 16), kc));
+        uint16_t m0 = yep_neon_bits(ne0);
+        uint16_t m1 = yep_neon_bits(ne1);
+        if (m0) {
+            return (ptrdiff_t)(i + (size_t)__builtin_ctz(m0));
+        }
+        if (m1) {
+            return (ptrdiff_t)(i + 16 + (size_t)__builtin_ctz(m1));
+        }
+    }
     for (; i + YEP_NEON_CHUNK <= len; i += YEP_NEON_CHUNK) {
         uint16_t m = yep_neon_bits(vmvnq_u8(yep_neon_eq(s + i, (uint8_t)c)));
         if (m) {
@@ -302,6 +317,41 @@ static ptrdiff_t yep_neon_stopset_find(const yep_stopset* ss, const char* s, siz
     const uint8x16_t f = vdupq_n_u8(15);
     const int two = ss->groups > 1;
     size_t i = 0;
+    /* 32 B per iteration (TODO.restructure/74): the tbl work for both
+     * vectors interleaves while their loads stream; one vmaxv covers
+     * both halves — the hit half spills alone */
+    for (; i + 32 <= len; i += 32) {
+        uint8x16_t v0 = vld1q_u8((const uint8_t*)(const void*)(s + i));
+        uint8x16_t v1 = vld1q_u8((const uint8_t*)(const void*)(s + i + 16));
+        uint8x16_t m0 =
+            vandq_u8(vqtbl1q_u8(tlo0, vandq_u8(v0, f)), vqtbl1q_u8(thi0, vshrq_n_u8(v0, 4)));
+        uint8x16_t m1 =
+            vandq_u8(vqtbl1q_u8(tlo0, vandq_u8(v1, f)), vqtbl1q_u8(thi0, vshrq_n_u8(v1, 4)));
+        if (two) {
+            m0 = vorrq_u8(m0, vandq_u8(vqtbl1q_u8(tlo1, vandq_u8(v0, f)),
+                                       vqtbl1q_u8(thi1, vshrq_n_u8(v0, 4))));
+            m1 = vorrq_u8(m1, vandq_u8(vqtbl1q_u8(tlo1, vandq_u8(v1, f)),
+                                       vqtbl1q_u8(thi1, vshrq_n_u8(v1, 4))));
+        }
+        uint8x16_t many = vorrq_u8(m0, m1);
+        if (vmaxvq_u8(many) != 0) {
+            unsigned char hit[16] __attribute__((aligned(16)));
+            if (vmaxvq_u8(m0) != 0) {
+                vst1q_u8(hit, m0);
+                for (int k = 0; k < 16; k++) {
+                    if (hit[k] != 0) {
+                        return (ptrdiff_t)(i + (size_t)k);
+                    }
+                }
+            }
+            vst1q_u8(hit, m1);
+            for (int k = 0; k < 16; k++) {
+                if (hit[k] != 0) {
+                    return (ptrdiff_t)(i + 16 + (size_t)k);
+                }
+            }
+        }
+    }
     for (; i + 16 <= len; i += 16) {
         uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(s + i));
         uint8x16_t lo = vandq_u8(v, f), hi = vshrq_n_u8(v, 4);

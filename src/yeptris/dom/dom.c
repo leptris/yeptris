@@ -143,11 +143,15 @@ uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_
         return UINT32_MAX;
     }
     yep_dnode* n = &d->nodes[d->ncount];
-    memset(n, 0, sizeof(*n));
-    n->first_child = UINT32_MAX;
-    n->last_child = UINT32_MAX;
-    n->next_sibling = UINT32_MAX;
-    n->target = UINT32_MAX;
+    /* template copy: one 48 B move replaces memset + four sentinel
+     * patches (TODO.restructure/73) — the hot per-node init */
+    static const yep_dnode k_init = {
+        .first_child = UINT32_MAX,
+        .last_child = UINT32_MAX,
+        .next_sibling = UINT32_MAX,
+        .target = UINT32_MAX,
+    };
+    *n = k_init;
     n->kind = kind;
     n->tag = dom_str_in(d, tag, 0);
     n->anchor = dom_str_in(d, anchor, anchor_borrowed);
@@ -905,7 +909,9 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
         if (vid == UINT32_MAX) {
             return -1;
         }
-        d->nodes[vid].value = dom_str_in(d, &v->value, 0);
+        d->nodes[vid].value = dom_str_in(d, &v->value, 1); /* borrowed — the
+            event path stamps it too now (73); the gates compare decoded
+            views, not arena placement */
         d->nodes[vid].target = target;
         return dom_place(d, vid) == 0 ? 1 : -1;
     }
