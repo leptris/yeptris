@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/78: the dash-item batch — `on_block_item` mirrors
+  the pair contract for classified `- value` lines (block-pair-diff
+  extended with dash corpora; the fast-path surface is now
+  pair/open/item).
+- TODO.restructure/77: key-typing deferral closed BLOCKED by the
+  binding audit — the Ruby materializer reads key tag_id for `<<`
+  merge detection and typed keys (Psych parity). Consumers recorded.
+
 ## [0.1.29] - 2026-09-12
 ### Changed
 - TODO.restructure/76: the line-facts architecture — `yep_line_facts`
