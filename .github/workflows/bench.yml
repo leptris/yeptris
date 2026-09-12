@@ -100,3 +100,38 @@ jobs:
           name: benchmark-results-${{ matrix.os }}
           path: benchmarks/results/
           if-no-files-found: warn
+
+---
+name: Profile
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    name: Linux perf profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install perf
+        run: sudo apt-get update && sudo apt-get install -y linux-tools-common linux-tools-generic
+
+      - name: Configure and build
+        run: cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release -DYEPTRIS_BUILD_BENCHMARKS=ON
+
+      - name: Build benchmarks
+        run: cmake --build build --target bench_matrix
+
+      - name: Profile the asymmetry shapes
+        run: scripts/profile-linux.sh build profile-out
+
+      - name: Upload profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-profiles
+          path: profile-out/
