@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.26] - 2026-09-12
 ### Changed
 - TODO.restructure/67: the resolver first-byte gate (a lead byte
   that can begin no core word is a string in one compare — the
