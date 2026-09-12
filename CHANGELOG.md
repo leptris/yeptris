@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.25] - 2026-09-12
 ### Changed
 - TODO.restructure/66: the stats pre-pass is dead — the ubuntu perf
   profile named the whole-buffer multi-class sweep (~12-13 percent
