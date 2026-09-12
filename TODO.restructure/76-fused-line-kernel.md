@@ -53,3 +53,34 @@ flow-direct-diff green at every step.
 - h2h: block-heavy and anchor-heavy measurably up (target ≥0.8x);
   ledger entry.
 - No regression on flow shapes (they must not pay the new kernel).
+
+## Closure (2026-09-12) — the kernel's vector sweep measured-dead at
+short line lengths; the facts architecture landed and pays
+
+Landed:
+- `yep_line_facts` (end/indent/stop, one contract, scalar reference +
+  NEON kernel + differential spec SimdText.LineFacts: every prefix,
+  mid-line positions, 100 random buffers).
+- scan.c split: `yep_scan_line_f` / `yep_scan_shape_f` derive line
+  info and shape FROM facts; the engine's combined memo computes
+  facts ONCE per line (the 75 design, realized here).
+- The shape KEY scan no longer re-walks the key span:
+  `shape_key_span` derives it from `stop` (terminator checks on the
+  boundary bytes; interior-':'/'#' lines fall back to the walk —
+  pinned by LineShape, which caught the `:x: v` fallback case).
+
+Measured-dead (the ledger records it): the VECTOR sweep on 16-32 byte
+lines costs ~2x the tight scalar loops on this core (mask chain +
+per-chunk probes beat nothing below ~64B). The kernel now gates at
+64B remaining — exactly the old scan_line SIMD gate. At short
+lengths the SCALAR facts run: end+indent as before, plus `stop`
+computed in the same walk the plain scan used to do separately.
+
+Numbers (same-machine-class absolutes): anchor-heavy 99-103 → 116
+MB/s (+13%, the shape fast path on its key-dense lines);
+block-heavy flat (~123); flow shapes neutral. The local referee
+swings ±0.2 with ambient clock — CI ubuntu is the arbiter for the
+0.1.29 record.
+
+Stage 3 (value spans from facts; dash-item batching) remains open on
+the board — renumbered continuation in the ledger.

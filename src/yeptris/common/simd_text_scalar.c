@@ -185,9 +185,35 @@ int yep_text_gate_scan_scalar(const char* s, size_t len) {
     return 0;
 }
 
+void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_facts* out) {
+    size_t i = pos;
+    while (i < len && s[i] != '\n' && s[i] != '\r') {
+        i++;
+    }
+    out->end = (uint32_t)i;
+    size_t j = pos;
+    while (j < i && s[j] == ' ') {
+        j++;
+    }
+    out->indent = (uint32_t)j;
+    size_t k = j;
+    out->stop_set = 0;
+    out->stop = out->end;
+    while (k < i) {
+        char c = s[k];
+        if (c == '\n' || c == '\r' || c == '#' || c == ':') {
+            out->stop = (uint32_t)k;
+            out->stop_set = 1;
+            break;
+        }
+        k++;
+    }
+}
+
 const yep_text_kernels yep_text_kernels_scalar = {
     yep_text_contains_scalar,   yep_text_find_scalar,         yep_text_find3_scalar,
     yep_text_count_char_scalar, yep_text_count3_scalar,       yep_text_copy_count3_scalar,
     yep_text_find_not_scalar,   yep_text_stopset_find_scalar, yep_text_quote_scan_scalar,
     yep_text_scan_stats_scalar, yep_text_qbc_find_scalar,     yep_text_gate_scan_scalar,
+    yep_text_line_facts_scalar,
 };

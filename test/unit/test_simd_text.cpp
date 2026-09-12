@@ -461,6 +461,97 @@ TEST(SimdText, StopsetFind) {
     EXPECT_EQ(k->stopset_find(&ss_none, "abc", 3), -1);
 }
 
+TEST(SimdText, LineFacts) {
+    const yep_text_kernels* k = yep_text_active();
+    auto naive = [](const char* p, size_t len, size_t pos, yep_line_facts* out) {
+        size_t i = pos;
+        while (i < len && p[i] != '\n' && p[i] != '\r')
+            i++;
+        out->end = (uint32_t)i;
+        size_t j = pos;
+        while (j < i && p[j] == ' ')
+            j++;
+        out->indent = (uint32_t)j;
+        out->stop_set = 0;
+        out->stop = out->end;
+        for (size_t x = j; x < i; x++) {
+            char c = p[x];
+            if (c == '\n' || c == '\r' || c == '#' || c == ':') {
+                out->stop = (uint32_t)x;
+                out->stop_set = 1;
+                break;
+            }
+        }
+    };
+    auto eq = [](const yep_line_facts& a, const yep_line_facts& b) {
+        return a.end == b.end && a.indent == b.indent && a.stop == b.stop &&
+               a.stop_set == b.stop_set;
+    };
+    const std::string probes[] = {
+        "",
+        "a",
+        "key: value",
+        "  indented: v",
+        "spaces   then   :  v",
+        ":x: v",
+        "interior:colon: v",
+        "a # comment",
+        "#lead",
+        "value to eol",
+        "  ",
+        "  \t  x: 1",
+        "k:v",
+        "key:",
+        ":-",
+        "- item",
+        "\n",
+        "a\r\nb",
+        "long key with spaces and more words: v",
+        std::string(40, ' ') + "deep: 1",
+        std::string("padpad") + std::string(20, ' ') + "x: y",
+    };
+    for (const std::string& pr : probes) {
+        for (size_t L = 0; L <= pr.size(); L++) {
+            yep_line_facts a, b, c;
+            k->line_facts(pr.data(), L, 0, &a);
+            naive(pr.data(), L, 0, &b);
+            yep_text_line_facts_scalar(pr.data(), L, 0, &c);
+            EXPECT_TRUE(eq(a, b)) << "kernel vs naive len=" << L;
+            EXPECT_TRUE(eq(a, c)) << "kernel vs scalar len=" << L;
+        }
+    }
+    /* from a nonzero pos (mid-line entries) */
+    const std::string m = "xx\n  key: val\nnext";
+    for (size_t pos = 0; pos < m.size(); pos++) {
+        yep_line_facts a, b;
+        k->line_facts(m.data(), m.size(), pos, &a);
+        naive(m.data(), m.size(), pos, &b);
+        EXPECT_TRUE(eq(a, b)) << "pos=" << pos;
+    }
+    /* random buffers, every pos */
+    std::mt19937_64 rng(0xFAC75);
+    for (int t = 0; t < 100; t++) {
+        std::string b(rng() % 400 + 1, ' ');
+        for (auto& ch : b) {
+            unsigned r = (unsigned)(rng() % 8);
+            ch = r == 0   ? '\n'
+                 : r == 1 ? ' '
+                 : r == 2 ? ':'
+                 : r == 3 ? '#'
+                 : r == 4 ? '\t'
+                 : r == 5 ? 'a'
+                 : r == 6 ? '\r'
+                          : 'z';
+        }
+        for (size_t pos = 0; pos < b.size(); pos += 7) {
+            yep_line_facts x, y;
+            k->line_facts(b.data(), b.size(), pos, &x);
+            naive(b.data(), b.size(), pos, &y);
+            EXPECT_TRUE(eq(x, y)) << "random t=" << t << " pos=" << pos;
+        }
+    }
+}
+
 static int naive_gate_safe(const unsigned char* s, size_t len) {
     for (size_t i = 0; i < len; i++) {
         unsigned char c = s[i];
