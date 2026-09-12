@@ -21,6 +21,11 @@ static int counting_open(void* ctx, const yep_view* key, uint32_t line, uint16_t
     g_open_hits++;
     return dom_on_block_open(ctx, key, line, key_col);
 }
+static int g_item_hits = 0;
+static int counting_item(void* ctx, const yep_block_value* v) {
+    g_item_hits++;
+    return dom_on_block_item(ctx, v);
+}
 
 static void diff_one_impl(const char* name, const char* buf, size_t len, int want_pair) {
     g_cases++;
@@ -31,6 +36,7 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
     yep_dom* d2 = yep_dom_create(sys);
     g_pair_hits = 0;
     g_open_hits = 0;
+    g_item_hits = 0;
     if (e1 == NULL || e2 == NULL || d1 == NULL || d2 == NULL) {
         fprintf(stderr, "DIFF %s: setup OOM\n", name);
         g_fail++;
@@ -45,7 +51,8 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
     yep_sink paired = {.on_event = yep_dom_on_event,
                        .ctx = d2,
                        .on_block_pair = counting_pair,
-                       .on_block_open = counting_open};
+                       .on_block_open = counting_open,
+                       .on_block_item = counting_item};
     int rc1 = yep_engine_run(e1, buf, len, &ev_only);
     int rc2 = yep_engine_run(e2, buf, len, &paired);
 
@@ -62,11 +69,11 @@ static void diff_one_impl(const char* name, const char* buf, size_t len, int wan
         g_fail++;
         goto out;
     }
-    if (want_pair && g_pair_hits + g_open_hits == 0) {
-        fprintf(stderr, "DIFF %s: expected the pair path to fire\n", name);
+    if (want_pair && g_pair_hits + g_open_hits + g_item_hits == 0) {
+        fprintf(stderr, "DIFF %s: expected a fast path to fire\n", name);
         g_fail++;
     }
-    g_pair_cases += g_pair_hits + g_open_hits;
+    g_pair_cases += g_pair_hits + g_open_hits + g_item_hits;
 out:
     yep_dom_destroy(d1);
     yep_dom_destroy(d2);
@@ -92,6 +99,13 @@ static const char* k_must_fire[] = {
     "k: :colon-led\n",
     "outer:\n  k: word\n  x: &x1 tail\n  y: *x1\n",
     "url: http://x.y/z:80 path\n",
+    /* dash items (TODO.restructure/78): the item batch must fire */
+    "- plain entry\n",
+    "seq:\n  - alpha\n  - beta gamma\n  - 3.14159\n",
+    "seq:\n  - alpha\n  - beta\nnext: 1\n",
+    "top: 1\nlist:\n  - one word here\n  - two words\n  - 42\n",
+    "- a\n- b\n- c d e\n",
+    "seq:\n  - value # with comment\n  - next\n",
     NULL,
 };
 

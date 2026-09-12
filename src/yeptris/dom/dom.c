@@ -877,6 +877,21 @@ int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t ke
     return dom_place(d, kid) == 0 ? 1 : -1;
 }
 
+/* The sink's dash-item fast path (TODO.restructure/78): one node
+ * through the node-init law, placed into the sequence the engine
+ * opened before offering — node-for-node the event path's item. */
+int dom_on_block_item(void* ctx, const yep_block_value* v) {
+    yep_dom* d = (yep_dom*)ctx;
+    const yep_resolver* r = dom_resolver(d);
+    uint32_t vid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0);
+    if (vid == UINT32_MAX) {
+        return -1;
+    }
+    d->nodes[vid].value = dom_str_in(d, &v->value, v->borrowed);
+    d->nodes[vid].tag_id = r->resolve(NULL, v->value.p, v->value.len);
+    return dom_place(d, vid) == 0 ? 1 : -1;
+}
+
 /* The sink's block fast path (TODO.restructure/54): one classified
  * `key: value` line becomes two nodes — the key scalar resolved like
  * every implicit key event, the value through its class — placed with

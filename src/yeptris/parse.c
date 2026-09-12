@@ -232,7 +232,8 @@ engine_enter:
                      .on_flow_commit = dom_on_flow_commit,
                      .on_flow_rollback = dom_on_flow_rollback,
                      .on_block_pair = dom_on_block_pair,
-                     .on_block_open = dom_on_block_open};
+                     .on_block_open = dom_on_block_open,
+                     .on_block_item = dom_on_block_item};
     int rc = yep_engine_run(eng, data, data_len, &sink);
     if (rc != 0) {
         const yep_error* ee = yep_engine_error(eng);
