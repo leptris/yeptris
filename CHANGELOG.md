@@ -6,6 +6,33 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/68: SIMD `stopset_find` — the stop class becomes a
+  precompiled `yep_stopset` (bitmap truth + nibble-class tables),
+  with NEON `tbl` and AVX2 `pshufb` kernels; the scalar bitmap walk
+  was 9-22 percent of every losing shape (kernel 2156 -> 621 samples
+  on scalar-heavy).
+- TODO.restructure/69: BOTH `gate_scan` vector masks were broken since
+  the kernel landed — AVX2 OR'd `~allow` in (the gate tripped on every
+  input, running the whole-document SWAR validator on every x86 parse
+  — the ubuntu scalar-heavy asymmetry), NEON ANDed the allow mask with
+  zero (every TAB/LF/CR tripped it), and both missed byte 0x1F (a raw
+  0x1F bypassed printable validation — closed). `SimdText.GateScan`
+  now pins kernel == naive. The validator rides 32-byte gate chunks
+  with the exact per-byte walk only for dirty chunks.
+- TODO.restructure/70: `yep_dnode` 56 -> 48 bytes — node line/col was
+  written-never-read; the fused flow walker drops per-token line
+  bookkeeping. The event stream remains the position SSOT.
+- TODO.restructure/71: core12 single-branch shape (word leads return
+  without the walk: 649 -> 249 samples on anchor-heavy), the engine's
+  repeat-alias memo (merge-key YAML), and anchor-table first-alloc
+  sizing (no 18-step growth cascade per anchor-heavy parse).
+- TODO.restructure/72: e_node audit — it is the nested-map opener, not
+  a fast-arm miss; the engine-loop rework is deferred with numbers.
+- The interleaved h2h referee alternates order per round (yeptris-first
+  handed ryml the warmed core; ±0.2 of swing was that bias).
+
 ## [0.1.26] - 2026-09-12
 ### Changed
 - TODO.restructure/67: the resolver first-byte gate (a lead byte
