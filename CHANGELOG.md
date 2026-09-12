@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.29] - 2026-09-12
 ### Changed
 - TODO.restructure/76: the line-facts architecture — `yep_line_facts`
   (end/indent/plain-stop) computed once per line (scalar for short
