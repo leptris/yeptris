@@ -1241,3 +1241,28 @@ absolutes collapsed 4-5x for ALL parsers including libyaml, so ratios
 only): block 0.93-1.00, flow-json 1.24-1.45, flow-single 1.23-2.27,
 scalar 1.01-1.04, anchor 0.57-0.81, deep 0.90-0.98, wide 0.85-1.31.
 CI is the arbiter of record for the 0.1.28 release.
+
+
+## 2026-09-12 (iii) — the reuse-asymmetry hypothesis, measured dead
+
+Claim under test: ryml's referee advantage is its reused arena (the
+loop's `ryml::Tree` rides warm memory; yeptris cold-allocates per
+parse by API contract) — implying a pooled-parse API would close the
+block/anchor gap.
+
+Measurement (back-to-back, same machine window, YEP_BENCH_RYML_FRESH
+variant now in bench_matrix): fresh-tree ryml vs reused-tree ryml
+moved the h2h by at most 0.04x (block 0.65 vs 0.64, anchor 0.54 vs
+0.53, flow-json 0.98 vs 0.94). ryml's speed is per-byte parse work,
+not allocation amortization. A yeptris pooled-parse API is still a
+legitimate bulk-consumer feature (and matches ryml's designed usage),
+but it is NOT the campaign lever — do not build it for the ratio.
+
+Also: the throttled-window gains recorded for 73-75 (block 0.93-1.00)
+were phantom — throttle compresses all parsers and distorts ratios.
+Unthrottled honest standing at 0.1.28: block ~0.64, flow-json ~0.94,
+flow-single ~0.99, scalar ~0.91-1.02, anchor ~0.53, deep ~0.98-1.02,
+wide ~0.90-0.96. The remaining gap is the per-line byte walks
+(scan_line + scan_shape + scan_plain each re-walk the line) and the
+per-node build; the fused-line-kernel item is the next structural
+candidate.
