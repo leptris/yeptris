@@ -6,6 +6,15 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/67: the resolver first-byte gate (a lead byte
+  that can begin no core word is a string in one compare — the
+  reject chain was 6.5 percent of deep-nesting on the ubuntu
+  profile) and the last scan_stats routes (parse_json, values) ride
+  heuristic sizing like the main path. Local head-to-head:
+  flow-single 1.08x, flow-json 1.47x, deep-nesting 1.01x.
+
 ## [0.1.25] - 2026-09-12
 ### Changed
 - TODO.restructure/66: the stats pre-pass is dead — the ubuntu perf
