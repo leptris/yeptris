@@ -1217,3 +1217,27 @@ the AVX2 gate bug taxed every x86 parse.
 Remaining honest gap: anchor-heavy (~0.5x) and block (~0.75x) — the
 engine dispatch loop + nested-map opener machinery (72's deferred
 numbers), the one structural difference left vs ryml's lazier build.
+
+
+## 2026-09-12 (ii) — the 73-75 pass
+
+v0.1.27 baseline (fair referee): block 0.69, flow-json 1.11, flow-single
+1.28, scalar 0.94, anchor 0.62, deep 1.08, wide 0.83.
+
+- 73: alias names borrow in BOTH paths (the event path copied too —
+  `e_event_init` zeroed borrowed; 266k str_puts gone per anchor-heavy
+  parse) + template node init (one 48 B copy replaces memset + 4
+  sentinel patches).
+- 74: NEON 32 B/iter unrolls for stopset_find/find_not.
+- 75: dash-blank hoist + top-frame local in the unwind loop; memos
+  measured already-minimal.
+- Candidate NOT taken, with its risk: skipping key-scalar resolution
+  at parse (~2-4% of pair-heavy shapes) — bindings may surface key
+  types to hosts (Psych Integer keys); needs a binding-semantics audit
+  before the deferral can be safe.
+
+Session close (two referee runs inside a heavily throttled window —
+absolutes collapsed 4-5x for ALL parsers including libyaml, so ratios
+only): block 0.93-1.00, flow-json 1.24-1.45, flow-single 1.23-2.27,
+scalar 1.01-1.04, anchor 0.57-0.81, deep 0.90-0.98, wide 0.85-1.31.
+CI is the arbiter of record for the 0.1.28 release.

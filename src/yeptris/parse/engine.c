@@ -45,6 +45,13 @@ typedef enum {
                           * sequences allowed, same-line prohibitions lifted */
 } yep_ctx;
 
+/* One open collection frame (the engine's indentation stack). */
+typedef struct {
+    uint16_t col;
+    uint8_t kind;
+    uint8_t inline_doc; /* opened on the --- line: deeper keys only */
+} yep_frame;
+
 struct yep_engine {
     const yep_allocator* sys;
     yep_pool* pool; /* finish pool: folded/escaped scalar content */
@@ -64,11 +71,7 @@ struct yep_engine {
     yep_error err;
     const yep_sink* sink;
 
-    struct {
-        uint16_t col;
-        uint8_t kind;
-        uint8_t inline_doc; /* opened on the --- line: deeper keys only */
-    } frames[YEP_MAX_DEPTH];
+    yep_frame frames[YEP_MAX_DEPTH];
     int depth;
 
     yep_nametab anchors;    /* name interning: O(1) define/lookup at any scale */
@@ -1042,6 +1045,9 @@ static int e_alias(yep_engine* e, yep_event* ev) {
     }
     ev->type = YEP_EV_ALIAS;
     ev->value = name;
+    ev->borrowed = 1; /* the name is an input view (TODO.restructure/73):
+                         the DOM borrows it like any plain scalar — no
+                         arena copy per alias */
     ev->anchor_id = target;
     e_skip_inline_space(e);
     return 0;
@@ -3450,36 +3456,34 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
             doc_open = 1;
         }
 
-        /* unwind frames that cannot continue at this column */
+        /* unwind frames that cannot continue at this column. The
+         * dash-blank test is computed once per line (TODO.restructure/75
+         * — it was spelled out twice below); the top frame loads once
+         * per iteration. */
         uint16_t c = li.indent;
+        const int dash_blank =
+            li.first == '-' &&
+            (li.offset + li.indent + 1 >= e->len || e->p[li.offset + li.indent + 1] == ' ' ||
+             e->p[li.offset + li.indent + 1] == '\t' || e->p[li.offset + li.indent + 1] == '\n' ||
+             e->p[li.offset + li.indent + 1] == '\r');
         while (e->depth > 0) {
-            uint16_t top = e->frames[e->depth - 1].col;
-            uint8_t kind = e->frames[e->depth - 1].kind;
-            if (top > c) {
+            const yep_frame* fr = &e->frames[e->depth - 1];
+            if (fr->col > c) {
                 int rc = e_close_to(e, e->depth - 1);
                 if (rc != 0) {
                     return rc;
                 }
                 continue;
             }
-            if (top == c) {
+            if (fr->col == c) {
                 int continues;
-                if (kind == YEP_FRAME_SEQ) {
-                    continues = (li.first == '-' && (li.offset + li.indent + 1 >= e->len ||
-                                                     e->p[li.offset + li.indent + 1] == ' ' ||
-                                                     e->p[li.offset + li.indent + 1] == '\t' ||
-                                                     e->p[li.offset + li.indent + 1] == '\n' ||
-                                                     e->p[li.offset + li.indent + 1] == '\r'));
-                } else if (e->frames[e->depth - 1].inline_doc) {
+                if (fr->kind == YEP_FRAME_SEQ) {
+                    continues = dash_blank;
+                } else if (fr->inline_doc) {
                     continues = 0; /* "--- k: v" maps take deeper keys only */
                 } else {
                     continues = yep_scan_is_key_start(li.first) || li.first == ':' ||
-                                li.first == '?' ||
-                                (li.first == '-' && !(li.offset + li.indent + 1 >= e->len ||
-                                                      e->p[li.offset + li.indent + 1] == ' ' ||
-                                                      e->p[li.offset + li.indent + 1] == '\t' ||
-                                                      e->p[li.offset + li.indent + 1] == '\n' ||
-                                                      e->p[li.offset + li.indent + 1] == '\r'));
+                                li.first == '?' || (li.first == '-' && !dash_blank);
                 }
                 if (!continues) {
                     int rc = e_close_to(e, e->depth - 1);
