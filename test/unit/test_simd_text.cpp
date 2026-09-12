@@ -478,13 +478,21 @@ TEST(SimdText, GateScan) {
      * one OR'd ~allow in, one ANDed allow with zero), 0x1F is a
      * violation (the <0x1F bound missed it), DEL and >=0x80 rule */
     const std::string probes[] = {
-        "", "plain text 123", "\t\n\r", "a\tb\nc\rd",
-        "with 0x1f: \x1f", "del: \x7F", "utf8: \xC3\xA9",
-        std::string("nul: ") + char(0), "mixed \x1F then \xC3\xA9", "line\nwith\ttabs\r",
+        "",
+        "plain text 123",
+        "\t\n\r",
+        "a\tb\nc\rd",
+        "with 0x1f: \x1f",
+        "del: \x7F",
+        "utf8: \xC3\xA9",
+        std::string("nul: ") + char(0),
+        "mixed \x1F then \xC3\xA9",
+        "line\nwith\ttabs\r",
         std::string("\x1F") + "bad\n",
     };
     for (const std::string& p : probes) {
-        EXPECT_EQ(k->gate_scan(p.data(), p.size()), naive_gate_safe((const unsigned char*)p.data(), p.size()))
+        EXPECT_EQ(k->gate_scan(p.data(), p.size()),
+                  naive_gate_safe((const unsigned char*)p.data(), p.size()))
             << "probe len " << p.size();
         EXPECT_EQ(yep_text_gate_scan_scalar(p.data(), p.size()),
                   naive_gate_safe((const unsigned char*)p.data(), p.size()))
