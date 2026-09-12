@@ -334,10 +334,87 @@ static ptrdiff_t yep_avx2_stopset_find(const yep_stopset* ss, const char* s, siz
     return tail < 0 ? -1 : (ptrdiff_t)i + tail;
 }
 
+/* The fused line-facts sweep (TODO.restructure/76), AVX2 flavor:
+ * movemask + ctz extract the hit lanes with no spill. Gated to >=64B
+ * remaining spans like NEON (short lines keep the scalar walk). */
+static void yep_avx2_line_facts(const char* s, size_t len, size_t pos, yep_line_facts* out) {
+    if (len - pos < 64) {
+        yep_text_line_facts_scalar(s, len, pos, out);
+        return;
+    }
+    const __m256i knl = _mm256_set1_epi8('\n'), kcr = _mm256_set1_epi8('\r'),
+                  ksp = _mm256_set1_epi8(' '), kco = _mm256_set1_epi8(':'),
+                  khash = _mm256_set1_epi8('#');
+    size_t i = pos;
+    int have_end = 0, have_indent = 0, have_stop = 0;
+    uint32_t end = 0, indent = 0, stop = 0;
+    for (; i + 32 <= len; i += 32) {
+        if (have_end) {
+            break; /* indent <= end, stop < end: settled or absent */
+        }
+        __m256i v = _mm256_loadu_si256((const __m256i*)(const void*)(s + i));
+        uint32_t br = (uint32_t)_mm256_movemask_epi8(
+            _mm256_or_si256(_mm256_cmpeq_epi8(v, knl), _mm256_cmpeq_epi8(v, kcr)));
+        if (!have_indent) {
+            uint32_t nsp = (uint32_t)_mm256_movemask_epi8(
+                _mm256_xor_si256(_mm256_cmpeq_epi8(v, ksp), _mm256_set1_epi8(-1)));
+            if (nsp) {
+                indent = (uint32_t)(i + (size_t)__builtin_ctz(nsp));
+                have_indent = 1;
+            }
+        }
+        if (br) {
+            end = (uint32_t)(i + (size_t)__builtin_ctz(br));
+            have_end = 1;
+        }
+        if (!have_stop && have_indent) {
+            uint32_t st = br;
+            st |= (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kco));
+            st |= (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, khash));
+            if (st) {
+                /* bytes left of the indent are spaces — no set lane can
+                 * sit before `from`; a set lane at/after end means every
+                 * later one is too: one ctz answers exactly */
+                uint32_t from = (uint32_t)(indent > i ? indent - i : 0);
+                uint32_t at = (uint32_t)__builtin_ctz(st);
+                if (at >= from && (!have_end || (uint32_t)(i + at) < end)) {
+                    stop = (uint32_t)(i + at);
+                    have_stop = 1;
+                }
+            }
+        }
+    }
+    uint32_t stop_set = 0;
+    if (!have_end || !have_indent || !have_stop) {
+        yep_line_facts t;
+        yep_text_line_facts_scalar(s, len, i, &t);
+        if (!have_end) {
+            end = t.end;
+        }
+        if (!have_indent) {
+            indent = t.indent;
+        }
+        if (!have_stop) {
+            if (have_end) {
+                stop = end;
+                stop_set = 0;
+            } else {
+                stop = t.stop;
+                stop_set = t.stop_set;
+            }
+        }
+    }
+    out->end = end;
+    out->indent = indent;
+    out->stop = stop;
+    out->stop_set = have_stop ? 1u : stop_set;
+}
+
 const yep_text_kernels yep_text_kernels_avx2 = {
     yep_avx2_contains,   yep_avx2_find,        yep_avx2_find3,    yep_avx2_count,
     yep_avx2_count3,     yep_avx2_copy_count3, yep_avx2_find_not, yep_avx2_stopset_find,
     yep_avx2_quote_scan, yep_avx2_scan_stats,  yep_avx2_qbc_find, yep_avx2_gate_scan,
+    yep_avx2_line_facts,
 };
 
 #endif /* YEP_ARCH_X86 */
