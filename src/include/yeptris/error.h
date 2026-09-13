@@ -25,6 +25,7 @@ typedef enum {
     YEPTRIS_ERROR_ARG = 6,         /* invalid argument (NULL handle, bad option) */
     YEPTRIS_ERROR_UNSUPPORTED = 7, /* requested feature not built in */
     YEPTRIS_ERROR_INTERNAL = 8,    /* invariant violation — a bug, please report */
+    YEPTRIS_ERROR_SCHEMA = 9, /* descriptor materialization: a REQUIRED node missing (issue #238) */
 } YeptrisStatus;
 
 /* Message of the most recent failure on the calling thread, with its

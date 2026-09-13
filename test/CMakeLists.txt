@@ -45,6 +45,7 @@ add_executable(test_unit
     unit/test_visit.cpp
     unit/test_json_number_scan.cpp
     unit/test_line_shape.cpp
+    unit/test_schema.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(test_unit PRIVATE yeptris_static Threads::Threads
