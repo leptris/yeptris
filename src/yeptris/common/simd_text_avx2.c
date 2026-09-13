@@ -44,7 +44,7 @@ static ptrdiff_t yep_avx2_find(const char* s, size_t len, char c) {
     for (; i + YEP_AVX2_CHUNK <= len; i += YEP_AVX2_CHUNK) {
         uint32_t m = yep_avx2_eq_mask(s + i, c);
         if (m) {
-            return (ptrdiff_t)(i + (size_t)__builtin_ctz(m));
+            return (ptrdiff_t)(i + (size_t)yep_ctz32(m));
         }
     }
     ptrdiff_t tail = yep_text_find_scalar(s + i, len - i, c);
@@ -54,7 +54,7 @@ static ptrdiff_t yep_avx2_find(const char* s, size_t len, char c) {
 static size_t yep_avx2_count(const char* s, size_t len, char c) {
     size_t n = 0, i = 0;
     for (; i + YEP_AVX2_CHUNK <= len; i += YEP_AVX2_CHUNK) {
-        n += (size_t)__builtin_popcount(yep_avx2_eq_mask(s + i, c));
+        n += (size_t)yep_popcount32(yep_avx2_eq_mask(s + i, c));
     }
     return n + yep_text_count_char_scalar(s + i, len - i, c);
 }
@@ -66,9 +66,9 @@ static void yep_avx2_count3(const char* s, size_t len, char c0, char c1, char c2
         uint32_t m0 = yep_avx2_eq_mask(s + i, c0);
         uint32_t m1 = yep_avx2_eq_mask(s + i, c1);
         uint32_t m2 = yep_avx2_eq_mask(s + i, c2);
-        a += (size_t)__builtin_popcount(m0);
-        b += (size_t)__builtin_popcount(m1);
-        d += (size_t)__builtin_popcount(m2);
+        a += (size_t)yep_popcount32(m0);
+        b += (size_t)yep_popcount32(m1);
+        d += (size_t)yep_popcount32(m2);
     }
     size_t ta = 0, tb = 0, td = 0;
     yep_text_count3_scalar(s + i, len - i, c0, c1, c2, &ta, &tb, &td);
@@ -84,9 +84,9 @@ static void yep_avx2_copy_count3(char* dst, const char* src, size_t len, char c0
         __m256i v = _mm256_loadu_si256((const __m256i*)(const void*)(src + i));
         _mm256_storeu_si256((__m256i*)(void*)(dst + i), v);
         __m256i s0 = _mm256_set1_epi8(c0), s1 = _mm256_set1_epi8(c1), s2 = _mm256_set1_epi8(c2);
-        a += (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, s0)));
-        b += (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, s1)));
-        d += (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, s2)));
+        a += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, s0)));
+        b += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, s1)));
+        d += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, s2)));
     }
     if (i < len) {
         memcpy(dst + i, src + i, len - i);
@@ -103,7 +103,7 @@ static ptrdiff_t yep_avx2_find_not(const char* s, size_t len, char c) {
     for (; i + YEP_AVX2_CHUNK <= len; i += YEP_AVX2_CHUNK) {
         uint32_t m = yep_avx2_eq_mask(s + i, c) ^ 0xFFFFFFFFu;
         if (m) {
-            return (ptrdiff_t)(i + (size_t)__builtin_ctz(m));
+            return (ptrdiff_t)(i + (size_t)yep_ctz32(m));
         }
     }
     ptrdiff_t tail = yep_text_find_not_scalar(s + i, len - i, c);
@@ -118,7 +118,7 @@ static ptrdiff_t yep_avx2_find3(const char* s, size_t len, char c0, char c1, cha
     for (; i + YEP_AVX2_CHUNK <= len; i += YEP_AVX2_CHUNK) {
         uint32_t m = yep_avx2_eq_mask(s + i, c0);
         while (m) {
-            size_t k = (size_t)__builtin_ctz(m);
+            size_t k = (size_t)yep_ctz32(m);
             size_t at = i + k;
             if (at + 2 < len && s[at + 1] == c1 && s[at + 2] == c2) {
                 return (ptrdiff_t)at;
@@ -143,7 +143,7 @@ static ptrdiff_t yep_avx2_qbc_find(const char* s, size_t len) {
                             _mm256_cmpeq_epi8(_mm256_min_epu8(v, c1f), v));
         uint32_t bits = (uint32_t)_mm256_movemask_epi8(m);
         if (bits != 0) {
-            return (ptrdiff_t)(i + (size_t)__builtin_ctz(bits));
+            return (ptrdiff_t)(i + (size_t)yep_ctz32(bits));
         }
     }
     ptrdiff_t r = yep_text_qbc_find_scalar(s + i, len - i);
@@ -163,7 +163,7 @@ static ptrdiff_t yep_avx2_quote_scan(const char* s, size_t len, char q, int* has
                 i += YEP_AVX2_CHUNK;
                 continue;
             }
-            size_t k = (size_t)__builtin_ctz(m);
+            size_t k = (size_t)yep_ctz32(m);
             if (q == '"' && s[i + k] == '\\') {
                 esc = 1;
                 i += k + 2; /* skip the escaped byte */
@@ -221,25 +221,25 @@ static void yep_avx2_scan_stats(const char* s, size_t len, yep_text_stats* out) 
         __m256i v = _mm256_loadu_si256(pp);
         hi |= (uint32_t)_mm256_movemask_epi8(v); /* sign bit = bit7 = non-ASCII */
         c_nl +=
-            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ktab)));
-        c_co += (size_t)__builtin_popcount(
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ktab)));
+        c_co += (size_t)yep_popcount32(
             (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kcomma)));
         c_da +=
-            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdash)));
-        c_cl += (size_t)__builtin_popcount(
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdash)));
+        c_cl += (size_t)yep_popcount32(
             (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kcolon)));
         c_br +=
-            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrk)));
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrk)));
         c_bc +=
-            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrce)));
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrce)));
         c_dq +=
-            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdq)));
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdq)));
         c_sq +=
-            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ksq)));
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ksq)));
         c_pi +=
-            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kpipe)));
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kpipe)));
         c_am +=
-            (size_t)__builtin_popcount((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kamp)));
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kamp)));
         /* c-printable ASCII violations: b < 0x20 (signed trick: flip
          * the sign bit, then b < 0x20 <=> w < 0xA0), except TAB/LF/CR;
          * plus DEL. Non-ASCII is tracked separately in `hi`. */
@@ -332,7 +332,7 @@ static ptrdiff_t yep_avx2_stopset_find(const yep_stopset* ss, const char* s, siz
         uint32_t z = (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(m, _mm256_setzero_si256()));
         uint32_t nz = ~z;
         if (nz != 0) {
-            return (ptrdiff_t)(i + (size_t)__builtin_ctz(nz));
+            return (ptrdiff_t)(i + (size_t)yep_ctz32(nz));
         }
     }
     ptrdiff_t tail = yep_text_stopset_find_scalar(ss, s + i, len - i);
@@ -366,12 +366,12 @@ static void yep_avx2_line_facts(const char* s, size_t len, size_t pos, yep_line_
             uint32_t nsp = (uint32_t)_mm256_movemask_epi8(
                 _mm256_xor_si256(_mm256_cmpeq_epi8(v, ksp), _mm256_set1_epi8(-1)));
             if (nsp) {
-                indent = (uint32_t)(i + (size_t)__builtin_ctz(nsp));
+                indent = (uint32_t)(i + (size_t)yep_ctz32(nsp));
                 have_indent = 1;
             }
         }
         if (br) {
-            end = (uint32_t)(i + (size_t)__builtin_ctz(br));
+            end = (uint32_t)(i + (size_t)yep_ctz32(br));
             have_end = 1;
         }
         if (!have_stop && have_indent) {
@@ -383,7 +383,7 @@ static void yep_avx2_line_facts(const char* s, size_t len, size_t pos, yep_line_
                  * sit before `from`; a set lane at/after end means every
                  * later one is too: one ctz answers exactly */
                 uint32_t from = (uint32_t)(indent > i ? indent - i : 0);
-                uint32_t at = (uint32_t)__builtin_ctz(st);
+                uint32_t at = (uint32_t)yep_ctz32(st);
                 if (at >= from && (!have_end || (uint32_t)(i + at) < end)) {
                     stop = (uint32_t)(i + at);
                     have_stop = 1;

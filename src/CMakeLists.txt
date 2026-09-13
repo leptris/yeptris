@@ -60,11 +60,16 @@ set(YEPTRIS_SOURCES
 # follow the TARGET arch, not the host (the all-platform wheels ride
 # this; host-processor-only selection linked NEON objects into an
 # x86_64 image).
-if((CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$" OR
-    CMAKE_OSX_ARCHITECTURES MATCHES "x86_64") AND NOT MSVC)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$" OR
+    CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
     list(APPEND YEPTRIS_SOURCES yeptris/common/simd_text_avx2.c)
-    set_source_files_properties(yeptris/common/simd_text_avx2.c
-        PROPERTIES COMPILE_OPTIONS "-mavx2;-mpopcnt")
+    if(MSVC)
+        set_source_files_properties(yeptris/common/simd_text_avx2.c
+            PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+    else()
+        set_source_files_properties(yeptris/common/simd_text_avx2.c
+            PROPERTIES COMPILE_OPTIONS "-mavx2;-mpopcnt")
+    endif()
 elseif((CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$" OR
     CMAKE_OSX_ARCHITECTURES MATCHES "arm64") AND NOT CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
     list(APPEND YEPTRIS_SOURCES yeptris/common/simd_text_neon.c)

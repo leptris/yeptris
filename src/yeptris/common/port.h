@@ -12,6 +12,24 @@
 
 #define YEP_ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+static inline unsigned yep_popcount32(uint32_t v) {
+    return (unsigned)__popcnt(v);
+}
+static inline unsigned yep_ctz32(uint32_t v) {
+    unsigned long i;
+    _BitScanForward(&i, v);
+    return (unsigned)i;
+}
+#else
+static inline unsigned yep_popcount32(uint32_t v) {
+    return (unsigned)__builtin_popcount(v);
+}
+static inline unsigned yep_ctz32(uint32_t v) {
+    return (unsigned)__builtin_ctz(v);
+}
+#endif
 /* Count-trailing-zeros of a nonzero u64. clang/gcc have the builtin;
  * MSVC spells it _BitScanForward64 (the windows leg pinned this). */
 static inline unsigned yep_ctz64(uint64_t v) {

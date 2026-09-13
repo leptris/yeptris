@@ -14,7 +14,7 @@
 #include <windows.h>
 
 typedef struct DIR {
-    HANDLE h;  /* INVALID_HANDLE_VALUE until the first real read */
+    HANDLE h; /* INVALID_HANDLE_VALUE until the first real read */
     int done;
     int dot_phase; /* 0 = yield ".", 1 = yield "..", 2 = real entries */
     char pat[MAX_PATH + 3];
