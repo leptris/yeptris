@@ -68,7 +68,11 @@ jobs:
 
       - name: Fetch simdjson (pinned; the JSON-field reference, item 81)
         run: |
-          git clone --depth 1 https://github.com/simdjson/simdjson deps/simdjson
+          # default-branch clones move; fetch the exact pinned tree
+          git init -q deps/simdjson
+          git -C deps/simdjson remote add origin https://github.com/simdjson/simdjson
+          git -C deps/simdjson fetch --depth 1 origin 3839ac681a4a6b4fd09b4d7e03229b35bcd909d7
+          git -C deps/simdjson checkout -q FETCH_HEAD
           test "$(git -C deps/simdjson rev-parse HEAD)" = "3839ac681a4a6b4fd09b4d7e03229b35bcd909d7"
           test -f deps/simdjson/singleheader/simdjson.cpp
 
