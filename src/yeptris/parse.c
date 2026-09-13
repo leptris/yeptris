@@ -69,12 +69,49 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
         st = YEPTRIS_ERROR_ARG;
         goto jfail;
     }
-    /* The builder's walker is LENIENT (YAML flow class) — the strict
-     * validator must rule first; the build-then-validate fusion was
-     * measured WRONG by json-suite-strict (5 pinned rejects accepted).
-     * What the clean gate CAN skip is the whole-document UTF-8 pass:
-     * gate-clean input is pure printable ASCII (TODO.restructure/81).
-     * Error precedence (grammar before encoding) is unchanged. */
+    /* Clean-gate fast route (TODO.restructure/81 stage 2): a gate-clean
+     * buffer is printable ASCII, and the FUSED builder's walk runs
+     * STRICT here (dom->flow_strict) — one pass validates RFC 8259 and
+     * builds. Rejects, non-opener roots, and surprises fall to the
+     * original sequence below, whose error precedence is byte-for-byte
+     * the pinned behavior (json-suite-strict gates this). */
+    if (len > 0 && !yep_text_active()->gate_scan(buf, len)) {
+        size_t off = 0;
+        while (off < len &&
+               (buf[off] == ' ' || buf[off] == '\t' || buf[off] == '\n' || buf[off] == '\r')) {
+            off++;
+        }
+        if (off < len && (buf[off] == '[' || buf[off] == '{')) {
+            const yep_allocator* sys = yep_system_allocator();
+            yep_dom* dom = yep_dom_create(sys);
+            if (dom == NULL) {
+                st = YEPTRIS_ERROR_MEMORY;
+                goto jfail;
+            }
+            dom->input_base = buf;
+            dom->input_len = len;
+            dom->flow_strict = 1;
+            size_t close = 0;
+            int rc = dom_on_flow_build(dom, buf, off, len, 1, 0, (yep_view){0}, (yep_view){0}, 0,
+                                       YEP_DOM_MAX_DEPTH, &close);
+            dom->flow_strict = 0;
+            int tail_ok = 0;
+            if (rc == 1) {
+                /* trailing garbage after the closer is a reject the
+                 * fallback reports exactly as before */
+                size_t t = close + 1;
+                while (t < len &&
+                       (buf[t] == ' ' || buf[t] == '\t' || buf[t] == '\n' || buf[t] == '\r')) {
+                    t++;
+                }
+                tail_ok = (t == len);
+            }
+            if (rc == 1 && tail_ok && dom_on_flow_commit(dom) > 0) {
+                return yep_json_doc_wrap(dom, buf, len, sys, status);
+            }
+            yep_dom_destroy(dom); /* reject/rollback: the sequence below */
+        }
+    }
     size_t verr = 0;
     if (!yep_json_document(buf, len, &verr)) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, verr,

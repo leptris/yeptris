@@ -94,6 +94,10 @@ typedef struct yep_dom {
     uint8_t* mut_att;
     uint16_t* mut_depth;
     uint32_t mut_tbl_cap;
+    /* the strict-JSON route's fused walk (TODO.restructure/81): when
+     * set, dom_on_flow_build's walker enforces RFC 8259 keys — the
+     * engine's flow path leaves it 0 (the lenient YAML flow class) */
+    int flow_strict;
     /* fused-flow staging (TODO.restructure/53): scratch nodes live at
      * [stage_base, ncount) until commit; rollback restores the counts */
     int flow_staged;

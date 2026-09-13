@@ -1348,3 +1348,20 @@ Stages 2-3 (strict-mode fused walker; compact-tape document variant)
 are designed on the board with the materialization math: 48 B/node +
 resolver cannot chase a 4-8 B/element tape — the tape variant is the
 end state.
+
+
+## 2026-09-13 (iii) — 81 stage 2: the strict fused walk (+29%)
+
+The walker's only leniency was the first-key state (JW_KEY_OR_CLOSE
+accepts any token class as a map key; after-comma keys were already
+string-only). A `strict` bit — set through `dom->flow_strict` for the
+JSON route, 0 for the engine's flow path — makes dom_on_flow_build's
+ONE walk validate RFC 8259 and build. parse_json clean route: gate +
+one strict fused build; everything else falls to the pinned original
+sequence. json-suite-strict: 283/283.
+
+Caught pre-ship: the commit-contract bug (returns 1 on success; `== 0`
+discarded every successful build and halved the referee — the 2x-work
+signature), and the missing trailing-content check.
+
+157 → 203 MB/s (0.16 → 0.20x vs simdjson). Next: stage 3 (tape).

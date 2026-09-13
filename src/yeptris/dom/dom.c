@@ -736,6 +736,8 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
     yep_json_walk w;
     yep_json_tok t;
     yep_json_walk_init(&w, p, len, open, max_depth);
+    w.strict = d->flow_strict; /* the strict-JSON route rides the same
+                                  fused walk (TODO.restructure/81) */
     for (;;) {
         yep_jw_status st = yep_json_walk_next(&w, &t);
         if (st == YEP_JW_REJECT) {
