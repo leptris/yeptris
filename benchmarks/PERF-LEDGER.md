@@ -1327,3 +1327,24 @@ dispatcher uses) and the profile script records the CPU's avx2 flag
 ~19-25% of block time across the seam) is specced on the board with
 scope estimate; it is a 2-3 session rewrite with the event-stream
 byte-identity bar.
+
+
+## 2026-09-13 (ii) — the JSON-field campaign opens (81)
+
+simdjson joins ryml as a pinned bench reference (3839ac6,
+singleheader, CI-wired). Baseline on the new json-doc corpus (one
+strict-JSON array, the flow-json object mix): yeptris_parse_json
+~157 MB/s vs simdjson DOM ~990 MB/s = 0.16x — the honest opening
+line of the JSON campaign.
+
+Stage 1: the clean gate skips the whole-document UTF-8 pass — no
+movement (the SWAR validator was already ~4 GB/s; negative result,
+kept as a pass-elimination). The build-then-validate fusion was
+killed by json-suite-strict: the DOM builder's walker is lenient and
+accepted 5 pinned rejects — the strict validator must rule first
+(recorded).
+
+Stages 2-3 (strict-mode fused walker; compact-tape document variant)
+are designed on the board with the materialization math: 48 B/node +
+resolver cannot chase a 4-8 B/element tape — the tape variant is the
+end state.

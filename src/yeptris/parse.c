@@ -38,12 +38,43 @@ YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisSt
     return yeptris_parse_ex(buf, len, NULL, status);
 }
 
+/* The strict-JSON document wrapper (both routes share it). */
+static YeptrisDocument yep_json_doc_wrap(yep_dom* dom, const char* buf, size_t len,
+                                         const yep_allocator* sys, YeptrisStatus* status) {
+    (void)len;
+    yeptris_document* doc = yep_alloc(sys, sizeof(yeptris_document));
+    if (doc == NULL) {
+        yep_dom_destroy(dom);
+        if (status != NULL) {
+            *status = YEPTRIS_ERROR_MEMORY;
+        }
+        return NULL;
+    }
+    doc->dom = dom;
+    doc->sys = sys;
+    doc->schema = YEPTRIS_SCHEMA_12_CORE; /* strict JSON is core by construction */
+    doc->transcoded = NULL;
+    doc->transcoded_len = 0;
+    doc->input = buf;
+    doc->finish_pool = NULL;
+    if (status != NULL) {
+        *status = YEPTRIS_OK;
+    }
+    return (YeptrisDocument)doc;
+}
+
 YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, YeptrisStatus* status) {
     YeptrisStatus st = YEPTRIS_OK;
     if (buf == NULL && len != 0) {
         st = YEPTRIS_ERROR_ARG;
         goto jfail;
     }
+    /* The builder's walker is LENIENT (YAML flow class) — the strict
+     * validator must rule first; the build-then-validate fusion was
+     * measured WRONG by json-suite-strict (5 pinned rejects accepted).
+     * What the clean gate CAN skip is the whole-document UTF-8 pass:
+     * gate-clean input is pure printable ASCII (TODO.restructure/81).
+     * Error precedence (grammar before encoding) is unchanged. */
     size_t verr = 0;
     if (!yep_json_document(buf, len, &verr)) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, verr,
@@ -52,7 +83,8 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
         goto jfail;
     }
     size_t uerr = 0;
-    if (!yep_utf8_validate((const unsigned char*)buf, len, &uerr)) {
+    if (yep_text_active()->gate_scan(buf, len) &&
+        !yep_utf8_validate((const unsigned char*)buf, len, &uerr)) {
         yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, uerr, "ill-formed UTF-8 at byte %zu",
                       uerr);
         st = YEPTRIS_ERROR_ENCODING;
@@ -82,23 +114,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
             yep_dom_destroy(dom);
             return parse_impl(buf, len, NULL, 1, status);
         }
-        yeptris_document* doc = yep_alloc(sys, sizeof(yeptris_document));
-        if (doc == NULL) {
-            yep_dom_destroy(dom);
-            st = YEPTRIS_ERROR_MEMORY;
-            goto jfail;
-        }
-        doc->dom = dom;
-        doc->sys = sys;
-        doc->schema = YEPTRIS_SCHEMA_12_CORE; /* strict JSON is core by construction */
-        doc->transcoded = NULL;
-        doc->transcoded_len = 0;
-        doc->input = buf;
-        doc->finish_pool = NULL;
-        if (status != NULL) {
-            *status = YEPTRIS_OK;
-        }
-        return (YeptrisDocument)doc;
+        return yep_json_doc_wrap(dom, buf, len, sys, status);
     }
 jfail:
     if (status != NULL) {
