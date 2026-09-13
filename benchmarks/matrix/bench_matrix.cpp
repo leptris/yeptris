@@ -17,6 +17,7 @@
 
 #include <yeptris.h>
 #include <yeptris/json.h> /* yeptris_parse_json: the strict-JSON direct build */
+#include <yeptris/tape.h> /* yeptris_parse_json_tape: the fused walk-to-tape */
 
 #if defined(YEP_BENCH_LIBYAML)
 #include <yaml.h>
@@ -686,19 +687,30 @@ Result bench_simdjson(const Corpus& c, int iters) {
             c.data.size()};
 }
 
-double h2h_vs_simdjson(const Corpus& c, int rounds, double* yep_mb) {
+struct H2hJson {
+    double dom_ratio;
+    double tape_ratio;
+    double dom_mb;
+    double tape_mb;
+};
+
+/* Both yeptris routes ride the same interleaved rounds: parse_json's
+ * direct DOM build and parse_json_tape's fused walk-to-tape (item 85),
+ * each ratioed against simdjson DOM per round, median of ratios. */
+H2hJson h2h_vs_simdjson(const Corpus& c, int rounds) {
     simdjson::dom::parser parser;
-    std::vector<double> ratios;
+    std::vector<double> dom_ratios, tape_ratios;
     double best_yep = 1e9;
+    double best_tape = 1e9;
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument probe = yeptris_parse_json(c.data.data(), c.data.size(), &st);
     if (probe == NULL) {
         yeptris_document_free(probe);
-        return 0; /* not strict JSON: no referee */
+        return {0, 0, 0, 0}; /* not strict JSON: no referee */
     }
     yeptris_document_free(probe);
     for (int i = 0; i < rounds; i++) {
-        double ty, tr;
+        double ty, tp, tr;
         if (i & 1) {
             auto b0 = clk::now();
             simdjson::dom::element doc = parser.parse(c.data.data(), c.data.size());
@@ -708,9 +720,20 @@ double h2h_vs_simdjson(const Corpus& c, int rounds, double* yep_mb) {
             YeptrisDocument d = yeptris_parse_json(c.data.data(), c.data.size(), &st);
             auto a1 = clk::now();
             yeptris_document_free(d);
+            auto p0 = clk::now();
+            yeptris_json_tape tape;
+            yeptris_parse_json_tape(c.data.data(), c.data.size(), &tape);
+            auto p1 = clk::now();
+            yeptris_tape_free(&tape);
             ty = ms_of(a0, a1);
+            tp = ms_of(p0, p1);
             tr = ms_of(b0, b1);
         } else {
+            auto p0 = clk::now();
+            yeptris_json_tape tape;
+            yeptris_parse_json_tape(c.data.data(), c.data.size(), &tape);
+            auto p1 = clk::now();
+            yeptris_tape_free(&tape);
             auto a0 = clk::now();
             YeptrisDocument d = yeptris_parse_json(c.data.data(), c.data.size(), &st);
             auto a1 = clk::now();
@@ -720,17 +743,24 @@ double h2h_vs_simdjson(const Corpus& c, int rounds, double* yep_mb) {
             auto b1 = clk::now();
             (void)doc;
             ty = ms_of(a0, a1);
+            tp = ms_of(p0, p1);
             tr = ms_of(b0, b1);
         }
         if (ty < best_yep) {
             best_yep = ty;
         }
-        ratios.push_back(tr / ty); /* >1: yeptris faster */
+        if (tp < best_tape) {
+            best_tape = tp;
+        }
+        dom_ratios.push_back(tr / ty); /* >1: yeptris faster */
+        tape_ratios.push_back(tr / tp);
     }
-    std::sort(ratios.begin(), ratios.end());
+    std::sort(dom_ratios.begin(), dom_ratios.end());
+    std::sort(tape_ratios.begin(), tape_ratios.end());
     double mb = (double)c.data.size() / (1024.0 * 1024.0);
-    *yep_mb = best_yep < 1e9 ? mb * 1000.0 / best_yep : 0;
-    return ratios[ratios.size() / 2];
+    return {dom_ratios[dom_ratios.size() / 2], tape_ratios[tape_ratios.size() / 2],
+            best_yep < 1e9 ? mb * 1000.0 / best_yep : 0,
+            best_tape < 1e9 ? mb * 1000.0 / best_tape : 0};
 }
 #endif
 
@@ -906,20 +936,22 @@ int main(int argc, char** argv) {
 #endif
 
 #if defined(YEP_BENCH_SIMDJSON)
-    /* The JSON-field referee (TODO.restructure/81). */
+    /* The JSON-field referee (TODO.restructure/81; the tape leg is 85). */
     printf("\n# head-to-head vs simdjson DOM (json-doc, interleaved, median of rounds)\n\n"
-           "| yeptris parse_json MB/s | vs simdjson |\n|---|---|\n");
+           "| route | MB/s | vs simdjson |\n|---|---|---|\n");
     md_h2h += "\n# head-to-head vs simdjson DOM (json-doc, interleaved, median of rounds)\n\n"
-              "| yeptris parse_json MB/s | vs simdjson |\n|---|---|\n";
+              "| route | MB/s | vs simdjson |\n|---|---|---|\n";
     for (const Corpus& c : corpora) {
         if (c.name != "json-doc") {
             continue;
         }
-        double ymb = 0;
-        double med = h2h_vs_simdjson(c, full ? 9 : 5, &ymb);
-        printf("| %.2f | %.2fx |\n", ymb, med);
+        H2hJson h = h2h_vs_simdjson(c, full ? 9 : 5);
+        printf("| parse_json DOM | %.2f | %.2fx |\n", h.dom_mb, h.dom_ratio);
+        printf("| parse_json_tape | %.2f | %.2fx |\n", h.tape_mb, h.tape_ratio);
         char row[96];
-        snprintf(row, sizeof(row), "| %.2f | %.2fx |\n", ymb, med);
+        snprintf(row, sizeof(row), "| parse_json DOM | %.2f | %.2fx |\n", h.dom_mb, h.dom_ratio);
+        md_h2h += row;
+        snprintf(row, sizeof(row), "| parse_json_tape | %.2f | %.2fx |\n", h.tape_mb, h.tape_ratio);
         md_h2h += row;
     }
     printf("\n");

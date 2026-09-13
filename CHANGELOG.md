@@ -27,6 +27,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Added
+- TODO.restructure/85: the JSON tape — `yeptris_parse_json_tape`
+  drives the strict fused walk into compact parallel columns (kinds,
+  offsets, lengths, values carved from one block; strings stay
+  zero-copy spans, numbers convert inline, container records link
+  their matching index for O(1) skipping). parse_json_tape 301 MB/s
+  vs parse_json 207 MB/s on json-doc (0.30x vs simdjson, from
+  0.20x) — the DOM build eliminated, the walk is the floor. Gates:
+  a tape-vs-DOM differential (`tape-diff`, 340 cases) pins record
+  stream == tree for every JSONTestSuite document plus status
+  parity with parse_json; 13 JsonTape unit specs pin the record
+  contract.
 - TODO.restructure/83 (issue #238): the schema-descriptor
   materialization API — `yeptris_schema_load` walks a
   caller-compiled descriptor (flat 24-byte plan nodes; kinds

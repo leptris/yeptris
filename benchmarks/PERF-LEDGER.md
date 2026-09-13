@@ -1423,3 +1423,20 @@ cannot be rerouted as a tape; item 85 boards the dedicated fused
 walk-to-tape consumer with the record layout and the additive API
 surface, plus the honest expectation (350-500 MB/s first build;
 simdjson parity additionally needs the structural-index pass).
+
+
+## 2026-09-13 (vii) — 85: the JSON tape landed
+
+`yeptris_parse_json_tape` (strict fused walk -> parallel record
+columns): json-doc 301 MB/s vs parse_json's 207 (+45 percent), 0.30x
+vs simdjson (from 0.20x), same interleaved referee. The DOM build
+(48 B/node + views + places) was ~31 percent of parse_json's cost;
+the walk's token machine is now the floor — parity needs the
+structural-index pass (item 81's stage-4 shape: one SIMD pass finds
+all structural bytes, then the walk consumes indices).
+
+Gates: tape-diff (340 cases) pins tape == DOM over JSONTestSuite
+plus status parity; 13 JsonTape unit specs pin the record contract.
+Recorded headroom: the carve is len+2 slots x 17 B (input-derived,
+no pre-pass) — a growing carve or a counting pre-pass would shrink
+peak memory ~4x; measured cost is zero (mmap-backed), left simple.

@@ -19,6 +19,18 @@
   `size` as "older caller" and reads only the fields that existed
   then. Never reorder; only append.
 
+## Result structs consumed across FFI
+
+- `yeptris_json_tape` (`tape.h`, TODO.restructure/85): bindings read
+  the column pointers and `count` directly after ONE
+  `yeptris_parse_json_tape` call — the drain-columns shape, not a
+  per-value call. The struct layout (pointer fields, `int_min`
+  flag) is ABI like an option struct: never reorder, only append.
+  `_block` is the library's; hosts free via `yeptris_tape_free`
+  only.
+- `yeptris_schema_column` / `yeptris_desc_node` (`schema.h`): gated
+  by `YEPTRIS_DESC_ABI` (see docs/schema-abi.md).
+
 ## Shared library versioning (when `YEPTRIS_BUILD_SHARED` ships)
 
 - ELF soname `libyeptris.so.MAJOR`; dylib compatibility version

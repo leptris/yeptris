@@ -50,3 +50,21 @@ structural-index pass, not just the tape.
 JSONTestSuite + json-suite-strict stay the conformance bar; a
 tape-vs-DOM differential spec pins tape == DOM for every corpus
 document (the same discipline as flow-direct-diff).
+
+## Closed (2026-09-13)
+
+Landed as `yeptris_parse_json_tape` (`src/include/yeptris/tape.h`,
+`src/yeptris/tape.c`): parallel columns carved from one block
+(kinds u8, offs/lens u32, vals u64); strings zero-copy, numbers
+converted inline by the number kernel (int_min flags beyond-int64
+integer text), OPEN/CLOSE records linked both directions. Route
+shape mirrors parse_json: gate-clean container root fuses
+validation into the walk; everything else validates through
+yep_json_document first (error precedence byte-for-byte).
+
+Measured (json-doc, interleaved referee, this machine): 301 MB/s vs
+parse_json 207 (+45%), 0.30x vs simdjson (from 0.20x) — inside the
+350-500 projection band. Gates: `tape-diff` (340 cases: 318 corpus
+files + 22 pins; statuses and record streams) and 13 JsonTape unit
+specs. Next lever recorded in the ledger: the structural-index
+pass.
