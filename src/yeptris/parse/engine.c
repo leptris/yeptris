@@ -2291,7 +2291,7 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
         default:
             return 0;
         }
-        uint16_t col = e_col(e, e->pos);
+        uint16_t col = (uint16_t)e_col(e, e->pos);
         int rc = e_open_seq(e, col, e->line, col + 1, none, none, 0);
         if (rc != 0) {
             return rc;
@@ -2317,7 +2317,7 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
     if (e_simple_key_ok(e, sh->key_start, sh->key_end) != 0) {
         return -1;
     }
-    uint16_t key_col = e_col(e, e->pos);
+    uint16_t key_col = (uint16_t)e_col(e, e->pos);
     /* `key:` with the value on following lines, opening a FRESH map:
      * the sink may build map+key in one call (TODO.restructure/57) —
      * the engine then opens its frame silently. Sibling keys (the map
@@ -2527,7 +2527,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag)) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "&a - x" */
         }
-        uint16_t col = e_col(e, e->pos);
+        uint16_t col = (uint16_t)e_col(e, e->pos);
         int rc = e_open_seq(e, col, e->line, col + 1, node_a, node_t, node_aid);
         if (rc != 0) {
             return rc;
@@ -2544,7 +2544,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (e->pos > 0 && e->p[e->pos - 1] == '\t') {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "?\t-" (Y79Y) */
         }
-        uint16_t col = e_col(e, e->pos);
+        uint16_t col = (uint16_t)e_col(e, e->pos);
         int rc = e_open_map(e, col, e->line, col + 1, pend_a, pend_t, pend_aid, 0);
         if (rc != 0) {
             return rc;
@@ -2625,7 +2625,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             if (e_simple_key_ok(e, node_at, e->pos) != 0) {
                 return -1;
             }
-            uint16_t key_col = e_col(e, node_at);
+            uint16_t key_col = (uint16_t)e_col(e, node_at);
             int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
             if (rc != 0) {
                 return rc;
@@ -2666,7 +2666,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             if (e_simple_key_ok(e, node_at, e->pos) != 0) {
                 return -1;
             }
-            uint16_t key_col = e_col(e, node_at);
+            uint16_t key_col = (uint16_t)e_col(e, node_at);
             int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
             if (rc != 0) {
                 return rc;
@@ -2697,7 +2697,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             if (e_simple_key_ok(e, node_at, e->pos) != 0) {
                 return -1;
             }
-            uint16_t key_col = e_col(e, node_at);
+            uint16_t key_col = (uint16_t)e_col(e, node_at);
             int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
             if (rc != 0) {
                 return rc;
@@ -2752,7 +2752,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (e->doc_inline && (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "--- &a k: v" */
         }
-        uint16_t key_col = e_col(e, node_at);
+        uint16_t key_col = (uint16_t)e_col(e, node_at);
         int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
         if (rc != 0) {
             return rc;
@@ -2814,7 +2814,7 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
             /* "- :" — a compact pair with an empty key */
-            uint16_t col = e_col(e, e->pos);
+            uint16_t col = (uint16_t)e_col(e, e->pos);
             int rc = e_open_map(e, col, e->line, col + 1, e->pend_anchor, e->pend_tag,
                                 e->pend_anchor_id, 0);
             if (rc != 0) {
