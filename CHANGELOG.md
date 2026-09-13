@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-13
 ### Fixed
 - TODO.restructure/82: x86 kernel dispatch via raw cpuid —
   __builtin_cpu_supports returned 0 for AVX/AVX2 on the CI Xeons, so
