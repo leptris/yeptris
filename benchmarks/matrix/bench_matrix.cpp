@@ -955,6 +955,8 @@ int main(int argc, char** argv) {
               ", \"ms\": " + (res.ms > 0 && res.ms < 1e8 ? fmt(res.ms) : std::string("0")) +
               ", \"bytes\": " + std::to_string(res.bytes) + "},\n";
     }
+    md += md_h2h; /* the referee tables ride the artifact (item 80) */
+
     if (js.size() > 2) {
         js[js.size() - 2] = '\n';
         js[js.size() - 1] = '\0';
