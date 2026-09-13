@@ -63,7 +63,8 @@ TEST(JsonTape, MapKeysAreStrRecordsInDocumentOrder) {
     ASSERT_EQ(tp.t.count, 7u); // DOC OPEN STR INT STR BOOL CLOSE
     EXPECT_EQ(tp.t.kinds[1], YEP_T_MAP_OPEN);
     EXPECT_EQ(tp.t.kinds[2], YEP_T_STR); // "id"
-    EXPECT_EQ(tp.t.offs[2], 2u); // after the opening quote
+    // the span starts after the opening quote
+    EXPECT_EQ(tp.t.offs[2], 2u);
     EXPECT_EQ(tp.t.lens[2], 2u);
     EXPECT_EQ(tp.t.kinds[3], YEP_T_INT);
     EXPECT_EQ((int64_t)tp.t.vals[3], 7);
