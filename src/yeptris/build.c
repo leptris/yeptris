@@ -206,7 +206,7 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
         return YEPTRIS_ERROR_ARG;
     }
     struct frame {
-        uint32_t id = UINT32_MAX; /* set by every arm that reaches the place; MSVC wants the init */
+        uint32_t id;
         uint8_t is_map;
         uint8_t key_pending;
     };
