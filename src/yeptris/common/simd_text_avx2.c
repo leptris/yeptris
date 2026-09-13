@@ -343,19 +343,11 @@ static ptrdiff_t yep_avx2_stopset_find(const yep_stopset* ss, const char* s, siz
  * movemask + ctz extract the hit lanes with no spill. Gated to >=64B
  * remaining spans like NEON (short lines keep the scalar walk). */
 static void yep_avx2_line_facts(const char* s, size_t len, size_t pos, yep_line_facts* out) {
-    /* short lines keep the scalar walk: a 32-byte probe finds the
-     * first break before the sweep's setup can pay (TODO 84 — the
-     * remaining-length gate was true for every line but the last) */
-    {
-        size_t lim = len - pos < 32 ? len - pos : 32;
-        size_t k = 0;
-        while (k < lim && s[pos + k] != '\n' && s[pos + k] != '\r') {
-            k++;
-        }
-        if (k < lim || len - pos < 64) {
-            yep_text_line_facts_scalar(s, len, pos, out);
-            return;
-        }
+    /* the capped SWAR walk settles short lines in one pass — it is
+     * BOTH the test and the answer (TODO 84's probe-then-rescan paid
+     * the line content twice) */
+    if (yep_text_line_facts_capped(s, len, pos, 64, out)) {
+        return;
     }
     const __m256i knl = _mm256_set1_epi8('\n'), kcr = _mm256_set1_epi8('\r'),
                   ksp = _mm256_set1_epi8(' '), kco = _mm256_set1_epi8(':'),

@@ -1445,3 +1445,29 @@ CI ubuntu referee (PR #247 artifact, kernels live): parse_json 132.58
 MB/s / 0.17x vs simdjson -> parse_json_tape 253.24 MB/s / 0.33x —
 +91 percent on the Xeon (the DOM build cost a larger share there than
 on the M-series). simdjson runs 773.61 MB/s on that leg.
+
+
+## 2026-09-14 — the capped SWAR line-facts gate (probe+rescan dead)
+
+Anchor-heavy's CI profile (0.90x vs ryml, the last shape under
+parity): the line-facts path was the hottest symbol at 18% of parse —
+and HALF of it was double scanning: the 84 gate's 32-byte byte-probe
+walked the whole short line, then the scalar trio rescanned it. The
+three loops' data-dependent exits cost ~3 mispredicts (~45 cycles)
+per line.
+
+- First try, a fused single byte-loop: MEASURED SLOWER (~117 vs ~125
+  MB/s interleaved) — the per-byte stop check beats the saved loop
+  overhead in the wrong direction on key-shaped lines (the ':' stop
+  fires within a few bytes).
+- The landed shape: `yep_text_line_facts_capped` — a SWAR walk
+  (8B/step, one data-dependent exit) that is BOTH the short-line test
+  and the short-line answer; the ISA kernels keep the vector sweep
+  for >64B lines. Anchor 137.9 vs 128.9 (+7%), block 153.4 vs 136.3
+  (+12.5%), wide 197.5 vs 171.2 (+15%), scalar +4%, flow flat.
+- SWAR lesson pinned: the classic subtract-based haszero is NOT exact
+  — a 0x01 byte under a borrow chain from zero bytes below
+  false-flags ('!' = 0x21 ^ ' ' = 0x01 read as a space). The corpus
+  caught what a 30M-case fuzz over a restricted alphabet missed; the
+  landed form is the carry-free per-byte zero test, and the LineFacts
+  spec's random alphabet now includes '!'.
