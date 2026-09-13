@@ -35,7 +35,8 @@ extern "C" {
     X(YEP_ERR_UNDEFINED_ALIAS, "alias references an undefined anchor")                             \
     X(YEP_ERR_INVALID_ESCAPE, "invalid escape sequence in double-quoted scalar")                   \
     X(YEP_ERR_BAD_DIRECTIVE, "invalid or unsupported directive")                                   \
-    X(YEP_ERR_INTERNAL, "internal invariant violation")
+    X(YEP_ERR_INTERNAL, "internal invariant violation")                                            \
+    X(YEP_ERR_SCHEMA, "required descriptor node missing")
 
 typedef enum {
 #define YEP_ERROR_ENUM(code, str) code,
