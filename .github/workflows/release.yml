@@ -215,7 +215,10 @@ jobs:
         include:
           - os: ubuntu-latest
           - os: ubuntu-24.04-arm
-          - os: macos-latest
+          # macos-latest joined macos-15 on ARM (GitHub moved latest to
+          # macOS 15 arm64): two legs built the SAME arm64-darwin gem
+          # and raced on `gem push` — the loser failed the release with
+          # "repushing not allowed". Keep the pinned leg only.
           - os: macos-15
     steps:
       - name: Checkout code
