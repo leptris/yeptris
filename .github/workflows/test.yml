@@ -67,4 +67,7 @@ jobs:
 
       - name: CLI smoke
         shell: bash
-        run: ./build/cli/yeptris version
+        run: |
+          BIN="./build/cli/yeptris"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="./build/cli/Release/yeptris"; fi
+          "$BIN" version
