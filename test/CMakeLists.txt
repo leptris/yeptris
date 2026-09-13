@@ -46,6 +46,7 @@ add_executable(test_unit
     unit/test_json_number_scan.cpp
     unit/test_line_shape.cpp
     unit/test_schema.cpp
+    unit/test_tape.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(test_unit PRIVATE yeptris_static Threads::Threads
@@ -206,6 +207,19 @@ add_test(
     COMMAND test_jsonsuite --strict
             ${CMAKE_SOURCE_DIR}/test/conformance/data/json-test-suite/test_parsing
             ${CMAKE_CURRENT_SOURCE_DIR}/flow/jsonsuite-expected.txt
+)
+
+# tape-vs-DOM differential (TODO.restructure/85): every corpus
+# document through parse_json AND parse_json_tape — statuses and the
+# record stream against the tree
+add_executable(tape_diff flow/tape_diff.c)
+target_link_libraries(tape_diff PRIVATE yeptris_static)
+target_include_directories(tape_diff PRIVATE ${CMAKE_SOURCE_DIR}/src/yeptris
+    ${CMAKE_SOURCE_DIR}/src/include)
+yeptris_set_warnings(tape_diff)
+add_test(
+    NAME tape-diff
+    COMMAND tape_diff ${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/json-test-suite/test_parsing
 )
 
 # ---- emitter differential vs libyaml's own emission (TODO.impl/17B) ---
