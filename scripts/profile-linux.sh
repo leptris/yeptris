@@ -8,6 +8,9 @@ cd "$(dirname "$0")/.."
 BUILD="${1:-build}"
 OUT="${2:-profile-out}"
 mkdir -p "$OUT"
+# The artifact must state the CPU's vector flags: a profile from a
+# scalar-dispatched run reads completely wrong.
+grep -m1 -o 'avx2' /proc/cpuinfo >/dev/null 2>&1 && echo "cpu: avx2" > "$OUT/cpu.txt" || echo "cpu: NO avx2" > "$OUT/cpu.txt"
 
 command -v perf >/dev/null || { echo "perf not installed"; exit 1; }
 # Runners default to perf_event_paranoid>1; sudo opens sampling.

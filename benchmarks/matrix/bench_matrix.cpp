@@ -41,6 +41,7 @@ struct Corpus {
  * path minus the encoding front-end, which allocates nothing on the
  * borrow path). */
 extern "C" {
+#include "common/cpu.h"
 #include "common/simd_text.h"
 #include "dom/dom.h"
 #include "memory/allocator.h"
@@ -720,6 +721,20 @@ int main(int argc, char** argv) {
                 fclose(fp);
             }
         }
+    }
+
+    /* The artifact states which kernel table this run actually used —
+     * a mis-dispatched run (scalar on an AVX2 box) must be visible in
+     * the artifact, not inferred from symbol names after the fact. */
+    {
+        const char* impl = "scalar";
+#if defined(__x86_64__) || defined(_M_X64)
+        yep_cpu_features cpu = yep_cpu_detect();
+        impl = cpu.avx2 ? "avx2" : (cpu.avx ? "avx(only)" : "scalar(sse2)");
+#elif defined(__aarch64__)
+        impl = "neon";
+#endif
+        printf("kernels: %s\n", impl);
     }
 
     /* --shape NAME: DOM parse loop on the one corpus, ~30s (sample
