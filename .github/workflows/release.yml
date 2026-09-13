@@ -214,7 +214,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
           - os: macos-latest
+          - os: macos-15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
