@@ -11,6 +11,16 @@
 
 #include <string.h>
 
+/* the standard pollution guards — test locals must not collide with
+ * windows.h macros (an unguarded shim renamed a canonical-block local
+ * out from under the compiler) */
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include <windows.h>
 
 typedef struct DIR {

@@ -19,6 +19,14 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# MSVC (the windows CI leg): the C++ suites use designated initializers
+# (a GCC/Clang extension at C++11; MSVC requires C++20), and the test
+# targets — test_conformance included — need test/compat on the include
+# path for the dirent surface.
+if(MSVC)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
+
 # ---------------------------------------------------------------- options --
 option(BUILD_TESTING "Build tests" ON)
 option(YEPTRIS_BUILD_CLI "Build the yeptris CLI tool" ON)
@@ -140,6 +148,9 @@ if(YEPTRIS_BUILD_CLI)
 endif()
 
 if(BUILD_TESTING)
+    if(MSVC)
+        add_compile_options(-I${CMAKE_SOURCE_DIR}/test/compat)
+    endif()
     add_subdirectory(test)
 
     # Conformance runner (TODO.impl/16): builds on demand; the corpus

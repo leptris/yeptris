@@ -163,8 +163,8 @@ TEST(Utf8Validate, HighByteAnywhereInAsciiFastPath) {
      * sequence must be contiguous: C3 at pos, A9 at pos+1. */
     for (size_t pos = 0; pos + 1 < 24; pos++) {
         std::string s(24, 'x');
-        s[pos] = (char)0xC3;
-        s[pos + 1] = (char)0xA9;
+        s[pos] = (char)(unsigned char)0xC3;
+        s[pos + 1] = (char)(unsigned char)0xA9;
         size_t err = 9999;
         EXPECT_EQ(yep_utf8_validate((const unsigned char*)s.data(), s.size(), &err), 1)
             << "pos=" << pos;

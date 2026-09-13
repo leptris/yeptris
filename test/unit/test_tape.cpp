@@ -175,7 +175,7 @@ TEST(JsonTape, RawControlByteInsideStringIsAReject) {
 
 TEST(JsonTape, IllFormedUtf8IsAnEncodingError) {
     TapeGuard tp;
-    const char bad[] = {'"', (char)0xFF, '"'}; // gate trips, grammar passes
+    const char bad[] = {'"', (char)(unsigned char)0xFF, '"'}; // gate trips, grammar passes
     EXPECT_EQ(yeptris_parse_json_tape(bad, sizeof(bad), &tp.t), YEPTRIS_ERROR_ENCODING);
 }
 

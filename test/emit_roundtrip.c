@@ -143,36 +143,36 @@ int main(int argc, char** argv) {
         /* canonical mode (13B): fixed form is a parse fixed point —
          * c2 == c1 byte-for-byte after the first canonicalization */
         yeptris_emit_options opts = {sizeof(yeptris_emit_options), 1, 0};
-        YeptrisStatus stc = YEPTRIS_OK;
-        YeptrisDocument dc = yeptris_parse(in, len, &stc);
-        if (dc != NULL) {
-            size_t c1len = 0;
-            char* c1 = yeptris_serialize_ex(dc, &opts, &c1len);
-            yeptris_document_free(dc);
-            if (c1 == NULL) {
+        YeptrisStatus stc_a = YEPTRIS_OK;
+        YeptrisDocument dc_a = yeptris_parse(in, len, &stc_a);
+        if (dc_a != NULL) {
+            size_t c1_str_len = 0;
+            char* c1_str = yeptris_serialize_ex(dc_a, &opts, &c1_str_len);
+            yeptris_document_free(dc_a);
+            if (c1_str == NULL) {
                 failed++;
                 printf("CANONICAL %s: serialize_ex failed\n", ent->d_name);
             } else {
-                YeptrisStatus stc2 = YEPTRIS_OK;
-                YeptrisDocument dc2 = yeptris_parse(c1, c1len, &stc2);
-                if (dc2 == NULL) {
+                YeptrisStatus stc_a_b = YEPTRIS_OK;
+                YeptrisDocument dc_a_b = yeptris_parse(c1_str, c1_str_len, &stc_a_b);
+                if (dc_a_b == NULL) {
                     failed++;
                     printf("CANONICAL %s: canonical output does not re-parse\n%.*s", ent->d_name,
-                           (int)c1len, c1);
+                           (int)c1_str_len, c1_str);
                 } else {
                     size_t c2len = 0;
-                    char* c2 = yeptris_serialize_ex(dc2, &opts, &c2len);
-                    yeptris_document_free(dc2);
-                    if (c2 == NULL || c2len != c1len || memcmp(c1, c2, c1len) != 0) {
+                    char* c2 = yeptris_serialize_ex(dc_a_b, &opts, &c2len);
+                    yeptris_document_free(dc_a_b);
+                    if (c2 == NULL || c2len != c1_str_len || memcmp(c1_str, c2, c1_str_len) != 0) {
                         unstable++;
                         printf("CANON-UNSTABLE %s\n", ent->d_name);
                         if (verbose && c2 != NULL) {
-                            printf("--- c1:\n%.*s--- c2:\n%s\n", (int)c1len, c1, c2);
+                            printf("--- c1_str:\n%.*s--- c2:\n%s\n", (int)c1_str_len, c1_str, c2);
                         }
                     }
                     free(c2);
                 }
-                free(c1);
+                free(c1_str);
             }
         }
         free(in);

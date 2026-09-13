@@ -1,12 +1,6 @@
 # test/ — Google Test binaries. One binary per suite directory as they grow
 # (unit, conformance, port, flow, fuzz, concurrency — TODO.impl/01/16/17/19).
 
-# MSVC only: the POSIX dirent surface over FindFirstFile rides FIRST on
-# the include path (test/compat/dirent.h); every other compiler finds
-# the real <dirent.h> before this directory.
-if(MSVC)
-    add_compile_options(-I${CMAKE_CURRENT_SOURCE_DIR}/compat)
-endif()
 
 find_package(GTest CONFIG QUIET)
 if(NOT GTest_FOUND)
