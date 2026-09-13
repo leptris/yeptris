@@ -211,7 +211,8 @@ static uint32_t finish_double_body(const char* p, uint32_t start, uint32_t end, 
             break;
         }
         case 'P': /* U+2029 */ {
-            char tmp[3] = {(char)(unsigned char)0xE2, (char)(unsigned char)0x80, (char)(unsigned char)0xA9};
+            char tmp[3] = {(char)(unsigned char)0xE2, (char)(unsigned char)0x80,
+                           (char)(unsigned char)0xA9};
             yep_buf_put(b, tmp, 3);
             i++;
             break;
