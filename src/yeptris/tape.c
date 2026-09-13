@@ -62,17 +62,10 @@ static YeptrisStatus tape_carve(yeptris_json_tape* t, size_t len) {
     return YEPTRIS_OK;
 }
 
-/* Numbers convert through the number kernel (schema.c's call shape:
- * the span is exactly the token, the cursor must land on its end). */
-static int tape_put_number(tape_ctx* c, const char* p, size_t at, size_t end) {
-    size_t i = 0;
-    int64_t iv = 0;
-    double dv = 0;
-    int shape = 0;
-    size_t span = end - at;
-    if (yep_json_number_scan(p + at, span, &i, &shape, &iv, &dv) == 0 || i != span) {
-        return 0;
-    }
+/* Append one converted number record (the walker/root scan did the
+ * ONE pass; the shape contract is the number kernel's). */
+static int tape_put_converted(tape_ctx* c, size_t at, size_t span, int shape, int64_t iv,
+                              double dv) {
     uint8_t kind = shape == 1 ? YEP_T_FLOAT : YEP_T_INT;
     uint64_t val;
     if (shape == 0) {
@@ -118,7 +111,7 @@ static int tape_put_root_scalar(tape_ctx* c, const char* p, size_t len, size_t a
     if (yep_json_number_scan(p + at, len - at, &i, &shape, &iv, &dv) == 0) {
         return 0;
     }
-    return tape_put_number(c, p, at, at + i);
+    return tape_put_converted(c, at, i, shape, iv, dv);
 }
 
 /* One strict walk over p[open] → records. Returns OK, MEMORY (tape
@@ -185,9 +178,9 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             }
             break;
         }
-        default: /* '#' */
-            if (!tape_put_number(&c, p, tok.at, tok.end)) {
-                goto reject;
+        default: /* '#' — the walker converted it in its one pass */
+            if (!tape_put_converted(&c, tok.at, tok.end - tok.at, tok.nshape, tok.ival, tok.dval)) {
+                goto mem;
             }
             break;
         }

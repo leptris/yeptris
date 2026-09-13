@@ -1471,3 +1471,18 @@ per line.
   caught what a 30M-case fuzz over a restricted alphabet missed; the
   landed form is the carry-free per-byte zero test, and the LineFacts
   spec's random alphabet now includes '!'.
+## 2026-09-14 (ii) — the ONE-pass number token (simdjson front, wave 1)
+
+Tape profile (json-doc, 30s sample): walk_next 41%, number_scan 29%
+— every number was scanned THREE times (the walker's validate pass,
+its is_float text re-walk, the tape's conversion pass). The walker's
+number arm now runs yep_json_number_scan directly (grammar identical
+by construction — yep_json_number already delegates to it) and the
+token carries the conversion (nshape/ival/dval); the tape reads the
+token, no rescan. +20 percent tape throughput (642 -> 769 30s-loop
+iterations, same machine). parse_json's DOM route shares the walker,
+so its number handling also loses the is_float re-walk.
+
+Remaining tape floor after this: the walker's whitespace skip and
+per-byte classification (the structural-index pass, TODO.restructure/
+86) and the record append (tape_walk self, 16%).
