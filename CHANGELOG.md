@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.32] - 2026-09-13
 ### Changed
 - TODO.restructure/81 stage 2: the strict fused JSON walk — the walker
   enforces RFC 8259 keys through a strict bit (the lenient flow class
