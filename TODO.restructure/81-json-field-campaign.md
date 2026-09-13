@@ -43,6 +43,26 @@ VARIANT (the recorder's fixed-size records are the existing
 precedent), with the full DOM built only on host access. Boarded
 here, not started.
 
+## Stage 2 (landed 2026-09-13): the strict fused walk
+
+`yep_json_walk` carries a `strict` bit (RFC 8259: map keys are
+STRINGS, including the first entry — the walker already rejected
+non-string keys after commas; the leniency was the JW_KEY_OR_CLOSE
+first-key state). The engine's flow path leaves it 0; the strict-JSON
+route sets `dom->flow_strict` so `dom_on_flow_build`'s ONE walk
+validates and builds — parse_json's clean route is: ASCII gate skip +
+one strict fused build; rejects and surprises fall to the original
+sequence whose errors are byte-pinned (json-suite-strict 283/283).
+
+Two bugs the loop caught before they shipped: `dom_on_flow_commit`
+returns 1 on success (a `== 0` check discarded every successful fused
+build — the referee halved, the tell was 2x work), and trailing
+content after the closer needed an explicit tail check before commit.
+
+Measured (referee): parse_json 157 → 203 MB/s (+29%), 0.16 → 0.20x
+vs simdjson. The remaining gap is the walk's scalar token machine +
+48 B/node materialization vs simdjson's tape — stage 3's territory.
+
 ## Standing
 
 The referee table ships in every bench run (`vs simdjson`); CI

@@ -42,6 +42,11 @@ typedef struct yep_json_walk {
     size_t close;  /* valid once DONE */
     int long_key;  /* a map key over the 1024-char simple-key limit */
     int saw_tab;
+    /* strict JSON (RFC 8259): map keys are STRINGS only, including
+     * the first entry — the lenient flow class accepts YAML keys
+     * (TODO.restructure/81 stage 2: the strict build's walk IS the
+     * validator; reject falls to yep_json_document's error path). */
+    int strict;
     uint8_t kind[YEP_JSON_WALK_DEPTH];   /* 0 seq, 1 map */
     uint8_t expect[YEP_JSON_WALK_DEPTH]; /* walker states */
     int depth;

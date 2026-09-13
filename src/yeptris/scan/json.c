@@ -460,6 +460,7 @@ void yep_json_walk_init(yep_json_walk* w, const char* p, size_t len, size_t open
     w->depth = 1;
     w->kind[0] = (p[open] == '[') ? 0 : 1;
     w->expect[0] = w->kind[0] ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+    w->strict = 0;
 }
 
 yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
@@ -562,6 +563,9 @@ yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
             return YEP_JW_REJECT; /* YAML plain scalar / comment / indicator */
         }
         if (w->kind[w->depth - 1] == 1 && w->expect[w->depth - 1] == JW_KEY_OR_CLOSE) {
+            if (w->strict && t->cls != '"') {
+                return YEP_JW_REJECT; /* strict JSON: keys are strings */
+            }
             w->expect[w->depth - 1] = JW_COLON;
         } else if (w->kind[w->depth - 1] == 1 && w->expect[w->depth - 1] == JW_KEY) {
             if (t->cls != '"') {
