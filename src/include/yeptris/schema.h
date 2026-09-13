@@ -77,7 +77,11 @@ typedef struct yeptris_desc_node {
     uint32_t reserved;     /* must be 0 (ABI headroom) */
 } yeptris_desc_node;
 
+#if defined(__cplusplus)
+static_assert(sizeof(yeptris_desc_node) == 24, "descriptor layout pinned");
+#else
 _Static_assert(sizeof(yeptris_desc_node) == 24, "descriptor layout pinned");
+#endif
 
 /* One column's output. Caller allocates the payload array (sized by
  * expectation); the call fills it and sets count. No per-value FFI:
@@ -97,7 +101,11 @@ typedef struct yeptris_span2 {
     uint32_t pad;
 } yeptris_span2;
 
+#if defined(__cplusplus)
+static_assert(sizeof(yeptris_span2) == 16, "span layout pinned");
+#else
 _Static_assert(sizeof(yeptris_span2) == 16, "span layout pinned");
+#endif
 
 /* Parses `source` (YAML or strict JSON — the same front door as
  * yeptris_parse_ex) and materializes against the descriptor in one
