@@ -1365,3 +1365,35 @@ discarded every successful build and halved the referee — the 2x-work
 signature), and the missing trailing-content check.
 
 157 → 203 MB/s (0.16 → 0.20x vs simdjson). Next: stage 3 (tape).
+
+
+## 2026-09-13 (iv) — THE dispatch fix (82): the kernels never ran on CI
+
+The 80 diagnostic printed `kernels: scalar(sse2)` on the ubuntu
+artifact: __builtin_cpu_supports returned 0 for avx AND avx2 on real
+CI Xeons. Every ubuntu benchmark of the campaign ran the scalar
+table — the ubuntu "asymmetry" was our kernels never dispatching.
+Fixed with raw cpuid (+xgetbv OSXSAVE gating). The fix's first CI
+run immediately caught a latent AVX2-only bug: signed cmpgt_epi8
+misread lane-mask 0x80 (a group's 8th member) as "no hit" — eq-zero
+complement now; the nibble algorithm itself simulated exact over
+200k random buffers.
+
+CI referee, ubuntu, kernels live — first honest table of the
+campaign:
+
+| shape | vs ryml |
+|---|---|
+| flow-json | 1.34x |
+| json-doc (engine) | 1.46x |
+| flow-single | 1.12x |
+| deep-nesting | 1.10x |
+| scalar-heavy | 1.03x |
+| wide-mapping | 1.01x |
+| block-heavy | 0.98x |
+| anchor-heavy | 0.91x |
+
+Six of eight beat ryml on the machine of record; block is at parity;
+anchor remains item 79's target. simdjson ratio on ubuntu: 0.15x
+(runner-slow; mac 0.20x) — stage 3 (tape) unchanged as the JSON end
+state.
