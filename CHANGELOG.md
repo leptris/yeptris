@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the live differential caught the same minute (a group's 8th member
   set lane-mask 0x80, which signed cmpgt_epi8 read as no-hit).
 
-## [Unreleased]
+## [0.2.2] - 2026-09-13
 ### Added
 - TODO.restructure/85: the JSON tape — `yeptris_parse_json_tape`
   drives the strict fused walk into compact parallel columns (kinds,
