@@ -2578,9 +2578,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
          * its content may ALIGN with the '?' column */
         e->q_key_pending = 1;
         {
-            int rc = e_parse_value(e, YEP_CTX_AFTER_Q, col);
-            if (rc != 0) {
-                return rc;
+            int qrc = e_parse_value(e, YEP_CTX_AFTER_Q, col);
+            if (qrc != 0) {
+                return qrc;
             }
             e->q_value_pending = 1; /* until a ':' line supplies the value */
             return 0;
