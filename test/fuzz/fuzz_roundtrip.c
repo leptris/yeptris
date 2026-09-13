@@ -10,6 +10,10 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+
+#if defined(_MSC_VER)
+#define __builtin_trap() __debugbreak()
+#endif
 #include <string.h>
 
 #include <yeptris.h>
@@ -70,10 +74,6 @@ static int probe_one(const uint8_t* data, size_t size) {
 
 #include <dirent.h>
 #include <stdio.h>
-
-#if defined(_MSC_VER)
-#define __builtin_trap() __debugbreak()
-#endif
 
 int main(int argc, char** argv) {
     long files = 0;
