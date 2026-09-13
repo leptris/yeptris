@@ -1397,3 +1397,19 @@ Six of eight beat ryml on the machine of record; block is at parity;
 anchor remains item 79's target. simdjson ratio on ubuntu: 0.15x
 (runner-slow; mac 0.20x) — stage 3 (tape) unchanged as the JSON end
 state.
+
+
+## 2026-09-13 (v) — 84: the facts gate tested remaining length
+
+The 76 vector gate ("len - pos >= 64") was true for every line but
+the document's last — every short line paid the sweep 76 itself
+measured 2x slower than scalar. A 32-byte break probe now routes
+short lines to the scalar fused walk. anchor-heavy flat:
+yep_neon_line_facts 1146 -> 556 (probe+dispatch residual).
+
+CI referee standing at v0.2.0 (kernels live): seven of eight shapes
+beat ryml — flow-json 1.72x, json-doc 1.86x, flow-single 1.57x,
+deep 1.02x, scalar 1.04x, wide 1.03x, block 1.04x; anchor-heavy
+0.90x is the last one. JSON: parse_json 0.18x vs simdjson on CI
+(0.20x local) — the tape-mode plan (item 81 stage 3) is the recorded
+path.

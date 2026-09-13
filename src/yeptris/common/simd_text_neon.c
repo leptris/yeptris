@@ -380,14 +380,24 @@ static ptrdiff_t yep_neon_stopset_find(const yep_stopset* ss, const char* s, siz
  * scalar sweep of the whole span — rare (long lines whose break sits
  * in the tail) and always correct. */
 static void yep_neon_line_facts(const char* s, size_t len, size_t pos, yep_line_facts* out) {
-    /* The vector sweep pays only on long remaining spans (the old
-     * scan_line gate): a 16-32 byte line's tight scalar loops beat
-     * the per-chunk mask chain on this core (measured, 76's ledger).
-     * The scalar path still yields `stop`, so the shape fast path
-     * rides facts at every length. */
-    if (len - pos < 64) {
-        yep_text_line_facts_scalar(s, len, pos, out);
-        return;
+    /* The vector sweep pays only on long LINES — and the only length
+     * knowable before scanning is where the first break sits. A
+     * 32-byte scalar probe decides: a break inside it means a short
+     * line, whose tight scalar loops beat the per-chunk mask chain
+     * (76 measured the vector 2x slower at 16-32 byte lines; the
+     * original gate tested REMAINING BUFFER length, which is >=64 for
+     * every line but the last — every short line paid the sweep, 11%
+     * of anchor-heavy. 84). */
+    {
+        size_t lim = len - pos < 32 ? len - pos : 32;
+        size_t k = 0;
+        while (k < lim && s[pos + k] != '\n' && s[pos + k] != '\r') {
+            k++;
+        }
+        if (k < lim || len - pos < 64) {
+            yep_text_line_facts_scalar(s, len, pos, out);
+            return;
+        }
     }
     const uint8x16_t ksp = vdupq_n_u8(' '), knl = vdupq_n_u8('\n'), kcr = vdupq_n_u8('\r'),
                      kco = vdupq_n_u8(':'), khash = vdupq_n_u8('#');
