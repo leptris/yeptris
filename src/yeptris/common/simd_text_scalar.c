@@ -185,29 +185,94 @@ int yep_text_gate_scan_scalar(const char* s, size_t len) {
     return 0;
 }
 
-void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_facts* out) {
-    size_t i = pos;
-    while (i < len && s[i] != '\n' && s[i] != '\r') {
-        i++;
-    }
-    out->end = (uint32_t)i;
-    size_t j = pos;
-    while (j < i && s[j] == ' ') {
-        j++;
-    }
-    out->indent = (uint32_t)j;
-    size_t k = j;
-    out->stop_set = 0;
-    out->stop = out->end;
-    while (k < i) {
-        char c = s[k];
-        if (c == '\n' || c == '\r' || c == '#' || c == ':') {
-            out->stop = (uint32_t)k;
-            out->stop_set = 1;
+/* SWAR byte flags: 0x80 at every byte equal to k (little-endian
+ * lanes — every supported target is LE). The subtract-based zero
+ * test is NOT exact: a 0x01 byte under a borrow chain from zero
+ * bytes below false-flags ('!' = 0x21 ^ ' ' = 0x01 read as a space —
+ * the corpus caught it); this form is carry-free per byte. */
+#define YEP_SWAR_FLAGS 0x8080808080808080ull
+
+static inline uint64_t yep_swar_eq8(uint64_t x, uint64_t k) {
+    uint64_t v = x ^ k;
+    uint64_t nz =
+        (((v & 0x7F7F7F7F7F7F7F7Full) + 0x7F7F7F7F7F7F7F7Full) | v) & YEP_SWAR_FLAGS;
+    return ~nz & YEP_SWAR_FLAGS;
+}
+
+/* Eight bytes per step, one data-dependent exit (the break's chunk):
+ * the byte-at-a-time trio cost ~60 cycles/line in branch mispredicts
+ * alone on the short-line shapes (anchor-heavy's hottest symbol).
+ * cap bounds the walk: 0 returns when no break sits within cap bytes
+ * (a long line — the caller sweeps) so the ISA kernels use this as
+ * BOTH the short-line test and the short-line answer (the previous
+ * shape paid a 32-byte probe and then rescanned the same line). */
+int yep_text_line_facts_capped(const char* s, size_t len, size_t pos, size_t cap,
+                               yep_line_facts* out) {
+    static const uint64_t k_nl = 0x0A0A0A0A0A0A0A0Aull, k_cr = 0x0D0D0D0D0D0D0D0Dull,
+                          k_sp = 0x2020202020202020ull, k_co = 0x3A3A3A3A3A3A3A3Aull,
+                          k_ha = 0x2323232323232323ull;
+    size_t whole = len - pos;
+    size_t n = whole < cap ? whole : cap;
+    size_t end = n, indent = n, stop = n;
+    int have_indent = 0, stop_set = 0, have_end = 0;
+    size_t i = 0;
+    while (i < n) {
+        size_t avail = n - i < 8 ? n - i : 8;
+        uint64_t x;
+        if (avail == 8) {
+            memcpy(&x, s + pos + i, 8);
+        } else {
+            char buf[8] = {0, 0, 0, 0, 0, 0, 0, 0}; /* NUL padding: matches no fact byte */
+            memcpy(buf, s + pos + i, avail);
+            memcpy(&x, buf, 8);
+        }
+        uint64_t valid = avail == 8 ? ~(uint64_t)0 : (((uint64_t)1 << (avail * 8)) - 1);
+        uint64_t br = (yep_swar_eq8(x, k_nl) | yep_swar_eq8(x, k_cr)) & valid;
+        /* flags strictly below the FIRST break (br - 1 alone keeps the
+         * higher break flags of the same chunk) */
+        uint64_t room = (br ? ((br & (~br + 1)) - 1) : valid) & YEP_SWAR_FLAGS & valid;
+        if (!have_indent) {
+            uint64_t nons = ~(yep_swar_eq8(x, k_sp)) & room;
+            if (nons) {
+                indent = i + (size_t)(__builtin_ctzll(nons) >> 3);
+                have_indent = 1;
+            }
+        }
+        if (have_indent && !stop_set) {
+            uint64_t stm = (yep_swar_eq8(x, k_co) | yep_swar_eq8(x, k_ha)) & room;
+            if (stm) {
+                size_t cand = i + (size_t)(__builtin_ctzll(stm) >> 3);
+                if (cand >= indent) { /* a stop byte cannot precede the first non-space */
+                    stop = cand;
+                    stop_set = 1;
+                }
+            }
+        }
+        if (br) {
+            end = i + (size_t)(__builtin_ctzll(br) >> 3);
+            have_end = 1;
             break;
         }
-        k++;
+        i += 8;
     }
+    if (!have_end && whole > cap) {
+        return 0; /* the line continues past the cap: the caller sweeps */
+    }
+    if (!have_indent) {
+        indent = end; /* spaces ran to the break */
+    }
+    if (!stop_set) {
+        stop = end;
+    }
+    out->end = (uint32_t)(pos + end);
+    out->indent = (uint32_t)(pos + indent);
+    out->stop = (uint32_t)(pos + stop);
+    out->stop_set = stop_set;
+    return 1;
+}
+
+void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_facts* out) {
+    (void)yep_text_line_facts_capped(s, len, pos, (size_t)-1, out);
 }
 
 const yep_text_kernels yep_text_kernels_scalar = {

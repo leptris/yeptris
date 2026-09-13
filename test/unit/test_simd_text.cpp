@@ -533,7 +533,7 @@ TEST(SimdText, LineFacts) {
     for (int t = 0; t < 100; t++) {
         std::string b(rng() % 400 + 1, ' ');
         for (auto& ch : b) {
-            unsigned r = (unsigned)(rng() % 8);
+            unsigned r = (unsigned)(rng() % 9);
             ch = r == 0   ? '\n'
                  : r == 1 ? ' '
                  : r == 2 ? ':'
@@ -541,6 +541,7 @@ TEST(SimdText, LineFacts) {
                  : r == 4 ? '\t'
                  : r == 5 ? 'a'
                  : r == 6 ? '\r'
+                 : r == 7 ? '!' /* 0x21 ^ ' ' = 0x01: the SWAR borrow-chain case */
                           : 'z';
         }
         for (size_t pos = 0; pos < b.size(); pos += 7) {

@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/84 follow-up (the ledger's 2026-09-14 wave): the
+  line-facts short-line gate is ONE capped SWAR walk (8 bytes per
+  step, one data-dependent exit) replacing the 32-byte probe plus
+  scalar rescan — short lines were scanned twice. anchor-heavy +7%,
+  block-heavy +12%, wide-mapping +15% on the same machine. The SWAR
+  equality test is the carry-free form (the classic subtract-based
+  haszero false-flags '!' after a space run — pinned by the corpus
+  and the extended LineFacts alphabet).
+
 ## [0.2.1] - 2026-09-13
 ### Changed
 - TODO.restructure/84: the line-facts vector gate tests the LINE, not

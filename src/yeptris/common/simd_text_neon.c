@@ -380,24 +380,14 @@ static ptrdiff_t yep_neon_stopset_find(const yep_stopset* ss, const char* s, siz
  * scalar sweep of the whole span — rare (long lines whose break sits
  * in the tail) and always correct. */
 static void yep_neon_line_facts(const char* s, size_t len, size_t pos, yep_line_facts* out) {
-    /* The vector sweep pays only on long LINES — and the only length
-     * knowable before scanning is where the first break sits. A
-     * 32-byte scalar probe decides: a break inside it means a short
-     * line, whose tight scalar loops beat the per-chunk mask chain
-     * (76 measured the vector 2x slower at 16-32 byte lines; the
-     * original gate tested REMAINING BUFFER length, which is >=64 for
-     * every line but the last — every short line paid the sweep, 11%
-     * of anchor-heavy. 84). */
-    {
-        size_t lim = len - pos < 32 ? len - pos : 32;
-        size_t k = 0;
-        while (k < lim && s[pos + k] != '\n' && s[pos + k] != '\r') {
-            k++;
-        }
-        if (k < lim || len - pos < 64) {
-            yep_text_line_facts_scalar(s, len, pos, out);
-            return;
-        }
+    /* The SWAR walk is BOTH the short-line test and the short-line
+     * answer: a break inside 64 bytes settles the facts there — the
+     * previous shape paid a 32-byte byte probe and then rescanned the
+     * whole line (the double scan was the dominant short-line cost).
+     * 76 measured the vector sweep 2x slower at 16-32 byte lines; 84
+     * pinned the gate at the LINE, not the remaining buffer. */
+    if (yep_text_line_facts_capped(s, len, pos, 64, out)) {
+        return;
     }
     const uint8x16_t ksp = vdupq_n_u8(' '), knl = vdupq_n_u8('\n'), kcr = vdupq_n_u8('\r'),
                      kco = vdupq_n_u8(':'), khash = vdupq_n_u8('#');

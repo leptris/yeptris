@@ -163,6 +163,12 @@ ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has
 void yep_text_scan_stats_scalar(const char* s, size_t len, yep_text_stats* out);
 int yep_text_gate_scan_scalar(const char* s, size_t len);
 void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_facts* out);
+/* The SWAR walk bounded: settles the facts when the line's break sits
+ * within cap bytes (or the buffer ends) — 0 means a longer line, the
+ * caller sweeps. The ISA kernels use it as BOTH the short-line test
+ * and the short-line answer (no probe-then-rescan). */
+int yep_text_line_facts_capped(const char* s, size_t len, size_t pos, size_t cap,
+                               yep_line_facts* out);
 
 /* Stopset bitmap helpers: a 256-bit bitmap is the wire form of a byte
  * class; build with yep_stopset_clear + yep_stopset_add. */
