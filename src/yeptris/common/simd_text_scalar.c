@@ -185,19 +185,8 @@ int yep_text_gate_scan_scalar(const char* s, size_t len) {
     return 0;
 }
 
-/* SWAR byte flags: 0x80 at every byte equal to k (little-endian
- * lanes — every supported target is LE). The subtract-based zero
- * test is NOT exact: a 0x01 byte under a borrow chain from zero
- * bytes below false-flags ('!' = 0x21 ^ ' ' = 0x01 read as a space —
- * the corpus caught it); this form is carry-free per byte. */
-#define YEP_SWAR_FLAGS 0x8080808080808080ull
-
-static inline uint64_t yep_swar_eq8(uint64_t x, uint64_t k) {
-    uint64_t v = x ^ k;
-    uint64_t low = (v & 0x7F7F7F7F7F7F7F7Full) + 0x7F7F7F7F7F7F7F7Full;
-    uint64_t nz = (low | v) & YEP_SWAR_FLAGS;
-    return ~nz & YEP_SWAR_FLAGS;
-}
+/* yep_swar_eq8 lives in simd_text.h — shared with the walker's
+ * fused skips (TODO.restructure/86 wave 2). */
 
 /* Eight bytes per step, one data-dependent exit (the break's chunk):
  * the byte-at-a-time trio cost ~60 cycles/line in branch mispredicts

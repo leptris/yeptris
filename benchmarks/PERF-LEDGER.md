@@ -1486,3 +1486,12 @@ so its number handling also loses the is_float re-walk.
 Remaining tape floor after this: the walker's whitespace skip and
 per-byte classification (the structural-index pass, TODO.restructure/
 86) and the record append (tape_walk self, 16%).
+
+Wave 2 measured DEAD (2026-09-14): the SWAR ws skip in yep_json_ws
+REGRESSED the tape 769 -> 464 30s-iters (-40%). The inter-token ws
+runs are 0-2 bytes — the byte loop exits in 0-2 predicted
+iterations; a SWAR chunk pays ~20 ops regardless of run length. SWAR
+pays when the run IS the unit (line facts: 10-25B runs); it does not
+pay per-token. The 86 spec's wave-2 row is void; the structural
+index (wave 3) is the real lever for ws cost — it removes the skips
+entirely, not speeds them up.

@@ -15,12 +15,12 @@ qbc_find 6%, json_string 5%. After the fusion the walker's remaining
 cost is the per-token whitespace skip and byte classification —
 exactly what a structural index eliminates.
 
-## Wave 2 (small): the SWAR ws skip
+## Wave 2 (void — measured dead 2026-09-14)
 
-`yep_json_ws` is a byte loop; SWAR it with the shared `yep_swar_eq8`
-(first byte outside ' ', '\n', '\r'; the found tab keeps its
-saw_tab/reject-0 contract — the walker is its only caller). Rides
-PR #250's header move of the helper.
+The SWAR ws skip REGRESSED the tape -40% (769 -> 464 iters): the
+inter-token ws runs are 0-2 bytes, the byte loop exits in 0-2
+predicted iterations, and a SWAR chunk pays ~20 ops regardless. SWAR
+pays when the run is the unit (line facts), not per-token.
 
 ## Wave 3 (the pass): structural indices, simdjson's shape
 

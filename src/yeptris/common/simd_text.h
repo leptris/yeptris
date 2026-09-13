@@ -170,6 +170,20 @@ void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_
 int yep_text_line_facts_capped(const char* s, size_t len, size_t pos, size_t cap,
                                yep_line_facts* out);
 
+/* SWAR byte flags: 0x80 at every byte equal to k (little-endian
+ * lanes — every supported target is LE). The subtract-based zero
+ * test is NOT exact: a 0x01 byte under a borrow chain from zero
+ * bytes below false-flags ('!' = 0x21 ^ ' ' = 0x01 read as a space —
+ * the corpus caught it); this form is carry-free per byte. */
+#define YEP_SWAR_FLAGS 0x8080808080808080ull
+
+static inline uint64_t yep_swar_eq8(uint64_t x, uint64_t k) {
+    uint64_t v = x ^ k;
+    uint64_t low = (v & 0x7F7F7F7F7F7F7F7Full) + 0x7F7F7F7F7F7F7F7Full;
+    uint64_t nz = (low | v) & YEP_SWAR_FLAGS;
+    return ~nz & YEP_SWAR_FLAGS;
+}
+
 /* Stopset bitmap helpers: a 256-bit bitmap is the wire form of a byte
  * class; build with yep_stopset_clear + yep_stopset_add. */
 static inline void yep_stopset_clear(unsigned char set[32]) {
