@@ -194,8 +194,8 @@ int yep_text_gate_scan_scalar(const char* s, size_t len) {
 
 static inline uint64_t yep_swar_eq8(uint64_t x, uint64_t k) {
     uint64_t v = x ^ k;
-    uint64_t nz =
-        (((v & 0x7F7F7F7F7F7F7F7Full) + 0x7F7F7F7F7F7F7F7Full) | v) & YEP_SWAR_FLAGS;
+    uint64_t low = (v & 0x7F7F7F7F7F7F7F7Full) + 0x7F7F7F7F7F7F7F7Full;
+    uint64_t nz = (low | v) & YEP_SWAR_FLAGS;
     return ~nz & YEP_SWAR_FLAGS;
 }
 
