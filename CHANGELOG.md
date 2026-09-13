@@ -6,6 +6,14 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/81 stage 2: the strict fused JSON walk — the walker
+  enforces RFC 8259 keys through a strict bit (the lenient flow class
+  keeps unquoted YAML keys); yeptris_parse_json's clean route is one
+  SIMD gate pass plus ONE strict walk that validates and builds.
+  parse_json 157 -> 203 MB/s (+29 percent), 0.20x vs simdjson.
+
 ## [0.1.31] - 2026-09-13
 ### Changed
 - TODO.restructure/81: the JSON-field campaign opens — simdjson
