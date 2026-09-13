@@ -66,13 +66,20 @@ jobs:
             -DRYML_BUILD_BENCHMARKS=OFF -DRYML_BUILD_TOOLS=OFF
           cmake --build deps/ryml/build
 
+      - name: Fetch simdjson (pinned; the JSON-field reference, item 81)
+        run: |
+          git clone --depth 1 https://github.com/simdjson/simdjson deps/simdjson
+          test "$(git -C deps/simdjson rev-parse HEAD)" = "3839ac681a4a6b4fd09b4d7e03229b35bcd909d7"
+          test -f deps/simdjson/singleheader/simdjson.cpp
+
       - name: Configure
         run: |
           cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DYEPTRIS_BUILD_BENCHMARKS=ON \
             -DYEPTRIS_BENCH_LIBYAML_ROOT="$PWD/deps/libyaml" \
-            -DYEPTRIS_BENCH_RYML_ROOT="$PWD/deps/ryml"
+            -DYEPTRIS_BENCH_RYML_ROOT="$PWD/deps/ryml" \
+            -DYEPTRIS_BENCH_SIMDJSON_ROOT="$PWD/deps/simdjson"
 
       - name: Build
         run: cmake --build build

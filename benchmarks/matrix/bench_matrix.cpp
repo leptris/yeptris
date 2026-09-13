@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <yeptris.h>
+#include <yeptris/json.h> /* yeptris_parse_json: the strict-JSON direct build */
 
 #if defined(YEP_BENCH_LIBYAML)
 #include <yaml.h>
@@ -24,6 +25,10 @@
 #if defined(YEP_BENCH_RYML)
 #include <ryml.hpp>
 #include <ryml_std.hpp> /* c4::to_substr(std::string&) adapters */
+#endif
+
+#if defined(YEP_BENCH_SIMDJSON)
+#include <simdjson.h> /* the JSON-field reference (TODO.restructure/81) */
 #endif
 
 namespace {
@@ -182,6 +187,21 @@ void gen_flow(std::string* out, Rng& r, int entries) {
                     std::to_string(r.pick(1000)) + ", " + std::to_string(r.pick(1000)) +
                     "], \"ok\": " + std::string(r.pick(2) ? "true" : "false") + " }\n");
     }
+}
+
+/* One large STRICT-JSON document (TODO.restructure/81): the same
+ * object mix as flow-json but as a single JSON array — the corpus for
+ * the JSON-field comparison (yeptris_parse_json's direct build vs the
+ * dedicated JSON parsers). */
+void gen_json_doc(std::string* out, Rng& r, int entries) {
+    out->append("[");
+    for (int i = 0; i < entries; i++) {
+        out->append((i ? ", " : "") + std::string("{\"id\": ") + std::to_string(i) +
+                    ", \"name\": \"" + word(r) + "\", \"vals\": [" + std::to_string(r.pick(1000)) +
+                    ", " + std::to_string(r.pick(1000)) + ", " + std::to_string(r.pick(1000)) +
+                    "], \"ok\": " + (r.pick(2) ? "true" : "false") + " }");
+    }
+    out->append("]\n");
 }
 
 /* One giant ONE-LINE flow collection: the shape that hid the
@@ -643,6 +663,77 @@ double h2h_ratio(const Corpus& c, int rounds, double* yep_mb) {
 }
 #endif
 
+#if defined(YEP_BENCH_SIMDJSON)
+/* The JSON-field referee (TODO.restructure/81): yeptris_parse_json's
+ * direct DOM build vs simdjson's DOM parse over one strict-JSON
+ * document. Same discipline as the ryml referee: interleaved,
+ * order-alternating, median of per-round ratios. */
+Result bench_simdjson(const Corpus& c, int iters) {
+    simdjson::dom::parser parser;
+    double best_ms = 1e9;
+    for (int i = 0; i < iters; i++) {
+        auto t0 = clk::now();
+        simdjson::dom::element doc = parser.parse(c.data.data(), c.data.size());
+        auto t1 = clk::now();
+        (void)doc;
+        double ms = ms_of(t0, t1);
+        if (ms < best_ms) {
+            best_ms = ms;
+        }
+    }
+    double mb = (double)c.data.size() / (1024.0 * 1024.0);
+    return {c.name + " (simdjson)", best_ms < 1e9 ? mb * 1000.0 / best_ms : 0, best_ms,
+            c.data.size()};
+}
+
+double h2h_vs_simdjson(const Corpus& c, int rounds, double* yep_mb) {
+    simdjson::dom::parser parser;
+    std::vector<double> ratios;
+    double best_yep = 1e9;
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument probe = yeptris_parse_json(c.data.data(), c.data.size(), &st);
+    if (probe == NULL) {
+        yeptris_document_free(probe);
+        return 0; /* not strict JSON: no referee */
+    }
+    yeptris_document_free(probe);
+    for (int i = 0; i < rounds; i++) {
+        double ty, tr;
+        if (i & 1) {
+            auto b0 = clk::now();
+            simdjson::dom::element doc = parser.parse(c.data.data(), c.data.size());
+            auto b1 = clk::now();
+            (void)doc;
+            auto a0 = clk::now();
+            YeptrisDocument d = yeptris_parse_json(c.data.data(), c.data.size(), &st);
+            auto a1 = clk::now();
+            yeptris_document_free(d);
+            ty = ms_of(a0, a1);
+            tr = ms_of(b0, b1);
+        } else {
+            auto a0 = clk::now();
+            YeptrisDocument d = yeptris_parse_json(c.data.data(), c.data.size(), &st);
+            auto a1 = clk::now();
+            yeptris_document_free(d);
+            auto b0 = clk::now();
+            simdjson::dom::element doc = parser.parse(c.data.data(), c.data.size());
+            auto b1 = clk::now();
+            (void)doc;
+            ty = ms_of(a0, a1);
+            tr = ms_of(b0, b1);
+        }
+        if (ty < best_yep) {
+            best_yep = ty;
+        }
+        ratios.push_back(tr / ty); /* >1: yeptris faster */
+    }
+    std::sort(ratios.begin(), ratios.end());
+    double mb = (double)c.data.size() / (1024.0 * 1024.0);
+    *yep_mb = best_yep < 1e9 ? mb * 1000.0 / best_yep : 0;
+    return ratios[ratios.size() / 2];
+}
+#endif
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -681,6 +772,11 @@ int main(int argc, char** argv) {
         std::string s;
         gen_flow_single(&s, r, entries / 4);
         corpora.push_back({"flow-single", s});
+    }
+    {
+        std::string s;
+        gen_json_doc(&s, r, entries);
+        corpora.push_back({"json-doc", s});
     }
     {
         std::string s;
@@ -774,6 +870,11 @@ int main(int argc, char** argv) {
 #if defined(YEP_BENCH_RYML)
         results.push_back(bench_ryml(c, iters));
 #endif
+#if defined(YEP_BENCH_SIMDJSON)
+        if (c.name == "json-doc") {
+            results.push_back(bench_simdjson(c, iters));
+        }
+#endif
     }
 
 #if defined(YEP_BENCH_RYML)
@@ -788,6 +889,21 @@ int main(int argc, char** argv) {
             continue;
         }
         printf("| %s | %.2f | %.2fx |\n", c.name.c_str(), yep_mb, med);
+    }
+    printf("\n");
+#endif
+
+#if defined(YEP_BENCH_SIMDJSON)
+    /* The JSON-field referee (TODO.restructure/81). */
+    printf("\n# head-to-head vs simdjson DOM (json-doc, interleaved, median of rounds)\n\n"
+           "| yeptris parse_json MB/s | vs simdjson |\n|---|---|\n");
+    for (const Corpus& c : corpora) {
+        if (c.name != "json-doc") {
+            continue;
+        }
+        double ymb = 0;
+        double med = h2h_vs_simdjson(c, full ? 9 : 5, &ymb);
+        printf("| %.2f | %.2fx |\n", ymb, med);
     }
     printf("\n");
 #endif
