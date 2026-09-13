@@ -1440,3 +1440,8 @@ plus status parity; 13 JsonTape unit specs pin the record contract.
 Recorded headroom: the carve is len+2 slots x 17 B (input-derived,
 no pre-pass) — a growing carve or a counting pre-pass would shrink
 peak memory ~4x; measured cost is zero (mmap-backed), left simple.
+
+CI ubuntu referee (PR #247 artifact, kernels live): parse_json 132.58
+MB/s / 0.17x vs simdjson -> parse_json_tape 253.24 MB/s / 0.33x —
++91 percent on the Xeon (the DOM build cost a larger share there than
+on the M-series). simdjson runs 773.61 MB/s on that leg.
