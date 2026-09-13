@@ -736,6 +736,8 @@ double h2h_vs_simdjson(const Corpus& c, int rounds, double* yep_mb) {
 
 } // namespace
 
+static std::string g_kernels_line; /* rides the markdown artifact (80) */
+
 int main(int argc, char** argv) {
     const char* out_dir = "bench-out";
     int full = 0;
@@ -831,6 +833,7 @@ int main(int argc, char** argv) {
         impl = "neon";
 #endif
         printf("kernels: %s\n", impl);
+        g_kernels_line = std::string("kernels: ") + impl + "\n";
     }
 
     /* --shape NAME: DOM parse loop on the one corpus, ~30s (sample
@@ -877,10 +880,16 @@ int main(int argc, char** argv) {
 #endif
     }
 
+    /* The artifact carries the referee tables too: stdout is not
+     * captured by CI, the markdown file is (TODO.restructure/80). */
+    std::string md_h2h;
+
 #if defined(YEP_BENCH_RYML)
     /* Interleaved head-to-head vs ryml (the campaign referee, item 48). */
     printf("\n# head-to-head vs rapidyaml (interleaved, median of rounds)\n\n"
            "| shape | yeptris DOM MB/s | vs ryml |\n|---|---|---|\n");
+    md_h2h += "\n# head-to-head vs rapidyaml (interleaved, median of rounds)\n\n"
+              "| shape | yeptris DOM MB/s | vs ryml |\n|---|---|---|\n";
     for (const Corpus& c : corpora) {
         double yep_mb = 0;
         double med = h2h_ratio(c, full ? 9 : 5, &yep_mb);
@@ -889,6 +898,9 @@ int main(int argc, char** argv) {
             continue;
         }
         printf("| %s | %.2f | %.2fx |\n", c.name.c_str(), yep_mb, med);
+        char row[160];
+        snprintf(row, sizeof(row), "| %s | %.2f | %.2fx |\n", c.name.c_str(), yep_mb, med);
+        md_h2h += row;
     }
     printf("\n");
 #endif
@@ -897,6 +909,8 @@ int main(int argc, char** argv) {
     /* The JSON-field referee (TODO.restructure/81). */
     printf("\n# head-to-head vs simdjson DOM (json-doc, interleaved, median of rounds)\n\n"
            "| yeptris parse_json MB/s | vs simdjson |\n|---|---|\n");
+    md_h2h += "\n# head-to-head vs simdjson DOM (json-doc, interleaved, median of rounds)\n\n"
+              "| yeptris parse_json MB/s | vs simdjson |\n|---|---|\n";
     for (const Corpus& c : corpora) {
         if (c.name != "json-doc") {
             continue;
@@ -904,12 +918,17 @@ int main(int argc, char** argv) {
         double ymb = 0;
         double med = h2h_vs_simdjson(c, full ? 9 : 5, &ymb);
         printf("| %.2f | %.2fx |\n", ymb, med);
+        char row[96];
+        snprintf(row, sizeof(row), "| %.2f | %.2fx |\n", ymb, med);
+        md_h2h += row;
     }
     printf("\n");
+    printf("%s", md_h2h.c_str()); /* the tail dump for console runs */
 #endif
 
     /* Markdown + JSON */
-    std::string md = "# yeptris benchmark matrix\n\nMachine-relative: MB/s on this "
+    std::string md = g_kernels_line +
+                     "\n# yeptris benchmark matrix\n\nMachine-relative: MB/s on this "
                      "run; ratio vs the same-run libyaml parse.\n\n"
                      "| shape | measure | MB/s | ms | vs libyaml |\n|---|---|---|---|---|\n";
     std::string js = "[\n";
