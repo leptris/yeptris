@@ -206,7 +206,7 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
         return YEPTRIS_ERROR_ARG;
     }
     struct frame {
-        uint32_t id;
+        uint32_t id = UINT32_MAX; /* set by every arm that reaches the place; MSVC wants the init */
         uint8_t is_map;
         uint8_t key_pending;
     };
@@ -232,7 +232,7 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
             rc = YEPTRIS_ERROR_PARSE; /* slice out of range */
             break;
         }
-        uint32_t id;
+        uint32_t id = UINT32_MAX; /* set by every arm that reaches the place; MSVC wants the init */
         switch (e->op) {
         case YEPTRIS_BUILD_SCALAR: {
             id = yep_mut_scalar(doc->dom, blob + e->off, e->len, e->style);
