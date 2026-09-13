@@ -32,6 +32,14 @@ typedef struct yep_json_tok {
     char cls;       /* '"' string, '#' number, 'a' literal, '[', '{', ']', '}' */
     int has_escape; /* strings: a backslash escape is present */
     int is_float;   /* numbers (cls '#'): the text has '.' or an exponent */
+    /* numbers: the ONE conversion (the walker's number arm runs
+     * yep_json_number_scan — validate, advance, convert in a single
+     * pass; consumers read the values instead of rescanning). nshape:
+     * 0 int (ival exact), 1 float text (dval), 2 integer text beyond
+     * int64 (dval approximate — the number-kernel contract). */
+    int nshape;
+    int64_t ival;
+    double dval;
 } yep_json_tok;
 
 typedef struct yep_json_walk {
