@@ -59,7 +59,11 @@ jobs:
         run: scripts/fetch-corpora.sh
 
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        shell: bash
+        run: |
+          CFG=""
+          if [ "$RUNNER_OS" = "Windows" ]; then CFG="-C Release"; fi
+          ctest --test-dir build --output-on-failure $CFG
 
       - name: CLI smoke
         shell: bash
