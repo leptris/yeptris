@@ -209,9 +209,10 @@ static void yep_avx2_scan_stats(const char* s, size_t len, yep_text_stats* out) 
                   kbrk = _mm256_set1_epi8('['), kbrce = _mm256_set1_epi8('{'),
                   kdq = _mm256_set1_epi8('"'), ksq = _mm256_set1_epi8('\''),
                   kpipe = _mm256_set1_epi8('|'), kamp = _mm256_set1_epi8('&');
-    const __m256i kflip = _mm256_set1_epi8((char)0x80), klow = _mm256_set1_epi8((char)0xA0),
+    const __m256i kflip = _mm256_set1_epi8((char)(unsigned char)0x80),
+                  klow = _mm256_set1_epi8((char)(unsigned char)0xA0),
                   ktab9 = _mm256_set1_epi8('\t'), klf = _mm256_set1_epi8('\n'),
-                  kcr = _mm256_set1_epi8('\r'), kdel = _mm256_set1_epi8((char)0x7F);
+                  kcr = _mm256_set1_epi8('\r'), kdel = _mm256_set1_epi8((char)(unsigned char)0x7F);
     size_t c_nl = 0, c_co = 0, c_da = 0, c_cl = 0, c_br = 0, c_bc = 0, c_dq = 0, c_sq = 0, c_pi = 0,
            c_am = 0;
     uint32_t bad = 0, hi = 0;
@@ -220,26 +221,18 @@ static void yep_avx2_scan_stats(const char* s, size_t len, yep_text_stats* out) 
         const __m256i* pp = (const __m256i*)(const void*)(s + i);
         __m256i v = _mm256_loadu_si256(pp);
         hi |= (uint32_t)_mm256_movemask_epi8(v); /* sign bit = bit7 = non-ASCII */
-        c_nl +=
-            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ktab)));
-        c_co += (size_t)yep_popcount32(
-            (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kcomma)));
-        c_da +=
-            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdash)));
-        c_cl += (size_t)yep_popcount32(
-            (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kcolon)));
-        c_br +=
-            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrk)));
-        c_bc +=
-            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrce)));
-        c_dq +=
-            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdq)));
-        c_sq +=
-            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ksq)));
-        c_pi +=
-            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kpipe)));
-        c_am +=
-            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kamp)));
+        c_nl += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ktab)));
+        c_co +=
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kcomma)));
+        c_da += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdash)));
+        c_cl +=
+            (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kcolon)));
+        c_br += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrk)));
+        c_bc += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kbrce)));
+        c_dq += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kdq)));
+        c_sq += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, ksq)));
+        c_pi += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kpipe)));
+        c_am += (size_t)yep_popcount32((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, kamp)));
         /* c-printable ASCII violations: b < 0x20 (signed trick: flip
          * the sign bit, then b < 0x20 <=> w < 0xA0), except TAB/LF/CR;
          * plus DEL. Non-ASCII is tracked separately in `hi`. */
