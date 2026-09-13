@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- TODO.restructure/82: x86 kernel dispatch via raw cpuid —
+  __builtin_cpu_supports returned 0 for AVX/AVX2 on the CI Xeons, so
+  every ubuntu benchmark had silently run the SCALAR table. With the
+  kernels live, the CI referee (first honest table): flow-json 1.34x,
+  json-doc 1.46x, flow-single 1.12x, deep-nesting 1.10x,
+  scalar-heavy 1.03x, wide-mapping 1.01x vs ryml (block 0.98x,
+  anchor 0.91x). Also fixes the latent AVX2 stopset signedness bug
+  the live differential caught the same minute (a group's 8th member
+  set lane-mask 0x80, which signed cmpgt_epi8 read as no-hit).
+
 ## [0.1.32] - 2026-09-13
 ### Changed
 - TODO.restructure/81 stage 2: the strict fused JSON walk — the walker
