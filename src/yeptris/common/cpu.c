@@ -15,20 +15,48 @@
 #define YEP_ARM_NEON_OK 1
 #endif
 
+/* Raw CPUID (TODO.restructure/82): __builtin_cpu_supports returned 0
+ * for AVX/AVX2 on real CI Xeons (the bench artifact's kernels line
+ * said scalar(sse2) — the whole kernel campaign had never run there).
+ * The builtins depend on the runtime's __cpu_model initialization;
+ * cpuid has no such dependency. <cpuid.h> intrinsics need no -m
+ * flags; xgetbv is raw asm behind the OSXSAVE gate. */
+#if defined(YEP_X86) && (defined(__GNUC__) || defined(__clang__))
+#include <cpuid.h>
+
+static uint64_t yep_xgetbv0(void) {
+    uint32_t lo, hi;
+    __asm__ volatile("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
+    return ((uint64_t)hi << 32) | lo;
+}
+#endif
+
 static yep_cpu_features yep_cpu_compute(void) {
     yep_cpu_features f = {0};
 
 #if defined(YEP_X86)
     f.sse2 = 1; /* architectural on x86-64 */
 #if defined(__GNUC__) || defined(__clang__)
-    f.sse3 = (unsigned)__builtin_cpu_supports("sse3");
-    f.ssse3 = (unsigned)__builtin_cpu_supports("ssse3");
-    f.sse41 = (unsigned)__builtin_cpu_supports("sse4.1");
-    f.popcnt = (unsigned)__builtin_cpu_supports("popcnt");
-    f.avx = (unsigned)__builtin_cpu_supports("avx");
-    f.avx2 = (unsigned)__builtin_cpu_supports("avx2");
-    f.bmi1 = (unsigned)__builtin_cpu_supports("bmi");
-    f.bmi2 = (unsigned)__builtin_cpu_supports("bmi2");
+    {
+        uint32_t a, b, c, d;
+        if (__get_cpuid(1, &a, &b, &c, &d)) {
+            f.sse3 = (c & (1u << 0)) != 0;
+            f.ssse3 = (c & (1u << 9)) != 0;
+            f.sse41 = (c & (1u << 19)) != 0;
+            f.popcnt = (c & (1u << 23)) != 0;
+            int osxsave = (c & (1u << 27)) != 0;
+            int cpu_avx = (c & (1u << 28)) != 0;
+            if (osxsave && cpu_avx && (yep_xgetbv0() & 0x6u) == 0x6u) {
+                f.avx = 1;
+            }
+        }
+        uint32_t a7, b7, c7, d7;
+        if (__get_cpuid_count(7, 0, &a7, &b7, &c7, &d7)) {
+            f.bmi1 = (b7 & (1u << 3)) != 0;
+            f.bmi2 = (b7 & (1u << 8)) != 0;
+            f.avx2 = f.avx && (b7 & (1u << 5)) != 0;
+        }
+    }
 #endif
 #elif defined(YEP_ARM_NEON_OK)
     f.neon = 1;
