@@ -223,14 +223,14 @@ int yep_text_line_facts_capped(const char* s, size_t len, size_t pos, size_t cap
         if (!have_indent) {
             uint64_t nons = ~(yep_swar_eq8(x, k_sp)) & room;
             if (nons) {
-                indent = i + (size_t)(__builtin_ctzll(nons) >> 3);
+                indent = i + (size_t)(yep_ctz64(nons) >> 3);
                 have_indent = 1;
             }
         }
         if (have_indent && !stop_set) {
             uint64_t stm = (yep_swar_eq8(x, k_co) | yep_swar_eq8(x, k_ha)) & room;
             if (stm) {
-                size_t cand = i + (size_t)(__builtin_ctzll(stm) >> 3);
+                size_t cand = i + (size_t)(yep_ctz64(stm) >> 3);
                 if (cand >= indent) { /* a stop byte cannot precede the first non-space */
                     stop = cand;
                     stop_set = 1;
@@ -238,7 +238,7 @@ int yep_text_line_facts_capped(const char* s, size_t len, size_t pos, size_t cap
             }
         }
         if (br) {
-            end = i + (size_t)(__builtin_ctzll(br) >> 3);
+            end = i + (size_t)(yep_ctz64(br) >> 3);
             have_end = 1;
             break;
         }

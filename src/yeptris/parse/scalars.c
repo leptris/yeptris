@@ -192,25 +192,26 @@ static uint32_t finish_double_body(const char* p, uint32_t start, uint32_t end, 
             i++;
             break;
         case 'N': /* U+0085 NEL */ {
-            char tmp[2] = {(char)0xC2, (char)0x85};
+            char tmp[2] = {(char)(unsigned char)0xC2, (char)(unsigned char)0x85};
             yep_buf_put(b, tmp, 2);
             i++;
             break;
         }
         case '_': /* U+00A0 */ {
-            char tmp[2] = {(char)0xC2, (char)0xA0};
+            char tmp[2] = {(char)(unsigned char)0xC2, (char)(unsigned char)0xA0};
             yep_buf_put(b, tmp, 2);
             i++;
             break;
         }
         case 'L': /* U+2028 */ {
-            char tmp[3] = {(char)0xE2, (char)0x80, (char)0xA8};
+            char tmp[3] = {(char)(unsigned char)0xE2, (char)(unsigned char)0x80,
+                           (char)(unsigned char)0xA8};
             yep_buf_put(b, tmp, 3);
             i++;
             break;
         }
         case 'P': /* U+2029 */ {
-            char tmp[3] = {(char)0xE2, (char)0x80, (char)0xA9};
+            char tmp[3] = {(char)(unsigned char)0xE2, (char)(unsigned char)0x80, (char)0xA9};
             yep_buf_put(b, tmp, 3);
             i++;
             break;

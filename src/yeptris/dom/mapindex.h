@@ -21,7 +21,7 @@
 
 #include <stdint.h>
 
-#include <pthread.h>
+#include "common/mutex.h"
 
 #include "common/nametab.h"
 #include "memory/allocator.h"
@@ -36,7 +36,7 @@ typedef struct yep_midx_tab yep_midx_tab;
 struct yep_midx_state {
     yep_midx_tab** tabs; /* per node id: table or NULL (lazy) */
     uint32_t tabs_cap;   /* slots allocated (grown with the node set) */
-    pthread_mutex_t mu;
+    yep_mutex_raw mu;
     int mu_ready;
 };
 

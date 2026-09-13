@@ -20,6 +20,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "port.h" /* yep_ctz64: the SWAR walks' first-set-lane extraction */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
