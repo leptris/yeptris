@@ -71,19 +71,14 @@ typedef struct {
     int n; /* limb count in 64-bit halves, 1 or 2 */
 } u128v;
 
-static int u128_cmp(const yep_u128 a, const yep_u128 b) {
-    return a < b ? -1 : (a > b ? 1 : 0);
-}
-
-static const yep_u128 u128_max = ~(yep_u128)0;
-
-/* x can be multiplied by 10 without overflow */
-static int fits10(yep_u128 x) {
-    return x <= u128_max / 10;
-}
+/* u128_cmp/u128_max/fits10 live in floatint.h — the portable helper
+ * surface (MSVC rides the same expressions; no operator arithmetic) */
+#define u128_cmp yep_u128_cmp
+#define fits10(x) yep_u128_fits10(x)
+#define u128_max yep_u128_max()
 
 int yep_u128_shortest(uint64_t m2, int e2, int mb, int pow2_low, int tie_even, yep_dsplit* out) {
-    yep_u128 r = m2, s = 1, mm = 1, mp = 1;
+    yep_u128 r = yep_u128_of(m2), s = yep_u128_of(1), mm = yep_u128_of(1), mp = yep_u128_of(1);
     /* Capacity: every value below must fit 128 bits. For e2 >= 0 the
      * operands grow by 2^e2 (double: e2 <= 75 keeps r < 2^128); for
      * e2 < 0 only s grows (s = 2^-e2 <= 2^96 for the tier range). */
@@ -91,14 +86,14 @@ int yep_u128_shortest(uint64_t m2, int e2, int mb, int pow2_low, int tie_even, y
         if (e2 > 75) {
             return 0;
         }
-        r <<= e2;
+        r = yep_u128_shl(r, (unsigned)e2);
         if (e2 >= 1) {
-            mp <<= e2 - 1;
+            mp = yep_u128_shl(mp, (unsigned)(e2 - 1));
         } else {
-            mp = 1;
+            mp = yep_u128_of(1);
         }
         mm = mp;
-        if (r > u128_max >> e2) {
+        if (yep_u128_cmp(r, yep_u128_shr(u128_max, (unsigned)e2)) > 0) {
             return 0; /* shifted out of range */
         }
     } else {
@@ -106,17 +101,20 @@ int yep_u128_shortest(uint64_t m2, int e2, int mb, int pow2_low, int tie_even, y
         if (bits > 96) {
             return 0;
         }
-        r <<= 1;
-        s <<= bits;
-        if (r > u128_max >> 1 || s > u128_max >> bits) {
+        r = yep_u128_shl(r, 1);
+        s = yep_u128_shl(s, (unsigned)bits);
+        if (yep_u128_cmp(r, yep_u128_shr(u128_max, 1)) > 0 ||
+            yep_u128_cmp(s, yep_u128_shr(u128_max, (unsigned)bits)) > 0) {
             return 0;
         }
     }
     if (pow2_low) {
-        r <<= 1;
-        s <<= 1;
-        mp <<= 1;
-        if (r > u128_max >> 1 || s > u128_max >> 1 || mp > u128_max >> 1) {
+        r = yep_u128_shl(r, 1);
+        s = yep_u128_shl(s, 1);
+        mp = yep_u128_shl(mp, 1);
+        if (yep_u128_cmp(r, yep_u128_shr(u128_max, 1)) > 0 ||
+            yep_u128_cmp(s, yep_u128_shr(u128_max, 1)) > 0 ||
+            yep_u128_cmp(mp, yep_u128_shr(u128_max, 1)) > 0) {
             return 0;
         }
     }
@@ -124,16 +122,16 @@ int yep_u128_shortest(uint64_t m2, int e2, int mb, int pow2_low, int tie_even, y
      * by up to 10^(~22): 128-bit headroom must hold */
     int k = 0;
     {
-        yep_u128 rmp = r + mp;
+        yep_u128 rmp = yep_u128_add(r, mp);
         int guard = 0;
         while (u128_cmp(rmp, s) <= 0) {
             if (!fits10(r) || !fits10(mm) || !fits10(mp)) {
                 return 0;
             }
-            r *= 10;
-            mm *= 10;
-            mp *= 10;
-            rmp = r + mp;
+            r = yep_u128_mul_small(r, 10);
+            mm = yep_u128_mul_small(mm, 10);
+            mp = yep_u128_mul_small(mp, 10);
+            rmp = yep_u128_add(r, mp);
             k--;
             if (++guard > 24) {
                 return 0;
@@ -144,7 +142,7 @@ int yep_u128_shortest(uint64_t m2, int e2, int mb, int pow2_low, int tie_even, y
             if (!fits10(s)) {
                 return 0;
             }
-            s *= 10;
+            s = yep_u128_mul_small(s, 10);
             k++;
             if (++guard > 24) {
                 return 0;
@@ -159,12 +157,12 @@ int yep_u128_shortest(uint64_t m2, int e2, int mb, int pow2_low, int tie_even, y
         if (!fits10(r) || !fits10(mm) || !fits10(mp)) {
             return 0; /* out of u128 range mid-loop: tier B */
         }
-        r *= 10;
-        mm *= 10;
-        mp *= 10;
+        r = yep_u128_mul_small(r, 10);
+        mm = yep_u128_mul_small(mm, 10);
+        mp = yep_u128_mul_small(mp, 10);
         int d = 0;
         while (u128_cmp(r, s) >= 0) {
-            r -= s;
+            r = yep_u128_sub(r, s);
             d++;
         }
         digits[n] = (char)('0' + d);
@@ -172,11 +170,12 @@ int yep_u128_shortest(uint64_t m2, int e2, int mb, int pow2_low, int tie_even, y
         /* an exact boundary hit ties at reparse to the even float —
          * acceptable only when v itself is even (tie_even) */
         int can_down = u128_cmp(r, mm) < 0 || (tie_even && u128_cmp(r, mm) == 0);
-        int can_up = u128_cmp(s - r, mp) < 0 || (tie_even && u128_cmp(s - r, mp) == 0);
+        int can_up = u128_cmp(yep_u128_sub(s, r), mp) < 0 ||
+                     (tie_even && u128_cmp(yep_u128_sub(s, r), mp) == 0);
         if (can_down || can_up) {
             int up;
             if (can_down && can_up) {
-                yep_u128 t = r + r;
+                yep_u128 t = yep_u128_add(r, r);
                 int c = u128_cmp(t, s);
                 up = (c > 0) || (c == 0 && (d % 2) != 0);
             } else {
