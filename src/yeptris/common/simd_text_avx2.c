@@ -325,7 +325,12 @@ static ptrdiff_t yep_avx2_stopset_find(const yep_stopset* ss, const char* s, siz
             m = _mm256_or_si256(
                 m, _mm256_and_si256(_mm256_shuffle_epi8(tlo1, lo), _mm256_shuffle_epi8(thi1, hi)));
         }
-        uint32_t nz = (uint32_t)_mm256_movemask_epi8(_mm256_cmpgt_epi8(m, _mm256_setzero_si256()));
+        /* nonzero test via the eq-zero complement: a lane's bitmask
+         * can be 0x80 (a group's 8th member) — cmpgt_epi8 is SIGNED
+         * and read that as negative, missing the hit (the CI AVX2
+         * run's first catch; NEON's unsigned vmaxv never had it) */
+        uint32_t z = (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(m, _mm256_setzero_si256()));
+        uint32_t nz = ~z;
         if (nz != 0) {
             return (ptrdiff_t)(i + (size_t)__builtin_ctz(nz));
         }
