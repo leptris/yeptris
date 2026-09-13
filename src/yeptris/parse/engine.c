@@ -2236,7 +2236,7 @@ static int e_shape_alias_value(yep_engine* e, const yep_line_shape* sh, int unde
         if (e_simple_key_ok(e, sh->val_start, e->pos) != 0) {
             return -1;
         }
-        uint16_t key_col = e_col(e, sh->val_start);
+        uint16_t key_col = (uint16_t)e_col(e, sh->val_start);
         int rc = e_open_map(e, key_col, e->line, key_col + 1, none, none, 0, 0);
         if (rc != 0) {
             return rc;
