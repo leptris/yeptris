@@ -9,6 +9,7 @@
 #ifndef YEP_TEST_COMPAT_DIRENT_H
 #define YEP_TEST_COMPAT_DIRENT_H
 
+#include <stdlib.h>
 #include <string.h>
 
 /* the standard pollution guards — test locals must not collide with
