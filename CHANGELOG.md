@@ -6,6 +6,20 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure/81: the JSON-field campaign opens — simdjson
+  (pinned tree) joins the bench references with the json-doc corpus
+  and an order-alternating referee; the clean gate skips the
+  whole-document UTF-8 pass in yeptris_parse_json (measured: no
+  movement, kept as pass-elimination). The build-then-validate
+  fusion was rejected by json-suite-strict (the DOM builder's walker
+  is the lenient flow class) — the strict validator rules first.
+- TODO.restructure/80: bench artifacts state the active kernel table
+  and CPU vector flags; the head-to-head tables ride the markdown.
+- TODO.restructure/79: the fused block engine (the last >10 percent
+  structural lever) is specced with scope estimate.
+
 ## [0.1.30] - 2026-09-12
 ### Changed
 - TODO.restructure/78: the dash-item batch — `on_block_item` mirrors
