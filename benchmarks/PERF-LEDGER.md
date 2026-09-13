@@ -1308,3 +1308,22 @@ must agree node-for-node). Local block-heavy flat (123-125 MB/s —
 the per-item event chain was already direct); the win is the
 completed fast-path surface + ~400k fewer event structs per
 block-heavy parse. CI arbitrates.
+
+
+## 2026-09-13 — the ubuntu profile read; diagnostics landed (80);
+79 specced
+
+The Linux perf artifact (v0.1.30) reads: e_node 11.2% (GCC/LTO
+attributes the whole classified path there — clang shows the same
+work split across e_node/scan_shape/engine), stopset 8.7%, engine
+8.0%, scan_plain 6.3%, core12 3.5%. The scalar-kernel symbols in the
+report cannot be distinguished post-hoc from LTO mis-attribution vs
+a real scalar dispatch — so the artifacts now carry ground truth:
+bench_matrix prints `kernels: <table>` (same yep_cpu_detect the
+dispatcher uses) and the profile script records the CPU's avx2 flag
+(item 80, landed).
+
+79 (the fused block engine — the last >10% structural lever,
+~19-25% of block time across the seam) is specced on the board with
+scope estimate; it is a 2-3 session rewrite with the event-stream
+byte-identity bar.
