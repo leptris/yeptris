@@ -99,15 +99,15 @@ uint32_t yep_midx_lookup(struct yep_dom* d, uint32_t map, yep_view key) {
     if (x->mu_ready == 0) {
         return UINT32_MAX; /* document without a live index (paranoia) */
     }
-    pthread_mutex_lock(&x->mu);
+    yep_mutex_lock(&x->mu);
     if (tabs_grow(d, d->ncount) != 0) {
-        pthread_mutex_unlock(&x->mu);
+        yep_mutex_unlock(&x->mu);
         return UINT32_MAX;
     }
     if (x->tabs[map] == NULL) {
         x->tabs[map] = tab_build(d, map);
         if (x->tabs[map] == NULL) {
-            pthread_mutex_unlock(&x->mu);
+            yep_mutex_unlock(&x->mu);
             return UINT32_MAX;
         }
     }
@@ -130,7 +130,7 @@ uint32_t yep_midx_lookup(struct yep_dom* d, uint32_t map, yep_view key) {
         }
         i = (i + 1) & mask;
     }
-    pthread_mutex_unlock(&x->mu);
+    yep_mutex_unlock(&x->mu);
     return found;
 }
 
@@ -138,13 +138,13 @@ void yep_midx_invalidate(struct yep_dom* d, uint32_t map) {
     if (d == NULL || !d->midx.mu_ready || d->midx.tabs == NULL || map >= d->midx.tabs_cap) {
         return;
     }
-    pthread_mutex_lock(&d->midx.mu);
+    yep_mutex_lock(&d->midx.mu);
     yep_midx_tab* t = d->midx.tabs[map];
     if (t != NULL) {
         d->midx.tabs[map] = NULL;
         yep_free(d->sys, t);
     }
-    pthread_mutex_unlock(&d->midx.mu);
+    yep_mutex_unlock(&d->midx.mu);
 }
 
 void yep_midx_destroy(struct yep_dom* d) {
@@ -160,7 +160,7 @@ void yep_midx_destroy(struct yep_dom* d) {
         d->midx.tabs_cap = 0;
     }
     if (d->midx.mu_ready) {
-        pthread_mutex_destroy(&d->midx.mu);
+        yep_mutex_destroy(&d->midx.mu);
         d->midx.mu_ready = 0;
     }
 }

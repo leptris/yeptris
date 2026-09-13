@@ -106,7 +106,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Scoped per-target so fetched dependencies (GTest) keep their own flags.
 function(yeptris_set_warnings target)
     if(MSVC)
-        target_compile_options(${target} PRIVATE /W4)
+        # /wd4100 mirrors -Wno-unused-parameter; /experimental:c11atomics
+        # un-breaks the C11 headers' stdatomic gate (the windows sentinel
+        # surfaced both — the leg rides in the test matrix now)
+        target_compile_options(${target} PRIVATE /W4 /wd4100 /experimental:c11atomics)
         if(YEPTRIS_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE /WX)
         endif()

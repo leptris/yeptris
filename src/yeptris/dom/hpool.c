@@ -13,7 +13,7 @@
 #include "dom/dom.h"
 #include "memory/allocator.h"
 
-#include <pthread.h>
+#include "common/mutex.h"
 
 #define HPOOL_BLOCK (16u * 1024u)
 
@@ -26,7 +26,7 @@ typedef struct hblock {
 struct yep_hpool {
     const yep_allocator* sys;
     hblock* head;
-    pthread_mutex_t mu;
+    yep_mutex_raw mu;
 };
 
 static hblock* hb_new(const yep_allocator* sys, size_t payload) {
@@ -50,13 +50,13 @@ struct yep_hpool* yep_hpool_create(const yep_allocator* sys) {
     }
     p->sys = sys;
     p->head = NULL;
-    if (pthread_mutex_init(&p->mu, NULL) != 0) {
+    if (yep_mutex_init(&p->mu) != 0) {
         yep_free(sys, p);
         return NULL;
     }
     p->head = hb_new(sys, HPOOL_BLOCK);
     if (p->head == NULL) {
-        pthread_mutex_destroy(&p->mu);
+        yep_mutex_destroy(&p->mu);
         yep_free(sys, p);
         return NULL;
     }
@@ -67,7 +67,7 @@ void yep_hpool_destroy(struct yep_hpool* p) {
     if (p == NULL) {
         return;
     }
-    pthread_mutex_destroy(&p->mu);
+    yep_mutex_destroy(&p->mu);
     hblock* b = p->head;
     while (b != NULL) {
         hblock* next = b->next;
@@ -81,7 +81,7 @@ void* yep_hpool_alloc(struct yep_hpool* p, size_t size, size_t align) {
     if (p == NULL || size == 0 || align == 0 || (align & (align - 1)) != 0) {
         return NULL;
     }
-    pthread_mutex_lock(&p->mu);
+    yep_mutex_lock(&p->mu);
     hblock* b = p->head;
     uintptr_t base = (uintptr_t)b + sizeof(hblock);
     uintptr_t start = (base + b->used + align - 1) & ~(uintptr_t)(align - 1);
@@ -92,7 +92,7 @@ void* yep_hpool_alloc(struct yep_hpool* p, size_t size, size_t align) {
         }
         hblock* nb = hb_new(p->sys, payload);
         if (nb == NULL) {
-            pthread_mutex_unlock(&p->mu);
+            yep_mutex_unlock(&p->mu);
             return NULL;
         }
         nb->next = b;
@@ -102,6 +102,6 @@ void* yep_hpool_alloc(struct yep_hpool* p, size_t size, size_t align) {
         b = nb;
     }
     b->used = start + size - base;
-    pthread_mutex_unlock(&p->mu);
+    yep_mutex_unlock(&p->mu);
     return (void*)start;
 }

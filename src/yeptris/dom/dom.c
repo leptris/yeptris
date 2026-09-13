@@ -4,7 +4,7 @@
 
 #include "common/simd_text.h"
 
-#include <pthread.h>
+#include "common/mutex.h"
 
 #include "dom.h"
 
@@ -484,7 +484,7 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
         yep_free(sys, d);
         return NULL;
     }
-    if (pthread_mutex_init(&d->midx.mu, NULL) != 0) {
+    if (yep_mutex_init(&d->midx.mu) != 0) {
         yep_free(d->sys, d->anchor_nodes);
         yep_free(d->sys, d->mut_att);
         yep_free(d->sys, d->mut_depth);
