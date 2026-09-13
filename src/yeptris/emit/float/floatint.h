@@ -27,9 +27,140 @@
 typedef unsigned __int128 yep_u128;
 #define YEP_MUL64(a, b) ((yep_u128)(uint64_t)(a) * (uint64_t)(b))
 #elif defined(_MSC_VER)
-/* MSVC: carry-less 64x64 via _umul128 lives in print.c directly */
-#error "128-bit multiply required: port via _umul128/_umulh here"
+#include <intrin.h>
+/* MSVC has no __int128: the lo/hi pair behind the SAME helper surface
+ * (print.c's interval loop rides only these — no operator arithmetic
+ * anywhere, so both branches share one source shape). */
+typedef struct {
+    uint64_t lo, hi;
+} yep_u128;
+#define YEP_MUL64(a, b) yep_u128_mul64(a, b)
 #endif
+
+static inline yep_u128 yep_u128_of(uint64_t v) {
+#if defined(__SIZEOF_INT128__)
+    return (yep_u128)v;
+#else
+    yep_u128 r = {v, 0};
+    return r;
+#endif
+}
+
+static inline yep_u128 yep_u128_max(void) {
+#if defined(__SIZEOF_INT128__)
+    return ~(yep_u128)0;
+#else
+    yep_u128 r = {~(uint64_t)0, ~(uint64_t)0};
+    return r;
+#endif
+}
+
+static inline yep_u128 yep_u128_add(yep_u128 a, yep_u128 b) {
+#if defined(__SIZEOF_INT128__)
+    return a + b;
+#else
+    yep_u128 r;
+    r.lo = a.lo + b.lo;
+    r.hi = a.hi + b.hi + (r.lo < a.lo ? 1u : 0u);
+    return r;
+#endif
+}
+
+static inline yep_u128 yep_u128_sub(yep_u128 a, yep_u128 b) {
+#if defined(__SIZEOF_INT128__)
+    return a - b;
+#else
+    yep_u128 r;
+    r.lo = a.lo - b.lo;
+    r.hi = a.hi - b.hi - (a.lo < b.lo ? 1u : 0u);
+    return r;
+#endif
+}
+
+/* n < 128 */
+static inline yep_u128 yep_u128_shl(yep_u128 a, unsigned n) {
+#if defined(__SIZEOF_INT128__)
+    return a << n;
+#else
+    yep_u128 r = {0, 0};
+    if (n == 0) {
+        return a;
+    }
+    if (n < 64) {
+        r.hi = (a.hi << n) | (a.lo >> (64 - n));
+        r.lo = a.lo << n;
+    } else {
+        r.hi = a.lo << (n - 64);
+    }
+    return r;
+#endif
+}
+
+/* n < 128 */
+static inline yep_u128 yep_u128_shr(yep_u128 a, unsigned n) {
+#if defined(__SIZEOF_INT128__)
+    return a >> n;
+#else
+    yep_u128 r = {0, 0};
+    if (n == 0) {
+        return a;
+    }
+    if (n < 64) {
+        r.lo = (a.lo >> n) | (a.hi << (64 - n));
+        r.hi = a.hi >> n;
+    } else {
+        r.lo = a.hi >> (n - 64);
+    }
+    return r;
+#endif
+}
+
+static inline int yep_u128_cmp(yep_u128 a, yep_u128 b) {
+#if defined(__SIZEOF_INT128__)
+    return a < b ? -1 : (a > b ? 1 : 0);
+#else
+    if (a.hi != b.hi) {
+        return a.hi < b.hi ? -1 : 1;
+    }
+    if (a.lo != b.lo) {
+        return a.lo < b.lo ? -1 : 1;
+    }
+    return 0;
+#endif
+}
+
+#if defined(_MSC_VER)
+static inline yep_u128 yep_u128_mul64(uint64_t a, uint64_t b) {
+    yep_u128 r;
+    r.lo = _umul128(a, b, &r.hi);
+    return r;
+}
+#endif
+
+/* x * 10 stays in range */
+static inline int yep_u128_fits10(yep_u128 x) {
+#if defined(__SIZEOF_INT128__)
+    return x <= (~(yep_u128)0) / 10;
+#else
+    /* exact: hi*10 must not overflow 64 bits (with the lo carry) */
+    uint64_t hi_prod_hi = __umulh(x.hi, 10u);
+    uint64_t hi_prod_lo = x.hi * 10u;
+    uint64_t lo_carry = __umulh(x.lo, 10u);
+    return hi_prod_hi == 0 && hi_prod_lo + lo_carry >= hi_prod_lo;
+#endif
+}
+
+/* m small (< 2^32); caller guarantees no overflow (fits10 guarded) */
+static inline yep_u128 yep_u128_mul_small(yep_u128 a, uint32_t m) {
+#if defined(__SIZEOF_INT128__)
+    return a * m;
+#else
+    yep_u128 r;
+    r.lo = a.lo * m;
+    r.hi = a.hi * m + __umulh(a.lo, m);
+    return r;
+#endif
+}
 
 /* The shortest-roundtrip result both tiers produce. digits[] is the
  * rounded digit sequence (no leading zero, trailing zeros kept only
