@@ -23,7 +23,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # windows-latest (MSVC): the portability sentinel — the C11
+        # guards name MSVC (_Static_assert spelling, _M_X64 arch); this
+        # leg surfaces what actually breaks before any win wheel rides it
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout code
@@ -38,8 +41,11 @@ jobs:
         run: brew install cmake ninja
 
       - name: Configure
+        shell: bash
         run: |
-          cmake -B build -S . -G Ninja \
+          GEN="-G Ninja"
+          if [ "$RUNNER_OS" = "Windows" ]; then GEN=""; fi
+          cmake -B build -S . $GEN \
             -DBUILD_TESTING=ON \
             -DYEPTRIS_BUILD_CLI=ON \
             -DCMAKE_BUILD_TYPE=Release \
@@ -49,10 +55,12 @@ jobs:
         run: cmake --build build
 
       - name: Fetch conformance corpora
+        shell: bash
         run: scripts/fetch-corpora.sh
 
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
 
       - name: CLI smoke
+        shell: bash
         run: ./build/cli/yeptris version

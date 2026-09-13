@@ -55,11 +55,18 @@ set(YEPTRIS_SOURCES
 
 # AOT SIMD TUs (TODO.impl/04): per-ISA compile flags; the TUs and the
 # dispatch share architecture guards, so links resolve on every platform.
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$" AND NOT MSVC)
+# CMAKE_OSX_ARCHITECTURES participates: an -arch x86_64 cross-build on
+# an arm Mac compiles the dispatch for x86 — the source pick must
+# follow the TARGET arch, not the host (the all-platform wheels ride
+# this; host-processor-only selection linked NEON objects into an
+# x86_64 image).
+if((CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$" OR
+    CMAKE_OSX_ARCHITECTURES MATCHES "x86_64") AND NOT MSVC)
     list(APPEND YEPTRIS_SOURCES yeptris/common/simd_text_avx2.c)
     set_source_files_properties(yeptris/common/simd_text_avx2.c
         PROPERTIES COMPILE_OPTIONS "-mavx2;-mpopcnt")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+elseif((CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$" OR
+    CMAKE_OSX_ARCHITECTURES MATCHES "arm64") AND NOT CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
     list(APPEND YEPTRIS_SOURCES yeptris/common/simd_text_neon.c)
 endif()
 
