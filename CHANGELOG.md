@@ -18,6 +18,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the live differential caught the same minute (a group's 8th member
   set lane-mask 0x80, which signed cmpgt_epi8 read as no-hit).
 
+## [Unreleased]
+### Added
+- TODO.restructure/83 (issue #238): the schema-descriptor
+  materialization API — `yeptris_schema_load` walks a
+  caller-compiled descriptor (flat 24-byte plan nodes; kinds
+  SCALAR/SEQUENCE/MAPPING/CALLBACK; shared child slices give
+  two-names-one-slot merges) and fills typed columns; the
+  intermediate generic document never exists. Whole-document
+  results in caller-allocated buffers; `YEPTRIS_DESC_ABI` gates in
+  lockstep; new status `YEPTRIS_ERROR_SCHEMA` names a missing
+  REQUIRED node. docs/schema-abi.md is the co-design doc for the
+  committed consumer.
+
 ## [0.1.32] - 2026-09-13
 ### Changed
 - TODO.restructure/81 stage 2: the strict fused JSON walk — the walker
