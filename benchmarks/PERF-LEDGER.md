@@ -1413,3 +1413,13 @@ deep 1.02x, scalar 1.04x, wide 1.03x, block 1.04x; anchor-heavy
 0.90x is the last one. JSON: parse_json 0.18x vs simdjson on CI
 (0.20x local) — the tape-mode plan (item 81 stage 3) is the recorded
 path.
+
+
+## 2026-09-13 (vi) — the recorder path is NOT the tape (85 measured dead)
+
+yeptris_value_drain_columns on the json-doc corpus: 90.5 MB/s —
+SLOWER than parse_json's 203. The recorder store + transform + carve
+cannot be rerouted as a tape; item 85 boards the dedicated fused
+walk-to-tape consumer with the record layout and the additive API
+surface, plus the honest expectation (350-500 MB/s first build;
+simdjson parity additionally needs the structural-index pass).
