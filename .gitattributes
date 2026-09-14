@@ -1,4 +1,7 @@
-* text=auto eol=lf  # the corpus checkouts stay byte-identical on every platform (Windows autocrlf corrupted them)
+# the root rule keeps EVERY checkout byte-identical on every platform
+# (Windows autocrlf corrupted the corpus files into CRLF and three
+# conformance legs diverged on it)
+* text=auto eol=lf
 
 # Sources and text: LF in the repository and the working tree.
 *.c   text eol=lf
