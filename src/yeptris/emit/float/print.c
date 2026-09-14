@@ -282,6 +282,9 @@ int yep_float_render(const yep_dsplit* ds, int negative, char* buf) {
     if (en == 0) {
         er[en++] = '0';
     }
+    if (en == 1) {
+        er[en++] = '0'; /* two-digit minimum: 1.0e-07, Float#to_s shape */
+    }
     for (int i = 0; i < en; i++) {
         buf[o++] = er[en - 1 - i];
     }
