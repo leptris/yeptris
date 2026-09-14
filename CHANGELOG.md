@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- TODO.restructure (the all-platforms round): MSVC is a first-class
+  build — windows-latest joins the test matrix (302/302 there), the
+  ISA selection follows CMAKE_OSX_ARCHITECTURES (x86_64 cross-builds
+  on arm Macs link the AVX2 TU, not NEON), the u128 float printer
+  rides one portable helper surface, the pool/mapindex mutexes share
+  common/mutex.h (SRWLOCK on Windows), the corpus walkers get a
+  dirent compat shim, and every checkout/clone pins eol=lf (Windows
+  autocrlf corrupted the corpora). The Python wheels matrix grows
+  linux-aarch64 and macOS x86_64 (cross) — see yeptris-py.
+
 ## [0.2.3] - 2026-09-13
 ### Changed
 - TODO.restructure/84 follow-up (the ledger's 2026-09-14 wave): the
