@@ -6,7 +6,15 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.6] - 2026-09-14
+## [Unreleased]
+### Fixed
+- The JSON writer's escape table was off by one: `\b` sat at index
+  7 but 0x08 is index 8, so backspace emitted `\u0008` instead of
+  `\b` (the serialbench byte-parity report). Float exponents now
+  pad to two digits (1.0e-07 — Float#to_s/JSON.generate shape);
+  canonical output stays a fixed point.
+
+## [0.2.6]## [0.2.6] - 2026-09-14
 ### Changed
 - simdjson's eight-digits SWAR (their parse_eight_digits_unrolled,
   verbatim constants) rides yep_json_number_scan's integer loop:
