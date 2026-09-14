@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.2.4] - 2026-09-14
 ### Changed
 - TODO.restructure (the all-platforms round): MSVC is a first-class
   build — windows-latest joins the test matrix (302/302 there), the
