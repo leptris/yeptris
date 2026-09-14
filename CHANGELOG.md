@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- scan_stats (NEON) accumulates vertically — pairwise add-accumulate
+  into u16 lanes with one horizontal reduce per 4095-chunk batch,
+  replacing ten per-chunk UADDV reductions (the leptris count-char
+  lesson). The first cut wrapped: vaddvq_u16 returns uint16_t, so a
+  4096-chunk dense batch sums to 65536 and reduces to zero — the
+  differential's new 64KB/128KB boundary battery caught it. Kernel
+  A/B 1.29x on every shape (3.5 → 4.5 GB/s).
+
 ## [0.2.7] - 2026-09-14
 ### Fixed
 - The JSON writer's escape table was off by one: `\b` sat at index

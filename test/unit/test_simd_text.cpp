@@ -299,6 +299,27 @@ TEST(SimdText, ScanStats) {
         EXPECT_EQ(got.nonascii, c.nonascii);
         EXPECT_EQ(got.bad_printable, c.bad);
     }
+    /* The NEON kernel batches 64KB before draining its vertical u16
+     * accumulators: pin the batch boundary exactness and dense counts
+     * (every byte a count char — max per-lane accumulation). */
+    for (size_t len : {65520u, 65535u, 65536u, 65551u, 65552u, 131072u, 131088u}) {
+        std::string all(len, '\n');
+        yep_text_stats got, want;
+        k->scan_stats(all.data(), all.size(), &got);
+        naive_scan_stats(all.data(), all.size(), &want);
+        EXPECT_EQ(want.nl, len) << "naive broke on len=" << len;
+        EXPECT_EQ(0, memcmp(&got, &want, sizeof(want))) << "all-newline len=" << len;
+
+        std::string mix(len, '\0');
+        static const char cc[] = "\n,-:[]{}\"'|&";
+        for (size_t i = 0; i < len; i++) {
+            mix[i] = cc[i % 10];
+        }
+        k->scan_stats(mix.data(), mix.size(), &got);
+        naive_scan_stats(mix.data(), mix.size(), &want);
+        EXPECT_EQ((len + 9) / 10, want.nl) << "naive broke on len=" << len;
+        EXPECT_EQ(0, memcmp(&got, &want, sizeof(want))) << "dense-mix len=" << len;
+    }
 }
 
 TEST(SimdText, QuoteScan) {

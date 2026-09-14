@@ -1553,3 +1553,38 @@ within the day's thermal noise, as the mechanism predicts. All gates
 green: the number-kernel specs gain the SWAR exactness battery
 (>=8/>=16 digit exactness, int64 bounds, shape-2 promotion), the 2M
 tape-diff fuzz and json-suite-strict unchanged.
+
+## 2026-09-14 (vii) — NEON scan_stats goes vertical (the leptris count lesson)
+
+Surveyed leptris's whole SIMD surface for the "learn NEON from leptris"
+directive. Verdict against their CHANGELOG lessons: the vshlq_u16
+signed-shift fix is N/A here (no widening shifts in our movemask);
+the vaddvq_u8 wrong-count bug never existed here (all our count sites
+mask to 0/1 lanes before the reduce; the 0xFF-lane reduce at old line
+269 is a presence test, and 255 is invertible mod 256); scan_events /
+branch-free event index stay DEAD for us (measured twice, item 86);
+find3's vextq mask-shift form and contains-via-vmaxv are NOT ported —
+those kernels have no production callers (consumer map: line_facts,
+gate_scan, scan_stats, stopset_find, quote_scan, qbc_find are the
+live ones). The lesson that DID apply: their count-char kernel
+accumulates vertically (pairwise-add-long into u16 lanes, one
+horizontal reduce per batch) instead of one UADDV per chunk.
+
+scan_stats ran TEN UADDV reduces per 16-byte chunk (each a
+vector->GPR serialization point) plus two presence reduces. Now:
+ten vpaddlq_u8 accumulators, presence via vertical OR, one reduce
+per 4095-chunk batch. The differential caught a live bug in the
+first cut — the u16 constraint is on the REDUCE's uint16_t return,
+not just the lanes: a 4096-chunk all-match batch sums to exactly
+65536 and wraps to zero (the u16 sibling of leptris's vaddvq_u8
+lesson, same failure class, caught by the same method — a dense
+differential). Batches cap at 4095 chunks (sum <= 65520); the suite
+pins 65520/65535/65536/65551/65552/131072/131088 all-newline and
+dense-mix inputs.
+
+Kernel A/B (standalone, both bodies in one binary, best-of-9, 8MB
+buffers): 3.5 -> 4.5 GB/s on yaml-ish / all-newline / sparse-a alike,
+1.28-1.29x every run. End-to-end this trims the stats pre-pass
+(~12-13% self-time on the asymmetry shapes per the Linux profile) by
+a quarter; item 66's shrink-or-kill of the sweep itself stays the
+bigger lever.

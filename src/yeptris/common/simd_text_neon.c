@@ -1,11 +1,14 @@
 /* simd_text_neon.c — NEON kernels (TODO.impl/04).
  *
  * NEON is architectural on AArch64, so this TU needs no extra -m flags.
- * 16-byte chunks, scalar tails. Counts use UADDV over 0/1 lanes (the
- * sizing ops are the ≥8×-vs-scalar acceptance target); position queries
- * reduce through a stack movemask helper — correct first, and the perf
- * ledger records it as a refinement candidate if 06's profiles care.
- * stopset_find is vectorized (TODO.restructure/68, nibble-class tbl).
+ * 16-byte chunks, scalar tails. scan_stats accumulates vertically
+ * (vpadalq into u16 lanes, one reduce per batch — the leptris count
+ * lesson); the single-char kernels still reduce UADDV over 0/1 lanes
+ * (the sizing ops are the ≥8×-vs-scalar acceptance target). Position
+ * queries reduce through a stack movemask helper — correct first, and
+ * the perf ledger records it as a refinement candidate if 06's
+ * profiles care. stopset_find is vectorized (TODO.restructure/68,
+ * nibble-class tbl).
  */
 
 #include "port.h" /* defines YEP_ARCH_* — must precede the guard below */
@@ -242,32 +245,81 @@ static void yep_neon_scan_stats(const char* s, size_t len, yep_text_stats* out) 
                      kamp = vdupq_n_u8('&');
     const uint8x16_t k80 = vdupq_n_u8(0x80), ktab9 = vdupq_n_u8('\t'), klf = vdupq_n_u8('\n'),
                      kcr = vdupq_n_u8('\r'), kdel = vdupq_n_u8(0x7F), klow20 = vdupq_n_u8(0x20);
+    const uint8x16_t one = vdupq_n_u8(1);
+    /* vertical accumulation (leptris NEON lesson, its 0.19.x count_char):
+     * a per-chunk UADDV reduce serializes on the vector->GPR boundary —
+     * ten of them per chunk starved the loop. Pairwise-add-accumulate
+     * into u16 lanes, reduce once per batch. The u16 constraint is on
+     * the REDUCE, not just the lanes: vaddvq_u16 returns uint16_t, so
+     * the batch total must stay under 65536 — batches of 4095 chunks
+     * sum to at most 65520 (lane peak 8190). Presence flags fold the
+     * same way (OR is idempotent — one vmaxv at the end replaces the
+     * per-chunk ones). */
+    uint16x8_t a_nl = vdupq_n_u16(0), a_co = vdupq_n_u16(0), a_da = vdupq_n_u16(0),
+               a_cl = vdupq_n_u16(0), a_br = vdupq_n_u16(0), a_bc = vdupq_n_u16(0),
+               a_dq = vdupq_n_u16(0), a_sq = vdupq_n_u16(0), a_pi = vdupq_n_u16(0),
+               a_am = vdupq_n_u16(0);
+    uint8x16_t any_hi = vdupq_n_u8(0), any_bad = vdupq_n_u8(0);
     size_t c_nl = 0, c_co = 0, c_da = 0, c_cl = 0, c_br = 0, c_bc = 0, c_dq = 0, c_sq = 0, c_pi = 0,
            c_am = 0;
-    uint64_t bad = 0, hi = 0;
     size_t i = 0;
-    for (; i + 16 <= len; i += 16) {
-        uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(s + i));
-        hi |= (uint64_t)vmaxvq_u8(vcgeq_u8(v, k80)); /* any non-ASCII byte */
-        c_nl += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, ktab), vdupq_n_u8(1)));
-        c_co += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kcomma), vdupq_n_u8(1)));
-        c_da += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kdash), vdupq_n_u8(1)));
-        c_cl += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kcolon), vdupq_n_u8(1)));
-        c_br += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kbrk), vdupq_n_u8(1)));
-        c_bc += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kbrce), vdupq_n_u8(1)));
-        c_dq += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kdq), vdupq_n_u8(1)));
-        c_sq += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, ksq), vdupq_n_u8(1)));
-        c_pi += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kpipe), vdupq_n_u8(1)));
-        c_am += (size_t)vaddvq_u8(vandq_u8(vceqq_u8(v, kamp), vdupq_n_u8(1)));
-        /* c-printable-ASCII violations, non-ASCII masked out:
-         * b < 0x20 except TAB/LF/CR, plus DEL */
-        uint8x16_t is_ascii = vcltzq_s8(vreinterpretq_s8_u8(veorq_u8(v, k80)));
-        uint8x16_t lo = vcltq_u8(v, klow20);
-        uint8x16_t allowed =
-            vorrq_u8(vceqq_u8(v, ktab9), vorrq_u8(vceqq_u8(v, klf), vceqq_u8(v, kcr)));
-        uint8x16_t badv = vandq_u8(is_ascii, vorrq_u8(vbicq_u8(lo, allowed), vceqq_u8(v, kdel)));
-        bad |= (uint64_t)vaddvq_u8(badv);
+#define YEP_STATS_DRAIN()                                                                        \
+    do {                                                                                         \
+        c_nl += (size_t)vaddvq_u16(a_nl);                                                        \
+        a_nl = vdupq_n_u16(0);                                                                   \
+        c_co += (size_t)vaddvq_u16(a_co);                                                        \
+        a_co = vdupq_n_u16(0);                                                                   \
+        c_da += (size_t)vaddvq_u16(a_da);                                                        \
+        a_da = vdupq_n_u16(0);                                                                   \
+        c_cl += (size_t)vaddvq_u16(a_cl);                                                        \
+        a_cl = vdupq_n_u16(0);                                                                   \
+        c_br += (size_t)vaddvq_u16(a_br);                                                        \
+        a_br = vdupq_n_u16(0);                                                                   \
+        c_bc += (size_t)vaddvq_u16(a_bc);                                                        \
+        a_bc = vdupq_n_u16(0);                                                                   \
+        c_dq += (size_t)vaddvq_u16(a_dq);                                                        \
+        a_dq = vdupq_n_u16(0);                                                                   \
+        c_sq += (size_t)vaddvq_u16(a_sq);                                                        \
+        a_sq = vdupq_n_u16(0);                                                                   \
+        c_pi += (size_t)vaddvq_u16(a_pi);                                                        \
+        a_pi = vdupq_n_u16(0);                                                                   \
+        c_am += (size_t)vaddvq_u16(a_am);                                                        \
+        a_am = vdupq_n_u16(0);                                                                   \
+    } while (0)
+    while (i + 16 <= len) {
+        size_t end = i + 65504; /* 4095 inner chunks: reduce stays u16 */
+        if (end + 16 > len) {
+            end = len - 16; /* the last inner iteration starts here */
+        }
+        for (; i <= end; i += 16) {
+            uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(s + i));
+            any_hi = vorrq_u8(any_hi, vcgeq_u8(v, k80)); /* any non-ASCII byte */
+            a_nl = vpadalq_u8(a_nl, vandq_u8(vceqq_u8(v, ktab), one));
+            a_co = vpadalq_u8(a_co, vandq_u8(vceqq_u8(v, kcomma), one));
+            a_da = vpadalq_u8(a_da, vandq_u8(vceqq_u8(v, kdash), one));
+            a_cl = vpadalq_u8(a_cl, vandq_u8(vceqq_u8(v, kcolon), one));
+            a_br = vpadalq_u8(a_br, vandq_u8(vceqq_u8(v, kbrk), one));
+            a_bc = vpadalq_u8(a_bc, vandq_u8(vceqq_u8(v, kbrce), one));
+            a_dq = vpadalq_u8(a_dq, vandq_u8(vceqq_u8(v, kdq), one));
+            a_sq = vpadalq_u8(a_sq, vandq_u8(vceqq_u8(v, ksq), one));
+            a_pi = vpadalq_u8(a_pi, vandq_u8(vceqq_u8(v, kpipe), one));
+            a_am = vpadalq_u8(a_am, vandq_u8(vceqq_u8(v, kamp), one));
+            /* c-printable-ASCII violations, non-ASCII masked out:
+             * b < 0x20 except TAB/LF/CR, plus DEL */
+            uint8x16_t is_ascii = vcltzq_s8(vreinterpretq_s8_u8(veorq_u8(v, k80)));
+            uint8x16_t lo = vcltq_u8(v, klow20);
+            uint8x16_t allowed =
+                vorrq_u8(vceqq_u8(v, ktab9), vorrq_u8(vceqq_u8(v, klf), vceqq_u8(v, kcr)));
+            any_bad = vorrq_u8(
+                any_bad, vandq_u8(is_ascii, vorrq_u8(vbicq_u8(lo, allowed), vceqq_u8(v, kdel))));
+        }
+        if (i + 16 > len) {
+            break;
+        }
+        YEP_STATS_DRAIN();
     }
+    YEP_STATS_DRAIN();
+#undef YEP_STATS_DRAIN
     yep_text_stats tail = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     yep_text_scan_stats_scalar(s + i, len - i, &tail);
     out->nl = c_nl + tail.nl;
@@ -280,8 +332,8 @@ static void yep_neon_scan_stats(const char* s, size_t len, yep_text_stats* out) 
     out->sq = c_sq + tail.sq;
     out->pipe = c_pi + tail.pipe;
     out->amp = c_am + tail.amp;
-    out->nonascii = (hi != 0) || tail.nonascii;
-    out->bad_printable = (bad != 0) || tail.bad_printable;
+    out->nonascii = (vmaxvq_u8(any_hi) != 0) || tail.nonascii;
+    out->bad_printable = (vmaxvq_u8(any_bad) != 0) || tail.bad_printable;
 }
 
 static int yep_neon_gate_scan(const char* s, size_t len) {
