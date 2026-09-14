@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.2.6] - 2026-09-14
 ### Changed
 - simdjson's eight-digits SWAR (their parse_eight_digits_unrolled,
   verbatim constants) rides yep_json_number_scan's integer loop:
