@@ -13,7 +13,7 @@ JTS_PIN=1ef36fa01286573e846ac449e8683f8833c5b26a # JSONTestSuite (nst)
 mkdir -p "$DATA"
 
 if [ ! -d "$DATA/yaml-test-suite" ]; then
-    git clone -q https://github.com/yaml/yaml-test-suite.git "$DATA/yaml-test-suite"
+    git -c core.autocrlf=false clone -q https://github.com/yaml/yaml-test-suite.git "$DATA/yaml-test-suite"
     git -C "$DATA/yaml-test-suite" checkout -q "$YTS_PIN"
     echo "corpora: fetched yaml-test-suite at $YTS_PIN"
 else
@@ -21,7 +21,7 @@ else
 fi
 
 if [ ! -d "$DATA/json-test-suite" ]; then
-    git clone -q https://github.com/nst/JSONTestSuite.git "$DATA/json-test-suite"
+    git -c core.autocrlf=false clone -q https://github.com/nst/JSONTestSuite.git "$DATA/json-test-suite"
     git -C "$DATA/json-test-suite" checkout -q "$JTS_PIN"
     echo "corpora: fetched JSONTestSuite at $JTS_PIN"
 else
