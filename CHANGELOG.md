@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.2.7] - 2026-09-14
 ### Fixed
 - The JSON writer's escape table was off by one: `\b` sat at index
   7 but 0x08 is index 8, so backspace emitted `\u0008` instead of
