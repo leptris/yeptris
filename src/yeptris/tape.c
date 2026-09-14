@@ -114,9 +114,9 @@ static int tape_put_root_scalar(tape_ctx* c, const char* p, size_t len, size_t a
     return tape_put_converted(c, at, i, shape, iv, dv);
 }
 
-/* One strict walk over p[open] → records. Returns OK, MEMORY (tape
- * zeroed), or PARSE (walk rejected — the caller routes to the
- * validating fallback; tape zeroed). check_tail: the fast route has
+/* One strict walk over p[open] → records (the walker-based route the
+ * validating fallback uses). Returns OK, MEMORY (tape zeroed), or
+ * PARSE (walk rejected; tape zeroed). check_tail: the fast route has
  * no document validation, so it rejects trailing garbage here. */
 static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_json_tape* t,
                                int check_tail) {

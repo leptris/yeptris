@@ -250,10 +250,60 @@ static const char* k_pins[] = {
     NULL,
 };
 
+static unsigned long ti_next(unsigned long* s) {
+    *s ^= *s << 13;
+    *s ^= *s >> 7;
+    *s ^= *s << 17;
+    return *s;
+}
+
+/* random status parity over the JSON-class alphabet (the indexed walk
+ * pins: accept exactly what parse_json accepts, byte for byte) */
+static void fuzz_parity(void) {
+    static const char alpha[] = {'{', '}', '[', ']', ':', ',', '"', '1', '2', '-',  '.', 'e',
+                                 't', 'r', 'u', 'f', 'a', 'l', 's', 'n', ' ', '\\', 'x', '\t'};
+    unsigned long s = 42;
+    char buf[64];
+    for (long t = 0; t < 2000000; t++) {
+        size_t len = ti_next(&s) % 48;
+        for (size_t i = 0; i < len; i++) {
+            buf[i] = (char)alpha[ti_next(&s) % (sizeof(alpha) - 1)];
+        }
+        g_cases++;
+        YeptrisStatus ds = YEPTRIS_OK;
+        yeptris_document* doc = (yeptris_document*)yeptris_parse_json(buf, len, &ds);
+        yeptris_json_tape tape;
+        YeptrisStatus ts = yeptris_parse_json_tape(buf, len, &tape);
+        if (ds != ts) {
+            fprintf(stderr, "TAPE-DIFF fuzz: status %d vs %d buf=[", ds, ts);
+            for (size_t i = 0; i < len; i++) {
+                fputc(buf[i] >= 0x20 ? buf[i] : '.', stderr);
+            }
+            fprintf(stderr, "]\n");
+            g_fail++;
+        } else if (ds == YEPTRIS_OK && doc != NULL) {
+            if (!tape_matches_dom(doc->dom, &tape, buf, "fuzz")) {
+                fprintf(stderr, "TAPE-DIFF fuzz buf=[");
+                for (size_t i = 0; i < len; i++) {
+                    fputc(buf[i] >= 0x20 ? buf[i] : '.', stderr);
+                }
+                fprintf(stderr, "] (len %zu)\n", len);
+                g_fail++;
+            }
+        }
+        yeptris_document_free((YeptrisDocument)doc);
+        yeptris_tape_free(&tape);
+        if (g_fail > 8) {
+            return;
+        }
+    }
+}
+
 int main(int argc, char** argv) {
     for (int i = 0; k_pins[i] != NULL; i++) {
         diff_one(k_pins[i], k_pins[i], strlen(k_pins[i]));
     }
+    fuzz_parity();
     int files = 0;
     for (int a = 1; a < argc; a++) {
         DIR* dir = opendir(argv[a]);

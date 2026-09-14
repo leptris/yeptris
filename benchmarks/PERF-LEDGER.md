@@ -1507,3 +1507,18 @@ the 0.2.2 artifact); tape 426.7 MB/s, 0.33x vs simdjson (1.29 GB/s
 on this runner class). ryml is DONE; the JSON field is the whole
 campaign. Item 79 (fused block engine) moves from "the last ryml
 shape" to margin work.
+
+
+## 2026-09-14 (iv) — wave 3 of 86: the structural index, dead for the tape too
+
+Both materializations built and measured (full state machine, 2M-case
+fuzz parity green before each measurement): the u32 offset array
+-61 percent (write traffic + materialization); the simdjson-shaped
+bitmask still a large regression (stage-2 44 percent, stage-1 28
+percent of the run) — gap validation IS the walker's ws-skip
+relocated, so the index removes nothing and adds a pass. Item 47's
+verdict holds for the tape consumer. The walk route stays the fused
+walker. KEPT: the container-at-key grammar alignment (the fuzz found
+the document validator and strict walker accepting it — inconsistent
+trees; all machines now reject), the permanent 2M-case fuzz parity
+gate in tape-diff, and the JsonTape gap/tab pins.

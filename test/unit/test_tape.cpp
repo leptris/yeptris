@@ -155,9 +155,26 @@ TEST(JsonTape, EmptyContainersAndWhitespace) {
 
 TEST(JsonTape, StrictRejectionsAreParseErrors) {
     const char* rejects[] = {
-        "",           " ",           "{a: 1}",    "{'a': 1}", "[1,]",
-        "[1 2]",      "[01]",        "\"open",    "[1] x",    "{\"a\":1} trailing",
-        "{\"a\":1}{", "[undefined]", "{\"a\" 1}", "[--1]",    "[1.]",
+        "",
+        " ",
+        "{a: 1}",
+        "{'a': 1}",
+        "[1,]",
+        "[1 2]",
+        "[01]",
+        "\"open",
+        "[1] x",
+        "{\"a\":1} trailing",
+        "{\"a\":1}{",
+        "[undefined]",
+        "{\"a\" 1}",
+        "[--1]",
+        "[1.]",
+        /* the indexed walk's pinned gap classes (tape-diff found both) */
+        "{\"a\": \"a\" 123}",
+        "{\"a\" \"b\"}",
+        "[\"a\" \"b\"]",
+        "[\"a\" 1]",
     };
     for (const char* s : rejects) {
         TapeGuard tp;
@@ -207,6 +224,11 @@ TEST(JsonTape, ErrorParityWithParseJson) {
         "   ",
         "[\"\\u00e9\\u65e5\"]",
         "{\"k\": [0, -0, 1e-3, 1E+2, 3.14159]}",
+        /* tabs are legal RFC 8259 ws: the walker route rejects them,
+         * the document fallback accepts — the indexed walk accepts
+         * directly, so both engines must agree on OK */
+        "[\t1,\t2\t]",
+        "{\"a\"\t:\t1\t}",
     };
     for (const char* s : inputs) {
         YeptrisStatus dom_st = YEPTRIS_OK;
