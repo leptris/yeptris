@@ -23,3 +23,6 @@ test/conformance/data/*
 *~
 __pycache__/
 conformance-failures.txt
+
+# Fetched benchmark dependencies (bench.yml pins; local referee builds)
+deps/
