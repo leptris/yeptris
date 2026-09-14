@@ -27,6 +27,12 @@ if(MSVC)
     set(CMAKE_CXX_STANDARD 20)
 endif()
 
+# MSVC multi-config: one runtime home so ctest -C Release and the CLI
+# smoke find every exe (the per-target default scattered them)
+if(MSVC)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
+
 # ---------------------------------------------------------------- options --
 option(BUILD_TESTING "Build tests" ON)
 option(YEPTRIS_BUILD_CLI "Build the yeptris CLI tool" ON)
