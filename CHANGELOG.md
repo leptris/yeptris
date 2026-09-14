@@ -6,7 +6,25 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.4] - 2026-09-14
+## [Unreleased]
+### Changed
+- TODO.restructure/86 wave 3 (simdjson front): the structural index
+  measured DEAD for the tape in both materializations (u32 offset
+  array; simdjson's bitmask shape) — gap validation IS the walker's
+  fused ws-skip relocated, so the index removes no scan work and
+  adds a pass. The verdict is ledgered; the honest levers left are
+  the record append and the number kernel. What survived the build:
+- Fixed (fuzz-found): yep_json_document and the strict walker
+  ACCEPTED a container at map-key position, building inconsistent
+  trees — all three grammar machines now reject it (json-suite-strict
+  pins unchanged 283/283). tape-diff gains a permanent 2M-case
+  status+content parity fuzz; JsonTape pins the gap classes and
+  tabs-as-ws parity.
+- Milestone (the ledger's standing table): ryml fully beaten — all
+  eight shapes over parity on the CI referee (anchor-heavy 0.90x ->
+  1.23x across the 0.2.x line).
+
+## [0.2.4]## [0.2.4] - 2026-09-14
 ### Changed
 - TODO.restructure (the all-platforms round): MSVC is a first-class
   build — windows-latest joins the test matrix (302/302 there), the
