@@ -1588,3 +1588,33 @@ buffers): 3.5 -> 4.5 GB/s on yaml-ish / all-newline / sparse-a alike,
 (~12-13% self-time on the asymmetry shapes per the Linux profile) by
 a quarter; item 66's shrink-or-kill of the sweep itself stays the
 bigger lever.
+
+## 2026-09-14 (viii) — the tape campaign: 0.09x -> 0.45x vs simdjson
+
+Directive: at least simdjson on JSON. Baseline (this Mac, json-doc,
+interleaved h2h): tape 91.8 MB/s = 0.09x; DOM 75.8 MB/s = 0.06x.
+Four cuts, each differential-pinned (tape-diff 2M fuzz + 318 corpus):
+
+1. Spill-free NEON movemask (bits()): the pow2-table stack spill
+   becomes the leptris scan_events widening form. Tape 361 -> 386
+   MB/s (probe). The spread vector is shift AMOUNTS {0,2,..,14} —
+   multipliers was the wrong first cut (exhaustive probe).
+2. Fused tape walk: kills the per-token call boundary + tok struct +
+   count round trip. Expectations were 2x; measured ~nothing on the
+   probe (406 MB/s) — LTO had already inlined the old shape. The
+   lesson: profile BEFORE assuming the call-boundary model; the
+   sample showed walk-self 57% (stores + branch chain), number 28%,
+   string 14%.
+3. 1-3 digit integer fast path in yep_json_number_scan: 4ns settled
+   inline vs 9.7ns through the SWAR prologue. Walk-self unchanged.
+4. Short-string fast path in yep_json_string (1-8 bytes scalar,
+   escapes fall through to the vector loop): 406 -> 501 MB/s probe,
+   452 MB/s in-bench. The indirect qbc dispatch + vector prologue
+   was the string cost, not the scan itself.
+
+Where the remaining 2.2x lives (sample after all four cuts): walk
+self ~60% (four column stores per record + the branch chain; SoA is
+the FFI bulk-drain contract, kept), number_scan ~27% (floats and
+4+ digit ints), string ~8%. simdjson's own tape is one 8B sequential
+stream — the 17B/record across 4 streams is structural until/unless
+the FFI contract changes.
