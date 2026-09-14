@@ -31,8 +31,14 @@ static inline uint8x16_t yep_neon_eq(const char* p, uint8_t c) {
     return vceqq_u8(yep_neon_load(p), vdupq_n_u8(c));
 }
 
-/* 0x00/0xFF lanes -> per-lane bitmask (stack reduce; lanes are already
- * powers of two after the AND with the pow2 table). */
+/* 0x00/0xFF lanes -> per-lane bitmask. LE: widening form — the two
+ * mask bits of each byte pair land in one u16 lane, a shift vector
+ * spreads them to their final positions, ONE u16 reduce (the leptris
+ * scan_events shape; no stack spill). vshlq_u16's shift vector is the
+ * ACLE-mandated int16x8_t (the GCC-aarch64 lesson, leptris #487).
+ * BE keeps the endian-neutral pow2-table spill. */
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 static inline uint16_t yep_neon_bits(uint8x16_t m) {
     static const uint8_t pow2[16] = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
     uint8_t tmp[16];
@@ -42,6 +48,17 @@ static inline uint16_t yep_neon_bits(uint8x16_t m) {
         (uint16_t)(tmp[8] | tmp[9] | tmp[10] | tmp[11] | tmp[12] | tmp[13] | tmp[14] | tmp[15]);
     return (uint16_t)(lo | (uint16_t)(hi << 8));
 }
+#else
+static inline uint16_t yep_neon_bits(uint8x16_t m) {
+    static const int16x8_t spread = {0, 2, 4, 6, 8, 10, 12, 14}; /* lane k -> bit 2k */
+    /* per u16 lane: byte 2k carries bit 7 (u16 bit 7), byte 2k+1
+     * carries bit 15; >>7 lands b0 at bit 0, >>14 lands b1 at bit 1
+     * (bit 7 shifted out), &3 drops b1's >>7 residue at bit 8 */
+    uint16x8_t p = vreinterpretq_u16_u8(vandq_u8(m, vdupq_n_u8(0x80)));
+    uint16x8_t r = vandq_u16(vorrq_u16(vshrq_n_u16(p, 7), vshrq_n_u16(p, 14)), vdupq_n_u16(3));
+    return (uint16_t)vaddvq_u16(vshlq_u16(r, spread));
+}
+#endif
 
 /* Occurrences of c in one chunk: UADDV over 0/1 lanes. */
 static inline size_t yep_neon_chunk_count(const char* p, uint8_t c) {
