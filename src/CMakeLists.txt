@@ -55,7 +55,7 @@ set(YEPTRIS_SOURCES
 )
 
 if(YEPTRIS_WITH_CBOR)
-    list(APPEND YEPTRIS_SOURCES yeptris/cbor/decode.c)
+    list(APPEND YEPTRIS_SOURCES yeptris/cbor/decode.c yeptris/cbor/encode.c)
 endif()
 
 # AOT SIMD TUs (TODO.impl/04): per-ISA compile flags; the TUs and the
