@@ -56,6 +56,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   unclassified) and an informational pass against the Ruby cbor gem
   (which additionally accepts two RFC-invalid inputs the ledger
   records). The cbor_canon driver backs both scripts.
+- CBOR benchmarks (TODO.cbor/07): the matrix gains a CBOR-vs-JSON tier
+  on the same DOM (decode/encode ratios, encoded size, MB/s; rides the
+  item-18 artifact). First artifacts: size 0.48-0.52x JSON (target
+  met); decode 0.92-0.95x and encode 0.64-1.01x against the 2x/1.5x
+  targets — the ledger records the measured reasons (numbers-as-text
+  DOM conversion; the O(n^2) canonical-map walks were found BY the
+  tier and fixed: encode was 0.09x before the linearization).
 
 ### Changed
 - scan_stats (NEON) accumulates vertically — pairwise add-accumulate

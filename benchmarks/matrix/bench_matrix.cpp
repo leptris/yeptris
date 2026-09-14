@@ -17,6 +17,7 @@
 
 #include <yeptris.h>
 #include <yeptris/json.h> /* yeptris_parse_json: the strict-JSON direct build */
+#include <yeptris/cbor.h> /* TODO.cbor/07: the CBOR tier */
 #include <yeptris/tape.h> /* yeptris_parse_json_tape: the fused walk-to-tape */
 
 #if defined(YEP_BENCH_LIBYAML)
@@ -687,6 +688,88 @@ Result bench_simdjson(const Corpus& c, int iters) {
             c.data.size()};
 }
 
+/* ---- CBOR vs JSON on the same DOM (TODO.cbor/07, C tier) --------
+ * The corpus's JSON is encoded to CBOR once (canonical), then both
+ * decoders/encoders run interleaved over their own byte forms. Ratios
+ * are per-shape: decode CBOR/parse JSON, encode CBOR/emit JSON
+ * (canonical), and the encoded-size ratio. */
+struct CborTier {
+    double dec_ratio; /* >1: CBOR decode faster than JSON parse */
+    double enc_ratio;
+    double size_ratio; /* cbor bytes / json bytes */
+    double dec_mb, enc_mb;
+    size_t json_len, cbor_len;
+};
+
+CborTier cbor_vs_json(const Corpus& c, int rounds) {
+    CborTier t = {0, 0, 0, 0, 0, 0, 0};
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument seed = yeptris_parse_json(c.data.data(), c.data.size(), &st);
+    if (seed == NULL || st != YEPTRIS_OK) {
+        yeptris_document_free(seed);
+        return t; /* not strict JSON: no CBOR tier for this shape */
+    }
+    size_t clen = 0;
+    unsigned char* cbor = (unsigned char*)yeptris_cbor_encode(seed, YEPTRIS_CBOR_CANONICAL, &clen);
+    yeptris_document_free(seed);
+    if (cbor == NULL) {
+        return t;
+    }
+    /* documents held OUTSIDE the loops: the encoders are timed alone */
+    YeptrisDocument jdoc = yeptris_parse_json(c.data.data(), c.data.size(), &st);
+    YeptrisDocument cdoc = yeptris_cbor_decode(cbor, clen, 0, &st);
+    if (jdoc == NULL || cdoc == NULL) {
+        yeptris_document_free(jdoc);
+        yeptris_document_free(cdoc);
+        free(cbor);
+        return t;
+    }
+    double best_jp = 1e9, best_cd = 1e9, best_je = 1e9, best_ce = 1e9;
+    double mb_c = (double)clen / (1024.0 * 1024.0);
+    for (int i = 0; i < rounds; i++) {
+        auto a0 = clk::now();
+        YeptrisDocument d = yeptris_parse_json(c.data.data(), c.data.size(), &st);
+        auto a1 = clk::now();
+        yeptris_document_free(d);
+        double jp = ms_of(a0, a1);
+        if (jp < best_jp) best_jp = jp;
+
+        auto b0 = clk::now();
+        YeptrisDocument dc = yeptris_cbor_decode(cbor, clen, 0, &st);
+        auto b1 = clk::now();
+        yeptris_document_free(dc);
+        double cd = ms_of(b0, b1);
+        if (cd < best_cd) best_cd = cd;
+
+        size_t jlen = 0;
+        auto e0 = clk::now();
+        char* jout = yeptris_serialize_ex(jdoc, NULL, &jlen);
+        auto e1 = clk::now();
+        free(jout);
+        double je = ms_of(e0, e1);
+        if (je < best_je) best_je = je;
+
+        size_t olen = 0;
+        auto f0 = clk::now();
+        unsigned char* cout = (unsigned char*)yeptris_cbor_encode(cdoc, YEPTRIS_CBOR_CANONICAL, &olen);
+        auto f1 = clk::now();
+        free(cout);
+        double ce = ms_of(f0, f1);
+        if (ce < best_ce) best_ce = ce;
+    }
+    yeptris_document_free(jdoc);
+    yeptris_document_free(cdoc);
+    free(cbor);
+    t.dec_ratio = best_jp / best_cd;
+    t.enc_ratio = best_je / best_ce;
+    t.size_ratio = (double)clen / (double)c.data.size();
+    t.dec_mb = best_cd < 1e9 ? mb_c * 1000.0 / best_cd : 0;
+    t.enc_mb = best_ce < 1e9 ? mb_c * 1000.0 / best_ce : 0;
+    t.json_len = c.data.size();
+    t.cbor_len = clen;
+    return t;
+}
+
 struct H2hJson {
     double dom_ratio;
     double tape_ratio;
@@ -937,6 +1020,20 @@ int main(int argc, char** argv) {
 
 #if defined(YEP_BENCH_SIMDJSON)
     /* The JSON-field referee (TODO.restructure/81; the tape leg is 85). */
+    printf("\n# CBOR vs JSON on the same DOM (TODO.cbor/07, canonical, best-of)\n\n"
+           "| shape | decode vs JSON parse | encode vs JSON emit | cbor/json size | CBOR decode MB/s |\n"
+           "|---|---|---|---|---|\n");
+    for (const Corpus& c : corpora) {
+        if (c.name != "json-doc" && c.name != "flow-single" && c.name != "scalar-heavy") {
+            continue; /* the tier rides JSON-class shapes */
+        }
+        CborTier t = cbor_vs_json(c, full ? 9 : 5);
+        if (t.cbor_len == 0) {
+            continue;
+        }
+        printf("| %s | %.2fx | %.2fx | %.2f | %.1f |\n", c.name.c_str(), t.dec_ratio, t.enc_ratio,
+               t.size_ratio, t.dec_mb);
+    }
     printf("\n# head-to-head vs simdjson DOM (json-doc, interleaved, median of rounds)\n\n"
            "| route | MB/s | vs simdjson |\n|---|---|---|\n");
     md_h2h += "\n# head-to-head vs simdjson DOM (json-doc, interleaved, median of rounds)\n\n"
