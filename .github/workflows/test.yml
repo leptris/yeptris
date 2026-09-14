@@ -69,5 +69,5 @@ jobs:
         shell: bash
         run: |
           BIN="./build/cli/yeptris"
-          if [ "$RUNNER_OS" = "Windows" ]; then BIN="./build/cli/Release/yeptris"; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="./build/bin/Release/yeptris"; fi
           "$BIN" version
