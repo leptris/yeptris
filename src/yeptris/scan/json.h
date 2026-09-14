@@ -42,6 +42,17 @@ typedef struct yep_json_tok {
     double dval;
 } yep_json_tok;
 
+/* Walker states (the reference machine in scan/json.c and the tape's
+ * fused specialization share one set — same grammar, same rejects). */
+enum {
+    JW_VALUE_OR_CLOSE = 0,
+    JW_VALUE,
+    JW_KEY_OR_CLOSE,
+    JW_KEY,
+    JW_COLON,
+    JW_COMMA_OR_CLOSE,
+};
+
 typedef struct yep_json_walk {
     const char* p;
     size_t len;

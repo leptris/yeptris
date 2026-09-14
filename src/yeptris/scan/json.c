@@ -257,6 +257,67 @@ int yep_json_number_scan(const char* p, size_t len, size_t* i, int* is_float, in
     if (k >= len || p[k] < '0' || p[k] > '9') {
         return 0;
     }
+    /* Short-integer fast path (the json-doc corpus's dominant shape —
+     * 1-3 digit ids/vals). Three digits max so the magnitude fits a
+     * u16 multiply chain with no overflow check; the float/exponent
+     * arms and the 8-digit SWAR fall through untouched. The trailing
+     * delimiter rule is the same contract the slow path enforces. */
+    {
+        size_t d0 = k;
+        if (p[k] != '0') {
+            unsigned mag32 = (unsigned)(p[k] - '0');
+            size_t n = 1;
+            while (n < 3 && d0 + n < len && p[d0 + n] >= '0' && p[d0 + n] <= '9') {
+                mag32 = mag32 * 10u + (unsigned)(p[d0 + n] - '0');
+                n++;
+            }
+            size_t end = d0 + n;
+            if (end >= len ||
+                (p[end] != '.' && p[end] != 'e' && p[end] != 'E' && p[end] != '0' &&
+                 (p[end] < '1' || p[end] > '9'))) {
+                /* no more digits and not a float/exponent — settle */
+                if (end < len) {
+                    char c = p[end];
+                    if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' &&
+                        c != ':') {
+                        return 0; /* "1x" is YAML, not JSON */
+                    }
+                }
+                if (is_float != NULL) {
+                    *is_float = 0;
+                }
+                if (iv != NULL) {
+                    *iv = neg ? -(int64_t)mag32 : (int64_t)mag32;
+                }
+                *i = end;
+                return 1;
+            }
+            /* more digits or float text: fall through to the full walk */
+        } else {
+            /* lone zero (or 0. / 0e — fall through) */
+            size_t end = k + 1;
+            if (end >= len || (p[end] != '.' && p[end] != 'e' && p[end] != 'E' &&
+                               (p[end] < '0' || p[end] > '9'))) {
+                if (end < len) {
+                    char c = p[end];
+                    if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' &&
+                        c != ':') {
+                        return 0;
+                    }
+                }
+                /* leading-zero reject is the full walk's job: "01" falls
+                 * through (end points at '1') and the slow path rejects */
+                if (is_float != NULL) {
+                    *is_float = 0;
+                }
+                if (iv != NULL) {
+                    *iv = 0; /* -0 is still 0 as int64 */
+                }
+                *i = end;
+                return 1;
+            }
+        }
+    }
     uint64_t mag = 0;
     int overflow = 0;
     if (p[k] == '0') {
@@ -480,8 +541,6 @@ int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out, int
  * Ported verbatim from the engine's pass-1 state machine: the grammar
  * is UNCHANGED, it just lives where both consumers reach it. States
  * mirror the old JX_* set. */
-
-enum { JW_VALUE_OR_CLOSE = 0, JW_VALUE, JW_KEY_OR_CLOSE, JW_KEY, JW_COLON, JW_COMMA_OR_CLOSE };
 
 #define JW_SIMPLE_KEY_MAX 1024 /* YAML 1.2 simple-key limit (libyaml parity) */
 
