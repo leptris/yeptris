@@ -18,6 +18,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   vector; Appendix F's non-well-formed corpus pins the rejects; a
   300k-iteration ASAN random-bytes fuzz smoke is clean. Compiles only
   with YEPTRIS_WITH_CBOR (default ON).
+- CBOR encode over the shared DOM (TODO.cbor/02):
+  `yeptris_cbor_encode` / `_into` — the item-13 discipline (one
+  exact-sizing walk, one allocation, linear writes), minimal length
+  arguments everywhere, preferred floats (smallest of half/single/
+  double that round-trips; NaN canonicalizes to f9 7e00;
+  round-to-nearest-even double->half in-tree, libm-free), and
+  `YEPTRIS_CBOR_CANONICAL` — RFC 8949 s4.2.1 core deterministic
+  profile with map keys sorted bytewise on their encoded forms. The
+  02 stability contract holds (repeated encodes byte-identical,
+  200k-iteration ASAN roundtrip fuzz clean); Appendix A re-encodes
+  byte-exact except the ledgered divergences, each pinned:
+  beyond-int64 integers -> preferred floats, indefinite -> definite,
+  multi-width NaN/Infinity -> shortest, non-text scalars as map keys
+  -> text diagnostics (undefined/simple(N) recognized back — the
+  diagnostic mapping is two-way), ASCII-valid byte strings -> text.
+  Invalid-UTF-8 tag-str scalars re-encode as byte strings (mt2), so
+  binary data round-trips byte-exact. Aliases and non-decimal tag
+  text encode to YEPTRIS_ERROR_UNSUPPORTED.
 
 ### Changed
 - scan_stats (NEON) accumulates vertically — pairwise add-accumulate

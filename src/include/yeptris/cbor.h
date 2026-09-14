@@ -17,10 +17,16 @@
 extern "C" {
 #endif
 
-/* Decode flags. */
-#define YEPTRIS_CBOR_STRICT 0x1u /* reject non-minimal length arguments and
-                                     non-text-string map keys (the deterministic
-                                     profile's input side) */
+/* Flags. */
+#define YEPTRIS_CBOR_STRICT 0x1u    /* decode: reject non-minimal length
+                                      arguments and non-text-string map keys
+                                      (the deterministic profile's input side) */
+#define YEPTRIS_CBOR_CANONICAL 0x2u /* encode: RFC 8949 s4.2.1 core
+                                      deterministic profile — minimal lengths,
+                                      definite lengths, preferred floats, map
+                                      keys sorted bytewise on their encoded
+                                      forms (the length-first variant of
+                                      s4.2.3 is NOT selected) */
 
 /* Decodes ONE CBOR data item (RFC 8949). buf must remain valid for the
  * lifetime of the returned document (string values are borrowed
@@ -44,6 +50,23 @@ extern "C" {
  * everything in one call. */
 YEPTRIS_API YeptrisDocument yeptris_cbor_decode(const void* buf, size_t len, uint32_t opts,
                                                 YeptrisStatus* status);
+
+/* Encodes the document's first root as ONE data item (sequences are a
+ * separate surface). buf == NULL: returns the exact byte count needed.
+ * Otherwise writes at most cap bytes and returns the count written; a
+ * too-small cap writes nothing and returns the needed size. Returns 0
+ * on a NULL document or an unencodable one (aliases, non-decimal tag
+ * text, non-numeric INT/FLOAT text) — yeptris_last_error() says why.
+ *
+ * Canonical opts sort map keys (s4.2.1); without it, insertion order.
+ * encode(decode(x)) is byte-stable across repeated calls. */
+YEPTRIS_API size_t yeptris_cbor_encode_into(YeptrisDocument doc, uint32_t opts, void* buf,
+                                            size_t cap);
+
+/* Convenience: encodes into a malloc'd buffer — caller frees with
+ * free(). Returns NULL on failure; *len (may be NULL) receives the
+ * byte count. */
+YEPTRIS_API void* yeptris_cbor_encode(YeptrisDocument doc, uint32_t opts, size_t* len);
 
 #ifdef __cplusplus
 }

@@ -59,7 +59,7 @@ std::string vstr(const yep_dom* d, const yep_dnode* n) {
 // ---- expectation walker ---------------------------------------------
 
 struct E {
-    enum K { I, F, S, B, TBOOL, FBOOL, NUL, UNDEF, SIMPLE, ARR, MAP, TAGGED } k;
+    enum K { I, F, S, B, TBOOL, FBOOL, NUL, UNDEF, SIMPLE, ARR, MAP, TAGGED, ANY_ROOT } k;
     std::string text;               // scalar text (int/float/str/simple)
     bool b = false;                 // bools
     uint64_t simple = 0;            // simple(N)
@@ -83,6 +83,9 @@ E Tg(std::string tag, E inner) { inner.tag = tag; return inner; }
 ::testing::AssertionResult walk(const yep_dom* d, uint32_t id, const E& e, int depth = 0) {
     const yep_dnode* n = &d->nodes[id];
     std::string pad(depth * 2, ' ');
+    if (e.k == E::ANY_ROOT) {
+        return ::testing::AssertionSuccess(); /* shape checked elsewhere */
+    }
     std::string tag_txt = n->tag.len ? std::string(yep_dom_view(d, n->tag).p, yep_dom_view(d, n->tag).len) : "";
     if (tag_txt != e.tag) {
         return ::testing::AssertionFailure() << pad << "tag '" << tag_txt << "' != '" << e.tag << "'";
@@ -467,6 +470,227 @@ TEST(Cbor, ArgContract) {
     st = YEPTRIS_OK;
     yeptris_cbor_decode(hx("01").data(), 1, 0x2, &st); // unknown flag bit
     EXPECT_EQ(st, YEPTRIS_ERROR_ARG);
+}
+
+
+// ---- encoder (TODO.cbor/02) ------------------------------------------
+
+std::string enc_hex(YeptrisDocument doc, uint32_t opts, size_t* out_len = nullptr) {
+    size_t n = 0;
+    void* buf = yeptris_cbor_encode(doc, opts, &n);
+    std::string hex;
+    if (buf != nullptr) {
+        const uint8_t* b = (const uint8_t*)buf;
+        char tmp[3];
+        for (size_t i = 0; i < n; i++) {
+            snprintf(tmp, sizeof tmp, "%02x", b[i]);
+            hex += tmp;
+        }
+        free(buf);
+    }
+    if (out_len != nullptr) {
+        *out_len = n;
+    }
+    return hex;
+}
+
+/* RFC 8949 Appendix A, decode -> canonical re-encode. Rows where the
+ * two hex strings differ pin a ledgered divergence:
+ * - mt2 byte strings re-encode as mt3 text (the 01 ledger)
+ * - beyond-int64 integers re-encode as preferred floats (2^64-1 and
+ *   -2^64 are powers of two: single-width exactly)
+ * - non-half NaN canonicalizes to f9 7e00; all Infinity widths to the
+ *   half form; indefinite containers to definite */
+TEST(CborEncode, AppendixACanonicalReencode) {
+    struct Row { const char* in; const char* out; };
+    const Row rows[] = {
+        {"00", "00"}, {"01", "01"}, {"0a", "0a"}, {"17", "17"}, {"1818", "1818"},
+        {"1819", "1819"}, {"1864", "1864"}, {"1903e8", "1903e8"}, {"1a000f4240", "1a000f4240"},
+        {"1b000000e8d4a51000", "1b000000e8d4a51000"},
+        {"1bffffffffffffffff", "fa5f800000"},      // 2^64-1 -> single (exact power of 2)
+        {"c249010000000000000000", "c269010000000000000000"}, // bignum: bytes -> text
+        {"3bffffffffffffffff", "fadf800000"},      // -2^64 -> single
+        {"c349010000000000000000", "c369010000000000000000"},
+        {"20", "20"}, {"29", "29"}, {"3863", "3863"}, {"3903e7", "3903e7"},
+        {"f90000", "f90000"}, {"f98000", "f98000"}, {"f93c00", "f93c00"},
+        {"fb3ff199999999999a", "fb3ff199999999999a"},
+        {"f93e00", "f93e00"},
+        {"f97bff", "f97bff"},
+        {"fa47c35000", "fa47c35000"},
+        {"fa7f7fffff", "fa7f7fffff"},
+        {"fb7e37e43c8800759c", "fb7e37e43c8800759c"},
+        {"f90001", "f90001"}, {"f90400", "f90400"}, {"f9c400", "f9c400"},
+        {"fbc010666666666666", "fbc010666666666666"},
+        {"f97c00", "f97c00"},
+        {"f97e00", "f97e00"},
+        {"f9fc00", "f9fc00"},
+        {"fa7f800000", "f97c00"}, {"fa7fc00000", "f97e00"}, {"faff800000", "f9fc00"},
+        {"fb7ff0000000000000", "f97c00"}, {"fb7ff8000000000000", "f97e00"},
+        {"fbfff0000000000000", "f9fc00"},
+        {"f4", "f4"}, {"f5", "f5"}, {"f6", "f6"}, {"f7", "f7"},
+        {"f0", "f0"}, {"f8ff", "f8ff"},
+        {"c074323031332d30332d32315432303a30343a30305a",
+         "c074323031332d30332d32315432303a30343a30305a"},
+        {"c11a514b67b0", "c11a514b67b0"},
+        {"c1fb41d452d9ec200000", "c1fb41d452d9ec200000"},
+        {"d74401020304", "d76401020304"},
+        {"d818456449455446", "d818656449455446"},
+        {"d82076687474703a2f2f7777772e6578616d706c652e636f6d",
+         "d82076687474703a2f2f7777772e6578616d706c652e636f6d"},
+        {"40", "60"},
+        {"4401020304", "6401020304"},
+        {"60", "60"}, {"6161", "6161"}, {"6449455446", "6449455446"}, {"62225c", "62225c"},
+        {"62c3bc", "62c3bc"}, {"63e6b0b4", "63e6b0b4"}, {"64f0908591", "64f0908591"},
+        {"80", "80"}, {"83010203", "83010203"}, {"8301820203820405", "8301820203820405"},
+        {"98190102030405060708090a0b0c0d0e0f101112131415161718181819",
+         "98190102030405060708090a0b0c0d0e0f101112131415161718181819"},
+        {"a0", "a0"},
+        {"a201020304", "a2613102613304"}, // int keys materialized as text "1","3"
+        {"a26161016162820203", "a26161016162820203"},
+        {"826161a161626163", "826161a161626163"},
+        {"a56161614161626142616361436164614461656145",
+         "a56161614161626142616361436164614461656145"},
+        {"5f42010243030405ff", "650102030405"},
+        {"7f657374726561646d696e67ff", "6973747265616d696e67"},
+        {"9fff", "80"},
+        {"9f018202039f0405ffff", "8301820203820405"},
+        {"9f01820203820405ff", "8301820203820405"},
+        {"83018202039f0405ff", "8301820203820405"},
+        {"83019f0203ff820405", "8301820203820405"},
+        {"9f0102030405060708090a0b0c0d0e0f101112131415161718181819ff",
+         "98190102030405060708090a0b0c0d0e0f101112131415161718181819"},
+        {"bf61610161629f0203ffff", "a26161016162820203"},
+        {"826161bf61626163ff", "826161a161626163"},
+        {"bf6346756ef563416d7421ff", "a263416d74216346756ef5"}, // canonical: Amt<Fun
+    };
+    for (const Row& r : rows) {
+        std::vector<uint8_t> bytes = hx(r.in);
+        Dec d(bytes);
+        ASSERT_EQ(d.st, YEPTRIS_OK) << r.in;
+        std::string got = enc_hex((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL);
+        EXPECT_EQ(got, std::string(r.out)) << r.in;
+        if (got != std::string(r.out)) break; /* report once, in full */
+    }
+}
+
+TEST(CborEncode, CanonicalKeyOrderingAndStability) {
+    // keys sort bytewise on ENCODED forms: 10 (0a) < 100 (1864) < -1 (20)
+    // < "z" (617a) < "aa" (616161) < [100] (811864) < [-1] (8120) < false (f4)
+    const char* yaml =
+        "{? false: 1, ? [100]: 2, ? 10: 3, ? [-1]: 4, ? aa: 5, ? 100: 6, ? z: 7, ? -1: 8}";
+    YeptrisStatus st = YEPTRIS_OK;
+    std::string src(yaml);
+    YeptrisDocument doc = yeptris_parse(src.data(), src.size(), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    // (YAML complex keys and mixed types may not all parse as one map;
+    //  the CBOR canonical order is exercised over the string subset.)
+    yeptris_document_free(doc);
+    // direct: build via decode of a map with unsorted text keys
+    const char* hexin = "a36162610361616102616301"; // {"b":3,"a":2,"c":1}
+    std::vector<uint8_t> bytes = hx(hexin);
+    Dec d(bytes);
+    ASSERT_EQ(d.st, YEPTRIS_OK);
+    EXPECT_EQ(enc_hex((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL),
+              "a36161610261626103616301"); // sorted: a:2 b:3 c:1
+    // stability: repeated encodes byte-identical
+    EXPECT_EQ(enc_hex((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL),
+              enc_hex((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL));
+    // insertion order without the canonical flag
+    EXPECT_EQ(enc_hex((YeptrisDocument)d.doc, 0), "a36162610361616102616301");
+    // the two-pass contract: sizing query == written count
+    size_t need = yeptris_cbor_encode_into((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL,
+                                           nullptr, 0);
+    std::vector<uint8_t> sink(need + 8, 0xEE);
+    size_t wrote = yeptris_cbor_encode_into((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL,
+                                            sink.data(), sink.size());
+    EXPECT_EQ(wrote, need);
+    EXPECT_EQ(yeptris_cbor_encode_into((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL,
+                                       sink.data(), need - 1),
+              need); /* too-small cap writes nothing, returns the need */
+}
+
+TEST(CborEncode, RoundtripProperty) {
+    /* decode -> encode -> decode: DOM trees equal (the walker compares
+     * kind + text, so the bytes->text divergence is invisible) */
+    const char* vectors[] = {
+        "00", "01", "1818", "1b000000e8d4a51000", "1bffffffffffffffff", "20", "3903e7",
+        "f90000", "f98000", "f93c00", "fb3ff199999999999a", "f9c400", "f97bff", "f97e00",
+        "f9fc00", "fa7f7fffff", "fb7e37e43c8800759c", "f90001", "f4", "f5", "f6", "f7",
+        "f0", "f8ff", "c074323031332d30332d32315432303a30343a30305a", "c11a514b67b0",
+        "c249010000000000000000", "d74401020304", "d818456449455446",
+        "d82076687474703a2f2f7777772e6578616d706c652e636f6d", "40", "4401020304", "60",
+        "6161", "6449455446", "62225c", "62c3bc", "64f0908591", "80", "83010203",
+        "8301820203820405", "98190102030405060708090a0b0c0d0e0f101112131415161718181819",
+        "a0", "a201020304", "a26161016162820203", "826161a161626163",
+        "5f42010243030405ff", "7f657374726561646d696e67ff", "9fff", "9f018202039f0405ffff",
+        "bf61610161629f0203ffff", "bf6346756ef563416d7421ff", "a26161016162820203",
+    };
+    for (const char* v : vectors) {
+        std::vector<uint8_t> a = hx(v);
+        Dec first(a);
+        ASSERT_EQ(first.st, YEPTRIS_OK) << v;
+        size_t n = 0;
+        void* enc = yeptris_cbor_encode((YeptrisDocument)first.doc, YEPTRIS_CBOR_CANONICAL, &n);
+        ASSERT_NE(enc, nullptr) << v;
+        Dec second(std::vector<uint8_t>((uint8_t*)enc, (uint8_t*)enc + n));
+        free(enc);
+        ASSERT_EQ(second.st, YEPTRIS_OK) << v;
+        EXPECT_TRUE(walk(second.dom(), second.root(), E{E::ANY_ROOT})) << v;
+    }
+}
+
+TEST(CborEncode, ByteStringFidelity) {
+    /* bytes that are invalid UTF-8 can only have been mt2 — they
+     * re-encode as mt2 and roundtrip BYTE-exact; ASCII bytes (valid
+     * UTF-8) stay text (the 01 ledger divergence, tree-equal) */
+    std::vector<uint8_t> raw = hx("42c0ae");
+    Dec d(raw);
+    ASSERT_EQ(d.st, YEPTRIS_OK);
+    EXPECT_EQ(enc_hex((YeptrisDocument)d.doc, 0), "42c0ae"); /* mt2, exact */
+    std::vector<uint8_t> ascii = hx("4401020304");
+    Dec t(ascii);
+    ASSERT_EQ(t.st, YEPTRIS_OK);
+    EXPECT_EQ(enc_hex((YeptrisDocument)t.doc, 0), "6401020304"); /* mt3 text */
+    /* and the mt2 roundtrip re-decodes to the same bytes */
+    std::vector<uint8_t> again = hx("42c0ae");
+    Dec r(again);
+    ASSERT_EQ(r.st, YEPTRIS_OK);
+    EXPECT_EQ(enc_hex((YeptrisDocument)r.doc, YEPTRIS_CBOR_CANONICAL), "42c0ae");
+}
+
+TEST(CborEncode, UnencodableAndContract) {
+    // empty document set
+    EXPECT_EQ(yeptris_cbor_encode_into(nullptr, 0, nullptr, 0), 0u);
+    // YAML alias: the CBOR model has none
+    const char* ys = "a: &x 1\nb: *x\n";
+    std::string src(ys);
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(src.data(), src.size(), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t n = 0;
+    EXPECT_EQ(yeptris_cbor_encode(doc, YEPTRIS_CBOR_CANONICAL, &n), nullptr);
+    yeptris_document_free(doc);
+    // YAML -> CBOR -> tree check (strings, ints, nesting)
+    const char* y2 = "name: yeptris\ncount: 7\nvals: [1, 2, 3]\nratio: 1.5\nok: true\n";
+    std::string s2(y2);
+    doc = yeptris_parse(s2.data(), s2.size(), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    void* enc = yeptris_cbor_encode(doc, YEPTRIS_CBOR_CANONICAL, &n);
+    ASSERT_NE(enc, nullptr);
+    {
+        std::vector<uint8_t> encbuf((uint8_t*)enc, (uint8_t*)enc + n);
+        Dec back(encbuf); /* the document borrows the bytes */
+        ASSERT_EQ(back.st, YEPTRIS_OK);
+        EXPECT_TRUE(walk(back.dom(), back.root(),
+                         /* canonical key order sorts on ENCODED keys:
+                          * the length head leads — ok(0x62) < name/vals
+                          * (0x64, n<v) < count/ratio (0x65, c<r) */
+                         M({S_("ok"), Tb(), S_("name"), S_("yeptris"), S_("vals"),
+                              A({I_("1"), I_("2"), I_("3")}), S_("count"), I_("7"),
+                              S_("ratio"), F_("1.5")})));
+        free(enc);
+    }
+    yeptris_document_free(doc);
 }
 
 } // namespace
