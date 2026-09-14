@@ -153,9 +153,9 @@ static void emit_sq(yep_writer* w, const char* p, uint32_t n) {
 static void emit_dq_json(yep_writer* w, const char* p, uint32_t n) {
     wr_byte(w, '"');
     static const char* named[32] = {
-        NULL, NULL,  NULL,  NULL, NULL, NULL, NULL, "\\b", NULL, "\\t", "\\n",
-        NULL, "\\f", "\\r", NULL, NULL, NULL, NULL, NULL,  NULL, NULL,  NULL,
-        NULL, NULL,  NULL,  NULL, NULL, NULL, NULL, NULL,  NULL, NULL,
+        NULL, NULL,  NULL,  NULL, NULL, NULL, NULL, NULL, "\\b", "\\t", "\\n",
+        NULL, "\\f", "\\r", NULL, NULL, NULL, NULL, NULL, NULL,  NULL,  NULL,
+        NULL, NULL,  NULL,  NULL, NULL, NULL, NULL, NULL, NULL,  NULL,
     };
     for (uint32_t i = 0; i < n; i++) {
         unsigned char c = (unsigned char)p[i];
