@@ -51,6 +51,30 @@ extern "C" {
 YEPTRIS_API YeptrisDocument yeptris_cbor_decode(const void* buf, size_t len, uint32_t opts,
                                                 YeptrisStatus* status);
 
+/* CBOR Sequences (RFC 8742): top-level data items, concatenated —
+ * no framing bytes. Iterates the buffer, one document per item; the
+ * callback OWNS each item (free it with yeptris_document_free) and
+ * its nonzero return aborts the iteration. Returns the item count
+ * delivered so far. An empty sequence is valid (0 items). A truncated
+ * or malformed trailing item fails YEPTRIS_ERROR_PARSE with the item
+ * index and byte offset on the error channel. opts: decode flags. */
+typedef int (*yeptris_cbor_item_cb)(void* ctx, YeptrisDocument item, size_t index);
+YEPTRIS_API size_t yeptris_cbor_decode_sequence(const void* buf, size_t len, uint32_t opts,
+                                                yeptris_cbor_item_cb cb, void* ctx,
+                                                YeptrisStatus* status);
+
+/* Encodes n documents as a CBOR Sequence: the concatenation of the
+ * items (opts as yeptris_cbor_encode_into). buf == NULL: the exact
+ * byte count. Otherwise writes at most cap and returns the count; a
+ * too-small cap writes nothing and returns the need. Returns 0 on a
+ * NULL items entry or an unencodable document. */
+YEPTRIS_API size_t yeptris_cbor_encode_sequence_into(YeptrisDocument* items, size_t n,
+                                                     uint32_t opts, void* buf, size_t cap);
+
+/* Convenience: the sequence in a malloc'd buffer — caller frees. */
+YEPTRIS_API void* yeptris_cbor_encode_sequence(YeptrisDocument* items, size_t n, uint32_t opts,
+                                               size_t* len);
+
 /* Encodes the document's first root as ONE data item (sequences are a
  * separate surface). buf == NULL: returns the exact byte count needed.
  * Otherwise writes at most cap bytes and returns the count written; a

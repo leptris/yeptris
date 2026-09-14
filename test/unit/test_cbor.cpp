@@ -693,4 +693,167 @@ TEST(CborEncode, UnencodableAndContract) {
     yeptris_document_free(doc);
 }
 
+
+// ---- sequences (TODO.cbor/03, RFC 8742) ------------------------------
+
+struct SeqSink {
+    std::vector<std::string> canon; /* each item's canonical bytes */
+    size_t abort_at = SIZE_MAX;
+};
+
+static int seq_cb(void* ctx, YeptrisDocument item, size_t index) {
+    SeqSink* s = (SeqSink*)ctx;
+    if (index == s->abort_at) {
+        yeptris_document_free(item);
+        return 1;
+    }
+    s->canon.push_back(enc_hex(item, YEPTRIS_CBOR_CANONICAL));
+    yeptris_document_free(item);
+    return 0;
+}
+
+static std::vector<uint8_t> seq_bytes(const std::vector<const char*>& hexes) {
+    std::vector<uint8_t> all;
+    for (const char* h : hexes) {
+        std::vector<uint8_t> b = hx(h);
+        all.insert(all.end(), b.begin(), b.end());
+    }
+    return all;
+}
+
+static std::string one_canon(const char* hex) {
+    std::vector<uint8_t> b = hx(hex);
+    Dec d(b);
+    EXPECT_EQ(d.st, YEPTRIS_OK) << hex;
+    return enc_hex((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL);
+}
+
+TEST(CborSeq, MixedItemsIdenticalTrees) {
+    const char* items[] = {
+        "01", "f5", "6449455446", "83010203", "a26161016162820203", "1b000000e8d4a51000",
+        "fbc010666666666666", "c11a514b67b0", "9f01820203820405ff", "4401020304", "f0",
+    };
+    std::vector<uint8_t> seq = seq_bytes({items, items + 11});
+    SeqSink sink;
+    YeptrisStatus st = YEPTRIS_OK;
+    size_t n = yeptris_cbor_decode_sequence(seq.data(), seq.size(), 0, seq_cb, &sink, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_EQ(n, 11u);
+    ASSERT_EQ(sink.canon.size(), 11u);
+    for (size_t i = 0; i < 11; i++) {
+        EXPECT_EQ(sink.canon[i], one_canon(items[i])) << "item " << i;
+    }
+}
+
+TEST(CborSeq, EmptyAndAbort) {
+    SeqSink sink;
+    YeptrisStatus st = YEPTRIS_ERROR_ENCODING; /* deliberately dirty */
+    EXPECT_EQ(yeptris_cbor_decode_sequence(nullptr, 0, 0, seq_cb, &sink, &st), 0u);
+    EXPECT_EQ(st, YEPTRIS_OK); /* an empty sequence is valid */
+    /* abort at index 1 of 3 */
+    std::vector<uint8_t> seq = seq_bytes({"01", "02", "03"});
+    sink = SeqSink();
+    sink.abort_at = 1;
+    st = YEPTRIS_OK;
+    EXPECT_EQ(yeptris_cbor_decode_sequence(seq.data(), seq.size(), 0, seq_cb, &sink, &st), 1u);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    EXPECT_EQ(sink.canon.size(), 1u);
+    /* arg contract */
+    st = YEPTRIS_OK;
+    EXPECT_EQ(yeptris_cbor_decode_sequence(seq.data(), seq.size(), 0, nullptr, &sink, &st), 0u);
+    EXPECT_EQ(st, YEPTRIS_ERROR_ARG);
+}
+
+TEST(CborSeq, TruncatedTailCarriesItemIndex) {
+    std::vector<uint8_t> seq = seq_bytes({"01", "83010203", "a2616101"});
+    /* cut inside item 2 (the map): 1 + 1 + 4 = keep 6 bytes */
+    seq.resize(6);
+    SeqSink sink;
+    YeptrisStatus st = YEPTRIS_OK;
+    EXPECT_EQ(yeptris_cbor_decode_sequence(seq.data(), seq.size(), 0, seq_cb, &sink, &st), 2u);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    const char* msg = yeptris_last_error(nullptr, nullptr);
+    ASSERT_NE(msg, nullptr);
+    EXPECT_NE(strstr(msg, "item 2"), nullptr) << msg;
+    EXPECT_EQ(sink.canon.size(), 2u); /* the first two were delivered */
+}
+
+TEST(CborSeq, SplitDifferentialAtBoundaries) {
+    const char* items[] = {"a26161016162820203", "f97bff", "98190102030405060708090a0b0c0d0e0f"
+                           "101112131415161718181819", "d82076687474703a2f2f7777772e6578616d706c652e636f6d",
+                           "c349010000000000000000"};
+    std::vector<uint8_t> whole = seq_bytes({items, items + 5});
+    SeqSink all;
+    YeptrisStatus st = YEPTRIS_OK;
+    ASSERT_EQ(yeptris_cbor_decode_sequence(whole.data(), whole.size(), 0, seq_cb, &all, &st), 5u);
+    /* every boundary split: prefix + suffix == whole */
+    std::vector<size_t> offs;
+    size_t acc = 0;
+    for (const char* h : items) {
+        acc += strlen(h) / 2;
+        offs.push_back(acc);
+    }
+    for (size_t b = 0; b <= 5; b++) {
+        size_t split = b == 0 ? 0 : offs[b - 1]; /* before item b */
+        SeqSink pre, post;
+        st = YEPTRIS_OK;
+        size_t n1 = yeptris_cbor_decode_sequence(whole.data(), split, 0, seq_cb, &pre, &st);
+        EXPECT_EQ(st, YEPTRIS_OK);
+        st = YEPTRIS_OK;
+        size_t n2 = yeptris_cbor_decode_sequence(whole.data() + split, whole.size() - split, 0,
+                                                 seq_cb, &post, &st);
+        EXPECT_EQ(st, YEPTRIS_OK);
+        ASSERT_EQ(n1 + n2, 5u) << "boundary " << b;
+        pre.canon.insert(pre.canon.end(), post.canon.begin(), post.canon.end());
+        EXPECT_EQ(pre.canon, all.canon) << "boundary " << b;
+    }
+}
+
+TEST(CborSeq, EncodeSequence) {
+    /* build three documents from vectors */
+    const char* hexes[] = {"8301820203820405", "f9c400", "a161616162"};
+    YeptrisDocument docs[3];
+    std::vector<std::vector<uint8_t>> keep(3);
+    for (int i = 0; i < 3; i++) {
+        keep[i] = hx(hexes[i]);
+        YeptrisStatus st = YEPTRIS_OK;
+        docs[i] = yeptris_cbor_decode(keep[i].data(), keep[i].size(), 0, &st);
+        ASSERT_EQ(st, YEPTRIS_OK);
+    }
+    std::string want = one_canon(hexes[0]) + one_canon(hexes[1]) + one_canon(hexes[2]);
+    size_t n = 0;
+    unsigned char* buf = (unsigned char*)yeptris_cbor_encode_sequence(docs, 3,
+                                                                      YEPTRIS_CBOR_CANONICAL, &n);
+    ASSERT_NE(buf, nullptr);
+    {
+        std::string got;
+        char tmp[3];
+        for (size_t k = 0; k < n; k++) {
+            snprintf(tmp, sizeof tmp, "%02x", buf[k]);
+            got += tmp;
+        }
+        EXPECT_EQ(got, want);
+    }
+    /* sizing contract */
+    EXPECT_EQ(yeptris_cbor_encode_sequence_into(docs, 3, YEPTRIS_CBOR_CANONICAL, nullptr, 0), n);
+    free(buf);
+    /* roundtrip through decode_sequence */
+    struct Cap {
+        std::vector<std::string>* out;
+    };
+    SeqSink sink;
+    YeptrisStatus st = YEPTRIS_OK;
+    buf = (unsigned char*)yeptris_cbor_encode_sequence(docs, 3, YEPTRIS_CBOR_CANONICAL, &n);
+    ASSERT_EQ(yeptris_cbor_decode_sequence(buf, n, 0, seq_cb, &sink, &st), 3u);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    free(buf);
+    ASSERT_EQ(sink.canon.size(), 3u);
+    for (int i = 0; i < 3; i++) {
+        EXPECT_EQ(sink.canon[i], one_canon(hexes[i]));
+    }
+    for (int i = 0; i < 3; i++) {
+        yeptris_document_free(docs[i]);
+    }
+}
+
 } // namespace

@@ -36,6 +36,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Invalid-UTF-8 tag-str scalars re-encode as byte strings (mt2), so
   binary data round-trips byte-exact. Aliases and non-decimal tag
   text encode to YEPTRIS_ERROR_UNSUPPORTED.
+- CBOR Sequences (RFC 8742, TODO.cbor/03):
+  `yeptris_cbor_decode_sequence` iterates concatenated top-level items
+  — one document per item, callback-owned, nonzero aborts; the error
+  channel carries the failing item's index and byte offset; an empty
+  sequence is valid. `yeptris_cbor_encode_sequence`/`_into` concatenate
+  per-item encodings under the same sizing contract. Gates: item-by-item
+  tree identity vs standalone decodes, truncation-index errors, the
+  boundary-split differential at every cut, and a 20k-run ASAN random
+  split fuzz — 0 mismatches.
 
 ### Changed
 - scan_stats (NEON) accumulates vertically — pairwise add-accumulate
