@@ -311,7 +311,7 @@ void dom_mut_set_depth(yep_dom* d, uint32_t id, uint16_t depth) {
 
 /* Places a completed node: value for a pending key, child of the top
  * collection, or document root. */
-static int dom_place(yep_dom* d, uint32_t id) {
+int dom_place(yep_dom* d, uint32_t id) {
     if (d->depth == 0) {
         if (!dom_grow_docs(d, 1)) {
             return -1;

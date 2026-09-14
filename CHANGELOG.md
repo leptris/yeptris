@@ -7,6 +7,18 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Added
+- CBOR (RFC 8949) decode over the shared DOM (TODO.cbor/01):
+  `yeptris_cbor_decode` builds the same tree `yeptris_parse_json`
+  builds — zero-copy string spans, tag chains on the node's tag field,
+  one data item per call, byte-offset errors. Definite + indefinite
+  lengths, half/single/double floats (the RFC's Appendix D decoder,
+  libm-free), bignums kept as tag+bytes, strict mode (minimal length
+  arguments, text-string map keys). RFC 8949 Appendix A pins every
+  vector; Appendix F's non-well-formed corpus pins the rejects; a
+  300k-iteration ASAN random-bytes fuzz smoke is clean. Compiles only
+  with YEPTRIS_WITH_CBOR (default ON).
+
 ### Changed
 - scan_stats (NEON) accumulates vertically — pairwise add-accumulate
   into u16 lanes with one horizontal reduce per 4095-chunk batch,

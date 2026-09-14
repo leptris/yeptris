@@ -184,6 +184,12 @@ uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_
                        int anchor_borrowed, uint8_t style, uint8_t implicit, uint8_t flow);
 void dom_link(yep_dom* d, uint32_t parent, uint32_t child);
 
+/* Places a built node: at depth 0 it becomes a document root, inside a
+ * sequence it links as a child, inside a map the pairing law applies
+ * (first placement = key, second = value). Shared by the event sink,
+ * the direct builders, and the CBOR decoder. 0 ok, -1 OOM. */
+int dom_place(yep_dom* d, uint32_t id);
+
 /* Mutation-only facts (64-2a): the attached flag and node depth read
  * through lazily-grown side tables; parse-built nodes are unattached
  * with depth 0 until a mutation touches them. */

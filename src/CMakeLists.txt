@@ -42,6 +42,7 @@ set(YEPTRIS_SOURCES
     yeptris/events/values.c
     yeptris/schema.c
     yeptris/tape.c
+
     yeptris/marshal.c
     yeptris/visit/json_visit.c
     yeptris/visit/yaml_visit.c
@@ -52,6 +53,10 @@ set(YEPTRIS_SOURCES
     yeptris/emit/float/print.c
     yeptris/emit/float/dragon.c
 )
+
+if(YEPTRIS_WITH_CBOR)
+    list(APPEND YEPTRIS_SOURCES yeptris/cbor/decode.c)
+endif()
 
 # AOT SIMD TUs (TODO.impl/04): per-ISA compile flags; the TUs and the
 # dispatch share architecture guards, so links resolve on every platform.
@@ -136,6 +141,9 @@ add_library(yeptris_static STATIC ${YEPTRIS_SOURCES})
         PUBLIC ${YEPTRIS_INCLUDE_DIRS}
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris) # internal root-relative includes
     target_compile_definitions(yeptris_static PRIVATE YEPTRIS_BUILDING)
+    if(YEPTRIS_WITH_CBOR)
+        target_compile_definitions(yeptris_static PUBLIC YEPTRIS_WITH_CBOR)
+    endif()
     target_link_libraries(yeptris_static PRIVATE Threads::Threads)
     yeptris_set_warnings(yeptris_static)
 endif()
@@ -150,5 +158,8 @@ if(YEPTRIS_BUILD_SHARED)
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/yeptris/emit/float)
     target_compile_definitions(yeptris_shared PRIVATE YEPTRIS_BUILDING)
+    if(YEPTRIS_WITH_CBOR)
+        target_compile_definitions(yeptris_shared PUBLIC YEPTRIS_WITH_CBOR)
+    endif()
     yeptris_set_warnings(yeptris_shared)
 endif()

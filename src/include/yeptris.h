@@ -11,6 +11,9 @@
 #include <yeptris/dom.h>
 #include <yeptris/emit.h>
 #include <yeptris/error.h>
+#ifdef YEPTRIS_WITH_CBOR
+#include <yeptris/cbor.h>
+#endif
 #include <yeptris/events.h>
 #include <yeptris/parse.h>
 #include <yeptris/resolve.h>
