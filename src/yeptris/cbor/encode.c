@@ -757,3 +757,65 @@ YEPTRIS_API void* yeptris_cbor_encode(YeptrisDocument doc, uint32_t opts, size_t
     }
     return buf;
 }
+
+YEPTRIS_API size_t yeptris_cbor_encode_sequence_into(YeptrisDocument* items, size_t n,
+                                                     uint32_t opts, void* buf, size_t cap) {
+    if (items == NULL && n != 0) {
+        return 0;
+    }
+    size_t need = 0;
+    size_t* sizes = malloc(n * sizeof(size_t));
+    if (sizes == NULL) {
+        return 0;
+    }
+    for (size_t k = 0; k < n; k++) {
+        if (items[k] == NULL) {
+            free(sizes);
+            return 0;
+        }
+        size_t one = 0;
+        if (cbor_run(items[k], opts, NULL, &one) != YEPTRIS_OK) {
+            free(sizes);
+            return 0;
+        }
+        sizes[k] = one;
+        need += one;
+    }
+    if (buf == NULL || cap < need) {
+        free(sizes);
+        return need;
+    }
+    size_t pos = 0;
+    for (size_t k = 0; k < n; k++) {
+        size_t one = 0;
+        if (cbor_run(items[k], opts, (uint8_t*)buf + pos, &one) != YEPTRIS_OK ||
+            one != sizes[k]) {
+            free(sizes);
+            return 0;
+        }
+        pos += one;
+    }
+    free(sizes);
+    return pos;
+}
+
+YEPTRIS_API void* yeptris_cbor_encode_sequence(YeptrisDocument* items, size_t n, uint32_t opts,
+                                               size_t* len) {
+    size_t need = yeptris_cbor_encode_sequence_into(items, n, opts, NULL, 0);
+    if (need == 0) {
+        return NULL;
+    }
+    uint8_t* buf = malloc(need);
+    if (buf == NULL) {
+        return NULL;
+    }
+    size_t wrote = yeptris_cbor_encode_sequence_into(items, n, opts, buf, need);
+    if (wrote != need) {
+        free(buf);
+        return NULL;
+    }
+    if (len != NULL) {
+        *len = wrote;
+    }
+    return buf;
+}

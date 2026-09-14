@@ -12,7 +12,11 @@ extern "C" {
 #endif
 
 /* one data item: bytes -> the shared DOM (the plan's item 01) */
-int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int strict);
+/* One data item. consumed (may be NULL): when given, returns the
+ * item's byte extent and TRAILING BYTES ARE NOT an error (the
+ * sequence loop steps on them); NULL keeps the one-item contract. */
+int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int strict,
+                        size_t* consumed);
 
 #ifdef __cplusplus
 }

@@ -657,7 +657,8 @@ static int cbor_item(yep_cdec* c) {
     return cbor_float_node(c, dv) ? 1 : 0;
 }
 
-int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int strict) {
+int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int strict,
+                        size_t* consumed) {
     yep_cdec c = {d, p, len, 0, strict, YEPTRIS_OK, {0}, 0, {0}, 0};
     int done_top = 0; /* the ONE top-level item is done (tags never count) */
     c.pending_tag.off = 0;
@@ -665,9 +666,12 @@ int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int stri
     for (;;) {
         if (c.depth == 0) {
             if (done_top) { /* the root closed; one data item per call */
-                if (c.i != len) {
+                if (c.i != len && consumed == NULL) {
                     cbor_fail(&c, YEP_ERR_UNEXPECTED, "trailing bytes after the data item");
                     return YEPTRIS_ERROR_PARSE;
+                }
+                if (consumed != NULL) {
+                    *consumed = c.i;
                 }
                 return YEPTRIS_OK;
             }
@@ -715,6 +719,82 @@ int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int stri
     }
 }
 
+static YeptrisDocument cbor_wrap(yep_dom* dom, const void* buf, const yep_allocator* sys) {
+    yeptris_document* d = yep_alloc(sys, sizeof(yeptris_document));
+    if (d == NULL) {
+        yep_dom_destroy(dom);
+        return NULL;
+    }
+    d->dom = dom;
+    d->sys = sys;
+    d->schema = YEPTRIS_SCHEMA_12_CORE;
+    d->transcoded = NULL;
+    d->transcoded_len = 0;
+    d->input = (const char*)buf;
+    d->finish_pool = NULL;
+    return (YeptrisDocument)d;
+}
+
+YEPTRIS_API size_t yeptris_cbor_decode_sequence(const void* buf, size_t len, uint32_t opts,
+                                                yeptris_cbor_item_cb cb, void* ctx,
+                                                YeptrisStatus* status) {
+    if ((buf == NULL && len != 0) || cb == NULL || (opts & ~YEPTRIS_CBOR_STRICT) != 0) {
+        if (status != NULL) {
+            *status = YEPTRIS_ERROR_ARG;
+        }
+        return 0;
+    }
+    int strict = (opts & YEPTRIS_CBOR_STRICT) != 0;
+    const yep_allocator* sys = yep_system_allocator();
+    const unsigned char* p = (const unsigned char*)buf;
+    size_t i = 0;
+    size_t count = 0;
+    for (;;) {
+        if (i >= len) {
+            if (status != NULL) {
+                *status = YEPTRIS_OK; /* RFC 8742: an empty sequence is valid */
+            }
+            return count;
+        }
+        yep_dom* dom = yep_dom_create(sys);
+        if (dom == NULL) {
+            if (status != NULL) {
+                *status = YEPTRIS_ERROR_MEMORY;
+            }
+            return count;
+        }
+        dom->input_base = (const char*)(p + i); /* item-relative borrows */
+        dom->input_len = len - i;
+        size_t used = 0;
+        YeptrisStatus st = (YeptrisStatus)yep_cbor_decode_dom(dom, p + i, len - i, strict, &used);
+        if (st != YEPTRIS_OK) {
+            yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, i,
+                          "CBOR sequence item %zu at byte %zu is not well-formed", count, i);
+            yep_dom_destroy(dom);
+            if (status != NULL) {
+                *status = st == YEPTRIS_ERROR_MEMORY ? st : YEPTRIS_ERROR_PARSE;
+            }
+            return count;
+        }
+        YeptrisDocument doc = cbor_wrap(dom, p + i, sys);
+        if (doc == NULL) {
+            if (status != NULL) {
+                *status = YEPTRIS_ERROR_MEMORY;
+            }
+            return count;
+        }
+        if (cb(ctx, doc, count) != 0) { /* the callback owns each item;
+                                           nonzero aborts the iteration */
+            if (status != NULL) {
+                *status = YEPTRIS_OK;
+            }
+            return count;
+        }
+        i += used;
+        count++;
+    }
+}
+
 YEPTRIS_API YeptrisDocument yeptris_cbor_decode(const void* buf, size_t len, uint32_t opts,
                                                 YeptrisStatus* status) {
     if ((buf == NULL && len != 0) || (opts & ~YEPTRIS_CBOR_STRICT) != 0) {
@@ -733,9 +813,9 @@ YEPTRIS_API YeptrisDocument yeptris_cbor_decode(const void* buf, size_t len, uin
     }
     dom->input_base = (const char*)buf;
     dom->input_len = len;
-    YeptrisStatus st =
-        (YeptrisStatus)yep_cbor_decode_dom(dom, (const unsigned char*)buf, len,
-                                           (opts & YEPTRIS_CBOR_STRICT) != 0);
+    YeptrisStatus st = (YeptrisStatus)yep_cbor_decode_dom(dom, (const unsigned char*)buf, len,
+                                                          (opts & YEPTRIS_CBOR_STRICT) != 0,
+                                                          NULL);
     if (st != YEPTRIS_OK) {
         yep_dom_destroy(dom);
         if (status != NULL) {
