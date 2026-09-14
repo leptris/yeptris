@@ -1535,3 +1535,21 @@ sliced from the caller's source. Same machine, 20k entries: stdlib
 stays as the pre-0.2.2-library fallback. JSON.dump joins via the
 packed-entry builder + yeptris_serialize_json_ex(compact) —
 byte-identical to JSON.generate (spec-pinned).
+
+
+## 2026-09-14 (vi) — simdjson's eight-digits SWAR in the number kernel
+
+parse_eight_digits_unrolled ported verbatim (their constants) into
+yep_json_number_scan's integer-magnitude loop: eight branch-free ops
+replace eight mul/add iterations, gated by an all-digits SWAR window
+check and the overflow-promotion guard (the per-digit tail keeps the
+shape-2 contract; the beyond-int64 specs pin it).
+
+Interleaved A/B (same machine, the only stable window today): a
+long-number corpus (12-18 digit ids/ns — timestamps, hashes, the
+real-world JSON shape) 43 -> 94 30s-iters (+118 percent, 2.19x); the
+json-doc corpus (1-6 digit numbers — the SWAR window never fires) is
+within the day's thermal noise, as the mechanism predicts. All gates
+green: the number-kernel specs gain the SWAR exactness battery
+(>=8/>=16 digit exactness, int64 bounds, shape-2 promotion), the 2M
+tape-diff fuzz and json-suite-strict unchanged.

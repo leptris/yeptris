@@ -262,6 +262,35 @@ int yep_json_number_scan(const char* p, size_t len, size_t* i, int* is_float, in
     if (p[k] == '0') {
         k++;
     } else {
+        /* simdjson's eight-digits-at-once SWAR (their
+         * parse_eight_digits_unrolled, verbatim constants): eight
+         * branch-free ops replace eight iterations of the mul/add
+         * loop. Fires only while eight digits AND the magnitude can
+         * absorb them exactly — the per-digit tail keeps the overflow
+         * promotion contract. Short numbers (the corpus's 1-6 digit
+         * ids) stay on the original loop. */
+        while (k + 8 <= len) {
+            uint64_t w;
+            memcpy(&w, p + k, 8);
+            uint64_t t = w ^ 0x3030303030303030ull;
+            uint64_t hi = t & 0xF0F0F0F0F0F0F0F0ull;
+            uint64_t lo =
+                (((t & 0x0F0F0F0F0F0F0F0Full) + 0x0606060606060606ull) & 0x1010101010101010ull);
+            if (hi != 0 || lo != 0) {
+                break; /* a non-digit byte inside the window */
+            }
+            if (mag > (UINT64_MAX - 99999999ull) / 100000000ull) {
+                break; /* 8 more digits may not fit: the slow tail promotes */
+            }
+            uint64_t v = w - 0x3030303030303030ull;
+            v = (v * 10) + (v >> 8);
+            const uint64_t mask = 0x000000FF000000FF;
+            const uint64_t mul1 = 0x000F424000000064;
+            const uint64_t mul2 = 0x0000271000000001;
+            v = (((v & mask) * mul1) + (((v >> 16) & mask) * mul2)) >> 32;
+            mag = mag * 100000000ull + v;
+            k += 8;
+        }
         while (k < len && p[k] >= '0' && p[k] <= '9') {
             unsigned d = (unsigned)(p[k] - '0');
             if (mag > (UINT64_MAX - d) / 10) {
