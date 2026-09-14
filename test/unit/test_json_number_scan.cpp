@@ -121,3 +121,41 @@ TEST(JsonNumberScan, DelimiterRule) {
 }
 
 } // namespace
+
+// The eight-digits SWAR path (simdjson's parse_eight_digits_unrolled,
+// ported verbatim): long integers ride the 8-digit blocks.
+TEST(JsonNumberScan, EightDigitSwarExactness) {
+    struct {
+        const char* src;
+        int64_t iv;
+        int shape;
+    } cases[] = {
+        {"12345678", 12345678, 0},
+        {"9223372036854775807", INT64_MAX, 0},
+        {"-9223372036854775808", INT64_MIN, 0},
+        {"123456789012345678", 123456789012345678, 0},
+        {"9999999999999999999999", 0, 2},      /* beyond int64: shape 2 */
+        {"123456789012345678901234567", 0, 2}, /* >8 and >16 digits */
+    };
+    for (const auto& c : cases) {
+        size_t i = 0;
+        int64_t iv = 0;
+        double dv = 0;
+        int shape = -1;
+        ASSERT_EQ(yep_json_number_scan(c.src, strlen(c.src), &i, &shape, &iv, &dv), 1) << c.src;
+        EXPECT_EQ(shape, c.shape) << c.src;
+        if (c.shape == 0) {
+            EXPECT_EQ(iv, c.iv) << c.src;
+        }
+        if (c.shape == 2) {
+            EXPECT_EQ(i, strlen(c.src)) << c.src; /* the full span scanned */
+        }
+    }
+    /* the beyond-int64 double is the correctly-rounded approximation */
+    size_t i = 0;
+    int64_t iv = 0;
+    double dv = 0;
+    int shape = 0;
+    ASSERT_EQ(yep_json_number_scan("9999999999999999999999", 22, &i, &shape, &iv, &dv), 1);
+    EXPECT_DOUBLE_EQ(dv, 9999999999999999999999.0);
+}
