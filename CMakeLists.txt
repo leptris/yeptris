@@ -33,6 +33,13 @@ if(MSVC)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
+# MSVC's default stack is 1 MiB; the Unix builds run on 8 MiB — deep
+# document paths (the depth guard's teardown) measured against the
+# Unix default get the same room here
+if(MSVC)
+    add_link_options(/STACK:8388608)
+endif()
+
 # ---------------------------------------------------------------- options --
 option(BUILD_TESTING "Build tests" ON)
 option(YEPTRIS_BUILD_CLI "Build the yeptris CLI tool" ON)
