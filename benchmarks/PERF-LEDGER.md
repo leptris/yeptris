@@ -1495,3 +1495,15 @@ pays when the run IS the unit (line facts: 10-25B runs); it does not
 pay per-token. The 86 spec's wave-2 row is void; the structural
 index (wave 3) is the real lever for ws cost — it removes the skips
 entirely, not speeds them up.
+
+
+## 2026-09-14 (iii) — ryml fully beaten; the structural-index build opens
+
+CI referee (ubuntu, avx2, main @ v0.2.4): ALL EIGHT shapes over
+parity — block 1.32x, flow-json 2.19x, flow-single 2.08x, json-doc
+2.46x, scalar 1.30x, anchor 1.23x (0.90x three releases ago), deep
+1.47x, wide 1.22x. parse_json DOM on CI 181.9 MB/s (+37 percent over
+the 0.2.2 artifact); tape 426.7 MB/s, 0.33x vs simdjson (1.29 GB/s
+on this runner class). ryml is DONE; the JSON field is the whole
+campaign. Item 79 (fused block engine) moves from "the last ryml
+shape" to margin work.
