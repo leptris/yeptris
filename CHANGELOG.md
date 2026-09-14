@@ -45,6 +45,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tree identity vs standalone decodes, truncation-index errors, the
   boundary-split differential at every cut, and a 20k-run ASAN random
   split fuzz — 0 mismatches.
+- CBOR conformance + differentials + fuzz (TODO.cbor/06): the codec's
+  verification matrix. fuzz_cbor joins the item-19 harness (invariant
+  traps, seed corpus of the RFC 8949 Appendix A + F vectors — checked
+  in via scripts/gen-cbor-seeds.py — libFuzzer build + the nightly
+  job). Differential vs Python cbor2 (209 shared cases: 177 canonical
+  byte-exact, 18 both-reject, 14 divergences ALL within seven
+  documented waiver classes — bytes-as-text, int-width, tag-semantics,
+  non-text-keys, duplicate-keys, trailing-bytes, depth-cap; zero
+  unclassified) and an informational pass against the Ruby cbor gem
+  (which additionally accepts two RFC-invalid inputs the ledger
+  records). The cbor_canon driver backs both scripts.
 
 ### Changed
 - scan_stats (NEON) accumulates vertically — pairwise add-accumulate

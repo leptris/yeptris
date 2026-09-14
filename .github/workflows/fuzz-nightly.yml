@@ -72,6 +72,12 @@ jobs:
       - name: fuzz_diff (10 min)
         run: ./build/test/fuzz_diff_lf -max_total_time=600 -rss_limit_mb=4096 corpus
 
+      - name: CBOR seeds
+        run: python3 scripts/gen-cbor-seeds.py
+
+      - name: fuzz_cbor (10 min)
+        run: ./build/test/fuzz_cbor_lf -max_total_time=600 -rss_limit_mb=4096 test/fuzz/corpus/cbor
+
       - name: Retain crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4

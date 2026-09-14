@@ -98,6 +98,12 @@ add_test(
 )
 set_tests_properties(libyaml-diff PROPERTIES ENVIRONMENT "YEP_STRICT=1")
 
+# ---- differential drivers (TODO.cbor/06) ------------------------------
+add_executable(cbor_canon tools/cbor_canon.c)
+target_link_libraries(cbor_canon PRIVATE yeptris_static)
+target_include_directories(cbor_canon PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+yeptris_set_warnings(cbor_canon)
+
 # ---- fuzz harnesses (TODO.impl/19) ------------------------------------
 # Standalone corpus walkers (crash on invariant violation); the
 # libFuzzer build is CI-nightly (YEPTRIS_ENABLE_FUZZING).
@@ -117,6 +123,12 @@ target_include_directories(fuzz_feed PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
 target_compile_definitions(fuzz_feed PRIVATE YEP_FUZZ_STANDALONE)
 yeptris_set_warnings(fuzz_feed)
 
+add_executable(fuzz_cbor fuzz/fuzz_cbor.c)
+target_link_libraries(fuzz_cbor PRIVATE yeptris_static)
+target_include_directories(fuzz_cbor PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+target_compile_definitions(fuzz_cbor PRIVATE YEP_FUZZ_STANDALONE)
+yeptris_set_warnings(fuzz_cbor)
+
 add_executable(fuzz_transcode fuzz/fuzz_transcode.c)
 target_link_libraries(fuzz_transcode PRIVATE yeptris_static)
 target_include_directories(fuzz_transcode PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
@@ -127,6 +139,11 @@ yeptris_set_warnings(fuzz_roundtrip)
 add_test(
     NAME fuzz-corpus
     COMMAND fuzz_parse ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+)
+
+add_test(
+    NAME fuzz-cbor-corpus
+    COMMAND fuzz_cbor ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/cbor
 )
 add_test(
     NAME fuzz-roundtrip-corpus
@@ -166,7 +183,12 @@ if(YEPTRIS_ENABLE_FUZZING)
         add_executable(fuzz_diff_lf fuzz/fuzz_diff.c)
         target_link_libraries(fuzz_diff_lf PRIVATE diff_core)
         yeptris_set_warnings(fuzz_diff_lf)
-    endif()
+    
+    add_executable(fuzz_cbor_lf fuzz/fuzz_cbor.c)
+    target_link_libraries(fuzz_cbor_lf PRIVATE yeptris_static)
+    target_include_directories(fuzz_cbor_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+    yeptris_set_warnings(fuzz_cbor_lf)
+endif()
 endif()
 
 # ---- JSONTestSuite under YAML semantics (TODO.impl/08C) ---------------
