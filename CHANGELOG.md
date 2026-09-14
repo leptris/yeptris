@@ -6,7 +6,15 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.5] - 2026-09-14
+## [Unreleased]
+### Changed
+- simdjson's eight-digits SWAR (their parse_eight_digits_unrolled,
+  verbatim constants) rides yep_json_number_scan's integer loop:
+  eight branch-free ops per 8 digits, the overflow-promotion contract
+  intact. Long-number JSON (12-18 digit ids/ns) 2.2x on the tape;
+  short-number corpora unchanged (the window never fires).
+
+## [0.2.5]## [0.2.5] - 2026-09-14
 ### Changed
 - TODO.restructure/86 wave 3 (simdjson front): the structural index
   measured DEAD for the tape in both materializations (u32 offset
