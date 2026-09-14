@@ -22,31 +22,37 @@ inter-token ws runs are 0-2 bytes, the byte loop exits in 0-2
 predicted iterations, and a SWAR chunk pays ~20 ops regardless. SWAR
 pays when the run is the unit (line facts), not per-token.
 
-## Wave 3 (the pass): structural indices, simdjson's shape
+## Wave 3 (void — measured dead BOTH ways, 2026-09-14)
 
-Stage 1 — one linear pass over the buffer emits every STRUCTURAL
-byte offset into a u32 array: `{ } [ ] : ,` and `"` outside strings.
-String-awareness via the qbc jump (a quote at i → qbc_find from i+1 →
-resume past the close: escapes handled by construction, no parity
-trickery). v1 scalar in scan/json.c; an ISA kernel slot (appended
-LAST — the table's positional law) if the pass measures.
+Built in full twice, gated (2M-case status+content fuzz added to
+tape-diff found three real bugs in the attempts: a root-bit
+consumption off-by-one, map-value scalars rejected by a misfiring
+strict-key check, and — the keeper — a pre-existing grammar
+disagreement where the document validator and the strict walker
+ACCEPTED a container at map-key position, building inconsistent
+trees; all three machines now reject it, json-suite-strict pins
+unchanged 283/283).
 
-Stage 2 — the indexed tape walk: the walker's strict state machine
-ported onto the index cursor. Between structurals, a VALUE position's
-text is [prev+1, next structural): number_scan/literal over the trim
-plus a ws-only tail check. Whitespace skipping disappears — the walk
-jumps index-to-index. The plain walker stays (SSOT for the DOM route;
-the indexed walk is a tape-internal consumer sharing the kernels).
+- u32 offset array: 775 -> 300 30s-iters (-61%). 4 bytes of write
+  traffic per input byte plus an 8MB-per-parse materialization.
+- simdjson's bitmask shape (1 bit/byte, ctz consumption, quotes as
+  bit pairs, strings validated once by the qbc jump): 775 -> ~106-147
+  (the Mac was thermally unstable same-hour; the shape is a large
+  regression regardless). Profile: stage-2 walk 44%, stage-1 scalar
+  pass 28%.
 
-Error semantics: the indexed walk only decides ACCEPT/REJECT — every
-reject falls to yep_json_document exactly as today, so the reported
-byte and precedence never move. Gates: tape-diff 340 + json-suite-
-strict unchanged.
+Why it cannot win here (the same verdict as item 47, now measured
+for the tape consumer too): stage 2 must VALIDATE every gap byte —
+ws-only checks and number-tail checks ARE the walker's fused ws-skip,
+just relocated — so the index removes no scan work, and stage 1 adds
+a full pass. simdjson's edge is a 3-8 GB/s SIMD stage 1 and a
+fundamentally leaner stage 2; our walker's ws-skip was already
+measured near-optimal (the SWAR ws attempt regressed -40 percent).
+The tape's true remaining costs — number_scan, qbc_find, the record
+append — are untouched by any index.
 
-## Honest target
-
-simdjson's stage 1 is input-bound (multiple GB/s); our stage 2 still
-runs the number conversion and record append. Realistic: 0.5–0.7x
-after wave 3. Parity additionally needs the record append to shrink
-(16% self: four column stores per token — consider interleaved
-records or column batching).
+What SURVIVED: the grammar alignment (container-at-key), the 2M-case
+fuzz parity gate in tape-diff (permanent), and the JsonTape pins
+(gap classes, tabs-as-ws parity). The honest next levers for the
+simdjson gap: the record append (interleaved records or column
+batching) and the number kernel itself.

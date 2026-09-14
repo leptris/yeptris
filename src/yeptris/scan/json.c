@@ -124,6 +124,13 @@ int yep_json_document(const char* p, size_t len, size_t* err) {
                 }
                 return 0;
             }
+            if (kind[depth - 1] == 1 &&
+                (expect[depth - 1] == JV_KEY_OR_CLOSE || expect[depth - 1] == JV_KEY)) {
+                if (err != NULL) {
+                    *err = i;
+                }
+                return 0; /* strict JSON: a container is not a map key */
+            }
             kind[depth] = (c == '[') ? 0 : 1;
             expect[depth] = kind[depth] ? JV_KEY_OR_CLOSE : JV_VALUE_OR_CLOSE;
             depth++;
@@ -513,6 +520,11 @@ yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
         if (c == '{' || c == '[') {
             if (w->depth >= YEP_JSON_WALK_DEPTH || w->depth >= w->max_depth) {
                 return YEP_JW_REJECT; /* the general kernel reports depth errors */
+            }
+            if (w->kind[w->depth - 1] == 1 &&
+                (w->expect[w->depth - 1] == JW_KEY_OR_CLOSE || w->expect[w->depth - 1] == JW_KEY) &&
+                w->strict) {
+                return YEP_JW_REJECT; /* strict JSON: a container is not a map key */
             }
             t->at = i;
             t->end = i + 1;
