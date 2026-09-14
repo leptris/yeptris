@@ -1619,6 +1619,36 @@ the FFI bulk-drain contract, kept), number_scan ~27% (floats and
 stream — the 17B/record across 4 streams is structural until/unless
 the FFI contract changes.
 
+## 2026-09-15 (ix) — CBOR vs JSON on the same DOM (TODO.cbor/07)
+
+First artifact numbers (this Mac, json-doc + flow-single shapes, best-
+of-5, canonical CBOR, held-document encode timing):
+
+| shape | decode vs JSON parse | encode vs JSON emit | cbor/json size | CBOR decode MB/s |
+|---|---|---|---|---|
+| json-doc | 0.92x | 1.01x | 0.52 | 116.6 |
+| flow-single | 0.95x | 0.64x | 0.48 | 114.1 |
+
+Targets: size <= 0.6x MET. decode >= 2x and encode >= 1.5x MISSED —
+reasons, measured:
+
+- The first encode run measured 0.09x. Sampled the loop: cbor_write_item
+  SELF time — the canonical-map id search was O(maps^2) and pair access
+  went through an O(chain) index helper. Linearized both (walk-order
+  cursor for the preps; direct chain iteration for pairs): encode
+  0.09x -> 0.64-1.01x in one cut. The remaining encode cost is the
+  DOM's numbers-as-text: every int/float re-converts through the
+  number kernel, and canonical maps re-encode keys for the sort.
+- Decode's profile is spread (cbor_int_node -> cbor_text_node ->
+  dom_open_node/str_tail/dom_place), not concentrated: each item pays
+  node init + number-text materialization in the arena. The JSON path
+  rides the fused flow builder with zero-copy spans — that is the gap.
+  Closing it means binary-number nodes in the DOM (or a decode fast
+  path that skips text rendering) — architecture work, ledgered here
+  as the follow-up lever, not papered over.
+- Probe note: the first encode-loop probe SEGV'd — its own slurp
+  missing a NULL check after /tmp was cleared; not a library bug
+  (ASAN pinned it in the probe).
 ## 2026-09-15 — the 3x-ryml campaign opens: scalar-heavy's flat profile
 
 Directive: >= 3x ryml on EVERY shape (CI referee). Local standing

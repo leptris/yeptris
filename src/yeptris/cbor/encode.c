@@ -311,6 +311,8 @@ typedef struct {
     YeptrisStatus status;
     cmap* maps;
     size_t nmaps, maps_cap;
+    size_t next_map; /* write-order cursor: preps are consumed in the
+                        same pre-order the sizing pass built them */
 } cenc;
 
 /* Encodes one KEY item (tags + scalar) into exactly-sized scratch. */
@@ -471,16 +473,6 @@ static int cbor_canon_prepare(cenc* e, uint32_t id, uint32_t pairs) {
     return 1;
 }
 
-/* Child by position along the sibling chain (non-canonical walks go
- * in insertion order; maps' k,v alternate). */
-static uint32_t cm_lookup(const yep_dom* d, const yep_dnode* n, uint32_t idx) {
-    uint32_t c = n->first_child;
-    while (idx-- > 0) {
-        c = d->nodes[c].next_sibling;
-    }
-    return c;
-}
-
 /* ---- the two passes -------------------------------------------------- */
 
 static size_t cbor_size_item(cenc* e, uint32_t id);
@@ -565,18 +557,22 @@ static size_t cbor_size_item(cenc* e, uint32_t id) {
         }
         cm = &e->maps[e->nmaps - 1];
     }
-    for (uint32_t p = 0; p < pairs && !e->failed; p++) {
-        uint32_t k, v;
-        if (cm != NULL) {
-            k = cm->child[cm->order[p] * 2];
-            v = cm->child[cm->order[p] * 2 + 1];
-        } else {
-            k = cm_lookup(d, n, p * 2);
-            v = cm_lookup(d, n, p * 2 + 1);
+    if (cm != NULL) {
+        for (uint32_t p = 0; p < pairs && !e->failed; p++) {
+            sz += cbor_size_item(e, cm->child[cm->order[p] * 2]);
+            if (!e->failed) {
+                sz += cbor_size_item(e, cm->child[cm->order[p] * 2 + 1]);
+            }
         }
-        sz += cbor_size_item(e, k);
-        if (!e->failed) {
-            sz += cbor_size_item(e, v);
+    } else {
+        uint32_t c = n->first_child; /* the chain IS the pair order */
+        for (uint32_t p = 0; p < pairs && !e->failed; p++) {
+            sz += cbor_size_item(e, c);
+            c = d->nodes[c].next_sibling;
+            if (!e->failed && c != UINT32_MAX) {
+                sz += cbor_size_item(e, c);
+                c = d->nodes[c].next_sibling;
+            }
         }
     }
     return e->failed ? 0 : sz;
@@ -655,51 +651,51 @@ static void cbor_write_item(cenc* e, uint32_t id, uint8_t* out, size_t* pos) {
     }
     uint32_t pairs = n->count / 2;
     cbor_put_head(out, pos, 5, pairs);
-    /* find this map's canonical prep (pass 1 built them in walk order) */
     cmap* cm = NULL;
-    size_t midx = 0;
-    if (e->canonical) {
-        for (size_t m = 0; m < e->nmaps; m++) {
-            if (e->maps[m].map == id) {
-                cm = &e->maps[m];
-                midx = m;
-                break;
+    if (e->canonical && e->next_map < e->nmaps) {
+        cm = &e->maps[e->next_map++]; /* walk order == build order */
+    }
+    if (cm != NULL) {
+        for (uint32_t p = 0; p < pairs; p++) {
+            cbor_write_item(e, cm->child[cm->order[p] * 2], out, pos);
+            cbor_write_item(e, cm->child[cm->order[p] * 2 + 1], out, pos);
+        }
+    } else {
+        uint32_t c = n->first_child;
+        for (uint32_t p = 0; p < pairs && c != UINT32_MAX; p++) {
+            cbor_write_item(e, c, out, pos);
+            c = d->nodes[c].next_sibling;
+            if (c != UINT32_MAX) {
+                cbor_write_item(e, c, out, pos);
+                c = d->nodes[c].next_sibling;
             }
         }
     }
-    for (uint32_t p = 0; p < pairs; p++) {
-        uint32_t k, v;
-        if (cm != NULL) {
-            k = cm->child[cm->order[p] * 2];
-            v = cm->child[cm->order[p] * 2 + 1];
-        } else {
-            k = cm_lookup(d, n, p * 2);
-            v = cm_lookup(d, n, p * 2 + 1);
-        }
-        cbor_write_item(e, k, out, pos);
-        cbor_write_item(e, v, out, pos);
-    }
-    (void)midx;
 }
 
 /* the write pass consumes the canonical preps in walk order; drop each
  * map's arrays after its last use is not tracked — freed once at exit */
 
-static int cbor_run(YeptrisDocument handle, uint32_t opts, uint8_t* out, size_t* out_len) {
+/* ONE sizing walk (it also builds the canonical map preparations);
+ * writes only when out and cap allow — the needed size always comes
+ * back through *out_len. *written flags whether bytes went out. */
+static int cbor_run(YeptrisDocument handle, uint32_t opts, uint8_t* out, size_t cap,
+                    size_t* out_len, int* written) {
     yeptris_document* doc = (yeptris_document*)handle;
     yep_dom* d = doc->dom;
     if (d->dcount == 0) {
         return YEPTRIS_ERROR_ARG;
     }
-    cenc e = {d, (opts & YEPTRIS_CBOR_CANONICAL) != 0, 0, YEPTRIS_OK, NULL, 0, 0};
+    cenc e = {d, (opts & YEPTRIS_CBOR_CANONICAL) != 0, 0, YEPTRIS_OK, NULL, 0, 0, 0};
     size_t total = cbor_size_item(&e, d->docs[0]);
     if (e.failed) {
         cenc_maps_free(&e);
         return (int)e.status;
     }
-    if (out == NULL) {
+    *out_len = total;
+    if (out == NULL || cap < total) {
         cenc_maps_free(&e);
-        *out_len = total;
+        *written = 0;
         return YEPTRIS_OK;
     }
     size_t pos = 0;
@@ -709,6 +705,7 @@ static int cbor_run(YeptrisDocument handle, uint32_t opts, uint8_t* out, size_t*
         return YEPTRIS_ERROR_INTERNAL;
     }
     *out_len = pos;
+    *written = 1;
     return YEPTRIS_OK;
 }
 
@@ -717,24 +714,15 @@ YEPTRIS_API size_t yeptris_cbor_encode_into(YeptrisDocument doc, uint32_t opts, 
     if (doc == NULL) {
         return 0;
     }
-    size_t need = 0;
-    YeptrisStatus st = (YeptrisStatus)cbor_run(doc, opts, NULL, &need);
+    size_t out_len = 0;
+    int wrote = 0;
+    YeptrisStatus st = (YeptrisStatus)cbor_run(doc, opts, (uint8_t*)buf, cap, &out_len, &wrote);
     if (st != YEPTRIS_OK) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
-                      "cbor encode: sizing pass failed (status %d)", (int)st);
+                      "cbor encode failed (status %d)", (int)st);
         return 0;
     }
-    if (buf == NULL || cap < need) {
-        return need; /* the exact-size query / too-small contract */
-    }
-    size_t written = 0;
-    st = (YeptrisStatus)cbor_run(doc, opts, (uint8_t*)buf, &written);
-    if (st != YEPTRIS_OK) {
-        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
-                      "cbor encode: write pass failed (status %d)", (int)st);
-        return 0;
-    }
-    return written;
+    return out_len; /* the need when unwritten, the count when written */
 }
 
 YEPTRIS_API void* yeptris_cbor_encode(YeptrisDocument doc, uint32_t opts, size_t* len) {
@@ -774,7 +762,8 @@ YEPTRIS_API size_t yeptris_cbor_encode_sequence_into(YeptrisDocument* items, siz
             return 0;
         }
         size_t one = 0;
-        if (cbor_run(items[k], opts, NULL, &one) != YEPTRIS_OK) {
+        int wrote = 0;
+        if (cbor_run(items[k], opts, NULL, 0, &one, &wrote) != YEPTRIS_OK) {
             free(sizes);
             return 0;
         }
@@ -788,8 +777,9 @@ YEPTRIS_API size_t yeptris_cbor_encode_sequence_into(YeptrisDocument* items, siz
     size_t pos = 0;
     for (size_t k = 0; k < n; k++) {
         size_t one = 0;
-        if (cbor_run(items[k], opts, (uint8_t*)buf + pos, &one) != YEPTRIS_OK ||
-            one != sizes[k]) {
+        int wrote = 0;
+        if (cbor_run(items[k], opts, (uint8_t*)buf + pos, sizes[k], &one, &wrote) != YEPTRIS_OK ||
+            !wrote || one != sizes[k]) {
             free(sizes);
             return 0;
         }
