@@ -52,7 +52,11 @@ jobs:
             -DYEPTRIS_WARNINGS_AS_ERRORS=ON
 
       - name: Build
-        run: cmake --build build
+        shell: bash
+        run: |
+          CFG=""
+          if [ "$RUNNER_OS" = "Windows" ]; then CFG="--config Release"; fi
+          cmake --build build $CFG
 
       - name: Fetch conformance corpora
         shell: bash
