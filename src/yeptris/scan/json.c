@@ -508,6 +508,28 @@ int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out, int
     const yep_text_kernels* k = yep_text_active();
     size_t j = *i + 1;
     int esc = 0;
+    /* Short-string fast path: the json-doc corpus's keys/values run
+     * 1-8 bytes; settling them scalar skips the kernel dispatch and
+     * the vector prologue. A backslash falls through to the vector
+     * loop (the escape grammar stays there, single-sourced). */
+    {
+        size_t lim = len - j;
+        if (lim > 8) {
+            lim = 8;
+        }
+        for (size_t k = 0; k < lim; k++) {
+            char c = p[j + k];
+            if (c == '"') {
+                *close_out = j + k;
+                *has_esc = 0;
+                *i = j + k + 1;
+                return 1;
+            }
+            if (c == '\\' || (unsigned char)c < 0x20) {
+                break; /* escape -> vector path; C0 -> it rejects */
+            }
+        }
+    }
     for (;;) {
         /* the SIMD string-stop kernel (TODO.restructure/46): first
          * '"', '\\', or C0 — one vector pass, the milestone-55 LUT
