@@ -142,6 +142,50 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     return out;
 }
 
+YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len, int compact) {
+    if (handle == NULL) {
+        return NULL;
+    }
+    if (handle == NULL) {
+        return NULL;
+    }
+    yep_emitter em;
+    em.doc = (const yeptris_document*)handle;
+    em.w.p = NULL;
+    em.w.last = 0;
+    em.w.force_flow = 0;
+    em.w.canonical = 0;
+    em.w.json = 1;
+    em.w.json_compact = compact ? 1 : 0;
+    em.w.json_pretty = 0;
+    em.w.pretty_depth = 0;
+    em.w.best_width = 0; /* JSON: no folding (single-line output) */
+    em.w.col = 0;
+    em.w.sv_input = handle ? ((const yeptris_document*)handle)->dom->input_base : NULL;
+    em.w.sv_arena = handle ? ((const yeptris_document*)handle)->dom->str : NULL;
+    em.w.sink = NULL;
+    em.w.watermark = 0;
+    em.w.sink_aborted = 0;
+    em.w.flushed = 0;
+    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+        return NULL;
+    }
+    size_t need = yep_emit_run(&em, 1);
+    char* out = malloc(need + 1);
+    if (out == NULL) {
+        yep_nametab_free(&em.canon_names);
+        return NULL;
+    }
+    em.w.p = out;
+    size_t wrote = yep_emit_run(&em, 0);
+    yep_nametab_free(&em.canon_names);
+    out[wrote] = '\0';
+    if (len != NULL) {
+        *len = wrote;
+    }
+    return out;
+}
+
 char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
     if (doc == NULL) {
         return NULL;

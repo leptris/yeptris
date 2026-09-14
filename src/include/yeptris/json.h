@@ -34,6 +34,10 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* data, size_t len, Yep
  * failure / zero documents. */
 YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument doc, size_t* len);
 
+/* The compact variant: no padding spaces (JSON.generate's shape);
+ * compact == 0 is byte-identical to yeptris_serialize_json. */
+YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument doc, size_t* len, int compact);
+
 #ifdef __cplusplus
 }
 #endif

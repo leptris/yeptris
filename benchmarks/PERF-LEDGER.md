@@ -1522,3 +1522,16 @@ walker. KEPT: the container-at-key grammar alignment (the fuzz found
 the document validator and strict walker accepting it — inconsistent
 trees; all machines now reject), the permanent 2M-case fuzz parity
 gate in tape-diff, and the JsonTape gap/tab pins.
+
+
+## 2026-09-14 (v) — the tape's first consumer: the Ruby JSON surface (#81)
+
+The JSON tape (85) was built for exactly this: Yeptris::JSON.load's
+FFI engine moves from the value-drain (gate document + recorder
+transform + an arena copy of every string — the serialbench
+1.7-1.9x deficit) to ONE tape call + four bulk columns + spans
+sliced from the caller's source. Same machine, 20k entries: stdlib
+153.6 ms, tape 148.8 ms (ahead), old drain 3070 ms. The drain
+stays as the pre-0.2.2-library fallback. JSON.dump joins via the
+packed-entry builder + yeptris_serialize_json_ex(compact) —
+byte-identical to JSON.generate (spec-pinned).
