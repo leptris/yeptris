@@ -455,7 +455,7 @@ static void yep_neon_line_facts(const char* s, size_t len, size_t pos, yep_line_
      * whole line (the double scan was the dominant short-line cost).
      * 76 measured the vector sweep 2x slower at 16-32 byte lines; 84
      * pinned the gate at the LINE, not the remaining buffer. */
-    if (yep_text_line_facts_capped(s, len, pos, 64, out)) {
+    if (yep_text_line_facts_capped(s, len, pos, 128, out)) {
         return;
     }
     const uint8x16_t ksp = vdupq_n_u8(' '), knl = vdupq_n_u8('\n'), kcr = vdupq_n_u8('\r'),
