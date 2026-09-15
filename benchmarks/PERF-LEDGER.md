@@ -1682,3 +1682,26 @@ Linux (scalar at 282 vs ryml's 324 MB/s; ryml indexes 4.65x over
 libyaml there, we 4.04x). The 3x campaign starts from behind on
 the referee — the local Mac table flattered us (its ryml build is
 slow). Every campaign decision below takes the ubuntu numbers.
+
+## 2026-09-15 — tape Phase 1: the micro-cut seam is exhausted
+
+Two cuts measured on the json-doc tape (baseline 507 MB/s, this Mac):
+
+- val-store skips (STR + OPEN records; val undefined by contract,
+  the FFI readers never touch it): 507 -> 510 MB/s (~1%). Kept —
+  free bytes, zero risk.
+- the RFC's jump-table dispatch (switch on the initial byte,
+  Appendix B's own shape): 507 -> 169 MB/s — a 3x LOSS, reverted.
+  The indirect branch per token loses to the well-predicted compare
+  chain on regular JSON token streams (the BTB cannot hold the
+  per-position pattern; the chain predicts on GLOBAL token
+  regularity). Ledger law: dispatch shape is corpus-shaped.
+
+Conclusion: walk-self time is not stores or dispatch order. The
+remaining 2.2x to simdjson parity lives in the record ABI (17 B across
+four streams vs simdjson's sequential 8 B words) and the per-token
+loop structure itself. Next lever when the campaign resumes: a
+compact-record tape v2 (ABI break, 0.4.0-class) or a DOM-over-tape
+lazy materialization. (Build lesson of the day: the ninja mtime trap
+after git-checkout churn poisoned three measurement rounds — purge
+the object dir when checkout touches built sources.)
