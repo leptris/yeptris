@@ -37,7 +37,7 @@ static inline uint8x16_t yep_neon_eq(const char* p, uint8_t c) {
  * scan_events shape; no stack spill). vshlq_u16's shift vector is the
  * ACLE-mandated int16x8_t (the GCC-aarch64 lesson, leptris #487).
  * BE keeps the endian-neutral pow2-table spill. */
-#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) &&                                    \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 static inline uint16_t yep_neon_bits(uint8x16_t m) {
     static const uint8_t pow2[16] = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
@@ -280,28 +280,28 @@ static void yep_neon_scan_stats(const char* s, size_t len, yep_text_stats* out) 
     size_t c_nl = 0, c_co = 0, c_da = 0, c_cl = 0, c_br = 0, c_bc = 0, c_dq = 0, c_sq = 0, c_pi = 0,
            c_am = 0;
     size_t i = 0;
-#define YEP_STATS_DRAIN()                                                                        \
-    do {                                                                                         \
-        c_nl += (size_t)vaddvq_u16(a_nl);                                                        \
-        a_nl = vdupq_n_u16(0);                                                                   \
-        c_co += (size_t)vaddvq_u16(a_co);                                                        \
-        a_co = vdupq_n_u16(0);                                                                   \
-        c_da += (size_t)vaddvq_u16(a_da);                                                        \
-        a_da = vdupq_n_u16(0);                                                                   \
-        c_cl += (size_t)vaddvq_u16(a_cl);                                                        \
-        a_cl = vdupq_n_u16(0);                                                                   \
-        c_br += (size_t)vaddvq_u16(a_br);                                                        \
-        a_br = vdupq_n_u16(0);                                                                   \
-        c_bc += (size_t)vaddvq_u16(a_bc);                                                        \
-        a_bc = vdupq_n_u16(0);                                                                   \
-        c_dq += (size_t)vaddvq_u16(a_dq);                                                        \
-        a_dq = vdupq_n_u16(0);                                                                   \
-        c_sq += (size_t)vaddvq_u16(a_sq);                                                        \
-        a_sq = vdupq_n_u16(0);                                                                   \
-        c_pi += (size_t)vaddvq_u16(a_pi);                                                        \
-        a_pi = vdupq_n_u16(0);                                                                   \
-        c_am += (size_t)vaddvq_u16(a_am);                                                        \
-        a_am = vdupq_n_u16(0);                                                                   \
+#define YEP_STATS_DRAIN()                                                                          \
+    do {                                                                                           \
+        c_nl += (size_t)vaddvq_u16(a_nl);                                                          \
+        a_nl = vdupq_n_u16(0);                                                                     \
+        c_co += (size_t)vaddvq_u16(a_co);                                                          \
+        a_co = vdupq_n_u16(0);                                                                     \
+        c_da += (size_t)vaddvq_u16(a_da);                                                          \
+        a_da = vdupq_n_u16(0);                                                                     \
+        c_cl += (size_t)vaddvq_u16(a_cl);                                                          \
+        a_cl = vdupq_n_u16(0);                                                                     \
+        c_br += (size_t)vaddvq_u16(a_br);                                                          \
+        a_br = vdupq_n_u16(0);                                                                     \
+        c_bc += (size_t)vaddvq_u16(a_bc);                                                          \
+        a_bc = vdupq_n_u16(0);                                                                     \
+        c_dq += (size_t)vaddvq_u16(a_dq);                                                          \
+        a_dq = vdupq_n_u16(0);                                                                     \
+        c_sq += (size_t)vaddvq_u16(a_sq);                                                          \
+        a_sq = vdupq_n_u16(0);                                                                     \
+        c_pi += (size_t)vaddvq_u16(a_pi);                                                          \
+        a_pi = vdupq_n_u16(0);                                                                     \
+        c_am += (size_t)vaddvq_u16(a_am);                                                          \
+        a_am = vdupq_n_u16(0);                                                                     \
     } while (0)
     while (i + 16 <= len) {
         size_t end = i + 65504; /* 4095 inner chunks: reduce stays u16 */
