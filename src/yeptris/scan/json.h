@@ -86,6 +86,29 @@ YEPTRIS_API int yep_json_number_scan(const char* p, size_t len, size_t* i, int* 
 YEPTRIS_API int yep_json_literal(const char* p, size_t len, size_t* i, const char* word);
 YEPTRIS_API int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out,
                                 int* has_esc);
+/* Stage 1 of the two-stage tape front: locate STRUCTURE. Per 32-byte
+ * chunk, an ISA classifier produces QUOTE / BACKSLASH / STRUCTURAL
+ * masks; a shared resolver walks the set bits — string intervals
+ * (escape-parity by popcount, the escape grammar validated at each
+ * backslash through the SSOT, raw C0 rejected), and the structural
+ * positions outside strings ({}[],: plus string OPEN quotes). Stage 2
+ * then never scans ws or string interiors. Returns 1 ok / 0
+ * malformed. structurals/str_close must hold len+2 entries. */
+int yep_json_index_build(const char* p, size_t len, uint32_t* structurals, size_t* ns,
+                         uint32_t* str_close, size_t* nstr);
+
+/* The per-chunk classifier (scalar reference; the SIMD TUs override
+ * via yep_json classify dispatch — same masks, same order). */
+typedef struct {
+    uint32_t quote;
+    uint32_t bs;
+    uint32_t structurals;
+    uint32_t c0;    /* bytes < 0x20 (raw controls) */
+    uint32_t valid; /* 1-bits for the bytes that exist (tails) */
+} yep_chunk_masks;
+
+yep_chunk_masks yep_json_chunk_scalar(const char* p, size_t n);
+
 YEPTRIS_API int yep_json_document(const char* p, size_t len, size_t* err);
 
 #ifdef __cplusplus
