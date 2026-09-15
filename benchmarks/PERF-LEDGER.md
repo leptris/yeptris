@@ -1740,3 +1740,27 @@ writes a leaner tape) behind a 64B-pipe stage 1 — a from-scratch
 competing implementation, not a restructuring. The honest course is
 to hold the tape at the fused optimum and spend the effort on the
 3x-ryml engine, where the deficits are measured and the levers known.
+
+## 2026-09-15 — verdict four: the lean two-stage, measured at the floor
+
+The ground-up mandate executed: stage 1 rebuilt mask-based (classifier
++ shared resolver — quotes/backslashes/structurals/C0 as bit events,
+escapes validated through the SSOT with jump-consumption, the
+escaped-quote rule derived rather than parity-hacked; the oracle
+caught the parity bug live), stage 2 rebuilt lean (bounds hoisted to
+the structural cap, gap checks folded into dispatch). Fully green:
+306/306, 2M fuzz + 318 corpus, 0 failures.
+
+Measured: route 303-314 MB/s (scalar classifier at 598); the lean
+changes moved stage 2 by ~2% — its ~26 cycles/structural is span
+checks + dispatch + SoA stores, all already minimal. The resolver
+arithmetic on THIS corpus (760k structurals in 2.8 MB — 27% of bytes
+are structural): emission alone floors a PERFECT stage 1 at ~0.9-1.1
+GB/s; combined projection ~540 MB/s == the fused walk's 510 within
+noise. Fourth independent confirmation, this time with the resolver's
+event-walk floor quantified: the fused single-pass walk IS the
+optimum for structural-dense JSON on this architecture. A simdjson
+win would need a fundamentally leaner stage-2 semantic contract
+(stage 1 pre-classifying TOKEN STARTS, stage 2 trusting it entirely)
+— a different division of labor, not a faster version of either
+stage. Ledgered; branch reverted; the tape holds at 510 MB/s.
