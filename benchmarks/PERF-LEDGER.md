@@ -1764,3 +1764,23 @@ win would need a fundamentally leaner stage-2 semantic contract
 (stage 1 pre-classifying TOKEN STARTS, stage 2 trusting it entirely)
 — a different division of labor, not a faster version of either
 stage. Ledgered; branch reverted; the tape holds at 510 MB/s.
+
+## 2026-09-15 — the ground-up charter: the token-contract tape
+
+The mandate is BEST PERFORMANCE ANYWHERE; the four verdicts say the
+only remaining path is a different semantic division. Charter (opened
+as the next project):
+
+Stage 1 (vectorized, NEON + AVX2 twins) classifies TOKEN STARTS —
+structurals, string spans, number spans, literal kinds — into a
+compact token stream. Stage 2 trusts it entirely: no span
+re-verification, no ws scanning, no gap checks — nesting, linking,
+emission, and number conversion only. Target <=10-12 cycles/token
+(simdjson class; our measured floor is 26).
+
+Anchors (this Mac, json-doc): simdjson DOM 1.02 GB/s; tape 510
+(0.50x); DOM 184 (0.18x). The corpus is 27% structural bytes — the
+per-token output floor is the wall; the win must come from semantic
+trust, not classification speed. Build discipline: scalar reference
+first, the oracle (2M fuzz + 318 corpus) at every step, measure per
+phase, revert any phase that loses.
