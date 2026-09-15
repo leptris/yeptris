@@ -1618,3 +1618,28 @@ the FFI bulk-drain contract, kept), number_scan ~27% (floats and
 4+ digit ints), string ~8%. simdjson's own tape is one 8B sequential
 stream — the 17B/record across 4 streams is structural until/unless
 the FFI contract changes.
+
+## 2026-09-15 — the 3x-ryml campaign opens: scalar-heavy's flat profile
+
+Directive: >= 3x ryml on EVERY shape (CI referee). Local standing
+(best-of, this Mac; CI is the referee of record): scalar-heavy 1.02x,
+wide 1.12x, deep 1.14x, block 1.20x, anchor 1.25x, flow-single 1.50x,
+flow-json 1.76x, json-doc 2.16x.
+
+Sampled scalar-heavy (4.0 MB, 65k lines, avg 61 B; exclusive time):
+engine_run_impl self 24%, line_facts 24% (SWAR-capped 10% + NEON
+sweep 14%), e_node self 7.5%, stopset_find 5.7%, DOM node build ~9%
+(open_node+place+pair), teardown+gate ~5%. The profile is FLAT —
+3x (cutting two thirds) is not a patch session; it is the item-79
+fused-block-engine class:
+
+1. line-facts fusion: the per-line dispatch (yep_scan_facts ->
+   yep_text_active -> capped/SWAR) pays wrapper+dispatch per line;
+   fold the capped walk into the engine's line loop.
+2. item 79: the fused block engine (block parsing without the
+   generic e_node path — the leptris direct-parse shape).
+3. DOM node batching: open_node+place per scalar -> staged arrays
+   committed per line (the flow-staging pattern, applied to block).
+
+Order by leverage-per-risk: (1) is incremental and measured first;
+(2) is the structural win; (3) rides whichever lands.
