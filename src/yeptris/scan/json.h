@@ -97,17 +97,8 @@ YEPTRIS_API int yep_json_string(const char* p, size_t len, size_t* i, size_t* cl
 int yep_json_index_build(const char* p, size_t len, uint32_t* structurals, size_t* ns,
                          uint32_t* str_close, size_t* nstr);
 
-/* The per-chunk classifier (scalar reference; the SIMD TUs override
- * via yep_json classify dispatch — same masks, same order). */
-typedef struct {
-    uint32_t quote;
-    uint32_t bs;
-    uint32_t structurals;
-    uint32_t c0;    /* bytes < 0x20 (raw controls) */
-    uint32_t valid; /* 1-bits for the bytes that exist (tails) */
-} yep_chunk_masks;
-
-yep_chunk_masks yep_json_chunk_scalar(const char* p, size_t n);
+/* The per-chunk classifier behind this: the kernels table's json_chunk
+ * slot (common/simd_text.h) — yep_chunk_masks is defined there. */
 
 YEPTRIS_API int yep_json_document(const char* p, size_t len, size_t* err);
 

@@ -410,11 +410,40 @@ static void yep_avx2_line_facts(const char* s, size_t len, size_t pos, yep_line_
     out->stop_set = have_stop ? 1u : stop_set;
 }
 
+/* The flow-kernel chunk classifier: one 256-bit lane pass -> four
+ * byte-class masks (movemask-native). Chunks are exactly 32 bytes
+ * except the final partial one, which the scalar reference settles
+ * (reads exactly n bytes). The c0 class is an UNSIGNED < 0x20 —
+ * cmplt_epi8 is signed and would flag every >= 0x80 byte — so the
+ * class is min_epu8(v, 0x1F) == v (the same identity qbc_find uses). */
+yep_chunk_masks yep_text_json_chunk_avx2(const char* p, size_t n) {
+    if (n < 32) {
+        return yep_text_json_chunk_scalar(p, n);
+    }
+    yep_chunk_masks m;
+    const __m256i v = _mm256_loadu_si256((const __m256i*)(const void*)p);
+    const __m256i c0t = _mm256_set1_epi8(0x1F);
+    m.quote = (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('"')));
+    m.bs = (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('\\')));
+    __m256i s = _mm256_or_si256(
+        _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('{')),
+                        _mm256_cmpeq_epi8(v, _mm256_set1_epi8('}'))),
+        _mm256_or_si256(
+            _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('[')),
+                            _mm256_cmpeq_epi8(v, _mm256_set1_epi8(']'))),
+            _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8(',')),
+                            _mm256_cmpeq_epi8(v, _mm256_set1_epi8(':')))));
+    m.structurals = (uint32_t)_mm256_movemask_epi8(s);
+    m.c0 = (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_min_epu8(v, c0t), v));
+    m.valid = 0xFFFFFFFFu;
+    return m;
+}
+
 const yep_text_kernels yep_text_kernels_avx2 = {
     yep_avx2_contains,   yep_avx2_find,        yep_avx2_find3,    yep_avx2_count,
     yep_avx2_count3,     yep_avx2_copy_count3, yep_avx2_find_not, yep_avx2_stopset_find,
     yep_avx2_quote_scan, yep_avx2_scan_stats,  yep_avx2_qbc_find, yep_avx2_gate_scan,
-    yep_avx2_line_facts,
+    yep_avx2_line_facts, yep_text_json_chunk_avx2,
 };
 
 #endif /* YEP_ARCH_X86 */
