@@ -360,10 +360,13 @@ static uint8_t* cbor_encode_key(const yep_dom* d, const yep_dnode* key, size_t* 
                 return buf;
             }
         }
-        cbor_put_head(buf, &pos, yep_utf8_validate((const unsigned char*)v.p, v.len, NULL) ? 3 : 2,
-                      v.len);
-        memcpy(buf + pos, v.p, v.len);
-        pos += v.len;
+        cbor_put_head(
+            buf, &pos,
+            v.len == 0 || yep_utf8_validate((const unsigned char*)v.p, v.len, NULL) ? 3 : 2, v.len);
+        if (v.len > 0) {
+            memcpy(buf + pos, v.p, v.len);
+            pos += v.len;
+        }
     }
     *out_len = pos;
     return buf;
@@ -624,10 +627,13 @@ static void cbor_write_scalar(cenc* e, const yep_dnode* n, uint8_t* out, size_t*
         /* invalid UTF-8 can only have been a byte string (the 01
          * ledger: both decode to tag-str scalars) — emit mt2 so the
          * roundtrip re-decodes to the same bytes */
-        cbor_put_head(out, pos, yep_utf8_validate((const unsigned char*)v.p, v.len, NULL) ? 3 : 2,
-                      v.len);
-        memcpy(out + *pos, v.p, v.len);
-        *pos += v.len;
+        cbor_put_head(
+            out, pos,
+            v.len == 0 || yep_utf8_validate((const unsigned char*)v.p, v.len, NULL) ? 3 : 2, v.len);
+        if (v.len > 0) { /* memcpy(_, NULL, 0) is UB (gcc UBSan) */
+            memcpy(out + *pos, v.p, v.len);
+            *pos += v.len;
+        }
         return;
     }
 }
