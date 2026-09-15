@@ -18,15 +18,17 @@ extern "C" {
 #endif
 
 /* Flags. */
-#define YEPTRIS_CBOR_STRICT 0x1u    /* decode: reject non-minimal length
-                                      arguments and non-text-string map keys
-                                      (the deterministic profile's input side) */
-#define YEPTRIS_CBOR_CANONICAL 0x2u /* encode: RFC 8949 s4.2.1 core
-                                      deterministic profile — minimal lengths,
-                                      definite lengths, preferred floats, map
-                                      keys sorted bytewise on their encoded
-                                      forms (the length-first variant of
-                                      s4.2.3 is NOT selected) */
+#define YEPTRIS_CBOR_STRICT                                                                        \
+    0x1u /* decode: reject non-minimal length                                                      \
+           arguments and non-text-string map keys                                                  \
+           (the deterministic profile's input side) */
+#define YEPTRIS_CBOR_CANONICAL                                                                     \
+    0x2u /* encode: RFC 8949 s4.2.1 core                                                           \
+           deterministic profile — minimal lengths,                                              \
+           definite lengths, preferred floats, map                                                 \
+           keys sorted bytewise on their encoded                                                   \
+           forms (the length-first variant of                                                      \
+           s4.2.3 is NOT selected) */
 
 /* Decodes ONE CBOR data item (RFC 8949). buf must remain valid for the
  * lifetime of the returned document (string values are borrowed

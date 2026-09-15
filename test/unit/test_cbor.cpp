@@ -13,8 +13,8 @@
 
 #include <yeptris.h>
 
-#include "dom/dom.h"
 #include "doc.h"
+#include "dom/dom.h"
 
 namespace {
 
@@ -39,9 +39,7 @@ struct Dec {
 std::vector<uint8_t> hx(const char* s) {
     std::vector<uint8_t> out;
     for (size_t i = 0; s[i] && s[i + 1]; i += 2) {
-        auto v = [](char c) -> int {
-            return c >= 'a' ? c - 'a' + 10 : c - '0';
-        };
+        auto v = [](char c) -> int { return c >= 'a' ? c - 'a' + 10 : c - '0'; };
         out.push_back((uint8_t)((v(s[i]) << 4) | v(s[i + 1])));
     }
     return out;
@@ -60,25 +58,56 @@ std::string vstr(const yep_dom* d, const yep_dnode* n) {
 
 struct E {
     enum K { I, F, S, B, TBOOL, FBOOL, NUL, UNDEF, SIMPLE, ARR, MAP, TAGGED, ANY_ROOT } k;
-    std::string text;               // scalar text (int/float/str/simple)
-    bool b = false;                 // bools
-    uint64_t simple = 0;            // simple(N)
-    std::vector<E> items;           // array / map (k,v,k,v interleaved)
-    std::string tag;                // tag chain text
+    std::string text;     // scalar text (int/float/str/simple)
+    bool b = false;       // bools
+    uint64_t simple = 0;  // simple(N)
+    std::vector<E> items; // array / map (k,v,k,v interleaved)
+    std::string tag;      // tag chain text
 };
 
-const E I_(std::string t) { return E{E::I, t, false, 0, {}, ""}; }
-const E F_(std::string t) { return E{E::F, t, false, 0, {}, ""}; }
-const E S_(std::string t) { return E{E::S, t, false, 0, {}, ""}; }
-const E B_(std::string t) { return E{E::B, t, false, 0, {}, ""}; } // h'...' diagnostic of bytes
-const E Tb() { return E{E::TBOOL, "true", true, 0, {}, ""}; }
-const E Fb() { return E{E::FBOOL, "false", false, 0, {}, ""}; }
-const E Nl() { return E{E::NUL, "null", false, 0, {}, ""}; }
-const E Un() { return E{E::UNDEF, "undefined", false, 0, {}, ""}; }
-const E Sm(uint64_t n) { return E{E::SIMPLE, "", false, n, {}, ""}; }
-E A(std::vector<E> xs) { E e; e.k = E::ARR; e.items = std::move(xs); return e; }
-E M(std::vector<E> kvs) { E e; e.k = E::MAP; e.items = std::move(kvs); return e; }
-E Tg(std::string tag, E inner) { inner.tag = tag; return inner; }
+const E I_(std::string t) {
+    return E{E::I, t, false, 0, {}, ""};
+}
+const E F_(std::string t) {
+    return E{E::F, t, false, 0, {}, ""};
+}
+const E S_(std::string t) {
+    return E{E::S, t, false, 0, {}, ""};
+}
+const E B_(std::string t) {
+    return E{E::B, t, false, 0, {}, ""};
+} // h'...' diagnostic of bytes
+const E Tb() {
+    return E{E::TBOOL, "true", true, 0, {}, ""};
+}
+const E Fb() {
+    return E{E::FBOOL, "false", false, 0, {}, ""};
+}
+const E Nl() {
+    return E{E::NUL, "null", false, 0, {}, ""};
+}
+const E Un() {
+    return E{E::UNDEF, "undefined", false, 0, {}, ""};
+}
+const E Sm(uint64_t n) {
+    return E{E::SIMPLE, "", false, n, {}, ""};
+}
+E A(std::vector<E> xs) {
+    E e;
+    e.k = E::ARR;
+    e.items = std::move(xs);
+    return e;
+}
+E M(std::vector<E> kvs) {
+    E e;
+    e.k = E::MAP;
+    e.items = std::move(kvs);
+    return e;
+}
+E Tg(std::string tag, E inner) {
+    inner.tag = tag;
+    return inner;
+}
 
 ::testing::AssertionResult walk(const yep_dom* d, uint32_t id, const E& e, int depth = 0) {
     const yep_dnode* n = &d->nodes[id];
@@ -86,9 +115,11 @@ E Tg(std::string tag, E inner) { inner.tag = tag; return inner; }
     if (e.k == E::ANY_ROOT) {
         return ::testing::AssertionSuccess(); /* shape checked elsewhere */
     }
-    std::string tag_txt = n->tag.len ? std::string(yep_dom_view(d, n->tag).p, yep_dom_view(d, n->tag).len) : "";
+    std::string tag_txt =
+        n->tag.len ? std::string(yep_dom_view(d, n->tag).p, yep_dom_view(d, n->tag).len) : "";
     if (tag_txt != e.tag) {
-        return ::testing::AssertionFailure() << pad << "tag '" << tag_txt << "' != '" << e.tag << "'";
+        return ::testing::AssertionFailure()
+               << pad << "tag '" << tag_txt << "' != '" << e.tag << "'";
     }
     switch (e.k) {
     case E::ARR:
@@ -100,7 +131,7 @@ E Tg(std::string tag, E inner) { inner.tag = tag; return inner; }
         size_t want_n = e.items.size();
         if (n->count != want_n) {
             return ::testing::AssertionFailure()
-                << pad << "container count " << n->count << " != " << want_n;
+                   << pad << "container count " << n->count << " != " << want_n;
         }
         uint32_t c = n->first_child;
         for (size_t i = 0; i < want_n; i++) {
@@ -108,7 +139,8 @@ E Tg(std::string tag, E inner) { inner.tag = tag; return inner; }
                 return ::testing::AssertionFailure() << pad << "child chain short at " << i;
             }
             auto r = walk(d, c, e.items[i], depth + 1);
-            if (!r) return r;
+            if (!r)
+                return r;
             c = d->nodes[c].next_sibling;
         }
         if (c != UINT32_MAX) {
@@ -129,7 +161,8 @@ E Tg(std::string tag, E inner) { inner.tag = tag; return inner; }
             return ::testing::AssertionFailure() << pad << "int tag_id " << n->tag_id;
         }
         if (got != e.text) {
-            return ::testing::AssertionFailure() << pad << "int '" << got << "' != '" << e.text << "'";
+            return ::testing::AssertionFailure()
+                   << pad << "int '" << got << "' != '" << e.text << "'";
         }
         return ::testing::AssertionSuccess();
     case E::F: {
@@ -139,7 +172,8 @@ E Tg(std::string tag, E inner) { inner.tag = tag; return inner; }
         double a = strtod(got.c_str(), nullptr);
         double b = strtod(e.text.c_str(), nullptr);
         if (!(a == b || (std::isnan(a) && std::isnan(b)))) {
-            return ::testing::AssertionFailure() << pad << "float '" << got << "' != '" << e.text << "'";
+            return ::testing::AssertionFailure()
+                   << pad << "float '" << got << "' != '" << e.text << "'";
         }
         return ::testing::AssertionSuccess();
     }
@@ -149,7 +183,8 @@ E Tg(std::string tag, E inner) { inner.tag = tag; return inner; }
             return ::testing::AssertionFailure() << pad << "str tag_id " << n->tag_id;
         }
         if (got != e.text) {
-            return ::testing::AssertionFailure() << pad << "str '" << got << "' != '" << e.text << "'";
+            return ::testing::AssertionFailure()
+                   << pad << "str '" << got << "' != '" << e.text << "'";
         }
         return ::testing::AssertionSuccess();
     case E::TBOOL:
@@ -209,7 +244,8 @@ TEST(Cbor, AppendixA) {
     expect_ok("1a000f4240", I_("1000000"));
     expect_ok("1b000000e8d4a51000", I_("1000000000000"));
     expect_ok("1bffffffffffffffff", F_("1.8446744073709552e+19")); // 2^64-1: beyond int64
-    expect_ok("c249010000000000000000", Tg("2", B_(std::string("\x01\0\0\0\0\0\0\0\0", 9)))); // 2^64 bignum
+    expect_ok("c249010000000000000000",
+              Tg("2", B_(std::string("\x01\0\0\0\0\0\0\0\0", 9)))); // 2^64 bignum
     expect_ok("3bffffffffffffffff", F_("-1.8446744073709552e+19")); // -2^64: beyond int64
     expect_ok("c349010000000000000000", Tg("3", B_(std::string("\x01\0\0\0\0\0\0\0\0", 9))));
     expect_ok("20", I_("-1"));
@@ -247,8 +283,7 @@ TEST(Cbor, AppendixA) {
     expect_ok("f0", Sm(16));
     expect_ok("f8ff", Sm(255));
     // tagged
-    expect_ok("c074323031332d30332d32315432303a30343a30305a",
-              Tg("0", S_("2013-03-21T20:04:00Z")));
+    expect_ok("c074323031332d30332d32315432303a30343a30305a", Tg("0", S_("2013-03-21T20:04:00Z")));
     expect_ok("c11a514b67b0", Tg("1", I_("1363896240")));
     expect_ok("c1fb41d452d9ec200000", Tg("1", F_("1363896240.5")));
     expect_ok("d74401020304", Tg("23", B_(std::string("\x01\x02\x03\x04", 4))));
@@ -268,8 +303,7 @@ TEST(Cbor, AppendixA) {
     // arrays
     expect_ok("80", A({}));
     expect_ok("83010203", A({I_("1"), I_("2"), I_("3")}));
-    expect_ok("8301820203820405",
-              A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
+    expect_ok("8301820203820405", A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
     {
         std::vector<E> xs;
         for (int i = 1; i <= 25; i++) {
@@ -283,20 +317,16 @@ TEST(Cbor, AppendixA) {
     expect_ok("a26161016162820203", M({S_("a"), I_("1"), S_("b"), A({I_("2"), I_("3")})}));
     expect_ok("826161a161626163", A({S_("a"), M({S_("b"), S_("c")})}));
     expect_ok("a56161614161626142616361436164614461656145",
-              M({S_("a"), S_("A"), S_("b"), S_("B"), S_("c"), S_("C"), S_("d"), S_("D"),
-                 S_("e"), S_("E")}));
+              M({S_("a"), S_("A"), S_("b"), S_("B"), S_("c"), S_("C"), S_("d"), S_("D"), S_("e"),
+                 S_("E")}));
     // indefinite-length
     expect_ok("5f42010243030405ff", B_(std::string("\x01\x02\x03\x04\x05", 5)));
     expect_ok("7f657374726561646d696e67ff", S_("streaming"));
     expect_ok("9fff", A({}));
-    expect_ok("9f018202039f0405ffff",
-              A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
-    expect_ok("9f01820203820405ff",
-              A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
-    expect_ok("83018202039f0405ff",
-              A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
-    expect_ok("83019f0203ff820405",
-              A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
+    expect_ok("9f018202039f0405ffff", A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
+    expect_ok("9f01820203820405ff", A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
+    expect_ok("83018202039f0405ff", A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
+    expect_ok("83019f0203ff820405", A({I_("1"), A({I_("2"), I_("3")}), A({I_("4"), I_("5")})}));
     {
         std::vector<E> xs;
         for (int i = 1; i <= 25; i++) {
@@ -304,8 +334,7 @@ TEST(Cbor, AppendixA) {
         }
         expect_ok("9f0102030405060708090a0b0c0d0e0f101112131415161718181819ff", A(xs));
     }
-    expect_ok("bf61610161629f0203ffff",
-              M({S_("a"), I_("1"), S_("b"), A({I_("2"), I_("3")})}));
+    expect_ok("bf61610161629f0203ffff", M({S_("a"), I_("1"), S_("b"), A({I_("2"), I_("3")})}));
     expect_ok("826161bf61626163ff", A({S_("a"), M({S_("b"), S_("c")})}));
     expect_ok("bf6346756ef563416d7421ff", M({S_("Fun"), Tb(), S_("Amt"), I_("-2")}));
 }
@@ -314,9 +343,8 @@ TEST(Cbor, AppendixA) {
 
 TEST(Cbor, AppendixFRejects) {
     // end of input in a head
-    for (const char* h : {"18", "19", "1a", "1b", "1901", "1a0102", "1b01020304050607", "38",
-                          "58", "78", "98", "9a01ff00", "b8", "d8", "f8", "f900", "fa0000",
-                          "fb000000"}) {
+    for (const char* h : {"18", "19", "1a", "1b", "1901", "1a0102", "1b01020304050607", "38", "58",
+                          "78", "98", "9a01ff00", "b8", "d8", "f8", "f900", "fa0000", "fb000000"}) {
         expect_reject(h);
     }
     // definite-length strings with short data
@@ -325,8 +353,8 @@ TEST(Cbor, AppendixFRejects) {
         expect_reject(h);
     }
     // definite maps/arrays not closed with enough items
-    for (const char* h : {"81", "81818181818181818181", "8200", "a1", "a20102", "a100",
-                          "a2000000"}) {
+    for (const char* h :
+         {"81", "81818181818181818181", "8200", "a1", "a20102", "a100", "a2000000"}) {
         expect_reject(h);
     }
     // tag number not followed by tag content
@@ -341,8 +369,7 @@ TEST(Cbor, AppendixFRejects) {
     }
     // subkind 1: reserved additional information
     for (const char* h : {"1c", "1d", "1e", "3c", "3d", "3e", "5c", "5d", "5e", "7c", "7d", "7e",
-                          "9c", "9d", "9e", "bc", "bd", "be", "dc", "dd", "de", "fc", "fd",
-                          "fe"}) {
+                          "9c", "9d", "9e", "bc", "bd", "be", "dc", "dd", "de", "fc", "fd", "fe"}) {
         expect_reject(h);
     }
     // subkind 2: reserved two-byte simple values
@@ -350,13 +377,13 @@ TEST(Cbor, AppendixFRejects) {
         expect_reject(h);
     }
     // subkind 3: indefinite string chunks of wrong type
-    for (const char* h : {"5f00ff", "5f21ff", "5f6100ff", "5f80ff", "5fa0ff", "5fc000ff",
-                          "5fe0ff", "7f4100ff", "5f5f4100ffff", "7f7f6100ffff"}) {
+    for (const char* h : {"5f00ff", "5f21ff", "5f6100ff", "5f80ff", "5fa0ff", "5fc000ff", "5fe0ff",
+                          "7f4100ff", "5f5f4100ffff", "7f7f6100ffff"}) {
         expect_reject(h);
     }
     // subkind 4: break outside a legal position
-    for (const char* h : {"ff", "81ff", "8200ff", "a1ff", "a1ff00", "a100ff", "a20000ff",
-                          "9f81ff", "9f829f819f9fffffff", "bf00ff", "bf000000ff"}) {
+    for (const char* h : {"ff", "81ff", "8200ff", "a1ff", "a1ff00", "a100ff", "a20000ff", "9f81ff",
+                          "9f829f819f9fffffff", "bf00ff", "bf000000ff"}) {
         expect_reject(h);
     }
     // subkind 5: additional information 31 with major type 0, 1, 6
@@ -413,7 +440,7 @@ TEST(Cbor, TagChains) {
     expect_ok("c1c06432303133", Tg("1 0", S_("2013"))); // 1(0("2013"))
     expect_ok("d9d9f701", Tg("55799", I_("1")));        // self-described CBOR
     // the chain attaches to containers too
-    expect_ok("c1d9d9f780", Tg("1 55799", A({})));      // 1(55799([]))
+    expect_ok("c1d9d9f780", Tg("1 55799", A({}))); // 1(55799([]))
 }
 
 TEST(Cbor, GuardsAndOffsets) {
@@ -422,13 +449,15 @@ TEST(Cbor, GuardsAndOffsets) {
     EXPECT_EQ(e.st, YEPTRIS_ERROR_PARSE);
     // depth guard: 1001 nested arrays
     std::vector<uint8_t> deep;
-    for (int i = 0; i < 1001; i++) deep.push_back(0x81);
+    for (int i = 0; i < 1001; i++)
+        deep.push_back(0x81);
     deep.push_back(0x01);
     Dec dd(deep);
     EXPECT_EQ(dd.st, YEPTRIS_ERROR_DEPTH);
     // 1000 exactly is fine
     std::vector<uint8_t> atcap;
-    for (int i = 0; i < 1000; i++) atcap.push_back(0x81);
+    for (int i = 0; i < 1000; i++)
+        atcap.push_back(0x81);
     atcap.push_back(0x01);
     Dec dc(atcap);
     EXPECT_EQ(dc.st, YEPTRIS_OK);
@@ -472,7 +501,6 @@ TEST(Cbor, ArgContract) {
     EXPECT_EQ(st, YEPTRIS_ERROR_ARG);
 }
 
-
 // ---- encoder (TODO.cbor/02) ------------------------------------------
 
 std::string enc_hex(YeptrisDocument doc, uint32_t opts, size_t* out_len = nullptr) {
@@ -502,33 +530,57 @@ std::string enc_hex(YeptrisDocument doc, uint32_t opts, size_t* out_len = nullpt
  * - non-half NaN canonicalizes to f9 7e00; all Infinity widths to the
  *   half form; indefinite containers to definite */
 TEST(CborEncode, AppendixACanonicalReencode) {
-    struct Row { const char* in; const char* out; };
+    struct Row {
+        const char* in;
+        const char* out;
+    };
     const Row rows[] = {
-        {"00", "00"}, {"01", "01"}, {"0a", "0a"}, {"17", "17"}, {"1818", "1818"},
-        {"1819", "1819"}, {"1864", "1864"}, {"1903e8", "1903e8"}, {"1a000f4240", "1a000f4240"},
+        {"00", "00"},
+        {"01", "01"},
+        {"0a", "0a"},
+        {"17", "17"},
+        {"1818", "1818"},
+        {"1819", "1819"},
+        {"1864", "1864"},
+        {"1903e8", "1903e8"},
+        {"1a000f4240", "1a000f4240"},
         {"1b000000e8d4a51000", "1b000000e8d4a51000"},
-        {"1bffffffffffffffff", "fa5f800000"},      // 2^64-1 -> single (exact power of 2)
+        {"1bffffffffffffffff", "fa5f800000"},                 // 2^64-1 -> single (exact power of 2)
         {"c249010000000000000000", "c269010000000000000000"}, // bignum: bytes -> text
-        {"3bffffffffffffffff", "fadf800000"},      // -2^64 -> single
+        {"3bffffffffffffffff", "fadf800000"},                 // -2^64 -> single
         {"c349010000000000000000", "c369010000000000000000"},
-        {"20", "20"}, {"29", "29"}, {"3863", "3863"}, {"3903e7", "3903e7"},
-        {"f90000", "f90000"}, {"f98000", "f98000"}, {"f93c00", "f93c00"},
+        {"20", "20"},
+        {"29", "29"},
+        {"3863", "3863"},
+        {"3903e7", "3903e7"},
+        {"f90000", "f90000"},
+        {"f98000", "f98000"},
+        {"f93c00", "f93c00"},
         {"fb3ff199999999999a", "fb3ff199999999999a"},
         {"f93e00", "f93e00"},
         {"f97bff", "f97bff"},
         {"fa47c35000", "fa47c35000"},
         {"fa7f7fffff", "fa7f7fffff"},
         {"fb7e37e43c8800759c", "fb7e37e43c8800759c"},
-        {"f90001", "f90001"}, {"f90400", "f90400"}, {"f9c400", "f9c400"},
+        {"f90001", "f90001"},
+        {"f90400", "f90400"},
+        {"f9c400", "f9c400"},
         {"fbc010666666666666", "fbc010666666666666"},
         {"f97c00", "f97c00"},
         {"f97e00", "f97e00"},
         {"f9fc00", "f9fc00"},
-        {"fa7f800000", "f97c00"}, {"fa7fc00000", "f97e00"}, {"faff800000", "f9fc00"},
-        {"fb7ff0000000000000", "f97c00"}, {"fb7ff8000000000000", "f97e00"},
+        {"fa7f800000", "f97c00"},
+        {"fa7fc00000", "f97e00"},
+        {"faff800000", "f9fc00"},
+        {"fb7ff0000000000000", "f97c00"},
+        {"fb7ff8000000000000", "f97e00"},
         {"fbfff0000000000000", "f9fc00"},
-        {"f4", "f4"}, {"f5", "f5"}, {"f6", "f6"}, {"f7", "f7"},
-        {"f0", "f0"}, {"f8ff", "f8ff"},
+        {"f4", "f4"},
+        {"f5", "f5"},
+        {"f6", "f6"},
+        {"f7", "f7"},
+        {"f0", "f0"},
+        {"f8ff", "f8ff"},
         {"c074323031332d30332d32315432303a30343a30305a",
          "c074323031332d30332d32315432303a30343a30305a"},
         {"c11a514b67b0", "c11a514b67b0"},
@@ -539,9 +591,16 @@ TEST(CborEncode, AppendixACanonicalReencode) {
          "d82076687474703a2f2f7777772e6578616d706c652e636f6d"},
         {"40", "60"},
         {"4401020304", "6401020304"},
-        {"60", "60"}, {"6161", "6161"}, {"6449455446", "6449455446"}, {"62225c", "62225c"},
-        {"62c3bc", "62c3bc"}, {"63e6b0b4", "63e6b0b4"}, {"64f0908591", "64f0908591"},
-        {"80", "80"}, {"83010203", "83010203"}, {"8301820203820405", "8301820203820405"},
+        {"60", "60"},
+        {"6161", "6161"},
+        {"6449455446", "6449455446"},
+        {"62225c", "62225c"},
+        {"62c3bc", "62c3bc"},
+        {"63e6b0b4", "63e6b0b4"},
+        {"64f0908591", "64f0908591"},
+        {"80", "80"},
+        {"83010203", "83010203"},
+        {"8301820203820405", "8301820203820405"},
         {"98190102030405060708090a0b0c0d0e0f101112131415161718181819",
          "98190102030405060708090a0b0c0d0e0f101112131415161718181819"},
         {"a0", "a0"},
@@ -569,7 +628,8 @@ TEST(CborEncode, AppendixACanonicalReencode) {
         ASSERT_EQ(d.st, YEPTRIS_OK) << r.in;
         std::string got = enc_hex((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL);
         EXPECT_EQ(got, std::string(r.out)) << r.in;
-        if (got != std::string(r.out)) break; /* report once, in full */
+        if (got != std::string(r.out))
+            break; /* report once, in full */
     }
 }
 
@@ -598,14 +658,14 @@ TEST(CborEncode, CanonicalKeyOrderingAndStability) {
     // insertion order without the canonical flag
     EXPECT_EQ(enc_hex((YeptrisDocument)d.doc, 0), "a36162610361616102616301");
     // the two-pass contract: sizing query == written count
-    size_t need = yeptris_cbor_encode_into((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL,
-                                           nullptr, 0);
+    size_t need =
+        yeptris_cbor_encode_into((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL, nullptr, 0);
     std::vector<uint8_t> sink(need + 8, 0xEE);
     size_t wrote = yeptris_cbor_encode_into((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL,
                                             sink.data(), sink.size());
     EXPECT_EQ(wrote, need);
-    EXPECT_EQ(yeptris_cbor_encode_into((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL,
-                                       sink.data(), need - 1),
+    EXPECT_EQ(yeptris_cbor_encode_into((YeptrisDocument)d.doc, YEPTRIS_CBOR_CANONICAL, sink.data(),
+                                       need - 1),
               need); /* too-small cap writes nothing, returns the need */
 }
 
@@ -613,17 +673,59 @@ TEST(CborEncode, RoundtripProperty) {
     /* decode -> encode -> decode: DOM trees equal (the walker compares
      * kind + text, so the bytes->text divergence is invisible) */
     const char* vectors[] = {
-        "00", "01", "1818", "1b000000e8d4a51000", "1bffffffffffffffff", "20", "3903e7",
-        "f90000", "f98000", "f93c00", "fb3ff199999999999a", "f9c400", "f97bff", "f97e00",
-        "f9fc00", "fa7f7fffff", "fb7e37e43c8800759c", "f90001", "f4", "f5", "f6", "f7",
-        "f0", "f8ff", "c074323031332d30332d32315432303a30343a30305a", "c11a514b67b0",
-        "c249010000000000000000", "d74401020304", "d818456449455446",
-        "d82076687474703a2f2f7777772e6578616d706c652e636f6d", "40", "4401020304", "60",
-        "6161", "6449455446", "62225c", "62c3bc", "64f0908591", "80", "83010203",
-        "8301820203820405", "98190102030405060708090a0b0c0d0e0f101112131415161718181819",
-        "a0", "a201020304", "a26161016162820203", "826161a161626163",
-        "5f42010243030405ff", "7f657374726561646d696e67ff", "9fff", "9f018202039f0405ffff",
-        "bf61610161629f0203ffff", "bf6346756ef563416d7421ff", "a26161016162820203",
+        "00",
+        "01",
+        "1818",
+        "1b000000e8d4a51000",
+        "1bffffffffffffffff",
+        "20",
+        "3903e7",
+        "f90000",
+        "f98000",
+        "f93c00",
+        "fb3ff199999999999a",
+        "f9c400",
+        "f97bff",
+        "f97e00",
+        "f9fc00",
+        "fa7f7fffff",
+        "fb7e37e43c8800759c",
+        "f90001",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f0",
+        "f8ff",
+        "c074323031332d30332d32315432303a30343a30305a",
+        "c11a514b67b0",
+        "c249010000000000000000",
+        "d74401020304",
+        "d818456449455446",
+        "d82076687474703a2f2f7777772e6578616d706c652e636f6d",
+        "40",
+        "4401020304",
+        "60",
+        "6161",
+        "6449455446",
+        "62225c",
+        "62c3bc",
+        "64f0908591",
+        "80",
+        "83010203",
+        "8301820203820405",
+        "98190102030405060708090a0b0c0d0e0f101112131415161718181819",
+        "a0",
+        "a201020304",
+        "a26161016162820203",
+        "826161a161626163",
+        "5f42010243030405ff",
+        "7f657374726561646d696e67ff",
+        "9fff",
+        "9f018202039f0405ffff",
+        "bf61610161629f0203ffff",
+        "bf6346756ef563416d7421ff",
+        "a26161016162820203",
     };
     for (const char* v : vectors) {
         std::vector<uint8_t> a = hx(v);
@@ -635,7 +737,7 @@ TEST(CborEncode, RoundtripProperty) {
         Dec second(std::vector<uint8_t>((uint8_t*)enc, (uint8_t*)enc + n));
         free(enc);
         ASSERT_EQ(second.st, YEPTRIS_OK) << v;
-        EXPECT_TRUE(walk(second.dom(), second.root(), E{E::ANY_ROOT})) << v;
+        EXPECT_TRUE(walk(second.dom(), second.root(), E{E::ANY_ROOT, "", false, 0, {}, ""})) << v;
     }
 }
 
@@ -681,18 +783,17 @@ TEST(CborEncode, UnencodableAndContract) {
         std::vector<uint8_t> encbuf((uint8_t*)enc, (uint8_t*)enc + n);
         Dec back(encbuf); /* the document borrows the bytes */
         ASSERT_EQ(back.st, YEPTRIS_OK);
-        EXPECT_TRUE(walk(back.dom(), back.root(),
-                         /* canonical key order sorts on ENCODED keys:
-                          * the length head leads — ok(0x62) < name/vals
-                          * (0x64, n<v) < count/ratio (0x65, c<r) */
-                         M({S_("ok"), Tb(), S_("name"), S_("yeptris"), S_("vals"),
-                              A({I_("1"), I_("2"), I_("3")}), S_("count"), I_("7"),
-                              S_("ratio"), F_("1.5")})));
+        EXPECT_TRUE(walk(
+            back.dom(), back.root(),
+            /* canonical key order sorts on ENCODED keys:
+             * the length head leads — ok(0x62) < name/vals
+             * (0x64, n<v) < count/ratio (0x65, c<r) */
+            M({S_("ok"), Tb(), S_("name"), S_("yeptris"), S_("vals"),
+               A({I_("1"), I_("2"), I_("3")}), S_("count"), I_("7"), S_("ratio"), F_("1.5")})));
         free(enc);
     }
     yeptris_document_free(doc);
 }
-
 
 // ---- sequences (TODO.cbor/03, RFC 8742) ------------------------------
 
@@ -730,8 +831,17 @@ static std::string one_canon(const char* hex) {
 
 TEST(CborSeq, MixedItemsIdenticalTrees) {
     const char* items[] = {
-        "01", "f5", "6449455446", "83010203", "a26161016162820203", "1b000000e8d4a51000",
-        "fbc010666666666666", "c11a514b67b0", "9f01820203820405ff", "4401020304", "f0",
+        "01",
+        "f5",
+        "6449455446",
+        "83010203",
+        "a26161016162820203",
+        "1b000000e8d4a51000",
+        "fbc010666666666666",
+        "c11a514b67b0",
+        "9f01820203820405ff",
+        "4401020304",
+        "f0",
     };
     std::vector<uint8_t> seq = seq_bytes({items, items + 11});
     SeqSink sink;
@@ -779,8 +889,10 @@ TEST(CborSeq, TruncatedTailCarriesItemIndex) {
 }
 
 TEST(CborSeq, SplitDifferentialAtBoundaries) {
-    const char* items[] = {"a26161016162820203", "f97bff", "98190102030405060708090a0b0c0d0e0f"
-                           "101112131415161718181819", "d82076687474703a2f2f7777772e6578616d706c652e636f6d",
+    const char* items[] = {"a26161016162820203", "f97bff",
+                           ("98190102030405060708090a0b0c0d0e0f"
+                            "101112131415161718181819"),
+                           "d82076687474703a2f2f7777772e6578616d706c652e636f6d",
                            "c349010000000000000000"};
     std::vector<uint8_t> whole = seq_bytes({items, items + 5});
     SeqSink all;
@@ -822,8 +934,8 @@ TEST(CborSeq, EncodeSequence) {
     }
     std::string want = one_canon(hexes[0]) + one_canon(hexes[1]) + one_canon(hexes[2]);
     size_t n = 0;
-    unsigned char* buf = (unsigned char*)yeptris_cbor_encode_sequence(docs, 3,
-                                                                      YEPTRIS_CBOR_CANONICAL, &n);
+    unsigned char* buf =
+        (unsigned char*)yeptris_cbor_encode_sequence(docs, 3, YEPTRIS_CBOR_CANONICAL, &n);
     ASSERT_NE(buf, nullptr);
     {
         std::string got;

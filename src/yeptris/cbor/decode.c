@@ -189,8 +189,7 @@ static uint32_t cbor_span_node(yep_cdec* c, const unsigned char* p, uint32_t n) 
         tag = &tag_v;
         c->have_pending = 0;
     }
-    uint32_t id =
-        dom_open_node(c->d, YEP_DOM_SCALAR, tag, NULL, 0, YEP_STYLE_DOUBLE_QUOTED, 0, 0);
+    uint32_t id = dom_open_node(c->d, YEP_DOM_SCALAR, tag, NULL, 0, YEP_STYLE_DOUBLE_QUOTED, 0, 0);
     if (id == UINT32_MAX) {
         c->status = YEPTRIS_ERROR_MEMORY;
         return UINT32_MAX;
@@ -220,8 +219,8 @@ static int cbor_open(yep_cdec* c, int is_map) {
         tag = &tag_v;
         c->have_pending = 0;
     }
-    uint32_t id = dom_open_node(c->d, is_map ? YEP_DOM_MAPPING : YEP_DOM_SEQUENCE, tag, NULL, 0,
-                                0, 0, 1);
+    uint32_t id =
+        dom_open_node(c->d, is_map ? YEP_DOM_MAPPING : YEP_DOM_SEQUENCE, tag, NULL, 0, 0, 0, 1);
     if (id == UINT32_MAX) {
         c->status = YEPTRIS_ERROR_MEMORY;
         return 0;
@@ -315,8 +314,7 @@ static int cbor_indef_string(yep_cdec* c, int is_text) {
         tag = &tag_v;
         c->have_pending = 0;
     }
-    uint32_t id =
-        dom_open_node(c->d, YEP_DOM_SCALAR, tag, NULL, 0, YEP_STYLE_DOUBLE_QUOTED, 0, 0);
+    uint32_t id = dom_open_node(c->d, YEP_DOM_SCALAR, tag, NULL, 0, YEP_STYLE_DOUBLE_QUOTED, 0, 0);
     if (id == UINT32_MAX) {
         c->status = YEPTRIS_ERROR_MEMORY;
         return 0;
@@ -557,7 +555,7 @@ static int cbor_item(yep_cdec* c) {
             return 0;
         }
         return 2; /* the chain needs its content item */
-    default: /* 7 */
+    default:      /* 7 */
         break;
     }
 
@@ -659,10 +657,14 @@ static int cbor_item(yep_cdec* c) {
 
 int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int strict,
                         size_t* consumed) {
-    yep_cdec c = {d, p, len, 0, strict, YEPTRIS_OK, {0}, 0, {0}, 0};
+    yep_cdec c;
+    memset(&c, 0, sizeof(c));
+    c.d = d;
+    c.p = p;
+    c.len = len;
+    c.strict = strict;
+    c.status = YEPTRIS_OK;
     int done_top = 0; /* the ONE top-level item is done (tags never count) */
-    c.pending_tag.off = 0;
-    c.pending_tag.len = 0;
     for (;;) {
         if (c.depth == 0) {
             if (done_top) { /* the root closed; one data item per call */
@@ -714,7 +716,7 @@ int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int stri
         }
         if (c.frame[parent].rem != YEP_CBOR_INDEF) {
             c.frame[parent].rem--;
- /* one item (scalar, or a container now open) consumed a parent slot */
+            /* one item (scalar, or a container now open) consumed a parent slot */
         }
     }
 }
@@ -814,8 +816,7 @@ YEPTRIS_API YeptrisDocument yeptris_cbor_decode(const void* buf, size_t len, uin
     dom->input_base = (const char*)buf;
     dom->input_len = len;
     YeptrisStatus st = (YeptrisStatus)yep_cbor_decode_dom(dom, (const unsigned char*)buf, len,
-                                                          (opts & YEPTRIS_CBOR_STRICT) != 0,
-                                                          NULL);
+                                                          (opts & YEPTRIS_CBOR_STRICT) != 0, NULL);
     if (st != YEPTRIS_OK) {
         yep_dom_destroy(dom);
         if (status != NULL) {
