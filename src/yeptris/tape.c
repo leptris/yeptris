@@ -275,9 +275,6 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
                     goto reject;
                 }
             }
-            if (key_slot) {
-                goto reject;
-            }
             kinds[count] = c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE);
             offs[count] = (uint32_t)at;
             lens[count] = (uint32_t)wl;
@@ -368,16 +365,11 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
             goto reject;
         }
         char c = p[at];
-        /* the residue since the last token must be whitespace */
-        {
-            size_t g = at;
-            while (g > prev_end && (p[g - 1] == ' ' || p[g - 1] == '\n' || p[g - 1] == '\r')) {
-                g--;
-            }
-            if (g != prev_end) {
-                goto reject; /* a tab, raw control, or dropped byte */
-            }
-        }
+        /* no gap check: every byte class that could hide between
+         * tokens is itself a token (dropped scalars are scalar-run
+         * starts, raw C0 is a scalar — the state machine rejects
+         * them); legal ws is simply invisible. Tabs are ws-class and
+         * fall to the document path, exactly like the fused walk. */
         prev_end = at + 1;
 
         if (top_expect == JW_COLON) {
@@ -397,12 +389,15 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
             if (c != ']' && c != '}') {
                 goto reject;
             }
+        } else if (key_slot) {
+            /* KEY position: a string or the container's close — the
+             * value arms are unreachable, the chain short-circuits */
+            if (c != '"' && c != ']' && c != '}') {
+                goto reject;
+            }
         }
 
         if ((unsigned)(c - '0') <= 9u || c == '-') {
-            if (key_slot) {
-                goto reject;
-            }
             size_t i = at;
             int flt = 0;
             if (!yep_json_number_shape(p, len, &i, &flt)) {
@@ -459,9 +454,6 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
             if (depth >= YEP_JSON_WALK_DEPTH) {
                 goto reject;
             }
-            if (key_slot) {
-                goto reject;
-            }
             kind[depth - 1] = top_kind;
             open_at[depth - 1] = top_open;
             top_kind = c == '[' ? 0 : 1;
@@ -496,9 +488,6 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
                     z != ':') {
                     goto reject;
                 }
-            }
-            if (key_slot) {
-                goto reject;
             }
             kinds[count] = c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE);
             offs[count] = (uint32_t)at;
