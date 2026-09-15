@@ -1705,3 +1705,38 @@ compact-record tape v2 (ABI break, 0.4.0-class) or a DOM-over-tape
 lazy materialization. (Build lesson of the day: the ninja mtime trap
 after git-checkout churn poisoned three measurement rounds — purge
 the object dir when checkout touches built sources.)
+
+## 2026-09-15 — the two-stage tape: built, gated green, measured DEAD
+
+The campaign's last architectural hypothesis, fully executed: stage 1
+locates structure (scalar reference: structural positions + string
+spans, escape validation via the grammar SSOT, C0 reject), stage 2
+walks precomputed positions (scalar spans parsed between structurals,
+ws never scanned, string interiors never touched). Equivalent to the
+fused walk by the full oracle — 306/306, tape-diff 2M fuzz + 318
+corpus, after the oracle caught three real divergences during the
+build (a double-opened root, scalars preceding a close that the close
+accepted unseen, missing literal spans; then invalid escapes and raw
+C0 in strings — all fixed, all pinned by the corpus).
+
+The measured decomposition (json-doc, best-of, this Mac):
+- fused single-pass (the incumbent):        510 MB/s
+- two-stage, scalar stage 1:                311-326 MB/s
+- stage 1 alone (scalar):                   ~670 MB/s -> 4.0 ms
+- stage 2 + carve alone:                    ~660 MB/s (4.2 ms)
+- projected with a NEON stage 1 (4-5 GB/s): ~580 MB/s
+
+The ceiling of THIS stage-2 shape is 0.6x simdjson; even a perfect
+stage 1 leaves the route at ~0.55x — below the fused incumbent's
+0.5x plus change.simdjson parity on this corpus is NOT reachable by
+restructuring the same semantic work: the fused walk stands. Branch
+deleted; the exploration space is now closed by measurement at every
+layer (fused 510 / packed-ABI 445 / two-stage 320 / stage-2-alone
+660). PR #270 keeps the fuzz hex-dump diagnostic the hunt produced.
+
+What parity would actually take: a ground-up simdjson-class stage 2
+(theirs carries no expect-state generality, no span-revalidation, and
+writes a leaner tape) behind a 64B-pipe stage 1 — a from-scratch
+competing implementation, not a restructuring. The honest course is
+to hold the tape at the fused optimum and spend the effort on the
+3x-ryml engine, where the deficits are measured and the levers known.
