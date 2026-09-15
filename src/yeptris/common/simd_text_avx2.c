@@ -339,7 +339,7 @@ static void yep_avx2_line_facts(const char* s, size_t len, size_t pos, yep_line_
     /* the capped SWAR walk settles short lines in one pass — it is
      * BOTH the test and the answer (TODO 84's probe-then-rescan paid
      * the line content twice) */
-    if (yep_text_line_facts_capped(s, len, pos, 64, out)) {
+    if (yep_text_line_facts_capped(s, len, pos, 128, out)) {
         return;
     }
     const __m256i knl = _mm256_set1_epi8('\n'), kcr = _mm256_set1_epi8('\r'),
