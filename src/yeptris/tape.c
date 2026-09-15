@@ -411,16 +411,29 @@ static YeptrisStatus tape_walk_indexed(const char* p, size_t len, size_t open_po
                 }
                 int kslot =
                     top_kind == 1 && (top_expect == JW_KEY_OR_CLOSE || top_expect == JW_KEY);
-                if (sc0 == 't' || sc0 == 'f' || sc0 == 'n') {
-                    const char* w = sc0 == 't' ? "true" : (sc0 == 'f' ? "false" : "null");
-                    size_t wl = sc0 == 't' ? 4 : (sc0 == 'f' ? 5 : 4);
-                    if ((size_t)(at - j) < wl) {
-                        goto reject;
-                    }
-                    for (size_t k = 0; k < wl; k++) {
-                        if (p[j + k] != w[k]) {
+                if (sc0 == 't' || sc0 == 'n' || sc0 == 'f') {
+                    /* packed literal compare: the wl bytes are in-bounds
+                     * because at - j >= wl is checked first (j + wl <=
+                     * at <= len-1) */
+                    uint32_t w4;
+                    size_t wl;
+                    if (sc0 == 'f') {
+                        if ((size_t)(at - j) < 5 || p[j + 4] != 'e') {
                             goto reject;
                         }
+                        w4 = 0x736C6166u; /* "fals" */
+                        wl = 5;
+                    } else {
+                        if ((size_t)(at - j) < 4) {
+                            goto reject;
+                        }
+                        w4 = sc0 == 't' ? 0x65757274u : 0x6C6C756Eu; /* "true"/"null" */
+                        wl = 4;
+                    }
+                    uint32_t got4;
+                    memcpy(&got4, p + j, 4);
+                    if (got4 != w4) {
+                        goto reject;
                     }
                     for (size_t k = j + wl; k < at; k++) {
                         if (p[k] != ' ' && p[k] != '\n' && p[k] != '\r' && p[k] != '\t') {
