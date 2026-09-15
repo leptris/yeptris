@@ -41,10 +41,14 @@
 /* ---- heads: minimal argument encoding (RFC 8949 s3) ----------------- */
 
 static size_t cbor_arg_bytes(uint64_t arg) {
-    if (arg < 24) return 1;
-    if (arg <= 0xFFull) return 2;
-    if (arg <= 0xFFFFull) return 3;
-    if (arg <= 0xFFFFFFFFull) return 5;
+    if (arg < 24)
+        return 1;
+    if (arg <= 0xFFull)
+        return 2;
+    if (arg <= 0xFFFFull)
+        return 3;
+    if (arg <= 0xFFFFFFFFull)
+        return 5;
     return 9;
 }
 
@@ -298,7 +302,7 @@ static int cbor_tag_chain(const yep_dom* d, const yep_dnode* n, uint64_t* out, i
 /* ---- canonical map ordering (s4.2.1: bytewise on encoded keys) ------ */
 
 typedef struct {
-    uint32_t map;    /* map node id */
+    uint32_t map; /* map node id */
     uint32_t pairs;
     uint32_t* child; /* map children ids in chain order (k,v,k,v) */
     uint32_t* order; /* pair emit order (indices into child) */
@@ -356,8 +360,8 @@ static uint8_t* cbor_encode_key(const yep_dom* d, const yep_dnode* key, size_t* 
                 return buf;
             }
         }
-        cbor_put_head(buf, &pos,
-                      yep_utf8_validate((const unsigned char*)v.p, v.len, NULL) ? 3 : 2, v.len);
+        cbor_put_head(buf, &pos, yep_utf8_validate((const unsigned char*)v.p, v.len, NULL) ? 3 : 2,
+                      v.len);
         memcpy(buf + pos, v.p, v.len);
         pos += v.len;
     }

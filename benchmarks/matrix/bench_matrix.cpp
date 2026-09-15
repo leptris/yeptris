@@ -16,8 +16,8 @@
 #include <vector>
 
 #include <yeptris.h>
-#include <yeptris/json.h> /* yeptris_parse_json: the strict-JSON direct build */
 #include <yeptris/cbor.h> /* TODO.cbor/07: the CBOR tier */
+#include <yeptris/json.h> /* yeptris_parse_json: the strict-JSON direct build */
 #include <yeptris/tape.h> /* yeptris_parse_json_tape: the fused walk-to-tape */
 
 #if defined(YEP_BENCH_LIBYAML)
@@ -732,14 +732,16 @@ CborTier cbor_vs_json(const Corpus& c, int rounds) {
         auto a1 = clk::now();
         yeptris_document_free(d);
         double jp = ms_of(a0, a1);
-        if (jp < best_jp) best_jp = jp;
+        if (jp < best_jp)
+            best_jp = jp;
 
         auto b0 = clk::now();
         YeptrisDocument dc = yeptris_cbor_decode(cbor, clen, 0, &st);
         auto b1 = clk::now();
         yeptris_document_free(dc);
         double cd = ms_of(b0, b1);
-        if (cd < best_cd) best_cd = cd;
+        if (cd < best_cd)
+            best_cd = cd;
 
         size_t jlen = 0;
         auto e0 = clk::now();
@@ -747,15 +749,18 @@ CborTier cbor_vs_json(const Corpus& c, int rounds) {
         auto e1 = clk::now();
         free(jout);
         double je = ms_of(e0, e1);
-        if (je < best_je) best_je = je;
+        if (je < best_je)
+            best_je = je;
 
         size_t olen = 0;
         auto f0 = clk::now();
-        unsigned char* cout = (unsigned char*)yeptris_cbor_encode(cdoc, YEPTRIS_CBOR_CANONICAL, &olen);
+        unsigned char* cout =
+            (unsigned char*)yeptris_cbor_encode(cdoc, YEPTRIS_CBOR_CANONICAL, &olen);
         auto f1 = clk::now();
         free(cout);
         double ce = ms_of(f0, f1);
-        if (ce < best_ce) best_ce = ce;
+        if (ce < best_ce)
+            best_ce = ce;
     }
     yeptris_document_free(jdoc);
     yeptris_document_free(cdoc);
@@ -1021,7 +1026,8 @@ int main(int argc, char** argv) {
 #if defined(YEP_BENCH_SIMDJSON)
     /* The JSON-field referee (TODO.restructure/81; the tape leg is 85). */
     printf("\n# CBOR vs JSON on the same DOM (TODO.cbor/07, canonical, best-of)\n\n"
-           "| shape | decode vs JSON parse | encode vs JSON emit | cbor/json size | CBOR decode MB/s |\n"
+           "| shape | decode vs JSON parse | encode vs JSON emit | cbor/json size | CBOR decode "
+           "MB/s |\n"
            "|---|---|---|---|---|\n");
     for (const Corpus& c : corpora) {
         if (c.name != "json-doc" && c.name != "flow-single" && c.name != "scalar-heavy") {
