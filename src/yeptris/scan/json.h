@@ -86,6 +86,10 @@ YEPTRIS_API int yep_json_number_scan(const char* p, size_t len, size_t* i, int* 
 YEPTRIS_API int yep_json_literal(const char* p, size_t len, size_t* i, const char* word);
 YEPTRIS_API int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out,
                                 int* has_esc);
+/* The per-chunk byte-class classifier behind the flow kernels: the
+ * kernels table's json_chunk slot (common/simd_text.h) — yep_chunk_masks
+ * is defined there; the differential suite pins the ISAs to it. */
+
 YEPTRIS_API int yep_json_document(const char* p, size_t len, size_t* err);
 
 #ifdef __cplusplus

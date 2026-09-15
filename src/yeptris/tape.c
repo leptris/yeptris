@@ -13,6 +13,7 @@
  * token; the root OPEN is synthesized here (walk_init consumes the
  * opener without emitting it). */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include <yeptris/tape.h>
@@ -286,12 +287,20 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             continue;
         }
         if (c == 't' || c == 'f' || c == 'n') {
-            const char* w = c == 't' ? "true" : (c == 'f' ? "false" : "null");
-            size_t wl = c == 't' ? 4 : (c == 'f' ? 5 : 4);
-            for (size_t k = 0; k < wl; k++) {
-                if (at + k >= len || p[at + k] != w[k]) {
-                    goto reject;
-                }
+            /* packed literal compare: bounds-checked span first, then
+             * one u32 load (false adds its 5th byte) — the indexed
+             * walk's cut, ported to the fused walk */
+            size_t wl = c == 'f' ? 5 : 4;
+            if (at + wl > len) {
+                goto reject;
+            }
+            uint32_t got4;
+            memcpy(&got4, p + at, 4);
+            if (got4 != (c == 't'   ? 0x65757274u /* "true" */
+                         : c == 'n' ? 0x6C6C756Eu /* "null" */
+                                    : 0x736C6166u /* "fals" */) ||
+                (c == 'f' && p[at + 4] != 'e')) {
+                goto reject;
             }
             if (at + wl < len) {
                 char z = p[at + wl];
