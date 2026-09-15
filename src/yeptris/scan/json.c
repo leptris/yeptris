@@ -272,9 +272,8 @@ int yep_json_number_scan(const char* p, size_t len, size_t* i, int* is_float, in
                 n++;
             }
             size_t end = d0 + n;
-            if (end >= len ||
-                (p[end] != '.' && p[end] != 'e' && p[end] != 'E' && p[end] != '0' &&
-                 (p[end] < '1' || p[end] > '9'))) {
+            if (end >= len || (p[end] != '.' && p[end] != 'e' && p[end] != 'E' && p[end] != '0' &&
+                               (p[end] < '1' || p[end] > '9'))) {
                 /* no more digits and not a float/exponent — settle */
                 if (end < len) {
                     char c = p[end];
@@ -517,12 +516,12 @@ int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out, int
         if (lim > 8) {
             lim = 8;
         }
-        for (size_t k = 0; k < lim; k++) {
-            char c = p[j + k];
+        for (size_t w = 0; w < lim; w++) { /* w: not k — MSVC C4456 */
+            char c = p[j + w];
             if (c == '"') {
-                *close_out = j + k;
+                *close_out = j + w;
                 *has_esc = 0;
-                *i = j + k + 1;
+                *i = j + w + 1;
                 return 1;
             }
             if (c == '\\' || (unsigned char)c < 0x20) {

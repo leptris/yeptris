@@ -183,7 +183,7 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             continue;
         }
         if (top_expect == JW_COMMA_OR_CLOSE) {
-            if (c == ',' ) {
+            if (c == ',') {
                 top_expect = top_kind ? JW_KEY : JW_VALUE;
                 i = at + 1;
                 continue;
