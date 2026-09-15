@@ -706,33 +706,15 @@ yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
  * backslash is an escape start and the jump consumes its payload —
  * including the \\" escape's own quote. */
 
-yep_chunk_masks yep_json_chunk_scalar(const char* p, size_t n) {
-    yep_chunk_masks m = {0, 0, 0, 0, 0};
-    for (size_t i = 0; i < n; i++) {
-        unsigned char c = (unsigned char)p[i];
-        uint32_t bit = 1u << i;
-        m.valid |= bit;
-        if (c == '"') {
-            m.quote |= bit;
-        } else if (c == '\\') {
-            m.bs |= bit;
-        } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
-            m.structurals |= bit;
-        } else if (c < 0x20) {
-            m.c0 |= bit;
-        }
-    }
-    return m;
-}
-
 int yep_json_index_build(const char* p, size_t len, uint32_t* structurals, size_t* ns,
                          uint32_t* str_close, size_t* nstr) {
     size_t s_count = 0;
     size_t str_count = 0;
     int in_string = 0;
+    const yep_text_kernels* k = yep_text_active();
     for (size_t off = 0; off < len; off += 32) {
         size_t n = len - off < 32 ? len - off : 32;
-        yep_chunk_masks m = yep_json_chunk_scalar(p + off, n);
+        yep_chunk_masks m = k->json_chunk(p + off, n);
         uint32_t events = (m.quote | m.bs | m.structurals | m.c0) & m.valid;
         while (events != 0) {
             uint32_t k = (uint32_t)__builtin_ctz(events);
@@ -781,18 +763,6 @@ int yep_json_index_build(const char* p, size_t len, uint32_t* structurals, size_
     return in_string ? 0 : 1; /* unterminated string */
 }
 
-/* ---- the per-chunk classifier: scalar reference --------------------- */
+/* The per-chunk classifier: the kernels table's json_chunk slot
+ * (scalar reference in common, NEON/AVX2 TUs on their ISAs). */
 
-
-/* The ISA-dispatched classifier: the kernels-table entry (set by the
- * SIMD TUs; the scalar reference until one registers). */
-static yep_chunk_masks (*yep_json_chunk_dispatch)(const char* p, size_t n) =
-    yep_json_chunk_scalar;
-
-yep_chunk_masks yep_json_chunk_classify(const char* p, size_t n) {
-    return yep_json_chunk_dispatch(p, n);
-}
-
-void yep_json_chunk_set(yep_chunk_masks (*fn)(const char* p, size_t n)) {
-    yep_json_chunk_dispatch = fn != NULL ? fn : yep_json_chunk_scalar;
-}
