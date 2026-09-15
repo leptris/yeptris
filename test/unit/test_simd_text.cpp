@@ -585,8 +585,8 @@ static int naive_gate_safe(const unsigned char* s, size_t len) {
 }
 
 static bool chunk_masks_eq(const yep_chunk_masks& a, const yep_chunk_masks& b) {
-    return a.quote == b.quote && a.bs == b.bs && a.structurals == b.structurals &&
-           a.c0 == b.c0 && a.valid == b.valid;
+    return a.quote == b.quote && a.bs == b.bs && a.structurals == b.structurals && a.c0 == b.c0 &&
+           a.valid == b.valid;
 }
 
 static yep_chunk_masks naive_json_chunk(const char* p, size_t n) {
@@ -664,9 +664,9 @@ TEST(SimdText, ChunkClassify) {
     /* the class bytes plus the boundary probes: 0x20 is NOT c0,
      * 0x1F is, and every >=0x80 byte must stay unclassified (the
      * unsigned-vs-signed compare trap — a signed < would flag UTF-8) */
-    const char probes[] = {'"',  '\\', '{',  '}',  '[', ']', ',', ':', 'a',
-                           ' ',  0x00, 0x01, 0x0A, 0x1F, 0x20, 0x7F, (char)0x80,
-                           (char)0xC3, (char)0xFF};
+    const char probes[] = {'"',  '\\', '{',        '}',        '[',       ']',  ',',
+                           ':',  'a',  ' ',        0x00,       0x01,      0x0A, 0x1F,
+                           0x20, 0x7F, (char)0x80, (char)0xC3, (char)0xFF};
     for (char pc : probes) {
         /* the probe byte at EVERY position of a full chunk */
         for (size_t at = 0; at < 32; at++) {
@@ -675,7 +675,8 @@ TEST(SimdText, ChunkClassify) {
             yep_chunk_masks want = naive_json_chunk(chunk.data(), chunk.size());
             EXPECT_TRUE(chunk_masks_eq(k->json_chunk(chunk.data(), chunk.size()), want))
                 << "probe byte " << (int)(unsigned char)pc << " at " << at;
-            EXPECT_TRUE(chunk_masks_eq(yep_text_json_chunk_scalar(chunk.data(), chunk.size()), want))
+            EXPECT_TRUE(
+                chunk_masks_eq(yep_text_json_chunk_scalar(chunk.data(), chunk.size()), want))
                 << "scalar probe byte " << (int)(unsigned char)pc << " at " << at;
         }
         /* all-probe chunks (dense class pressure) */
@@ -703,7 +704,8 @@ TEST(SimdText, ChunkClassify) {
             c[i] = jsonish ? jalpha[rng() % jalpha.size()] : (char)(rng() % 256);
         }
         yep_chunk_masks want = naive_json_chunk(c.data(), n);
-        EXPECT_TRUE(chunk_masks_eq(k->json_chunk(c.data(), n), want)) << "random t=" << t << " n=" << n;
+        EXPECT_TRUE(chunk_masks_eq(k->json_chunk(c.data(), n), want))
+            << "random t=" << t << " n=" << n;
         EXPECT_TRUE(chunk_masks_eq(yep_text_json_chunk_scalar(c.data(), n), want))
             << "scalar random t=" << t << " n=" << n;
     }
