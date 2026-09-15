@@ -86,19 +86,9 @@ YEPTRIS_API int yep_json_number_scan(const char* p, size_t len, size_t* i, int* 
 YEPTRIS_API int yep_json_literal(const char* p, size_t len, size_t* i, const char* word);
 YEPTRIS_API int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out,
                                 int* has_esc);
-/* Stage 1 of the two-stage tape front: locate STRUCTURE. Per 32-byte
- * chunk, an ISA classifier produces QUOTE / BACKSLASH / STRUCTURAL
- * masks; a shared resolver walks the set bits — string intervals
- * (escape-parity by popcount, the escape grammar validated at each
- * backslash through the SSOT, raw C0 rejected), and the structural
- * positions outside strings ({}[],: plus string OPEN quotes). Stage 2
- * then never scans ws or string interiors. Returns 1 ok / 0
- * malformed. structurals/str_close must hold len+2 entries. */
-int yep_json_index_build(const char* p, size_t len, uint32_t* structurals, size_t* ns,
-                         uint32_t* str_close, size_t* nstr);
-
-/* The per-chunk classifier behind this: the kernels table's json_chunk
- * slot (common/simd_text.h) — yep_chunk_masks is defined there. */
+/* The per-chunk byte-class classifier behind the flow kernels: the
+ * kernels table's json_chunk slot (common/simd_text.h) — yep_chunk_masks
+ * is defined there; the differential suite pins the ISAs to it. */
 
 YEPTRIS_API int yep_json_document(const char* p, size_t len, size_t* err);
 
