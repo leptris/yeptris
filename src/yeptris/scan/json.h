@@ -83,6 +83,9 @@ YEPTRIS_API int yep_json_number(const char* p, size_t len, size_t* i);
  * start..*i). Out params may be NULL. */
 YEPTRIS_API int yep_json_number_scan(const char* p, size_t len, size_t* i, int* is_float,
                                      int64_t* iv, double* dv);
+/* Same grammar, same rejects, same advance — NO conversion: reports
+ * the text shape only (0 int / 1 float). The lazy tape's arm. */
+YEPTRIS_API int yep_json_number_shape(const char* p, size_t len, size_t* i, int* is_float);
 YEPTRIS_API int yep_json_literal(const char* p, size_t len, size_t* i, const char* word);
 YEPTRIS_API int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out,
                                 int* has_esc);

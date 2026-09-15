@@ -1,6 +1,7 @@
-// test_tape.cpp — the compact JSON tape (TODO.restructure/85). Pins:
-// record kinds and OPEN/CLOSE links, zero-copy spans, inline number
-// conversion (int64 exact, beyond-int64 flagged), scalar roots,
+// test_tape.cpp — the compact JSON tape (TODO.restructure/85, v2
+// records). Pins: record kinds and OPEN/CLOSE links, zero-copy spans,
+// LAZY numbers (span records at parse; yeptris_tape_convert at
+// materialize — int64 exact, beyond-int64 flagged), scalar roots,
 // strict-JSON rejects, error parity with yeptris_parse_json, and the
 // free/reuse contract.
 #include <gtest/gtest.h>
@@ -25,55 +26,55 @@ struct TapeGuard {
     YeptrisStatus parse(const char* s) {
         return yeptris_parse_json_tape(s, strlen(s), &t);
     }
-};
 
-double val_double(const yeptris_json_tape& t, size_t i) {
-    double d = 0;
-    memcpy(&d, &t.vals[i], sizeof(d));
-    return d;
-}
+    // convert every record; arrays sized to count
+    size_t convert_all(int64_t* iv, double* dv) {
+        return yeptris_tape_convert(&t, 0, t.count, iv, dv);
+    }
+};
 
 TEST(JsonTape, SeqRecordsSpansAndLinks) {
     TapeGuard tp;
     ASSERT_EQ(tp.parse("[1, \"a\", true, null, 2.5]"), YEPTRIS_OK);
-    ASSERT_EQ(tp.t.count, 8u); // DOC OPEN INT STR BOOL NULL FLOAT CLOSE
+    ASSERT_EQ(tp.t.count, 8u); // DOC OPEN INT STR TRUE NULL FLOAT CLOSE
     EXPECT_EQ(tp.t.kinds[0], YEP_T_DOC);
     EXPECT_EQ(tp.t.kinds[1], YEP_T_SEQ_OPEN);
     EXPECT_EQ(tp.t.kinds[2], YEP_T_INT);
     EXPECT_EQ(tp.t.kinds[3], YEP_T_STR);
-    EXPECT_EQ(tp.t.kinds[4], YEP_T_BOOL);
+    EXPECT_EQ(tp.t.kinds[4], YEP_T_TRUE);
     EXPECT_EQ(tp.t.kinds[5], YEP_T_NULL);
     EXPECT_EQ(tp.t.kinds[6], YEP_T_FLOAT);
     EXPECT_EQ(tp.t.kinds[7], YEP_T_CLOSE);
 
-    EXPECT_EQ((int64_t)tp.t.vals[2], 1);
     // the STR span borrows the input: offset of 'a' in the literal
     EXPECT_EQ(tp.t.offs[3], 5u);
     EXPECT_EQ(tp.t.lens[3], 1u);
-    EXPECT_EQ(tp.t.vals[4], 1u); // true
-    EXPECT_DOUBLE_EQ(val_double(tp.t, 6), 2.5);
+    // lazy numbers: the spans point at the digit text
+    EXPECT_EQ(tp.t.offs[2], 1u);
+    EXPECT_EQ(tp.t.lens[2], 1u); // "1"
+    EXPECT_EQ(tp.t.lens[6], 3u); // "2.5"
 
-    EXPECT_EQ(tp.t.vals[1], 7u); // OPEN -> matching CLOSE
-    EXPECT_EQ(tp.t.vals[7], 1u); // CLOSE -> matching OPEN
+    EXPECT_EQ(tp.t.offs[1], 7u); // OPEN -> matching CLOSE
+    EXPECT_EQ(tp.t.offs[7], 1u); // CLOSE -> matching OPEN
 }
 
 TEST(JsonTape, MapKeysAreStrRecordsInDocumentOrder) {
     TapeGuard tp;
     ASSERT_EQ(tp.parse("{\"id\": 7, \"ok\": false}"), YEPTRIS_OK);
-    ASSERT_EQ(tp.t.count, 7u); // DOC OPEN STR INT STR BOOL CLOSE
+    ASSERT_EQ(tp.t.count, 7u); // DOC OPEN STR INT STR FALSE CLOSE
     EXPECT_EQ(tp.t.kinds[1], YEP_T_MAP_OPEN);
     EXPECT_EQ(tp.t.kinds[2], YEP_T_STR); // "id"
     // the span starts after the opening quote
     EXPECT_EQ(tp.t.offs[2], 2u);
     EXPECT_EQ(tp.t.lens[2], 2u);
     EXPECT_EQ(tp.t.kinds[3], YEP_T_INT);
-    EXPECT_EQ((int64_t)tp.t.vals[3], 7);
+    EXPECT_EQ(tp.t.offs[3], 7u);
+    EXPECT_EQ(tp.t.lens[3], 1u);         // "7"
     EXPECT_EQ(tp.t.kinds[4], YEP_T_STR); // "ok"
     EXPECT_EQ(tp.t.lens[4], 2u);
-    EXPECT_EQ(tp.t.kinds[5], YEP_T_BOOL);
-    EXPECT_EQ(tp.t.vals[5], 0u); // false
-    EXPECT_EQ(tp.t.vals[1], 6u);
-    EXPECT_EQ(tp.t.vals[6], 1u);
+    EXPECT_EQ(tp.t.kinds[5], YEP_T_FALSE);
+    EXPECT_EQ(tp.t.offs[1], 6u);
+    EXPECT_EQ(tp.t.offs[6], 1u);
 }
 
 TEST(JsonTape, NestedContainersLinkTheirOwnCloses) {
@@ -81,36 +82,32 @@ TEST(JsonTape, NestedContainersLinkTheirOwnCloses) {
     ASSERT_EQ(tp.parse("{\"a\": [1, {\"b\": null}]}"), YEPTRIS_OK);
     // DOC MAP STR SEQ INT MAP STR NULL CLOSE CLOSE CLOSE
     ASSERT_EQ(tp.t.count, 11u);
-    EXPECT_EQ(tp.t.vals[1], 10u); // outer map  1 <-> 10
-    EXPECT_EQ(tp.t.vals[10], 1u);
-    EXPECT_EQ(tp.t.vals[3], 9u); // seq        3 <-> 9
-    EXPECT_EQ(tp.t.vals[9], 3u);
-    EXPECT_EQ(tp.t.vals[5], 8u); // inner map  5 <-> 8
-    EXPECT_EQ(tp.t.vals[8], 5u);
+    EXPECT_EQ(tp.t.offs[1], 10u); // outer map  1 <-> 10
+    EXPECT_EQ(tp.t.offs[10], 1u);
+    EXPECT_EQ(tp.t.offs[3], 9u); // seq        3 <-> 9
+    EXPECT_EQ(tp.t.offs[9], 3u);
+    EXPECT_EQ(tp.t.offs[5], 8u); // inner map  5 <-> 8
+    EXPECT_EQ(tp.t.offs[8], 5u);
 }
 
-TEST(JsonTape, ScalarRootsConvertThroughTheKernels) {
+TEST(JsonTape, ScalarRootsRecordSpans) {
     struct {
         const char* src;
         uint8_t kind;
-        int64_t ival;
-        double dval;
+        const char* span;
     } cases[] = {
-        {"42", YEP_T_INT, 42, 0},       {"  -7  ", YEP_T_INT, -7, 0},
-        {"-3.5", YEP_T_FLOAT, 0, -3.5}, {"1e3", YEP_T_FLOAT, 0, 1000.0},
-        {"true", YEP_T_BOOL, 1, 0},     {"false", YEP_T_BOOL, 0, 0},
-        {"null", YEP_T_NULL, 0, 0},
+        {"42", YEP_T_INT, "42"},      {"  -7  ", YEP_T_INT, "-7"},  {"-3.5", YEP_T_FLOAT, "-3.5"},
+        {"1e3", YEP_T_FLOAT, "1e3"},  {"true", YEP_T_TRUE, "true"}, {"false", YEP_T_FALSE, "false"},
+        {"null", YEP_T_NULL, "null"},
     };
     for (const auto& c : cases) {
         TapeGuard tp;
         ASSERT_EQ(tp.parse(c.src), YEPTRIS_OK) << c.src;
         ASSERT_EQ(tp.t.count, 2u) << c.src; // DOC + the root record
         EXPECT_EQ(tp.t.kinds[1], c.kind) << c.src;
-        if (c.kind == YEP_T_FLOAT) {
-            EXPECT_DOUBLE_EQ(val_double(tp.t, 1), c.dval) << c.src;
-        } else {
-            EXPECT_EQ((int64_t)tp.t.vals[1], c.ival) << c.src;
-        }
+        EXPECT_EQ(tp.t.lens[1], strlen(c.span)) << c.src;
+        EXPECT_EQ(memcmp((const char*)tp.t._src + tp.t.offs[1], c.span, strlen(c.span)), 0)
+            << c.src;
     }
 
     TapeGuard str;
@@ -121,21 +118,47 @@ TEST(JsonTape, ScalarRootsConvertThroughTheKernels) {
     EXPECT_EQ(str.t.lens[1], 2u);
 }
 
-TEST(JsonTape, NumbersConvertInlineWithInt64Contract) {
+TEST(JsonTape, ConvertMaterializesTheNumberContract) {
     TapeGuard tp;
-    ASSERT_EQ(tp.parse("[9223372036854775807, -9223372036854775808]"), YEPTRIS_OK);
-    EXPECT_EQ(tp.t.kinds[2], YEP_T_INT);
-    EXPECT_EQ((int64_t)tp.t.vals[2], INT64_MAX);
-    EXPECT_EQ((int64_t)tp.t.vals[3], INT64_MIN);
-    EXPECT_EQ(tp.t.int_min, 0); // both fit exactly
+    ASSERT_EQ(tp.parse("[9223372036854775807, -9223372036854775808, 2.5, -0.5e1]"), YEPTRIS_OK);
+    int64_t iv[8] = {0x7E7E7E7E7E7E7E7E, 0x7E7E7E7E7E7E7E7E, 0x7E7E7E7E7E7E7E7E,
+                     0x7E7E7E7E7E7E7E7E, 0x7E7E7E7E7E7E7E7E, 0x7E7E7E7E7E7E7E7E,
+                     0x7E7E7E7E7E7E7E7E, 0x7E7E7E7E7E7E7E7E};
+    double dv[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
+    ASSERT_EQ(tp.convert_all(iv, dv), 4u);
+    EXPECT_EQ(iv[2], INT64_MAX);
+    EXPECT_EQ(iv[3], INT64_MIN);
+    EXPECT_DOUBLE_EQ(dv[4], 2.5);
+    EXPECT_DOUBLE_EQ(dv[5], -5.0);
+    EXPECT_EQ(tp.t.int_min, 0); // both ints fit exactly
+    // non-number slots untouched
+    EXPECT_EQ(iv[1], (int64_t)0x7E7E7E7E7E7E7E7E);
+    EXPECT_EQ(tp.t.kinds[1], YEP_T_SEQ_OPEN);
 
+    // beyond int64: the INT span converts to the approximate double
     TapeGuard over;
     ASSERT_EQ(over.parse("[9223372036854775808, -9223372036854775809]"), YEPTRIS_OK);
     EXPECT_EQ(over.t.kinds[2], YEP_T_INT); // integer TEXT stays INT
     EXPECT_EQ(over.t.kinds[3], YEP_T_INT);
-    EXPECT_EQ(over.t.int_min, 1); // flagged beyond int64
-    EXPECT_DOUBLE_EQ(val_double(over.t, 2), 9223372036854775808.0);
-    EXPECT_DOUBLE_EQ(val_double(over.t, 3), -9223372036854775808.0);
+    EXPECT_EQ(over.t.int_min, 0); // parse-time: not yet discovered
+    int64_t oiv[4] = {};
+    double odv[4] = {};
+    ASSERT_EQ(over.convert_all(oiv, odv), 2u);
+    EXPECT_EQ(over.t.int_min, 1); // flagged at materialize
+    EXPECT_DOUBLE_EQ(odv[2], 9223372036854775808.0);
+    EXPECT_DOUBLE_EQ(odv[3], -9223372036854775808.0);
+
+    // NULL out arrays: count and int_min still work
+    TapeGuard n;
+    ASSERT_EQ(n.parse("[3, 4]"), YEPTRIS_OK);
+    EXPECT_EQ(n.convert_all(NULL, NULL), 2u);
+
+    // contract violations
+    EXPECT_EQ(yeptris_tape_convert(NULL, 0, 1, NULL, NULL), SIZE_MAX);
+    TapeGuard bad;
+    ASSERT_EQ(bad.parse("[5]"), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_tape_convert(&bad.t, 2, 1, NULL, NULL), SIZE_MAX); // from > to
+    EXPECT_EQ(yeptris_tape_convert(&bad.t, 0, bad.t.count + 1, NULL, NULL), SIZE_MAX);
 }
 
 TEST(JsonTape, EscapedStringsKeepTheRawSpan) {
@@ -149,8 +172,8 @@ TEST(JsonTape, EmptyContainersAndWhitespace) {
     TapeGuard tp;
     ASSERT_EQ(tp.parse("  {  }  \n"), YEPTRIS_OK);
     ASSERT_EQ(tp.t.count, 3u); // DOC OPEN CLOSE
-    EXPECT_EQ(tp.t.vals[1], 2u);
-    EXPECT_EQ(tp.t.vals[2], 1u);
+    EXPECT_EQ(tp.t.offs[1], 2u);
+    EXPECT_EQ(tp.t.offs[2], 1u);
 }
 
 TEST(JsonTape, StrictRejectionsAreParseErrors) {
@@ -170,7 +193,7 @@ TEST(JsonTape, StrictRejectionsAreParseErrors) {
         "{\"a\" 1}",
         "[--1]",
         "[1.]",
-        /* the indexed walk's pinned gap classes (tape-diff found both) */
+        /* the pinned gap classes (tape-diff found both) */
         "{\"a\": \"a\" 123}",
         "{\"a\" \"b\"}",
         "[\"a\" \"b\"]",
@@ -207,7 +230,7 @@ TEST(JsonTape, DepthCapMatchesTheWalkers) {
     TapeGuard ok;
     ASSERT_EQ(ok.parse(at_cap.c_str()), YEPTRIS_OK);
     EXPECT_EQ(ok.t.count, 1u + 2u * 255u); // DOC + open/close pairs
-    EXPECT_EQ(ok.t.vals[1], ok.t.count - 1u);
+    EXPECT_EQ(ok.t.offs[1], ok.t.count - 1u);
 }
 
 TEST(JsonTape, ErrorParityWithParseJson) {
@@ -225,8 +248,7 @@ TEST(JsonTape, ErrorParityWithParseJson) {
         "[\"\\u00e9\\u65e5\"]",
         "{\"k\": [0, -0, 1e-3, 1E+2, 3.14159]}",
         /* tabs are legal RFC 8259 ws: the walker route rejects them,
-         * the document fallback accepts — the indexed walk accepts
-         * directly, so both engines must agree on OK */
+         * the document fallback accepts — both engines must agree */
         "[\t1,\t2\t]",
         "{\"a\"\t:\t1\t}",
     };
@@ -253,7 +275,9 @@ TEST(JsonTape, ArgContractAndFreeReuse) {
     yeptris_tape_free(&t); // double free is a no-op (zeroed)
 
     EXPECT_EQ(yeptris_parse_json_tape("[2]", 3, &t), YEPTRIS_OK); // reuse
-    EXPECT_EQ((int64_t)t.vals[2], 2);
+    int64_t iv[4] = {};
+    ASSERT_EQ(yeptris_tape_convert(&t, 0, t.count, iv, NULL), 1u);
+    EXPECT_EQ(iv[2], 2);
     yeptris_tape_free(&t);
 }
 
