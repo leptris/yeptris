@@ -1643,3 +1643,12 @@ fused-block-engine class:
 
 Order by leverage-per-risk: (1) is incremental and measured first;
 (2) is the structural win; (3) rides whichever lands.
+
+CI referee correction (ubuntu, PR 265's run, 2026-09-15): the
+standing is WORSE than the local table — block 0.92x, flow-json
+1.44x, flow-single 1.35x, json-doc 1.68x, scalar 0.86x, anchor
+0.84x, deep 1.13x, wide 0.86x. FOUR shapes sit under parity on
+Linux (scalar at 282 vs ryml's 324 MB/s; ryml indexes 4.65x over
+libyaml there, we 4.04x). The 3x campaign starts from behind on
+the referee — the local Mac table flattered us (its ryml build is
+slow). Every campaign decision below takes the ubuntu numbers.
