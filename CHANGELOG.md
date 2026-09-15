@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.3.0] - 2026-09-15
 ### Added
 - CBOR (RFC 8949) decode over the shared DOM (TODO.cbor/01):
   `yeptris_cbor_decode` builds the same tree `yeptris_parse_json`
