@@ -557,10 +557,9 @@ yep_chunk_masks yep_text_json_chunk_neon(const char* p, size_t n) {
         uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(p + 16 * half));
         uint32_t q = yep_neon_bits(vceqq_u8(v, dq));
         uint32_t b = yep_neon_bits(vceqq_u8(v, dbs));
-        uint32_t s = yep_neon_bits(vorrq_u8(
-            vorrq_u8(vorrq_u8(vceqq_u8(v, op), vceqq_u8(v, cl)),
-                     vorrq_u8(vceqq_u8(v, ls), vceqq_u8(v, rs))),
-            vorrq_u8(vceqq_u8(v, cm), vceqq_u8(v, co))));
+        uint32_t s = yep_neon_bits(vorrq_u8(vorrq_u8(vorrq_u8(vceqq_u8(v, op), vceqq_u8(v, cl)),
+                                                     vorrq_u8(vceqq_u8(v, ls), vceqq_u8(v, rs))),
+                                            vorrq_u8(vceqq_u8(v, cm), vceqq_u8(v, co))));
         uint32_t c = yep_neon_bits(vcltq_u8(v, c0t));
         if (half) {
             q <<= 16;
@@ -577,9 +576,12 @@ yep_chunk_masks yep_text_json_chunk_neon(const char* p, size_t n) {
 }
 
 const yep_text_kernels yep_text_kernels_neon = {
-    yep_neon_contains,   yep_neon_find,        yep_neon_find3,    yep_neon_count,
-    yep_neon_count3,     yep_neon_copy_count3, yep_neon_find_not, yep_neon_stopset_find,
-    yep_neon_quote_scan, yep_neon_scan_stats,  yep_neon_qbc_find, yep_neon_gate_scan,
+    yep_neon_contains,   yep_neon_find,
+    yep_neon_find3,      yep_neon_count,
+    yep_neon_count3,     yep_neon_copy_count3,
+    yep_neon_find_not,   yep_neon_stopset_find,
+    yep_neon_quote_scan, yep_neon_scan_stats,
+    yep_neon_qbc_find,   yep_neon_gate_scan,
     yep_neon_line_facts, yep_text_json_chunk_neon,
 };
 
