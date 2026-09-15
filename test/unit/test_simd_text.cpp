@@ -585,12 +585,12 @@ static int naive_gate_safe(const unsigned char* s, size_t len) {
 }
 
 static bool chunk_masks_eq(const yep_chunk_masks& a, const yep_chunk_masks& b) {
-    return a.quote == b.quote && a.bs == b.bs && a.structurals == b.structurals && a.c0 == b.c0 &&
-           a.valid == b.valid;
+    return a.quote == b.quote && a.bs == b.bs && a.structurals == b.structurals &&
+           a.valstart == b.valstart && a.c0 == b.c0 && a.valid == b.valid;
 }
 
 static yep_chunk_masks naive_json_chunk(const char* p, size_t n) {
-    yep_chunk_masks m = {0, 0, 0, 0, 0};
+    yep_chunk_masks m = {0, 0, 0, 0, 0, 0};
     for (size_t i = 0; i < n; i++) {
         unsigned char c = (unsigned char)p[i];
         uint32_t bit = 1u << i;
@@ -601,6 +601,8 @@ static yep_chunk_masks naive_json_chunk(const char* p, size_t n) {
             m.bs |= bit;
         } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
             m.structurals |= bit;
+        } else if (c == '-' || (c >= '0' && c <= '9') || c == 't' || c == 'f' || c == 'n') {
+            m.valstart |= bit;
         } else if (c < 0x20) {
             m.c0 |= bit;
         }
@@ -666,9 +668,9 @@ TEST(SimdText, ChunkClassify) {
      * unsigned-vs-signed compare trap — a signed < would flag UTF-8).
      * High bytes as plain signed constants (0x80=-128, 0xC3=-61,
      * 0xFF=-1): MSVC C4310 flags narrowing constant casts. */
-    const char probes[] = {'"', '\\',   '{',        '}',       '[',     ']',  ',',
-                           ':', 'a',    ' ',        '\0',      '\x1',   '\n', '\x1F',
-                           ' ', '\x7F', (char)-128, (char)-61, (char)-1};
+    const char probes[] = {'"', '\\', '{',   '}',  '[',    ']', ',',        ':',       'a',
+                           ' ', '\0', '\x1', '\n', '\x1F', ' ', '\x7F',     '0',       '5',
+                           '9', '-',  't',   'f',  'n',    'x', (char)-128, (char)-61, (char)-1};
     for (char pc : probes) {
         /* the probe byte at EVERY position of a full chunk */
         for (size_t at = 0; at < 32; at++) {

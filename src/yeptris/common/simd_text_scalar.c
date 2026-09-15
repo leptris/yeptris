@@ -265,7 +265,7 @@ void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_
 }
 
 yep_chunk_masks yep_text_json_chunk_scalar(const char* p, size_t n) {
-    yep_chunk_masks m = {0, 0, 0, 0, 0};
+    yep_chunk_masks m = {0, 0, 0, 0, 0, 0};
     for (size_t i = 0; i < n; i++) {
         unsigned char c = (unsigned char)p[i];
         uint32_t bit = 1u << i;
@@ -276,6 +276,8 @@ yep_chunk_masks yep_text_json_chunk_scalar(const char* p, size_t n) {
             m.bs |= bit;
         } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
             m.structurals |= bit;
+        } else if (c == '-' || (c >= '0' && c <= '9') || c == 't' || c == 'f' || c == 'n') {
+            m.valstart |= bit;
         } else if (c < 0x20) {
             m.c0 |= bit;
         }
