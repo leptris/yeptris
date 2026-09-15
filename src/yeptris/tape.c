@@ -110,6 +110,24 @@ static int tape_put_root_scalar(tape_ctx* c, const char* p, size_t len, size_t a
  * one input byte, and the carve holds len+2). yep_json_walk stays
  * the reference machine for DOM/push/pull; tape-diff (corpus + the
  * 2M fuzz parity) pins the equivalence. */
+/* The punctuation inline (the simdjson tape-builder lesson): after a
+ * value or a key, the next token is a comma/colon or the close —
+ * consume it inline instead of paying a full loop iteration for a
+ * one-byte state flip. Anything else (close, garbage, a tab) falls
+ * through with the cursor parked for the main loop to judge. */
+static inline uint8_t tape_inline_punct(const char* p, size_t len, size_t* i, uint8_t want) {
+    size_t j = *i;
+    while (j < len && (p[j] == ' ' || p[j] == '\n' || p[j] == '\r')) {
+        j++;
+    }
+    if (j < len && (uint8_t)p[j] == want) {
+        *i = j + 1;
+        return 1;
+    }
+    *i = j;
+    return 0;
+}
+
 static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_json_tape* t,
                                int check_tail) {
     if (tape_carve(t, len) != YEPTRIS_OK) {
@@ -190,7 +208,12 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             offs[count] = (uint32_t)at;
             lens[count] = (uint32_t)(i - at);
             count++;
-            top_expect = JW_COMMA_OR_CLOSE;
+            if (tape_inline_punct(p, len, &i, ',')) {
+                top_expect = top_kind ? JW_KEY : JW_VALUE;
+                key_slot = top_kind ? 1 : 0;
+            } else {
+                top_expect = JW_COMMA_OR_CLOSE;
+            }
             continue;
         }
         if (c == '"') {
@@ -203,7 +226,19 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             offs[count] = (uint32_t)(at + 1);
             lens[count] = (uint32_t)(close - at - 1);
             count++;
-            top_expect = key_slot ? JW_COLON : JW_COMMA_OR_CLOSE;
+            if (key_slot) { /* the key's colon, inline */
+                if (tape_inline_punct(p, len, &i, ':')) {
+                    top_expect = JW_VALUE;
+                    key_slot = 0;
+                } else {
+                    top_expect = JW_COLON;
+                }
+            } else if (tape_inline_punct(p, len, &i, ',')) {
+                top_expect = top_kind ? JW_KEY : JW_VALUE;
+                key_slot = top_kind ? 1 : 0;
+            } else {
+                top_expect = JW_COMMA_OR_CLOSE;
+            }
             continue;
         }
         if (c == ']' || c == '}') {
@@ -280,7 +315,12 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             lens[count] = (uint32_t)wl;
             count++;
             i = at + wl;
-            top_expect = JW_COMMA_OR_CLOSE;
+            if (tape_inline_punct(p, len, &i, ',')) {
+                top_expect = top_kind ? JW_KEY : JW_VALUE;
+                key_slot = top_kind ? 1 : 0;
+            } else {
+                top_expect = JW_COMMA_OR_CLOSE;
+            }
             continue;
         }
         goto reject;
