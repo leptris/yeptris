@@ -1800,3 +1800,44 @@ vectorized AND stage 2's contract leaned — the same verdict-four
 conclusion, now with the scalar resolver's floor measured at 1.3 GB/s:
 even a free stage 2 caps the route at ~0.9-1.1x of simdjson's own
 stage-2-only ceiling. The fused walk holds.
+
+## 2026-09-15 — verdict six: tape v2 ships; the event walk and LTO measured out
+
+The mandate ("beat simdjson fully") executed to the last engineering
+lever. simdjson DOM measured DIRECTLY on this box for the first time:
+2.56-2.62 ms = 1017-1039 MB/s on json-doc (the 0.5x ratios implied it;
+now it is pinned).
+
+Landed (perf/tape-v2): the v2 record ABI — three columns (kinds/offs/
+lens, 9 bytes/record was 20), TRUE/FALSE encode in the kind, container
+links ride offs, numbers record spans only (the lean
+yep_json_number_shape validates grammar without magnitude work) with
+conversion at materialize through yeptris_tape_convert. The classifier
+gained the valstart class (0-9/-/t/f/n), differential-pinned — the
+first attempt shipped it to no consumer comparison (python's silent
+no-match replace; assertions are now house style).
+
+Measured on json-doc, interleaved and pinned (fused v1 incumbent
+526-530 throughout):
+- v2 lazy numbers + three columns: 526-533 MB/s — PARITY. The finding:
+  this corpus's 1-3-digit ints made inline conversion nearly free on
+  the old fast path; lazy numbers cannot skip the grammar scan. The
+  cut bought record size (9 vs 20 bytes) and a simpler consumer
+  contract, not throughput.
+- The event walk (chunk-mask event stream, ctz fetch, gap check,
+  drop-past-token): 378-388 MB/s — SLOWER, reverted. The classifier
+  call per 32B chunk (~60 cycles amortized over ~28 events) costs more
+  than the byte-walking it replaces, and string interiors get
+  classified then re-scanned by yep_json_string besides.
+- LTO (YEPTRIS_ENABLE_LTO): 527-533 — neutral. The per-string and
+  per-number calls are not the bottleneck.
+
+Six verdicts now bound the space from every direction: within the
+strict-validation contract (expect machine during the walk, grammar
+validated at parse, strings zero-copy) the fused byte walk at ~530
+MB/s IS the optimum on this corpus/architecture. The remaining 2x to
+simdjson is SEMANTIC, not structural: simdjson defers number grammar
+to conversion, walks structural indices without an expect machine,
+and skips ws in 64B blocks. Matching it requires an opt-in lenient
+parse mode with those exact deferred guarantees — a product decision,
+recorded here for the owner.
