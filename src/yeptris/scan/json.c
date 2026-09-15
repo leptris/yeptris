@@ -430,6 +430,62 @@ int yep_json_number(const char* p, size_t len, size_t* i) {
     return yep_json_number_scan(p, len, i, NULL, NULL, NULL);
 }
 
+/* The lazy tape's number arm: validate the grammar and report the
+ * TEXT shape (0 int / 1 float) with NO magnitude accumulation — ints
+ * skip the SWAR entirely; conversion happens at materialize through
+ * yep_json_number_scan. Same accepts, same rejects, same advance as
+ * the full scan (the 2M tape-diff oracle pins the equivalence). */
+int yep_json_number_shape(const char* p, size_t len, size_t* i, int* is_float) {
+    size_t k = *i;
+    if (p[k] == '-') {
+        k++;
+    }
+    if (k >= len || p[k] < '0' || p[k] > '9') {
+        return 0;
+    }
+    if (p[k] == '0') {
+        k++; /* a leading zero admits no digit after it ("01" dies at
+                the delimiter rule, exactly like the full scan) */
+    } else {
+        while (k < len && p[k] >= '0' && p[k] <= '9') {
+            k++;
+        }
+    }
+    int flt = 0;
+    if (k < len && p[k] == '.') {
+        flt = 1;
+        k++;
+        if (k >= len || p[k] < '0' || p[k] > '9') {
+            return 0;
+        }
+        while (k < len && p[k] >= '0' && p[k] <= '9') {
+            k++;
+        }
+    }
+    if (k < len && (p[k] == 'e' || p[k] == 'E')) {
+        flt = 1;
+        k++;
+        if (k < len && (p[k] == '-' || p[k] == '+')) {
+            k++;
+        }
+        if (k >= len || p[k] < '0' || p[k] > '9') {
+            return 0;
+        }
+        while (k < len && p[k] >= '0' && p[k] <= '9') {
+            k++;
+        }
+    }
+    if (k < len) {
+        char c = p[k];
+        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
+            return 0; /* "1x" is YAML, not JSON */
+        }
+    }
+    *is_float = flt;
+    *i = k;
+    return 1;
+}
+
 int yep_json_literal(const char* p, size_t len, size_t* i, const char* word) {
     size_t w = 0;
     while (word[w] != '\0') {
@@ -695,3 +751,42 @@ yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
         return YEP_JW_OK;
     }
 }
+
+/* ---- stage 1: the structural indexer (the token-contract front) ---
+ * The scalar reference for the kernels table's json_stage1 slot: the
+ * token positions stage 2 dispatches on — operators, string OPEN
+ * quotes (escape-aware), and scalar-run starts — in position order.
+ * Same accepts/rejects as the ISA kernels (the differential suite
+ * pins it); no grammar validation, only the unterminated-string
+ * parity error. The mask-level identity set (escape scanner via the
+ * ODD_BITS borrow trick, prefix-xor string parity) is simdjson's. */
+
+YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx) {
+    size_t n = 0;
+    uint64_t prev_in_string = 0, esc_carry = 0, follows_carry = 0;
+    for (size_t off = 0; off < len; off += 64) {
+        size_t cn = len - off < 64 ? len - off : 64;
+        uint64_t q = 0, bs = 0, op = 0, ws = 0;
+        for (size_t k = 0; k < cn; k++) {
+            unsigned char c = (unsigned char)p[off + k];
+            uint64_t bit = 1ull << k;
+            if (c == '"') {
+                q |= bit;
+            } else if (c == '\\') {
+                bs |= bit;
+            } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
+                op |= bit;
+            } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                ws |= bit;
+            }
+        }
+        uint64_t valid = cn == 64 ? ~0ull : ((1ull << cn) - 1ull);
+        n = yep_json_stage1_resolve(q, bs, op, ws, valid, &prev_in_string, &esc_carry,
+                                    &follows_carry, off, idx, n);
+    }
+    *nidx = n;
+    return prev_in_string ? 0 : 1;
+}
+
+/* The per-chunk classifier: the kernels table's json_chunk slot
+ * (scalar reference in common, NEON/AVX2 TUs on their ISAs). */

@@ -84,6 +84,21 @@ typedef struct yep_line_facts {
     uint32_t stop_set;
 } yep_line_facts;
 
+/* The flow-kernel chunk classifier's output (one <=32-byte chunk):
+ * bit i of each mask = byte i of the chunk. The five classes — quote,
+ * backslash, structural ({,},[,],,:), value-start (0-9,-,t,f,n), and
+ * raw C0 — give the token walk every class it dispatches on; valid
+ * marks the bytes that exist (partial tail chunk). Bit-identical
+ * across ISAs. */
+typedef struct yep_chunk_masks {
+    uint32_t quote;
+    uint32_t bs;
+    uint32_t structurals;
+    uint32_t valstart; /* 0-9, '-', 't', 'f', 'n' — scalar-token starts */
+    uint32_t c0;       /* bytes < 0x20 (raw controls) */
+    uint32_t valid;    /* 1-bits for the bytes that exist (tails) */
+} yep_chunk_masks;
+
 /* The kernel table. One struct = one dispatch point (OCP: a new ISA is a
  * new TU exporting a new table; nothing else changes). */
 typedef struct yep_text_kernels {
@@ -142,7 +157,77 @@ typedef struct yep_text_kernels {
      * line/shape fact from these; the old paths re-walked the same
      * bytes per fact. Bit-identical across ISAs. */
     void (*line_facts)(const char* s, size_t len, size_t pos, yep_line_facts* out);
+
+    /* The flow-kernel chunk classifier (the JSON tape's stage 1
+     * foundation): five byte-class masks for one <=32-byte chunk
+     * (quote, backslash, structurals, value-starts, C0). n must be
+     * <= 32; reads exactly n bytes. Bit-identical across ISAs. */
+    yep_chunk_masks (*json_chunk)(const char* p, size_t n);
+
+    /* The JSON structural indexer (the simdjson stage-1 shape, the
+     * token-contract front): walks the whole buffer in 64-byte blocks
+     * and writes, in position order, the u32 offsets of every token
+     * stage 2 dispatches on — operators ([]{}:,), string OPEN quotes
+     * (escape-aware, the borrow-trick scanner), and scalar-run starts
+     * (a non-operator non-whitespace byte whose predecessor was not
+     * one). String interiors and close quotes never appear; ws bytes
+     * are never touched by stage 2. No grammar validation: the only
+     * hard error is an unterminated string (odd final parity) ->
+     * return 0. idx must hold len+2 entries. Bit-identical across
+     * ISAs (the differential suite pins it); scan/json.c owns the
+     * scalar reference and the grammar contract. */
+    int (*json_stage1)(const char* p, size_t len, uint32_t* idx, size_t* nidx);
 } yep_text_kernels;
+
+/* The structural indexer's mask resolver — the SSOT identity set for
+ * every json_stage1 implementation (scalar in scan/json.c, the ISA
+ * twins in the SIMD TUs). Given one 64-byte block's QUOTE/BS/OP/WS
+ * masks (bit k = byte k, valid masking tail bytes) plus the three
+ * carried bits (string parity, escape parity, scalar-follows), it
+ * derives the token mask and appends positions to idx:
+ *
+ *   escaped    = the simdjson escape scanner's ODD_BITS borrow trick
+ *                (real escapes + odd-run terminals ^ bs|carry)
+ *   in_string  = prefix_xor(live quotes) ^ prev parity
+ *   string_tail= in_string ^ live quotes  (interiors + closes)
+ *   starts     = ~(op|ws) & ~follows      (scalar-run heads; quotes
+ *                are scalars, a non-quote scalar extends a run)
+ *   tokens     = (op | starts) & ~string_tail
+ *
+ * Returns the block's contribution; carries update in place. */
+static inline size_t yep_json_stage1_resolve(uint64_t q, uint64_t bs, uint64_t op, uint64_t ws,
+                                             uint64_t valid, uint64_t* prev_in_string,
+                                             uint64_t* esc_carry, uint64_t* follows_carry,
+                                             size_t off, uint32_t* idx, size_t n) {
+    uint64_t potential = bs & ~*esc_carry;
+    uint64_t s = (((potential << 1) | 0xAAAAAAAAAAAAAAAAull) - potential) ^ 0xAAAAAAAAAAAAAAAAull;
+    uint64_t esc_bs = s & bs;
+    uint64_t escaped = s ^ (bs | *esc_carry);
+    *esc_carry = esc_bs >> 63;
+    uint64_t quote_live = q & ~escaped;
+    uint64_t ps = quote_live; /* sequential prefix-xor — a flat
+                               * one-expression xor of shifts misses
+                               * the cross terms (the naive caught it) */
+    ps ^= ps << 1;
+    ps ^= ps << 2;
+    ps ^= ps << 4;
+    ps ^= ps << 8;
+    ps ^= ps << 16;
+    ps ^= ps << 32;
+    uint64_t in_string = ps ^ *prev_in_string;
+    *prev_in_string = (uint64_t)((int64_t)in_string >> 63);
+    uint64_t string_tail = (in_string ^ quote_live) & valid;
+    uint64_t scalar_nq = (~(op | ws) & ~q) & valid; /* non-quote scalars */
+    uint64_t follows = ((scalar_nq & ~(1ull << 63)) << 1) | *follows_carry;
+    *follows_carry = scalar_nq >> 63;
+    uint64_t tokens = ((op | (~(op | ws) & ~follows)) & ~string_tail) & valid;
+    while (tokens != 0) {
+        idx[n++] = (uint32_t)(off + (size_t)yep_ctz64(tokens));
+        tokens &= tokens - 1;
+    }
+    (void)escaped;
+    return n;
+}
 
 /* The best table for this CPU (atomic-lazy, like yep_cpu_detect). */
 const yep_text_kernels* yep_text_active(void);
@@ -165,6 +250,7 @@ ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has
 void yep_text_scan_stats_scalar(const char* s, size_t len, yep_text_stats* out);
 int yep_text_gate_scan_scalar(const char* s, size_t len);
 void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_facts* out);
+yep_chunk_masks yep_text_json_chunk_scalar(const char* p, size_t n);
 /* The SWAR walk bounded: settles the facts when the line's break sits
  * within cap bytes (or the buffer ends) — 0 means a longer line, the
  * caller sweeps. The ISA kernels use it as BOTH the short-line test

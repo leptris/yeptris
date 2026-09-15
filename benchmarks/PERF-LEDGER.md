@@ -1764,3 +1764,119 @@ win would need a fundamentally leaner stage-2 semantic contract
 (stage 1 pre-classifying TOKEN STARTS, stage 2 trusting it entirely)
 — a different division of labor, not a faster version of either
 stage. Ledgered; branch reverted; the tape holds at 510 MB/s.
+
+## 2026-09-15 — verdict five: the SIMD classifier pays, the parity rewrite doesn't
+
+Two cuts on perf/chunk-classifier, measured interleaved same-process
+on json-doc (fused incumbent pinned 513-530 throughout):
+
+1. The chunk classifier as a kernels-table slot (scalar ref + NEON
+   two-half + AVX2 lane-pass twins, one dispatch point, differential
+   suite): stage 1 alone 598 -> 1294 MB/s, route 428 -> 470 MB/s with
+   the scalar resolver. KEPT. The x86 c0 class needs the unsigned
+   min_epu8(v,0x1F)==v identity — cmplt_epi8 is signed and flags every
+   >=0x80 byte.
+
+2. Packed literal compares in the indexed walk (true/null one u32,
+   false u32+byte): +40 MB/s. KEPT.
+
+3. The simdjson string-parity stage 1 (escape scanner's ODD_BITS
+   borrow trick ported to u32 verbatim, prefix-xor quote parity, lazy
+   per-string escape/C0 validation — the oracle caught the cumulative-
+   parity version marking a late close-quote escaped after an early
+   \t; the borrow trick is the correct formulation): stage 1 alone
+   1294 -> 942 MB/s, route 470 -> 419. REVERTED, law applied. The
+   parity machinery costs ~20 fixed ops/chunk plus per-quote segment
+   bookkeeping; on clean-short-string corpora there are no bs/c0
+   events to save, so the event walk it replaced was cheaper. The
+   escape-scanner port is correct and green through the 2M oracle —
+   recorded here for the day extraction itself vectorizes.
+
+Standing route state: two-stage 463-486 vs fused 513-529. The gap is
+now purely stage-2 semantics (span re-derivation + 4-array SoA stores
++ inline number conversion) and the duplicated event walk (stage 1
+emits, stage 2 re-reads).simdjson-class parity needs the extraction
+vectorized AND stage 2's contract leaned — the same verdict-four
+conclusion, now with the scalar resolver's floor measured at 1.3 GB/s:
+even a free stage 2 caps the route at ~0.9-1.1x of simdjson's own
+stage-2-only ceiling. The fused walk holds.
+
+## 2026-09-15 — verdict six: tape v2 ships; the event walk and LTO measured out
+
+The mandate ("beat simdjson fully") executed to the last engineering
+lever. simdjson DOM measured DIRECTLY on this box for the first time:
+2.56-2.62 ms = 1017-1039 MB/s on json-doc (the 0.5x ratios implied it;
+now it is pinned).
+
+Landed (perf/tape-v2): the v2 record ABI — three columns (kinds/offs/
+lens, 9 bytes/record was 20), TRUE/FALSE encode in the kind, container
+links ride offs, numbers record spans only (the lean
+yep_json_number_shape validates grammar without magnitude work) with
+conversion at materialize through yeptris_tape_convert. The classifier
+gained the valstart class (0-9/-/t/f/n), differential-pinned — the
+first attempt shipped it to no consumer comparison (python's silent
+no-match replace; assertions are now house style).
+
+Measured on json-doc, interleaved and pinned (fused v1 incumbent
+526-530 throughout):
+- v2 lazy numbers + three columns: 526-533 MB/s — PARITY. The finding:
+  this corpus's 1-3-digit ints made inline conversion nearly free on
+  the old fast path; lazy numbers cannot skip the grammar scan. The
+  cut bought record size (9 vs 20 bytes) and a simpler consumer
+  contract, not throughput.
+- The event walk (chunk-mask event stream, ctz fetch, gap check,
+  drop-past-token): 378-388 MB/s — SLOWER, reverted. The classifier
+  call per 32B chunk (~60 cycles amortized over ~28 events) costs more
+  than the byte-walking it replaces, and string interiors get
+  classified then re-scanned by yep_json_string besides.
+- LTO (YEPTRIS_ENABLE_LTO): 527-533 — neutral. The per-string and
+  per-number calls are not the bottleneck.
+
+Six verdicts now bound the space from every direction: within the
+strict-validation contract (expect machine during the walk, grammar
+validated at parse, strings zero-copy) the fused byte walk at ~530
+MB/s IS the optimum on this corpus/architecture. The remaining 2x to
+simdjson is SEMANTIC, not structural: simdjson defers number grammar
+to conversion, walks structural indices without an expect machine,
+and skips ws in 64B blocks. Matching it requires an opt-in lenient
+parse mode with those exact deferred guarantees — a product decision,
+recorded here for the owner.
+
+## 2026-09-16 — verdict seven: the token-contract route, closed by four stage-2 shapes
+
+The simdjson-shaped two-stage was fully built and measured through
+four stage-2 variants against the fused walk (interleaved, quiet
+windows, fused pinned 522-540):
+
+  stage 2 shape                       route    vs fused
+  ----------------------------------------------------
+  lean indexed walk                     410      522
+  + key_slot maintained flag            410      523
+  + stage-1 closes + SWAR spans         367      531   (REGRESSION)
+  + gap-check removal + key-position
+    specialization (closes reverted)    419      540
+
+Stage 1 alone: 1408-1420 MB/s (1.89 ms, 960k tokens). The route
+cannot win on this corpus: stage 1's ~1.9 ms is additive, while the
+dominant stage-2 cost — the grammar arms (number shape scan, string
+walk, record writes) — is IDENTICAL in both architectures, because
+strict validation happens at parse in both. Every walk restructuring
+moved +-10%; the stage-1 tax never moved.
+
+Also measured dead: simdjson's op-table nibble classifier (1408 ->
+1268 on this core — vqtbl's add/shift/tbl/cmp chain is serial where
+per-byte vceq chains parallelize; their table also self-matches 0xFF
+in row 0, which our contract forbids). Also reverted: stage-1 closes
+— the corpus's 1-8 byte strings never paid the vector scan the cut
+skipped; yep_json_string's scalar fast path was already near-optimal
+and the closes stream + SWAR check cost more than they saved. The
+gap check was proven redundant (dropped bytes are scalar-run START
+tokens the state machine rejects) and removed — the one structural
+keep from this round, with the key-position short-circuit.
+
+KEPT and shipped-green on the branch: the vector stage 1 itself
+(differential-pinned), the lean walk, and the two walk cuts. The
+route stays gated (YEP_TOKEN_CONTRACT_ROUTE 0); the fused walk is the
+optimum for the strict-validation contract. simdjson parity (1017-
+1039 measured directly) requires deferred-validation parse semantics
+— the standing owner decision, unchanged since verdict six.
