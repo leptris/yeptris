@@ -547,12 +547,15 @@ yep_chunk_masks yep_text_json_chunk_neon(const char* p, size_t n) {
     if (n < 32) {
         return yep_text_json_chunk_scalar(p, n);
     }
-    yep_chunk_masks m = {0, 0, 0, 0, 0xFFFFFFFFu};
+    yep_chunk_masks m = {0, 0, 0, 0, 0, 0xFFFFFFFFu};
     const uint8x16_t dq = vdupq_n_u8('"'), dbs = vdupq_n_u8('\\');
     const uint8x16_t c0t = vdupq_n_u8(0x20);
     const uint8x16_t op = vdupq_n_u8('{'), cl = vdupq_n_u8('}');
     const uint8x16_t ls = vdupq_n_u8('['), rs = vdupq_n_u8(']');
     const uint8x16_t cm = vdupq_n_u8(','), co = vdupq_n_u8(':');
+    const uint8x16_t d0 = vdupq_n_u8('0'), d9 = vdupq_n_u8('9');
+    const uint8x16_t da = vdupq_n_u8('-'), dt = vdupq_n_u8('t');
+    const uint8x16_t df = vdupq_n_u8('f'), dn = vdupq_n_u8('n');
     for (unsigned half = 0; half < 2; half++) {
         uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(p + 16 * half));
         uint32_t q = yep_neon_bits(vceqq_u8(v, dq));
@@ -560,16 +563,21 @@ yep_chunk_masks yep_text_json_chunk_neon(const char* p, size_t n) {
         uint32_t s = yep_neon_bits(vorrq_u8(vorrq_u8(vorrq_u8(vceqq_u8(v, op), vceqq_u8(v, cl)),
                                                      vorrq_u8(vceqq_u8(v, ls), vceqq_u8(v, rs))),
                                             vorrq_u8(vceqq_u8(v, cm), vceqq_u8(v, co))));
+        uint32_t vs = yep_neon_bits(
+            vorrq_u8(vorrq_u8(vandq_u8(vcgeq_u8(v, d0), vcleq_u8(v, d9)), vceqq_u8(v, da)),
+                     vorrq_u8(vorrq_u8(vceqq_u8(v, dt), vceqq_u8(v, df)), vceqq_u8(v, dn))));
         uint32_t c = yep_neon_bits(vcltq_u8(v, c0t));
         if (half) {
             q <<= 16;
             b <<= 16;
             s <<= 16;
+            vs <<= 16;
             c <<= 16;
         }
         m.quote |= q;
         m.bs |= b;
         m.structurals |= s;
+        m.valstart |= vs;
         m.c0 |= c;
     }
     return m;
