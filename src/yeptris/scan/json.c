@@ -752,5 +752,41 @@ yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
     }
 }
 
+/* ---- stage 1: the structural indexer (the token-contract front) ---
+ * The scalar reference for the kernels table's json_stage1 slot: the
+ * token positions stage 2 dispatches on — operators, string OPEN
+ * quotes (escape-aware), and scalar-run starts — in position order.
+ * Same accepts/rejects as the ISA kernels (the differential suite
+ * pins it); no grammar validation, only the unterminated-string
+ * parity error. The mask-level identity set (escape scanner via the
+ * ODD_BITS borrow trick, prefix-xor string parity) is simdjson's. */
+
+YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx) {
+    size_t n = 0;
+    uint64_t prev_in_string = 0, esc_carry = 0, follows_carry = 0;
+    for (size_t off = 0; off < len; off += 64) {
+        size_t cn = len - off < 64 ? len - off : 64;
+        uint64_t q = 0, bs = 0, op = 0, ws = 0;
+        for (size_t k = 0; k < cn; k++) {
+            unsigned char c = (unsigned char)p[off + k];
+            uint64_t bit = 1ull << k;
+            if (c == '"') {
+                q |= bit;
+            } else if (c == '\\') {
+                bs |= bit;
+            } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
+                op |= bit;
+            } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                ws |= bit;
+            }
+        }
+        uint64_t valid = cn == 64 ? ~0ull : ((1ull << cn) - 1ull);
+        n = yep_json_stage1_resolve(q, bs, op, ws, valid, &prev_in_string, &esc_carry,
+                                    &follows_carry, off, idx, n);
+    }
+    *nidx = n;
+    return prev_in_string ? 0 : 1;
+}
+
 /* The per-chunk classifier: the kernels table's json_chunk slot
  * (scalar reference in common, NEON/AVX2 TUs on their ISAs). */

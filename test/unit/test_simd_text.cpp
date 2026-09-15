@@ -15,6 +15,8 @@
 
 #include "common/simd_text.h"
 
+extern "C" int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx);
+
 namespace {
 
 /* ---- naive references (test-local, deliberately independent) ---- */
@@ -712,6 +714,134 @@ TEST(SimdText, ChunkClassify) {
             << "random t=" << t << " n=" << n;
         EXPECT_TRUE(chunk_masks_eq(yep_text_json_chunk_scalar(c.data(), n), want))
             << "scalar random t=" << t << " n=" << n;
+    }
+}
+
+/* naive stage-1: an independent byte-machine formulation of the
+ * structural-indexer contract — operators, string open quotes
+ * (escape-aware), scalar-run starts (a scalar byte whose predecessor
+ * was not a non-quote scalar); unterminated string = reject */
+static std::vector<uint32_t> naive_stage1(const char* p, size_t len, int* ok) {
+    std::vector<uint32_t> out;
+    bool in_str = false, esc = false, prev_snq = false;
+    *ok = 1;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)p[i];
+        bool is_op = c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':';
+        bool is_ws = c == ' ' || c == '\t' || c == '\n' || c == '\r';
+        if (esc) {
+            esc = false;
+            if (!in_str) {
+                if (is_op) { /* an escaped operator still emits (the
+                                escape mask only suppresses quotes) */
+                    out.push_back((uint32_t)i);
+                    prev_snq = false;
+                } else { /* a backslash victim still extends the run:
+                            to the op/ws classifier it is a plain scalar */
+                    prev_snq = !is_ws && c != '"';
+                }
+            }
+            continue; /* a victim quote or scalar never emits */
+        }
+        if (c == '\\') { /* escape parity runs OUTSIDE strings too:
+                              an escaped quote never opens one */
+            if (!in_str && !prev_snq) {
+                out.push_back((uint32_t)i);
+            }
+            if (!in_str) {
+                prev_snq = true;
+            }
+            esc = true;
+            continue;
+        }
+        if (in_str) {
+            if (c == '"') {
+                in_str = false;
+            }
+            continue; /* nothing inside a string emits */
+        }
+        if (is_op) {
+            out.push_back((uint32_t)i);
+            prev_snq = false;
+        } else if (c == '"') {
+            if (!prev_snq) { /* a quote is a scalar start unless suppressed */
+                out.push_back((uint32_t)i);
+            }
+            in_str = true; /* even a suppressed one opens (garbage case) */
+            prev_snq = false;
+        } else if (!is_ws) {
+            if (!prev_snq) {
+                out.push_back((uint32_t)i);
+            }
+            prev_snq = true;
+        } else {
+            prev_snq = false;
+        }
+    }
+    *ok = in_str ? 0 : 1;
+    return out;
+}
+
+static void expect_stage1_eq(const char* p, size_t len) {
+    static uint32_t a[8192], b[8192];
+    ASSERT_LE(len, (size_t)8000);
+    int ok_a = -1, ok_b = -1;
+    size_t na = 0, nb = 0;
+    int want = -1;
+    std::vector<uint32_t> want_idx = naive_stage1(p, len, &want);
+    ok_a = yep_text_active()->json_stage1(p, len, a, &na);
+    ok_b = yep_json_stage1_scalar(p, len, b, &nb);
+    ASSERT_EQ(ok_a, want);
+    ASSERT_EQ(ok_b, want);
+    ASSERT_EQ(na, want_idx.size()) << "active count buf=[" << std::string(p, len) << "]";
+    ASSERT_EQ(nb, want_idx.size()) << "scalar count";
+    for (size_t i = 0; i < want_idx.size(); i++) {
+        ASSERT_EQ(a[i], want_idx[i]) << "active at " << i;
+        ASSERT_EQ(b[i], want_idx[i]) << "scalar at " << i;
+    }
+}
+
+TEST(SimdText, JsonStage1) {
+    const char* probes[] = {
+        "",
+        "[1, 2.5, \"k\", true, false, null]",
+        "{\"a\": {\"b\": [1, 2]}, \"c\": \"x\"}",
+        "[\"a\\\"b\", \"c\\\\d\", \"e\\n\"]",
+        "[1 2]",
+        "[1 a]",
+        "[\t1]",
+        "a\"b\"",
+        "\\\\ \"x\"",
+        "[,\",\",,,,]",
+        "[\"unterminated",
+        "\"\\\"",
+        "0123abcdEFG ,-:",
+        std::string(40, 'x').c_str(),
+    };
+    for (const char* s : probes) {
+        ASSERT_NO_FATAL_FAILURE(expect_stage1_eq(s, strlen(s))) << s;
+    }
+    /* every length around the 64B seams, mixed content */
+    for (size_t L = 0; L <= 200; L++) {
+        std::string s(L, '\0');
+        const char* alpha = "[]{}:, \"\\t123abcXYZ"; // deliberate tab escape forms below
+        static const char mix[] = "\\[\]{\":\", \"a\\\"b\\n\\\\c\", 1.5e3, [";
+        for (size_t i = 0; i < L; i++) {
+            s[i] = (i % 3 == 0) ? mix[i % (sizeof(mix) - 1)]
+                                : ((unsigned char*)alpha)[(i * 7 + L) % 16];
+        }
+        ASSERT_NO_FATAL_FAILURE(expect_stage1_eq(s.data(), s.size())) << "L=" << L;
+    }
+    /* random two-alphabet fuzz */
+    std::mt19937_64 rng(0x57A6E1);
+    const std::string jalpha = "\\[\]{\":, \"0189tfn-\\\"\\\\\\u0041xyz\t\n";
+    for (int t = 0; t < 3000; t++) {
+        size_t n = (size_t)(rng() % 400);
+        std::string s(n, '\0');
+        for (size_t i = 0; i < n; i++) {
+            s[i] = (rng() & 1) ? jalpha[rng() % jalpha.size()] : (char)(rng() % 256);
+        }
+        ASSERT_NO_FATAL_FAILURE(expect_stage1_eq(s.data(), s.size())) << "t=" << t << " n=" << n;
     }
 }
 

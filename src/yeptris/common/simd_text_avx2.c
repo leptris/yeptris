@@ -450,14 +450,85 @@ yep_chunk_masks yep_text_json_chunk_avx2(const char* p, size_t n) {
     return m;
 }
 
+/* The JSON structural indexer (the token-contract front): vector
+ * classification of 64-byte blocks into QUOTE/BS/OP/WS u64 masks
+ * (two 32-byte lane passes each, movemask-native), then the shared
+ * mask resolver (simd_text.h). The final partial block builds its
+ * masks byte-wise — no loads past len. */
+int yep_text_json_stage1_avx2(const char* p, size_t len, uint32_t* idx, size_t* nidx) {
+    size_t n = 0;
+    uint64_t prev_in_string = 0, esc_carry = 0, follows_carry = 0;
+    size_t off = 0;
+    for (; off + 64 <= len; off += 64) {
+        uint64_t q = 0, bs = 0, op = 0, ws = 0;
+        for (unsigned half = 0; half < 2; half++) {
+            const __m256i v =
+                _mm256_loadu_si256((const __m256i*)(const void*)(p + off + 32 * half));
+            uint64_t fq = (uint64_t)(uint32_t)_mm256_movemask_epi8(
+                _mm256_cmpeq_epi8(v, _mm256_set1_epi8('"')));
+            uint64_t fb = (uint64_t)(uint32_t)_mm256_movemask_epi8(
+                _mm256_cmpeq_epi8(v, _mm256_set1_epi8('\\')));
+            __m256i o = _mm256_or_si256(
+                _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('{')),
+                                _mm256_cmpeq_epi8(v, _mm256_set1_epi8('}'))),
+                _mm256_or_si256(_mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('[')),
+                                                _mm256_cmpeq_epi8(v, _mm256_set1_epi8(']'))),
+                                _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8(',')),
+                                                _mm256_cmpeq_epi8(v, _mm256_set1_epi8(':')))));
+            uint64_t fo = (uint64_t)(uint32_t)_mm256_movemask_epi8(o);
+            __m256i w =
+                _mm256_or_si256(_mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8(' ')),
+                                                _mm256_cmpeq_epi8(v, _mm256_set1_epi8('\t'))),
+                                _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('\n')),
+                                                _mm256_cmpeq_epi8(v, _mm256_set1_epi8('\r'))));
+            uint64_t fw = (uint64_t)(uint32_t)_mm256_movemask_epi8(w);
+            q |= fq << (32 * half);
+            bs |= fb << (32 * half);
+            op |= fo << (32 * half);
+            ws |= fw << (32 * half);
+        }
+        n = yep_json_stage1_resolve(q, bs, op, ws, ~0ull, &prev_in_string, &esc_carry,
+                                    &follows_carry, off, idx, n);
+    }
+    if (off < len) {
+        size_t cn = len - off;
+        uint64_t q = 0, bs = 0, op = 0, ws = 0;
+        for (size_t k = 0; k < cn; k++) {
+            unsigned char c = (unsigned char)p[off + k];
+            uint64_t bit = 1ull << k;
+            if (c == '"') {
+                q |= bit;
+            } else if (c == '\\') {
+                bs |= bit;
+            } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
+                op |= bit;
+            } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                ws |= bit;
+            }
+        }
+        n = yep_json_stage1_resolve(q, bs, op, ws, (1ull << cn) - 1ull, &prev_in_string, &esc_carry,
+                                    &follows_carry, off, idx, n);
+    }
+    *nidx = n;
+    return prev_in_string ? 0 : 1;
+}
+
 const yep_text_kernels yep_text_kernels_avx2 = {
-    yep_avx2_contains,   yep_avx2_find,
-    yep_avx2_find3,      yep_avx2_count,
-    yep_avx2_count3,     yep_avx2_copy_count3,
-    yep_avx2_find_not,   yep_avx2_stopset_find,
-    yep_avx2_quote_scan, yep_avx2_scan_stats,
-    yep_avx2_qbc_find,   yep_avx2_gate_scan,
-    yep_avx2_line_facts, yep_text_json_chunk_avx2,
+    yep_avx2_contains,
+    yep_avx2_find,
+    yep_avx2_find3,
+    yep_avx2_count,
+    yep_avx2_count3,
+    yep_avx2_copy_count3,
+    yep_avx2_find_not,
+    yep_avx2_stopset_find,
+    yep_avx2_quote_scan,
+    yep_avx2_scan_stats,
+    yep_avx2_qbc_find,
+    yep_avx2_gate_scan,
+    yep_avx2_line_facts,
+    yep_text_json_chunk_avx2,
+    yep_text_json_stage1_avx2,
 };
 
 #endif /* YEP_ARCH_X86 */
