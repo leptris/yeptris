@@ -135,6 +135,9 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
     uint32_t top_open = 1;
     count = 2;
     uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+    /* key_slot as a maintained flag: transitions update it, the loop
+     * never recomputes (two compares per token saved) */
+    int key_slot = top_kind ? 1 : 0;
     int depth = 1;
     open_at[0] = top_open;
     kind[0] = top_kind;
@@ -223,6 +226,8 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             top_kind = kind[depth - 1];
             top_expect = JW_COMMA_OR_CLOSE;
             top_open = open_at[depth - 1];
+            key_slot = 0; /* never read before the comma resets it —
+                             set anyway so the flag has one owner */
             continue;
         }
         if (c == '{' || c == '[') {
@@ -342,6 +347,9 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
     uint32_t top_open = 1;
     count = 2;
     uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+    /* key_slot as a maintained flag: transitions update it, the loop
+     * never recomputes (two compares per token saved) */
+    int key_slot = top_kind ? 1 : 0;
     int depth = 1;
     open_at[0] = top_open;
     kind[0] = top_kind;
@@ -377,19 +385,19 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
                 goto reject;
             }
             top_expect = JW_VALUE;
+            key_slot = 0; /* a value follows the colon */
             continue;
         }
         if (top_expect == JW_COMMA_OR_CLOSE) {
             if (c == ',') {
                 top_expect = top_kind ? JW_KEY : JW_VALUE;
+                key_slot = top_kind ? 1 : 0;
                 continue;
             }
             if (c != ']' && c != '}') {
                 goto reject;
             }
         }
-
-        int key_slot = top_kind == 1 && (top_expect == JW_KEY_OR_CLOSE || top_expect == JW_KEY);
 
         if ((unsigned)(c - '0') <= 9u || c == '-') {
             if (key_slot) {
@@ -421,6 +429,7 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
             count++;
             prev_end = i;
             top_expect = key_slot ? JW_COLON : JW_COMMA_OR_CLOSE;
+            /* key_slot stays 1 through COLON — the value arm clears it */
             continue;
         }
         if (c == ']' || c == '}') {
@@ -442,6 +451,8 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
             top_kind = kind[depth - 1];
             top_expect = JW_COMMA_OR_CLOSE;
             top_open = open_at[depth - 1];
+            key_slot = 0; /* never read before the comma resets it —
+                             set anyway so the flag has one owner */
             continue;
         }
         if (c == '{' || c == '[') {
@@ -460,6 +471,7 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
             top_open = (uint32_t)count;
             count++;
             top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+            key_slot = top_kind ? 1 : 0;
             kind[depth] = top_kind;
             open_at[depth] = top_open;
             depth++;
@@ -494,6 +506,7 @@ static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const
             count++;
             prev_end = at + wl;
             top_expect = JW_COMMA_OR_CLOSE;
+            key_slot = 0;
             continue;
         }
         goto reject;
