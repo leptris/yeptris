@@ -264,10 +264,29 @@ void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_
     (void)yep_text_line_facts_capped(s, len, pos, (size_t)-1, out);
 }
 
+yep_chunk_masks yep_text_json_chunk_scalar(const char* p, size_t n) {
+    yep_chunk_masks m = {0, 0, 0, 0, 0};
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)p[i];
+        uint32_t bit = 1u << i;
+        m.valid |= bit;
+        if (c == '"') {
+            m.quote |= bit;
+        } else if (c == '\\') {
+            m.bs |= bit;
+        } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
+            m.structurals |= bit;
+        } else if (c < 0x20) {
+            m.c0 |= bit;
+        }
+    }
+    return m;
+}
+
 const yep_text_kernels yep_text_kernels_scalar = {
     yep_text_contains_scalar,   yep_text_find_scalar,         yep_text_find3_scalar,
     yep_text_count_char_scalar, yep_text_count3_scalar,       yep_text_copy_count3_scalar,
     yep_text_find_not_scalar,   yep_text_stopset_find_scalar, yep_text_quote_scan_scalar,
     yep_text_scan_stats_scalar, yep_text_qbc_find_scalar,     yep_text_gate_scan_scalar,
-    yep_text_line_facts_scalar,
+    yep_text_line_facts_scalar, yep_text_json_chunk_scalar,
 };

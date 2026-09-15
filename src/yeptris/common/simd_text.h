@@ -84,6 +84,19 @@ typedef struct yep_line_facts {
     uint32_t stop_set;
 } yep_line_facts;
 
+/* The flow-kernel chunk classifier's output (one <=32-byte chunk):
+ * bit i of each mask = byte i of the chunk. quote/backslash/structural
+ * ({,},[,],,:)/c0 are the four byte classes stage 1 needs to resolve
+ * strings and structural positions without rescanning; valid marks the
+ * bytes that exist (partial tail chunk). Bit-identical across ISAs. */
+typedef struct yep_chunk_masks {
+    uint32_t quote;
+    uint32_t bs;
+    uint32_t structurals;
+    uint32_t c0;    /* bytes < 0x20 (raw controls) */
+    uint32_t valid; /* 1-bits for the bytes that exist (tails) */
+} yep_chunk_masks;
+
 /* The kernel table. One struct = one dispatch point (OCP: a new ISA is a
  * new TU exporting a new table; nothing else changes). */
 typedef struct yep_text_kernels {
@@ -142,6 +155,12 @@ typedef struct yep_text_kernels {
      * line/shape fact from these; the old paths re-walked the same
      * bytes per fact. Bit-identical across ISAs. */
     void (*line_facts)(const char* s, size_t len, size_t pos, yep_line_facts* out);
+
+    /* The flow-kernel chunk classifier (the JSON tape's stage 1
+     * foundation): four byte-class masks for one <=32-byte chunk.
+     * n must be <= 32; reads exactly n bytes. Bit-identical across
+     * ISAs. scan/json.c owns the resolver that walks these. */
+    yep_chunk_masks (*json_chunk)(const char* p, size_t n);
 } yep_text_kernels;
 
 /* The best table for this CPU (atomic-lazy, like yep_cpu_detect). */
@@ -165,6 +184,7 @@ ptrdiff_t yep_text_quote_scan_scalar(const char* s, size_t len, char q, int* has
 void yep_text_scan_stats_scalar(const char* s, size_t len, yep_text_stats* out);
 int yep_text_gate_scan_scalar(const char* s, size_t len);
 void yep_text_line_facts_scalar(const char* s, size_t len, size_t pos, yep_line_facts* out);
+yep_chunk_masks yep_text_json_chunk_scalar(const char* p, size_t n);
 /* The SWAR walk bounded: settles the facts when the line's break sits
  * within cap bytes (or the buffer ends) — 0 means a longer line, the
  * caller sweeps. The ISA kernels use it as BOTH the short-line test

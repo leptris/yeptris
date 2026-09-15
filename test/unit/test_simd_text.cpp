@@ -584,6 +584,30 @@ static int naive_gate_safe(const unsigned char* s, size_t len) {
     return 0;
 }
 
+static bool chunk_masks_eq(const yep_chunk_masks& a, const yep_chunk_masks& b) {
+    return a.quote == b.quote && a.bs == b.bs && a.structurals == b.structurals &&
+           a.c0 == b.c0 && a.valid == b.valid;
+}
+
+static yep_chunk_masks naive_json_chunk(const char* p, size_t n) {
+    yep_chunk_masks m = {0, 0, 0, 0, 0};
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)p[i];
+        uint32_t bit = 1u << i;
+        m.valid |= bit;
+        if (c == '"') {
+            m.quote |= bit;
+        } else if (c == '\\') {
+            m.bs |= bit;
+        } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
+            m.structurals |= bit;
+        } else if (c < 0x20) {
+            m.c0 |= bit;
+        }
+    }
+    return m;
+}
+
 TEST(SimdText, GateScan) {
     const yep_text_kernels* k = yep_text_active();
     /* the gate bytes that distinguish the vector masks: TAB/LF/CR are
@@ -632,6 +656,56 @@ TEST(SimdText, GateScan) {
         EXPECT_EQ(k->gate_scan(b.data(), b.size()),
                   naive_gate_safe((const unsigned char*)b.data(), b.size()))
             << "random t=" << t;
+    }
+}
+
+TEST(SimdText, ChunkClassify) {
+    const yep_text_kernels* k = yep_text_active();
+    /* the class bytes plus the boundary probes: 0x20 is NOT c0,
+     * 0x1F is, and every >=0x80 byte must stay unclassified (the
+     * unsigned-vs-signed compare trap — a signed < would flag UTF-8) */
+    const char probes[] = {'"',  '\\', '{',  '}',  '[', ']', ',', ':', 'a',
+                           ' ',  0x00, 0x01, 0x0A, 0x1F, 0x20, 0x7F, (char)0x80,
+                           (char)0xC3, (char)0xFF};
+    for (char pc : probes) {
+        /* the probe byte at EVERY position of a full chunk */
+        for (size_t at = 0; at < 32; at++) {
+            std::string chunk(32, 'a');
+            chunk[at] = pc;
+            yep_chunk_masks want = naive_json_chunk(chunk.data(), chunk.size());
+            EXPECT_TRUE(chunk_masks_eq(k->json_chunk(chunk.data(), chunk.size()), want))
+                << "probe byte " << (int)(unsigned char)pc << " at " << at;
+            EXPECT_TRUE(chunk_masks_eq(yep_text_json_chunk_scalar(chunk.data(), chunk.size()), want))
+                << "scalar probe byte " << (int)(unsigned char)pc << " at " << at;
+        }
+        /* all-probe chunks (dense class pressure) */
+        std::string dense(32, pc);
+        yep_chunk_masks want = naive_json_chunk(dense.data(), dense.size());
+        EXPECT_TRUE(chunk_masks_eq(k->json_chunk(dense.data(), dense.size()), want))
+            << "dense probe byte " << (int)(unsigned char)pc;
+    }
+    /* every prefix length of a mixed buffer — tails included */
+    const std::string mixed = "{\"k\\\\ey\": [1,-2.5e3],\"n\":true}\t\n \x01\x7F\xC3\xA9";
+    for (size_t L = 0; L <= 32 && L <= mixed.size(); L++) {
+        yep_chunk_masks want = naive_json_chunk(mixed.data(), L);
+        EXPECT_TRUE(chunk_masks_eq(k->json_chunk(mixed.data(), L), want)) << "prefix len=" << L;
+        EXPECT_TRUE(chunk_masks_eq(yep_text_json_chunk_scalar(mixed.data(), L), want))
+            << "scalar prefix len=" << L;
+    }
+    /* random chunks over both alphabets, deterministic */
+    std::mt19937_64 rng(0x50ACE);
+    const std::string jalpha = "\"\\{}[],:ab01 \t\n\x01\x1F\x7F\x80\xC3\xA9";
+    for (int t = 0; t < 2000; t++) {
+        size_t n = (size_t)(rng() % 33);
+        bool jsonish = (rng() & 1) != 0;
+        std::string c(n, '\0');
+        for (size_t i = 0; i < n; i++) {
+            c[i] = jsonish ? jalpha[rng() % jalpha.size()] : (char)(rng() % 256);
+        }
+        yep_chunk_masks want = naive_json_chunk(c.data(), n);
+        EXPECT_TRUE(chunk_masks_eq(k->json_chunk(c.data(), n), want)) << "random t=" << t << " n=" << n;
+        EXPECT_TRUE(chunk_masks_eq(yep_text_json_chunk_scalar(c.data(), n), want))
+            << "scalar random t=" << t << " n=" << n;
     }
 }
 
