@@ -430,6 +430,62 @@ int yep_json_number(const char* p, size_t len, size_t* i) {
     return yep_json_number_scan(p, len, i, NULL, NULL, NULL);
 }
 
+/* The lazy tape's number arm: validate the grammar and report the
+ * TEXT shape (0 int / 1 float) with NO magnitude accumulation — ints
+ * skip the SWAR entirely; conversion happens at materialize through
+ * yep_json_number_scan. Same accepts, same rejects, same advance as
+ * the full scan (the 2M tape-diff oracle pins the equivalence). */
+int yep_json_number_shape(const char* p, size_t len, size_t* i, int* is_float) {
+    size_t k = *i;
+    if (p[k] == '-') {
+        k++;
+    }
+    if (k >= len || p[k] < '0' || p[k] > '9') {
+        return 0;
+    }
+    if (p[k] == '0') {
+        k++; /* a leading zero admits no digit after it ("01" dies at
+                the delimiter rule, exactly like the full scan) */
+    } else {
+        while (k < len && p[k] >= '0' && p[k] <= '9') {
+            k++;
+        }
+    }
+    int flt = 0;
+    if (k < len && p[k] == '.') {
+        flt = 1;
+        k++;
+        if (k >= len || p[k] < '0' || p[k] > '9') {
+            return 0;
+        }
+        while (k < len && p[k] >= '0' && p[k] <= '9') {
+            k++;
+        }
+    }
+    if (k < len && (p[k] == 'e' || p[k] == 'E')) {
+        flt = 1;
+        k++;
+        if (k < len && (p[k] == '-' || p[k] == '+')) {
+            k++;
+        }
+        if (k >= len || p[k] < '0' || p[k] > '9') {
+            return 0;
+        }
+        while (k < len && p[k] >= '0' && p[k] <= '9') {
+            k++;
+        }
+    }
+    if (k < len) {
+        char c = p[k];
+        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
+            return 0; /* "1x" is YAML, not JSON */
+        }
+    }
+    *is_float = flt;
+    *i = k;
+    return 1;
+}
+
 int yep_json_literal(const char* p, size_t len, size_t* i, const char* word) {
     size_t w = 0;
     while (word[w] != '\0') {

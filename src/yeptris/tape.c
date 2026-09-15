@@ -1,10 +1,12 @@
-/* tape.c — the compact JSON tape (TODO.restructure/85).
+/* tape.c — the compact JSON tape (TODO.restructure/85, v2 records).
  *
- * The strict fused walk drives: one record per token, numbers
- * converted inline by the number kernel, strings as zero-copy spans,
- * containers linked to their matching record for O(1) skipping. The
- * record budget derives from the input length — every token consumes
- * at least one input byte — so len+2 slots suffice with no pre-pass.
+ * The strict fused walk drives: one THREE-column record per token
+ * (kind byte, off, len) — bools encode in the kind, container links
+ * ride the off column, numbers record spans only (the lean shape scan
+ * validates; yeptris_tape_convert materializes). Strings stay
+ * zero-copy spans. The record budget derives from the input length —
+ * every token consumes at least one input byte — so len+2 slots
+ * suffice with no pre-pass.
  *
  * Route shape mirrors yeptris_parse_json: a gate-clean container root
  * fuses validation into the walk; everything else validates through
@@ -32,7 +34,7 @@ typedef struct {
     int oom;
 } tape_ctx;
 
-static int rec_put(tape_ctx* c, uint8_t kind, uint32_t off, uint32_t len, uint64_t val) {
+static int rec_put(tape_ctx* c, uint8_t kind, uint32_t off, uint32_t len) {
     if (c->t->count >= c->cap) {
         c->oom = 1;
         return 0;
@@ -41,15 +43,13 @@ static int rec_put(tape_ctx* c, uint8_t kind, uint32_t off, uint32_t len, uint64
     c->t->kinds[i] = kind;
     c->t->offs[i] = off;
     c->t->lens[i] = len;
-    c->t->vals[i] = val;
     return 1;
 }
 
 static YeptrisStatus tape_carve(yeptris_json_tape* t, size_t len) {
     size_t cap = len + 2;
     size_t off_o = (cap + 15) & ~(size_t)15;
-    size_t val_o = (off_o + 2 * cap * sizeof(uint32_t) + 15) & ~(size_t)15;
-    char* block = yep_alloc(yep_system_allocator(), val_o + cap * sizeof(uint64_t));
+    char* block = yep_alloc(yep_system_allocator(), off_o + 2 * cap * sizeof(uint32_t));
     if (block == NULL) {
         return YEPTRIS_ERROR_MEMORY;
     }
@@ -57,29 +57,9 @@ static YeptrisStatus tape_carve(yeptris_json_tape* t, size_t len) {
     t->kinds = (uint8_t*)block;
     t->offs = (uint32_t*)(void*)(block + off_o);
     t->lens = t->offs + cap;
-    t->vals = (uint64_t*)(void*)(block + val_o);
     t->count = 0;
     t->int_min = 0;
     return YEPTRIS_OK;
-}
-
-/* Append one converted number record (the walker/root scan did the
- * ONE pass; the shape contract is the number kernel's). */
-static int tape_put_converted(tape_ctx* c, size_t at, size_t span, int shape, int64_t iv,
-                              double dv) {
-    uint8_t kind = shape == 1 ? YEP_T_FLOAT : YEP_T_INT;
-    uint64_t val;
-    if (shape == 0) {
-        val = (uint64_t)iv;
-    } else {
-        if (shape == 2) {
-            c->t->int_min = 1; /* integer text beyond int64: val is the
-                                  double approximation; exact hosts
-                                  rebuild from the span */
-        }
-        memcpy(&val, &dv, sizeof(val));
-    }
-    return rec_put(c, kind, (uint32_t)at, (uint32_t)span, val);
 }
 
 /* Scalar roots: the walk needs an opener, so a bare root value
@@ -93,7 +73,7 @@ static int tape_put_root_scalar(tape_ctx* c, const char* p, size_t len, size_t a
         if (!yep_json_string(p, len, &i, &close, &esc)) {
             return 0;
         }
-        return rec_put(c, YEP_T_STR, (uint32_t)(at + 1), (uint32_t)(close - at - 1), 0);
+        return rec_put(c, YEP_T_STR, (uint32_t)(at + 1), (uint32_t)(close - at - 1));
     }
     if (ch == 't' || ch == 'f' || ch == 'n') {
         const char* word = ch == 't' ? "true" : (ch == 'f' ? "false" : "null");
@@ -101,18 +81,15 @@ static int tape_put_root_scalar(tape_ctx* c, const char* p, size_t len, size_t a
         if (!yep_json_literal(p, len, &i, word)) {
             return 0;
         }
-        uint8_t kind = ch == 'n' ? YEP_T_NULL : YEP_T_BOOL;
-        uint64_t val = kind == YEP_T_BOOL ? (uint64_t)(ch == 't') : 0;
-        return rec_put(c, kind, (uint32_t)at, (uint32_t)(i - at), val);
+        uint8_t kind = ch == 'n' ? YEP_T_NULL : (ch == 't' ? YEP_T_TRUE : YEP_T_FALSE);
+        return rec_put(c, kind, (uint32_t)at, (uint32_t)(i - at));
     }
     size_t i = 0;
-    int64_t iv = 0;
-    double dv = 0;
-    int shape = 0;
-    if (yep_json_number_scan(p + at, len - at, &i, &shape, &iv, &dv) == 0) {
+    int flt = 0;
+    if (yep_json_number_shape(p + at, len - at, &i, &flt) == 0) {
         return 0;
     }
-    return tape_put_converted(c, at, i, shape, iv, dv);
+    return rec_put(c, flt ? YEP_T_FLOAT : YEP_T_INT, (uint32_t)at, (uint32_t)i);
 }
 
 /* One strict walk over p[open] -> records. Returns OK, MEMORY
@@ -137,7 +114,6 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
     uint8_t* kinds = t->kinds;
     uint32_t* offs = t->offs;
     uint32_t* lens = t->lens;
-    uint64_t* vals = t->vals;
     size_t cap = len + 2;
     uint32_t open_at[YEP_JSON_WALK_DEPTH];
     uint8_t kind[YEP_JSON_WALK_DEPTH];
@@ -146,12 +122,11 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
     kinds[0] = YEP_T_DOC;
     offs[0] = 0;
     lens[0] = 0;
-    vals[0] = 0;
     count = 1;
 
     uint8_t top_kind = p[open] == '[' ? 0 : 1;
     kinds[1] = top_kind ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN;
-    offs[1] = (uint32_t)open;
+    offs[1] = 0; /* the CLOSE arm writes the link */
     lens[1] = 0;
     uint32_t top_open = 1;
     count = 2;
@@ -200,25 +175,13 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             if (key_slot) {
                 goto reject;
             }
-            int shape = 0;
-            int64_t iv = 0;
-            double dv = 0;
-            if (!yep_json_number_scan(p, len, &i, &shape, &iv, &dv)) {
+            int flt = 0;
+            if (!yep_json_number_shape(p, len, &i, &flt)) {
                 goto reject;
             }
-            uint64_t v;
-            if (shape == 0) {
-                v = (uint64_t)iv;
-            } else {
-                if (shape == 2) {
-                    t->int_min = 1;
-                }
-                memcpy(&v, &dv, sizeof(v));
-            }
-            kinds[count] = shape == 1 ? YEP_T_FLOAT : YEP_T_INT;
+            kinds[count] = flt ? YEP_T_FLOAT : YEP_T_INT;
             offs[count] = (uint32_t)at;
             lens[count] = (uint32_t)(i - at);
-            vals[count] = v;
             count++;
             top_expect = JW_COMMA_OR_CLOSE;
             continue;
@@ -232,8 +195,6 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             kinds[count] = YEP_T_STR;
             offs[count] = (uint32_t)(at + 1);
             lens[count] = (uint32_t)(close - at - 1);
-            /* no val store: undefined for STR by contract (the FFI
-             * readers never touch it — one 8B store saved per string) */
             count++;
             top_expect = key_slot ? JW_COLON : JW_COMMA_OR_CLOSE;
             continue;
@@ -246,11 +207,10 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
                 goto reject;
             }
             kinds[count] = YEP_T_CLOSE;
-            offs[count] = (uint32_t)at;
+            offs[count] = top_open; /* link to the OPEN */
             lens[count] = 0;
-            vals[count] = top_open;
+            offs[top_open] = (uint32_t)count; /* the OPEN's link back */
             count++;
-            vals[top_open] = (uint32_t)(count - 1);
             depth--;
             i = at + 1;
             if (depth == 0) {
@@ -273,10 +233,8 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             open_at[depth - 1] = top_open;
             top_kind = c == '[' ? 0 : 1;
             kinds[count] = c == '[' ? YEP_T_SEQ_OPEN : YEP_T_MAP_OPEN;
-            offs[count] = (uint32_t)at;
+            offs[count] = 0; /* the matching CLOSE writes the link */
             lens[count] = 0;
-            /* no val store: the CLOSE arm writes the link; an unclosed
-             * OPEN's val is never read (errors free the tape) */
             top_open = (uint32_t)count;
             count++;
             top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
@@ -288,8 +246,7 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
         }
         if (c == 't' || c == 'f' || c == 'n') {
             /* packed literal compare: bounds-checked span first, then
-             * one u32 load (false adds its 5th byte) — the indexed
-             * walk's cut, ported to the fused walk */
+             * one u32 load (false adds its 5th byte) */
             size_t wl = c == 'f' ? 5 : 4;
             if (at + wl > len) {
                 goto reject;
@@ -312,11 +269,9 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             if (key_slot) {
                 goto reject;
             }
-            uint8_t lkind = c == 'n' ? YEP_T_NULL : YEP_T_BOOL;
-            kinds[count] = lkind;
+            kinds[count] = c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE);
             offs[count] = (uint32_t)at;
             lens[count] = (uint32_t)wl;
-            vals[count] = lkind == YEP_T_BOOL ? (uint64_t)(c == 't') : 0;
             count++;
             i = at + wl;
             top_expect = JW_COMMA_OR_CLOSE;
@@ -338,6 +293,8 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
         goto mem;
     }
     t->count = count;
+    t->_src = p;
+    t->_srclen = len;
     return YEPTRIS_OK;
 
 mem:
@@ -409,14 +366,52 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len
     if (tape_carve(tape, len) != YEPTRIS_OK) {
         return YEPTRIS_ERROR_MEMORY;
     }
+    tape->_src = source;
+    tape->_srclen = len;
     tape_ctx c = {tape, len + 2, {0}, 0, 0};
-    if (!rec_put(&c, YEP_T_DOC, 0, 0, 0) || !tape_put_root_scalar(&c, source, len, at)) {
+    if (!rec_put(&c, YEP_T_DOC, 0, 0) || !tape_put_root_scalar(&c, source, len, at)) {
         yep_error_set(yep_error_tls(), YEP_ERR_INTERNAL, 0, 0, at,
                       "tape scalar conversion rejected a validated root at byte %zu", at);
         yeptris_tape_free(tape);
         return YEPTRIS_ERROR_INTERNAL;
     }
     return YEPTRIS_OK;
+}
+
+YEPTRIS_API size_t yeptris_tape_convert(yeptris_json_tape* t, size_t from, size_t to,
+                                        int64_t* ivals, double* dvals) {
+    if (t == NULL || t->_src == NULL || from > to || to > t->count) {
+        return SIZE_MAX;
+    }
+    const char* p = (const char*)t->_src;
+    size_t n = 0;
+    for (size_t i = from; i < to; i++) {
+        uint8_t k = t->kinds[i];
+        if (k != YEP_T_INT && k != YEP_T_FLOAT) {
+            continue;
+        }
+        size_t j = 0;
+        int64_t iv = 0;
+        double dv = 0;
+        int shape = 0;
+        if (!yep_json_number_scan(p + t->offs[i], t->lens[i], &j, &shape, &iv, &dv)) {
+            return SIZE_MAX;
+        }
+        if (shape == 0) {
+            if (ivals != NULL) {
+                ivals[i] = iv;
+            }
+        } else {
+            if (shape == 2) {
+                t->int_min = 1;
+            }
+            if (dvals != NULL) {
+                dvals[i] = dv;
+            }
+        }
+        n++;
+    }
+    return n;
 }
 
 YEPTRIS_API void yeptris_tape_free(yeptris_json_tape* tape) {

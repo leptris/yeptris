@@ -99,15 +99,15 @@ static int dom_it_next(dom_it* it, uint32_t* id) {
     return EV_ENTER;
 }
 
-static int scalar_kind(const yep_dnode* n) {
+static int scalar_kind(const yep_dom* d, const yep_dnode* n) {
     if (n->style == YEP_STYLE_DOUBLE_QUOTED) {
         return YEP_T_STR;
     }
     switch (n->tag_id) {
     case YEPTRIS_TAG_NULL:
         return YEP_T_NULL;
-    case YEPTRIS_TAG_BOOL:
-        return YEP_T_BOOL;
+    case YEPTRIS_TAG_BOOL: /* v2: the kind IS the value */
+        return yep_dom_view(d, n->value).len == 5 ? YEP_T_FALSE : YEP_T_TRUE;
     case YEPTRIS_TAG_INT:
         return YEP_T_INT;
     case YEPTRIS_TAG_FLOAT:
@@ -131,7 +131,7 @@ static int enter_matches(const yep_dom* d, uint32_t id, const yeptris_json_tape*
         }
         return 1;
     }
-    int want = scalar_kind(n);
+    int want = scalar_kind(d, n);
     if (want < 0 || t->kinds[i] != (uint8_t)want) {
         fprintf(stderr, "TAPE-DIFF %s: scalar node %u (tag %u style %u) record %zu %u\n", name, id,
                 (unsigned)n->tag_id, (unsigned)n->style, i, t->kinds[i]);
