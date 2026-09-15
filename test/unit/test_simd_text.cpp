@@ -663,10 +663,12 @@ TEST(SimdText, ChunkClassify) {
     const yep_text_kernels* k = yep_text_active();
     /* the class bytes plus the boundary probes: 0x20 is NOT c0,
      * 0x1F is, and every >=0x80 byte must stay unclassified (the
-     * unsigned-vs-signed compare trap — a signed < would flag UTF-8) */
-    const char probes[] = {'"',  '\\', '{',        '}',        '[',       ']',  ',',
-                           ':',  'a',  ' ',        0x00,       0x01,      0x0A, 0x1F,
-                           0x20, 0x7F, (char)0x80, (char)0xC3, (char)0xFF};
+     * unsigned-vs-signed compare trap — a signed < would flag UTF-8).
+     * High bytes as plain signed constants (0x80=-128, 0xC3=-61,
+     * 0xFF=-1): MSVC C4310 flags narrowing constant casts. */
+    const char probes[] = {'"', '\\',   '{',        '}',       '[',     ']',  ',',
+                           ':', 'a',    ' ',        '\0',      '\x1',   '\n', '\x1F',
+                           ' ', '\x7F', (char)-128, (char)-61, (char)-1};
     for (char pc : probes) {
         /* the probe byte at EVERY position of a full chunk */
         for (size_t at = 0; at < 32; at++) {
