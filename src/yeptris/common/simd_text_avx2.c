@@ -433,6 +433,18 @@ yep_chunk_masks yep_text_json_chunk_avx2(const char* p, size_t n) {
                         _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8(',')),
                                         _mm256_cmpeq_epi8(v, _mm256_set1_epi8(':')))));
     m.structurals = (uint32_t)_mm256_movemask_epi8(s);
+    /* valstart: the unsigned digit range as the min/max identity —
+     * max(v,'0')==v gives v >= '0' (signed cmpeq_epi8 can't); the
+     * saturating form would false-flag every byte below '0' */
+    const __m256i d0 = _mm256_set1_epi8('0'), d9 = _mm256_set1_epi8('9');
+    __m256i dig = _mm256_and_si256(_mm256_cmpeq_epi8(_mm256_max_epu8(v, d0), v),
+                                   _mm256_cmpeq_epi8(_mm256_min_epu8(v, d9), v));
+    __m256i vs = _mm256_or_si256(
+        _mm256_or_si256(dig, _mm256_cmpeq_epi8(v, _mm256_set1_epi8('-'))),
+        _mm256_or_si256(_mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('t')),
+                                        _mm256_cmpeq_epi8(v, _mm256_set1_epi8('f'))),
+                        _mm256_cmpeq_epi8(v, _mm256_set1_epi8('n'))));
+    m.valstart = (uint32_t)_mm256_movemask_epi8(vs);
     m.c0 = (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_min_epu8(v, c0t), v));
     m.valid = 0xFFFFFFFFu;
     return m;
