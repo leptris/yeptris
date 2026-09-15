@@ -20,6 +20,10 @@
 
 #include <yeptris/tape.h>
 
+#ifndef YEP_TOKEN_CONTRACT_ROUTE
+#define YEP_TOKEN_CONTRACT_ROUTE 0
+#endif
+
 #include "common/error.h"
 #include "common/simd_text.h"
 #include "encoding/encoding.h"
@@ -305,6 +309,219 @@ reject:
     return YEPTRIS_ERROR_PARSE;
 }
 
+/* The token-contract walk: consumes stage 1's positions — whitespace
+ * is never scanned (a one-byte-typical gap check proves the residue
+ * since the last token is whitespace), string interiors never appear
+ * (yep_json_string stays the authority on closes, escapes, and raw
+ * C0), numbers are span records via the shape scan. Same states and
+ * rejects as the fused walk; tape-diff pins the equivalence. */
+#if defined(__GNUC__)
+__attribute__((unused))
+#endif
+static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const uint32_t* idx,
+                                   size_t nidx, yeptris_json_tape* t) {
+    if (tape_carve(t, len) != YEPTRIS_OK) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    uint8_t* kinds = t->kinds;
+    uint32_t* offs = t->offs;
+    uint32_t* lens = t->lens;
+    uint32_t open_at[YEP_JSON_WALK_DEPTH];
+    uint8_t kind[YEP_JSON_WALK_DEPTH];
+
+    size_t count = 0;
+    kinds[0] = YEP_T_DOC;
+    offs[0] = 0;
+    lens[0] = 0;
+    count = 1;
+
+    uint8_t top_kind = p[open] == '[' ? 0 : 1;
+    kinds[1] = top_kind ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN;
+    offs[1] = 0;
+    lens[1] = 0;
+    uint32_t top_open = 1;
+    count = 2;
+    uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+    int depth = 1;
+    open_at[0] = top_open;
+    kind[0] = top_kind;
+
+    size_t si = 0;
+    while (si < nidx && idx[si] <= open) {
+        si++; /* the root opener (and anything before it) is consumed */
+    }
+    size_t prev_end = open + 1;
+    for (;;) {
+        if (si >= nidx) {
+            goto reject; /* EOF mid-structure */
+        }
+        size_t at = idx[si++];
+        if (at >= len) {
+            goto reject;
+        }
+        char c = p[at];
+        /* the residue since the last token must be whitespace */
+        {
+            size_t g = at;
+            while (g > prev_end && (p[g - 1] == ' ' || p[g - 1] == '\n' || p[g - 1] == '\r')) {
+                g--;
+            }
+            if (g != prev_end) {
+                goto reject; /* a tab, raw control, or dropped byte */
+            }
+        }
+        prev_end = at + 1;
+
+        if (top_expect == JW_COLON) {
+            if (c != ':') {
+                goto reject;
+            }
+            top_expect = JW_VALUE;
+            continue;
+        }
+        if (top_expect == JW_COMMA_OR_CLOSE) {
+            if (c == ',') {
+                top_expect = top_kind ? JW_KEY : JW_VALUE;
+                continue;
+            }
+            if (c != ']' && c != '}') {
+                goto reject;
+            }
+        }
+
+        int key_slot = top_kind == 1 && (top_expect == JW_KEY_OR_CLOSE || top_expect == JW_KEY);
+
+        if ((unsigned)(c - '0') <= 9u || c == '-') {
+            if (key_slot) {
+                goto reject;
+            }
+            size_t i = at;
+            int flt = 0;
+            if (!yep_json_number_shape(p, len, &i, &flt)) {
+                goto reject;
+            }
+            kinds[count] = flt ? YEP_T_FLOAT : YEP_T_INT;
+            offs[count] = (uint32_t)at;
+            lens[count] = (uint32_t)(i - at);
+            count++;
+            prev_end = i;
+            top_expect = JW_COMMA_OR_CLOSE;
+            continue;
+        }
+        if (c == '"') {
+            size_t i = at;
+            size_t close = 0;
+            int esc = 0;
+            if (!yep_json_string(p, len, &i, &close, &esc)) {
+                goto reject;
+            }
+            kinds[count] = YEP_T_STR;
+            offs[count] = (uint32_t)(at + 1);
+            lens[count] = (uint32_t)(close - at - 1);
+            count++;
+            prev_end = i;
+            top_expect = key_slot ? JW_COLON : JW_COMMA_OR_CLOSE;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            int want = c == ']' ? 0 : 1;
+            if (top_kind != want ||
+                (top_expect != JW_VALUE_OR_CLOSE && top_expect != JW_KEY_OR_CLOSE &&
+                 top_expect != JW_COMMA_OR_CLOSE)) {
+                goto reject;
+            }
+            kinds[count] = YEP_T_CLOSE;
+            offs[count] = top_open;
+            lens[count] = 0;
+            offs[top_open] = (uint32_t)count;
+            count++;
+            depth--;
+            if (depth == 0) {
+                break;
+            }
+            top_kind = kind[depth - 1];
+            top_expect = JW_COMMA_OR_CLOSE;
+            top_open = open_at[depth - 1];
+            continue;
+        }
+        if (c == '{' || c == '[') {
+            if (depth >= YEP_JSON_WALK_DEPTH) {
+                goto reject;
+            }
+            if (key_slot) {
+                goto reject;
+            }
+            kind[depth - 1] = top_kind;
+            open_at[depth - 1] = top_open;
+            top_kind = c == '[' ? 0 : 1;
+            kinds[count] = c == '[' ? YEP_T_SEQ_OPEN : YEP_T_MAP_OPEN;
+            offs[count] = 0;
+            lens[count] = 0;
+            top_open = (uint32_t)count;
+            count++;
+            top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+            kind[depth] = top_kind;
+            open_at[depth] = top_open;
+            depth++;
+            continue;
+        }
+        if (c == 't' || c == 'f' || c == 'n') {
+            size_t wl = c == 'f' ? 5 : 4;
+            if (at + wl > len) {
+                goto reject;
+            }
+            uint32_t got4;
+            memcpy(&got4, p + at, 4);
+            if (got4 != (c == 't'   ? 0x65757274u /* "true" */
+                         : c == 'n' ? 0x6C6C756Eu /* "null" */
+                                    : 0x736C6166u /* "fals" */) ||
+                (c == 'f' && p[at + 4] != 'e')) {
+                goto reject;
+            }
+            if (at + wl < len) {
+                char z = p[at + wl];
+                if (z != ' ' && z != '\n' && z != '\r' && z != ',' && z != ']' && z != '}' &&
+                    z != ':') {
+                    goto reject;
+                }
+            }
+            if (key_slot) {
+                goto reject;
+            }
+            kinds[count] = c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE);
+            offs[count] = (uint32_t)at;
+            lens[count] = (uint32_t)wl;
+            count++;
+            prev_end = at + wl;
+            top_expect = JW_COMMA_OR_CLOSE;
+            continue;
+        }
+        goto reject;
+    }
+    /* trailing whitespace only */
+    while (prev_end < len && (p[prev_end] == ' ' || p[prev_end] == '\t' || p[prev_end] == '\n' ||
+                              p[prev_end] == '\r')) {
+        prev_end++;
+    }
+    if (prev_end != len) {
+        goto reject;
+    }
+    if (count > len + 2) {
+        goto mem;
+    }
+    t->count = count;
+    t->_src = p;
+    t->_srclen = len;
+    return YEPTRIS_OK;
+
+mem:
+    yeptris_tape_free(t);
+    return YEPTRIS_ERROR_MEMORY;
+reject:
+    yeptris_tape_free(t);
+    return YEPTRIS_ERROR_PARSE;
+}
+
 YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len,
                                                   yeptris_json_tape* tape) {
     if ((source == NULL && len != 0) || tape == NULL) {
@@ -325,6 +542,29 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len
             off++;
         }
         if (off < len && (source[off] == '[' || source[off] == '{')) {
+            /* the token-contract route: stage 1 (vector indexes) + the
+             * lean walk. Measured BEHIND the fused walk on json-doc
+             * (417-426 vs 526-533: stage 1 at 1408 MB/s + a walk whose
+             * arms carry the same grammar cost) — gated OFF until the
+             * sized cuts land (the op-table classifier trick, the
+             * specialized map/seq loops, stage-1 string closes). The
+             * fused walk is the shipped route; the law. */
+#if YEP_TOKEN_CONTRACT_ROUTE
+            uint32_t* idx = (uint32_t*)malloc((len + 2) * sizeof(uint32_t));
+            if (idx == NULL) {
+                return YEPTRIS_ERROR_MEMORY;
+            }
+            size_t nidx = 0;
+            if (yep_text_active()->json_stage1(source, len, idx, &nidx)) {
+                YeptrisStatus st = tape_walk_idx(source, len, off, idx, nidx, tape);
+                free(idx);
+                if (st != YEPTRIS_ERROR_PARSE) {
+                    return st; /* OK or MEMORY; a reject falls through */
+                }
+            } else {
+                free(idx);
+            }
+#endif
             YeptrisStatus st = tape_walk(source, len, off, tape, 1);
             if (st != YEPTRIS_ERROR_PARSE) {
                 return st; /* OK or MEMORY; a reject falls through */
