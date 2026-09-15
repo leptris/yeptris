@@ -1860,3 +1860,42 @@ to conversion, walks structural indices without an expect machine,
 and skips ws in 64B blocks. Matching it requires an opt-in lenient
 parse mode with those exact deferred guarantees — a product decision,
 recorded here for the owner.
+
+## 2026-09-16 — verdict seven: the token-contract route, closed by four stage-2 shapes
+
+The simdjson-shaped two-stage was fully built and measured through
+four stage-2 variants against the fused walk (interleaved, quiet
+windows, fused pinned 522-540):
+
+  stage 2 shape                       route    vs fused
+  ----------------------------------------------------
+  lean indexed walk                     410      522
+  + key_slot maintained flag            410      523
+  + stage-1 closes + SWAR spans         367      531   (REGRESSION)
+  + gap-check removal + key-position
+    specialization (closes reverted)    419      540
+
+Stage 1 alone: 1408-1420 MB/s (1.89 ms, 960k tokens). The route
+cannot win on this corpus: stage 1's ~1.9 ms is additive, while the
+dominant stage-2 cost — the grammar arms (number shape scan, string
+walk, record writes) — is IDENTICAL in both architectures, because
+strict validation happens at parse in both. Every walk restructuring
+moved +-10%; the stage-1 tax never moved.
+
+Also measured dead: simdjson's op-table nibble classifier (1408 ->
+1268 on this core — vqtbl's add/shift/tbl/cmp chain is serial where
+per-byte vceq chains parallelize; their table also self-matches 0xFF
+in row 0, which our contract forbids). Also reverted: stage-1 closes
+— the corpus's 1-8 byte strings never paid the vector scan the cut
+skipped; yep_json_string's scalar fast path was already near-optimal
+and the closes stream + SWAR check cost more than they saved. The
+gap check was proven redundant (dropped bytes are scalar-run START
+tokens the state machine rejects) and removed — the one structural
+keep from this round, with the key-position short-circuit.
+
+KEPT and shipped-green on the branch: the vector stage 1 itself
+(differential-pinned), the lean walk, and the two walk cuts. The
+route stays gated (YEP_TOKEN_CONTRACT_ROUTE 0); the fused walk is the
+optimum for the strict-validation contract. simdjson parity (1017-
+1039 measured directly) requires deferred-validation parse semantics
+— the standing owner decision, unchanged since verdict six.
