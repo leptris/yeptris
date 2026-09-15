@@ -89,6 +89,13 @@ YEPTRIS_API int yep_json_number_shape(const char* p, size_t len, size_t* i, int*
 YEPTRIS_API int yep_json_literal(const char* p, size_t len, size_t* i, const char* word);
 YEPTRIS_API int yep_json_string(const char* p, size_t len, size_t* i, size_t* close_out,
                                 int* has_esc);
+/* Stage 1 of the token-contract tape front: the structural indexer
+ * (scalar reference; the kernels table's json_stage1 slot carries the
+ * ISA twins). Writes the token positions stage 2 dispatches on —
+ * operators, string OPEN quotes, scalar-run starts — and returns 0
+ * only for an unterminated string. idx holds len+2 entries. */
+YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx);
+
 /* The per-chunk byte-class classifier behind the flow kernels: the
  * kernels table's json_chunk slot (common/simd_text.h) — yep_chunk_masks
  * is defined there; the differential suite pins the ISAs to it. */
