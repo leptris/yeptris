@@ -279,7 +279,11 @@ static void fuzz_parity(void) {
             for (size_t i = 0; i < len; i++) {
                 fputc(buf[i] >= 0x20 ? buf[i] : '.', stderr);
             }
-            fprintf(stderr, "]\n");
+            fprintf(stderr, "] hex=");
+            for (size_t i = 0; i < len; i++) {
+                fprintf(stderr, "%02x", (unsigned char)buf[i]);
+            }
+            fprintf(stderr, "\n");
             g_fail++;
         } else if (ds == YEPTRIS_OK && doc != NULL) {
             if (!tape_matches_dom(doc->dom, &tape, buf, "fuzz")) {
