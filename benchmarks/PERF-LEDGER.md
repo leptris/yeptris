@@ -1705,3 +1705,29 @@ compact-record tape v2 (ABI break, 0.4.0-class) or a DOM-over-tape
 lazy materialization. (Build lesson of the day: the ninja mtime trap
 after git-checkout churn poisoned three measurement rounds — purge
 the object dir when checkout touches built sources.)
+
+## 2026-09-15 — tape v2 (packed u64 ABI): measured DEAD, reverted
+
+The simdjson-parity campaign's ABI hypothesis, built and measured:
+one sequential u64 per record ([kind:4|len:28|off:32] strings,
+[kind|val:60] ints with wide spills, FLOAT2 pairs), one store per
+record instead of three-plus. Fully green (306/306; tape-diff 2M
+fuzz + 318 corpus clean after fixing a real shape-2 contract
+divergence the corpus caught) — and 12-17% SLOWER: 425-463 vs 510
+MB/s across three clean rebuilds. The packing arithmetic and the
+wide-kind branches cost more than the saved stores; the SoA columns
+were already optimal for this machine's store streams. Branch
+deleted, nothing shipped.
+
+The cycle budget, recomputed from 510 MB/s (json-doc, ~5 B/token,
+~34 cycles/token): ~8-10 ws+dispatch, ~8 number kernel, ~8 string
+fast path, ~5 stores, ~5 loop overhead. No single component holds
+the missing 2.2x — the fused one-pass shape pays grammar and build
+together at ~6.9 cycles/byte, where simdjson's two-stage split pays
+~3-4 (vectorized classification) + ~2-3 (prelocated token walk).
+The two structural-index experiments that "measured dead" fed this
+same token loop; the remaining honest lever is a purpose-built
+stage 2 that consumes precomputed positions WITHOUT re-validating
+gaps or close kinds — a rewrite-class item, not a cut. The 3x-ryml
+engine work (item 79) shares that shape; the campaigns converge on
+one architecture project next.
