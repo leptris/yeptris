@@ -1784,3 +1784,38 @@ per-token output floor is the wall; the win must come from semantic
 trust, not classification speed. Build discipline: scalar reference
 first, the oracle (2M fuzz + 318 corpus) at every step, measure per
 phase, revert any phase that loses.
+## 2026-09-15 — verdict five: the SIMD classifier pays, the parity rewrite doesn't
+
+Two cuts on perf/chunk-classifier, measured interleaved same-process
+on json-doc (fused incumbent pinned 513-530 throughout):
+
+1. The chunk classifier as a kernels-table slot (scalar ref + NEON
+   two-half + AVX2 lane-pass twins, one dispatch point, differential
+   suite): stage 1 alone 598 -> 1294 MB/s, route 428 -> 470 MB/s with
+   the scalar resolver. KEPT. The x86 c0 class needs the unsigned
+   min_epu8(v,0x1F)==v identity — cmplt_epi8 is signed and flags every
+   >=0x80 byte.
+
+2. Packed literal compares in the indexed walk (true/null one u32,
+   false u32+byte): +40 MB/s. KEPT.
+
+3. The simdjson string-parity stage 1 (escape scanner's ODD_BITS
+   borrow trick ported to u32 verbatim, prefix-xor quote parity, lazy
+   per-string escape/C0 validation — the oracle caught the cumulative-
+   parity version marking a late close-quote escaped after an early
+   \t; the borrow trick is the correct formulation): stage 1 alone
+   1294 -> 942 MB/s, route 470 -> 419. REVERTED, law applied. The
+   parity machinery costs ~20 fixed ops/chunk plus per-quote segment
+   bookkeeping; on clean-short-string corpora there are no bs/c0
+   events to save, so the event walk it replaced was cheaper. The
+   escape-scanner port is correct and green through the 2M oracle —
+   recorded here for the day extraction itself vectorizes.
+
+Standing route state: two-stage 463-486 vs fused 513-529. The gap is
+now purely stage-2 semantics (span re-derivation + 4-array SoA stores
++ inline number conversion) and the duplicated event walk (stage 1
+emits, stage 2 re-reads).simdjson-class parity needs the extraction
+vectorized AND stage 2's contract leaned — the same verdict-four
+conclusion, now with the scalar resolver's floor measured at 1.3 GB/s:
+even a free stage 2 caps the route at ~0.9-1.1x of simdjson's own
+stage-2-only ceiling. The fused walk holds.
