@@ -428,11 +428,10 @@ yep_chunk_masks yep_text_json_chunk_avx2(const char* p, size_t n) {
     __m256i s = _mm256_or_si256(
         _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('{')),
                         _mm256_cmpeq_epi8(v, _mm256_set1_epi8('}'))),
-        _mm256_or_si256(
-            _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('[')),
-                            _mm256_cmpeq_epi8(v, _mm256_set1_epi8(']'))),
-            _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8(',')),
-                            _mm256_cmpeq_epi8(v, _mm256_set1_epi8(':')))));
+        _mm256_or_si256(_mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8('[')),
+                                        _mm256_cmpeq_epi8(v, _mm256_set1_epi8(']'))),
+                        _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8(',')),
+                                        _mm256_cmpeq_epi8(v, _mm256_set1_epi8(':')))));
     m.structurals = (uint32_t)_mm256_movemask_epi8(s);
     m.c0 = (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_min_epu8(v, c0t), v));
     m.valid = 0xFFFFFFFFu;
@@ -440,9 +439,12 @@ yep_chunk_masks yep_text_json_chunk_avx2(const char* p, size_t n) {
 }
 
 const yep_text_kernels yep_text_kernels_avx2 = {
-    yep_avx2_contains,   yep_avx2_find,        yep_avx2_find3,    yep_avx2_count,
-    yep_avx2_count3,     yep_avx2_copy_count3, yep_avx2_find_not, yep_avx2_stopset_find,
-    yep_avx2_quote_scan, yep_avx2_scan_stats,  yep_avx2_qbc_find, yep_avx2_gate_scan,
+    yep_avx2_contains,   yep_avx2_find,
+    yep_avx2_find3,      yep_avx2_count,
+    yep_avx2_count3,     yep_avx2_copy_count3,
+    yep_avx2_find_not,   yep_avx2_stopset_find,
+    yep_avx2_quote_scan, yep_avx2_scan_stats,
+    yep_avx2_qbc_find,   yep_avx2_gate_scan,
     yep_avx2_line_facts, yep_text_json_chunk_avx2,
 };
 

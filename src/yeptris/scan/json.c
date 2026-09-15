@@ -698,4 +698,3 @@ yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
 
 /* The per-chunk classifier: the kernels table's json_chunk slot
  * (scalar reference in common, NEON/AVX2 TUs on their ISAs). */
-
