@@ -152,7 +152,6 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
     kinds[1] = top_kind ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN;
     offs[1] = (uint32_t)open;
     lens[1] = 0;
-    vals[1] = 0;
     uint32_t top_open = 1;
     count = 2;
     uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
@@ -232,7 +231,8 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             kinds[count] = YEP_T_STR;
             offs[count] = (uint32_t)(at + 1);
             lens[count] = (uint32_t)(close - at - 1);
-            vals[count] = 0;
+            /* no val store: undefined for STR by contract (the FFI
+             * readers never touch it — one 8B store saved per string) */
             count++;
             top_expect = key_slot ? JW_COLON : JW_COMMA_OR_CLOSE;
             continue;
@@ -274,7 +274,8 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             kinds[count] = c == '[' ? YEP_T_SEQ_OPEN : YEP_T_MAP_OPEN;
             offs[count] = (uint32_t)at;
             lens[count] = 0;
-            vals[count] = 0;
+            /* no val store: the CLOSE arm writes the link; an unclosed
+             * OPEN's val is never read (errors free the tape) */
             top_open = (uint32_t)count;
             count++;
             top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
