@@ -950,7 +950,7 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
  * case's node build, minus the event seam. The engine resolved
  * tag_id (the typing SSOT); everything else is the case body. */
 int dom_on_scalar(void* ctx, const yep_view* value, const yep_view* tag, const yep_view* anchor,
-                  uint32_t anchor_id, uint32_t tag_id, uint8_t style, uint8_t implicit,
+                  uint32_t anchor_id, uint8_t tag_id, uint8_t style, uint8_t implicit,
                   uint8_t flow, int borrowed) {
     yep_dom* d = (yep_dom*)ctx;
     uint32_t id = dom_open_node(d, YEP_DOM_SCALAR, tag, anchor, borrowed, style, implicit, flow);
