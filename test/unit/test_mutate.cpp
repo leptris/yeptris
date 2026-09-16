@@ -299,7 +299,7 @@ TEST(BulkBuild, NestedDocument) {
     YeptrisStatus st = YEPTRIS_OK;
     std::string out = build_dump(es, blob, &st);
     ASSERT_EQ(st, YEPTRIS_OK);
-    EXPECT_EQ(out, "a:\n  - 1\n  - 2\nb:\n  c: x\n");
+    EXPECT_EQ(out, "a:\n- 1\n- 2\nb:\n  c: x\n");
 }
 
 TEST(BulkBuild, ScalarRoot) {
