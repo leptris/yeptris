@@ -321,6 +321,23 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
         }
         if ((as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len))) {
             wr_put(w, p, len);
+        } else if (!multiline) {
+            /* libyaml parity: a scalar that must be quoted but needs no
+             * escapes (digit-leading strings like "5014", indicator
+             * leads) single-quotes — double quotes are for text that
+             * actually requires escapes (issue #95's matrix) */
+            int clean = 1;
+            for (uint32_t i = 0; i < len; i++) {
+                if ((unsigned char)p[i] < 0x20 || (unsigned char)p[i] == 0x7f) {
+                    clean = 0;
+                    break;
+                }
+            }
+            if (clean) {
+                emit_sq(w, p, len);
+            } else {
+                emit_dq(w, p, len);
+            }
         } else {
             emit_dq(w, p, len);
         }
@@ -539,11 +556,17 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
                 wr_byte(w, ' ');
                 emit_node(em, kn->next_sibling, content_col, 0);
             } else {
-                /* nested block collection: next line at content+2 */
+                /* nested block collection: next line. libyaml parity:
+                 * a SEQUENCE value sits at the key's column (zero
+                 * extra indent); mappings indent +2 (issue #95) */
+                int seq_val = (vn->kind == 1 && !vn->flow);
+                int val_col = seq_val ? content_col : content_col + 2;
                 emit_props_tail(w, vn);
                 wr_byte(w, '\n');
-                wr_indent(w, content_col + 2);
-                emit_node(em, kn->next_sibling, content_col, 0);
+                wr_indent(w, val_col);
+                /* emit_block_seq dashes at parent_col+2: pass val_col-2
+                 * so the dashes land at val_col exactly */
+                emit_node(em, kn->next_sibling, val_col - 2, 0);
             }
         }
         pair++;

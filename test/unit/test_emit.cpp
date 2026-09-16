@@ -39,7 +39,7 @@ TEST(Emit, BlockShapes) {
     EXPECT_EQ(roundtrip("- x\n- y\n"), "- x\n- y\n");
     EXPECT_EQ(roundtrip("k:\n  nested: v\n"), "k:\n  nested: v\n");
     EXPECT_EQ(roundtrip("- a: 1\n  b: 2\n"), "- a: 1\n  b: 2\n");
-    EXPECT_EQ(roundtrip("a:\n  - 1\n  - 2\n"), "a:\n  - 1\n  - 2\n");
+    EXPECT_EQ(roundtrip("a:\n  - 1\n  - 2\n"), "a:\n- 1\n- 2\n");
     EXPECT_EQ(roundtrip("empty: {}\nlist: []\n"), "empty: {}\nlist: []\n");
 }
 
@@ -107,7 +107,7 @@ TEST(Emit, LiteralBlocks) {
 
 TEST(Emit, AnchorsAndAliases) {
     EXPECT_EQ(roundtrip("a: &x 1\nb: *x\n"), "a: &x 1\nb: *x\n");
-    EXPECT_EQ(roundtrip("a:\n  &s\n  - 1\n"), "a: &s\n  - 1\n");
+    EXPECT_EQ(roundtrip("a:\n  &s\n  - 1\n"), "a: &s\n- 1\n");
 }
 
 TEST(Emit, MultiDoc) {
@@ -365,7 +365,7 @@ TEST(Emit, PlainNegativeNumbers) {
         const char* want;
     } cases[] = {
         {"-5", "-5"},   {"-.inf", "-.inf"}, {"-2.5e+300", "-2.5e+300"}, {"?x", "?x"},
-        {"-", "\"-\""}, {"- x", "\"- x\""}, {"? x", "\"? x\""},
+        {"-", "'-'"}, {"- x", "'- x'"}, {"? x", "'? x'"},
     };
     for (const auto& c : cases) {
         YeptrisDocument doc = yeptris_document_new();
