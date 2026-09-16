@@ -3,6 +3,7 @@
  * Two passes of the ONE writer: dry (exact size), wet (linear writes
  * into the caller's buffer — zero reallocations by construction). */
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,6 +22,16 @@ static int opts_width(const yeptris_emit_options* opts) {
     return opts->best_width;
 }
 
+static int opts_doc_marker(const yeptris_emit_options* opts) {
+    /* size-versioned: callers compiled against the older struct keep
+     * the implicit single-document behavior */
+    if (opts == NULL ||
+        opts->size < (uint32_t)(offsetof(yeptris_emit_options, explicit_doc_start) + sizeof(int))) {
+        return 0;
+    }
+    return opts->explicit_doc_start != 0;
+}
+
 YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
                                              const yeptris_emit_options* opts, char* buf,
                                              size_t cap) {
@@ -33,6 +44,7 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
+    em.w.explicit_doc_start = opts_doc_marker(opts);
     em.w.json = 0;
     em.w.json_compact = 0;
     em.w.json_pretty = 0;
@@ -71,6 +83,7 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
+    em.w.explicit_doc_start = opts_doc_marker(opts);
     em.w.json = 0;
     em.w.json_compact = 0;
     em.w.json_pretty = 0;
@@ -111,6 +124,7 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.canonical = 0;
+    em.w.explicit_doc_start = 0; /* JSON output carries no --- */
     em.w.json = 1;
     em.w.json_compact = 0;
     em.w.json_pretty = 0;
@@ -155,6 +169,7 @@ YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len,
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.canonical = 0;
+    em.w.explicit_doc_start = 0; /* JSON output carries no --- */
     em.w.json = 1;
     em.w.json_compact = compact ? 1 : 0;
     em.w.json_pretty = 0;
@@ -196,6 +211,7 @@ char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.canonical = 0;
+    em.w.explicit_doc_start = 0; /* JSON output carries no --- */
     em.w.json = 1;
     em.w.json_compact = 1;
     em.w.json_pretty = 0;
@@ -237,6 +253,7 @@ char* yep_serialize_json_pretty(const yeptris_document* doc, size_t* len) {
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.canonical = 0;
+    em.w.explicit_doc_start = 0; /* JSON output carries no --- */
     em.w.json = 1;
     em.w.json_compact = 0;
     em.w.json_pretty = 1;
@@ -291,6 +308,7 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.canonical = opts_canonical(opts);
+    em.w.explicit_doc_start = opts_doc_marker(opts);
     em.w.json = 0;
     em.w.json_compact = 0;
     em.w.json_pretty = 0;

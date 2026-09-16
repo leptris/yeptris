@@ -43,6 +43,40 @@ TEST(Emit, BlockShapes) {
     EXPECT_EQ(roundtrip("empty: {}\nlist: []\n"), "empty: {}\nlist: []\n");
 }
 
+TEST(Emit, ExplicitDocStartOption) {
+    YeptrisStatus st = YEPTRIS_OK; /* parse leaves st untouched on success */
+    YeptrisDocument doc = yeptris_parse("version: 1.2.3\n", 15, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(doc, nullptr);
+
+    /* default (fidelity mode): a single document is bare */
+    size_t len = 0;
+    char* out = yeptris_serialize(doc, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), "version: 1.2.3\n");
+    free(out);
+
+    /* the option carries the leading marker (Psych implicit=false) */
+    yeptris_emit_options opts = {sizeof(opts), 0, 0, 1};
+    out = yeptris_serialize_ex(doc, &opts, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), "---\nversion: 1.2.3\n");
+    free(out);
+    yeptris_document_free(doc);
+
+    /* size-versioned: a caller with the OLD struct size keeps the
+     * implicit behavior even with garbage past its fields */
+    st = YEPTRIS_OK;
+    doc = yeptris_parse("a: 1\n", 5, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    yeptris_emit_options old_shape = {4, 0, 0}; /* canonical+width only */
+    out = yeptris_serialize_ex(doc, &old_shape, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), "a: 1\n");
+    free(out);
+    yeptris_document_free(doc);
+}
+
 TEST(Emit, FlowPreserved) {
     EXPECT_EQ(roundtrip("a: [1, 2, 3]\n"), "a: [1, 2, 3]\n");
     EXPECT_EQ(roundtrip("m: {x: 1, y: 2}\n"), "m: {x: 1, y: 2}\n");
@@ -118,7 +152,7 @@ static std::string canon(const char* y) {
     if (doc == nullptr) {
         return "<parse-failed>";
     }
-    yeptris_emit_options opts = {sizeof(yeptris_emit_options), 1, 0};
+    yeptris_emit_options opts = {sizeof(opts), 1, 0, 0};
     size_t len = 0;
     char* out = yeptris_serialize_ex(doc, &opts, &len);
     yeptris_document_free(doc);
@@ -263,7 +297,7 @@ TEST(EmitFold, FlowWrapsPastBestWidth) {
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
     ASSERT_NE(doc, nullptr);
-    yeptris_emit_options opts = {sizeof(opts), 0, 30};
+    yeptris_emit_options opts = {sizeof(opts), 0, 30, 0};
     size_t len = 0;
     char* out = yeptris_serialize_ex(doc, &opts, &len);
     ASSERT_NE(out, nullptr);
@@ -304,7 +338,7 @@ TEST(EmitFold, DefaultUnfoldsSmall) {
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
     ASSERT_NE(doc, nullptr);
-    yeptris_emit_options opts = {sizeof(opts), 0, 0};
+    yeptris_emit_options opts = {sizeof(opts), 0, 0, 0};
     size_t len = 0;
     char* out = yeptris_serialize_ex(doc, &opts, &len);
     ASSERT_NE(out, nullptr);

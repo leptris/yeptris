@@ -643,6 +643,9 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     if (w->json) {
         /* JSON has no multi-document streams: exactly one root */
         if (d->dcount == 1) {
+            if (w->explicit_doc_start) {
+                wr_put(w, "---\n", 4);
+            }
             const yep_dnode* root = yep_dom_node(d, d->docs[0]);
             emit_node(em, d->docs[0], -2, 0);
             if (root != NULL && root->kind != 0 && w->last != '\n') {
@@ -653,7 +656,7 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     }
     int multi = (d->dcount > 1) || w->canonical;
     for (uint32_t i = 0; i < d->dcount; i++) {
-        if (multi) {
+        if (multi || w->explicit_doc_start) {
             wr_put(w, "---\n", 4);
         }
         const yep_dnode* root = yep_dom_node(d, d->docs[i]);
