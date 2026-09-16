@@ -256,7 +256,7 @@ struct yep_block_value;
 
 /* The direct scalar sink path (TODO.restructure/79). */
 int dom_on_scalar(void* ctx, const yep_view* value, const yep_view* tag, const yep_view* anchor,
-                  uint32_t anchor_id, uint32_t tag_id, uint8_t style, uint8_t implicit,
+                  uint32_t anchor_id, uint8_t tag_id, uint8_t style, uint8_t implicit,
                   uint8_t flow, int borrowed);
 
 int dom_on_block_pair(void* ctx, const yep_view* key, const struct yep_block_value* v,

@@ -102,7 +102,7 @@ typedef struct yep_sink {
      * resolves the tag first (the typing SSOT stays in the engine)
      * and calls here when present. NULL = the event path, unchanged. */
     int (*on_scalar)(void* ctx, const struct yep_view* value, const struct yep_view* tag,
-                     const struct yep_view* anchor, uint32_t anchor_id, uint32_t tag_id,
+                     const struct yep_view* anchor, uint32_t anchor_id, uint8_t tag_id,
                      uint8_t style, uint8_t implicit, uint8_t flow, int borrowed);
 } yep_sink;
 
