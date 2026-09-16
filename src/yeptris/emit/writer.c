@@ -641,11 +641,8 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     w->col = 0;
     yep_nametab_clear(&em->canon_names);
     if (w->json) {
-        /* JSON has no multi-document streams: exactly one root */
+        /* JSON has no multi-document streams and no document marker */
         if (d->dcount == 1) {
-            if (w->explicit_doc_start) {
-                wr_put(w, "---\n", 4);
-            }
             const yep_dnode* root = yep_dom_node(d, d->docs[0]);
             emit_node(em, d->docs[0], -2, 0);
             if (root != NULL && root->kind != 0 && w->last != '\n') {
@@ -656,10 +653,17 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     }
     int multi = (d->dcount > 1) || w->canonical;
     for (uint32_t i = 0; i < d->dcount; i++) {
-        if (multi || w->explicit_doc_start) {
-            wr_put(w, "---\n", 4);
-        }
         const yep_dnode* root = yep_dom_node(d, d->docs[i]);
+        if (multi || w->explicit_doc_start) {
+            /* libyaml parity: a scalar root rides the marker line
+             * ("--- 42"); collections take the marker alone */
+            wr_put(w,
+                   (w->explicit_doc_start && root != NULL && root->kind == YEP_DOM_SCALAR &&
+                    !root->flow)
+                       ? "--- "
+                       : "---\n",
+                   4);
+        }
         if (root != NULL && (root->kind == 1 || root->kind == 2) && !root->flow && !w->canonical &&
             (root->tag.len > 0 || root->anchor.len > 0)) {
             /* root block-collection props ride their own leading line;

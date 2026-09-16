@@ -64,6 +64,16 @@ TEST(Emit, ExplicitDocStartOption) {
     free(out);
     yeptris_document_free(doc);
 
+    /* libyaml parity: a scalar root rides the marker line */
+    st = YEPTRIS_OK;
+    doc = yeptris_parse("42\n", 3, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    out = yeptris_serialize_ex(doc, &opts, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), "--- 42\n");
+    free(out);
+    yeptris_document_free(doc);
+
     /* size-versioned: a caller with the OLD struct size keeps the
      * implicit behavior even with garbage past its fields */
     st = YEPTRIS_OK;
