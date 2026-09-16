@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-16
 ### Added
 - `yeptris_parse_json_tape_lenient` — the simdjson deferred contract,
   opt-in: structural checks stay at parse while number grammar defers
