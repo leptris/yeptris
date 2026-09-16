@@ -801,6 +801,11 @@ static void expect_stage1_eq(const char* p, size_t len) {
     }
 }
 
+static const char* long_x_run() {
+    static const std::string x(40, 'x');
+    return x.c_str();
+}
+
 TEST(SimdText, JsonStage1) {
     const char* probes[] = {
         "",
@@ -816,7 +821,7 @@ TEST(SimdText, JsonStage1) {
         "[\"unterminated",
         "\"\\\"",
         "0123abcdEFG ,-:",
-        std::string(40, 'x').c_str(),
+        long_x_run(), /* a static buffer: a temporary would dangle */
     };
     for (const char* s : probes) {
         ASSERT_NO_FATAL_FAILURE(expect_stage1_eq(s, strlen(s))) << s;
@@ -825,7 +830,10 @@ TEST(SimdText, JsonStage1) {
     for (size_t L = 0; L <= 200; L++) {
         std::string s(L, '\0');
         const char* alpha = "[]{}:, \"\\t123abcXYZ"; // deliberate tab escape forms below
-        static const char mix[] = "\\[\]{\":\", \"a\\\"b\\n\\\\c\", 1.5e3, [";
+        static const char mix[] = {'\\', '\\', '[', ']', '{', '}', ':', '"', ',', ' ',
+                                   '"', 'a', '\\', '"', 'b', '\\', 'n', '\\', '\\', 'c',
+                                   '"', ',', ' ', '1', '.', '5', 'e', '3', ',', ' ', '[',
+                                   '\0'};
         for (size_t i = 0; i < L; i++) {
             s[i] = (i % 3 == 0) ? mix[i % (sizeof(mix) - 1)]
                                 : ((unsigned char*)alpha)[(i * 7 + L) % 16];
@@ -834,7 +842,10 @@ TEST(SimdText, JsonStage1) {
     }
     /* random two-alphabet fuzz */
     std::mt19937_64 rng(0x57A6E1);
-    const std::string jalpha = "\\[\]{\":, \"0189tfn-\\\"\\\\\\u0041xyz\t\n";
+    static const char jalpha_c[] = {'\\', '\\', '[', ']', '{', '}', ':', '"', ',', ' ',
+                                    '0', '1', '8', '9', 't', 'f', 'n', '-', '\\', '"', 'x',
+                                    '\t', '\n', '\0'};
+    const std::string jalpha(jalpha_c);
     for (int t = 0; t < 3000; t++) {
         size_t n = (size_t)(rng() % 400);
         std::string s(n, '\0');
