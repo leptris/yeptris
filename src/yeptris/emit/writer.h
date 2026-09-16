@@ -27,18 +27,18 @@ typedef struct yep_writer {
     int sink_aborted; /* a sink returned nonzero: stop, report 0 */
     int canonical;
     int explicit_doc_start;
-        /* every document carries the --- marker */ /* 13B: fixed canonical form — flow collections,
-                                                     * quoted strings, typed words, shortest floats
-                                                     */
-    int json;                                       /* 21: JSON output — canonical minus YAML words:
-                                                     * null (not ~), no document markers, JSON escapes */
-    int json_compact;                               /* json-c to_json_string: no padding spaces */
-    int json_pretty;      /* json-c PRETTY: 2-space indent, per-entry lines */
-    int pretty_depth;     /* json_pretty nesting level (indent = 2*depth) */
-    int best_width;       /* 13B: 0 = default 80; flow lines wrap after a
-                           * value past this width */
-    int col;              /* current output column (wr_* maintains) */
-    const char* sv_input; /* compact-view decode bases (dom regions) */
+    /* every document carries the --- marker */ /* 13B: fixed canonical form — flow collections,
+                                                 * quoted strings, typed words, shortest floats
+                                                 */
+    int json;                                   /* 21: JSON output — canonical minus YAML words:
+                                                 * null (not ~), no document markers, JSON escapes */
+    int json_compact;                           /* json-c to_json_string: no padding spaces */
+    int json_pretty;                            /* json-c PRETTY: 2-space indent, per-entry lines */
+    int pretty_depth;                           /* json_pretty nesting level (indent = 2*depth) */
+    int best_width;                             /* 13B: 0 = default 80; flow lines wrap after a
+                                                 * value past this width */
+    int col;                                    /* current output column (wr_* maintains) */
+    const char* sv_input;                       /* compact-view decode bases (dom regions) */
     const char* sv_arena;
 } yep_writer;
 
