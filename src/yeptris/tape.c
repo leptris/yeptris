@@ -153,9 +153,6 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
     uint32_t top_open = 1;
     count = 2;
     uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
-    /* key_slot as a maintained flag: transitions update it, the loop
-     * never recomputes (two compares per token saved) */
-    int key_slot = top_kind ? 1 : 0;
     int depth = 1;
     open_at[0] = top_open;
     kind[0] = top_kind;
