@@ -6,6 +6,15 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- Empty built collections ride the key line flow (`k: []` / `k: {}`)
+  — the 0.5.1 seq-indent change had sent an empty built sequence down
+  the next-line path, emitting a bare `[]` at the mapping's own
+  column, which is invalid YAML (pyyaml rejects it; caught by
+  yeptris-py's random-document differential). Non-empty sequences
+  keep the key-column indent.
+
 ## [0.5.1] - 2026-09-16
 ### Fixed
 - libyaml/Psych dump parity (yeptris-ruby#95, PR #284): a plain-styled
