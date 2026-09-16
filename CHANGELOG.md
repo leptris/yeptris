@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.5.1] - 2026-09-16
 ### Fixed
 - libyaml/Psych dump parity (yeptris-ruby#95, PR #284): a plain-styled
   scalar that cannot ride plain but needs no escapes (digit-leading
