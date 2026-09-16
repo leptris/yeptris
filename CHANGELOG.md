@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.5.2] - 2026-09-16
 ### Fixed
 - Empty built collections ride the key line flow (`k: []` / `k: {}`)
   — the 0.5.1 seq-indent change had sent an empty built sequence down
