@@ -124,6 +124,28 @@ TEST(Emit, UnsafePlainFallsBack) {
     EXPECT_EQ(roundtrip("a: \" leading\"\n"), "a: \" leading\"\n");
 }
 
+TEST(Emit, BuiltEmptyCollectionsRideTheKeyLine) {
+    /* v0.5.1 regression: an empty built sequence under a mapping key
+     * took the seq-at-key-column path and emitted a bare [] on the
+     * next line at the mapping's own column — invalid YAML (pyyaml
+     * rejects it; yeptris's own loader was lenient). Empty
+     * collections ride the key line flow, libyaml's form. */
+    YeptrisDocument doc = yeptris_document_new();
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_node_new_mapping(doc);
+    ASSERT_EQ(yeptris_document_set_root(doc, root), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_node_map_add(root, "empty_list", 10, yeptris_node_new_sequence(doc)),
+              YEPTRIS_OK);
+    ASSERT_EQ(yeptris_node_map_add(root, "empty_map", 9, yeptris_node_new_mapping(doc)),
+              YEPTRIS_OK);
+    size_t len = 0;
+    char* out = yeptris_serialize(doc, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), "empty_list: []\nempty_map: {}\n");
+    free(out);
+    yeptris_document_free(doc);
+}
+
 TEST(Emit, SizingIsExact) {
     const char* y = "a: [1, 2, {b: c}]\nlit: |\n  text\n";
     YeptrisStatus st = YEPTRIS_OK;

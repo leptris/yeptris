@@ -552,7 +552,11 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             emit_anchor_ex(em, kn);
             emit_scalar(w, kn, content_col, 1);
             wr_byte(w, ':');
-            if (vn->kind == 0 || vn->kind == 3 || vn->flow) {
+            /* empty collections ride the key line flow (k: [] / k: {})
+             * like libyaml — a block-empty has no valid next-line form at
+             * the seq indent (an empty [] at the key's column is not a
+             * legal value; pyyaml rejects it, issue #52's differential) */
+            if (vn->kind == 0 || vn->kind == 3 || vn->flow || vn->count == 0) {
                 wr_byte(w, ' ');
                 emit_node(em, kn->next_sibling, content_col, 0);
             } else {
