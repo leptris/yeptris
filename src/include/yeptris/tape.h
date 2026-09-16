@@ -39,6 +39,11 @@ enum {
     YEP_T_MAP_OPEN, /* off: index of the matching CLOSE; keys are
                         the STR records at even positions inside */
     YEP_T_CLOSE,    /* off: index of the matching OPEN */
+    YEP_T_NUM,      /* lenient route only: off/len number span with
+                        the grammar UNVALIDATED at parse —
+                        yeptris_tape_convert is the authority (it
+                        classifies int/float and rejects malformed
+                        spans; simdjson's deferred contract) */
 };
 
 typedef struct yeptris_json_tape {
@@ -59,6 +64,22 @@ typedef struct yeptris_json_tape {
  * yeptris_last_error), YEPTRIS_ERROR_MEMORY, YEPTRIS_ERROR_ARG. */
 YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len,
                                                   yeptris_json_tape* tape);
+
+/* The lenient route (simdjson's deferred contract, opt-in): every
+ * STRUCTURAL check stays at parse (bracket matching, alternation,
+ * comma/colon placement, literals, string closes/escapes) while
+ * NUMBER grammar defers to yeptris_tape_convert — a number records
+ * as a YEP_T_NUM charset run (so "1.2.3" is accepted here and
+ * rejected at convert, exactly where simdjson's number parse would
+ * fail; a run with non-number bytes like "12ab" still rejects
+ * structurally at parse). Accepts a superset of the strict route's
+ * inputs (tab whitespace becomes legal, RFC 8259); on everything
+ * the strict route accepts, the tapes are structurally identical
+ * (spans and containers equal; NUM records carry the same bytes the
+ * strict INT/FLOAT records carry). Non-ASCII inputs take the strict
+ * route unchanged. */
+YEPTRIS_API YeptrisStatus yeptris_parse_json_tape_lenient(const char* source, size_t len,
+                                                          yeptris_json_tape* tape);
 
 YEPTRIS_API void yeptris_tape_free(yeptris_json_tape* tape);
 

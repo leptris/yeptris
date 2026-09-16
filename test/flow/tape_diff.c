@@ -206,6 +206,61 @@ static int tape_matches_dom(const yep_dom* d, const yeptris_json_tape* t, const 
     return ok;
 }
 
+/* The LENIENT containment contract (the simdjson deferred route):
+ * strict accepts ⟹ lenient accepts with the structurally identical
+ * tape (kinds equal modulo NUM ≡ INT/FLOAT on the same spans);
+ * strict rejects while lenient accepts ⟹ the delta is NUMBER
+ * GRAMMAR by construction, and yeptris_tape_convert must reject it
+ * at drain. Non-PARSE statuses delegate to the strict route (the
+ * encoding-gate fallback) and must be identical. */
+static int tapes_equiv(const yeptris_json_tape* a, const yeptris_json_tape* b) {
+    if (a->count != b->count) {
+        return 0;
+    }
+    for (size_t i = 0; i < a->count; i++) {
+        uint8_t ka = a->kinds[i], kb = b->kinds[i];
+        if (ka != kb && !((ka == YEP_T_INT || ka == YEP_T_FLOAT) && kb == YEP_T_NUM)) {
+            return 0;
+        }
+        if (a->offs[i] != b->offs[i] || a->lens[i] != b->lens[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void lenient_one(const char* name, const char* buf, size_t len) {
+    yeptris_json_tape st, lt;
+    YeptrisStatus ss = yeptris_parse_json_tape(buf, len, &st);
+    YeptrisStatus ls = yeptris_parse_json_tape_lenient(buf, len, &lt);
+    if (ss == YEPTRIS_OK) {
+        if (ls != YEPTRIS_OK || !tapes_equiv(&st, &lt)) {
+            fprintf(stderr, "TAPE-DIFF(lenient) %s: strict OK but lenient diverges (%d)\n", name,
+                    ls);
+            g_fail++;
+        }
+    } else if (ss == YEPTRIS_ERROR_PARSE && ls == YEPTRIS_OK && memchr(buf, '\t', len) == NULL) {
+        /* tab-free delta is NUMBER GRAMMAR by construction (strings,
+         * literals, structure, trailing garbage all check in both);
+         * lenient semantics also legalize tab-ws (RFC 8259), which
+         * the strict tape rejects — that class is excluded here */
+        if (yeptris_tape_convert(&lt, 0, lt.count, NULL, NULL) != SIZE_MAX) {
+            fprintf(stderr,
+                    "TAPE-DIFF(lenient) %s: strict rejected, lenient accepted, but convert did "
+                    "not catch the grammar error\n",
+                    name);
+            g_fail++;
+        }
+    } else if (ls != ss && !(ss == YEPTRIS_ERROR_PARSE && ls == YEPTRIS_OK)) {
+        /* strict PARSE-reject with lenient OK is the deferred class
+         * (grammar, tab-ws); every other status must mirror */
+        fprintf(stderr, "TAPE-DIFF(lenient) %s: status %d vs %d\n", name, ss, ls);
+        g_fail++;
+    }
+    yeptris_tape_free(&st);
+    yeptris_tape_free(&lt);
+}
+
 static void diff_one(const char* name, const char* buf, size_t len) {
     g_cases++;
     YeptrisStatus ds = YEPTRIS_OK;
@@ -222,6 +277,7 @@ static void diff_one(const char* name, const char* buf, size_t len) {
     }
     yeptris_document_free((YeptrisDocument)doc);
     yeptris_tape_free(&tape);
+    lenient_one(name, buf, len);
 }
 
 static const char* k_pins[] = {

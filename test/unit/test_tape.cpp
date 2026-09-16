@@ -282,3 +282,124 @@ TEST(JsonTape, ArgContractAndFreeReuse) {
 }
 
 } // namespace
+
+/* ---- the lenient route (simdjson's deferred contract) ---------------- */
+
+namespace {
+
+// structural equality modulo NUM vs INT/FLOAT on identical spans
+bool tapes_equiv(const yeptris_json_tape& a, const yeptris_json_tape& b) {
+    if (a.count != b.count) {
+        return false;
+    }
+    for (size_t i = 0; i < a.count; i++) {
+        uint8_t ka = a.kinds[i], kb = b.kinds[i];
+        if (ka != kb && !((ka == YEP_T_INT || ka == YEP_T_FLOAT) && kb == YEP_T_NUM)) {
+            return false;
+        }
+        if (a.offs[i] != b.offs[i] || a.lens[i] != b.lens[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+TEST(JsonTapeLenient, MatchesStrictOnValidDocuments) {
+    const char* docs[] = {
+        "[1, \"a\", true, null, 2.5]",
+        "{\"id\": 7, \"name\": \"alpha\", \"vals\": [1, 2, 3], \"ok\": true}",
+        "{\"a\": [1, {\"b\": null}]}",
+        "[[[[1, 2]]], [[3, 4]]]",
+        "[0, -0, 1e-3, 1E+2, 3.14159, -2.5e10]",
+        "[]",
+        "{}",
+        "42",
+        "\"hi\"",
+        "-3.5",
+    };
+    for (const char* d : docs) {
+        TapeGuard s, l;
+        ASSERT_EQ(s.parse(d), YEPTRIS_OK) << d;
+        yeptris_json_tape& lt = l.t;
+        ASSERT_EQ(yeptris_parse_json_tape_lenient(d, strlen(d), &lt), YEPTRIS_OK) << d;
+        EXPECT_TRUE(tapes_equiv(s.t, lt)) << d;
+    }
+}
+
+TEST(JsonTapeLenient, NumberGrammarDefersToConvert) {
+    TapeGuard l;
+    yeptris_json_tape& lt = l.t;
+    /* "1.2.3" is charset-clean but grammar-invalid: the run records
+     * whole and convert rejects it at drain */
+    EXPECT_EQ(yeptris_parse_json_tape_lenient("[1.2.3]", 7, &lt), YEPTRIS_OK);
+    ASSERT_EQ(lt.count, 4u); /* DOC OPEN NUM CLOSE */
+    EXPECT_EQ(lt.kinds[2], YEP_T_NUM);
+    EXPECT_EQ(lt.offs[2], 1u);
+    EXPECT_EQ(lt.lens[2], 5u); /* "1.2.3" */
+    int64_t iv[8];
+    EXPECT_EQ(yeptris_tape_convert(&lt, 0, lt.count, iv, NULL), SIZE_MAX);
+
+    /* the valid arm still converts */
+    TapeGuard ok;
+    yeptris_json_tape& ot = ok.t;
+    ASSERT_EQ(yeptris_parse_json_tape_lenient("[42, 2.5]", 9, &ot), YEPTRIS_OK);
+    int64_t iv2[8];
+    double dv2[8];
+    EXPECT_EQ(yeptris_tape_convert(&ot, 0, ot.count, iv2, dv2), 2u);
+    EXPECT_EQ(iv2[2], 42);
+    EXPECT_DOUBLE_EQ(dv2[3], 2.5);
+}
+
+TEST(JsonTapeLenient, StructuralErrorsStayParseErrors) {
+    const char* bad[] = {
+        "[1, 2",    "[1 2]",     "{\"a\": 1,}", "[1,]", "{\"a\" 1}", "[\"a\",]",  "tru",
+        "[1] tail", "{\"k\": }", "[,]",         "[",    "{",         "[12ab, 1]", /* charset-invalid
+                                                                                     run: the
+                                                                                     bare-scalar
+                                                                                     reject */
+    };
+    for (const char* b : bad) {
+        yeptris_json_tape t;
+        EXPECT_EQ(yeptris_parse_json_tape_lenient(b, strlen(b), &t), YEPTRIS_ERROR_PARSE) << b;
+        yeptris_tape_free(&t);
+    }
+}
+
+TEST(JsonTapeLenient, TabWhitespaceIsLegal) {
+    /* RFC 8259 ws includes tabs; the strict tape walk rejects them,
+     * the lenient route accepts (simdjson semantics) */
+    TapeGuard l;
+    yeptris_json_tape& lt = l.t;
+    ASSERT_EQ(yeptris_parse_json_tape_lenient("[\t1\t]", 5, &lt), YEPTRIS_OK);
+    ASSERT_EQ(lt.count, 4u);
+    EXPECT_EQ(lt.kinds[2], YEP_T_NUM);
+    EXPECT_EQ(lt.offs[2], 2u);
+    EXPECT_EQ(lt.lens[2], 1u);
+}
+
+TEST(JsonTapeLenient, ScalarRootDefersLikeTheWalk) {
+    TapeGuard l;
+    yeptris_json_tape& lt = l.t;
+    ASSERT_EQ(yeptris_parse_json_tape_lenient("12x", 3, &lt), YEPTRIS_OK);
+    EXPECT_EQ(lt.count, 2u);
+    EXPECT_EQ(lt.kinds[1], YEP_T_NUM);
+    int64_t iv[4];
+    EXPECT_EQ(yeptris_tape_convert(&lt, 0, lt.count, iv, NULL), SIZE_MAX);
+}
+
+TEST(JsonTapeLenient, NonAsciiFallsBackToTheStrictRoute) {
+    /* the encoding gate keeps strings' parse-time UTF-8 contract */
+    const char* doc = "[\"\xc3\xa9\"]"; /* é */
+    TapeGuard s, l;
+    ASSERT_EQ(s.parse(doc), YEPTRIS_OK);
+    yeptris_json_tape& lt = l.t;
+    ASSERT_EQ(yeptris_parse_json_tape_lenient(doc, strlen(doc), &lt), YEPTRIS_OK);
+    EXPECT_TRUE(tapes_equiv(s.t, lt));
+
+    const char* bad = "[\"\xff\"]"; /* ill-formed UTF-8 */
+    yeptris_json_tape t;
+    EXPECT_EQ(yeptris_parse_json_tape_lenient(bad, strlen(bad), &t), YEPTRIS_ERROR_ENCODING);
+    yeptris_tape_free(&t);
+}
