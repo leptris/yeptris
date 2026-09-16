@@ -142,7 +142,7 @@ int main(int argc, char** argv) {
 
         /* canonical mode (13B): fixed form is a parse fixed point —
          * c2 == c1 byte-for-byte after the first canonicalization */
-        yeptris_emit_options opts = {sizeof(yeptris_emit_options), 1, 0};
+        yeptris_emit_options opts = {sizeof(yeptris_emit_options), 1, 0, 0};
         YeptrisStatus stc_a = YEPTRIS_OK;
         YeptrisDocument dc_a = yeptris_parse(in, len, &stc_a);
         if (dc_a != NULL) {
