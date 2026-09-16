@@ -79,7 +79,7 @@ TEST(Emit, ExplicitDocStartOption) {
     st = YEPTRIS_OK;
     doc = yeptris_parse("a: 1\n", 5, &st);
     ASSERT_EQ(st, YEPTRIS_OK);
-    yeptris_emit_options old_shape = {4, 0, 0}; /* canonical+width only */
+    yeptris_emit_options old_shape = {4, 0, 0, 0}; /* too small: explicit_doc_start unread */
     out = yeptris_serialize_ex(doc, &old_shape, &len);
     ASSERT_NE(out, nullptr);
     EXPECT_EQ(std::string(out, len), "a: 1\n");
@@ -207,7 +207,7 @@ TEST(EmitCanonical, FixedPointFByteStability) {
 }
 
 TEST(EmitCanonical, OptionsVersioning) {
-    yeptris_emit_options opts = {4, 1, 0}; /* too small: canonical ignored */
+    yeptris_emit_options opts = {4, 1, 0, 0}; /* too small: canonical+explicit unread */
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse("a: 1\n", 5, &st);
     ASSERT_NE(doc, nullptr);
