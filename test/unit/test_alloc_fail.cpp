@@ -124,7 +124,7 @@ TEST(AllocFail, EmitSurvivesInjection) {
         YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_parse(kDoc, strlen(kDoc), &st);
         ASSERT_NE(doc, nullptr);
-        yeptris_emit_options opts = {sizeof(opts), 1, 0};
+        yeptris_emit_options opts = {sizeof(opts), 1, 0, 0};
         size_t len = 0;
         char* out = yeptris_serialize_ex(doc, &opts, &len);
         free(out); /* the system-allocator path works */
