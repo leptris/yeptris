@@ -1899,3 +1899,38 @@ route stays gated (YEP_TOKEN_CONTRACT_ROUTE 0); the fused walk is the
 optimum for the strict-validation contract. simdjson parity (1017-
 1039 measured directly) requires deferred-validation parse semantics
 — the standing owner decision, unchanged since verdict six.
+
+## 2026-09-17 — verdict eight: the lenient route (deferred number grammar), 0.51x -> 0.70x
+
+The owner called the standing decision: simdjson parity is wanted, not
+just recorded. The deferred-semantics route the verdicts specced is
+built: `yeptris_parse_json_tape_lenient` — every STRUCTURAL check at
+parse, NUMBER grammar deferred to `yeptris_tape_convert` (charset runs
+record as YEP_T_NUM; "1.2.3" rejects at drain exactly where simdjson's
+number parse would, "12ab" still rejects structurally), tab whitespace
+legalized (RFC 8259 — the strict tape rejects it), non-ASCII falling
+back to the strict route. The containment differential (2M fuzz +
+318-file corpus + pins) gates it: strict-accept implies identical
+tapes; the deferred class must fail convert. Building it also caught a
+latent convert hole (partial-span acceptance, `1]`), now pinned.
+
+Numbers (json-doc, interleaved, this machine; strict tape same-run):
+strict fused 528-562 MB/s; lenient 705-765 MB/s (0.68-0.73x simdjson
+1041). Measured dead in this round: the two-stage lenient walk
+(stage 1 + idx consumption with grammar arms removed) — 508-517 MB/s,
+stage 1's 1.85 ms tax exceeds everything the grammar removal saves at
+this corpus's 2.9 B/token; kinds-column batching (memcpy per 8) —
+-2.5%, the byte stores were cheaper than the flush; number-charset
+LUT — -2.5%, clang already compiles the compare chain to bittests.
+Kept: the SWAR close-quote settle (one u64 window for the corpus's
+1-8 byte strings) and the colon/comma peek fusion on the byte walk.
+
+The honest remaining gap to 1.0x: the walk's per-token cost (~3.2 ms
+for 960k tokens at 2.9 B/token — ws-skip + expect machine + 3-column
+stores). The endgame design, specced for the next session: a lenient
+INTERLEAVED tape (8B off|len records + batched kinds — the column ABI
+is the floor, two u32 streams cannot drop below ~2 stores/token) fed
+by mask consumption (stage 1's per-block token mask handed to the
+walk, no u32 index array at all). Budget math: stage 1 at 1.85 ms
+leaves ~0.7 ms for the walk at parity — ~3 cycles/token, achievable
+only with both cuts together.

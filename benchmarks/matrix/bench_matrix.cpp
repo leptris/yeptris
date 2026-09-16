@@ -778,8 +778,10 @@ CborTier cbor_vs_json(const Corpus& c, int rounds) {
 struct H2hJson {
     double dom_ratio;
     double tape_ratio;
+    double lnt_ratio;
     double dom_mb;
     double tape_mb;
+    double lnt_mb;
 };
 
 /* Both yeptris routes ride the same interleaved rounds: parse_json's
@@ -794,11 +796,13 @@ H2hJson h2h_vs_simdjson(const Corpus& c, int rounds) {
     YeptrisDocument probe = yeptris_parse_json(c.data.data(), c.data.size(), &st);
     if (probe == NULL) {
         yeptris_document_free(probe);
-        return {0, 0, 0, 0}; /* not strict JSON: no referee */
+        return {0, 0, 0, 0, 0, 0}; /* not strict JSON: no referee */
     }
     yeptris_document_free(probe);
+    std::vector<double> lnt_ratios;
+    double best_lnt = 1e9;
     for (int i = 0; i < rounds; i++) {
-        double ty, tp, tr;
+        double ty, tp, tr, tl;
         if (i & 1) {
             auto b0 = clk::now();
             simdjson::dom::element doc = parser.parse(c.data.data(), c.data.size());
@@ -813,10 +817,21 @@ H2hJson h2h_vs_simdjson(const Corpus& c, int rounds) {
             yeptris_parse_json_tape(c.data.data(), c.data.size(), &tape);
             auto p1 = clk::now();
             yeptris_tape_free(&tape);
+            auto l0 = clk::now();
+            yeptris_json_tape lt;
+            yeptris_parse_json_tape_lenient(c.data.data(), c.data.size(), &lt);
+            auto l1 = clk::now();
+            yeptris_tape_free(&lt);
             ty = ms_of(a0, a1);
             tp = ms_of(p0, p1);
             tr = ms_of(b0, b1);
+            tl = ms_of(l0, l1);
         } else {
+            auto l0 = clk::now();
+            yeptris_json_tape lt;
+            yeptris_parse_json_tape_lenient(c.data.data(), c.data.size(), &lt);
+            auto l1 = clk::now();
+            yeptris_tape_free(&lt);
             auto p0 = clk::now();
             yeptris_json_tape tape;
             yeptris_parse_json_tape(c.data.data(), c.data.size(), &tape);
@@ -833,6 +848,7 @@ H2hJson h2h_vs_simdjson(const Corpus& c, int rounds) {
             ty = ms_of(a0, a1);
             tp = ms_of(p0, p1);
             tr = ms_of(b0, b1);
+            tl = ms_of(l0, l1);
         }
         if (ty < best_yep) {
             best_yep = ty;
@@ -840,15 +856,23 @@ H2hJson h2h_vs_simdjson(const Corpus& c, int rounds) {
         if (tp < best_tape) {
             best_tape = tp;
         }
+        if (tl < best_lnt) {
+            best_lnt = tl;
+        }
         dom_ratios.push_back(tr / ty); /* >1: yeptris faster */
         tape_ratios.push_back(tr / tp);
+        lnt_ratios.push_back(tr / tl);
     }
     std::sort(dom_ratios.begin(), dom_ratios.end());
     std::sort(tape_ratios.begin(), tape_ratios.end());
+    std::sort(lnt_ratios.begin(), lnt_ratios.end());
     double mb = (double)c.data.size() / (1024.0 * 1024.0);
-    return {dom_ratios[dom_ratios.size() / 2], tape_ratios[tape_ratios.size() / 2],
+    return {dom_ratios[dom_ratios.size() / 2],
+            tape_ratios[tape_ratios.size() / 2],
+            lnt_ratios[lnt_ratios.size() / 2],
             best_yep < 1e9 ? mb * 1000.0 / best_yep : 0,
-            best_tape < 1e9 ? mb * 1000.0 / best_tape : 0};
+            best_tape < 1e9 ? mb * 1000.0 / best_tape : 0,
+            best_lnt < 1e9 ? mb * 1000.0 / best_lnt : 0};
 }
 #endif
 
@@ -1051,10 +1075,13 @@ int main(int argc, char** argv) {
         H2hJson h = h2h_vs_simdjson(c, full ? 9 : 5);
         printf("| parse_json DOM | %.2f | %.2fx |\n", h.dom_mb, h.dom_ratio);
         printf("| parse_json_tape | %.2f | %.2fx |\n", h.tape_mb, h.tape_ratio);
+        printf("| tape_lenient | %.2f | %.2fx |\n", h.lnt_mb, h.lnt_ratio);
         char row[96];
         snprintf(row, sizeof(row), "| parse_json DOM | %.2f | %.2fx |\n", h.dom_mb, h.dom_ratio);
         md_h2h += row;
         snprintf(row, sizeof(row), "| parse_json_tape | %.2f | %.2fx |\n", h.tape_mb, h.tape_ratio);
+        md_h2h += row;
+        snprintf(row, sizeof(row), "| tape_lenient | %.2f | %.2fx |\n", h.lnt_mb, h.lnt_ratio);
         md_h2h += row;
     }
     printf("\n");

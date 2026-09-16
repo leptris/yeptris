@@ -565,6 +565,587 @@ reject:
     return YEPTRIS_ERROR_PARSE;
 }
 
+/* The LENIENT token walk (the simdjson deferred contract): stage-1
+ * positions consumed with the grammar arms removed. Structural
+ * alternation mirrors tape_walk_idx state for state — bracket
+ * matching, key/value placement, literals (packed compares), and
+ * string closes/escapes (yep_json_string) all stay parse-time
+ * checks; NUMBER grammar does not — the arm records the scalar-run
+ * span (start to the next token's position, trailing ws trimmed)
+ * as YEP_T_NUM and yeptris_tape_convert owns validation and the
+ * int/float split. A malformed number ("12ab") therefore rejects at
+ * drain, not parse. */
+/* The fused LENIENT walk: the strict walk's byte loop with the number
+ * grammar deferred — the arm records the run to its natural delimiter
+ * (the classify scan carries no accept/reject structure) and
+ * yeptris_tape_convert owns validation. Everything else matches
+ * tape_walk state for state. */
+static YeptrisStatus tape_walk_lnt_fused(const char* p, size_t len, size_t open,
+                                         yeptris_json_tape* t) {
+    if (tape_carve(t, len) != YEPTRIS_OK) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    uint8_t* kinds = t->kinds;
+    uint32_t* offs = t->offs;
+    uint32_t* lens = t->lens;
+    uint32_t open_at[YEP_JSON_WALK_DEPTH];
+    uint8_t kind[YEP_JSON_WALK_DEPTH];
+
+    kinds[0] = YEP_T_DOC;
+    offs[0] = 0;
+    lens[0] = 0;
+
+    uint8_t top_kind = p[open] == '[' ? 0 : 1;
+    kinds[1] = top_kind ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN;
+    offs[1] = 0;
+    lens[1] = 0;
+    uint32_t top_open = 1;
+    size_t count = 2;
+    uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+    int key_slot = top_kind ? 1 : 0;
+    int depth = 1;
+    open_at[0] = top_open;
+    kind[0] = top_kind;
+
+    size_t i = open + 1;
+    for (;;) {
+        while (i < len && (p[i] == ' ' || p[i] == '\n' || p[i] == '\r' || p[i] == '\t')) {
+            i++;
+        }
+        if (i >= len) {
+            goto lreject;
+        }
+        size_t at = i;
+        char c = p[i];
+
+        if (top_expect == JW_COLON) {
+            if (c != ':') {
+                goto lreject;
+            }
+            top_expect = JW_VALUE;
+            key_slot = 0;
+            i = at + 1;
+            continue;
+        }
+        if (top_expect == JW_COMMA_OR_CLOSE) {
+            if (c == ',') {
+                top_expect = top_kind ? JW_KEY : JW_VALUE;
+                key_slot = top_kind ? 1 : 0;
+                i = at + 1;
+                continue;
+            }
+            if (c != ']' && c != '}') {
+                goto lreject;
+            }
+        } else if (key_slot && c != '"' && c != ']' && c != '}') {
+            goto lreject;
+        }
+
+        if (c == '"') {
+            size_t j = at + 1;
+            size_t close = 0;
+            /* SWAR settle first (the lenient walk's own fast path); the
+             * kernel stays the authority on escapes/C0/long spans */
+            if (j + 8 <= len) {
+                uint64_t w;
+                memcpy(&w, p + j, 8);
+                uint64_t qm = (w ^ 0x2222222222222222ull);
+                uint64_t bm = (w ^ 0x5C5C5C5C5C5C5C5Cull);
+                qm = (qm - 0x0101010101010101ull) & ~qm & 0x8080808080808080ull;
+                bm = (bm - 0x0101010101010101ull) & ~bm & 0x8080808080808080ull;
+                uint64_t c0 = (w - 0x2020202020202020ull) & ~w & 0x8080808080808080ull;
+                if (qm != 0 && ((bm | c0) & (qm - 1)) == 0) {
+                    close = j + (size_t)yep_ctz64(qm) / 8;
+                    kinds[count] = YEP_T_STR;
+                    offs[count] = (uint32_t)j;
+                    lens[count] = (uint32_t)(close - j);
+                    count++;
+                    i = close + 1;
+                    goto lstr_done;
+                }
+            }
+            int esc = 0;
+            if (!yep_json_string(p, len, &i, &close, &esc)) {
+                goto lreject;
+            }
+            kinds[count] = YEP_T_STR;
+            offs[count] = (uint32_t)(at + 1);
+            lens[count] = (uint32_t)(close - at - 1);
+            count++;
+        lstr_done:
+            if (key_slot) {
+                if (i < len && p[i] == ':') {
+                    i++;
+                    top_expect = JW_VALUE;
+                    key_slot = 0;
+                } else {
+                    top_expect = JW_COLON;
+                }
+            } else {
+                goto lcomma;
+            }
+            continue;
+        }
+        if ((unsigned)(c - '0') <= 9u || c == '-') {
+            /* deferred: classify-scan to the run's end — no grammar */
+            i = at + 1;
+            while (i < len) {
+                char d = p[i];
+                if ((d >= '0' && d <= '9') || d == '-' || d == '+' || d == '.' || d == 'e' ||
+                    d == 'E') {
+                    i++;
+                    continue;
+                }
+                break;
+            }
+            kinds[count] = YEP_T_NUM;
+            offs[count] = (uint32_t)at;
+            lens[count] = (uint32_t)(i - at);
+            count++;
+        lcomma:
+            if (i < len && p[i] == ',') {
+                i++;
+                top_expect = top_kind ? JW_KEY : JW_VALUE;
+                key_slot = top_kind ? 1 : 0;
+            } else {
+                top_expect = JW_COMMA_OR_CLOSE;
+            }
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            int want = c == ']' ? 0 : 1;
+            if (top_kind != want ||
+                (top_expect != JW_VALUE_OR_CLOSE && top_expect != JW_KEY_OR_CLOSE &&
+                 top_expect != JW_COMMA_OR_CLOSE)) {
+                goto lreject;
+            }
+            kinds[count] = YEP_T_CLOSE;
+            offs[count] = top_open;
+            lens[count] = 0;
+            offs[top_open] = (uint32_t)count;
+            count++;
+            i = at + 1;
+            depth--;
+            if (depth == 0) {
+                break;
+            }
+            top_kind = kind[depth - 1];
+            top_expect = JW_COMMA_OR_CLOSE;
+            top_open = open_at[depth - 1];
+            key_slot = 0;
+            continue;
+        }
+        if (c == '{' || c == '[') {
+            if (depth >= YEP_JSON_WALK_DEPTH) {
+                goto lreject;
+            }
+            if (key_slot) {
+                goto lreject;
+            }
+            kind[depth - 1] = top_kind;
+            open_at[depth - 1] = top_open;
+            top_kind = c == '[' ? 0 : 1;
+            kinds[count] = c == '[' ? YEP_T_SEQ_OPEN : YEP_T_MAP_OPEN;
+            offs[count] = 0;
+            lens[count] = 0;
+            top_open = (uint32_t)count;
+            count++;
+            top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+            key_slot = top_kind ? 1 : 0;
+            kind[depth] = top_kind;
+            open_at[depth] = top_open;
+            depth++;
+            i = at + 1;
+            continue;
+        }
+        if (c == 't' || c == 'f' || c == 'n') {
+            size_t wl = c == 'f' ? 5 : 4;
+            if (at + wl > len) {
+                goto lreject;
+            }
+            uint32_t got4;
+            memcpy(&got4, p + at, 4);
+            if (got4 != (c == 't'   ? 0x65757274u /* "true" */
+                         : c == 'n' ? 0x6C6C756Eu /* "null" */
+                                    : 0x736C6166u /* "fals" */) ||
+                (c == 'f' && p[at + 4] != 'e')) {
+                goto lreject;
+            }
+            if (at + wl < len) {
+                char z = p[at + wl];
+                if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
+                    z != '}' && z != ':') {
+                    goto lreject;
+                }
+            }
+            kinds[count] = c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE);
+            offs[count] = (uint32_t)at;
+            lens[count] = (uint32_t)wl;
+            count++;
+            i = at + wl;
+            goto lcomma;
+        }
+        goto lreject;
+    }
+    {
+        size_t tail = i;
+        while (tail < len &&
+               (p[tail] == ' ' || p[tail] == '\t' || p[tail] == '\n' || p[tail] == '\r')) {
+            tail++;
+        }
+        if (tail != len) {
+            goto lreject;
+        }
+    }
+    t->count = count;
+    t->_src = p;
+    t->_srclen = len;
+    return YEPTRIS_OK;
+
+lreject:
+    yeptris_tape_free(t);
+    return YEPTRIS_ERROR_PARSE;
+}
+
+static YEP_UNUSED_FN YeptrisStatus tape_walk_lnt(const char* p, size_t len, size_t open,
+                                                 const uint32_t* idx, size_t nidx,
+                                                 yeptris_json_tape* t) {
+    if (tape_carve(t, len) != YEPTRIS_OK) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    uint8_t* kinds = t->kinds;
+    uint32_t* offs = t->offs;
+    uint32_t* lens = t->lens;
+    uint32_t open_at[YEP_JSON_WALK_DEPTH];
+    uint8_t kind[YEP_JSON_WALK_DEPTH];
+
+    kinds[0] = YEP_T_DOC;
+    offs[0] = 0;
+    lens[0] = 0;
+
+    uint8_t top_kind = p[open] == '[' ? 0 : 1;
+    kinds[1] = top_kind ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN;
+    offs[1] = 0;
+    lens[1] = 0;
+    uint32_t top_open = 1;
+    size_t count = 2;
+    uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+    int key_slot = top_kind ? 1 : 0;
+    int depth = 1;
+    open_at[0] = top_open;
+    kind[0] = top_kind;
+
+    size_t si = 0;
+    while (si < nidx && idx[si] <= open) {
+        si++; /* the root opener (and anything before it) is consumed */
+    }
+    for (;;) {
+        if (si >= nidx) {
+            goto reject; /* EOF mid-structure */
+        }
+        size_t at = idx[si++];
+        if (at >= len) {
+            goto reject;
+        }
+        char c = p[at];
+
+        if (top_expect == JW_COLON) {
+            if (c != ':') {
+                goto reject;
+            }
+            top_expect = JW_VALUE;
+            key_slot = 0;
+            continue;
+        }
+        if (top_expect == JW_COMMA_OR_CLOSE) {
+            if (c == ',') {
+                top_expect = top_kind ? JW_KEY : JW_VALUE;
+                key_slot = top_kind ? 1 : 0;
+                continue;
+            }
+            if (c != ']' && c != '}') {
+                goto reject;
+            }
+        } else if (key_slot) {
+            if (c != '"' && c != ']' && c != '}') {
+                goto reject;
+            }
+        }
+
+        if (c == '"') {
+            size_t j = at + 1;
+            size_t close = 0;
+            int esc = 0;
+            /* SWAR settle: one u64 window closes the corpus's 1-8
+             * byte strings without the call; anything else (escape,
+             * C0, longer) falls back to the kernel authority */
+            if (j + 8 <= len) {
+                uint64_t w;
+                memcpy(&w, p + j, 8);
+                uint64_t qm = (w ^ 0x2222222222222222ull);
+                uint64_t bm = (w ^ 0x5C5C5C5C5C5C5C5Cull);
+                qm = (qm - 0x0101010101010101ull) & ~qm & 0x8080808080808080ull;
+                bm = (bm - 0x0101010101010101ull) & ~bm & 0x8080808080808080ull;
+                uint64_t c0 = (w - 0x2020202020202020ull) & ~w & 0x8080808080808080ull;
+                if (qm != 0 && ((bm | c0) & (qm - 1)) == 0) {
+                    close = j + (size_t)yep_ctz64(qm) / 8;
+                    kinds[count] = YEP_T_STR;
+                    offs[count] = (uint32_t)j;
+                    lens[count] = (uint32_t)(close - j);
+                    count++;
+                    goto str_done;
+                }
+            }
+            size_t i = at;
+            if (!yep_json_string(p, len, &i, &close, &esc)) {
+                goto reject;
+            }
+            kinds[count] = YEP_T_STR;
+            offs[count] = (uint32_t)(at + 1);
+            lens[count] = (uint32_t)(close - at - 1);
+            count++;
+        str_done:
+            if (key_slot) {
+                /* colon peek: consume it without a loop round */
+                if (si < nidx && p[idx[si]] == ':') {
+                    si++;
+                    top_expect = JW_VALUE;
+                    key_slot = 0;
+                } else {
+                    top_expect = JW_COLON;
+                }
+            } else {
+                goto comma_peek;
+            }
+            continue;
+        }
+        if ((unsigned)(c - '0') <= 9u || c == '-') {
+            /* the deferred arm: the span runs to the next token,
+             * trailing ws trimmed — no grammar scan, no shape split */
+            size_t end = (si < nidx) ? idx[si] : len;
+            while (end > at && (p[end - 1] == ' ' || p[end - 1] == '\t' || p[end - 1] == '\n' ||
+                                p[end - 1] == '\r')) {
+                end--;
+            }
+            kinds[count] = YEP_T_NUM;
+            offs[count] = (uint32_t)at;
+            lens[count] = (uint32_t)(end - at);
+            count++;
+        comma_peek:
+            /* comma peek: the value-or-key separator consumes without
+             * a loop round (the corpus's dominant cycle) */
+            if (si < nidx && p[idx[si]] == ',') {
+                si++;
+                top_expect = top_kind ? JW_KEY : JW_VALUE;
+                key_slot = top_kind ? 1 : 0;
+            } else {
+                top_expect = JW_COMMA_OR_CLOSE;
+            }
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            int want = c == ']' ? 0 : 1;
+            if (top_kind != want ||
+                (top_expect != JW_VALUE_OR_CLOSE && top_expect != JW_KEY_OR_CLOSE &&
+                 top_expect != JW_COMMA_OR_CLOSE)) {
+                goto reject;
+            }
+            kinds[count] = YEP_T_CLOSE;
+            offs[count] = top_open;
+            lens[count] = 0;
+            offs[top_open] = (uint32_t)count;
+            count++;
+            depth--;
+            if (depth == 0) {
+                break;
+            }
+            top_kind = kind[depth - 1];
+            top_expect = JW_COMMA_OR_CLOSE;
+            top_open = open_at[depth - 1];
+            key_slot = 0;
+            continue;
+        }
+        if (c == '{' || c == '[') {
+            if (depth >= YEP_JSON_WALK_DEPTH) {
+                goto reject;
+            }
+            kind[depth - 1] = top_kind;
+            open_at[depth - 1] = top_open;
+            top_kind = c == '[' ? 0 : 1;
+            kinds[count] = c == '[' ? YEP_T_SEQ_OPEN : YEP_T_MAP_OPEN;
+            offs[count] = 0;
+            lens[count] = 0;
+            top_open = (uint32_t)count;
+            count++;
+            top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+            key_slot = top_kind ? 1 : 0;
+            kind[depth] = top_kind;
+            open_at[depth] = top_open;
+            depth++;
+            continue;
+        }
+        if (c == 't' || c == 'f' || c == 'n') {
+            size_t wl = c == 'f' ? 5 : 4;
+            if (at + wl > len) {
+                goto reject;
+            }
+            uint32_t got4;
+            memcpy(&got4, p + at, 4);
+            if (got4 != (c == 't'   ? 0x65757274u /* "true" */
+                         : c == 'n' ? 0x6C6C756Eu /* "null" */
+                                    : 0x736C6166u /* "fals" */) ||
+                (c == 'f' && p[at + 4] != 'e')) {
+                goto reject;
+            }
+            if (at + wl < len) {
+                char z = p[at + wl];
+                if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
+                    z != '}' && z != ':') {
+                    goto reject;
+                }
+            }
+            kinds[count] = c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE);
+            offs[count] = (uint32_t)at;
+            lens[count] = (uint32_t)wl;
+            count++;
+            top_expect = JW_COMMA_OR_CLOSE;
+            key_slot = 0;
+            continue;
+        }
+        goto reject;
+    }
+    /* trailing residue: after the root close, any remaining token is
+     * non-ws garbage (pure trailing ws emits no tokens) */
+    if (si != nidx) {
+        goto reject;
+    }
+    t->count = count;
+    t->_src = p;
+    t->_srclen = len;
+    return YEPTRIS_OK;
+
+reject:
+    yeptris_tape_free(t);
+    return YEPTRIS_ERROR_PARSE;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_parse_json_tape_lenient(const char* source, size_t len,
+                                                          yeptris_json_tape* tape) {
+    if ((source == NULL && len != 0) || tape == NULL) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    memset(tape, 0, sizeof(*tape));
+    if (len > 0xFFFFFFF0u) {
+        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
+                      "tape spans are uint32; document exceeds 4 GiB");
+        return YEPTRIS_ERROR_ARG;
+    }
+
+    /* lenient defers grammar only; strings borrow validated spans, so
+     * the encoding gate keeps the strict fallback (non-ASCII rides
+     * yeptris_parse_json_tape unchanged) */
+    if (len > 0 && yep_text_active()->gate_scan(source, len)) {
+        return yeptris_parse_json_tape(source, len, tape);
+    }
+
+    size_t at = 0;
+    while (at < len &&
+           (source[at] == ' ' || source[at] == '\t' || source[at] == '\n' || source[at] == '\r')) {
+        at++;
+    }
+    if (at >= len) {
+        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, at,
+                      "empty document (lenient tape)");
+        return YEPTRIS_ERROR_PARSE;
+    }
+
+    if (source[at] == '[' || source[at] == '{') {
+#if YEP_TOKEN_CONTRACT_ROUTE
+        /* the indexed twin: stage 1 + the idx walk (reference route —
+         * measured behind the fused lenient walk, same differential) */
+        uint32_t* idx = (uint32_t*)malloc((len + 2) * sizeof(uint32_t));
+        if (idx == NULL) {
+            return YEPTRIS_ERROR_MEMORY;
+        }
+        size_t nidx = 0;
+        if (yep_text_active()->json_stage1(source, len, idx, &nidx)) {
+            YeptrisStatus st = tape_walk_lnt(source, len, at, idx, nidx, tape);
+            free(idx);
+            return st;
+        }
+        free(idx);
+#endif
+        return tape_walk_lnt_fused(source, len, at, tape);
+    }
+
+    /* scalar root: one record, same deferred split for numbers */
+    if (tape_carve(tape, len) != YEPTRIS_OK) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    tape->_src = source;
+    tape->_srclen = len;
+    tape_ctx c = {tape, len + 2, {0}, 0, 0};
+    if (!rec_put(&c, YEP_T_DOC, 0, 0)) {
+        goto lnt_root_mem;
+    }
+    if (source[at] == '"') {
+        size_t i = at;
+        size_t close = 0;
+        int esc = 0;
+        if (!yep_json_string(source, len, &i, &close, &esc) ||
+            !rec_put(&c, YEP_T_STR, (uint32_t)(at + 1), (uint32_t)(close - at - 1))) {
+            goto lnt_root_reject;
+        }
+        while (i < len &&
+               (source[i] == ' ' || source[i] == '\t' || source[i] == '\n' || source[i] == '\r')) {
+            i++;
+        }
+        if (i != len) {
+            goto lnt_root_reject;
+        }
+        return YEPTRIS_OK;
+    }
+    if (source[at] == 't' || source[at] == 'f' || source[at] == 'n') {
+        const char* word = source[at] == 't' ? "true" : (source[at] == 'f' ? "false" : "null");
+        size_t i = at;
+        if (!yep_json_literal(source, len, &i, word)) {
+            goto lnt_root_reject;
+        }
+        while (i < len &&
+               (source[i] == ' ' || source[i] == '\t' || source[i] == '\n' || source[i] == '\r')) {
+            i++;
+        }
+        if (i != len) {
+            goto lnt_root_reject;
+        }
+        uint8_t k = source[at] == 'n' ? YEP_T_NULL : (source[at] == 't' ? YEP_T_TRUE : YEP_T_FALSE);
+        if (!rec_put(&c, k, (uint32_t)at, (uint32_t)(i - at))) {
+            goto lnt_root_mem;
+        }
+        return YEPTRIS_OK;
+    }
+    {
+        size_t end = len;
+        while (end > at && (source[end - 1] == ' ' || source[end - 1] == '\t' ||
+                            source[end - 1] == '\n' || source[end - 1] == '\r')) {
+            end--;
+        }
+        if (!rec_put(&c, YEP_T_NUM, (uint32_t)at, (uint32_t)(end - at))) {
+            goto lnt_root_mem;
+        }
+        return YEPTRIS_OK;
+    }
+
+lnt_root_mem:
+    yeptris_tape_free(tape);
+    return YEPTRIS_ERROR_MEMORY;
+lnt_root_reject:
+    yeptris_tape_free(tape);
+    yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, at,
+                  "not strict JSON at byte %zu (lenient tape)", at);
+    return YEPTRIS_ERROR_PARSE;
+}
+
 YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len,
                                                   yeptris_json_tape* tape) {
     if ((source == NULL && len != 0) || tape == NULL) {
@@ -670,14 +1251,19 @@ YEPTRIS_API size_t yeptris_tape_convert(yeptris_json_tape* t, size_t from, size_
     size_t n = 0;
     for (size_t i = from; i < to; i++) {
         uint8_t k = t->kinds[i];
-        if (k != YEP_T_INT && k != YEP_T_FLOAT) {
+        if (k != YEP_T_INT && k != YEP_T_FLOAT && k != YEP_T_NUM) {
             continue;
         }
         size_t j = 0;
         int64_t iv = 0;
         double dv = 0;
         int shape = 0;
-        if (!yep_json_number_scan(p + t->offs[i], t->lens[i], &j, &shape, &iv, &dv)) {
+        if (!yep_json_number_scan(p + t->offs[i], t->lens[i], &j, &shape, &iv, &dv) ||
+            j != t->lens[i]) {
+            /* full-span consumption: strict spans always re-scan whole
+             * (grammar-validated at parse); a lenient NUM run that
+             * stops early carries non-number bytes — the drain-side
+             * reject the deferred contract promises */
             return SIZE_MAX;
         }
         if (shape == 0) {

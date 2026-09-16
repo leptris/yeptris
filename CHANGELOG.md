@@ -6,6 +6,25 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- `yeptris_parse_json_tape_lenient` — the simdjson deferred contract,
+  opt-in: structural checks stay at parse while number grammar defers
+  to `yeptris_tape_convert` (charset runs record as `YEP_T_NUM`;
+  "1.2.3" rejects at drain where simdjson's number parse would).
+  Tab whitespace is legal (RFC 8259); non-ASCII takes the strict
+  route; on everything strict accepts the tapes are structurally
+  identical. json-doc: 528 -> 705-765 MB/s vs simdjson's ~1041
+  (0.70-0.73x; PERF-LEDGER verdict eight records the endgame design
+  for the last stretch). `yeptris_tape_convert` now requires
+  full-span consumption — a latent partial-span acceptance the
+  lenient differential caught (`1]`), pinned.
+### Performance
+- The lenient walk carries a SWAR close-quote settle (one u64 window
+  for 1-8 byte strings) and colon/comma peek fusion on the byte walk.
+  The bench matrix gains the tape_lenient leg on the simdjson
+  head-to-head.
+
 ## [0.5.2] - 2026-09-16
 ### Fixed
 - Empty built collections ride the key line flow (`k: []` / `k: {}`)
