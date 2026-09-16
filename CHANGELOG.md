@@ -6,6 +6,42 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- **BREAKING — tape v2 records** (TODO.restructure/85, the verdict
+  six/seven campaign): `yeptris_json_tape` records are THREE columns
+  (kinds/offs/lens — 9 bytes per record, was 20; the vals column is
+  gone). `YEP_T_TRUE`/`YEP_T_FALSE` replace `YEP_T_BOOL` (the kind IS
+  the value); container links ride the offs column (OPEN.off = its
+  CLOSE index, CLOSE.off = its OPEN); numbers record spans at parse
+  (the lean `yep_json_number_shape` validates grammar without
+  magnitude work) and convert at materialize via the new
+  `yeptris_tape_convert` (bulk, parallel-to-record int64/double
+  arrays; `int_min` is discovered then; the tape retains `_src` so
+  the call is self-contained). Bindings update in lockstep
+  (yeptris-ruby 0.4.0.1).
+### Added
+- The flow-kernel chunk classifier as a kernels-table slot
+  (`json_chunk`): quote/backslash/structural/value-start/C0 masks per
+  32-byte chunk — scalar reference, NEON + AVX2 twins, one dispatch
+  point, differential-pinned. Stage 1 alone: 598 -> 1294 MB/s.
+- `yep_json_number_shape`: the number grammar walk without conversion
+  (the lazy tape's arm; same accepts, rejects, and advance as the
+  full scan).
+- The structural indexer `json_stage1` (the simdjson token-contract
+  front, gated research route): 64-byte blocks, escape-scanner borrow
+  trick + sequential prefix-xor in u64 chains, operators + string
+  opens + scalar-run starts as u32 positions. NEON + AVX2 twins,
+  differential-pinned. The two-stage route it feeds stays gated
+  (verdict seven: the fused walk remains the optimum for the
+  strict-validation contract).
+### Performance
+- The JSON tape entry: 510 -> 546 MB/s on json-doc (packed literal
+  compares, punctuation inlining in the fused walk — commas/colons
+  consumed by the value arms; ~400k loop iterations gone). PERF-LEDGER
+  verdicts five through seven bound the exploration: simdjson DOM
+  measured directly at 1017-1039 MB/s on this corpus.
+
 ## [0.3.0] - 2026-09-15
 ### Added
 - CBOR (RFC 8949) decode over the shared DOM (TODO.cbor/01):
