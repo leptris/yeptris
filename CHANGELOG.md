@@ -6,6 +6,24 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- `yeptris_emit_options.explicit_doc_start` — libyaml's
+  implicit=false parity: a nonzero value puts the leading `---`
+  marker on every document, with scalar roots riding the marker line
+  (`--- 42`) exactly as Psych/libyaml do. Size-versioned (callers
+  compiled against the older struct keep the implicit single-document
+  behavior — guarded by offsetof+size, pinned by a test). Default
+  unchanged. The four JSON serializer entries zero it explicitly.
+### Performance
+- The `on_scalar` direct sink path (TODO.restructure/79 slice one):
+  `emit_now` routes scalar events straight to the DOM's node build
+  when the sink provides the hook — no event-struct fill through the
+  switch, no indirect dispatch. The engine still resolves tags (one
+  typing SSOT); recorder/values sinks keep the unchanged event path.
+  Neutral on block-heavy under load (the hot pairs already bypass
+  events via `on_block_pair`); the groundwork for the loop fusion.
+
 ## [0.4.0] - 2026-09-16
 ### Changed
 - **BREAKING — tape v2 records** (TODO.restructure/85, the verdict
