@@ -364,8 +364,8 @@ TEST(Emit, PlainNegativeNumbers) {
         const char* value;
         const char* want;
     } cases[] = {
-        {"-5", "-5"},   {"-.inf", "-.inf"}, {"-2.5e+300", "-2.5e+300"}, {"?x", "?x"},
-        {"-", "'-'"}, {"- x", "'- x'"}, {"? x", "'? x'"},
+        {"-5", "-5"}, {"-.inf", "-.inf"}, {"-2.5e+300", "-2.5e+300"}, {"?x", "?x"},
+        {"-", "'-'"}, {"- x", "'- x'"},   {"? x", "'? x'"},
     };
     for (const auto& c : cases) {
         YeptrisDocument doc = yeptris_document_new();
