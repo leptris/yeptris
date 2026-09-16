@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- libyaml/Psych dump parity (yeptris-ruby#95, PR #284): a plain-styled
+  scalar that cannot ride plain but needs no escapes (digit-leading
+  strings like `5014`, indicator leads) now single-quotes — libyaml's
+  choose_scalar_style; double quotes stay reserved for text that
+  actually requires escapes. A block sequence nested under a mapping
+  key now indents at the key's column (`a:\n- 1\n- 2\n`) as libyaml
+  does; mappings still indent +2. With the Ruby binding's
+  explicit_doc_start wiring, `Yeptris::Psych.dump` is byte-identical
+  to stdlib Psych for the relaton matrix in that issue.
+
 ## [0.5.0] - 2026-09-16
 ### Added
 - `yeptris_emit_options.explicit_doc_start` — libyaml's
