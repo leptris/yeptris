@@ -830,10 +830,7 @@ TEST(SimdText, JsonStage1) {
     for (size_t L = 0; L <= 200; L++) {
         std::string s(L, '\0');
         const char* alpha = "[]{}:, \"\\t123abcXYZ"; // deliberate tab escape forms below
-        static const char mix[] = {'\\', '\\', '[', ']', '{', '}', ':', '"', ',', ' ',
-                                   '"', 'a', '\\', '"', 'b', '\\', 'n', '\\', '\\', 'c',
-                                   '"', ',', ' ', '1', '.', '5', 'e', '3', ',', ' ', '[',
-                                   '\0'};
+        static const char mix[] = "\\\\[]{}:\", \"a\\\"b\\n\\\\c\", 1.5e3, [";
         for (size_t i = 0; i < L; i++) {
             s[i] = (i % 3 == 0) ? mix[i % (sizeof(mix) - 1)]
                                 : ((unsigned char*)alpha)[(i * 7 + L) % 16];
@@ -842,10 +839,7 @@ TEST(SimdText, JsonStage1) {
     }
     /* random two-alphabet fuzz */
     std::mt19937_64 rng(0x57A6E1);
-    static const char jalpha_c[] = {'\\', '\\', '[', ']', '{', '}', ':', '"', ',', ' ',
-                                    '0', '1', '8', '9', 't', 'f', 'n', '-', '\\', '"', 'x',
-                                    '\t', '\n', '\0'};
-    const std::string jalpha(jalpha_c);
+    const std::string jalpha = "\\\\[]{}:\", \"0189tfn-\\\"x\t\n";
     for (int t = 0; t < 3000; t++) {
         size_t n = (size_t)(rng() % 400);
         std::string s(n, '\0');
