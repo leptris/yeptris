@@ -166,6 +166,11 @@ static int emit_now(yep_engine* e, const yep_event* ev) {
             ((yep_event*)ev)->tag_id = 0; /* str: quoted or tag-free */
         }
     }
+    if (ev->type == YEP_EV_SCALAR && e->ev_scopes == 0 && e->sink != NULL &&
+        e->sink->on_scalar != NULL) {
+        return e->sink->on_scalar(e->sink->ctx, &ev->value, &ev->tag, &ev->anchor, ev->anchor_id,
+                                  ev->tag_id, ev->style, ev->implicit, ev->flow, ev->borrowed);
+    }
     if (e->ev_scopes > 0) {
         if (e->ev_buf_n == e->ev_buf_cap) {
             uint32_t cap = e->ev_buf_cap ? e->ev_buf_cap * 2 : 16;

@@ -946,6 +946,25 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
     return dom_place(d, vid) == 0 ? 1 : -1;
 }
 
+/* The direct scalar path (TODO.restructure/79): the YEP_EV_SCALAR
+ * case's node build, minus the event seam. The engine resolved
+ * tag_id (the typing SSOT); everything else is the case body. */
+int dom_on_scalar(void* ctx, const yep_view* value, const yep_view* tag, const yep_view* anchor,
+                  uint32_t anchor_id, uint32_t tag_id, uint8_t style, uint8_t implicit,
+                  uint8_t flow, int borrowed) {
+    yep_dom* d = (yep_dom*)ctx;
+    uint32_t id = dom_open_node(d, YEP_DOM_SCALAR, tag, anchor, borrowed, style, implicit, flow);
+    if (id == UINT32_MAX) {
+        return -1;
+    }
+    d->nodes[id].value = dom_str_in(d, value, borrowed);
+    d->nodes[id].tag_id = tag_id;
+    if (anchor_id != 0 && dom_anchor_set(d, anchor_id, id) != 0) {
+        return -1;
+    }
+    return dom_place(d, id);
+}
+
 const yep_dnode* yep_dom_node(const yep_dom* d, uint32_t id) {
     if (d == NULL || id >= d->ncount) {
         return NULL;

@@ -96,6 +96,14 @@ typedef struct yep_sink {
      * block sequence. 1 = the sink built and placed the item node,
      * 0 = the engine emits the scalar event as before, <0 = abort. */
     int (*on_block_item)(void* ctx, const struct yep_block_value* v);
+
+    /* Direct scalar path (TODO.restructure/79): the same node the
+     * YEP_EV_SCALAR event builds, minus the event seam — emit_now
+     * resolves the tag first (the typing SSOT stays in the engine)
+     * and calls here when present. NULL = the event path, unchanged. */
+    int (*on_scalar)(void* ctx, const struct yep_view* value, const struct yep_view* tag,
+                     const struct yep_view* anchor, uint32_t anchor_id, uint32_t tag_id,
+                     uint8_t style, uint8_t implicit, uint8_t flow, int borrowed);
 } yep_sink;
 
 /* Value facts for on_block_pair (the classified value classes the
