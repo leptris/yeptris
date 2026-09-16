@@ -20,6 +20,12 @@
 
 #include <yeptris/tape.h>
 
+#if defined(__GNUC__)
+#define YEP_UNUSED_FN __attribute__((unused))
+#else
+#define YEP_UNUSED_FN
+#endif
+
 #ifndef YEP_TOKEN_CONTRACT_ROUTE
 #define YEP_TOKEN_CONTRACT_ROUTE 0
 #endif
@@ -354,11 +360,9 @@ reject:
  * (yep_json_string stays the authority on closes, escapes, and raw
  * C0), numbers are span records via the shape scan. Same states and
  * rejects as the fused walk; tape-diff pins the equivalence. */
-#if defined(__GNUC__)
-__attribute__((unused))
-#endif
-static YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open, const uint32_t* idx,
-                                   size_t nidx, yeptris_json_tape* t) {
+static YEP_UNUSED_FN YeptrisStatus tape_walk_idx(const char* p, size_t len, size_t open,
+                                                 const uint32_t* idx, size_t nidx,
+                                                 yeptris_json_tape* t) {
     if (tape_carve(t, len) != YEPTRIS_OK) {
         return YEPTRIS_ERROR_MEMORY;
     }
