@@ -204,10 +204,6 @@ jobs:
   # beats JSON.parse with zero compilation and zero env vars. The
   # recipe lives in the ruby repo's scripts/build-platform-gem.sh.
   platform-gems:
-    # windows-11-arm until the C tag carries the MSVC-scalar port.h
-    # gate (v0.6.2+): v0.6.1's NEON TU cannot compile under
-    # MSVC-ARM64 — the leg stays visible but non-blocking until then
-    continue-on-error: ${{ matrix.os == 'windows-11-arm' }}
     if: >-
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')) ||
       (github.event_name == 'workflow_dispatch' && inputs.republish_version != '')
