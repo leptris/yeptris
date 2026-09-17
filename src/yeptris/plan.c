@@ -318,12 +318,21 @@ yeptris_tape_plan_walk(const yeptris_json_tape* tape, const yeptris_plan* plan, 
         }
     }
 
-    /* one carved block: cols array + per-column typed arrays */
+    /* one carved block: cols array, then the typed arrays, then the
+     * null bitmaps last. Every column's typed footprint is exactly
+     * 8*rows bytes (ints/floats directly; str = offs+lens), so the
+     * typed bases stay 8-aligned — a nulls bitmap of odd row count
+     * ahead of them misaligned the int64_t/double stores. */
     size_t ncols = plan->ncols;
     size_t col_bytes = ncols * sizeof(yep_result_col);
-    size_t need =
-        col_bytes + (ncols * rows) * (sizeof(int64_t) + sizeof(uint32_t) + sizeof(uint32_t) + 1);
-    char* block = malloc(need + 8 * sizeof(double));
+    if (ncols != 0 && rows != 0 && rows > (SIZE_MAX - col_bytes) / 9 / ncols) {
+        if (st != NULL) {
+            *st = YEPTRIS_ERROR_MEMORY;
+        }
+        return NULL;
+    }
+    size_t need = col_bytes + ncols * rows * 9;
+    char* block = malloc(need);
     if (block == NULL) {
         if (st != NULL) {
             *st = YEPTRIS_ERROR_MEMORY;
@@ -342,26 +351,28 @@ yeptris_tape_plan_walk(const yeptris_json_tape* tape, const yeptris_plan* plan, 
     r->ncols = ncols;
     r->block = block;
     r->cols = (yep_result_col*)block;
+    memset(block, 0, col_bytes);
     char* p = block + col_bytes;
     for (size_t c = 0; c < ncols; c++) {
         yep_result_col* col = &r->cols[c];
         col->kind = plan->cols[c].kind;
-        col->nulls = (uint8_t*)p;
-        memset(col->nulls, 1, rows); /* missing until matched */
-        p += rows;
         if (col->kind == YEP_PLAN_FLOAT) {
             col->floats = (double*)p;
             p += rows * sizeof(double);
+        } else if (col->kind == YEP_PLAN_STR) {
+            col->offs = (uint32_t*)p;
+            p += rows * sizeof(uint32_t);
+            col->lens = (uint32_t*)p;
+            p += rows * sizeof(uint32_t);
         } else {
-            col->ints = (int64_t*)p; /* int/bool share; str uses offs/lens */
+            col->ints = (int64_t*)p; /* int and bool share the lane */
             p += rows * sizeof(int64_t);
-            if (col->kind == YEP_PLAN_STR) {
-                col->offs = (uint32_t*)p;
-                p += rows * sizeof(uint32_t);
-                col->lens = (uint32_t*)p;
-                p += rows * sizeof(uint32_t);
-            }
         }
+    }
+    for (size_t c = 0; c < ncols; c++) {
+        r->cols[c].nulls = (uint8_t*)p;
+        memset(r->cols[c].nulls, 1, rows); /* missing until matched */
+        p += rows;
     }
 
     /* pass two: fill. Rows are MAP_OPEN..CLOSE at container depth 0;
