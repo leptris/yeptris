@@ -274,11 +274,11 @@ std::string build_dump(const std::vector<Entry>& entries, const std::string& blo
 TEST(BulkBuild, TagAppliesToLastPlacedNode) {
     /* {! '': nilkey} — scalar '' single-quoted, tag "!", value */
     std::vector<Entry> es = {
-        {3, 0, 0, 0},  // MAP
-        {1, 2, 0, 0},  // '' (empty, single-quoted)
-        {5, 0, 0, 1},  // TAG "!"
-        {1, 1, 1, 6},  // nilkey
-        {4, 0, 0, 0},  // END
+        {3, 0, 0, 0}, // MAP
+        {1, 2, 0, 0}, // '' (empty, single-quoted)
+        {5, 0, 0, 1}, // TAG "!"
+        {1, 1, 1, 6}, // nilkey
+        {4, 0, 0, 0}, // END
     };
     std::string blob = std::string("!") + "nilkey";
     YeptrisStatus st = YEPTRIS_OK;

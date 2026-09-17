@@ -3,8 +3,8 @@
  * mutation primitives. The emitter and every query API work on
  * synthesized documents unchanged — same nodes, same invariants. */
 
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <yeptris.h>
 
@@ -279,8 +279,7 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
                 rc = YEPTRIS_ERROR_PARSE; /* TAG with nothing placed */
                 break;
             }
-            if (yep_mut_set_tag(doc->dom, last_id, blob + e->off,
-                                e->len) != 0) {
+            if (yep_mut_set_tag(doc->dom, last_id, blob + e->off, e->len) != 0) {
                 rc = YEPTRIS_ERROR_MEMORY;
                 break;
             }
