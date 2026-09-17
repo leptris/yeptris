@@ -14,6 +14,7 @@
 
 #include "doc.h"
 #include "dom/dom.h"
+#include "parse/numbers.h"
 #include "scan/json.h"
 
 /* sview decode (the writer's wv, over the document's two regions) */
@@ -36,8 +37,11 @@ typedef struct {
 struct yeptris_plan {
     yep_plan_col* cols;
     size_t ncols;
-    char* path; /* the root map's key holding the rows; "" for seq root */
+    char* path; /* the path segments' bytes, concatenated */
     size_t path_len;
+    uint32_t* seg_off; /* nsegs entries: segment start inside path */
+    uint32_t* seg_len;
+    size_t nsegs; /* 0 = the root itself is the rows container */
 };
 
 typedef struct {
@@ -46,6 +50,7 @@ typedef struct {
     double* floats;
     uint32_t* offs;
     uint32_t* lens;
+    yeptris_plan_str* views; /* the DOM leg's str lane: (ptr,len) into the doc */
     uint8_t* nulls;
 } yep_result_col;
 
@@ -85,8 +90,7 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
     }
     /* kind: "seq" (rows under the path key or the root itself) or
      * "map" (rows under the path key); children: the leaf columns */
-    const char* path = NULL;
-    uint32_t path_len = 0;
+    const yep_dnode* path_node = NULL;
     const yep_dnode* children = NULL;
     int saw_kind = 0;
     uint32_t pair = root->first_child;
@@ -101,11 +105,10 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
                 goto bad;
             }
         } else if (kv.len == 4 && memcmp(kv.p, "path", 4) == 0) {
-            if (vn->kind != 0) {
+            if (vn->kind != 0 && vn->kind != 1) { /* a string or a string seq */
                 goto bad;
             }
-            path = vv.p;
-            path_len = vv.len;
+            path_node = vn;
         } else if (kv.len == 8 && memcmp(kv.p, "children", 8) == 0) {
             if (vn->kind != 1) { /* children is a sequence */
                 goto bad;
@@ -119,19 +122,64 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
     if (!saw_kind || children == NULL) {
         goto bad;
     }
-    if (path != NULL) {
-        plan->path = malloc(path_len + 1);
-        if (plan->path == NULL) {
+    plan->path = calloc(1, 1);
+    if (plan->path == NULL) {
+        goto mem;
+    }
+    if (path_node != NULL && path_node->kind == 0) {
+        if (path_node->tag_id != YEPTRIS_TAG_STR) {
+            goto bad; /* the path is a string, not a number */
+        }
+        yep_view vv = sv_view(d->dom, path_node->value);
+        if (vv.len != 0) { /* "" rides the seq root like no path */
+            plan->seg_off = malloc(sizeof(uint32_t));
+            plan->seg_len = malloc(sizeof(uint32_t));
+            if (plan->seg_off == NULL || plan->seg_len == NULL) {
+                goto mem;
+            }
+            free(plan->path);
+            plan->path = malloc(vv.len + 1);
+            if (plan->path == NULL) {
+                goto mem;
+            }
+            memcpy(plan->path, vv.p, vv.len);
+            plan->path[vv.len] = 0;
+            plan->path_len = vv.len;
+            plan->seg_off[0] = 0;
+            plan->seg_len[0] = vv.len;
+            plan->nsegs = 1;
+        }
+    } else if (path_node != NULL) {
+        size_t n = path_node->count;
+        plan->seg_off = calloc(n, sizeof(uint32_t));
+        plan->seg_len = calloc(n, sizeof(uint32_t));
+        if (n != 0 && (plan->seg_off == NULL || plan->seg_len == NULL)) {
             goto mem;
         }
-        memcpy(plan->path, path, path_len);
-        plan->path[path_len] = 0;
-        plan->path_len = path_len;
-    } else {
-        plan->path = calloc(1, 1);
-        if (plan->path == NULL) {
-            goto mem;
+        size_t off = 0;
+        uint32_t cn = path_node->first_child;
+        for (size_t i = 0; i < n; i++) {
+            const yep_dnode* seg = yep_dom_node(d->dom, cn);
+            if (seg == NULL || seg->kind != 0 || seg->tag_id != YEPTRIS_TAG_STR) {
+                goto bad; /* every segment is a string */
+            }
+            yep_view sv = sv_view(d->dom, seg->value);
+            if (sv.len == 0) {
+                goto bad;
+            }
+            char* grown = realloc(plan->path, off + sv.len + 1);
+            if (grown == NULL) {
+                goto mem;
+            }
+            plan->path = grown;
+            memcpy(plan->path + off, sv.p, sv.len);
+            plan->seg_off[i] = (uint32_t)off;
+            plan->seg_len[i] = sv.len;
+            off += sv.len;
+            cn = seg->next_sibling;
         }
+        plan->path_len = off;
+        plan->nsegs = n;
     }
     plan->ncols = children->count;
     if (plan->ncols == 0) {
@@ -224,6 +272,8 @@ YEPTRIS_API void yeptris_plan_free(yeptris_plan* plan) {
     }
     free(plan->cols);
     free(plan->path);
+    free(plan->seg_off);
+    free(plan->seg_len);
     free(plan);
 }
 
@@ -232,9 +282,9 @@ YEPTRIS_API size_t yeptris_plan_column_count(const yeptris_plan* plan) {
 }
 
 /* Finds the rows container's OPEN record: the root OPEN's child
- * matching the plan path (a map root), or the root OPEN itself (a
- * seq root). Returns the record index of the container OPEN, or 0
- * (the DOC record) when the shape disagrees. */
+ * matching each path segment in turn (a map root), or the root OPEN
+ * itself (a seq root). Returns the record index of the container
+ * OPEN, or 0 (the DOC record) when the shape disagrees. */
 static size_t find_rows_open(const yeptris_json_tape* t, const yeptris_plan* plan) {
     size_t root = 1; /* the root OPEN (tape records start after DOC) */
     if (root >= t->count) {
@@ -243,35 +293,124 @@ static size_t find_rows_open(const yeptris_json_tape* t, const yeptris_plan* pla
     if (t->kinds[root] != YEP_T_SEQ_OPEN && t->kinds[root] != YEP_T_MAP_OPEN) {
         return 0;
     }
-    if (plan->path_len == 0 && t->kinds[root] == YEP_T_SEQ_OPEN) {
-        return root; /* seq root: rows are the root's children */
+    if (plan->nsegs == 0) {
+        return t->kinds[root] == YEP_T_SEQ_OPEN ? root : 0;
     }
-    if (t->kinds[root] != YEP_T_MAP_OPEN) {
-        return 0;
-    }
-    /* map root: find the path key's value. Pairs are (STR key, value
-     * record); a container value spans to its CLOSE (offs link) */
-    size_t i = root + 1;
-    while (i < t->count && i < t->offs[root]) {
-        if (t->kinds[i] != YEP_T_STR) {
-            return 0; /* not a key position */
+    /* map root: walk the segments. Pairs are (STR key, value record);
+     * a container value spans to its CLOSE (offs link) */
+    size_t cur = root;
+    for (size_t s = 0; s < plan->nsegs; s++) {
+        if (t->kinds[cur] != YEP_T_MAP_OPEN) {
+            return 0;
         }
-        if (t->lens[i] == plan->path_len &&
-            memcmp((const char*)t->_src + t->offs[i], plan->path, plan->path_len) == 0) {
-            size_t v = i + 1;
-            if (v >= t->count) {
-                return 0;
+        const char* seg = plan->path + plan->seg_off[s];
+        uint32_t seg_len = plan->seg_len[s];
+        size_t i = cur + 1;
+        int found = 0;
+        while (i < t->count && i < t->offs[cur]) {
+            if (t->kinds[i] != YEP_T_STR) {
+                return 0; /* not a key position */
             }
-            return v; /* the value OPEN (or scalar) record */
+            if (t->lens[i] == seg_len &&
+                memcmp((const char*)t->_src + t->offs[i], seg, seg_len) == 0) {
+                size_t v = i + 1;
+                if (v >= t->count) {
+                    return 0;
+                }
+                if (s + 1 < plan->nsegs) {
+                    if (t->kinds[v] != YEP_T_MAP_OPEN) {
+                        return 0; /* the next segment needs a mapping */
+                    }
+                    cur = v;
+                } else {
+                    return v; /* the rows container's OPEN (or scalar) */
+                }
+                found = 1;
+                break;
+            }
+            i++; /* the value */
+            uint8_t vk = t->kinds[i];
+            if (vk == YEP_T_MAP_OPEN || vk == YEP_T_SEQ_OPEN) {
+                i = t->offs[i]; /* skip to its CLOSE */
+            }
+            i++;
         }
-        i++; /* the value */
-        uint8_t vk = t->kinds[i];
-        if (vk == YEP_T_MAP_OPEN || vk == YEP_T_SEQ_OPEN) {
-            i = t->offs[i]; /* skip to its CLOSE */
+        if (!found) {
+            return 0;
         }
-        i++;
     }
-    return 0;
+    return 0; /* unreachable with nsegs > 0 */
+}
+
+/* Carves the result: cols array, then the typed lanes (8*rows bytes
+ * each — ints/floats directly, tape-str = offs+lens, DOM-str =
+ * views), then the null bitmaps last so every typed base stays
+ * 8-aligned. str_row_bytes is the per-row footprint of a str
+ * column's lane (8 for the tape leg, sizeof(yeptris_plan_str) for the DOM
+ * leg). Returns NULL with *st on overflow/allocation failure. */
+static yeptris_plan_result* plan_result_carve(const yeptris_plan* plan, size_t rows,
+                                              size_t str_row_bytes, YeptrisStatus* st) {
+    size_t ncols = plan->ncols;
+    size_t col_bytes = ncols * sizeof(yep_result_col);
+    if (ncols != 0 && rows != 0 && rows > (SIZE_MAX - col_bytes) / (str_row_bytes + 9)) {
+        if (st != NULL) {
+            *st = YEPTRIS_ERROR_MEMORY;
+        }
+        return NULL;
+    }
+    size_t need = col_bytes;
+    for (size_t c = 0; c < ncols; c++) {
+        size_t lane = plan->cols[c].kind == YEP_PLAN_STR ? str_row_bytes : 8;
+        need += rows * lane + rows;
+    }
+    char* block = malloc(need);
+    if (block == NULL) {
+        if (st != NULL) {
+            *st = YEPTRIS_ERROR_MEMORY;
+        }
+        return NULL;
+    }
+    yeptris_plan_result* r = calloc(1, sizeof(*r));
+    if (r == NULL) {
+        free(block);
+        if (st != NULL) {
+            *st = YEPTRIS_ERROR_MEMORY;
+        }
+        return NULL;
+    }
+    r->rows = rows;
+    r->ncols = ncols;
+    r->block = block;
+    r->cols = (yep_result_col*)block;
+    memset(block, 0, col_bytes);
+    char* p = block + col_bytes;
+    for (size_t c = 0; c < ncols; c++) {
+        yep_result_col* col = &r->cols[c];
+        col->kind = plan->cols[c].kind;
+        if (col->kind == YEP_PLAN_FLOAT) {
+            col->floats = (double*)p;
+            p += rows * sizeof(double);
+        } else if (col->kind == YEP_PLAN_STR) {
+            if (str_row_bytes == sizeof(yeptris_plan_str)) {
+                col->views = (yeptris_plan_str*)p;
+                p += rows * sizeof(yep_view);
+            } else {
+                col->offs = (uint32_t*)p;
+                p += rows * sizeof(uint32_t);
+                col->lens = (uint32_t*)p;
+                p += rows * sizeof(uint32_t);
+            }
+        } else {
+            col->ints = (int64_t*)p; /* int and bool share the lane */
+            p += rows * sizeof(int64_t);
+        }
+    }
+    for (size_t c = 0; c < ncols; c++) {
+        r->cols[c].nulls = (uint8_t*)p;
+        memset(r->cols[c].nulls, 1, rows); /* missing until matched */
+        p += rows;
+    }
+    return r;
 }
 
 YEPTRIS_API yeptris_plan_result*
@@ -318,61 +457,10 @@ yeptris_tape_plan_walk(const yeptris_json_tape* tape, const yeptris_plan* plan, 
         }
     }
 
-    /* one carved block: cols array, then the typed arrays, then the
-     * null bitmaps last. Every column's typed footprint is exactly
-     * 8*rows bytes (ints/floats directly; str = offs+lens), so the
-     * typed bases stay 8-aligned — a nulls bitmap of odd row count
-     * ahead of them misaligned the int64_t/double stores. */
     size_t ncols = plan->ncols;
-    size_t col_bytes = ncols * sizeof(yep_result_col);
-    if (ncols != 0 && rows != 0 && rows > (SIZE_MAX - col_bytes) / 9 / ncols) {
-        if (st != NULL) {
-            *st = YEPTRIS_ERROR_MEMORY;
-        }
-        return NULL;
-    }
-    size_t need = col_bytes + ncols * rows * 9;
-    char* block = malloc(need);
-    if (block == NULL) {
-        if (st != NULL) {
-            *st = YEPTRIS_ERROR_MEMORY;
-        }
-        return NULL;
-    }
-    yeptris_plan_result* r = calloc(1, sizeof(*r));
+    yeptris_plan_result* r = plan_result_carve(plan, rows, 8, st);
     if (r == NULL) {
-        free(block);
-        if (st != NULL) {
-            *st = YEPTRIS_ERROR_MEMORY;
-        }
         return NULL;
-    }
-    r->rows = rows;
-    r->ncols = ncols;
-    r->block = block;
-    r->cols = (yep_result_col*)block;
-    memset(block, 0, col_bytes);
-    char* p = block + col_bytes;
-    for (size_t c = 0; c < ncols; c++) {
-        yep_result_col* col = &r->cols[c];
-        col->kind = plan->cols[c].kind;
-        if (col->kind == YEP_PLAN_FLOAT) {
-            col->floats = (double*)p;
-            p += rows * sizeof(double);
-        } else if (col->kind == YEP_PLAN_STR) {
-            col->offs = (uint32_t*)p;
-            p += rows * sizeof(uint32_t);
-            col->lens = (uint32_t*)p;
-            p += rows * sizeof(uint32_t);
-        } else {
-            col->ints = (int64_t*)p; /* int and bool share the lane */
-            p += rows * sizeof(int64_t);
-        }
-    }
-    for (size_t c = 0; c < ncols; c++) {
-        r->cols[c].nulls = (uint8_t*)p;
-        memset(r->cols[c].nulls, 1, rows); /* missing until matched */
-        p += rows;
     }
 
     /* pass two: fill. Rows are MAP_OPEN..CLOSE at container depth 0;
@@ -478,6 +566,203 @@ yeptris_tape_plan_walk(const yeptris_json_tape* tape, const yeptris_plan* plan, 
     return r;
 }
 
+/* ---- the DOM leg (the YAML form of #293): the same compiled plan
+ * applied to a parsed yeptris document. Typed extraction rides the
+ * parse-time tag_id (the typing SSOT) plus the number kernels; str
+ * columns expose (ptr,len) views into the document's regions — the
+ * result borrows the document, free it first. ---- */
+
+/* Follows alias chains to their target (bounded: a cycle fails). */
+static const yep_dnode* dom_alias_final(const yep_dom* d, const yep_dnode* n) {
+    for (int hops = 0; n != NULL && n->kind == YEP_DOM_ALIAS; hops++) {
+        if (hops >= 64 || n->target == UINT32_MAX) {
+            return NULL;
+        }
+        n = yep_dom_node(d, n->target);
+    }
+    return n;
+}
+
+/* The rows container: the root (no path), or the mapping reached by
+ * walking the path segments. NULL when the shape disagrees. */
+static const yep_dnode* dom_find_rows(const yep_dom* d, const yep_dnode* root,
+                                      const yeptris_plan* plan) {
+    const yep_dnode* cur = dom_alias_final(d, root);
+    if (plan->nsegs == 0) {
+        return (cur != NULL && cur->kind == YEP_DOM_SEQUENCE) ? cur : NULL;
+    }
+    for (size_t s = 0; s < plan->nsegs; s++) {
+        if (cur == NULL || cur->kind != YEP_DOM_MAPPING) {
+            return NULL;
+        }
+        const char* seg = plan->path + plan->seg_off[s];
+        uint32_t seg_len = plan->seg_len[s];
+        const yep_dnode* hit = NULL;
+        uint32_t cn = cur->first_child;
+        while (cn != UINT32_MAX) {
+            const yep_dnode* k = yep_dom_node(d, cn);
+            const yep_dnode* v = yep_dom_node(d, k->next_sibling);
+            yep_view kv = sv_view(d, k->value);
+            if (k->kind == YEP_DOM_SCALAR && kv.len == seg_len && memcmp(kv.p, seg, seg_len) == 0) {
+                hit = dom_alias_final(d, v);
+                break;
+            }
+            cn = v->next_sibling;
+        }
+        if (hit == NULL) {
+            return NULL;
+        }
+        cur = hit;
+    }
+    if (cur == NULL || (cur->kind != YEP_DOM_SEQUENCE && cur->kind != YEP_DOM_MAPPING)) {
+        return NULL;
+    }
+    return cur;
+}
+
+/* One row iteration: a SEQUENCE container yields its mapping
+ * children, a MAPPING container its mapping values. Returns the
+ * next cursor (UINT32_MAX at the end); *out is the row (NULL when
+ * the child is not a mapping — callers skip it). */
+static uint32_t dom_rows_next(const yep_dom* d, const yep_dnode* container, uint32_t cur,
+                              const yep_dnode** out) {
+    *out = NULL;
+    if (cur == UINT32_MAX) {
+        return UINT32_MAX;
+    }
+    if (container->kind == YEP_DOM_SEQUENCE) {
+        const yep_dnode* self = yep_dom_node(d, cur);
+        const yep_dnode* child = dom_alias_final(d, self);
+        uint32_t next = self->next_sibling;
+        if (child != NULL && child->kind == YEP_DOM_MAPPING) {
+            *out = child;
+        }
+        return next;
+    }
+    /* mapping: pairs (key, value) — yield values */
+    const yep_dnode* k = yep_dom_node(d, cur);
+    const yep_dnode* v = yep_dom_node(d, k->next_sibling);
+    const yep_dnode* val = dom_alias_final(d, v);
+    if (val != NULL && val->kind == YEP_DOM_MAPPING) {
+        *out = val;
+    }
+    return v->next_sibling;
+}
+
+YEPTRIS_API yeptris_plan_result*
+yeptris_document_plan_walk(YeptrisDocument doc, const yeptris_plan* plan, YeptrisStatus* st) {
+    if (st != NULL) {
+        *st = YEPTRIS_OK;
+    }
+    const yeptris_document* d = (const yeptris_document*)doc;
+    if (doc == NULL || plan == NULL || d->dom == NULL || d->dom->dcount == 0) {
+        if (st != NULL) {
+            *st = YEPTRIS_ERROR_ARG;
+        }
+        return NULL;
+    }
+    const yep_dnode* root = yep_dom_node(d->dom, d->dom->docs[0]);
+    const yep_dnode* container = dom_find_rows(d->dom, root, plan);
+    if (container == NULL) {
+        if (st != NULL) {
+            *st = YEPTRIS_ERROR_PARSE; /* document shape disagreement */
+        }
+        return NULL;
+    }
+
+    size_t rows = 0;
+    for (uint32_t cur = container->first_child; cur != UINT32_MAX;) {
+        const yep_dnode* row;
+        cur = dom_rows_next(d->dom, container, cur, &row);
+        if (row != NULL) {
+            rows++;
+        }
+    }
+
+    yeptris_plan_result* r = plan_result_carve(plan, rows, sizeof(yeptris_plan_str), st);
+    if (r == NULL) {
+        return NULL;
+    }
+
+    size_t row_i = 0;
+    for (uint32_t cur = container->first_child; cur != UINT32_MAX && row_i < rows;) {
+        const yep_dnode* row;
+        cur = dom_rows_next(d->dom, container, cur, &row);
+        if (row == NULL) {
+            continue;
+        }
+        uint32_t cn = row->first_child;
+        while (cn != UINT32_MAX) {
+            const yep_dnode* k = yep_dom_node(d->dom, cn);
+            const yep_dnode* v = yep_dom_node(d->dom, k->next_sibling);
+            yep_view kv = sv_view(d->dom, k->value);
+            int col_idx = -1;
+            if (k->kind == YEP_DOM_SCALAR) {
+                for (size_t c = 0; c < plan->ncols; c++) {
+                    if (kv.len == plan->cols[c].name_len &&
+                        memcmp(kv.p, plan->cols[c].name, plan->cols[c].name_len) == 0) {
+                        col_idx = (int)c;
+                        break;
+                    }
+                }
+            }
+            if (col_idx >= 0) {
+                const yep_dnode* val = dom_alias_final(d->dom, v);
+                yep_result_col* col = &r->cols[col_idx];
+                if (val != NULL && val->kind == YEP_DOM_SCALAR && val->tag_id != YEPTRIS_TAG_NULL) {
+                    yep_view sv = sv_view(d->dom, val->value);
+                    int filled = 0;
+                    switch (col->kind) {
+                    case YEP_PLAN_STR:
+                        col->views[row_i].p = sv.p;
+                        col->views[row_i].len = sv.len;
+                        filled = 1;
+                        break;
+                    case YEP_PLAN_INT: {
+                        int64_t iv;
+                        if (val->tag_id == YEPTRIS_TAG_INT && yep_num_i64(sv.p, sv.len, &iv) == 0) {
+                            col->ints[row_i] = iv;
+                            filled = 1;
+                        }
+                        break;
+                    }
+                    case YEP_PLAN_FLOAT: {
+                        double dv;
+                        if (val->tag_id == YEPTRIS_TAG_FLOAT) {
+                            if (yep_num_f64(sv.p, sv.len, &dv) == 0) {
+                                col->floats[row_i] = dv;
+                                filled = 1;
+                            }
+                        } else if (val->tag_id == YEPTRIS_TAG_INT) {
+                            int64_t iv;
+                            if (yep_num_i64(sv.p, sv.len, &iv) == 0) {
+                                col->floats[row_i] = (double)iv;
+                                filled = 1;
+                            }
+                        }
+                        break;
+                    }
+                    case YEP_PLAN_BOOL:
+                        if (val->tag_id == YEPTRIS_TAG_BOOL) {
+                            col->ints[row_i] = yep_num_bool(sv.p, sv.len);
+                            filled = 1;
+                        }
+                        break;
+                    }
+                    if (filled) {
+                        col->nulls[row_i] = 0;
+                    }
+                }
+                /* null / missing / tag disagreement / a container at a
+                 * planned leaf: the slot stays null, the walk goes on */
+            }
+            cn = v->next_sibling;
+        }
+        row_i++;
+    }
+    return r;
+}
+
 YEPTRIS_API void yeptris_plan_result_free(yeptris_plan_result* r) {
     if (r == NULL) {
         return;
@@ -514,6 +799,14 @@ YEPTRIS_API const uint32_t* yeptris_plan_result_str_offs(const yeptris_plan_resu
         return NULL;
     }
     return r->cols[col].offs;
+}
+
+YEPTRIS_API const yeptris_plan_str* yeptris_plan_result_strs(const yeptris_plan_result* r,
+                                                             size_t col) {
+    if (r == NULL || col >= r->ncols) {
+        return NULL;
+    }
+    return r->cols[col].views;
 }
 
 YEPTRIS_API const uint32_t* yeptris_plan_result_str_lens(const yeptris_plan_result* r, size_t col) {
