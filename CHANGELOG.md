@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.4] - 2026-09-17
 ### Added
 - The plan walk's segmented paths and the YAML/DOM leg (#293 /
   TODO.restructure/87, slice three): the spec's `path` accepts an
