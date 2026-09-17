@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- libyaml's null rendering and block-scalar indicators (#290, the C
+  half of the six remaining Psych byte-parity families): an empty
+  plain scalar value rides the key bare (`k:`), a null sequence item
+  is a bare dash, an explicitly-empty block scalar stays `""` (a bare
+  empty would re-read as null — corpus-pinned), and literal blocks
+  emit the explicit indent only when the first body line starts with
+  a space or is blank, with blank interior lines unpadded.
+
 ## [0.6.0] - 2026-09-16
 ### Added
 - `yeptris_parse_json_tape_lenient` — the simdjson deferred contract,
