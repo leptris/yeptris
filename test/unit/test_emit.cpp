@@ -100,9 +100,50 @@ TEST(Emit, QuotedAndEscapes) {
 }
 
 TEST(Emit, LiteralBlocks) {
-    EXPECT_EQ(roundtrip("a: |\n  one\n  two\n"), "a: |2\n  one\n  two\n");
+    /* libyaml's indicator rules (#290 family 4): the explicit indent
+     * only when the first body line starts with a space or is blank */
+    EXPECT_EQ(roundtrip("a: |\n  one\n  two\n"), "a: |\n  one\n  two\n");
     EXPECT_EQ(roundtrip("a: |-\n  strip\n"), "a: strip\n");
-    EXPECT_EQ(roundtrip("a: |+\n  keep\n\n"), "a: |+2\n  keep\n\n");
+    EXPECT_EQ(roundtrip("a: |+\n  keep\n\n"), "a: |+\n  keep\n\n");
+    EXPECT_EQ(roundtrip("a: |\n  one\n\n  two\n"), "a: |\n  one\n\n  two\n");
+    EXPECT_EQ(roundtrip("a: |2\n   deep\n  flat\n"), "a: |2\n   deep\n  flat\n");
+}
+
+TEST(Emit, BuiltNullsRideBare) {
+    /* libyaml's null rendering (#290): an empty plain scalar value
+     * rides the key with no trailing space; a null seq item is a
+     * bare dash; an explicitly-empty block scalar stays "" */
+    YeptrisDocument doc = yeptris_document_new();
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_node_new_mapping(doc);
+    ASSERT_EQ(yeptris_document_set_root(doc, root), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_node_map_add(root, "z", 1,
+                                   yeptris_node_new_scalar(doc, "", 0, YEPTRIS_STYLE_PLAIN)),
+              YEPTRIS_OK);
+    ASSERT_EQ(yeptris_node_map_add(root, "s", 1,
+                                   yeptris_node_new_scalar(doc, "", 0, YEPTRIS_STYLE_LITERAL)),
+              YEPTRIS_OK);
+    size_t len = 0;
+    char* out = yeptris_serialize(doc, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), "z:\ns: \"\"\n");
+    free(out);
+    yeptris_document_free(doc);
+
+    doc = yeptris_document_new();
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode seq = yeptris_node_new_sequence(doc);
+    ASSERT_EQ(yeptris_document_set_root(doc, seq), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_node_seq_add(seq, yeptris_node_new_scalar(doc, "1", 1, YEPTRIS_STYLE_PLAIN)),
+              YEPTRIS_OK);
+    ASSERT_EQ(yeptris_node_seq_add(seq, yeptris_node_new_scalar(doc, "", 0, YEPTRIS_STYLE_PLAIN)),
+              YEPTRIS_OK);
+    len = 0;
+    out = yeptris_serialize(doc, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), "- 1\n-\n");
+    free(out);
+    yeptris_document_free(doc);
 }
 
 TEST(Emit, AnchorsAndAliases) {

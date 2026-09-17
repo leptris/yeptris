@@ -193,15 +193,22 @@ static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
     } else if (trail > 1) {
         wr_byte(w, '+');
     }
-    /* Always emit the explicit indicator: the pad is parent_col+2 by
-     * contract (keeps more-indented first lines parseable) */
-    wr_byte(w, '2');
+    /* libyaml's indicator rules (#290 family 4): the explicit indent
+     * appears when the first body line starts with a space or is
+     * blank — the base indent is unambiguous otherwise (the pad is
+     * parent_col+2 by contract; F6MC's leading-blank folded bodies) */
+    if (body > 0 && (p[0] == ' ' || p[0] == '\n')) {
+        wr_byte(w, '2');
+    }
     wr_byte(w, '\n');
     int pad = parent_col + 2;
     wr_indent(w, pad);
     for (uint32_t i = 0; i < body; i++) {
         wr_byte(w, p[i]);
         if (p[i] == '\n' && i + 1 < body) {
+            if (p[i + 1] == '\n') {
+                continue; /* blank interior lines ride unpadded (libyaml) */
+            }
             wr_indent(w, pad);
         }
     }
@@ -309,15 +316,22 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
             emit_dq(w, p, len);
             return;
         }
+        if (len == 0) {
+            emit_dq(w, p, len); /* an explicitly-empty block scalar is
+                                   the empty STRING — a bare empty would
+                                   re-read as null (2G84#3, K858) */
+            return;
+        }
         sty = 1; /* a chomp-stripped block is plain bytes: re-emit plain */
     }
     switch (sty) {
     case 1: /* plain */
         if (len == 0) {
-            if (as_key || !n->implicit) {
+            if (as_key) {
                 emit_dq(w, p, len); /* empty keys must stay visible */
             }
-            break; /* an implicit empty value emits as nothing */
+            break; /* an empty plain value emits as nothing (libyaml's
+                       null rendering, issue #290) */
         }
         if ((as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len))) {
             wr_put(w, p, len);
@@ -555,9 +569,16 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             /* empty collections ride the key line flow (k: [] / k: {})
              * like libyaml — a block-empty has no valid next-line form at
              * the seq indent (an empty [] at the key's column is not a
-             * legal value; pyyaml rejects it, issue #52's differential) */
+             * legal value; pyyaml rejects it, issue #52's differential).
+             * An implicit-empty plain value rides bare (k:) with no
+             * trailing space — libyaml's null rendering (#290) */
             if (vn->kind == 0 || vn->kind == 3 || vn->flow || vn->count == 0) {
-                wr_byte(w, ' ');
+                int empty_plain = vn->kind == 0 && vn->style == 1 && vn->anchor.len == 0 &&
+                                  vn->tag.len == 0 && wv(w, vn->value).len == 0 && !w->canonical &&
+                                  !w->json;
+                if (!empty_plain) {
+                    wr_byte(w, ' ');
+                }
                 emit_node(em, kn->next_sibling, content_col, 0);
             } else {
                 /* nested block collection: next line. libyaml parity:
@@ -592,6 +613,13 @@ static void emit_block_seq(yep_emitter* em, uint32_t id, int content_col) {
                 wr_byte(w, '\n'); /* keep-chomped bodies own their break */
             }
             wr_indent(w, content_col);
+        }
+        if (cn->kind == 0 && cn->style == 1 && cn->anchor.len == 0 && cn->tag.len == 0 &&
+            wv(w, cn->value).len == 0 && !w->canonical && !w->json) {
+            wr_put(w, "-\n", 2); /* libyaml: a null item is a bare dash */
+            idx++;
+            child = cn->next_sibling;
+            continue;
         }
         wr_put(w, "- ", 2);
         if (cn->kind != 0 && cn->kind != 3 && !cn->flow &&
