@@ -61,7 +61,13 @@ typedef pthread_mutex_t yep_mutex_raw;
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
 #define YEP_ARCH_X86 1
 #endif
-#if defined(__aarch64__) || defined(__ARM_NEON) || defined(_M_ARM64)
+/* _M_ARM64 excluded under MSVC: this TU family speaks GCC/clang NEON
+ * (vector initializers, __attribute__) — MSVC-ARM64 defines __ARM_NEON
+ * but cannot compile it, so Windows-ARM64 builds ride the scalar
+ * kernels (a clang-cl build is the follow-up). clang-cl keeps the
+ * NEON gate: it accepts the GNU-isms. */
+#if (defined(__aarch64__) || defined(__ARM_NEON) || defined(_M_ARM64)) &&                          \
+    !(defined(_MSC_VER) && !defined(__clang__))
 #define YEP_ARCH_AARCH64 1
 #endif
 
