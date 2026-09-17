@@ -4,6 +4,7 @@
  * synthesized documents unchanged — same nodes, same invariants. */
 
 #include <string.h>
+#include <stdio.h>
 
 #include <yeptris.h>
 
@@ -221,6 +222,7 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
     uint32_t root = UINT32_MAX;
     uint32_t root_closed = 0;
     uint32_t pending_key = UINT32_MAX; /* map frame's buffered key */
+    uint32_t last_id = UINT32_MAX;     /* TAG applies here (#300) */
     YeptrisStatus rc = YEPTRIS_OK;
     for (size_t i = 0; i < count && rc == YEPTRIS_OK; i++) {
         const YeptrisBuildEntry* e = &entries[i];
@@ -269,6 +271,20 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
                 st[depth].key_pending = 0; /* a closed container was the value */
             }
             continue;
+        case YEPTRIS_BUILD_TAG:
+            /* #300: apply an explicit tag to the last-placed node —
+             * the bulk ABI otherwise cannot express tags. Placed
+             * immediately after the entry it tags. */
+            if (last_id == UINT32_MAX) {
+                rc = YEPTRIS_ERROR_PARSE; /* TAG with nothing placed */
+                break;
+            }
+            if (yep_mut_set_tag(doc->dom, last_id, blob + e->off,
+                                e->len) != 0) {
+                rc = YEPTRIS_ERROR_MEMORY;
+                break;
+            }
+            continue;
         default:
             rc = YEPTRIS_ERROR_PARSE; /* unknown op */
             break;
@@ -276,6 +292,7 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
         if (rc != YEPTRIS_OK) {
             break;
         }
+        last_id = id; /* TAG entries target this (#300) */
         /* place the fresh node */
         if (depth == 0) {
             if (root != UINT32_MAX) {
