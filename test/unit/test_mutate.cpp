@@ -269,6 +269,30 @@ std::string build_dump(const std::vector<Entry>& entries, const std::string& blo
 
 } // namespace
 
+/* #300: a TAG entry applies the blob's tag bytes to the
+ * last-placed node — the nil mapping key's Psych form `! ''`. */
+TEST(BulkBuild, TagAppliesToLastPlacedNode) {
+    /* {! '': nilkey} — scalar '' single-quoted, tag "!", value */
+    std::vector<Entry> es = {
+        {3, 0, 0, 0},  // MAP
+        {1, 2, 0, 0},  // '' (empty, single-quoted)
+        {5, 0, 0, 1},  // TAG "!"
+        {1, 1, 1, 6},  // nilkey
+        {4, 0, 0, 0},  // END
+    };
+    std::string blob = std::string("!") + "nilkey";
+    YeptrisStatus st = YEPTRIS_OK;
+    std::string out = build_dump(es, blob, &st);
+    ASSERT_EQ(st, YEPTRIS_OK) << "tag build failed";
+    EXPECT_EQ(out, "! '': nilkey\n");
+
+    /* TAG before anything placed is a parse error */
+    std::vector<Entry> bad = {{5, 0, 0, 1}};
+    std::string out2 = build_dump(bad, "!", &st);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    (void)out2;
+}
+
 TEST(BulkBuild, NestedDocument) {
     /* {a: [1, 2], b: {c: x}} in document order:
      * MAP, k=a, SEQ, 1, 2, END, k=b, MAP, k=c, x, END, END */

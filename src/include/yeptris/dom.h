@@ -128,6 +128,9 @@ typedef enum {
     YEPTRIS_BUILD_SEQ = 2,    /* open a sequence */
     YEPTRIS_BUILD_MAP = 3,    /* open a mapping */
     YEPTRIS_BUILD_END = 4,    /* close the innermost open container */
+    YEPTRIS_BUILD_TAG = 5,    /* tag the last-placed node (tag bytes in
+                               * the blob) — #300: nil mapping keys need
+                               * Psych's explicit `!` tag */
 } YeptrisBuildOp;
 
 /* 12 bytes, ABI-pinned: op, style (scalar: YeptrisScalarStyle;
