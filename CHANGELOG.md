@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.1] - 2026-09-17
 ### Fixed
 - libyaml's null rendering and block-scalar indicators (#290, the C
   half of the six remaining Psych byte-parity families): an empty
