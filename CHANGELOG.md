@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Added
+- The plan walk's segmented paths and the YAML/DOM leg (#293 /
+  TODO.restructure/87, slice three): the spec's `path` accepts an
+  ARRAY of strings (walked mapping by mapping to the rows container,
+  both legs), and `yeptris_document_plan_walk` applies the same
+  compiled plan to a `yeptris_parse` document — block YAML hydrates
+  to typed columns with no intermediate tree. Typed extraction rides
+  the parse-time tag ids (the typing SSOT) plus the number kernels;
+  string columns expose `(ptr,len)` views via
+  `yeptris_plan_result_strs` (the result borrows the document);
+  aliases resolve to their targets; map-root containers yield their
+  mapping values as rows.
 - The compiled plan walk (#293 / TODO.restructure/87, slice one):
   `yeptris_plan_compile` builds a plan from a strict-JSON descriptor
   spec (`{"kind":"seq|map","path":..., "children":[{"name":...,
