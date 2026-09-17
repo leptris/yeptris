@@ -220,6 +220,14 @@ jobs:
           # and raced on `gem push` — the loser failed the release with
           # "repushing not allowed". Keep the pinned leg only.
           - os: macos-15
+          # Windows (the leptris-ruby legs): x64-mingw-ucrt on the
+          # runner's default Ruby; aarch64-mingw-ucrt on the arm
+          # runner (Ruby 3.3 has no arm64 build — the 3.3 cell degrades
+          # to the loud FFI fallback for that minor only). x64-mingw32
+          # is Ruby <= 3.0 (EOL) — intentionally not shipped.
+          - os: windows-latest
+          - os: windows-11-arm
+            ruby-version: '3.4'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -232,20 +240,90 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install cmake ninja
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
-
-      - name: Build the platform gem
+      - name: Resolve the release version and lockstep tag
+        shell: bash
         run: |
           V="${{ inputs.republish_version }}"
           if [ -z "$V" ]; then
             V="${{ github.event.pull_request.head.ref }}"
             V="${V#release/v}"
           fi
+          echo "YEP_V=$V" >> "$GITHUB_ENV"
+          echo "version: $V"
+
+      - name: Build the C DLL and the per-minor native DLLs (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -B "$RUNNER_TEMP/yeptris-c/build" -S .             -DYEPTRIS_BUILD_TESTING=OFF -DYEPTRIS_BUILD_CLI=OFF -DYEPTRIS_BUILD_SHARED=ON
+          cmake --build "$RUNNER_TEMP/yeptris-c/build" --config Release
+          DLL="$RUNNER_TEMP/yeptris-c/build/src/Release/yeptris.dll"
+          test -f "$DLL"
+          cp "$DLL" "$RUNNER_TEMP/yeptris-c/build/src/libyeptris.dll"
+          # the binding checkout at the lockstep tag (empty when the
+          # binding tag has not landed yet — the script skips cleanly)
+          git clone --quiet https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/pgem/yeptris-ruby"
+          cd "$RUNNER_TEMP/pgem/yeptris-ruby"
+          LOCKSTEP="$(git tag -l "v${YEP_V}.*" | sort -V | tail -1 || true)"
+          test -n "$LOCKSTEP" || { echo "no lockstep binding tag yet"; exit 0; }
+          git checkout --quiet "$LOCKSTEP"
+          # the per-minor build steps below carry these exports
+          echo "YEPTRIS_LIB_PATH=$RUNNER_TEMP/yeptris-c/build/src/libyeptris.dll" >> "$GITHUB_ENV"
+          echo "YEPTRIS_SRC=$GITHUB_WORKSPACE/src" >> "$GITHUB_ENV"
+          echo "YEP_RUBYREPO=$RUNNER_TEMP/pgem/yeptris-ruby" >> "$GITHUB_ENV"
+
+      - name: Per-minor native DLL 3.3 (Windows)
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.3'
+        uses: ruby/setup-ruby@master
+        with:
+          ruby-version: '3.3'
+          bundler-cache: false
+        continue-on-error: true
+      - name: Build native DLL 3.3
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.3'
+        shell: bash
+        continue-on-error: true
+        run: cd "$YEP_RUBYREPO" && ruby ext/build_windows_native.rb
+      - name: Per-minor native DLL 3.4 (Windows)
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.4'
+        uses: ruby/setup-ruby@master
+        with:
+          ruby-version: '3.4'
+          bundler-cache: false
+        continue-on-error: true
+      - name: Build native DLL 3.4
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.4'
+        shell: bash
+        continue-on-error: true
+        run: cd "$YEP_RUBYREPO" && ruby ext/build_windows_native.rb
+      - name: Per-minor native DLL 4.0 (Windows)
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '4.0'
+        uses: ruby/setup-ruby@master
+        with:
+          ruby-version: '4.0'
+          bundler-cache: false
+        continue-on-error: true
+      - name: Build native DLL 4.0
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '4.0'
+        shell: bash
+        continue-on-error: true
+        run: cd "$YEP_RUBYREPO" && ruby ext/build_windows_native.rb
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@master # @master: the Windows RubyInstaller
+          # toolchain (make + mingw) rides setup, the leptris-ruby legs
+        with:
+          ruby-version: "${{ matrix.ruby-version || '3.3' }}"
+
+      - name: Build the platform gem
+        shell: bash
+        run: |
           git clone --quiet https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/rubyrepo"
-          bash "$RUNNER_TEMP/rubyrepo/scripts/build-platform-gem.sh" "$V" https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/pgem"
+          # Windows: the pgem workdir already holds the binding
+          # checkout with its staged per-minor DLLs — the script
+          # reuses it (its own C clone rebuilds the DLL fresh)
+          bash "$RUNNER_TEMP/rubyrepo/scripts/build-platform-gem.sh" "$YEP_V" https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/pgem"
 
       # TODO.restructure/40: prove the artifact BEFORE RubyGems — the
       # installed gem must load, activate its native bundle, and pass
