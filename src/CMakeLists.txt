@@ -42,6 +42,7 @@ set(YEPTRIS_SOURCES
     yeptris/events/values.c
     yeptris/schema.c
     yeptris/tape.c
+    yeptris/plan.c
 
     yeptris/marshal.c
     yeptris/visit/json_visit.c
@@ -92,6 +93,7 @@ set(YEPTRIS_PUBLIC_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/values.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/schema.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/tape.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/plan.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/marshal.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/visit.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/json.h
