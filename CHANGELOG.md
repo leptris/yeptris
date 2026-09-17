@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.2] - 2026-09-17
 ### Added
 - `YEPTRIS_BUILD_TAG` — the bulk build API can tag the last-placed
   node (tag bytes in the blob). The bulk ABI otherwise could not
