@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.3] - 2026-09-17
 ### Added
 - The compiled plan walk (#293 / TODO.restructure/87, slice one):
   `yeptris_plan_compile` builds a plan from a strict-JSON descriptor
