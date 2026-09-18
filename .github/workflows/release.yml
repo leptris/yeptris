@@ -246,9 +246,12 @@ jobs:
           GEM="$(find "$RUNNER_TEMP/pgem" -name 'yeptris-*-linux-musl.gem' | head -1)"
           test -n "$GEM" || { echo "no musl gem this run"; exit 0; }
           echo "gem: $GEM"
+          # the smoke runs inside the container, where RUNNER_TEMP is
+          # the /work mount — the host path does not exist there
+          GEM_CTR="/work${GEM#$RUNNER_TEMP}"
           docker run --rm -v "$RUNNER_TEMP:/work" -w /work ruby:3.4-alpine sh -c '
             set -eux
-            gem install --local --no-document "'"$GEM"'"
+            gem install --local --no-document "'"$GEM_CTR"'"
             ruby -e "require %(yeptris); abort %(smoke) unless Yeptris::YAML.load(%(a: [1, 2])) == { %(a) => [1, 2] }; puts %(SMOKE PASS yeptris musl)"
           '
 
