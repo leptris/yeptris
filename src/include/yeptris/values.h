@@ -56,11 +56,7 @@ typedef struct {
     uint32_t len;
     uint64_t p; /* INT or FLOAT payload, by kind */
 } YeptrisValue;
-#if defined(__cplusplus)
-static_assert(sizeof(YeptrisValue) == 24, "value layout pinned");
-#else
-_Static_assert(sizeof(YeptrisValue) == 24, "value layout pinned");
-#endif
+YEPTRIS_CT_ASSERT(sizeof(YeptrisValue) == 24);
 
 /* Parses `yaml` and drains the typed value stream. On success sets
  * *vals / *count / *arena / *arena_len (both malloc'd; free with

@@ -17,6 +17,8 @@
 
 #include <stdint.h>
 
+#include <yeptris/api.h> /* YEPTRIS_CT_ASSERT (the layout gates) */
+
 #include "../common/simd_text.h"
 
 #include "common/nametab.h"
@@ -73,13 +75,8 @@ typedef struct yep_dnode {
 } yep_dnode; /* 48 B: line/col never left the event stream (64-2c) —
                 the pull/push/recorder APIs remain the source */
 
-/* 11's node-size gate, tightened by 64-2c: <= 48 B.
- * (_Static_assert is C; this header reaches C++ test TUs.) */
-#if defined(__cplusplus)
-static_assert(sizeof(yep_dnode) <= 48, "yep_dnode exceeds the 48 B gate");
-#else
-_Static_assert(sizeof(yep_dnode) <= 48, "yep_dnode exceeds the 48 B gate");
-#endif
+/* 11's node-size gate, tightened by 64-2c: <= 48 B. */
+YEPTRIS_CT_ASSERT(sizeof(yep_dnode) <= 48);
 
 typedef struct yep_dom {
     const yep_allocator* sys;
