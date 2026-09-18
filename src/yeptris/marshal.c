@@ -93,14 +93,18 @@ static void e_long(E* e, int64_t x) {
         e_byte(e, (unsigned char)(x < 0 ? -(m + 5) : m + 5));
         return;
     }
-    unsigned long um = (unsigned long)m;
+    /* width types: unsigned long is 32-bit on Windows (LLP64) and
+       truncates every magnitude >= 2^32 (limb-count bug: a 19-digit
+       int materialized as its low 32 bits). */
+    uint64_t um = (uint64_t)m;
     int k = 0;
     while (um != 0) {
         um >>= 8;
         k++;
     }
     e_byte(e, (unsigned char)(x < 0 ? -k : k));
-    unsigned long payload = x < 0 ? ((1UL << (8 * k)) - (unsigned long)m) : (unsigned long)m;
+    uint64_t payload =
+        x < 0 ? ((k == 8 ? UINT64_C(0) : UINT64_C(1) << (8 * k)) - (uint64_t)m) : (uint64_t)m;
     unsigned char b[8];
     for (int i = 0; i < k; i++) {
         b[i] = (unsigned char)(payload & 0xff);
@@ -135,7 +139,7 @@ static void e_int(E* e, int64_t x) {
     /* bignum: sign + limb count + LE 16-bit limbs */
     e_byte(e, 'l');
     e_byte(e, x < 0 ? '-' : '+');
-    unsigned long um = (unsigned long)m;
+    uint64_t um = (uint64_t)m;
     int bits = 0;
     while (um != 0) {
         um >>= 1;
