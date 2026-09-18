@@ -12,10 +12,17 @@ typedef struct yep_midx_slot {
     uint32_t key_child; /* key node id; UINT32_MAX = empty */
 } yep_midx_slot;
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4200) /* C99 flexible array member */
+#endif
 typedef struct yep_midx_tab {
     uint32_t cap; /* slot count, power of two */
     yep_midx_slot slots[];
 } yep_midx_tab;
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 /* Table capacity: power of two, >= 2x pairs (load factor <= 50%). */
 static uint32_t tab_cap_for(uint32_t pairs) {
