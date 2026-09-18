@@ -6,6 +6,14 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- `yeptris_free` — the allocator-matching free for the serialize*
+  family's owned buffers (#318's Windows root cause): the host's
+  libc `free` is a different CRT instance than the DLL's on Windows,
+  and FFI cannot resolve bare `free` against the DLL's exports at
+  all. NULL is a no-op.
+
 ## [0.6.5] - 2026-09-18
 ### Changed
 - The cycle fast path (TODO.restructure/79 carve 1a): lines that
