@@ -274,6 +274,35 @@ jobs:
             gem push "$GEM"
           fi
 
+  # The macOS 26 (Tahoe) smoke — the OS that reported #125 (its
+  # darwin-25 could not match the old suffixed platform and fell back
+  # to the DLL-less pure-ruby gem). Coverage needs NO per-OS builds
+  # (the versionless platform matches every macOS); this leg only
+  # PROVES the pushed arm64-darwin gem on Tahoe itself.
+  smoke-macos-26:
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.republish_version != '')
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - name: Resolve the release version
+        shell: bash
+        run: |
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
+          echo "YEP_V=$V" >> "$GITHUB_ENV"
+
+      - name: Install and smoke the pushed darwin gem (Tahoe)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          until gem install --no-document "yeptris:${YEP_V}" >/dev/null 2>&1; do sleep 15; done
+          ruby -e 'require "yeptris"; abort %(smoke) unless Yeptris::YAML.load(%(a: [1, 2])) == { %(a) => [1, 2] }; puts %(SMOKE PASS yeptris #{Yeptris::VERSION} on macOS 26)'
+
   # TODO.restructure/28's remainder: PLATFORM GEMS — the ruby gem +
   # vendored libyeptris + the compiled native materializer with a
   # RELATIVE rpath ($ORIGIN/@loader_path), so `gem install yeptris`
