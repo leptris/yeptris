@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.7] - 2026-09-18
 ### Fixed
 - The marshal encoder's magnitude bookkeeping is width-safe: the
   byte-width and bignum limb-count loops read the magnitude through
