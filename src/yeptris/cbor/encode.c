@@ -98,7 +98,10 @@ static uint16_t cbor_d2h(double d) {
     uint32_t exp = (uint32_t)((bits >> 52) & 0x7ffu);
     uint64_t man = bits & 0xfffffffffffffull;
     if (exp == 0x7ffu) {
-        return (uint16_t)(sign | (man ? 0x7e00u : 0x7c00u)); /* canonical NaN */
+        /* canonical NaN: f9 7e00, sign DROPPED — NaN sign is not
+         * meaningful (and (double)NAN carries a SET sign bit on
+         * arm64-MSVC, which turned the "canonical" form negative) */
+        return man ? 0x7e00u : (uint16_t)(sign | 0x7c00u); /* inf keeps sign */
     }
     int e2 = (int)exp - 1023 + 15;
     if (e2 >= 0x1f) {
