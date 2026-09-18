@@ -241,10 +241,9 @@ jobs:
       - name: Smoke the musl platform gem (Alpine container)
         shell: bash
         run: |
-          GEM="$(cat "$RUNNER_TEMP/pgem/gempath" 2>/dev/null | cut -d= -f2 || true)"
+          ls -la "$RUNNER_TEMP/pgem/yeptris-ruby/" | head -8 || true
+          GEM="$(find "$RUNNER_TEMP/pgem" -name 'yeptris-*-linux-musl.gem' | head -1)"
           test -n "$GEM" || { echo "no musl gem this run"; exit 0; }
-          GEM="${GEM#/work}"
-          GEM="$RUNNER_TEMP$GEM"
           echo "gem: $GEM"
           docker run --rm -v "$RUNNER_TEMP:/work" -w /work ruby:3.4-alpine sh -c '
             set -eux
