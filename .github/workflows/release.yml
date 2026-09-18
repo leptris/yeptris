@@ -220,6 +220,9 @@ jobs:
           # and raced on `gem push` — the loser failed the release with
           # "repushing not allowed". Keep the pinned leg only.
           - os: macos-15
+          # Intel Macs (issue #316: "all platforms") — leptris-ruby's
+          # leg shape; the darwin platform publishes VERSIONLESS.
+          - os: macos-15-intel
           # Windows (the leptris-ruby legs): x64-mingw-ucrt on the
           # runner's default Ruby; aarch64-mingw-ucrt on the arm
           # runner (Ruby 3.3 has no arm64 build — the 3.3 cell degrades
@@ -347,7 +350,13 @@ jobs:
           test -f "$RUNNER_TEMP/pgem/gempath" || { echo "no platform gem this run"; exit 0; }
           GEM="$(cat "$RUNNER_TEMP/pgem/gempath" | cut -d= -f2)"
           VER="$(basename "$GEM" | sed -E 's/^yeptris-([0-9.]+)-.*/\1/')"
-          PLAT="$(ruby -e 'print Gem::Platform.local.to_s')"
+          # macOS: strip the kernel-version suffix so the check
+          # matches the versionless platform the build script emits
+          PLAT="$(ruby -e '
+            p = Gem::Platform.local
+            p.version = nil if p.os == "darwin"
+            print p.to_s
+          ')"
           # gem fetch exits 0 spuriously on the runners; the versions
           # API with an exact number+platform match is authoritative
           if curl -sf https://rubygems.org/api/v1/versions/yeptris.json | \
