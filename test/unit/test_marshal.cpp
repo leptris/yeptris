@@ -228,4 +228,21 @@ TEST(Marshal, SchemaConditionedFloatTyping) {
     expect_node_marshal_schema("k: 1e3\n", compat_hex, YEPTRIS_SCHEMA_11_COMPAT);
 }
 
+TEST(Marshal, BignumLimbCountFullWidth) {
+    /* LLP64 regression: `unsigned long` limb bookkeeping is 32-bit on
+     * Windows, so the limb count of any |v| >= 2^32 came out short and
+     * the loader truncated the value (1234567890123456789 decoded as
+     * 2112454933 — its low 32 bits). Bytes are Ruby Marshal's. */
+    expect_marshal("a: 1234567890123456789\n", "04087b0649220661063a0645546c2b091581e97df4102211",
+                   YEPTRIS_MARSHAL_FIRST_DOC);
+    expect_marshal("a: -1234567890123456789\n", "04087b0649220661063a0645546c2d091581e97df4102211",
+                   YEPTRIS_MARSHAL_FIRST_DOC);
+    expect_marshal("a: 4294967296\n", "04087b0649220661063a0645546c2b08000000000100",
+                   YEPTRIS_MARSHAL_FIRST_DOC);
+    expect_marshal("a: -4294967296\n", "04087b0649220661063a0645546c2d08000000000100",
+                   YEPTRIS_MARSHAL_FIRST_DOC);
+    expect_marshal("a: 9223372036854775807\n", "04087b0649220661063a0645546c2b09ffffffffffffff7f",
+                   YEPTRIS_MARSHAL_FIRST_DOC);
+}
+
 } // namespace
