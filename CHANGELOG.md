@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.5] - 2026-09-18
 ### Changed
 - The cycle fast path (TODO.restructure/79 carve 1a): lines that
   continue the top frame — a map key at the frame's column, a seq
