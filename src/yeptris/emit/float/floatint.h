@@ -129,10 +129,17 @@ static inline int yep_u128_cmp(yep_u128 a, yep_u128 b) {
 #endif
 }
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && defined(_M_X64)
 static inline yep_u128 yep_u128_mul64(uint64_t a, uint64_t b) {
     yep_u128 r;
     r.lo = _umul128(a, b, &r.hi);
+    return r;
+}
+#elif defined(_MSC_VER) && defined(_M_ARM64)
+static inline yep_u128 yep_u128_mul64(uint64_t a, uint64_t b) {
+    yep_u128 r;
+    r.hi = __umulh(a, b);
+    r.lo = a * b;
     return r;
 }
 #endif

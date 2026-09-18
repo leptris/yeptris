@@ -27,12 +27,9 @@ jobs:
         # guards name MSVC (_Static_assert spelling, _M_X64 arch); this
         # leg surfaces what actually breaks before any win wheel rides it
         # BOTH arches per OS: linux amd64+arm64, macOS arm64
-        # (macos-latest) + amd64 (macos-15-intel), Windows amd64
-        # (win-arm rides the release smoke)
-        # windows-11-arm rides the release workflow's aarch64 build
-        # (its arm64-MSVC -Werror warnings predate this matrix; the
-        # release legs ship that platform green)
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest]
+        # (macos-latest) + amd64 (macos-15-intel), Windows amd64+arm64
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest,
+             windows-11-arm]
 
     steps:
       - name: Checkout code
