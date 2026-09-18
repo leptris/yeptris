@@ -8,10 +8,14 @@ project(yeptris
     LANGUAGES C CXX
 )
 
-# C99 (the libleptris #69 migration): the one C11 feature pinning the
-# standard — _Static_assert on the layout gates — is replaced by the
-# typedef-array YEPTRIS_CT_ASSERT (C99, MSVC-C-mode, and C++ portable).
-set(CMAKE_C_STANDARD 99)
+# C11 (the standard question, settled with evidence 2026-09-18): going
+# C99 needs FOUR downgrades, not one — _Static_assert (fixed: the
+# typedef-array YEPTRIS_CT_ASSERT), typedef redefinition (mapindex.c),
+# _Thread_local (the per-thread error channel) and <stdatomics> (the
+# lock-free handle pool). The last two are architecture-critical and
+# absent from MSVC's C99 mode; pthread TLS / lock-based pools would
+# regress the hot paths and weaken the concurrency contract.
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
