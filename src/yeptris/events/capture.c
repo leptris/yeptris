@@ -7,7 +7,7 @@
 #include "../../include/yeptris/events.h"
 
 /* The record IS the public ABI shape (events.h pins it). */
-_Static_assert(sizeof(YeptrisEventRecord) == 36, "record layout pinned");
+YEPTRIS_CT_ASSERT(sizeof(YeptrisEventRecord) == 36);
 
 void yep_rec_init(yep_rec_store* s) {
     s->recs = NULL;

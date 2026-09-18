@@ -8,9 +8,10 @@ project(yeptris
     LANGUAGES C CXX
 )
 
-# C11 (not C99): _Static_assert is not a keyword in MSVC's C99 mode; C11
-# makes it standard (VS2019 16.8+). Same rationale as libleptris.
-set(CMAKE_C_STANDARD 11)
+# C99 (the libleptris #69 migration): the one C11 feature pinning the
+# standard — _Static_assert on the layout gates — is replaced by the
+# typedef-array YEPTRIS_CT_ASSERT (C99, MSVC-C-mode, and C++ portable).
+set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
