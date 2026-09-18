@@ -436,6 +436,11 @@ jobs:
       - name: Build the platform gem
         shell: bash
         run: |
+          # RubyGems 3.6 stamps a versionless darwin platform to the
+          # LOCAL kernel at package time (metadata arm64-darwin-23);
+          # 4.x packages it as declared. Update before the build or
+          # Tahoe/macOS-13 users resolve the DLL-less pure-ruby gem.
+          gem update --system --no-document >/dev/null 2>&1 || gem update --system --no-document
           git clone --quiet https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/rubyrepo"
           # Windows: the pgem workdir already holds the binding
           # checkout with its staged per-minor DLLs — the script
