@@ -169,6 +169,14 @@ jobs:
         working-directory: ${{ runner.temp }}/yeptris-ruby
         run: |
           git checkout --quiet "${{ steps.gemtag.outputs.found }}"
+          # libyeptris rides the pure gem too: vendor the C sources
+          # (the checkout at top is this release's C ref; deps/ is a
+          # 40MB corpus the no-testing build never touches) — the
+          # gem's extension builds them at install time
+          mkdir -p vendor/libyeptris
+          cp -R "$GITHUB_WORKSPACE/CMakeLists.txt" \
+                "$GITHUB_WORKSPACE/cmake" \
+                "$GITHUB_WORKSPACE/src" vendor/libyeptris/
           gem build yeptris.gemspec
           GEM_FILE="$(ls yeptris-*.gem | head -1)"
           echo "path=${RUNNER_TEMP}/yeptris-ruby/${GEM_FILE}" >> "$GITHUB_OUTPUT"
