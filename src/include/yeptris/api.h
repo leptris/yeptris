@@ -8,8 +8,7 @@
 /* YEPTRIS_CT_ASSERT — the compile-time layout gate, C99/MSVC-C-mode/
  * C++ portable (typedef-array; libleptris's same migration): the old
  * C11 _Static_assert was the ONE C11 feature pinning the standard. */
-#define YEPTRIS_CT_ASSERT_(cond, line) \
-    typedef char yeptris_ct_assert_##line[(cond) ? 1 : -1]
+#define YEPTRIS_CT_ASSERT_(cond, line) typedef char yeptris_ct_assert_##line[(cond) ? 1 : -1]
 #define YEPTRIS_CT_ASSERT(cond) YEPTRIS_CT_ASSERT_(cond, __LINE__)
 
 #define YEPTRIS_API_H
