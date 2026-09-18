@@ -1934,3 +1934,79 @@ by mask consumption (stage 1's per-block token mask handed to the
 walk, no u32 index array at all). Budget math: stage 1 at 1.85 ms
 leaves ~0.7 ms for the walk at parity — ~3 cycles/token, achievable
 only with both cuts together.
+
+## 2026-09-18 — item 79 staging: fresh block profiles (macOS sample, yeptris-only driver)
+
+Micro-driver (libyeptris.a @ main 7c031a5 + plan walk, `-O2`, bench
+corpora, 12s samples). Same-run bench-matrix DOM vs ryml
+(--full seed 42): block-heavy 106.9 vs 178.8 (0.60x), wide-mapping
+155.0 vs 255.4 (0.61x), deep-nesting 341.9 vs 466.8 (0.73x),
+scalar-heavy 332.3 vs 379.3 (0.88x), anchor-heavy 92.5 vs 192.7
+(0.48x). The board's earlier "0.89-1.11x" numbers came from the
+smaller quick corpus — the full corpus's bigger maps widen the gap;
+treat THESE as the 3x-front baseline.
+
+anchor-heavy top-of-stack: engine_run_impl self 16.5%,
+yep_text_line_facts_capped 12.3%, e_node 12.2%, yep_nametab_set 8.4%
+(anchor DEFINITION hashing — item 71 sized the table, the insert
+hash is the residue), yep_scan_shape_f 8.3%, dom_open_node 7.1%,
+dom_on_block_pair 5.8%, e_alias 4.8%, dom_place 4.2%, core12 3.8%,
+stopset_find 3.1%, e_props 2.4%, emit_now 2.1%.
+
+block-heavy: engine self 13.9%, facts 12.2%, e_node 11.6%,
+dom_open_node 7.8%, scan_shape 6.6%, stopset_find 6.2%, core12 5.9%,
+dom_on_block_pair 4.9%, e_plain_multiline 4.5%, dom_place 3.9%,
+scan_plain 3.1%, madvise 2.8% (free-path arena release — counts
+inside the bench loop).
+
+Reads for the carve order: (1) the engine seam (self + e_node ≈ 25%)
+is confirmed as the single biggest mechanism — the fused block loop
+stands; (2) the scan layer (facts + shape + stopset ≈ 25%) is already
+fused in DATAFLOW (shape consumes the facts stop, item 76) — its cost
+is the sweeps themselves, so wins there mean widening the kernels,
+not removing passes; (3) dom_open_node is template-copy lean — no
+structural slack, the fused loop's win is skipping the generic
+per-node path for common pairs; (4) anchor-heavy's distinct cost is
+nametab_set + e_alias ≈ 13% (the definition-side hash and the alias
+walk) — a carve of its own, independent of the loop fusion;
+(5) madvise on the free path is worth one look (arena release policy).
+
+## 2026-09-18 — item 79 carve 1a: the cycle fast path (KEEP)
+
+The line loop now calls e_classified DIRECTLY for lines that
+continue the top frame (a map key at the frame's column, a seq
+dash) with no pend props and no q-pending state — skipping e_node's
+prologue (pend save/clear, e_props, the FRESH gate) and the dispatch
+tail (flush_q_value + arg setup) on exactly the monomorphic cycle
+lines the board's structure-specialization names. Non-classified
+shapes return 0 and take the chain unchanged; the arms themselves
+are untouched (one owner).
+
+Interleaved A/B, same corpus/binary flags, 3 rounds each
+(macOS, this machine): block-heavy before 4.04/3.57/4.19 vs after
+3.74/3.54/3.38 — ~8-12% on every round; wide-mapping 2.05 -> 2.01
+(~2%, borderline noise); anchor-heavy flat. 351/351 ctest including
+the differential and conformance gates. Single-run timings on this
+box swing ±15% — the earlier one-shot "regression" was noise; the
+ledger entry rides the interleaved medians only.
+
+## 2026-09-18 — TODO.max-perf/07 interim: SWAR ws-skip in the fused walk (DEAD)
+
+Replaced the lenient walk's per-byte whitespace skip with a 4-way
+hasval 8-byte window (16 ALU ops + two branches). Interleaved A/B on
+json-doc (200 iters x3): before 0.95/0.71/0.71 s vs after
+2.16/1.92/2.28 s — ~3x SLOWER. The byte loop's exit branch was
+already predictor-friendly at the corpus's 0-2 byte gaps; the SWAR
+test's fixed 16-op cost swamps the ~1-2 mispredicts it saved. The
+ws-skip is NOT the walk's cost center — the verdict-eight budget
+(interleave + mask consumption) remains the only path; do not
+re-try per-token SWAR on sub-3-byte gaps.
+
+## 2026-09-18 — TODO.max-perf/02 frame-top hoisting (DEAD, as a lone micro-carve)
+
+Hoisted e->frames[e->depth-1] to a local after the unwind (4 read
+sites). Interleaved A/B x3: block-heavy 3.28 -> 3.58 median (flat/
+worse), wide-mapping 1.79 -> 1.86 — no win; LTO already CSEs the
+loads within the dispatch block. Item 02's real content folds into
+01's TU-local cycle loops (where the loads vanish by construction,
+not by CSE).
