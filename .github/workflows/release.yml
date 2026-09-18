@@ -305,6 +305,11 @@ jobs:
           # to the loud FFI fallback for that minor only). x64-mingw32
           # is Ruby <= 3.0 (EOL) — intentionally not shipped.
           - os: windows-latest
+          # Ruby <= 3.0 (x64-mingw32, the msvcrt ABI): the RubyInstaller
+          # mingw toolchain builds the C lib with gcc — the build
+          # script's mingw branch keys on this Ruby's platform
+          - os: windows-latest
+            ruby-version: '3.0'
           - os: windows-11-arm
             ruby-version: '3.4'
     steps:
@@ -357,38 +362,38 @@ jobs:
           echo "YEP_RUBYREPO=$RUNNER_TEMP/pgem/yeptris-ruby" >> "$GITHUB_ENV"
 
       - name: Per-minor native DLL 3.3 (Windows)
-        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.3'
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.3' && (matrix.ruby-version || '3.3') != '3.0'
         uses: ruby/setup-ruby@master
         with:
           ruby-version: '3.3'
           bundler-cache: false
         continue-on-error: true
       - name: Build native DLL 3.3
-        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.3'
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.3' && (matrix.ruby-version || '3.3') != '3.0'
         shell: bash
         continue-on-error: true
         run: cd "$YEP_RUBYREPO" && ruby ext/build_windows_native.rb
       - name: Per-minor native DLL 3.4 (Windows)
-        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.4'
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.4' && (matrix.ruby-version || '3.3') != '3.0'
         uses: ruby/setup-ruby@master
         with:
           ruby-version: '3.4'
           bundler-cache: false
         continue-on-error: true
       - name: Build native DLL 3.4
-        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.4'
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '3.4' && (matrix.ruby-version || '3.3') != '3.0'
         shell: bash
         continue-on-error: true
         run: cd "$YEP_RUBYREPO" && ruby ext/build_windows_native.rb
       - name: Per-minor native DLL 4.0 (Windows)
-        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '4.0'
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '4.0' && (matrix.ruby-version || '3.3') != '3.0'
         uses: ruby/setup-ruby@master
         with:
           ruby-version: '4.0'
           bundler-cache: false
         continue-on-error: true
       - name: Build native DLL 4.0
-        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '4.0'
+        if: runner.os == 'Windows' && (matrix.ruby-version || '3.3') != '4.0' && (matrix.ruby-version || '3.3') != '3.0'
         shell: bash
         continue-on-error: true
         run: cd "$YEP_RUBYREPO" && ruby ext/build_windows_native.rb
