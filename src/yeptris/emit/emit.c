@@ -72,6 +72,10 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     return wrote;
 }
 
+YEPTRIS_API void yeptris_free(void* p) {
+  free(p);
+}
+
 YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emit_options* opts,
                                        size_t* len) {
     if (handle == NULL) {
