@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.6] - 2026-09-18
 ### Added
 - `yeptris_free` — the allocator-matching free for the serialize*
   family's owned buffers (#318's Windows root cause): the host's
