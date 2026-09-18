@@ -439,7 +439,11 @@ jobs:
           # LOCAL kernel at package time (metadata arm64-darwin-23);
           # 4.x packages it as declared. Update before the build or
           # Tahoe/macOS-13 users resolve the DLL-less pure-ruby gem.
-          gem update --system --no-document >/dev/null 2>&1 || gem update --system --no-document
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # the stamp only affects darwin platforms; Ruby 3.0's
+            # RubyGems cannot install the newest rubygems-update
+            gem update --system --no-document >/dev/null 2>&1 || gem update --system --no-document
+          fi
           git clone --quiet https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/rubyrepo"
           # Windows: the pgem workdir already holds the binding
           # checkout with its staged per-minor DLLs — the script
