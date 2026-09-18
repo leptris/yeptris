@@ -3596,6 +3596,33 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
             continue;
         }
 
+        /* The cycle fast path (TODO.restructure/79 carve 1): a line
+         * that CONTINUES the top frame (a map key at its column, a
+         * seq dash) with no pending state is exactly e_classified's
+         * contract — call it straight from the line loop and skip
+         * e_node's prologue (pend save/clear, e_props, the gate) and
+         * the dispatch tail. Non-classified shapes return 0 and take
+         * the chain below unchanged. */
+        if (e->depth > 0 && e->pend_anchor.p == NULL && e->pend_tag.p == NULL &&
+            e->pend_anchor_id == 0 && !e->q_key_pending && !e->q_value_pending &&
+            ((e->frames[e->depth - 1].kind == YEP_FRAME_MAP && e->frames[e->depth - 1].col == c &&
+              !e->frames[e->depth - 1].inline_doc) ||
+             (e->frames[e->depth - 1].kind == YEP_FRAME_SEQ && e->frames[e->depth - 1].col == c &&
+              dash_blank))) {
+            int frc = e_classified(e, e->frames[e->depth - 1].col);
+            if (frc != 0) {
+                if (frc < 0) {
+                    if (frc == -2) {
+                        return -2;
+                    }
+                    goto fail;
+                }
+                e->doc_content = 1;
+                e_line_done(e, e->pos);
+                continue;
+            }
+        }
+
         {
             e->last_root_flow = 0;
             int rc = e_flush_q_value(e); /* a key without its ':' line */
