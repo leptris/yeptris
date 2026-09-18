@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- The marshal encoder's magnitude bookkeeping is width-safe: the
+  byte-width and bignum limb-count loops read the magnitude through
+  `unsigned long`, which is 32-bit on Windows (LLP64) — every integer
+  with |v| >= 2^32 truncated to its low 32 bits through the Ruby
+  binding's marshal load path (1234567890123456789 materialized as
+  2112454933; caught by the windows-11-arm spec leg). The negative
+  payload's borrow is now masked at k == 8, removing the `1UL << 64`
+  shift UB reachable on LP64.
+
 ## [0.6.6] - 2026-09-18
 ### Added
 - `yeptris_free` — the allocator-matching free for the serialize*
