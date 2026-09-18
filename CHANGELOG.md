@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- The cycle fast path (TODO.restructure/79 carve 1a): lines that
+  continue the top frame — a map key at the frame's column, a seq
+  dash — with no pending state call the classified arm directly
+  from the line loop, skipping the node prologue and dispatch tail
+  on the monomorphic cycle lines. block-heavy parses run 8-12%
+  faster (interleaved A/B, ledgered in benchmarks/PERF-LEDGER.md);
+  the event streams are byte-identical (the differential and
+  yaml-test-suite gates pin them).
+
 ## [0.6.4] - 2026-09-17
 ### Added
 - The plan walk's segmented paths and the YAML/DOM leg (#293 /
