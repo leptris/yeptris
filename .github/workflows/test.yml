@@ -26,7 +26,10 @@ jobs:
         # windows-latest (MSVC): the portability sentinel — the C11
         # guards name MSVC (_Static_assert spelling, _M_X64 arch); this
         # leg surfaces what actually breaks before any win wheel rides it
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # BOTH arches per OS: linux amd64+arm64, macOS arm64
+        # (macos-latest) + amd64 (macos-15-intel), Windows amd64
+        # (win-arm rides the release smoke)
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest]
 
     steps:
       - name: Checkout code
