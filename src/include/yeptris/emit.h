@@ -68,6 +68,12 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument doc, const yeptris_e
  * NULL) receives the byte count. The buffer is NUL-terminated. */
 YEPTRIS_API char* yeptris_serialize(YeptrisDocument doc, size_t* len);
 
+/* Frees a buffer the library returned (the serialize* family's
+ * "caller frees" contract). The buffer was allocated by THIS
+ * library's allocator — freeing it with the host's free is
+ * wrong-CRT on Windows (the #318 mingw lesson). NULL is a no-op. */
+YEPTRIS_API void yeptris_free(void* p);
+
 #ifdef __cplusplus
 }
 #endif
