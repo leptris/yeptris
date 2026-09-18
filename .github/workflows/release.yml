@@ -301,6 +301,13 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          # C-only cuts (next_version) have no ruby gem of that number —
+          # the macOS-26 smoke rides the lockstep ruby release instead
+          # (republish_version); the until-loop would spin to timeout
+          if ! curl -fsSL -o /dev/null "https://rubygems.org/api/v1/versions/yeptris/${YEP_V}.json"; then
+            echo "no ruby gem ${YEP_V} on rubygems (C-only cut) — skipping the macOS-26 smoke"
+            exit 0
+          fi
           until gem install --no-document "yeptris:${YEP_V}" >/dev/null 2>&1; do sleep 15; done
           ruby -e 'require "yeptris"; abort %(smoke) unless Yeptris::YAML.load(%(a: [1, 2])) == { %(a) => [1, 2] }; puts %(SMOKE PASS yeptris #{Yeptris::VERSION} on macOS 26)'
 
