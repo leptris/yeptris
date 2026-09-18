@@ -198,6 +198,82 @@ jobs:
         if: steps.gemtag.outputs.found != ''
         run: gem push "${{ steps.gembuild.outputs.path }}"
 
+  # The musl platform gems (issue #316: full-platform coverage —
+  # Alpine/edge users resolve x86_64-linux-musl / aarch64-linux-musl).
+  # JS actions cannot run inside Alpine, so the whole leg — clone,
+  # build, smoke, and the already-pushed check — rides docker run
+  # with the workspace mounted; the platform string comes from the
+  # BUILT GEM's filename (the host's local platform is glibc).
+  platform-gems-musl:
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.republish_version != '')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
+    steps:
+      - name: Resolve the release version
+        shell: bash
+        run: |
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
+          echo "YEP_V=$V" >> "$GITHUB_ENV"
+
+      - name: Build the musl platform gem (Alpine container)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/pgem"
+          docker run --rm -v "$RUNNER_TEMP:/work" -w /work -e V="$YEP_V" ruby:3.4-alpine sh -c '
+            set -eux
+            apk add --no-cache build-base bash git cmake ninja
+            git clone --quiet https://github.com/leptris/yeptris-ruby /work/rubyrepo
+            bash /work/rubyrepo/scripts/build-platform-gem.sh "$V" https://github.com/leptris/yeptris-ruby /work/pgem
+          '
+
+      - name: Smoke the musl platform gem (Alpine container)
+        shell: bash
+        run: |
+          GEM="$(cat "$RUNNER_TEMP/pgem/gempath" 2>/dev/null | cut -d= -f2 || true)"
+          test -n "$GEM" || { echo "no musl gem this run"; exit 0; }
+          GEM="${GEM#/work}"
+          GEM="$RUNNER_TEMP$GEM"
+          echo "gem: $GEM"
+          docker run --rm -v "$RUNNER_TEMP:/work" -w /work ruby:3.4-alpine sh -c '
+            set -eux
+            gem install --local --no-document "'"$GEM"'"
+            ruby -e "require %(yeptris); abort %(smoke) unless Yeptris::YAML.load(%(a: [1, 2])) == { %(a) => [1, 2] }; puts %(SMOKE PASS yeptris musl)"
+          '
+
+      - name: Configure RubyGems credentials (trusted publisher)
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
+
+      - name: Push the musl platform gem
+        shell: bash
+        run: |
+          GEM="$(cat "$RUNNER_TEMP/pgem/gempath" 2>/dev/null | cut -d= -f2 || true)"
+          test -n "$GEM" || { echo "no musl gem this run"; exit 0; }
+          GEM="${GEM#/work}"
+          GEM="$RUNNER_TEMP$GEM"
+          BASE="$(basename "$GEM")"
+          VER="$(echo "$BASE" | sed -E 's/^yeptris-([0-9.]+)-.*/\1/')"
+          PLAT="${BASE%.gem}"
+          PLAT="${PLAT#yeptris-$VER-}"
+          echo "pushing $VER / $PLAT"
+          if curl -sf https://rubygems.org/api/v1/versions/yeptris.json | \
+              ruby -rjson -e 'exit(JSON.parse(STDIN.read).any? { |v| v["number"]==ARGV[0] && v["platform"]==ARGV[1] } ? 0 : 1)' "$VER" "$PLAT"; then
+            echo "already pushed; skipping"
+          else
+            gem push "$GEM"
+          fi
+
   # TODO.restructure/28's remainder: PLATFORM GEMS — the ruby gem +
   # vendored libyeptris + the compiled native materializer with a
   # RELATIVE rpath ($ORIGIN/@loader_path), so `gem install yeptris`
