@@ -40,6 +40,11 @@ typedef struct yep_writer {
     int col;                                    /* current output column (wr_* maintains) */
     const char* sv_input;                       /* compact-view decode bases (dom regions) */
     const char* sv_arena;
+    /* #352: per-scalar route decisions, derived once in the dry
+     * sizing pass and consumed by the wet write pass (one byte per
+     * scalar, indexed by consumption order; NULL = derive per pass) */
+    uint8_t* sc_dec;
+    uint32_t sc_i;
 } yep_writer;
 
 typedef struct yep_emitter {
