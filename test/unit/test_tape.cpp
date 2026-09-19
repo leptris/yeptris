@@ -370,7 +370,7 @@ TEST(JsonTapeLenient, StructuralErrorsStayParseErrors) {
         yeptris_json_tape t;
         EXPECT_EQ(yeptris_parse_json_tape_lenient(b, strlen(b), &t), YEPTRIS_ERROR_PARSE) << b;
         yeptris_tape_free(&t);
-    yeptris_tape_columns(&t);
+        yeptris_tape_columns(&t);
     }
 }
 
