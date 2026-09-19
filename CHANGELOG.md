@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- The lenient JSON tape's primary storage is ONE interleaved 8-byte
+  record per token (off:u32 | len:u23 | kind:u8; spans over 16 MiB
+  carry a CONT extension) instead of three column stores — item 07's
+  slice 1 toward simdjson-class walk cost.
+- The kinds/offs/lens columns stay as the compatibility ABI,
+  materialized lazily: `yeptris_tape_columns` fills them on first
+  touch; `yeptris_tape_convert`, `yeptris_tape_plan_walk`, tape-diff
+  and the unit fixtures route through it. The strict route remains
+  column-primary (unchanged).
+
 ## [0.6.8] - 2026-09-19
 ### Fixed
 - The canonical CBOR encoder's sizing pass no longer holds a map
