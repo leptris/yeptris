@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- The strict-JSON fused DOM builder resolves literal tags by first
+  byte (the walker already validated the span is exactly
+  true/false/null) instead of dispatching the resolver — no indirect
+  call per literal token.
+- The benchmark artifact carries two referee tables: the simdjson
+  head-to-head now covers `json-users` (serialbench's medium.json
+  shape — the attribution corpus for the DOM-build lane, #342), and
+  an emit kernel split (serialize vs serialize_into, the allocation
+  share — #352) rides every push.
+
 ## [0.6.9] - 2026-09-19
 ### Changed
 - The lenient JSON tape's primary storage is ONE interleaved 8-byte
