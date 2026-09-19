@@ -2066,3 +2066,36 @@ native CBOR work starts from CI-runner numbers, and the
 YeptrisDocument handle is a WRAPPER (doc.h ->dom) — a raw yep_dom*
 cast segfaults at the docs offset (the #160 CI crashes; arm64
 survived on heap luck).
+
+## 2026-09-19 (iii) — post-interleaved-ABI CI-fresh scorecard (v0.6.9 main, runs 35440100282)
+
+The interleaved tape ABI (#349, v0.6.9) judged on CI-fresh runners
+(ubuntu avx2 + macos neon, the benchmark-matrix artifacts). The
+simdjson head-to-head on ubuntu moved 0.45x -> 0.94x
+(tape_lenient, 1380 MB/s vs simdjson's 1469 on json-doc); macos
+tapes 0.66x (650 MB/s) — the remaining gap is NEON-side.
+
+vs rapidyaml DOM (median head-to-head):
+
+| shape        | ubuntu | macos |
+|--------------|--------|-------|
+| block-heavy  | 1.22x  | 1.04x |
+| flow-json    | 1.77x  | 2.07x |
+| flow-single  | 1.65x  | 1.45x |
+| json-doc     | 2.08x  | 1.73x |
+| scalar-heavy | 1.08x  | 1.12x |
+| anchor-heavy | 1.00x  | 0.80x |
+| deep-nesting | 0.94x  | —     |
+
+Sub-1x remains: anchor-heavy (macos) and deep-nesting (ubuntu) —
+the anchor lane and frame cost are the named levers (item 79's
+fused block engine covers block-heavy's thin 1.04-1.22x).
+
+Same-window binding referees (ruby CI, run 35437880256): JSON
+surface 0.93x median vs JSON.parse (GC pages +0 vs +18); CBOR.load
+FFI ladder x4.63-5.50 BEHIND the cbor gem — which contradicts the
+(ii) entry's dev-host FLAT verdict for the ladder-vs-native
+comparison: on fresh runners the ladder's FFI traversal IS the
+bottleneck (JSON's bulk columns sit at parity on the same shapes;
+the CBOR surface has no bulk drain). #163 re-opens the native
+materializer with the referee as the only accepted evidence.
