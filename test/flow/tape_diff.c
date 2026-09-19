@@ -233,6 +233,7 @@ static void lenient_one(const char* name, const char* buf, size_t len) {
     yeptris_json_tape st, lt;
     YeptrisStatus ss = yeptris_parse_json_tape(buf, len, &st);
     YeptrisStatus ls = yeptris_parse_json_tape_lenient(buf, len, &lt);
+    yeptris_tape_columns(&lt); /* item 07: the lenient columns are lazy */
     if (ss == YEPTRIS_OK) {
         if (ls != YEPTRIS_OK || !tapes_equiv(&st, &lt)) {
             fprintf(stderr, "TAPE-DIFF(lenient) %s: strict OK but lenient diverges (%d)\n", name,

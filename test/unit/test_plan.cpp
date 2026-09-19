@@ -139,6 +139,7 @@ TEST(PlanWalk, LenientTapeNumRecordsConvert) {
     yeptris_json_tape t;
     const char* doc = "[{\"n\":41},{\"n\":42}]";
     ASSERT_EQ(yeptris_parse_json_tape_lenient(doc, strlen(doc), &t), YEPTRIS_OK);
+    yeptris_tape_columns(&t); /* item 07: the lenient columns are lazy */
 
     YeptrisStatus st = YEPTRIS_OK;
     yeptris_plan_result* r = yeptris_tape_plan_walk(&t, plan.p, &st);

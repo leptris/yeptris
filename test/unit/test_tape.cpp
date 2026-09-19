@@ -289,6 +289,10 @@ namespace {
 
 // structural equality modulo NUM vs INT/FLOAT on identical spans
 bool tapes_equiv(const yeptris_json_tape& a, const yeptris_json_tape& b) {
+    /* item 07: the lenient tape's columns are lazy — materialize both
+     * sides before comparing (the strict route's are primary) */
+    yeptris_tape_columns(const_cast<yeptris_json_tape*>(&a));
+    yeptris_tape_columns(const_cast<yeptris_json_tape*>(&b));
     if (a.count != b.count) {
         return false;
     }
@@ -334,6 +338,7 @@ TEST(JsonTapeLenient, NumberGrammarDefersToConvert) {
     /* "1.2.3" is charset-clean but grammar-invalid: the run records
      * whole and convert rejects it at drain */
     EXPECT_EQ(yeptris_parse_json_tape_lenient("[1.2.3]", 7, &lt), YEPTRIS_OK);
+    yeptris_tape_columns(&lt);
     ASSERT_EQ(lt.count, 4u); /* DOC OPEN NUM CLOSE */
     EXPECT_EQ(lt.kinds[2], YEP_T_NUM);
     EXPECT_EQ(lt.offs[2], 1u);
@@ -345,6 +350,7 @@ TEST(JsonTapeLenient, NumberGrammarDefersToConvert) {
     TapeGuard ok;
     yeptris_json_tape& ot = ok.t;
     ASSERT_EQ(yeptris_parse_json_tape_lenient("[42, 2.5]", 9, &ot), YEPTRIS_OK);
+    yeptris_tape_columns(&ot);
     int64_t iv2[8];
     double dv2[8];
     EXPECT_EQ(yeptris_tape_convert(&ot, 0, ot.count, iv2, dv2), 2u);
@@ -364,6 +370,7 @@ TEST(JsonTapeLenient, StructuralErrorsStayParseErrors) {
         yeptris_json_tape t;
         EXPECT_EQ(yeptris_parse_json_tape_lenient(b, strlen(b), &t), YEPTRIS_ERROR_PARSE) << b;
         yeptris_tape_free(&t);
+    yeptris_tape_columns(&t);
     }
 }
 
@@ -373,6 +380,7 @@ TEST(JsonTapeLenient, TabWhitespaceIsLegal) {
     TapeGuard l;
     yeptris_json_tape& lt = l.t;
     ASSERT_EQ(yeptris_parse_json_tape_lenient("[\t1\t]", 5, &lt), YEPTRIS_OK);
+    yeptris_tape_columns(&lt);
     ASSERT_EQ(lt.count, 4u);
     EXPECT_EQ(lt.kinds[2], YEP_T_NUM);
     EXPECT_EQ(lt.offs[2], 2u);
@@ -383,6 +391,7 @@ TEST(JsonTapeLenient, ScalarRootDefersLikeTheWalk) {
     TapeGuard l;
     yeptris_json_tape& lt = l.t;
     ASSERT_EQ(yeptris_parse_json_tape_lenient("12x", 3, &lt), YEPTRIS_OK);
+    yeptris_tape_columns(&lt);
     EXPECT_EQ(lt.count, 2u);
     EXPECT_EQ(lt.kinds[1], YEP_T_NUM);
     int64_t iv[4];
@@ -396,10 +405,12 @@ TEST(JsonTapeLenient, NonAsciiFallsBackToTheStrictRoute) {
     ASSERT_EQ(s.parse(doc), YEPTRIS_OK);
     yeptris_json_tape& lt = l.t;
     ASSERT_EQ(yeptris_parse_json_tape_lenient(doc, strlen(doc), &lt), YEPTRIS_OK);
+    yeptris_tape_columns(&lt);
     EXPECT_TRUE(tapes_equiv(s.t, lt));
 
     const char* bad = "[\"\xff\"]"; /* ill-formed UTF-8 */
     yeptris_json_tape t;
     EXPECT_EQ(yeptris_parse_json_tape_lenient(bad, strlen(bad), &t), YEPTRIS_ERROR_ENCODING);
+    yeptris_tape_columns(&t);
     yeptris_tape_free(&t);
 }

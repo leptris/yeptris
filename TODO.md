@@ -28,9 +28,35 @@ measured-dead; record it, keep the numbers — do not delete history).
 | 19 | [Hardening](TODO.impl/19-hardening.md) | 07+ | COMPLETE (fuzz+nightly+alloc-inject+threads+TSAN/UBSAN/valgrind+differential fuzz) |
 | 20 | [Packaging, ABI policy, automated release](TODO.impl/20-packaging-release.md) | all | core landed (install/pkg-config/vcpkg/release workflow/ABI+FFI docs); brew tap + distro submissions EXCLUDED by user |
 | 21 | [JSON API compat](TODO.impl/21-json-compat-api.md) | 08, 11, 13, 18 | COMPLETE (strict JSON, jsonc drop-in incl. pretty/building, json.hpp, yajl gen + SAX, direct DOM) |
-| 22 | [CBOR (RFC 8949) codec: decode/encode, deterministic profile, sequences](TODO.impl/22-cbor.md) — executed plans in `TODO.cbor/` | 11, 13, 18, 19 | pending |
+| 22 | [CBOR (RFC 8949) codec: decode/encode, deterministic profile, sequences](TODO.impl/22-cbor.md) — executed plans in `TODO.cbor/` | 11, 13, 18, 19 | 01-04 + 06-07 done (decode/encode/sequences shipped; ruby surface #150; Appendix A sweep #340; bench tier + ledger); 05 lutaml adapter = the sole remainder (cross-repo, rides the lutaml side) |
 
 Rules inherited from libleptris: one executed plan per item; each phase
 gate in the item file must pass before the item closes; performance
 claims need artifact numbers (18); dead ends go in the ledger, not in the
 bin. Open product decisions live in PLAN.md §9.
+
+## Follow-up: per-minor native staging on POSIX (from the 0.6.8.1 verification)
+
+The platform gems stage ONE native-{minor} ext — built by whichever
+Ruby ran the packaging leg (darwin arm64 = 3.3; linux x86_64 =
+ubuntu-latest's default; musl likewise). Every OTHER Ruby minor falls
+back to the FFI ladder: functional, but the native JSON accelerator
+is dark for them. Windows already solves this: per-minor legs stage
+native-<minor>.dll into the shared packaging tree, one leg assembles.
+Port that scheme: darwin arm64 (3.3/3.4/4.0) + x86_64, linux
+glibc/musl x86_64+aarch64 — eight builder legs (or fewer if the
+script compiles for multiple rubies via setup-ruby in one job), the
+final leg assembles and pushes. Acceptance: the gem-smoke asserts the
+native surface loads (engine == native) on every covered minor, not
+just that the gem installs.
+
+
+## Open: CBOR→VALUE native materializer (from #157 / the 2026-09-19 ledger entry)
+
+The cbor gem leads CBOR.load by 3.4-4.8x (serialbench matrix). The
+marshal route measured FLAT (to_ruby already marshals — ledgered).
+The lever: decode + direct Ruby object construction in one C pass
+inside ext/yeptris_native (json_ruby.c's sibling: cbor_load building
+rb_hash/rstr/rflo directly off the decoder's DOM walk, no Marshal
+intermediate, no per-node FFI). Acceptance: CBOR.load >= the cbor gem
+on the serialbench fixtures; the FFI ladder stays the fallback.
