@@ -39,6 +39,8 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
         return 0;
     }
     yep_emitter em;
+    em.w.sc_dec = NULL;
+    em.w.sc_i = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;
@@ -60,13 +62,20 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return 0;
     }
+    em.w.sc_dec = (uint8_t*)malloc(em.doc->dom->ncount > 0 ? em.doc->dom->ncount : 1);
+    if (em.w.sc_dec == NULL) {
+        yep_nametab_free(&em.canon_names);
+        return 0;
+    }
     size_t need = yep_emit_run(&em, 1);
     if (buf == NULL || cap < need + 1) {
+        free(em.w.sc_dec);
         yep_nametab_free(&em.canon_names);
         return need;
     }
     em.w.p = buf;
     size_t wrote = yep_emit_run(&em, 0);
+    free(em.w.sc_dec);
     yep_nametab_free(&em.canon_names);
     buf[wrote] = '\0';
     return wrote;
@@ -82,6 +91,8 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
         return NULL;
     }
     yep_emitter em;
+    em.w.sc_dec = NULL;
+    em.w.sc_i = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;
@@ -103,13 +114,20 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
+    em.w.sc_dec = (uint8_t*)malloc(em.doc->dom->ncount > 0 ? em.doc->dom->ncount : 1);
+    if (em.w.sc_dec == NULL) {
+        yep_nametab_free(&em.canon_names);
+        return NULL;
+    }
     size_t need = yep_emit_run(&em, 1);
     char* out = malloc(need + 1);
     if (out == NULL) {
+        free(em.w.sc_dec);
         return NULL;
     }
     em.w.p = out;
     size_t wrote = yep_emit_run(&em, 0);
+    free(em.w.sc_dec);
     yep_nametab_free(&em.canon_names);
     out[wrote] = '\0';
     if (len != NULL) {
@@ -123,6 +141,8 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
         return NULL;
     }
     yep_emitter em;
+    em.w.sc_dec = NULL;
+    em.w.sc_i = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;
@@ -168,6 +188,8 @@ YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len,
         return NULL;
     }
     yep_emitter em;
+    em.w.sc_dec = NULL;
+    em.w.sc_i = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;
@@ -210,6 +232,8 @@ char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
         return NULL;
     }
     yep_emitter em;
+    em.w.sc_dec = NULL;
+    em.w.sc_i = 0;
     em.doc = doc;
     em.w.p = NULL;
     em.w.last = 0;
@@ -252,6 +276,8 @@ char* yep_serialize_json_pretty(const yeptris_document* doc, size_t* len) {
         return NULL;
     }
     yep_emitter em;
+    em.w.sc_dec = NULL;
+    em.w.sc_i = 0;
     em.doc = doc;
     em.w.p = NULL;
     em.w.last = 0;
@@ -307,6 +333,8 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
         return 0;
     }
     yep_emitter em;
+    em.w.sc_dec = NULL;
+    em.w.sc_i = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;

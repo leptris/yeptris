@@ -275,21 +275,15 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
     }
 }
 
-static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int as_key) {
-    yep_view vdec = wv(w, n->value);
-    const char* p = (const char*)vdec.p;
-    uint32_t len = vdec.len;
-    if (w->canonical || w->json) {
-        emit_canonical_scalar(w, n);
-        return;
-    }
-    /* p may be NULL for an empty view; memchr(NULL, .., 0) is UB by
-     * the nonnull attribute even though it reads nothing */
+/* The fidelity-mode emission route for one scalar (#352): the dry
+ * pass derives it exactly once; the wet pass consumes the recorded
+ * byte and skips the multiline/blockable/safety analysis entirely. */
+enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL };
+
+static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in) {
     int multiline = (len > 0 && memchr(p, '\n', len) != NULL);
     int blockable = 0;
     if (multiline && !as_key) {
-        /* A block whose body is all whitespace parses back empty, and a
-         * raw CR re-parses as a break — both emit double-quoted. */
         int allws = 1;
         int has_cr = 0;
         for (uint32_t i = 0; i < len; i++) {
@@ -302,68 +296,81 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
         }
         blockable = !allws && !has_cr;
     }
-    int sty = n->style;
+    uint8_t sty = sty_in;
     if (sty == 4 || sty == 5) {
         if (multiline && as_key) {
-            emit_dq(w, p, len); /* keys stay inline: no block scalars */
-            return;
+            return YEP_SC_DQ;
         }
         if (multiline && blockable) {
-            emit_literal(w, n, parent_col);
-            return;
+            return YEP_SC_LITERAL;
         }
         if (multiline) {
-            emit_dq(w, p, len);
-            return;
+            return YEP_SC_DQ;
         }
         if (len == 0) {
-            emit_dq(w, p, len); /* an explicitly-empty block scalar is
-                                   the empty STRING — a bare empty would
-                                   re-read as null (2G84#3, K858) */
-            return;
+            return YEP_SC_DQ;
         }
-        sty = 1; /* a chomp-stripped block is plain bytes: re-emit plain */
+        sty = 1;
     }
     switch (sty) {
-    case 1: /* plain */
+    case 1:
         if (len == 0) {
-            if (as_key) {
-                emit_dq(w, p, len); /* empty keys must stay visible */
-            }
-            break; /* an empty plain value emits as nothing (libyaml's
-                       null rendering, issue #290) */
+            return as_key ? YEP_SC_DQ : YEP_SC_NOTHING;
         }
-        if ((as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len))) {
-            wr_put(w, p, len);
-        } else if (!multiline) {
-            /* libyaml parity: a scalar that must be quoted but needs no
-             * escapes (digit-leading strings like "5014", indicator
-             * leads) single-quotes — double quotes are for text that
-             * actually requires escapes (issue #95's matrix) */
-            int clean = 1;
+        if (as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len)) {
+            return YEP_SC_PLAIN;
+        }
+        if (!multiline) {
             for (uint32_t i = 0; i < len; i++) {
                 if ((unsigned char)p[i] < 0x20 || (unsigned char)p[i] == 0x7f) {
-                    clean = 0;
-                    break;
+                    return YEP_SC_DQ;
                 }
             }
-            if (clean) {
-                emit_sq(w, p, len);
-            } else {
-                emit_dq(w, p, len);
-            }
-        } else {
-            emit_dq(w, p, len);
+            return YEP_SC_SQ;
         }
-        break;
-    case 2: /* single */
-        if (!multiline) {
-            emit_sq(w, p, len);
+        return YEP_SC_DQ;
+    case 2:
+        return multiline ? YEP_SC_DQ : YEP_SC_SQ;
+    default:
+        return YEP_SC_DQ;
+    }
+}
+
+static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int as_key) {
+    yep_view vdec = wv(w, n->value);
+    const char* p = (const char*)vdec.p;
+    uint32_t len = vdec.len;
+    if (w->canonical || w->json) {
+        emit_canonical_scalar(w, n);
+        return;
+    }
+    (void)0;
+    uint8_t route;
+    if (w->sc_dec != NULL) {
+        if (w->dry) {
+            route = sc_route(w, p, len, as_key, n->style);
+            w->sc_dec[w->sc_i] = route;
         } else {
-            emit_dq(w, p, len);
+            route = w->sc_dec[w->sc_i];
         }
+        w->sc_i++;
+    } else {
+        route = sc_route(w, p, len, as_key, n->style);
+    }
+    switch (route) {
+    case YEP_SC_NOTHING:
+        break; /* an empty plain value emits as nothing (libyaml's null
+                  rendering, issue #290) */
+    case YEP_SC_PLAIN:
+        wr_put(w, p, len);
         break;
-    default: /* double, literal-as-key, folded-as-key, any */
+    case YEP_SC_SQ:
+        emit_sq(w, p, len);
+        break;
+    case YEP_SC_LITERAL:
+        emit_literal(w, n, parent_col);
+        break;
+    default:
         emit_dq(w, p, len);
         break;
     }
@@ -694,6 +701,7 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     w->flushed = 0;
     w->sink_aborted = 0;
     w->col = 0;
+    w->sc_i = 0;
     yep_nametab_clear(&em->canon_names);
     if (w->json) {
         /* JSON has no multi-document streams and no document marker */
