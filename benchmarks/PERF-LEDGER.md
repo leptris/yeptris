@@ -2033,3 +2033,16 @@ byte via 3 spare high bits of a u64... none: 32+32+6 > 64; the CONT
 record is the honest design). Sizing: kinds cap*1 + offs/lens cap*8
 -> recs cap*8 + lazy column materialization on first FFI/convert
 touch.
+## 2026-09-19 — CBOR.load vs the cbor gem (#157): the marshal route is NOT the lever (DEAD)
+
+A/B on the 17.9KB medium fixture (users×200, depth-4): an explicit
+marshal_materialize route in CBOR.load measured 126 loads/s vs the
+existing root.to_ruby walk at 130.7 — FLAT, because to_ruby already
+carries the marshal fast path (node.rb's MARSHAL gate); the explicit
+route only skips one Node wrapper. Reverted. The 3.4-4.8x gap vs the
+cbor gem is decode + the Marshal EMIT/LOAD round trip itself: the
+cbor gem's C ext builds Ruby objects directly (rb_hash_new/rstr_new)
+with no intermediate. THE LEVER: a CBOR→VALUE materializer in
+ext/yeptris_native (json_ruby.c's sibling — decode + direct object
+construction in one C pass; the same 4-5x the native JSON path wins
+over the FFI ladder). Board item added beside TODO.restructure/22.
