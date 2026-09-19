@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.10] - 2026-09-19
 ### Changed
 - The strict-JSON fused DOM builder resolves literal tags by first
   byte (the walker already validated the span is exactly
