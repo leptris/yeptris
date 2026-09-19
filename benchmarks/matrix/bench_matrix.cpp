@@ -206,6 +206,25 @@ void gen_json_doc(std::string* out, Rng& r, int entries) {
     out->append("]\n");
 }
 
+/* serialbench's medium.json shape (issue #342): rows of small maps
+ * with a nested profile map — the many-token, map-heavy JSON the DOM
+ * route loses hardest on; the attribution corpus for the DOM-build
+ * lane. */
+void gen_json_users(std::string* out, Rng& r, int entries) {
+    (void)r;
+    out->append("{\"users\":[");
+    for (int i = 0; i < entries; i++) {
+        out->append(
+            (i ? "," : "") + std::string("{\"id\":") + std::to_string(i) + ",\"name\":\"user " +
+            std::to_string(i) + "\",\"email\":\"user" + std::to_string(i) +
+            "@example.com\",\"active\":" + ((i & 1) ? "true" : "false") +
+            ",\"score\":" + std::to_string(i) +
+            ".5,\"tags\":[\"a\",\"b\",\"c\"],\"profile\":{\"age\":" + std::to_string(i + 20) +
+            ",\"theme\":\"dark\"}}");
+    }
+    out->append("]}\n");
+}
+
 /* One giant ONE-LINE flow collection: the shape that hid the
  * jx_advance_line quadratic (a single long line rescanned per token)
  * — the many-small-collections shape could never catch it. */
@@ -476,6 +495,45 @@ Result bench_recorder(const Corpus& c, int iters) {
     double mb = (double)c.data.size() / (1024.0 * 1024.0);
     return {c.name + " (recorder)", best_ms > 0 ? mb * 1000.0 / best_ms : 0, best_ms,
             c.data.size()};
+}
+
+/* #352: the emit kernel split — the fresh-allocation route callers get
+ * from yeptris_serialize vs the caller-buffer route (serialize_into,
+ * sized once, reused), interleaved medians. The ryml reference lives
+ * in serialbench's CI table (the issue); this isolates what we own:
+ * the allocation share vs the kernel itself. */
+struct EmitSplit {
+    double alloc_mb;
+    double into_mb;
+};
+EmitSplit emit_split(const Corpus& c, int rounds) {
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(c.data.data(), c.data.size(), &st);
+    if (doc == NULL) {
+        return {0, 0};
+    }
+    size_t need = yeptris_serialize_into(doc, NULL, 0);
+    std::vector<char> buf(need + 1);
+    std::vector<double> a_ms, i_ms;
+    double mb = (double)need / (1024.0 * 1024.0);
+    for (int r = 0; r < rounds; r++) {
+        size_t len = 0;
+        auto t0 = clk::now();
+        char* s = yeptris_serialize(doc, &len);
+        auto t1 = clk::now();
+        yeptris_free(s);
+        a_ms.push_back(ms_of(t0, t1));
+        t0 = clk::now();
+        yeptris_serialize_into(doc, buf.data(), buf.size());
+        t1 = clk::now();
+        i_ms.push_back(ms_of(t0, t1));
+    }
+    yeptris_document_free(doc);
+    std::sort(a_ms.begin(), a_ms.end());
+    std::sort(i_ms.begin(), i_ms.end());
+    double am = a_ms[a_ms.size() / 2];
+    double im = i_ms[i_ms.size() / 2];
+    return {am > 0 ? mb * 1000.0 / am : 0, im > 0 ? mb * 1000.0 / im : 0};
 }
 
 Result bench_emit(const Corpus& c, int iters) {
@@ -924,6 +982,11 @@ int main(int argc, char** argv) {
     }
     {
         std::string s;
+        gen_json_users(&s, r, entries);
+        corpora.push_back({"json-users", s});
+    }
+    {
+        std::string s;
         gen_scalar(&s, r, entries);
         corpora.push_back({"scalar-heavy", s});
     }
@@ -1064,13 +1127,13 @@ int main(int argc, char** argv) {
         printf("| %s | %.2fx | %.2fx | %.2f | %.1f |\n", c.name.c_str(), t.dec_ratio, t.enc_ratio,
                t.size_ratio, t.dec_mb);
     }
-    printf("\n# head-to-head vs simdjson DOM (json-doc, interleaved, median of rounds)\n\n"
+    printf("\n# head-to-head vs simdjson DOM (JSON shapes, interleaved, median of rounds)\n\n"
            "| route | MB/s | vs simdjson |\n|---|---|---|\n");
-    md_h2h += "\n# head-to-head vs simdjson DOM (json-doc, interleaved, median of rounds)\n\n"
+    md_h2h += "\n# head-to-head vs simdjson DOM (JSON shapes, interleaved, median of rounds)\n\n"
               "| route | MB/s | vs simdjson |\n|---|---|---|\n";
     for (const Corpus& c : corpora) {
-        if (c.name != "json-doc") {
-            continue;
+        if (c.name != "json-doc" && c.name != "json-users") {
+            continue; /* the JSON-field shapes: the DOM-build lane's table */
         }
         H2hJson h = h2h_vs_simdjson(c, full ? 9 : 5);
         printf("| parse_json DOM | %.2f | %.2fx |\n", h.dom_mb, h.dom_ratio);
@@ -1087,6 +1150,25 @@ int main(int argc, char** argv) {
     printf("\n");
     printf("%s", md_h2h.c_str()); /* the tail dump for console runs */
 #endif
+
+    /* #352's referee table: the emit kernel split. */
+    printf("\n# emit kernel split: serialize vs serialize_into (#352, median of rounds)\n\n"
+           "| shape | serialize MB/s | into-buffer MB/s | alloc share |\n|---|---|---|---|\n");
+    md_h2h += "\n# emit kernel split: serialize vs serialize_into (#352, median of rounds)\n\n"
+              "| shape | serialize MB/s | into-buffer MB/s | alloc share |\n|---|---|---|---|\n";
+    for (const Corpus& c : corpora) {
+        if (c.name != "block-heavy" && c.name != "flow-json" && c.name != "scalar-heavy" &&
+            c.name != "json-users") {
+            continue;
+        }
+        EmitSplit e = emit_split(c, full ? 9 : 5);
+        double share = (e.into_mb > 0) ? 1.0 - e.alloc_mb / e.into_mb : 0;
+        char row[96];
+        snprintf(row, sizeof(row), "| %s | %.2f | %.2f | %.0f%% |\n", c.name.c_str(), e.alloc_mb,
+                 e.into_mb, share * 100.0);
+        printf("%s", row);
+        md_h2h += row;
+    }
 
     /* Markdown + JSON */
     std::string md = g_kernels_line +
