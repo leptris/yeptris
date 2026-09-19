@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.9] - 2026-09-19
 ### Changed
 - The lenient JSON tape's primary storage is ONE interleaved 8-byte
   record per token (off:u32 | len:u23 | kind:u8; spans over 16 MiB
