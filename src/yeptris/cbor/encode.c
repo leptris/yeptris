@@ -560,17 +560,25 @@ static size_t cbor_size_item(cenc* e, uint32_t id) {
     /* mapping */
     uint32_t pairs = n->count / 2;
     sz += cbor_arg_bytes(pairs);
-    cmap* cm = NULL;
+    /* hold the INDEX, not the pointer: sizing a child recurses into
+     * nested maps whose preps REALLOC e->maps (#152 — a held cmap*
+     * dangled and the next pair read walked freed memory; n>=11 of
+     * the depth-3 users shape crossed the 16->32 growth) */
+    size_t canon_mi = 0;
+    int canon = 0;
     if (e->canonical) {
         if (!cbor_canon_prepare(e, id, pairs)) {
             return 0;
         }
-        cm = &e->maps[e->nmaps - 1];
+        canon_mi = e->nmaps - 1;
+        canon = 1;
     }
-    if (cm != NULL) {
+    if (canon) {
         for (uint32_t p = 0; p < pairs && !e->failed; p++) {
+            const cmap* cm = &e->maps[canon_mi];
             sz += cbor_size_item(e, cm->child[cm->order[p] * 2]);
             if (!e->failed) {
+                cm = &e->maps[canon_mi];
                 sz += cbor_size_item(e, cm->child[cm->order[p] * 2 + 1]);
             }
         }

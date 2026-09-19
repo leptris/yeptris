@@ -645,6 +645,27 @@ TEST(CborEncode, AppendixACanonicalReencode) {
     }
 }
 
+TEST(CborEncode, CanonicalSizingSurvivesMapArrayRealloc) {
+    /* #152: sizing held a cmap* across child recursion; a nested
+     * map's prep REALLOCed e->maps and the next pair read walked
+     * freed memory — n>=11 of this shape crossed the 16->32 growth */
+    for (int n : {1, 8, 10, 11, 15, 100}) {
+        std::string yaml = "users:\n";
+        for (int i = 1; i <= n; i++) {
+            yaml += "- id: " + std::to_string(i) + "\n  p:\n    q:\n      r: s\n";
+        }
+        size_t olen = 0;
+        YeptrisStatus pst = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(yaml.data(), yaml.size(), &pst);
+        ASSERT_EQ(pst, YEPTRIS_OK) << n;
+        void* out = yeptris_cbor_encode(doc, YEPTRIS_CBOR_CANONICAL, &olen);
+        ASSERT_NE(out, nullptr) << n;
+        EXPECT_GT(olen, 0u) << n;
+        yeptris_free(out);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(CborEncode, CanonicalKeyOrderingAndStability) {
     // keys sort bytewise on ENCODED forms: 10 (0a) < 100 (1864) < -1 (20)
     // < "z" (617a) < "aa" (616161) < [100] (811864) < [-1] (8120) < false (f4)
