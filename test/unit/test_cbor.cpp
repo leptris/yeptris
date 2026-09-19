@@ -620,6 +620,18 @@ TEST(CborEncode, AppendixACanonicalReencode) {
          "98190102030405060708090a0b0c0d0e0f101112131415161718181819"},
         {"bf61610161629f0203ffff", "a26161016162820203"},
         {"826161bf61626163ff", "826161a161626163"},
+        // Appendix A's tagged/simple remainder: date-time (0), epoch
+        // (1), encoded-data (24 h'...') re-encode tag+text; undefined
+        // and unassigned simples materialize as their diagnostic text
+        // (the 01 ledger) so the re-encode pins the divergence
+        {"c074323031332d30332d32315431393a30303a33305a",
+         "c074323031332d30332d32315431393a30303a33305a"},
+        {"c11a514b67b0", "c11a514b67b0"},
+        {"d818456449455446",
+         "d818656449455446"}, // tag 24 byte-string: text re-encode (the 01 ledger)
+        {"f6", "f6"},
+        {"f7", "f7"},                                           // undefined round-trips faithfully
+        {"f820", "f820"},                                       // simple(32) round-trips faithfully
         {"bf6346756ef563416d7421ff", "a263416d74216346756ef5"}, // canonical: Amt<Fun
     };
     for (const Row& r : rows) {
