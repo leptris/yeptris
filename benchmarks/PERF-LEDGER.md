@@ -2099,3 +2099,23 @@ comparison: on fresh runners the ladder's FFI traversal IS the
 bottleneck (JSON's bulk columns sit at parity on the same shapes;
 the CBOR surface has no bulk drain). #163 re-opens the native
 materializer with the referee as the only accepted evidence.
+
+## 2026-09-19 (iv) — the native CBOR materializer re-trial: x1.2-1.4 (WIN, ships)
+
+The referee properly armed (the cbor-profile job now builds the
+extension it judges — every earlier run silently profiled the FFI
+ladder), run 35443555886, ruby PR #163 (merged as dc294ba):
+
+| fixture | ubuntu | macos | ladder baseline |
+|---------|--------|-------|-----------------|
+| small   | x1.35  | x2.69 | x5.50           |
+| medium  | x1.39  | x1.45 | x4.63           |
+| large   | x1.21  | x1.24 | x4.70           |
+
+The (ii) entry's dev-host FLAT verdict was an artifact: on fresh
+runners the native engine is 3.3x+ over the ladder on every fixture.
+NOT at parity — #157 tracks the residual x1.2-1.4 (small-doc
+dispatch overhead on macos, container preallocation). Corollary
+lesson beside (ii)'s: the referee must BUILD what it judges — an
+"engine:" line that reads FFI ladder on every run means the
+measurement target never loaded.
