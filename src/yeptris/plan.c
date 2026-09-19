@@ -415,6 +415,9 @@ static yeptris_plan_result* plan_result_carve(const yeptris_plan* plan, size_t r
 
 YEPTRIS_API yeptris_plan_result*
 yeptris_tape_plan_walk(const yeptris_json_tape* tape, const yeptris_plan* plan, YeptrisStatus* st) {
+    /* item 07: the lenient tape's columns are lazy — materialize (a
+     * cache write through a const view; idempotent) */
+    yeptris_tape_columns((yeptris_json_tape*)tape);
     if (st != NULL) {
         *st = YEPTRIS_OK;
     }

@@ -46,15 +46,32 @@ enum {
                         spans; simdjson's deferred contract) */
 };
 
+/* The interleaved record (TODO.max-perf/07): one 8-byte store per
+ * token instead of three column stores. Layout: off:u32 | len:u23 |
+ * kind:u8 — a span longer than 0xFEFFFF bytes carries len == 0xFFFFFF
+ * with the true length stored as a CONT-terminated extension record
+ * (kind YEP_T_CONT; unreachable for <16 MiB tokens). The columns
+ * stay the compatibility ABI: yeptris_tape_columns materializes them
+ * lazily from the records on first touch. */
+#define YEP_T_CONT 8 /* record-length extension (not a token kind) */
+typedef uint64_t yeptris_tape_rec;
+
 typedef struct yeptris_json_tape {
     size_t count;
-    uint8_t* kinds;   /* yeptris tape kind per record */
-    uint32_t* offs;   /* span starts (STR/INT/FLOAT); container links */
-    uint32_t* lens;   /* span lengths (STR/INT/FLOAT) */
-    int64_t int_min;  /* set by yeptris_tape_convert when an INT span
-                         exceeds int64 (materialize-time discovery) */
-    const void* _src; /* the parsed buffer (spans borrow it; it must
-                         outlive the tape — same contract as the spans) */
+    uint8_t* kinds;         /* compat columns — materialized lazily (see
+                               yeptris_tape_columns) when the interleaved
+                               records are the primary storage */
+    uint32_t* offs;         /* span starts (STR/INT/FLOAT); container links */
+    uint32_t* lens;         /* span lengths (STR/INT/FLOAT) */
+    yeptris_tape_rec* recs; /* primary storage (may be NULL on legacy
+                               column-built tapes: the strict route) */
+    int _cols_ready;        /* columns materialized from recs already */
+    int _rec_primary;       /* the lenient route: recs carry the data and
+                               the columns are lazy */
+    int64_t int_min;        /* set by yeptris_tape_convert when an INT span
+                               exceeds int64 (materialize-time discovery) */
+    const void* _src;       /* the parsed buffer (spans borrow it; it must
+                               outlive the tape — same contract as the spans) */
     size_t _srclen;
     void* _block; /* the carved allocation base */
 } yeptris_json_tape;
@@ -89,6 +106,13 @@ YEPTRIS_API void yeptris_tape_free(yeptris_json_tape* tape);
  * number records converted, or SIZE_MAX if a span does not re-scan
  * as a number (impossible for a tape this library produced).
  * Sets t->int_min when an INT span exceeds int64. */
+/* Materializes the kinds/offs/lens columns from the interleaved
+ * records (no-op when the tape was built column-primary or the
+ * columns are already materialized). Consumers reading the column
+ * pointers directly (the FFI binding) must call this once first.
+ * Returns 0 on success, nonzero on allocation failure. */
+YEPTRIS_API int yeptris_tape_columns(yeptris_json_tape* t);
+
 YEPTRIS_API size_t yeptris_tape_convert(yeptris_json_tape* t, size_t from, size_t to,
                                         int64_t* ivals, double* dvals);
 

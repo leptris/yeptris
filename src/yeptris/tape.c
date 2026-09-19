@@ -59,7 +59,8 @@ static int rec_put(tape_ctx* c, uint8_t kind, uint32_t off, uint32_t len) {
 static YeptrisStatus tape_carve(yeptris_json_tape* t, size_t len) {
     size_t cap = len + 2;
     size_t off_o = (cap + 15) & ~(size_t)15;
-    char* block = yep_alloc(yep_system_allocator(), off_o + 2 * cap * sizeof(uint32_t));
+    char* block = yep_alloc(yep_system_allocator(),
+                            off_o + 2 * cap * sizeof(uint32_t) + cap * sizeof(yeptris_tape_rec));
     if (block == NULL) {
         return YEPTRIS_ERROR_MEMORY;
     }
@@ -67,9 +68,29 @@ static YeptrisStatus tape_carve(yeptris_json_tape* t, size_t len) {
     t->kinds = (uint8_t*)block;
     t->offs = (uint32_t*)(void*)(block + off_o);
     t->lens = t->offs + cap;
+    t->recs = (yeptris_tape_rec*)(void*)(t->lens + cap);
     t->count = 0;
     t->int_min = 0;
+    t->_rec_primary = 0;
+    t->_cols_ready = 0;
     return YEPTRIS_OK;
+}
+
+/* The lazy column materialization (TODO.max-perf/07): records are the
+ * primary storage on the lenient route; the column ABI materializes
+ * from them on first touch. */
+YEPTRIS_API int yeptris_tape_columns(yeptris_json_tape* t) {
+    if (t == NULL || !t->_rec_primary || t->recs == NULL || t->_cols_ready) {
+        return 0; /* column-primary (the strict route) or ready */
+    }
+    for (size_t i = 0; i < t->count; i++) {
+        yeptris_tape_rec r = t->recs[i];
+        t->lens[i] = (uint32_t)((r >> 8) & 0xFFFFFFu);
+        t->offs[i] = (uint32_t)(r >> 32);
+        t->kinds[i] = (uint8_t)(r & 0xFFu);
+    }
+    t->_cols_ready = 1;
+    return 0;
 }
 
 /* Scalar roots: the walk needs an opener, so a bare root value
@@ -585,20 +606,18 @@ static YeptrisStatus tape_walk_lnt_fused(const char* p, size_t len, size_t open,
     if (tape_carve(t, len) != YEPTRIS_OK) {
         return YEPTRIS_ERROR_MEMORY;
     }
-    uint8_t* kinds = t->kinds;
-    uint32_t* offs = t->offs;
-    uint32_t* lens = t->lens;
+    /* the interleaved records are the primary storage (item 07); the
+     * columns materialize lazily via yeptris_tape_columns */
+    t->_rec_primary = 1;
+    yeptris_tape_rec* recs = t->recs;
     uint32_t open_at[YEP_JSON_WALK_DEPTH];
     uint8_t kind[YEP_JSON_WALK_DEPTH];
 
-    kinds[0] = YEP_T_DOC;
-    offs[0] = 0;
-    lens[0] = 0;
+    recs[0] = ((uint64_t)0 << 32) | ((uint64_t)0 << 8) | YEP_T_DOC;
 
     uint8_t top_kind = p[open] == '[' ? 0 : 1;
-    kinds[1] = top_kind ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN;
-    offs[1] = 0;
-    lens[1] = 0;
+    recs[1] =
+        ((uint64_t)0 << 32) | ((uint64_t)0 << 8) | (top_kind ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN);
     uint32_t top_open = 1;
     size_t count = 2;
     uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
@@ -656,9 +675,8 @@ static YeptrisStatus tape_walk_lnt_fused(const char* p, size_t len, size_t open,
                 uint64_t c0 = (w - 0x2020202020202020ull) & ~w & 0x8080808080808080ull;
                 if (qm != 0 && ((bm | c0) & (qm - 1)) == 0) {
                     close = j + (size_t)yep_ctz64(qm) / 8;
-                    kinds[count] = YEP_T_STR;
-                    offs[count] = (uint32_t)j;
-                    lens[count] = (uint32_t)(close - j);
+                    recs[count] = ((uint64_t)((uint32_t)j) << 32) |
+                                  ((uint64_t)((uint32_t)(close - j)) << 8) | (uint64_t)(YEP_T_STR);
                     count++;
                     i = close + 1;
                     goto lstr_done;
@@ -668,9 +686,8 @@ static YeptrisStatus tape_walk_lnt_fused(const char* p, size_t len, size_t open,
             if (!yep_json_string(p, len, &i, &close, &esc)) {
                 goto lreject;
             }
-            kinds[count] = YEP_T_STR;
-            offs[count] = (uint32_t)(at + 1);
-            lens[count] = (uint32_t)(close - at - 1);
+            recs[count] = ((uint64_t)((uint32_t)(at + 1)) << 32) |
+                          ((uint64_t)((uint32_t)(close - at - 1)) << 8) | (uint64_t)(YEP_T_STR);
             count++;
         lstr_done:
             if (key_slot) {
@@ -698,9 +715,8 @@ static YeptrisStatus tape_walk_lnt_fused(const char* p, size_t len, size_t open,
                 }
                 break;
             }
-            kinds[count] = YEP_T_NUM;
-            offs[count] = (uint32_t)at;
-            lens[count] = (uint32_t)(i - at);
+            recs[count] = ((uint64_t)((uint32_t)at) << 32) | ((uint64_t)((uint32_t)(i - at)) << 8) |
+                          (uint64_t)(YEP_T_NUM);
             count++;
         lcomma:
             if (i < len && p[i] == ',') {
@@ -719,10 +735,11 @@ static YeptrisStatus tape_walk_lnt_fused(const char* p, size_t len, size_t open,
                  top_expect != JW_COMMA_OR_CLOSE)) {
                 goto lreject;
             }
-            kinds[count] = YEP_T_CLOSE;
-            offs[count] = top_open;
-            lens[count] = 0;
-            offs[top_open] = (uint32_t)count;
+            recs[count] = ((uint64_t)top_open << 32) | ((uint64_t)0 << 8) | YEP_T_CLOSE;
+            /* back-patch the opener's count link: keep the original
+             * off/len, set the link into the record's off word */
+            recs[top_open] = (recs[top_open] & ~(uint64_t)0xFFFFFFFF00000000u) |
+                             ((uint64_t)(uint32_t)count << 32);
             count++;
             i = at + 1;
             depth--;
@@ -745,9 +762,8 @@ static YeptrisStatus tape_walk_lnt_fused(const char* p, size_t len, size_t open,
             kind[depth - 1] = top_kind;
             open_at[depth - 1] = top_open;
             top_kind = c == '[' ? 0 : 1;
-            kinds[count] = c == '[' ? YEP_T_SEQ_OPEN : YEP_T_MAP_OPEN;
-            offs[count] = 0;
-            lens[count] = 0;
+            recs[count] = ((uint64_t)0 << 32) | ((uint64_t)0 << 8) |
+                          (uint64_t)(c == '[' ? YEP_T_SEQ_OPEN : YEP_T_MAP_OPEN);
             top_open = (uint32_t)count;
             count++;
             top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
@@ -778,9 +794,8 @@ static YeptrisStatus tape_walk_lnt_fused(const char* p, size_t len, size_t open,
                     goto lreject;
                 }
             }
-            kinds[count] = c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE);
-            offs[count] = (uint32_t)at;
-            lens[count] = (uint32_t)wl;
+            recs[count] = ((uint64_t)((uint32_t)at) << 32) | ((uint64_t)((uint32_t)wl) << 8) |
+                          (uint64_t)(c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE));
             count++;
             i = at + wl;
             goto lcomma;
@@ -1244,6 +1259,7 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len
 
 YEPTRIS_API size_t yeptris_tape_convert(yeptris_json_tape* t, size_t from, size_t to,
                                         int64_t* ivals, double* dvals) {
+    yeptris_tape_columns(t);
     if (t == NULL || t->_src == NULL || from > to || to > t->count) {
         return SIZE_MAX;
     }
