@@ -2010,3 +2010,26 @@ worse), wide-mapping 1.79 -> 1.86 — no win; LTO already CSEs the
 loads within the dispatch block. Item 02's real content folds into
 01's TU-local cycle loops (where the loads vanish by construction,
 not by CSE).
+## 2026-09-19 — referee standing (arm64 macOS, bench_matrix --full with both referees)
+
+First full referee run since the CBOR/marshal/NaN fixes. Head-to-head vs
+rapidyaml (interleaved median): block-heavy **0.99x** (the sole sub-1x —
+item 79's next carves target it), anchor-heavy 1.07x, flow-json 1.12x,
+wide-mapping 1.37x, deep-nesting 1.43x, scalar-heavy 1.52x, json-doc
+2.13x, flow-single 2.68x. vs simdjson DOM (json-doc): tape_lenient
+556.85 MB/s = **0.45x**, parse_json_tape 0.47x, DOM 0.14x — item 07's
+gap quantified on this host (issue #342 reports 2.4-17x on other
+platforms; same lever). CBOR tier: decode 1.11-1.27x vs JSON parse,
+encode 0.16x flow-single / 1.07x json-doc, sizes 0.47-0.53 of JSON.
+
+Item 07 packing analysis (pre-ABI): the lenient walk's 3 column stores
+(1B+4B+4B) vs one 8B record = ~11% of walk traffic — the remaining gap
+is the expect machine; the ABI cut must move the walk's LOADS to one
+sequential 8B stream AND the legacy columns must become lazy
+materializations (convert + the FFI drain read them), else stage-2
+keeps paying both. len:u24 in the packed head caps a single token at
+16MB — a CONT-escape record (or len:u32 with kind folded into a tag
+byte via 3 spare high bits of a u64... none: 32+32+6 > 64; the CONT
+record is the honest design). Sizing: kinds cap*1 + offs/lens cap*8
+-> recs cap*8 + lazy column materialization on first FFI/convert
+touch.
