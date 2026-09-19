@@ -2046,3 +2046,23 @@ with no intermediate. THE LEVER: a CBOR→VALUE materializer in
 ext/yeptris_native (json_ruby.c's sibling — decode + direct object
 construction in one C pass; the same 4-5x the native JSON path wins
 over the FFI ladder). Board item added beside TODO.restructure/22.
+## 2026-09-19 (ii) — CBOR native materializer: FLAT, and the thermal-noise lesson (DEAD, for now)
+
+cbor_ruby.c (decode + direct VALUE construction, json_ruby.c's
+sibling) measured "7x" in ISOLATED runs on the dev laptop — thermal
+fiction: after an hour of benching the host throttles monotonically,
+and isolated sequential measurements compared different thermal
+states. The interleaved same-window A/B (3 rounds, 200 iterations,
+medium 17.9KB fixture): native 159.5/144.1/178.3 vs ladder
+153.5/142.1/365.9 loads/s — FLAT, round 3 with the ladder ahead.
+Reverted (#160 closed with the numbers).
+
+Lessons: (1) isolated perf claims on a shared dev host are
+meaningless — interleave in ONE process, or measure on a CI-fresh
+runner (the JSON profile gate's venue). (2) The ladder's own GC-time
+dominates: both routes pay Ruby object construction; the decode walk
+itself is not the CBOR bottleneck on this fixture. (3) Any future
+native CBOR work starts from CI-runner numbers, and the
+YeptrisDocument handle is a WRAPPER (doc.h ->dom) — a raw yep_dom*
+cast segfaults at the docs offset (the #160 CI crashes; arm64
+survived on heap luck).
