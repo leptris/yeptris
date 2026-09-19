@@ -8,6 +8,8 @@
 
 #include "dom.h"
 
+#include <yeptris/resolve.h> /* the tag-id SSOT (the strict literal arm) */
+
 /* The bounded-parse caps: each node consumes at least one input byte
  * (the grammar guarantees it), so len + 1024 is airtight for valid
  * documents; docs and anchors are sparser still. The arena copies
@@ -801,8 +803,15 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
             }
             yep_view v = {p + t.at, (uint32_t)(t.end - t.at)};
             d->nodes[sid].value = dom_str_in(d, &v, 1);
-            d->nodes[sid].tag_id =
-                t.cls == '#' ? yep_resolve_number(r, t.is_float) : r->resolve(NULL, v.p, v.len);
+            if (t.cls == '#') {
+                d->nodes[sid].tag_id = yep_resolve_number(r, t.is_float);
+            } else if (d->flow_strict) {
+                /* strict JSON: the walker validated the span is exactly
+                 * one of the three RFC 8259 words — no resolver dispatch */
+                d->nodes[sid].tag_id = (v.p[0] == 'n') ? YEPTRIS_TAG_NULL : YEPTRIS_TAG_BOOL;
+            } else {
+                d->nodes[sid].tag_id = r->resolve(NULL, v.p, v.len);
+            }
             if (dom_place(d, sid) != 0) {
                 goto fail;
             }
