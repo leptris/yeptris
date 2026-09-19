@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.8] - 2026-09-19
 ### Fixed
 - The canonical CBOR encoder's sizing pass no longer holds a map
   pointer across child recursion: a nested map's canonical prep
