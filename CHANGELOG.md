@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- The canonical CBOR encoder's sizing pass no longer holds a map
+  pointer across child recursion: a nested map's canonical prep
+  reallocates the map table, and the dangling pointer made the next
+  pair read walk freed memory — a heap-use-after-free that segfaulted
+  `yeptris_cbor_encode` on documents from 11 canonical-sorted map
+  entries (the 16->32 growth crossing; yeptris-ruby#152). The map
+  INDEX is held and the pointer re-derived for every read. ASAN-verified
+  at 11/15/100/1000 items; insertion-order encoding was unaffected.
+
 ## [0.6.7] - 2026-09-18
 ### Fixed
 - The marshal encoder's magnitude bookkeeping is width-safe: the
