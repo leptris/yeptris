@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.12] - 2026-09-20
 ### Added
 - The `!binary` contract (yeptris-ruby#168): the compat schema
   resolves psych's LOCAL `!binary` shorthand to the core BINARY tag
