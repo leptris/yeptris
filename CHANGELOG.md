@@ -6,6 +6,22 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- The `!binary` contract (yeptris-ruby#168): the compat schema
+  resolves psych's LOCAL `!binary` shorthand to the core BINARY tag
+  id (stdlib to_ruby accepts both spellings; core12 keeps it
+  CUSTOM); a tagged literal-styled scalar keeps the block form even
+  single-line (`!binary |-` + one base64 line — psych's exact
+  bytes); the bulk-build ABI admits exactly one trailing TAG on a
+  closed scalar root; the marshal fast path returns UNSUPPORTED for
+  binary-tagged scalars so hosts decode.
+- The lazy document-open path (yeptris-ruby#157's fixed-cost cut):
+  the pool's first block materializes on first use, and the handle
+  pool defers to the first handle acquisition — every access rides
+  the dom's lazy-init mutex (the map-index discipline; the first
+  cut raced TSAN's read-only-sharing test).
+
 ## [0.6.11] - 2026-09-20
 ### Changed
 - `yeptris_serialize` / `yeptris_serialize_ex` emit in ONE wet pass
