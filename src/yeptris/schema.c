@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include <yeptris/schema.h>
+#include <yeptris/values.h> /* YeptrisValue: ST_ANY records (#238) */
 
 #include "dom/dom.h"
 #include "memory/allocator.h"
@@ -27,7 +28,9 @@ typedef struct {
     const yep_dom* dom;
     int oom;
     int overflow;
-    int type_mismatch; /* node index */
+    int type_mismatch;  /* node index */
+    uint32_t* seen_map; /* per-node: the mapping instance that last
+                         * emitted — YEP_SF_FIRST_WINS skips a repeat */
 } yep_schema_ctx;
 
 static int col_put(yep_schema_ctx* c, uint32_t node, const void* rec, size_t size) {
@@ -84,6 +87,56 @@ static int emit_scalar(yep_schema_ctx* c, uint32_t node, uint32_t at) {
     case YEP_ST_NULL:
         col_put(c, node, &(uint8_t){0}, 0);
         return 1;
+    case YEP_ST_ANY: {
+        /* the resolver's verdict, verbatim: a YeptrisValue record
+         * (#238's headroom) — kind/tag_id from the node, the span
+         * borrowed, and the numeric payload converted when the
+         * verdict says so (the values-drain's conversion, DOM-side) */
+        YeptrisValue r = {0, 0, 0, 0, 0, 0, 0};
+        r.tag_id = n->tag_id;
+        r.off = (uint32_t)((const char*)v.p - c->dom->input_base);
+        r.len = v.len;
+        switch (n->tag_id) {
+        case YEPTRIS_TAG_NULL:
+            r.kind = YEP_V_NULL;
+            break;
+        case YEPTRIS_TAG_BOOL: {
+            r.kind = YEP_V_BOOL;
+            r.b = (uint8_t)(v.len > 0 && (v.p[0] == 't' || v.p[0] == 'T' || v.p[0] == 'y' ||
+                                          v.p[0] == 'Y' || v.p[0] == 'o' || v.p[0] == '1'));
+            break;
+        }
+        case YEPTRIS_TAG_INT:
+        case YEPTRIS_TAG_FLOAT: {
+            int64_t iv = 0;
+            double dv = 0;
+            int shape = 0;
+            size_t end = 0;
+            if (v.len != 0 && v.p != NULL &&
+                yep_json_number_scan(v.p, v.len, &end, &shape, &iv, &dv) != 0 && end == v.len) {
+                if (n->tag_id == YEPTRIS_TAG_INT) {
+                    r.kind = YEP_V_INT;
+                    r.p = (uint64_t)iv;
+                } else {
+                    r.kind = YEP_V_FLOAT;
+                    double d = shape == 0 ? (double)iv : dv;
+                    memcpy(&r.p, &d, sizeof(d));
+                }
+            } else {
+                r.kind = YEP_V_STR; /* the resolver said number, the
+                                      bytes disagree: keep the span */
+            }
+            break;
+        }
+        case YEPTRIS_TAG_TIMESTAMP:
+            r.kind = YEP_V_TIMESTAMP;
+            break;
+        default:
+            r.kind = YEP_V_STR;
+            break;
+        }
+        return col_put(c, node, &r, sizeof(r));
+    }
     default:
         return -1;
     }
@@ -140,9 +193,16 @@ static int emit(yep_schema_ctx* c, uint32_t node, uint32_t at) {
                 size_t wl = strlen(cd->wire_name ? cd->wire_name : "");
                 if (cd->wire_name != NULL && key.len == wl &&
                     memcmp(key.p, cd->wire_name, wl) == 0) {
+                    if ((cd->flags & YEP_SF_FIRST_WINS) && c->seen_map != NULL &&
+                        c->seen_map[ci] == at + 1) {
+                        break; /* a repeat within THIS mapping: first wins */
+                    }
                     int rc = emit(c, ci, val);
                     if (rc != 1) {
                         return rc;
+                    }
+                    if ((cd->flags & YEP_SF_FIRST_WINS) && c->seen_map != NULL) {
+                        c->seen_map[ci] = at + 1;
                     }
                     break;
                 }
@@ -178,6 +238,7 @@ YEPTRIS_API YeptrisStatus yeptris_schema_load(const char* source, size_t len, Ye
     const yep_allocator* sys = yep_system_allocator();
     yep_engine* eng = yep_engine_create(sys);
     yep_dom* dom = yep_dom_create(sys);
+    uint32_t* seen_map_ptr = NULL;
     YeptrisStatus st = YEPTRIS_OK;
     yep_sink sink = {.on_event = yep_dom_on_event,
                      .ctx = dom,
@@ -194,6 +255,9 @@ YEPTRIS_API YeptrisStatus yeptris_schema_load(const char* source, size_t len, Ye
     }
     if (schema == YEPTRIS_SCHEMA_11_COMPAT) {
         yep_engine_set_resolver(eng, yep_resolver_compat11());
+        dom->resolver = yep_resolver_compat11(); /* the DOM's direct
+                                  builders resolve their own tag_ids —
+                                  ST_ANY reads the NODE's verdict */
     }
     dom->input_base = source;
     dom->input_len = len;
@@ -204,7 +268,12 @@ YEPTRIS_API YeptrisStatus yeptris_schema_load(const char* source, size_t len, Ye
     }
 
     {
-        yep_schema_ctx c = {desc, desc_len, cols, dom, 0, 0, -1};
+        uint32_t* seen = seen_map_ptr = calloc(desc_len, sizeof(uint32_t));
+        if (seen == NULL) {
+            st = YEPTRIS_ERROR_MEMORY;
+            goto out;
+        }
+        yep_schema_ctx c = {desc, desc_len, cols, dom, 0, 0, -1, seen};
         int rc = emit(&c, 0, dom->docs[0]);
         if (rc < 0 && c.type_mismatch >= 0) {
             yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, (uint32_t)c.type_mismatch,
@@ -232,6 +301,7 @@ YEPTRIS_API YeptrisStatus yeptris_schema_load(const char* source, size_t len, Ye
     }
 
 out:
+    free(seen_map_ptr);
     yep_dom_destroy(dom);
     yep_engine_destroy(eng);
     return st;
