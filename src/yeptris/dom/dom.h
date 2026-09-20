@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 #include <yeptris/api.h> /* YEPTRIS_CT_ASSERT (the layout gates) */
+#include <yeptris/tape.h> /* yeptris_json_tape (dom_from_tape) */ /* YEPTRIS_CT_ASSERT (the layout gates) */
 
 #include "../common/simd_text.h"
 
@@ -246,6 +247,15 @@ void yep_mut_set_depths(yep_dom* d, uint32_t id, uint16_t depth);
  * strictly-validated span [open, close] directly through the DOM's own
  * placement/link/anchor laws — node-for-node identical to the event
  * path (the flow-direct-diff ctest pins it). 1 = built, <0 = abort. */
+/* dom_from_tape — the lazy-DOM seam (#342 slice 1): builds the node
+ * tree from the tape's records, mirroring dom_on_flow_build's arms
+ * (borrowed spans for clean strings, an arena unescape for escaped
+ * ones, typed literals by kind). The records are pre-validated, so
+ * the walk is placement only. Returns 0, or -1 (allocation/depth/an
+ * unexpected record). STRICT tapes only — YEP_T_NUM (the lenient
+ * route's deferred numbers) is rejected. */
+int dom_from_tape(yep_dom* d, const yeptris_json_tape* t);
+
 int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_t line,
                       size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id,
                       int max_depth, size_t* close);

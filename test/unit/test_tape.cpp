@@ -414,3 +414,125 @@ TEST(JsonTapeLenient, NonAsciiFallsBackToTheStrictRoute) {
     yeptris_tape_columns(&t);
     yeptris_tape_free(&t);
 }
+
+/* #342 slice 1: the tape→DOM materializer — the built tree must be
+ * structurally identical to the direct fused parse (kinds, styles,
+ * tag ids, and VALUE BYTES, both borrowed and unescaped). */
+#include "doc.h"
+#include "dom/dom.h"
+
+namespace {
+
+const char* sv_bytes(const yep_dom* d, yep_sview sv, uint32_t* len) {
+    *len = sv.len;
+    if (sv.len == 0) {
+        return "";
+    }
+    return (sv.off & YEP_SV_INPUT ? d->str : d->input_base) + (sv.off & YEP_SV_OFF);
+}
+
+::testing::AssertionResult doms_equal(const yep_dom* a, const yep_dom* b) {
+    if (a->ncount != b->ncount) {
+        return ::testing::AssertionFailure() << "ncount " << a->ncount << " vs " << b->ncount;
+    }
+    if (a->dcount != b->dcount) {
+        return ::testing::AssertionFailure() << "dcount " << a->dcount << " vs " << b->dcount;
+    }
+    for (uint32_t i = 0; i < a->dcount; i++) {
+        if (a->docs[i] != b->docs[i]) {
+            return ::testing::AssertionFailure() << "doc[" << i << "]";
+        }
+    }
+    for (uint32_t i = 0; i < a->ncount; i++) {
+        const yep_dnode* x = &a->nodes[i];
+        const yep_dnode* y = &b->nodes[i];
+        if (x->kind != y->kind || x->style != y->style || x->tag_id != y->tag_id ||
+            x->first_child != y->first_child || x->next_sibling != y->next_sibling ||
+            x->count != y->count) {
+            return ::testing::AssertionFailure() << "node[" << i << "] shape";
+        }
+        uint32_t la = 0, lb = 0;
+        const char* pa = sv_bytes(a, x->value, &la);
+        const char* pb = sv_bytes(b, y->value, &lb);
+        if (la != lb || memcmp(pa, pb, la) != 0) {
+            return ::testing::AssertionFailure()
+                   << "node[" << i << "] value '" << std::string(pa, la).substr(0, 40) << "' vs '"
+                   << std::string(pb, lb).substr(0, 40) << "'";
+        }
+    }
+    return ::testing::AssertionSuccess();
+}
+
+} // namespace
+
+TEST(TapeDom, MaterializedTreeMatchesDirectParse) {
+    const char* docs[] = {
+        "{\"users\":[{\"id\":1,\"name\":\"user 1\",\"active\":true,\"score\":1.5,"
+        "\"tags\":[\"a\",\"b\"],\"profile\":{\"age\":21,\"theme\":\"dark\"}},"
+        "{\"id\":2,\"name\":null,\"esc\":\"a\\\"q\\\\b\\ne\",\"n\":-0.25}]}",
+        "[1, 2.5, -3, true, false, null, \"plain\", \"esc \\u00e9\\n x\"]",
+        "42",
+        "\"just a string\"",
+        "null",
+        "{}",
+        "[]",
+        "{\"k\":\"\\\"\\\\\\\\\\u00e9\\n\"}",
+    };
+    for (const char* doc : docs) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument direct = yeptris_parse_json(doc, strlen(doc), &st);
+        ASSERT_NE(direct, nullptr) << doc;
+        yeptris_json_tape t;
+        ASSERT_EQ(yeptris_parse_json_tape(doc, strlen(doc), &t), YEPTRIS_OK) << doc;
+        yeptris_tape_columns(&t);
+
+        yep_dom* built = yep_dom_create(yep_system_allocator());
+        ASSERT_NE(built, nullptr);
+        ASSERT_EQ(dom_from_tape(built, &t), 0) << doc;
+
+        const yep_dom* ref = ((const yeptris_document*)direct)->dom;
+        EXPECT_TRUE(doms_equal(ref, built)) << doc;
+
+        yep_dom_destroy(built);
+        yeptris_tape_free(&t);
+        yeptris_document_free(direct);
+    }
+}
+
+TEST(TapeDom, LenientTapesOfStrictLegalDocsMatchDirect) {
+    /* the lenient route records numbers as UNVALIDATED spans
+     * (YEP_T_NUM) — materialization is the classification authority
+     * (the deferred contract); for strict-legal docs the built tree
+     * still matches the direct parse exactly */
+    const char* docs[] = {
+        "[1, 2.5, -3, 0.25]",
+        "{\"n\": 42, \"f\": -0.5, \"s\": \"x\", \"ok\": true}",
+        "1e3",
+    };
+    for (const char* doc : docs) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument direct = yeptris_parse_json(doc, strlen(doc), &st);
+        ASSERT_NE(direct, nullptr) << doc;
+        yeptris_json_tape t;
+        ASSERT_EQ(yeptris_parse_json_tape_lenient(doc, strlen(doc), &t), YEPTRIS_OK) << doc;
+
+        yep_dom* built = yep_dom_create(yep_system_allocator());
+        ASSERT_NE(built, nullptr);
+        ASSERT_EQ(dom_from_tape(built, &t), 0) << doc;
+        EXPECT_TRUE(doms_equal(((const yeptris_document*)direct)->dom, built)) << doc;
+
+        yep_dom_destroy(built);
+        yeptris_tape_free(&t);
+        yeptris_document_free(direct);
+    }
+}
+
+TEST(TapeDom, RejectsLenientTapes) {
+    const char* doc = "[1.2.3]"; /* lenient-legal, strict-illegal */
+    yeptris_json_tape lt;
+    ASSERT_EQ(yeptris_parse_json_tape_lenient(doc, strlen(doc), &lt), YEPTRIS_OK);
+    yep_dom* d = yep_dom_create(yep_system_allocator());
+    ASSERT_EQ(dom_from_tape(d, &lt), -1); /* YEP_T_NUM: strict only */
+    yep_dom_destroy(d);
+    yeptris_tape_free(&lt);
+}
