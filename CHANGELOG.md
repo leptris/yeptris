@@ -6,6 +6,22 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- `yeptris_serialize` / `yeptris_serialize_ex` emit in ONE wet pass
+  into a growable buffer (estimate: input size + 64, doubling on
+  demand, shrink-to-fit at the end) — the exact-sizing dry pass
+  measured 0.54-0.73x of the one-pass route on CI-fresh runners and
+  is now exclusive to `yeptris_serialize_into` (whose contract needs
+  the byte count before writing). serialize gained ~1.8x, judged by
+  the emit-split table's within-run 2p/1p arm (#352).
+- The dry pass records per-scalar emission routes (long scalars only,
+  32B threshold) that the wet pass consumes — `serialize_into`'s
+  remaining two-pass route halves its derive work.
+- The benchmark artifact's emit table carries a third interleaved
+  arm: the streaming route (one derive-while-writing pass) — the
+  within-run referee for pass-count questions.
+
 ## [0.6.10] - 2026-09-19
 ### Changed
 - The strict-JSON fused DOM builder resolves literal tags by first
