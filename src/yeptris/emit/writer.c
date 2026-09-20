@@ -64,6 +64,24 @@ static void wr_col_update(yep_writer* w, const char* p, uint32_t n) {
     w->col += (int)n;
 }
 
+static void wr_grow(yep_writer* w, size_t need) {
+    if (w->oom || w->p == NULL) {
+        w->oom = w->p == NULL;
+        return;
+    }
+    size_t want = w->len + need + 1;
+    if (want < w->cap * 2) {
+        want = w->cap * 2;
+    }
+    char* np = (char*)realloc(w->p, want);
+    if (np == NULL) {
+        w->oom = 1;
+        return;
+    }
+    w->p = np;
+    w->cap = want;
+}
+
 static void wr_put(yep_writer* w, const char* p, uint32_t n) {
     if (n > 0) {
         w->last = p[n - 1];
@@ -71,6 +89,13 @@ static void wr_put(yep_writer* w, const char* p, uint32_t n) {
     wr_col_update(w, p, n);
     if (w->dry) {
         w->len += n;
+        return;
+    }
+    if (w->grow && w->len + n > w->cap) {
+        wr_grow(w, n);
+    }
+    if (w->oom) {
+        w->len += n; /* keep counting: the caller fails on oom */
         return;
     }
     memcpy(w->p + w->len, p, n);
@@ -86,6 +111,13 @@ static void wr_byte(yep_writer* w, char c) {
         w->col++;
     }
     if (w->dry) {
+        w->len++;
+        return;
+    }
+    if (w->grow && w->len + 1 > w->cap) {
+        wr_grow(w, 1);
+    }
+    if (w->oom) {
         w->len++;
         return;
     }
