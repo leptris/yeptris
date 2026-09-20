@@ -493,11 +493,23 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
     return d;
 }
 
+/* Lazy handle pool, mirroring the map-index's discipline (mapindex.c):
+ * EVERY access rides the dom's lazy-init mutex — read-only sharing
+ * means multiple threads may race the FIRST handle creation on a
+ * shared document (Threads.ReadOnlySharing; the TSAN catch on the
+ * first cut). The uncontended lock costs less than the hpool's own
+ * per-allocation lock that follows. */
 struct yep_hpool* yep_dom_handles(yep_dom* d) {
-    if (d != NULL && d->handles == NULL) {
+    if (d == NULL || !d->midx.mu_ready) {
+        return NULL;
+    }
+    yep_mutex_lock(&d->midx.mu);
+    if (d->handles == NULL) {
         d->handles = yep_hpool_create(d->sys);
     }
-    return d != NULL ? d->handles : NULL;
+    struct yep_hpool* h = d->handles;
+    yep_mutex_unlock(&d->midx.mu);
+    return h;
 }
 
 void yep_dom_destroy(yep_dom* d) {
