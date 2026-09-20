@@ -505,16 +505,20 @@ Result bench_recorder(const Corpus& c, int iters) {
 struct EmitSplit {
     double alloc_mb;
     double into_mb;
+    double stream_mb;
 };
+static int emit_noop_sink(void*, const char*, size_t) {
+    return 0;
+}
 EmitSplit emit_split(const Corpus& c, int rounds) {
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(c.data.data(), c.data.size(), &st);
     if (doc == NULL) {
-        return {0, 0};
+        return {0, 0, 0};
     }
     size_t need = yeptris_serialize_into(doc, NULL, 0);
     std::vector<char> buf(need + 1);
-    std::vector<double> a_ms, i_ms;
+    std::vector<double> a_ms, i_ms, s_ms;
     double mb = (double)need / (1024.0 * 1024.0);
     for (int r = 0; r < rounds; r++) {
         size_t len = 0;
@@ -527,13 +531,20 @@ EmitSplit emit_split(const Corpus& c, int rounds) {
         yeptris_serialize_into(doc, buf.data(), buf.size());
         t1 = clk::now();
         i_ms.push_back(ms_of(t0, t1));
+        t0 = clk::now();
+        yeptris_serialize_stream(doc, NULL, emit_noop_sink, NULL);
+        t1 = clk::now();
+        s_ms.push_back(ms_of(t0, t1));
     }
     yeptris_document_free(doc);
     std::sort(a_ms.begin(), a_ms.end());
     std::sort(i_ms.begin(), i_ms.end());
+    std::sort(s_ms.begin(), s_ms.end());
     double am = a_ms[a_ms.size() / 2];
     double im = i_ms[i_ms.size() / 2];
-    return {am > 0 ? mb * 1000.0 / am : 0, im > 0 ? mb * 1000.0 / im : 0};
+    double sm = s_ms[s_ms.size() / 2];
+    return {am > 0 ? mb * 1000.0 / am : 0, im > 0 ? mb * 1000.0 / im : 0,
+            sm > 0 ? mb * 1000.0 / sm : 0};
 }
 
 Result bench_emit(const Corpus& c, int iters) {
@@ -1152,10 +1163,13 @@ int main(int argc, char** argv) {
 #endif
 
     /* #352's referee table: the emit kernel split. */
-    printf("\n# emit kernel split: serialize vs serialize_into (#352, median of rounds)\n\n"
-           "| shape | serialize MB/s | into-buffer MB/s | alloc share |\n|---|---|---|---|\n");
-    md_h2h += "\n# emit kernel split: serialize vs serialize_into (#352, median of rounds)\n\n"
-              "| shape | serialize MB/s | into-buffer MB/s | alloc share |\n|---|---|---|---|\n";
+    printf("\n# emit kernel split: 2-pass vs 1-pass (#352, median of rounds)\n\n"
+           "| shape | serialize MB/s | into-buffer MB/s | alloc share | stream 1-pass | 2p/1p |\n"
+           "|---|---|---|---|---|---|\n");
+    md_h2h +=
+        "\n# emit kernel split: 2-pass vs 1-pass (#352, median of rounds)\n\n"
+        "| shape | serialize MB/s | into-buffer MB/s | alloc share | stream 1-pass | 2p/1p |\n"
+        "|---|---|---|---|---|---|\n";
     for (const Corpus& c : corpora) {
         if (c.name != "block-heavy" && c.name != "flow-json" && c.name != "scalar-heavy" &&
             c.name != "json-users") {
@@ -1163,9 +1177,13 @@ int main(int argc, char** argv) {
         }
         EmitSplit e = emit_split(c, full ? 9 : 5);
         double share = (e.into_mb > 0) ? 1.0 - e.alloc_mb / e.into_mb : 0;
-        char row[96];
-        snprintf(row, sizeof(row), "| %s | %.2f | %.2f | %.0f%% |\n", c.name.c_str(), e.alloc_mb,
-                 e.into_mb, share * 100.0);
+        /* 2p/1p: serialize (dry+memo then wet) over stream (the same
+         * writer, one derive-while-writing pass) — the within-run
+         * referee for the pass-count question */
+        double two_over_one = (e.stream_mb > 0) ? e.into_mb / e.stream_mb : 0;
+        char row[128];
+        snprintf(row, sizeof(row), "| %s | %.2f | %.2f | %.0f%% | %.2f | %.2fx |\n", c.name.c_str(),
+                 e.alloc_mb, e.into_mb, share * 100.0, e.stream_mb, two_over_one);
         printf("%s", row);
         md_h2h += row;
     }
