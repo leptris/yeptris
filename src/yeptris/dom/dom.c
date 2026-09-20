@@ -941,8 +941,11 @@ int dom_from_tape(yep_dom* d, const yeptris_json_tape* t) {
                 style = YEP_STYLE_DOUBLE_QUOTED;
                 break;
             }
-            uint32_t id = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, style, implicit, 0);
-            if (id == UINT32_MAX) {}
+            uint32_t id =
+                dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, style, (uint8_t)implicit, 0);
+            if (id == UINT32_MAX) {
+                return -1;
+            }
             if (kind == YEP_T_STR) {
                 /* the record's span is the INNER bytes (quotes off) */
                 if (memchr(src + off, '\\', len) != NULL) {
