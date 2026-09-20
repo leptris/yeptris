@@ -279,6 +279,7 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
  * pass derives it exactly once; the wet pass consumes the recorded
  * byte and skips the multiline/blockable/safety analysis entirely. */
 enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL };
+#define YEP_SC_MEMO_MIN 32u /* bytes; derive-below, memoize-above */
 
 static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in) {
     int multiline = (len > 0 && memchr(p, '\n', len) != NULL);
@@ -346,7 +347,14 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
     }
     (void)0;
     uint8_t route;
-    if (w->sc_dec != NULL) {
+    /* The memo pays only for LONG scalars: the derive cost scales with
+     * len (safety walk, quote scans) while the memo is a fixed store +
+     * cold load — on the short scalars of table-shaped documents the
+     * memo measured SLOWER than re-deriving (the #357 first artifact:
+     * json-users -36%, scalar-heavy +24%). Below the threshold both
+     * passes derive; the consumption-order index covers only the
+     * memoized long scalars, in visit order either way. */
+    if (w->sc_dec != NULL && len >= YEP_SC_MEMO_MIN) {
         if (w->dry) {
             route = sc_route(w, p, len, as_key, n->style);
             w->sc_dec[w->sc_i] = route;
