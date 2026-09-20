@@ -119,8 +119,8 @@ static int emit_scalar(yep_schema_ctx* c, uint32_t node, uint32_t at) {
                     r.p = (uint64_t)iv;
                 } else {
                     r.kind = YEP_V_FLOAT;
-                    double d = shape == 0 ? (double)iv : dv;
-                    memcpy(&r.p, &d, sizeof(d));
+                    double fd = shape == 0 ? (double)iv : dv;
+                    memcpy(&r.p, &fd, sizeof(fd));
                 }
             } else {
                 r.kind = YEP_V_STR; /* the resolver said number, the
