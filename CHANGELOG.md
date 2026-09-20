@@ -6,6 +6,23 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- The schema-descriptor API's declared headroom, executed (#238):
+  `YEP_ST_ANY` materializes the resolver's verdict as one
+  YeptrisValue record per value (kind/tag from the node, the
+  borrowed span, converted numeric payloads; under compat the DOM's
+  own resolver carries the schema — it types the nodes the verdict
+  reads), and `YEP_SF_FIRST_WINS` bounds a duplicate key's column
+  to its first match within one mapping instance (sequence
+  elements still accumulate across theirs).
+- `dom_from_tape` (#342 slice 1): builds the node tree from a
+  parsed tape's records — the lazy-DOM seam. Reads the columns
+  (the one representation valid on every route), classifies the
+  lenient route's deferred number spans at materialization, and is
+  differential-tested structurally identical to the direct fused
+  parse.
+
 ## [0.6.12] - 2026-09-20
 ### Added
 - The `!binary` contract (yeptris-ruby#168): the compat schema
