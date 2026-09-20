@@ -2119,3 +2119,29 @@ dispatch overhead on macos, container preallocation). Corollary
 lesson beside (ii)'s: the referee must BUILD what it judges — an
 "engine:" line that reads FFI ladder on every run means the
 measurement target never loaded.
+
+## 2026-09-20 (v) — the one-pass emit route: ~1.8x serialize (WIN, ships 0.6.11)
+
+The instrument first: the emit-split table gained an interleaved
+third arm — the streaming route (one derive-while-writing pass) —
+making pass-count questions answerable WITHIN one run. First read
+(run 35477609913, both legs): serialize (dry exact-sizing + wet)
+ran 0.54-0.73x of the one-pass stream route on every shape. The
+memoization attempt alone ((iv) follow-up) had been unmeasurable —
+cross-runner spread hit ±30% between legs of the same run; the A/B
+arm was the missing referee.
+
+The cut: serialize_ex writes ONE wet pass into a growable buffer
+(estimate input_len+64, doubling on demand, shrink-to-fit at the
+end). Verdict (run 35482173185, within-run, both legs): serialize/
+stream flipped 0.54-0.58x -> ~1.0x (1.02-1.03x ubuntu; 0.93-1.10x
+macos) — ~1.8x serialize, closing most of serialbench's 1.4-1.7x
+emit deficit to ryml (#352). serialize_into keeps the dry pass
+(its contract needs the byte count first) and rides the
+long-scalar decision memoization (32B threshold; memo-all measured
+SLOWER on short table scalars — derive scales with length, the
+memo is a fixed cold store+load).
+
+Traps: wr_grow reallocs through w->p — any caller-held buffer
+pointer is stale after growth (the first round's heap abort);
+always read em->w.p after the run.
