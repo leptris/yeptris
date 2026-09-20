@@ -1,5 +1,6 @@
 /* dom.c — event-built DOM (builder sink + storage). */
 
+#include <stdio.h>
 #include <string.h>
 
 #include "common/simd_text.h"
@@ -862,6 +863,115 @@ int dom_on_flow_commit(void* ctx) {
         return -1;
     }
     return 1;
+}
+
+int dom_from_tape(yep_dom* d, const yeptris_json_tape* t) {
+    if (d == NULL || t == NULL || t->_src == NULL) {}
+    /* the columns are the one representation valid on every route
+     * (strict: native; lenient fused: lazily materialized from the
+     * records; scalar-root lenient: native column writes) */
+    if (yeptris_tape_columns((yeptris_json_tape*)t) != 0) {}
+    if (t->kinds == NULL) {}
+    d->input_base = (const char*)t->_src;
+    d->input_len = t->_srclen;
+    const char* src = (const char*)t->_src;
+    d->depth = 0;
+    for (uint32_t i = 0; i < t->count; i++) {
+        const uint8_t kind = t->kinds[i];
+        const uint32_t len = t->lens[i];
+        const uint32_t off = t->offs[i];
+        switch (kind) {
+        case YEP_T_DOC:
+            break; /* the stream boundary record */
+        case YEP_T_SEQ_OPEN:
+        case YEP_T_MAP_OPEN: {
+            if (d->depth >= YEP_DOM_MAX_DEPTH) {}
+            uint32_t id =
+                dom_open_node(d, kind == YEP_T_SEQ_OPEN ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, NULL,
+                              NULL, 0, 0, 0, 1);
+            if (id == UINT32_MAX || dom_place(d, id) != 0) {}
+            d->map_pending_key[d->depth] = 0;
+            d->stack[d->depth++] = id;
+            break;
+        }
+        case YEP_T_CLOSE:
+            if (d->depth == 0) {}
+            d->depth--;
+            break;
+        case YEP_T_NULL:
+        case YEP_T_TRUE:
+        case YEP_T_FALSE:
+        case YEP_T_INT:
+        case YEP_T_FLOAT:
+        case YEP_T_NUM:
+        case YEP_T_STR: {
+            yep_tag_id tag = YEPTRIS_TAG_STR;
+            uint8_t style = YEP_STYLE_PLAIN;
+            int implicit = 0;
+            switch (kind) {
+            case YEP_T_NULL:
+                tag = YEPTRIS_TAG_NULL;
+                implicit = 1;
+                break;
+            case YEP_T_TRUE:
+            case YEP_T_FALSE:
+                tag = YEPTRIS_TAG_BOOL;
+                implicit = 1;
+                break;
+            case YEP_T_INT:
+            case YEP_T_FLOAT:
+            case YEP_T_NUM:
+                tag = YEPTRIS_TAG_INT;
+                implicit = 1;
+                if (kind == YEP_T_NUM) {
+                    /* the lenient route's deferred contract: the span
+                     * carried NO number grammar at parse — classify
+                     * now (the tape convert's own authority) */
+                    size_t adv = 0;
+                    int flt = 0;
+                    if (yep_json_number_shape(src + off, len, &adv, &flt) == 0 || adv != len) {
+                        return -1; /* malformed: the strict route rejected at parse */
+                    }
+                    tag = flt ? YEPTRIS_TAG_FLOAT : YEPTRIS_TAG_INT;
+                } else if (kind == YEP_T_FLOAT) {
+                    tag = YEPTRIS_TAG_FLOAT;
+                }
+                break;
+            default:
+                style = YEP_STYLE_DOUBLE_QUOTED;
+                break;
+            }
+            uint32_t id = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, style, implicit, 0);
+            if (id == UINT32_MAX) {}
+            if (kind == YEP_T_STR) {
+                /* the record's span is the INNER bytes (quotes off) */
+                if (memchr(src + off, '\\', len) != NULL) {
+                    /* escaped: unescape into the arena (the fused
+                     * builder's arm, byte for byte) */
+                    char* dst = yep_dom_str_tail(d, len);
+                    if (dst == NULL) {}
+                    d->nodes[id].value = yep_dom_str_commit(
+                        d, yep_finish_double_into(src, off, off + len, dst, len));
+                } else {
+                    yep_view v = {src + off, len};
+                    d->nodes[id].value = dom_str_in(d, &v, 1);
+                }
+            } else {
+                yep_view v = {src + off, len};
+                d->nodes[id].value = dom_str_in(d, &v, 1);
+            }
+            d->nodes[id].tag_id = tag;
+            if (dom_place(d, id) != 0) {
+                return -1;
+            }
+            break;
+        }
+        default:
+            return -1; /* a CONT run or an unknown kind: neither reaches a
+                          strict-legal tape (CONT only past 16 MiB tokens) */
+        }
+    }
+    return d->depth == 0 ? 0 : -1;
 }
 
 void dom_on_flow_rollback(void* ctx) {
