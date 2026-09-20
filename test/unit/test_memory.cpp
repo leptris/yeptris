@@ -83,11 +83,11 @@ TEST(Pool, OversizeGetsItsOwnBlock) {
     CountingAlloc ca;
     yep_pool* pool = yep_pool_create(&ca.base, 256);
     ASSERT_NE(pool, nullptr);
-    ASSERT_EQ(yep_pool_block_count(pool), 1u);
+    ASSERT_EQ(yep_pool_block_count(pool), 0u); /* #157: lazy first block */
 
     void* big = yep_pool_alloc(pool, 64 * 1024, 16);
     ASSERT_NE(big, nullptr);
-    EXPECT_EQ(yep_pool_block_count(pool), 2u);
+    EXPECT_EQ(yep_pool_block_count(pool), 2u); /* lazy 256B + the dedicated */
 
     void* small = yep_pool_alloc(pool, 16, 16); /* back in the dedicated block */
     ASSERT_NE(small, nullptr);

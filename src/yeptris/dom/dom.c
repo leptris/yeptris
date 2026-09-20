@@ -480,23 +480,24 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
     memset(d, 0, sizeof(*d));
     d->sys = sys;
     d->pool = pool;
-    d->handles = yep_hpool_create(sys);
-    if (d->handles == NULL) {
-        yep_pool_destroy(pool);
-        yep_free(sys, d);
-        return NULL;
-    }
+    /* #157: the handle pool is lazy — two allocations and a mutex per
+     * document that decode-only consumers (CBOR load, serialize, free)
+     * never touch; yep_dom_handles() materializes it on first use */
+    d->handles = NULL;
     if (yep_mutex_init(&d->midx.mu) != 0) {
-        yep_free(d->sys, d->anchor_nodes);
-        yep_free(d->sys, d->mut_att);
-        yep_free(d->sys, d->mut_depth);
-        yep_hpool_destroy(d->handles);
         yep_pool_destroy(pool);
         yep_free(sys, d);
         return NULL;
     }
     d->midx.mu_ready = 1;
     return d;
+}
+
+struct yep_hpool* yep_dom_handles(yep_dom* d) {
+    if (d != NULL && d->handles == NULL) {
+        d->handles = yep_hpool_create(d->sys);
+    }
+    return d != NULL ? d->handles : NULL;
 }
 
 void yep_dom_destroy(yep_dom* d) {
