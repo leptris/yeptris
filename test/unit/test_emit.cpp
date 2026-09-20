@@ -420,6 +420,22 @@ TEST(EmitFold, DefaultUnfoldsSmall) {
     yeptris_document_free(doc);
 }
 
+/* #168: a TAGGED literal-styled scalar keeps the block form even
+ * single-line (psych's !binary base64 body); an untagged single-line
+ * literal re-emits plain (libyaml parity, pinned above). */
+TEST(Emit, TaggedLiteralKeepsBlockForm) {
+    YeptrisStatus st = YEPTRIS_OK;
+    const char* y = "--- !binary |-\n  YbBimGM=\n";
+    YeptrisDocument d = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(d, nullptr);
+    size_t len = 0;
+    char* out = yeptris_serialize(d, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_STREQ(out, "!binary |-\n  YbBimGM=\n");
+    yeptris_free(out);
+    yeptris_document_free(d);
+}
+
 TEST(Emit, PlainNegativeNumbers) {
     /* '-' only indicates before a blank: -5 and -.inf are plain
      * (libyaml parity; the old table quoted every '-'-leading text) */

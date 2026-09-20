@@ -221,12 +221,16 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
     int depth = 0;
     uint32_t root = UINT32_MAX;
     uint32_t root_closed = 0;
+    uint32_t root_tagged = 0;          /* one trailing TAG on the closed root (#168) */
     uint32_t pending_key = UINT32_MAX; /* map frame's buffered key */
     uint32_t last_id = UINT32_MAX;     /* TAG applies here (#300) */
     YeptrisStatus rc = YEPTRIS_OK;
     for (size_t i = 0; i < count && rc == YEPTRIS_OK; i++) {
         const YeptrisBuildEntry* e = &entries[i];
-        if (root_closed) {
+        /* A closed SCALAR root admits exactly one trailing TAG —
+         * psych's binary root is `--- !binary |-` (#168); everything
+         * after (more ops, a second tag) still rejects */
+        if (root_closed && !(e->op == YEPTRIS_BUILD_TAG && !root_tagged && last_id == root)) {
             rc = YEPTRIS_ERROR_PARSE; /* the document ended; more entries */
             break;
         }
@@ -283,6 +287,7 @@ YEPTRIS_API YeptrisStatus yeptris_document_build(YeptrisDocument handle,
                 rc = YEPTRIS_ERROR_MEMORY;
                 break;
             }
+            root_tagged = root_closed;
             continue;
         default:
             rc = YEPTRIS_ERROR_PARSE; /* unknown op */
