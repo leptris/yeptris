@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.11] - 2026-09-20
 ### Changed
 - `yeptris_serialize` / `yeptris_serialize_ex` emit in ONE wet pass
   into a growable buffer (estimate: input size + 64, doubling on
