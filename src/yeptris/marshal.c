@@ -40,6 +40,7 @@
 
 #include <yeptris/error.h>
 #include <yeptris/marshal.h>
+#include <yeptris/resolve.h> /* YEPTRIS_TAG_BINARY (#168) */
 
 typedef struct {
     const char* name; /* into the value arena */
@@ -487,6 +488,9 @@ static int pre_scan(const yep_value_ctx* c, uint64_t** counts_out, size_t* nopen
         case YEP_V_TIMESTAMP:
             return -2;
         case YEP_V_STR:
+            if (vals[i].tag_id == YEPTRIS_TAG_BINARY) {
+                return -2; /* !binary: the walk base64-decodes (#168) */
+            }
             if (vals[i].is_key == 1 && vals[i].len == 2 && c->arena[vals[i].off] == '<' &&
                 c->arena[vals[i].off + 1] == '<') {
                 return -2; /* merge key: the walk resolves these */

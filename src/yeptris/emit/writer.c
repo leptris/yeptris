@@ -313,7 +313,8 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
 enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL };
 #define YEP_SC_MEMO_MIN 32u /* bytes; derive-below, memoize-above */
 
-static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in) {
+static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in,
+                        int has_tag) {
     int multiline = (len > 0 && memchr(p, '\n', len) != NULL);
     int blockable = 0;
     if (multiline && !as_key) {
@@ -342,6 +343,13 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
         }
         if (len == 0) {
             return YEP_SC_DQ;
+        }
+        /* A TAGGED block scalar keeps the block form even single-line
+         * (psych's !binary emits `!binary |-` + one base64 line; an
+         * untagged single-line literal re-emits plain — libyaml parity,
+         * the #290 family) */
+        if (has_tag) {
+            return YEP_SC_LITERAL;
         }
         sty = 1;
     }
@@ -388,14 +396,14 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
      * memoized long scalars, in visit order either way. */
     if (w->sc_dec != NULL && len >= YEP_SC_MEMO_MIN) {
         if (w->dry) {
-            route = sc_route(w, p, len, as_key, n->style);
+            route = sc_route(w, p, len, as_key, n->style, n->tag.len > 0);
             w->sc_dec[w->sc_i] = route;
         } else {
             route = w->sc_dec[w->sc_i];
         }
         w->sc_i++;
     } else {
-        route = sc_route(w, p, len, as_key, n->style);
+        route = sc_route(w, p, len, as_key, n->style, n->tag.len > 0);
     }
     switch (route) {
     case YEP_SC_NOTHING:

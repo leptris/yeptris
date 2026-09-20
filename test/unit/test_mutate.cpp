@@ -333,6 +333,61 @@ TEST(BulkBuild, ScalarRoot) {
     ASSERT_EQ(st, YEPTRIS_OK);
 }
 
+/* #168: a closed scalar root admits EXACTLY ONE trailing TAG —
+ * psych's binary root is `--- !binary |-` (the dump side); a second
+ * tag or any further op still rejects ("the document ended"). */
+TEST(BulkBuild, RootScalarTrailingTag) {
+    /* SCALAR(lit,"YbBimGM=") + TAG("!binary") at offset 8 */
+    std::vector<Entry> es = {{1, 4, 0, 8}, {5, 0, 8, 7}};
+    YeptrisStatus st = YEPTRIS_OK;
+    EXPECT_EQ(build_dump(es, "YbBimGM=!binary", &st), "!binary |-\n  YbBimGM=\n");
+    ASSERT_EQ(st, YEPTRIS_OK);
+}
+
+TEST(BulkBuild, RootScalarSecondTagRejected) {
+    std::vector<Entry> es = {{1, 4, 0, 8}, {5, 0, 8, 7}, {5, 0, 15, 3}};
+    YeptrisStatus st = YEPTRIS_OK;
+    build_dump(es, "YbBimGM=!binaryfoo", &st);
+    ASSERT_EQ(st, YEPTRIS_ERROR_PARSE);
+}
+
+TEST(BulkBuild, RootScalarOpAfterTagRejected) {
+    std::vector<Entry> es = {{1, 4, 0, 8}, {5, 0, 8, 7}, {1, 1, 15, 1}};
+    YeptrisStatus st = YEPTRIS_OK;
+    build_dump(es, "YbBimGM=!binaryz", &st);
+    ASSERT_EQ(st, YEPTRIS_ERROR_PARSE);
+}
+
+/* #168: the compat schema resolves psych's LOCAL !binary shorthand
+ * to the core BINARY tag id (stdlib to_ruby accepts both spellings);
+ * core12 keeps it CUSTOM (a local tag is a local tag). */
+TEST(ValueStream, BinaryShorthandCompat) {
+    const char* y = "--- !binary |-\n  YbBimGM=\n";
+    YeptrisValue* vals = NULL;
+    size_t n = 0;
+    char* arena = NULL;
+    size_t alen = 0;
+    ASSERT_EQ(yeptris_value_drain(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n, &arena, &alen),
+              YEPTRIS_OK);
+    ASSERT_GE(n, 2u);
+    EXPECT_EQ(vals[n - 1].kind, YEP_V_STR);
+    EXPECT_EQ(vals[n - 1].tag_id, 8u); /* YEPTRIS_TAG_BINARY */
+    yeptris_value_free(vals, arena);
+}
+
+TEST(ValueStream, BinaryShorthandCoreStaysCustom) {
+    const char* y = "--- !binary |-\n  YbBimGM=\n";
+    YeptrisValue* vals = NULL;
+    size_t n = 0;
+    char* arena = NULL;
+    size_t alen = 0;
+    ASSERT_EQ(yeptris_value_drain(y, strlen(y), YEPTRIS_SCHEMA_12_CORE, &vals, &n, &arena, &alen),
+              YEPTRIS_OK);
+    ASSERT_GE(n, 2u);
+    EXPECT_EQ(vals[n - 1].tag_id, 11u); /* CUSTOM: not a core-schema tag */
+    yeptris_value_free(vals, arena);
+}
+
 TEST(BulkBuild, QuotedStyle) {
     std::vector<Entry> es = {{1, 3, 0, 3}}; /* double-quoted "yes" */
     YeptrisStatus st = YEPTRIS_OK;

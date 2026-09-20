@@ -27,6 +27,7 @@
 #include "resolve/resolver.h"
 #include "scan/json.h"
 #include "scan/scan.h"
+#include <yeptris/resolve.h> /* YEPTRIS_TAG_* names (#168) */
 
 #define YEP_MAX_DEPTH 1000
 #define YEP_MAX_FOLD_LINES 8192
@@ -158,7 +159,15 @@ static int emit_now(yep_engine* e, const yep_event* ev) {
         /* Resolution happens exactly here: every scalar path flows
          * through this choke point (the resolver is the typing SSOT) */
         if (ev->tag.len > 0) {
-            ((yep_event*)ev)->tag_id = yep_tag_from_uri((const char*)ev->tag.p, ev->tag.len);
+            yep_tag_id tid = yep_tag_from_uri((const char*)ev->tag.p, ev->tag.len);
+            /* psych's own dumped form is the LOCAL !binary shorthand,
+             * and stdlib to_ruby accepts it beside the core URI (#168)
+             * — compat schemas resolve it to BINARY as well */
+            if (tid == YEPTRIS_TAG_CUSTOM && ev->tag.len == 7 &&
+                memcmp(ev->tag.p, "!binary", 7) == 0 && e->resolver == yep_resolver_compat11()) {
+                tid = YEPTRIS_TAG_BINARY;
+            }
+            ((yep_event*)ev)->tag_id = tid;
         } else if (ev->implicit && e->resolver != NULL) {
             ((yep_event*)ev)->tag_id = e->resolver->resolve(
                 e->resolver->ctx, (const char*)ev->value.p, (uint32_t)ev->value.len);
