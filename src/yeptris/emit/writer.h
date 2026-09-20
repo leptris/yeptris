@@ -45,6 +45,16 @@ typedef struct yep_writer {
      * scalar, indexed by consumption order; NULL = derive per pass) */
     uint8_t* sc_dec;
     uint32_t sc_i;
+    /* #352 slice 2: the growable single-pass route — the exact-sizing
+     * dry pass measured 0.54-0.73x of the one-pass stream route on
+     * CI-fresh runners, so serialize_ex writes wet into a buffer that
+     * doubles on demand (cap/grow), like the streaming window. The
+     * fixed-buffer routes keep grow=0 and today's trust-the-count
+     * behavior. oom marks a failed growth: writes stop touching memory
+     * but the byte count keeps running so callers can fail cleanly. */
+    size_t cap;
+    int grow;
+    int oom;
 } yep_writer;
 
 typedef struct yep_emitter {

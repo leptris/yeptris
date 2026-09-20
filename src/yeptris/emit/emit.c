@@ -41,6 +41,9 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     yep_emitter em;
     em.w.sc_dec = NULL;
     em.w.sc_i = 0;
+    em.w.cap = 0;
+    em.w.grow = 0;
+    em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;
@@ -93,6 +96,9 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     yep_emitter em;
     em.w.sc_dec = NULL;
     em.w.sc_i = 0;
+    em.w.cap = 0;
+    em.w.grow = 0;
+    em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;
@@ -114,20 +120,41 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
-    em.w.sc_dec = (uint8_t*)malloc(em.doc->dom->ncount > 0 ? em.doc->dom->ncount : 1);
-    if (em.w.sc_dec == NULL) {
+    /* #352 slice 2: ONE wet pass into a growable buffer — the dry
+     * exact-sizing pass measured 0.54-0.73x of this route on CI-fresh
+     * runners (the emit-split table's 2p/1p column). The estimate
+     * starts at the input size (+64) and doubles on demand; a final
+     * shrink-to-fit keeps the returned allocation tight. No dry pass,
+     * so no decisions table. */
+    size_t est = em.doc->dom->input_len + 64;
+    if (est < 256) {
+        est = 256;
+    }
+    char* out = (char*)malloc(est);
+    if (out == NULL) {
         yep_nametab_free(&em.canon_names);
         return NULL;
     }
-    size_t need = yep_emit_run(&em, 1);
-    char* out = malloc(need + 1);
-    if (out == NULL) {
-        free(em.w.sc_dec);
+    em.w.p = out;
+    em.w.cap = est;
+    em.w.grow = 1;
+    size_t wrote = yep_emit_run(&em, 0);
+    em.w.grow = 0;
+    /* wr_grow reallocs through w->p — the local `out` is stale after
+     * any growth; every post-run touch goes through the writer's
+     * pointer (the first round's abort was exactly this aliasing) */
+    out = em.w.p;
+    if (em.w.oom) {
+        free(out);
+        yep_nametab_free(&em.canon_names);
         return NULL;
     }
-    em.w.p = out;
-    size_t wrote = yep_emit_run(&em, 0);
-    free(em.w.sc_dec);
+    if (wrote + 1 < em.w.cap) {
+        char* tight = (char*)realloc(out, wrote + 1);
+        if (tight != NULL) {
+            out = tight;
+        }
+    }
     yep_nametab_free(&em.canon_names);
     out[wrote] = '\0';
     if (len != NULL) {
@@ -143,6 +170,9 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     yep_emitter em;
     em.w.sc_dec = NULL;
     em.w.sc_i = 0;
+    em.w.cap = 0;
+    em.w.grow = 0;
+    em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;
@@ -190,6 +220,9 @@ YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len,
     yep_emitter em;
     em.w.sc_dec = NULL;
     em.w.sc_i = 0;
+    em.w.cap = 0;
+    em.w.grow = 0;
+    em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;
@@ -234,6 +267,9 @@ char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
     yep_emitter em;
     em.w.sc_dec = NULL;
     em.w.sc_i = 0;
+    em.w.cap = 0;
+    em.w.grow = 0;
+    em.w.oom = 0;
     em.doc = doc;
     em.w.p = NULL;
     em.w.last = 0;
@@ -278,6 +314,9 @@ char* yep_serialize_json_pretty(const yeptris_document* doc, size_t* len) {
     yep_emitter em;
     em.w.sc_dec = NULL;
     em.w.sc_i = 0;
+    em.w.cap = 0;
+    em.w.grow = 0;
+    em.w.oom = 0;
     em.doc = doc;
     em.w.p = NULL;
     em.w.last = 0;
@@ -335,6 +374,9 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     yep_emitter em;
     em.w.sc_dec = NULL;
     em.w.sc_i = 0;
+    em.w.cap = 0;
+    em.w.grow = 0;
+    em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
     em.w.p = NULL;
     em.w.last = 0;
