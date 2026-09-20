@@ -375,7 +375,7 @@ YEPTRIS_API size_t yeptris_document_count(YeptrisDocument handle) {
 }
 
 yeptris_node* yep_handle_new(yeptris_document* doc, uint32_t id) {
-    yeptris_node* n = yep_hpool_alloc(doc->dom->handles, sizeof(yeptris_node), 16);
+    yeptris_node* n = yep_hpool_alloc(yep_dom_handles(doc->dom), sizeof(yeptris_node), 16);
     if (n == NULL) {
         return NULL;
     }
@@ -552,7 +552,7 @@ static YeptrisNode wrap(yeptris_node* base, uint32_t id) {
     /* Handles live in the document's thread-safe arena: one
      * document_free reclaims every handle ever handed out (zero-leak
      * contract) while read-only sharing stays safe (TODO.impl/19) */
-    yeptris_node* n = yep_hpool_alloc(base->doc->dom->handles, sizeof(yeptris_node), 16);
+    yeptris_node* n = yep_hpool_alloc(yep_dom_handles(base->doc->dom), sizeof(yeptris_node), 16);
     if (n == NULL) {
         return NULL;
     }

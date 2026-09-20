@@ -197,6 +197,8 @@ void dom_mut_set_depth(yep_dom* d, uint32_t id, uint16_t depth);
 
 /* thread-safe handle arena (see hpool.c) */
 struct yep_hpool* yep_hpool_create(const yep_allocator* sys);
+/* Lazy handle-pool acquisition (#157): NULL dom or OOM stays NULL. */
+struct yep_hpool* yep_dom_handles(yep_dom* d);
 void yep_hpool_destroy(struct yep_hpool* p);
 void* yep_hpool_alloc(struct yep_hpool* p, size_t size, size_t align);
 

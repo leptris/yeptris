@@ -45,6 +45,15 @@ void* yep_pool_alloc(yep_pool* pool, size_t size, size_t align) {
     }
 
     yep_block* b = pool->head;
+    if (b == NULL) { /* the lazy first block (#157) */
+        b = yep_block_new(pool->sys, pool->block_size);
+        if (b == NULL) {
+            return NULL;
+        }
+        b->next = NULL;
+        pool->head = b;
+        pool->blocks = 1;
+    }
     uintptr_t base = (uintptr_t)b + sizeof(yep_block);
     uintptr_t start = yep_round_up(base + b->used, align);
 
@@ -88,12 +97,10 @@ yep_pool* yep_pool_create(const yep_allocator* sys, size_t block_size) {
     }
     p->sys = sys;
     p->block_size = block_size;
-    p->head = yep_block_new(sys, block_size);
-    p->blocks = 1;
-    if (p->head == NULL) {
-        yep_free(sys, p);
-        return NULL;
-    }
+    /* #157: the first block is lazy — one fewer eager allocation per
+     * document; pool_alloc materializes it on first use */
+    p->head = NULL;
+    p->blocks = 0;
     return p;
 }
 
