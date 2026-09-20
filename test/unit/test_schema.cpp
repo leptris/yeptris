@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <yeptris/schema.h>
+#include <yeptris/values.h>
 
 namespace {
 
@@ -156,3 +157,88 @@ TEST(SchemaLoad, StrictJsonInputTakesTheSameDoor) {
 }
 
 } // namespace
+
+/* #238's declared headroom, executed: ST_ANY keeps the resolver's
+ * verdict as a YeptrisValue record; FIRST_WINS bounds a duplicate
+ * key's column to its first match within one mapping. */
+TEST(SchemaLoad, AnyTagKeepsTheResolversVerdict) {
+    Fixture f(4);
+    f.desc[0] = {NULL, YEP_SK_MAPPING, 0, 0, 1, 3, 0};
+    f.desc[1] = {"i", YEP_SK_SCALAR, YEP_ST_ANY, 0, 0, 0, 0};
+    f.desc[2] = {"s", YEP_SK_SCALAR, YEP_ST_ANY, 0, 0, 0, 0};
+    f.desc[3] = {"b", YEP_SK_SCALAR, YEP_ST_ANY, 0, 0, 0, 0};
+    f.capacity(1, 1, sizeof(YeptrisValue));
+    f.capacity(2, 1, sizeof(YeptrisValue));
+    f.capacity(3, 1, sizeof(YeptrisValue));
+
+    const char* src = "i: 42\ns: word\nb: true\n";
+    ASSERT_EQ(f.load(src, strlen(src)), YEPTRIS_OK);
+
+    auto* recs1 = (YeptrisValue*)f.cols[1].data;
+    EXPECT_EQ(f.cols[1].count, 1u);
+    EXPECT_EQ(recs1[0].kind, YEP_V_INT);
+    EXPECT_EQ(recs1[0].p, 42u);
+    auto* recs2 = (YeptrisValue*)f.cols[2].data;
+    EXPECT_EQ(f.cols[2].count, 1u);
+    EXPECT_EQ(recs2[0].kind, YEP_V_STR);
+    EXPECT_EQ(recs2[0].len, 4u);
+    EXPECT_EQ(memcmp(src + recs2[0].off, "word", 4), 0);
+    auto* recs3 = (YeptrisValue*)f.cols[3].data;
+    EXPECT_EQ(f.cols[3].count, 1u);
+    EXPECT_EQ(recs3[0].kind, YEP_V_BOOL);
+    EXPECT_EQ(recs3[0].b, 1);
+}
+
+TEST(SchemaLoad, AnyTagUnderCompatCarriesTheCompatVerdict) {
+    Fixture f(3);
+    f.desc[0] = {NULL, YEP_SK_MAPPING, 0, 0, 1, 2, 0};
+    f.desc[1] = {"t", YEP_SK_SCALAR, YEP_ST_ANY, 0, 0, 0, 0};
+    f.desc[2] = {"n", YEP_SK_SCALAR, YEP_ST_ANY, 0, 0, 0, 0};
+    f.capacity(1, 1, sizeof(YeptrisValue));
+    f.capacity(2, 1, sizeof(YeptrisValue));
+
+    const char* src = "t: 2024-01-02\nn: on\n";
+    ASSERT_EQ(f.load(src, strlen(src), YEPTRIS_SCHEMA_11_COMPAT), YEPTRIS_OK);
+
+    auto* t = (YeptrisValue*)f.cols[1].data;
+    EXPECT_EQ(f.cols[1].count, 1u);
+    EXPECT_EQ(t[0].kind, YEP_V_TIMESTAMP);
+    EXPECT_EQ(t[0].len, 10u);
+    auto* n = (YeptrisValue*)f.cols[2].data;
+    EXPECT_EQ(f.cols[2].count, 1u);
+    EXPECT_EQ(n[0].kind, YEP_V_BOOL); /* compat: on/off are bools */
+    EXPECT_EQ(n[0].b, 1);
+}
+
+TEST(SchemaLoad, FirstWinsBoundsDuplicatesToTheFirstMatch) {
+    Fixture f(3);
+    f.desc[0] = {NULL, YEP_SK_MAPPING, 0, 0, 1, 2, 0};
+    f.desc[1] = {"k", YEP_SK_SCALAR, YEP_ST_STR, YEP_SF_FIRST_WINS, 0, 0, 0};
+    f.desc[2] = {"v", YEP_SK_SCALAR, YEP_ST_STR, 0, 0, 0, 0};
+    f.capacity(1, 2, 16);
+    f.capacity(2, 2, 16);
+
+    const char* src = "k: first\nv: 1\nk: second\nv: 2\n";
+    ASSERT_EQ(f.load(src, strlen(src)), YEPTRIS_OK);
+
+    EXPECT_EQ(f.cols[1].count, 1u); /* FIRST_WINS: only "first" */
+    auto* ks = (yeptris_span2*)f.cols[1].data;
+    EXPECT_EQ(memcmp(src + ks[0].off, "first", 5), 0);
+    EXPECT_EQ(f.cols[2].count, 2u); /* default: last wins at parse; both kept */
+}
+
+TEST(SchemaLoad, FirstWinsAcrossMappingsKeepsBoth) {
+    /* the flag scopes to ONE mapping instance: two list elements
+     * each carry k — both land (they are different mappings) */
+    Fixture f(2);
+    f.desc[0] = {NULL, YEP_SK_SEQUENCE, 0, 0, 1, 1, 0};
+    f.desc[1] = {NULL, YEP_SK_SCALAR, YEP_ST_STR, YEP_SF_FIRST_WINS, 0, 0, 0};
+    f.capacity(1, 2, 16);
+
+    const char* src = "- a\n- b\n";
+    ASSERT_EQ(f.load(src, strlen(src)), YEPTRIS_OK);
+    EXPECT_EQ(f.cols[1].count, 2u);
+    auto* spans = (yeptris_span2*)f.cols[1].data;
+    EXPECT_EQ(memcmp(src + spans[0].off, "a", 1), 0);
+    EXPECT_EQ(memcmp(src + spans[1].off, "b", 1), 0);
+}
