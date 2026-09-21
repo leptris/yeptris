@@ -400,6 +400,8 @@ engine_enter:
      * or an arena copy (dom_ev_str) — nothing references it */
     yep_pool_destroy(finish);
     doc->finish_pool = NULL;
+    doc->lazy_tape = NULL; /* field-by-field ctor: leave no garbage
+                            * (document_free frees a non-NULL tape) */
     return (YeptrisDocument)doc;
 
 fail:

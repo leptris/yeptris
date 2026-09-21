@@ -839,6 +839,7 @@ YEPTRIS_API YeptrisDocument yeptris_cbor_decode(const void* buf, size_t len, uin
     doc->transcoded_len = 0;
     doc->input = (const char*)buf;
     doc->finish_pool = NULL;
+    doc->lazy_tape = NULL; /* field-by-field ctor: no garbage for free */
     if (status != NULL) {
         *status = YEPTRIS_OK;
     }
