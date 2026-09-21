@@ -6,6 +6,27 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- The lazy child-index (#377): `yeptris_node_seq_at` and
+  `yeptris_node_map_at` are O(1) after the first call (the last
+  indexed container's child ids cache under the dom's lazy-init
+  mutex; invalidated by every link/unlink). The bulk drain
+  (`yeptris_node_children`) fixed the bindings' loops; this fixes
+  the accessor itself. Differential-tested against mutation.
+- The qemu platform-gem matrix (#376): arm-linux, arm-linux-musl,
+  ppc64le-linux, s390x-linux — the family's 14-gem target. The
+  teptris-ruby recipe (binfmt + the arch ruby image, the same
+  build-platform-gem.sh script the musl leg rides, smoke inside
+  each container).
+- The `index-rows` benchmark corpus (#179d): a top-level block
+  sequence of symbol-keyed maps — the relaton index shape that hid
+  the materialization cliff.
+### Fixed
+- The qemu cells use the right package manager per image (#376
+  follow-up): the `||` fallback (apt-get || apk) broke on emulated
+  Debian — each matrix cell now carries its own setup command.
+
 ## [0.6.15] - 2026-09-21
 ### Fixed
 - `yeptris_marshal_node` bails (`YEPTRIS_ERROR_UNSUPPORTED`) when any
