@@ -665,3 +665,38 @@ TEST(NodeChildren, LargeSequenceDrainsOnce) {
     EXPECT_EQ(yeptris_node_kind(kids[79999]), YEPTRIS_NODE_MAPPING);
     yeptris_document_free(doc);
 }
+
+/* #377: the lazy child-index — indexed access must reflect mutations
+ * (every link/unlink invalidates the cache) and stay differential
+ * with the drain. */
+TEST(NodeChildren, IndexedAccessSurvivesMutation) {
+    const char* y = "- one\n- two\n- three\n";
+    YeptrisStatus st;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+
+    /* warm the cache */
+    EXPECT_EQ(val(yeptris_node_seq_at(root, 2)), "three");
+
+    /* mutate: append + delete, then re-index */
+    YeptrisNode four = yeptris_node_new_scalar(doc, "four", 4, YEP_STYLE_PLAIN);
+    ASSERT_NE(four, nullptr);
+    ASSERT_EQ(yeptris_node_seq_add(root, four), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_node_seq_count(root), 4u);
+    EXPECT_EQ(val(yeptris_node_seq_at(root, 3)), "four");
+    EXPECT_EQ(val(yeptris_node_seq_at(root, 2)), "three");
+
+    ASSERT_EQ(yeptris_node_seq_del(root, 0), YEPTRIS_OK);
+    EXPECT_EQ(val(yeptris_node_seq_at(root, 0)), "two");
+    EXPECT_EQ(val(yeptris_node_seq_at(root, 2)), "four");
+
+    /* differential: the drain agrees with the index after mutation */
+    YeptrisNode kids[3];
+    ASSERT_EQ(yeptris_node_children(root, kids, 3), 3u);
+    for (size_t i = 0; i < 3; i++) {
+        EXPECT_EQ(yeptris_node_id(kids[i]), yeptris_node_id(yeptris_node_seq_at(root, i)));
+    }
+    yeptris_document_free(doc);
+}

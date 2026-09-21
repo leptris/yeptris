@@ -114,6 +114,13 @@ typedef struct yep_dom {
      * YeptrisNode wrappers here, so read-only document sharing across
      * threads is safe; parse-path pools stay single-threaded */
     struct yep_hpool* handles;
+    /* #377: the lazy indexed-children cache — child ids of the LAST
+     * container indexed via seq_at/map_at. Built once per container
+     * under the lazy-init mutex (read-only sharing), O(1) after;
+     * invalidated by every child-list mutation. NULL when idle. */
+    uint32_t* child_cache;
+    uint32_t child_cache_id; /* UINT32_MAX = empty */
+    uint32_t child_cache_len;
     yep_dnode* nodes;
     uint32_t ncount, ncap;
     uint32_t* docs; /* document root node ids */
@@ -200,6 +207,9 @@ void dom_mut_set_depth(yep_dom* d, uint32_t id, uint16_t depth);
 struct yep_hpool* yep_hpool_create(const yep_allocator* sys);
 /* Lazy handle-pool acquisition (#157): NULL dom or OOM stays NULL. */
 struct yep_hpool* yep_dom_handles(yep_dom* d);
+/* #377: the lazy indexed-children cache (seq_at/map_at's O(1) leg) */
+void dom_invalidate_child_cache(yep_dom* d);
+uint32_t dom_indexed_child(yep_dom* d, uint32_t cid, size_t index, uint32_t* count_out);
 void yep_hpool_destroy(struct yep_hpool* p);
 void* yep_hpool_alloc(struct yep_hpool* p, size_t size, size_t align);
 

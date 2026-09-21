@@ -268,6 +268,8 @@ static int unlink_child(yep_dom* d, uint32_t parent, uint32_t child) {
             p->last_child = c;
         }
     }
+    d->child_cache_id = UINT32_MAX; /* #377: the list changed */
+    d->child_cache_len = 0;
     d->nodes[child].next_sibling = UINT32_MAX;
     dom_mut_set_att(d, child, 0);
     p->count--;
