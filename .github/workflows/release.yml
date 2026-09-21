@@ -307,18 +307,22 @@ jobs:
             image: ruby:3.4-bookworm
             platform: linux/arm/v7
             packages: build-essential bash git cmake ninja
+            setup: apt-get update -qq
           - name: arm-linux-musl
             image: ruby:3.4-alpine
             platform: linux/arm/v7
             packages: build-base bash git cmake ninja
+            setup: apk add --no-cache build-base bash git cmake ninja
           - name: ppc64le-linux
             image: ruby:3.4-bookworm
             platform: linux/ppc64le
             packages: build-essential bash git cmake ninja
+            setup: apt-get update -qq
           - name: s390x-linux
             image: ruby:3.4-bookworm
             platform: linux/s390x
             packages: build-essential bash git cmake ninja
+            setup: apt-get update -qq
     steps:
       - name: Resolve the release version
         shell: bash
@@ -340,13 +344,12 @@ jobs:
           docker run --rm --platform "${{ matrix.platform }}" \
             -v "$RUNNER_TEMP:/work" -w /work -e V="$YEP_V" "${{ matrix.image }}" sh -c '
             set -eux
-            apt-get update -qq 2>/dev/null || apk add --no-cache true >/dev/null
-            apk add --no-cache $PKGS 2>/dev/null || apt-get install -y -qq $PKGS
+            $SETUP
             git clone --quiet https://github.com/leptris/yeptris-ruby /work/rubyrepo
             bash /work/rubyrepo/scripts/build-platform-gem.sh "$V" https://github.com/leptris/yeptris-ruby "/work/pgem-${{ matrix.name }}"
           '
         env:
-          PKGS: ${{ matrix.packages }}
+          SETUP: ${{ matrix.setup }}
 
       - name: Smoke the ${{ matrix.name }} platform gem (in the container)
         shell: bash
