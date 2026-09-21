@@ -287,7 +287,10 @@ yep_chunk_masks yep_text_json_chunk_scalar(const char* p, size_t n) {
 
 /* the stage-1 scalar reference lives in scan/json.c (the grammar
  * home); the table carries it so dispatch stays one point */
-extern int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx);
+extern int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx,
+                                   unsigned* flags);
+extern int yep_json_stage1_masks_scalar(const char* p, size_t len, struct yep_s1_block* blocks,
+                                        size_t* nblocks, unsigned* flags);
 
 const yep_text_kernels yep_text_kernels_scalar = {
     yep_text_contains_scalar,   yep_text_find_scalar,         yep_text_find3_scalar,
@@ -295,4 +298,5 @@ const yep_text_kernels yep_text_kernels_scalar = {
     yep_text_find_not_scalar,   yep_text_stopset_find_scalar, yep_text_quote_scan_scalar,
     yep_text_scan_stats_scalar, yep_text_qbc_find_scalar,     yep_text_gate_scan_scalar,
     yep_text_line_facts_scalar, yep_text_json_chunk_scalar,   yep_json_stage1_scalar,
+    yep_json_stage1_masks_scalar,
 };

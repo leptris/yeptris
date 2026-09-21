@@ -99,6 +99,15 @@ typedef struct yep_chunk_masks {
     uint32_t valid;    /* 1-bits for the bytes that exist (tails) */
 } yep_chunk_masks;
 
+/* one 64-byte block's classification (json_stage1_masks) */
+struct yep_s1_block {
+    uint64_t q;      /* raw quote bytes */
+    uint64_t bs;     /* backslash bytes */
+    uint64_t op;     /* []{}:, */
+    uint64_t c0;     /* bytes < 0x20 (ws included) */
+    uint64_t tokens; /* the resolver's verdict: ops + string-open quotes */
+};
+
 /* The kernel table. One struct = one dispatch point (OCP: a new ISA is a
  * new TU exporting a new table; nothing else changes). */
 typedef struct yep_text_kernels {
@@ -175,9 +184,24 @@ typedef struct yep_text_kernels {
      * hard error is an unterminated string (odd final parity) ->
      * return 0. idx must hold len+2 entries. Bit-identical across
      * ISAs (the differential suite pins it); scan/json.c owns the
-     * scalar reference and the grammar contract. */
-    int (*json_stage1)(const char* p, size_t len, uint32_t* idx, size_t* nidx);
+     * grammar contract. flags (never NULL) accumulates YEP_S1_* bits:
+     * the doc-level facts stage 2 needs to skip content scanning. */
+    int (*json_stage1)(const char* p, size_t len, uint32_t* idx, size_t* nidx, unsigned* flags);
+
+    /* The structural indexer's classification half, without the
+     * emission: per 64-byte block, the four u64 masks the resolver
+     * consumes (QUOTE/BS/OP/C0; ws is dead since the token contract
+     * dropped scalar-run starts). blocks receives len/64+1 records;
+     * *nblocks returns how many were written. Same reject/flag
+     * contract as json_stage1. The single-pass tape walk consumes
+     * this — no idx array, no emission loop. */
+    int (*json_stage1_masks)(const char* p, size_t len, struct yep_s1_block* blocks,
+                             size_t* nblocks, unsigned* flags);
 } yep_text_kernels;
+
+/* json_stage1 flag bits (accumulated across blocks; cleared by caller) */
+#define YEP_S1_C0_IN_STRING 1u /* raw non-ws C0 inside a string: reject */
+#define YEP_S1_HAS_ESCAPE 2u   /* a backslash byte exists: validate spans */
 
 /* The structural indexer's mask resolver — the SSOT identity set for
  * every json_stage1 implementation (scalar in scan/json.c, the ISA
@@ -195,15 +219,13 @@ typedef struct yep_text_kernels {
  *   tokens     = (op | starts) & ~string_tail
  *
  * Returns the block's contribution; carries update in place. */
-static inline size_t yep_json_stage1_resolve(uint64_t q, uint64_t bs, uint64_t op, uint64_t ws,
-                                             uint64_t valid, uint64_t* prev_in_string,
-                                             uint64_t* esc_carry, uint64_t* follows_carry,
-                                             size_t off, uint32_t* idx, size_t n) {
+static inline uint64_t yep_json_stage1_tokens(uint64_t q, uint64_t bs, uint64_t op, uint64_t c0,
+                                              uint64_t valid, uint64_t* prev_in_string,
+                                              uint64_t* esc_carry, unsigned* flags) {
     uint64_t potential = bs & ~*esc_carry;
     uint64_t s = (((potential << 1) | 0xAAAAAAAAAAAAAAAAull) - potential) ^ 0xAAAAAAAAAAAAAAAAull;
-    uint64_t esc_bs = s & bs;
     uint64_t escaped = s ^ (bs | *esc_carry);
-    *esc_carry = esc_bs >> 63;
+    *esc_carry = (s & bs) >> 63;
     uint64_t quote_live = q & ~escaped;
     uint64_t ps = quote_live; /* sequential prefix-xor — a flat
                                * one-expression xor of shifts misses
@@ -217,15 +239,26 @@ static inline size_t yep_json_stage1_resolve(uint64_t q, uint64_t bs, uint64_t o
     uint64_t in_string = ps ^ *prev_in_string;
     *prev_in_string = (uint64_t)((int64_t)in_string >> 63);
     uint64_t string_tail = (in_string ^ quote_live) & valid;
-    uint64_t scalar_nq = (~(op | ws) & ~q) & valid; /* non-quote scalars */
-    uint64_t follows = ((scalar_nq & ~(1ull << 63)) << 1) | *follows_carry;
-    *follows_carry = scalar_nq >> 63;
-    uint64_t tokens = ((op | (~(op | ws) & ~follows)) & ~string_tail) & valid;
+    if (bs != 0) {
+        *flags |= YEP_S1_HAS_ESCAPE;
+    }
+    if ((c0 & in_string & valid) != 0) {
+        *flags |= YEP_S1_C0_IN_STRING;
+    }
+    return (op | (quote_live & ~string_tail)) & ~string_tail & valid;
+}
+
+/* The full resolver: token mask derivation + the idx emission loop
+ * (the json_stage1 implementations). */
+static inline size_t yep_json_stage1_resolve(uint64_t q, uint64_t bs, uint64_t op, uint64_t ws,
+                                             uint64_t c0, uint64_t valid, uint64_t* prev_in_string,
+                                             uint64_t* esc_carry, size_t off, uint32_t* idx,
+                                             size_t n, unsigned* flags) {
+    uint64_t tokens = yep_json_stage1_tokens(q, bs, op, c0, valid, prev_in_string, esc_carry, flags);
     while (tokens != 0) {
         idx[n++] = (uint32_t)(off + (size_t)yep_ctz64(tokens));
         tokens &= tokens - 1;
     }
-    (void)escaped;
     return n;
 }
 
