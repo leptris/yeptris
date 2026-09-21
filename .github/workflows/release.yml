@@ -342,7 +342,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/pgem-${{ matrix.name }}"
           docker run --rm --platform "${{ matrix.platform }}" \
-            -v "$RUNNER_TEMP:/work" -w /work -e V="$YEP_V" "${{ matrix.image }}" sh -c '
+            -v "$RUNNER_TEMP:/work" -w /work -e V="$YEP_V" -e SETUP="${{ matrix.setup }}" \
+            "${{ matrix.image }}" sh -c '
             set -eux
             $SETUP
             git clone --quiet https://github.com/leptris/yeptris-ruby /work/rubyrepo
