@@ -307,7 +307,7 @@ jobs:
             image: ruby:3.4-bookworm
             platform: linux/arm/v7
             packages: build-essential bash git cmake ninja
-            setup: apt-get update -qq
+            setup: apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git cmake ninja-build
           - name: arm-linux-musl
             image: ruby:3.4-alpine
             platform: linux/arm/v7
@@ -317,13 +317,13 @@ jobs:
             image: ruby:3.4-bookworm
             platform: linux/ppc64le
             packages: build-essential bash git cmake ninja
-            setup: apt-get update -qq
+            setup: apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git cmake ninja-build
           # ruby 3.3+ dropped the s390x variant from the official image
           - name: s390x-linux
             image: ruby:3.2-bookworm
             platform: linux/s390x
             packages: build-essential bash git cmake ninja
-            setup: apt-get update -qq
+            setup: apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git cmake ninja-build
     steps:
       - name: Resolve the release version
         shell: bash
