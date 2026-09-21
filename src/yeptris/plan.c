@@ -79,8 +79,12 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
         }
         return NULL;
     }
-    const yeptris_document* d = (const yeptris_document*)doc;
-    const yep_dnode* root = yep_dom_node(d->dom, d->dom->docs[0]);
+    yeptris_document* d = (yeptris_document*)doc;
+    yep_dom* dd = yep_doc_dom(d); /* #342 lazy: the spec parse may defer */
+    if (dd == NULL) {
+        goto mem;
+    }
+    const yep_dnode* root = yep_dom_node(dd, dd->docs[0]);
     yeptris_plan* plan = calloc(1, sizeof(*plan));
     if (plan == NULL) {
         goto mem;
@@ -95,10 +99,10 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
     int saw_kind = 0;
     uint32_t pair = root->first_child;
     while (pair != UINT32_MAX) {
-        const yep_dnode* kn = yep_dom_node(d->dom, pair);
-        const yep_dnode* vn = yep_dom_node(d->dom, kn->next_sibling);
-        yep_view kv = sv_view(d->dom, kn->value);
-        yep_view vv = sv_view(d->dom, vn->value);
+        const yep_dnode* kn = yep_dom_node(dd, pair);
+        const yep_dnode* vn = yep_dom_node(dd, kn->next_sibling);
+        yep_view kv = sv_view(dd, kn->value);
+        yep_view vv = sv_view(dd, vn->value);
         if (kv.len == 4 && memcmp(kv.p, "kind", 4) == 0) {
             saw_kind = 1;
             if (!(vv.len == 3 && (memcmp(vv.p, "seq", 3) == 0 || memcmp(vv.p, "map", 3) == 0))) {
@@ -130,7 +134,7 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
         if (path_node->tag_id != YEPTRIS_TAG_STR) {
             goto bad; /* the path is a string, not a number */
         }
-        yep_view vv = sv_view(d->dom, path_node->value);
+        yep_view vv = sv_view(dd, path_node->value);
         if (vv.len != 0) { /* "" rides the seq root like no path */
             plan->seg_off = malloc(sizeof(uint32_t));
             plan->seg_len = malloc(sizeof(uint32_t));
@@ -159,11 +163,11 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
         size_t off = 0;
         uint32_t cn = path_node->first_child;
         for (size_t i = 0; i < n; i++) {
-            const yep_dnode* seg = yep_dom_node(d->dom, cn);
+            const yep_dnode* seg = yep_dom_node(dd, cn);
             if (seg == NULL || seg->kind != 0 || seg->tag_id != YEPTRIS_TAG_STR) {
                 goto bad; /* every segment is a string */
             }
-            yep_view sv = sv_view(d->dom, seg->value);
+            yep_view sv = sv_view(dd, seg->value);
             if (sv.len == 0) {
                 goto bad;
             }
@@ -191,7 +195,7 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
     }
     uint32_t cn = children->first_child;
     for (size_t i = 0; i < plan->ncols; i++) {
-        const yep_dnode* leaf = yep_dom_node(d->dom, cn);
+        const yep_dnode* leaf = yep_dom_node(dd, cn);
         if (leaf == NULL || leaf->kind != 2) {
             goto bad;
         }
@@ -200,10 +204,10 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
         int kind = -1;
         uint32_t lp = leaf->first_child;
         while (lp != UINT32_MAX) {
-            const yep_dnode* lk = yep_dom_node(d->dom, lp);
-            const yep_dnode* lv = yep_dom_node(d->dom, lk->next_sibling);
-            yep_view lkv = sv_view(d->dom, lk->value);
-            yep_view lvv = sv_view(d->dom, lv->value);
+            const yep_dnode* lk = yep_dom_node(dd, lp);
+            const yep_dnode* lv = yep_dom_node(dd, lk->next_sibling);
+            yep_view lkv = sv_view(dd, lk->value);
+            yep_view lvv = sv_view(dd, lv->value);
             if (lkv.len == 4 && memcmp(lkv.p, "name", 4) == 0) {
                 if (lv->kind != 0 || lvv.len == 0) {
                     goto bad;
@@ -658,14 +662,15 @@ yeptris_document_plan_walk(YeptrisDocument doc, const yeptris_plan* plan, Yeptri
         *st = YEPTRIS_OK;
     }
     const yeptris_document* d = (const yeptris_document*)doc;
-    if (doc == NULL || plan == NULL || d->dom == NULL || d->dom->dcount == 0) {
+    const yep_dom* dd = doc == NULL ? NULL : yep_doc_dom((yeptris_document*)doc);
+    if (doc == NULL || plan == NULL || dd == NULL || dd->dcount == 0) {
         if (st != NULL) {
             *st = YEPTRIS_ERROR_ARG;
         }
         return NULL;
     }
-    const yep_dnode* root = yep_dom_node(d->dom, d->dom->docs[0]);
-    const yep_dnode* container = dom_find_rows(d->dom, root, plan);
+    const yep_dnode* root = yep_dom_node(dd, dd->docs[0]);
+    const yep_dnode* container = dom_find_rows(dd, root, plan);
     if (container == NULL) {
         if (st != NULL) {
             *st = YEPTRIS_ERROR_PARSE; /* document shape disagreement */
@@ -676,7 +681,7 @@ yeptris_document_plan_walk(YeptrisDocument doc, const yeptris_plan* plan, Yeptri
     size_t rows = 0;
     for (uint32_t cur = container->first_child; cur != UINT32_MAX;) {
         const yep_dnode* row;
-        cur = dom_rows_next(d->dom, container, cur, &row);
+        cur = dom_rows_next(dd, container, cur, &row);
         if (row != NULL) {
             rows++;
         }
@@ -690,15 +695,15 @@ yeptris_document_plan_walk(YeptrisDocument doc, const yeptris_plan* plan, Yeptri
     size_t row_i = 0;
     for (uint32_t cur = container->first_child; cur != UINT32_MAX && row_i < rows;) {
         const yep_dnode* row;
-        cur = dom_rows_next(d->dom, container, cur, &row);
+        cur = dom_rows_next(dd, container, cur, &row);
         if (row == NULL) {
             continue;
         }
         uint32_t cn = row->first_child;
         while (cn != UINT32_MAX) {
-            const yep_dnode* k = yep_dom_node(d->dom, cn);
-            const yep_dnode* v = yep_dom_node(d->dom, k->next_sibling);
-            yep_view kv = sv_view(d->dom, k->value);
+            const yep_dnode* k = yep_dom_node(dd, cn);
+            const yep_dnode* v = yep_dom_node(dd, k->next_sibling);
+            yep_view kv = sv_view(dd, k->value);
             int col_idx = -1;
             if (k->kind == YEP_DOM_SCALAR) {
                 for (size_t c = 0; c < plan->ncols; c++) {
@@ -710,10 +715,10 @@ yeptris_document_plan_walk(YeptrisDocument doc, const yeptris_plan* plan, Yeptri
                 }
             }
             if (col_idx >= 0) {
-                const yep_dnode* val = dom_alias_final(d->dom, v);
+                const yep_dnode* val = dom_alias_final(dd, v);
                 yep_result_col* col = &r->cols[col_idx];
                 if (val != NULL && val->kind == YEP_DOM_SCALAR && val->tag_id != YEPTRIS_TAG_NULL) {
-                    yep_view sv = sv_view(d->dom, val->value);
+                    yep_view sv = sv_view(dd, val->value);
                     int filled = 0;
                     switch (col->kind) {
                     case YEP_PLAN_STR:

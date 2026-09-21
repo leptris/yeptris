@@ -703,7 +703,10 @@ static void cbor_write_item(cenc* e, uint32_t id, uint8_t* out, size_t* pos) {
 static int cbor_run(YeptrisDocument handle, uint32_t opts, uint8_t* out, size_t cap,
                     size_t* out_len, int* written) {
     yeptris_document* doc = (yeptris_document*)handle;
-    yep_dom* d = doc->dom;
+    yep_dom* d = yep_doc_dom(doc); /* #342 lazy: materialize on encode */
+    if (d == NULL) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
     if (d->dcount == 0) {
         return YEPTRIS_ERROR_ARG;
     }

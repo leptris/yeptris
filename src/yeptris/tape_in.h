@@ -1,0 +1,19 @@
+/* tape_in.h — the tape module's internal seams (not public ABI).
+ *
+ * parse.c's #342 slice-2 lazy route drives the fused lenient walk
+ * directly: the gate and opener checks it already ran must not be
+ * repeated (the lenient public entry re-gates). The walk's contract
+ * is the public entry's: gate-clean buffer, p[open] is '[' or '{',
+ * tail must be whitespace-only. */
+#ifndef YEP_TAPE_IN_H
+#define YEP_TAPE_IN_H
+
+#include <stddef.h>
+
+#include <yeptris/tape.h>
+
+/* tape.c (was tape_walk_lnt_fused) */
+YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
+                                          yeptris_json_tape* t);
+
+#endif

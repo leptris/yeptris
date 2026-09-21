@@ -490,7 +490,7 @@ TEST(TapeDom, MaterializedTreeMatchesDirectParse) {
         ASSERT_NE(built, nullptr);
         ASSERT_EQ(dom_from_tape(built, &t), 0) << doc;
 
-        const yep_dom* ref = ((const yeptris_document*)direct)->dom;
+        const yep_dom* ref = yep_doc_dom((yeptris_document*)direct);
         EXPECT_TRUE(doms_equal(ref, built)) << doc;
 
         yep_dom_destroy(built);
@@ -519,7 +519,8 @@ TEST(TapeDom, LenientTapesOfStrictLegalDocsMatchDirect) {
         yep_dom* built = yep_dom_create(yep_system_allocator());
         ASSERT_NE(built, nullptr);
         ASSERT_EQ(dom_from_tape(built, &t), 0) << doc;
-        EXPECT_TRUE(doms_equal(((const yeptris_document*)direct)->dom, built)) << doc;
+        EXPECT_TRUE(doms_equal(yep_doc_dom((yeptris_document*)direct), built))
+            << doc;
 
         yep_dom_destroy(built);
         yeptris_tape_free(&t);
@@ -535,4 +536,96 @@ TEST(TapeDom, RejectsLenientTapes) {
     ASSERT_EQ(dom_from_tape(d, &lt), -1); /* YEP_T_NUM: strict only */
     yep_dom_destroy(d);
     yeptris_tape_free(&lt);
+}
+
+// ---- #342 slice 2: parse_json carries the tape (the lazy route) ----
+// Gate-clean container roots ride the fused lenient walk + the inline
+// NUM sweep, and the tree materializes on first access.
+
+TEST(LazyDom, ParseOnlyCarriesTheTape) {
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_json("{\"a\": [1, 2.5, \"x\"], \"b\": null}",
+                            strlen("{\"a\": [1, 2.5, \"x\"], \"b\": null}"), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(d, nullptr);
+    yeptris_document* doc = (yeptris_document*)d;
+    EXPECT_EQ(doc->dom, nullptr);      /* no tree built at parse */
+    EXPECT_NE(doc->lazy_tape, nullptr); /* the tape is the cargo */
+    yeptris_document_free(d);           /* freed without materializing */
+}
+
+TEST(LazyDom, FirstTreeAccessMaterializes) {
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_json("{\"a\": [1, 2.5], \"b\": \"s\"}", strlen("{\"a\": [1, 2.5], \"b\": \"s\"}"),
+                            &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(d, nullptr);
+    yeptris_document* doc = (yeptris_document*)d;
+    ASSERT_EQ(yeptris_document_count(d), 1u);
+    EXPECT_NE(doc->dom, nullptr); /* count touched the tree */
+    EXPECT_EQ(doc->lazy_tape, nullptr);
+
+    YeptrisNode root = yeptris_document_root(d, 0);
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(yeptris_node_kind(root), YEPTRIS_NODE_MAPPING);
+    EXPECT_EQ(yeptris_node_map_count(root), 2u);
+    YeptrisNode a = yeptris_node_map_get(root, "a", 1);
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(yeptris_node_kind(a), YEPTRIS_NODE_SEQUENCE);
+    EXPECT_EQ(yeptris_node_seq_count(a), 2u);
+    YeptrisNode one = yeptris_node_seq_at(a, 0);
+    ASSERT_NE(one, nullptr);
+    size_t vlen = 0;
+    /* node_value is a (ptr,len) slice into the input — never
+     * NUL-terminated; compare with the length */
+    const char* vp = yeptris_node_value(one, &vlen);
+    EXPECT_EQ(std::string(vp, vlen), "1");
+    EXPECT_EQ(vlen, 1u);
+    yeptris_document_free(d);
+}
+
+TEST(LazyDom, SerializeMaterializesAndMatches) {
+    const char* in = "{\"users\":[{\"id\":1,\"name\":\"u1\"},{\"id\":2,\"name\":\"u2\"}]}";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_json(in, strlen(in), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t len = 0;
+    char* out = yeptris_serialize_json_ex(d, &len, 1); /* compact leg */
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(std::string(out, len), std::string(in) + "\n"); /* + stream end */
+    yeptris_free(out);
+    yeptris_document_free(d);
+}
+
+TEST(LazyDom, MalformedNumbersRejectAtParse) {
+    /* the deferred-grammar debt: the lenient walk records these runs
+     * as NUM spans (its delimiter scan allows them), so the sweep —
+     * not the walk — owns the strict reject */
+    const char* bad[] = {
+        "{\"a\": 12e}",
+        "[1.2.3]",
+        "[0x10]",
+        "{\"k\": -}",
+        "[1e+]",
+    };
+    for (const char* s : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse_json(s, strlen(s), &st);
+        EXPECT_EQ(st, YEPTRIS_ERROR_PARSE) << s;
+        EXPECT_EQ(d, nullptr) << s;
+        yeptris_document_free(d);
+    }
+}
+
+TEST(LazyDom, ScalarRootsStayEager) {
+    /* scalar roots miss the opener check and take the validating
+     * sequence — the dom is built at parse (the tape route's scalar
+     * leg is its own shape, not this one) */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_json("42", 2, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(d, nullptr);
+    EXPECT_NE(((yeptris_document*)d)->dom, nullptr);
+    EXPECT_EQ(((yeptris_document*)d)->lazy_tape, nullptr);
+    yeptris_document_free(d);
 }

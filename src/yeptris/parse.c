@@ -12,6 +12,7 @@
 #include "parse/numbers.h"
 #include "resolve/resolver.h"
 #include "scan/json.h"
+#include "tape_in.h"
 
 #include "parse/events.h"
 #include <errno.h>
@@ -38,6 +39,59 @@ YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisSt
     return yeptris_parse_ex(buf, len, NULL, status);
 }
 
+/* #342 slice 2: materialize the deferred tree on first access. The
+ * gate-clean JSON route carries the parsed TAPE (simdjson's design:
+ * its "DOM" is a tape) and pays dom_from_tape only when a consumer
+ * touches the tree — parse-only workloads never build nodes. */
+yep_dom* yep_doc_dom(yeptris_document* doc) {
+    if (doc == NULL) {
+        return NULL;
+    }
+    if (doc->dom == NULL && doc->lazy_tape != NULL) {
+        yeptris_json_tape* t = (yeptris_json_tape*)doc->lazy_tape;
+        yep_dom* dom = yep_dom_create(doc->sys);
+        if (dom != NULL && dom_from_tape(dom, t) == 0) {
+            doc->dom = dom;
+            yeptris_tape_free(t);
+            yep_free(doc->sys, t);
+            doc->lazy_tape = NULL;
+        } else {
+            yep_dom_destroy(dom);
+            dom = NULL; /* the tape stays: a later access retries, or
+                           free drops it (the materializer only fails on
+                           malformed NUM spans, which the strict gate
+                           already rejected at parse) */
+        }
+        return dom;
+    }
+    return doc->dom;
+}
+
+/* The strict-JSON document wrapper (both routes share it). */
+/* The lazy route's acceptance debt: the fused lenient walk records
+ * number runs UNVALIDATED (its simdjson-style deferred contract).
+ * parse_json's contract is RFC 8259 at parse time, so the deferred
+ * spans settle HERE — full-span shape check per NUM record, decoding
+ * the packed records directly (no columns build at parse; the walk
+ * guarantees recs are primary on this route). */
+static int lazy_nums_settled(const yeptris_json_tape* t) {
+    const char* p = (const char*)t->_src;
+    for (uint32_t i = 0; i < t->count; i++) {
+        uint64_t r = t->recs[i];
+        if ((uint8_t)(r & 0xFFu) != YEP_T_NUM) {
+            continue;
+        }
+        uint32_t len = (uint32_t)((r >> 8) & 0x7FFFFFu);
+        uint32_t off = (uint32_t)(r >> 32);
+        size_t adv = 0;
+        int flt = 0;
+        if (yep_json_number_shape(p + off, len, &adv, &flt) == 0 || adv != (size_t)len) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
 /* The strict-JSON document wrapper (both routes share it). */
 static YeptrisDocument yep_json_doc_wrap(yep_dom* dom, const char* buf, size_t len,
                                          const yep_allocator* sys, YeptrisStatus* status) {
@@ -52,6 +106,7 @@ static YeptrisDocument yep_json_doc_wrap(yep_dom* dom, const char* buf, size_t l
     }
     doc->dom = dom;
     doc->sys = sys;
+    doc->lazy_tape = NULL;
     doc->schema = YEPTRIS_SCHEMA_12_CORE; /* strict JSON is core by construction */
     doc->transcoded = NULL;
     doc->transcoded_len = 0;
@@ -75,41 +130,45 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
      * builds. Rejects, non-opener roots, and surprises fall to the
      * original sequence below, whose error precedence is byte-for-byte
      * the pinned behavior (json-suite-strict gates this). */
-    if (len > 0 && !yep_text_active()->gate_scan(buf, len)) {
+    int gated = len > 0 && yep_text_active()->gate_scan(buf, len);
+    if (!gated) {
         size_t off = 0;
         while (off < len &&
                (buf[off] == ' ' || buf[off] == '\t' || buf[off] == '\n' || buf[off] == '\r')) {
             off++;
         }
-        if (off < len && (buf[off] == '[' || buf[off] == '{')) {
+        /* tabs: the lenient walk's own pinned acceptance (its route
+         * takes them); the strict routes reject them (ErrorParity's
+         * pinned agreement). A tab-carrying buffer must NOT take the
+         * lazy walk — the validating sequence below reports exactly
+         * the pinned reject. */
+        if (off < len && (buf[off] == '[' || buf[off] == '{') &&
+            memchr(buf, '\t', len) == NULL) {
+            /* #342 slice 2: the fused LENIENT walk (one pass, records
+             * only — no node building) settles the deferred number
+             * grammar inline, then the tape rides the document and
+             * dom_from_tape builds nodes on the first tree access.
+             * A reject or malformed span falls to the original
+             * sequence below, whose error precedence is byte-for-byte
+             * the pinned behavior. */
             const yep_allocator* sys = yep_system_allocator();
-            yep_dom* dom = yep_dom_create(sys);
-            if (dom == NULL) {
+            yeptris_json_tape* t = yep_alloc(sys, sizeof(*t));
+            if (t == NULL) {
                 st = YEPTRIS_ERROR_MEMORY;
                 goto jfail;
             }
-            dom->input_base = buf;
-            dom->input_len = len;
-            dom->flow_strict = 1;
-            size_t close = 0;
-            int rc = dom_on_flow_build(dom, buf, off, len, 1, 0, (yep_view){0}, (yep_view){0}, 0,
-                                       YEP_DOM_MAX_DEPTH, &close);
-            dom->flow_strict = 0;
-            int tail_ok = 0;
-            if (rc == 1) {
-                /* trailing garbage after the closer is a reject the
-                 * fallback reports exactly as before */
-                size_t t = close + 1;
-                while (t < len &&
-                       (buf[t] == ' ' || buf[t] == '\t' || buf[t] == '\n' || buf[t] == '\r')) {
-                    t++;
+            if (yep_tape_walk_lenient_fused(buf, len, off, t) == YEPTRIS_OK &&
+                lazy_nums_settled(t) == 0) {
+                YeptrisDocument h = yep_json_doc_wrap(NULL, buf, len, sys, status);
+                if (h != NULL) {
+                    ((yeptris_document*)h)->lazy_tape = t;
+                    return h;
                 }
-                tail_ok = (t == len);
+                yeptris_tape_free(t); /* wrap failed (memory): below */
+            } else {
+                yeptris_tape_free(t); /* reject/malformed: below */
             }
-            if (rc == 1 && tail_ok && dom_on_flow_commit(dom) > 0) {
-                return yep_json_doc_wrap(dom, buf, len, sys, status);
-            }
-            yep_dom_destroy(dom); /* reject/rollback: the sequence below */
+            yep_free(sys, t);
         }
     }
     size_t verr = 0;
@@ -120,8 +179,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
         goto jfail;
     }
     size_t uerr = 0;
-    if (yep_text_active()->gate_scan(buf, len) &&
-        !yep_utf8_validate((const unsigned char*)buf, len, &uerr)) {
+    if (gated && !yep_utf8_validate((const unsigned char*)buf, len, &uerr)) {
         yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, uerr, "ill-formed UTF-8 at byte %zu",
                       uerr);
         st = YEPTRIS_ERROR_ENCODING;
@@ -363,6 +421,10 @@ YEPTRIS_API void yeptris_document_free(YeptrisDocument handle) {
     if (doc == NULL) {
         return;
     }
+    if (doc->lazy_tape != NULL) { /* never materialized: free stays free */
+        yeptris_tape_free((yeptris_json_tape*)doc->lazy_tape);
+        yep_free(doc->sys, doc->lazy_tape);
+    }
     yep_dom_destroy(doc->dom);
     yep_pool_destroy((yep_pool*)doc->finish_pool);
     yep_free(doc->sys, doc->transcoded);
@@ -371,7 +433,7 @@ YEPTRIS_API void yeptris_document_free(YeptrisDocument handle) {
 
 YEPTRIS_API size_t yeptris_document_count(YeptrisDocument handle) {
     yeptris_document* doc = (yeptris_document*)handle;
-    return doc ? doc->dom->dcount : 0;
+    return doc ? yep_doc_dom(doc)->dcount : 0;
 }
 
 yeptris_node* yep_handle_new(yeptris_document* doc, uint32_t id) {
@@ -390,10 +452,14 @@ static YeptrisNode node_new_handle(yeptris_document* doc, uint32_t id) {
 
 YEPTRIS_API YeptrisNode yeptris_document_root(YeptrisDocument handle, size_t index) {
     yeptris_document* doc = (yeptris_document*)handle;
-    if (doc == NULL || index >= doc->dom->dcount) {
+    if (doc == NULL) {
         return NULL;
     }
-    return node_new_handle(doc, doc->dom->docs[index]);
+    yep_dom* dom = yep_doc_dom(doc);
+    if (dom == NULL || index >= dom->dcount) {
+        return NULL;
+    }
+    return node_new_handle(doc, dom->docs[index]);
 }
 
 static const yep_dnode* node_of(YeptrisNode handle) {

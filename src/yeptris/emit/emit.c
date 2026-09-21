@@ -45,6 +45,9 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.grow = 0;
     em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
+    if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
+        return 0;
+    }
     em.w.p = NULL;
     em.w.last = 0;
     em.w.force_flow = 0;
@@ -100,6 +103,9 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.grow = 0;
     em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
+    if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
+        return NULL;
+    }
     em.w.p = NULL;
     em.w.last = 0;
     em.w.force_flow = 0;
@@ -174,6 +180,9 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     em.w.grow = 0;
     em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
+    if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
+        return NULL;
+    }
     em.w.p = NULL;
     em.w.last = 0;
     em.w.force_flow = 0;
@@ -224,6 +233,9 @@ YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len,
     em.w.grow = 0;
     em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
+    if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
+        return NULL;
+    }
     em.w.p = NULL;
     em.w.last = 0;
     em.w.force_flow = 0;
@@ -378,6 +390,9 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     em.w.grow = 0;
     em.w.oom = 0;
     em.doc = (const yeptris_document*)handle;
+    if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
+        return 0;
+    }
     em.w.p = NULL;
     em.w.last = 0;
     em.w.force_flow = 0;
