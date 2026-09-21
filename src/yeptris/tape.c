@@ -602,7 +602,7 @@ reject:
  * yeptris_tape_convert owns validation. Everything else matches
  * tape_walk state for state. */
 YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
-                                         yeptris_json_tape* t) {
+                                          yeptris_json_tape* t) {
     if (tape_carve(t, len) != YEPTRIS_OK) {
         return YEPTRIS_ERROR_MEMORY;
     }

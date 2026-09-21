@@ -519,8 +519,7 @@ TEST(TapeDom, LenientTapesOfStrictLegalDocsMatchDirect) {
         yep_dom* built = yep_dom_create(yep_system_allocator());
         ASSERT_NE(built, nullptr);
         ASSERT_EQ(dom_from_tape(built, &t), 0) << doc;
-        EXPECT_TRUE(doms_equal(yep_doc_dom((yeptris_document*)direct), built))
-            << doc;
+        EXPECT_TRUE(doms_equal(yep_doc_dom((yeptris_document*)direct), built)) << doc;
 
         yep_dom_destroy(built);
         yeptris_tape_free(&t);
@@ -545,19 +544,19 @@ TEST(TapeDom, RejectsLenientTapes) {
 TEST(LazyDom, ParseOnlyCarriesTheTape) {
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument d = yeptris_parse_json("{\"a\": [1, 2.5, \"x\"], \"b\": null}",
-                            strlen("{\"a\": [1, 2.5, \"x\"], \"b\": null}"), &st);
+                                           strlen("{\"a\": [1, 2.5, \"x\"], \"b\": null}"), &st);
     ASSERT_EQ(st, YEPTRIS_OK);
     ASSERT_NE(d, nullptr);
     yeptris_document* doc = (yeptris_document*)d;
-    EXPECT_EQ(doc->dom, nullptr);      /* no tree built at parse */
+    EXPECT_EQ(doc->dom, nullptr);       /* no tree built at parse */
     EXPECT_NE(doc->lazy_tape, nullptr); /* the tape is the cargo */
     yeptris_document_free(d);           /* freed without materializing */
 }
 
 TEST(LazyDom, FirstTreeAccessMaterializes) {
     YeptrisStatus st = YEPTRIS_OK;
-    YeptrisDocument d = yeptris_parse_json("{\"a\": [1, 2.5], \"b\": \"s\"}", strlen("{\"a\": [1, 2.5], \"b\": \"s\"}"),
-                            &st);
+    YeptrisDocument d = yeptris_parse_json("{\"a\": [1, 2.5], \"b\": \"s\"}",
+                                           strlen("{\"a\": [1, 2.5], \"b\": \"s\"}"), &st);
     ASSERT_EQ(st, YEPTRIS_OK);
     ASSERT_NE(d, nullptr);
     yeptris_document* doc = (yeptris_document*)d;
@@ -602,11 +601,7 @@ TEST(LazyDom, MalformedNumbersRejectAtParse) {
      * as NUM spans (its delimiter scan allows them), so the sweep —
      * not the walk — owns the strict reject */
     const char* bad[] = {
-        "{\"a\": 12e}",
-        "[1.2.3]",
-        "[0x10]",
-        "{\"k\": -}",
-        "[1e+]",
+        "{\"a\": 12e}", "[1.2.3]", "[0x10]", "{\"k\": -}", "[1e+]",
     };
     for (const char* s : bad) {
         YeptrisStatus st = YEPTRIS_OK;
