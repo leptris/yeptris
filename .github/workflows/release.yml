@@ -318,8 +318,9 @@ jobs:
             platform: linux/ppc64le
             packages: build-essential bash git cmake ninja
             setup: apt-get update -qq
+          # ruby 3.3+ dropped the s390x variant from the official image
           - name: s390x-linux
-            image: ruby:3.4-bookworm
+            image: ruby:3.2-bookworm
             platform: linux/s390x
             packages: build-essential bash git cmake ninja
             setup: apt-get update -qq
