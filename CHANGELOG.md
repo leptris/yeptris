@@ -6,6 +6,32 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- Lazy DOM materialization (#342 slice 2): `yeptris_parse_json`'s
+  gate-clean route rides the fused lenient walk (one pass, records
+  only) with the deferred number grammar settled inline, and the tape
+  travels on the document — `dom_from_tape` builds the tree on first
+  access through the new internal `yep_doc_dom` choke point, so
+  parse-only workloads never pay the DOM lane. Tab-carrying buffers
+  and scalar roots keep the eager routes (pinned behavior).
+- `yeptris_node_children` (yeptris-ruby#168): the bulk child drain —
+  one walk fills a handle buffer (sequence elements in order; mapping
+  key,value pairs interleaved), returning the total count. The
+  per-index `seq_at`/`map_at` walks are O(i) sibling hops each; the
+  bindings' per-element loops made an 80k-row sequence quadratic (the
+  relaton index parsed in 238-328 s where stdlib takes ~3 s).
+
+### Fixed
+- `dom_from_tape`: restored the seven cleanup-eaten guard bodies
+  (args, columns, depth cap, open/place, close underflow, arena tail)
+  — load-bearing now that the materializer is the lazy path.
+- Every document constructor now initializes the new `lazy_tape`
+  field (build.c already memset; the three field-by-field ctors set
+  it): a garbage word made `yeptris_document_free` free an
+  indeterminate pointer — glibc's reused pages segfaulted every CBOR
+  leg on Linux/Windows while macOS's zeroed fresh pages hid it.
+
 ## [0.6.13] - 2026-09-20
 ### Added
 - The schema-descriptor API's declared headroom, executed (#238):
