@@ -681,7 +681,7 @@ TEST(NodeChildren, IndexedAccessSurvivesMutation) {
     EXPECT_EQ(val(yeptris_node_seq_at(root, 2)), "three");
 
     /* mutate: append + delete, then re-index */
-    YeptrisNode four = yeptris_node_new_scalar(doc, "four", 4, YEP_STYLE_PLAIN);
+    YeptrisNode four = yeptris_node_new_scalar(doc, "four", 4, YEPTRIS_STYLE_PLAIN);
     ASSERT_NE(four, nullptr);
     ASSERT_EQ(yeptris_node_seq_add(root, four), YEPTRIS_OK);
     EXPECT_EQ(yeptris_node_seq_count(root), 4u);
