@@ -343,15 +343,13 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/pgem-${{ matrix.name }}"
           docker run --rm --platform "${{ matrix.platform }}" \
-            -v "$RUNNER_TEMP:/work" -w /work -e V="$YEP_V" -e SETUP="${{ matrix.setup }}" \
+            -v "$RUNNER_TEMP:/work" -w /work -e V="$YEP_V" \
             "${{ matrix.image }}" sh -c '
             set -eux
-            $SETUP
+            ${{ matrix.setup }}
             git clone --quiet https://github.com/leptris/yeptris-ruby /work/rubyrepo
             bash /work/rubyrepo/scripts/build-platform-gem.sh "$V" https://github.com/leptris/yeptris-ruby "/work/pgem-${{ matrix.name }}"
           '
-        env:
-          SETUP: ${{ matrix.setup }}
 
       - name: Smoke the ${{ matrix.name }} platform gem (in the container)
         shell: bash
