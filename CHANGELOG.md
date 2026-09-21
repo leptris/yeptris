@@ -6,6 +6,15 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- `yeptris_marshal_node` bails (`YEPTRIS_ERROR_UNSUPPORTED`) when any
+  node in the subtree carries an explicit tag: the value records hold
+  the resolver's verdict, not the source's tag, so `!ruby/object`
+  mappings marshaled as plain hashes with the tag silently dropped.
+  Load-bearing for yeptris-ruby#178's `unsafe_load` fast path (the
+  11 MB relaton index materializes in 0.71 s end to end — 4× stdlib).
+
 ## [0.6.14] - 2026-09-21
 ### Added
 - Lazy DOM materialization (#342 slice 2): `yeptris_parse_json`'s
