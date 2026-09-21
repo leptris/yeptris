@@ -1044,6 +1044,240 @@ reject:
     return YEPTRIS_ERROR_PARSE;
 }
 
+/* The span walk, single-pass edition: the classifier writes per-block
+ * masks (no idx array, no emission loop), and this walk derives each
+ * block's token mask in registers and dispatches straight off the set
+ * bits. Numbers/keywords have no entry — a pending scalar occupies
+ * [val_start, next token) and is recorded (with its charset
+ * validation) when the next token arrives. String closes come from a
+ * backward quote scan over a few bytes. Escape-carrying documents
+ * never reach here (the route sends them to the validating fused
+ * walk), so the fast path never scans string content. Same
+ * accept/reject contract as the fused lenient walk (the differential
+ * suite pins both). */
+static YEP_UNUSED_FN YeptrisStatus tape_walk_lnt_span(const char* p, size_t len, size_t open,
+                                                      const struct yep_s1_block* blocks,
+                                                      size_t nblocks, yeptris_json_tape* t) {
+    if (tape_carve(t, len) != YEPTRIS_OK) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    t->_rec_primary = 1;
+    yeptris_tape_rec* recs = t->recs;
+    uint32_t open_at[YEP_JSON_WALK_DEPTH];
+    uint8_t kind[YEP_JSON_WALK_DEPTH];
+
+    recs[0] = ((uint64_t)0 << 32) | ((uint64_t)0 << 8) | YEP_T_DOC;
+    uint8_t top_kind = p[open] == '[' ? 0 : 1;
+    recs[1] =
+        ((uint64_t)0 << 32) | ((uint64_t)0 << 8) | (top_kind ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN);
+    uint32_t top_open = 1;
+    size_t count = 2;
+    uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+    int key_slot = top_kind ? 1 : 0;
+    int depth = 1;
+    open_at[0] = top_open;
+    kind[0] = top_kind;
+
+    size_t bi = 0;
+    uint64_t tokens = 0;
+    size_t off = 0;
+    size_t val_start = open + 1;
+    size_t pos = 0;
+    for (;;) {
+        while (tokens == 0) {
+            if (bi >= nblocks) {
+                goto reject; /* EOF mid-structure (the root never closed) */
+            }
+            off = (size_t)bi * 64;
+            tokens = blocks[bi].tokens;
+            bi++;
+        }
+        pos = off + (size_t)yep_ctz64(tokens);
+        tokens &= tokens - 1;
+        if (pos == open) {
+            continue; /* the root opener: recs[1] already carries it */
+        }
+
+        /* the pending scalar (numbers/keywords only — a quote would be
+         * a token): [val_start, pos) with trailing ws trimmed. All-ws
+         * residue is harmless; a required value/key is satisfied by a
+         * quote entry (the string arm) or a container. */
+        if (val_start < pos) {
+            size_t end = pos;
+            while (end > val_start && (p[end - 1] == ' ' || p[end - 1] == '\t' ||
+                                       p[end - 1] == '\n' || p[end - 1] == '\r')) {
+                end--;
+            }
+            size_t vs = val_start;
+            while (vs < end && (p[vs] == ' ' || p[vs] == '\t' || p[vs] == '\n' || p[vs] == '\r')) {
+                vs++;
+            }
+            if (vs < end) {
+                char h = p[vs];
+                if (top_expect != JW_VALUE && top_expect != JW_VALUE_OR_CLOSE) {
+                    goto reject; /* bytes where no value may start: {x} [1 2] */
+                }
+                if (h == 't' || h == 'f' || h == 'n') {
+                    size_t wl = h == 'f' ? 5 : 4;
+                    if (end - vs != wl ||
+                        memcmp(p + vs, h == 't' ? "true" : h == 'n' ? "null" : "false", wl) != 0) {
+                        goto reject;
+                    }
+                    recs[count] = ((uint64_t)((uint32_t)vs) << 32) |
+                                  ((uint64_t)((uint32_t)wl) << 8) |
+                                  (uint64_t)(h == 'n' ? YEP_T_NULL
+                                                      : (h == 't' ? YEP_T_TRUE : YEP_T_FALSE));
+                    count++;
+                } else {
+                    if (!((unsigned)(h - '0') <= 9u || h == '-')) {
+                        goto reject;
+                    }
+                    for (size_t k = vs; k < end; k++) {
+                        char d = p[k];
+                        if ((d < '0' || d > '9') && d != '-' && d != '+' && d != '.' &&
+                            d != 'e' && d != 'E') {
+                            goto reject;
+                        }
+                    }
+                    recs[count] = ((uint64_t)((uint32_t)vs) << 32) |
+                                  ((uint64_t)((uint32_t)(end - vs)) << 8) | (uint64_t)(YEP_T_NUM);
+                    count++;
+                }
+                top_expect = JW_COMMA_OR_CLOSE;
+                key_slot = 0;
+            } else if ((top_expect == JW_VALUE || top_expect == JW_KEY) &&
+                       (p[pos] != '"' && p[pos] != '{' && p[pos] != '[')) {
+                goto reject; /* a value/key was required: [1,] {"a":} */
+            }
+            val_start = pos;
+        } else if ((top_expect == JW_VALUE || top_expect == JW_KEY) &&
+                   (p[pos] != '"' && p[pos] != '{' && p[pos] != '[')) {
+            goto reject; /* a value/key was required and none started */
+        }
+
+        {
+            char c = p[pos];
+            if (c == '"') {
+                size_t close = 0;
+                if (top_expect == JW_COMMA_OR_CLOSE || top_expect == JW_COLON) {
+                    goto reject; /* ["a" "b"] — no punct between values */
+                }
+                size_t end = (tokens != 0) ? off + (size_t)yep_ctz64(tokens) : 0;
+                if (end == 0) {
+                    size_t b2 = bi;
+                    while (b2 < nblocks && blocks[b2].q == 0 && blocks[b2].op == 0) {
+                        b2++;
+                    }
+                    end = (b2 < nblocks) ? b2 * 64 : len;
+                    uint64_t m = blocks[b2].q | blocks[b2].op;
+                    if (b2 < nblocks && m != 0) {
+                        end = b2 * 64 + (size_t)yep_ctz64(m);
+                    }
+                }
+                /* end may be the close quote itself (the raw q mask
+                 * feeds the forward position), so the scan includes it */
+                for (size_t k = end + 1; k-- > pos + 1;) {
+                    if (p[k] == '"') {
+                        close = k;
+                        break;
+                    }
+                }
+                if (close == 0) {
+                    goto reject;
+                }
+                recs[count] = ((uint64_t)((uint32_t)(pos + 1)) << 32) |
+                              ((uint64_t)((uint32_t)(close - pos - 1)) << 8) |
+                              (uint64_t)(YEP_T_STR);
+                count++;
+                val_start = close + 1;
+                if (key_slot) {
+                    top_expect = JW_COLON;
+                } else {
+                    top_expect = JW_COMMA_OR_CLOSE;
+                }
+                continue;
+            }
+            if (c == ':') {
+                if (top_expect != JW_COLON) {
+                    goto reject;
+                }
+                top_expect = JW_VALUE;
+                key_slot = 0;
+                val_start = pos + 1;
+                continue;
+            }
+            if (c == ',') {
+                if (top_expect != JW_COMMA_OR_CLOSE) {
+                    goto reject;
+                }
+                top_expect = top_kind ? JW_KEY : JW_VALUE;
+                key_slot = top_kind ? 1 : 0;
+                val_start = pos + 1;
+                continue;
+            }
+            if (c == ']' || c == '}') {
+                int want = c == ']' ? 0 : 1;
+                if (top_kind != want ||
+                    (top_expect != JW_VALUE_OR_CLOSE && top_expect != JW_KEY_OR_CLOSE &&
+                     top_expect != JW_COMMA_OR_CLOSE)) {
+                    goto reject;
+                }
+                recs[count] = ((uint64_t)top_open << 32) | ((uint64_t)0 << 8) | YEP_T_CLOSE;
+                recs[top_open] = (recs[top_open] & ~(uint64_t)0xFFFFFFFF00000000u) |
+                                 ((uint64_t)(uint32_t)count << 32);
+                count++;
+                depth--;
+                if (depth == 0) {
+                    break;
+                }
+                top_kind = kind[depth - 1];
+                top_expect = JW_COMMA_OR_CLOSE;
+                top_open = open_at[depth - 1];
+                key_slot = 0;
+                val_start = pos + 1;
+                continue;
+            }
+            if (c == '{' || c == '[') {
+                if (depth >= YEP_JSON_WALK_DEPTH || key_slot ||
+                    top_expect == JW_COMMA_OR_CLOSE || top_expect == JW_COLON) {
+                    goto reject;
+                }
+                kind[depth - 1] = top_kind;
+                open_at[depth - 1] = top_open;
+                top_kind = c == '[' ? 0 : 1;
+                recs[count] = ((uint64_t)0 << 32) | ((uint64_t)0 << 8) |
+                              (uint64_t)(c == '[' ? YEP_T_SEQ_OPEN : YEP_T_MAP_OPEN);
+                top_open = (uint32_t)count;
+                count++;
+                top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
+                key_slot = top_kind ? 1 : 0;
+                kind[depth] = top_kind;
+                open_at[depth] = top_open;
+                depth++;
+                val_start = pos + 1;
+                continue;
+            }
+        }
+        goto reject;
+    }
+    /* trailing residue: after the root close, only ws may follow */
+    size_t last = pos + 1;
+    while (last < len && (p[last] == ' ' || p[last] == '\t' || p[last] == '\n' || p[last] == '\r')) {
+        last++;
+    }
+    if (last != len) {
+        goto reject;
+    }
+    t->count = count;
+    t->_src = p;
+    t->_srclen = len;
+    return YEPTRIS_OK;
+
+reject:
+    yeptris_tape_free(t);
+    return YEPTRIS_ERROR_PARSE;
+}
+
 YEPTRIS_API YeptrisStatus yeptris_parse_json_tape_lenient(const char* source, size_t len,
                                                           yeptris_json_tape* tape) {
     if ((source == NULL && len != 0) || tape == NULL) {
@@ -1075,21 +1309,24 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape_lenient(const char* source, si
     }
 
     if (source[at] == '[' || source[at] == '{') {
-#if YEP_TOKEN_CONTRACT_ROUTE
-        /* the indexed twin: stage 1 + the idx walk (reference route —
-         * measured behind the fused lenient walk, same differential) */
-        uint32_t* idx = (uint32_t*)malloc((len + 2) * sizeof(uint32_t));
-        if (idx == NULL) {
+        /* the span route: per-block classification + the register-token
+         * walk — no idx array, no emission loop, content bytes never
+         * forward-scanned. Escape-carrying documents (validation needs
+         * the kernel) and C0-in-string ride the fused walk, which
+         * delivers today's verdicts byte for byte. */
+        struct yep_s1_block* blocks = malloc((len / 64 + 2) * sizeof(struct yep_s1_block));
+        if (blocks == NULL) {
             return YEPTRIS_ERROR_MEMORY;
         }
-        size_t nidx = 0;
-        if (yep_text_active()->json_stage1(source, len, idx, &nidx)) {
-            YeptrisStatus st = tape_walk_lnt(source, len, at, idx, nidx, tape);
-            free(idx);
+        size_t nblocks = 0;
+        unsigned flags = 0;
+        if (yep_text_active()->json_stage1_masks(source, len, blocks, &nblocks, &flags) &&
+            (flags & (YEP_S1_C0_IN_STRING | YEP_S1_HAS_ESCAPE)) == 0) {
+            YeptrisStatus st = tape_walk_lnt_span(source, len, at, blocks, nblocks, tape);
+            free(blocks);
             return st;
         }
-        free(idx);
-#endif
+        free(blocks);
         return yep_tape_walk_lenient_fused(source, len, at, tape);
     }
 
@@ -1194,7 +1431,8 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len
                 return YEPTRIS_ERROR_MEMORY;
             }
             size_t nidx = 0;
-            if (yep_text_active()->json_stage1(source, len, idx, &nidx)) {
+            unsigned sflags = 0;
+            if (yep_text_active()->json_stage1(source, len, idx, &nidx, &sflags)) {
                 YeptrisStatus st = tape_walk_idx(source, len, off, idx, nidx, tape);
                 free(idx);
                 if (st != YEPTRIS_ERROR_PARSE) {

@@ -588,9 +588,10 @@ yep_chunk_masks yep_text_json_chunk_neon(const char* p, size_t n) {
  * (four 16-byte halves each), then the shared mask resolver (the
  * simdjson identity set, simd_text.h). The final partial block
  * builds its masks byte-wise — no loads past len. */
-int yep_text_json_stage1_neon(const char* p, size_t len, uint32_t* idx, size_t* nidx) {
+int yep_text_json_stage1_neon(const char* p, size_t len, uint32_t* idx, size_t* nidx,
+                              unsigned* flags) {
     size_t n = 0;
-    uint64_t prev_in_string = 0, esc_carry = 0, follows_carry = 0;
+    uint64_t prev_in_string = 0, esc_carry = 0;
     size_t off = 0;
     const uint8x16_t dq = vdupq_n_u8('"'), dbs = vdupq_n_u8('\\');
     const uint8x16_t d1 = vdupq_n_u8('{'), d2 = vdupq_n_u8('}');
@@ -598,8 +599,9 @@ int yep_text_json_stage1_neon(const char* p, size_t len, uint32_t* idx, size_t* 
     const uint8x16_t d5 = vdupq_n_u8(','), d6 = vdupq_n_u8(':');
     const uint8x16_t wsp = vdupq_n_u8(' '), wtab = vdupq_n_u8('\t');
     const uint8x16_t wnl = vdupq_n_u8('\n'), wcr = vdupq_n_u8('\r');
+    const uint8x16_t c0t = vdupq_n_u8(0x20);
     for (; off + 64 <= len; off += 64) {
-        uint64_t q = 0, bs = 0, op = 0, ws = 0;
+        uint64_t q = 0, bs = 0, op = 0, ws = 0, c0 = 0;
         for (unsigned half = 0; half < 4; half++) {
             uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(p + off + 16 * half));
             uint64_t fq = yep_neon_bits(vceqq_u8(v, dq));
@@ -610,17 +612,19 @@ int yep_text_json_stage1_neon(const char* p, size_t len, uint32_t* idx, size_t* 
                                        vorrq_u8(vceqq_u8(v, d5), vceqq_u8(v, d6))));
             uint64_t fw = yep_neon_bits(vorrq_u8(vorrq_u8(vceqq_u8(v, wsp), vceqq_u8(v, wtab)),
                                                  vorrq_u8(vceqq_u8(v, wnl), vceqq_u8(v, wcr))));
+            uint64_t fc = yep_neon_bits(vcltq_u8(v, c0t));
             q |= fq << (16 * half);
             bs |= fb << (16 * half);
             op |= fo << (16 * half);
             ws |= fw << (16 * half);
+            c0 |= fc << (16 * half);
         }
-        n = yep_json_stage1_resolve(q, bs, op, ws, ~0ull, &prev_in_string, &esc_carry,
-                                    &follows_carry, off, idx, n);
+        n = yep_json_stage1_resolve(q, bs, op, ws, c0, ~0ull, &prev_in_string, &esc_carry, off,
+                                    idx, n, flags);
     }
     if (off < len) { /* the tail: byte-wise masks, no loads past len */
         size_t cn = len - off;
-        uint64_t q = 0, bs = 0, op = 0, ws = 0;
+        uint64_t q = 0, bs = 0, op = 0, ws = 0, c0 = 0;
         for (size_t k = 0; k < cn; k++) {
             unsigned char c = (unsigned char)p[off + k];
             uint64_t bit = 1ull << k;
@@ -633,11 +637,80 @@ int yep_text_json_stage1_neon(const char* p, size_t len, uint32_t* idx, size_t* 
             } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
                 ws |= bit;
             }
+            if (c < 0x20) {
+                c0 |= bit;
+            }
         }
-        n = yep_json_stage1_resolve(q, bs, op, ws, (1ull << cn) - 1ull, &prev_in_string, &esc_carry,
-                                    &follows_carry, off, idx, n);
+        n = yep_json_stage1_resolve(q, bs, op, ws, c0, (1ull << cn) - 1ull, &prev_in_string,
+                                    &esc_carry, off, idx, n, flags);
     }
     *nidx = n;
+    return prev_in_string ? 0 : 1;
+}
+
+/* The classification half of the structural indexer: the same
+ * 64-byte/4-half mask build, no emission, blocks out instead of idx. */
+int yep_text_json_stage1_masks_neon(const char* p, size_t len, struct yep_s1_block* blocks,
+                                    size_t* nblocks, unsigned* flags) {
+    size_t nb = 0;
+    uint64_t prev_in_string = 0, esc_carry = 0;
+    size_t off = 0;
+    const uint8x16_t dq = vdupq_n_u8('"'), dbs = vdupq_n_u8('\\');
+    const uint8x16_t d1 = vdupq_n_u8('{'), d2 = vdupq_n_u8('}');
+    const uint8x16_t d3 = vdupq_n_u8('['), d4 = vdupq_n_u8(']');
+    const uint8x16_t d5 = vdupq_n_u8(','), d6 = vdupq_n_u8(':');
+    const uint8x16_t c0t = vdupq_n_u8(0x20);
+    for (; off + 64 <= len; off += 64) {
+        uint64_t q = 0, bs = 0, op = 0, c0 = 0;
+        for (unsigned half = 0; half < 4; half++) {
+            uint8x16_t v = vld1q_u8((const uint8_t*)(const void*)(p + off + 16 * half));
+            uint64_t fq = yep_neon_bits(vceqq_u8(v, dq));
+            uint64_t fb = yep_neon_bits(vceqq_u8(v, dbs));
+            uint64_t fo =
+                yep_neon_bits(vorrq_u8(vorrq_u8(vorrq_u8(vceqq_u8(v, d1), vceqq_u8(v, d2)),
+                                                vorrq_u8(vceqq_u8(v, d3), vceqq_u8(v, d4))),
+                                       vorrq_u8(vceqq_u8(v, d5), vceqq_u8(v, d6))));
+            uint64_t fc = yep_neon_bits(vcltq_u8(v, c0t));
+            q |= fq << (16 * half);
+            bs |= fb << (16 * half);
+            op |= fo << (16 * half);
+            c0 |= fc << (16 * half);
+        }
+        blocks[nb].q = q;
+        blocks[nb].bs = bs;
+        blocks[nb].op = op;
+        blocks[nb].c0 = c0;
+        blocks[nb].tokens =
+            yep_json_stage1_tokens(q, bs, op, c0, ~0ull, &prev_in_string, &esc_carry, flags);
+        nb++;
+    }
+    if (off < len) {
+        size_t cn = len - off;
+        uint64_t q = 0, bs = 0, op = 0, c0 = 0;
+        for (size_t k = 0; k < cn; k++) {
+            unsigned char c = (unsigned char)p[off + k];
+            uint64_t bit = 1ull << k;
+            if (c == '"') {
+                q |= bit;
+            } else if (c == '\\') {
+                bs |= bit;
+            } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
+                op |= bit;
+            }
+            if (c < 0x20) {
+                c0 |= bit;
+            }
+        }
+        uint64_t valid = (1ull << cn) - 1ull;
+        blocks[nb].q = q;
+        blocks[nb].bs = bs;
+        blocks[nb].op = op;
+        blocks[nb].c0 = c0;
+        blocks[nb].tokens =
+            yep_json_stage1_tokens(q, bs, op, c0, valid, &prev_in_string, &esc_carry, flags);
+        nb++;
+    }
+    *nblocks = nb;
     return prev_in_string ? 0 : 1;
 }
 
@@ -657,6 +730,7 @@ const yep_text_kernels yep_text_kernels_neon = {
     yep_neon_line_facts,
     yep_text_json_chunk_neon,
     yep_text_json_stage1_neon,
+    yep_text_json_stage1_masks_neon,
 };
 
 #endif /* YEP_ARCH_AARCH64 */

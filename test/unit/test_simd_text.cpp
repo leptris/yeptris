@@ -15,7 +15,8 @@
 
 #include "common/simd_text.h"
 
-extern "C" int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx);
+extern "C" int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx,
+                                      unsigned* flags);
 
 namespace {
 
@@ -718,39 +719,25 @@ TEST(SimdText, ChunkClassify) {
 }
 
 /* naive stage-1: an independent byte-machine formulation of the
- * structural-indexer contract — operators, string open quotes
- * (escape-aware), scalar-run starts (a scalar byte whose predecessor
- * was not a non-quote scalar); unterminated string = reject */
+ * structural-indexer contract — operators and string open quotes only
+ * (escape parity: the escape mask suppresses quotes alone, so an
+ * escaped operator still emits and \\ pairs cancel); unterminated
+ * string = reject */
 static std::vector<uint32_t> naive_stage1(const char* p, size_t len, int* ok) {
     std::vector<uint32_t> out;
-    bool in_str = false, esc = false, prev_snq = false;
+    bool in_str = false, esc = false;
     *ok = 1;
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)p[i];
         bool is_op = c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':';
-        bool is_ws = c == ' ' || c == '\t' || c == '\n' || c == '\r';
         if (esc) {
             esc = false;
-            if (!in_str) {
-                if (is_op) { /* an escaped operator still emits (the
-                                escape mask only suppresses quotes) */
-                    out.push_back((uint32_t)i);
-                    prev_snq = false;
-                } else { /* a backslash victim still extends the run:
-                            to the op/ws classifier it is a plain scalar */
-                    prev_snq = !is_ws && c != '"';
-                }
-            }
-            continue; /* a victim quote or scalar never emits */
-        }
-        if (c == '\\') { /* escape parity runs OUTSIDE strings too:
-                              an escaped quote never opens one */
-            if (!in_str && !prev_snq) {
+            if (!in_str && is_op) {
                 out.push_back((uint32_t)i);
             }
-            if (!in_str) {
-                prev_snq = true;
-            }
+            continue;
+        }
+        if (c == '\\') {
             esc = true;
             continue;
         }
@@ -758,24 +745,13 @@ static std::vector<uint32_t> naive_stage1(const char* p, size_t len, int* ok) {
             if (c == '"') {
                 in_str = false;
             }
-            continue; /* nothing inside a string emits */
+            continue;
         }
         if (is_op) {
             out.push_back((uint32_t)i);
-            prev_snq = false;
         } else if (c == '"') {
-            if (!prev_snq) { /* a quote is a scalar start unless suppressed */
-                out.push_back((uint32_t)i);
-            }
-            in_str = true; /* even a suppressed one opens (garbage case) */
-            prev_snq = false;
-        } else if (!is_ws) {
-            if (!prev_snq) {
-                out.push_back((uint32_t)i);
-            }
-            prev_snq = true;
-        } else {
-            prev_snq = false;
+            out.push_back((uint32_t)i);
+            in_str = true;
         }
     }
     *ok = in_str ? 0 : 1;
@@ -789,8 +765,10 @@ static void expect_stage1_eq(const char* p, size_t len) {
     size_t na = 0, nb = 0;
     int want = -1;
     std::vector<uint32_t> want_idx = naive_stage1(p, len, &want);
-    ok_a = yep_text_active()->json_stage1(p, len, a, &na);
-    ok_b = yep_json_stage1_scalar(p, len, b, &nb);
+    unsigned fa = 0, fb = 0;
+    ok_a = yep_text_active()->json_stage1(p, len, a, &na, &fa);
+    ok_b = yep_json_stage1_scalar(p, len, b, &nb, &fb);
+    ASSERT_EQ(fa, fb) << "flag divergence buf=[" << std::string(p, len) << "]";
     ASSERT_EQ(ok_a, want);
     ASSERT_EQ(ok_b, want);
     ASSERT_EQ(na, want_idx.size()) << "active count buf=[" << std::string(p, len) << "]";

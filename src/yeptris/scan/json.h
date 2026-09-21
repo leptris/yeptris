@@ -93,8 +93,15 @@ YEPTRIS_API int yep_json_string(const char* p, size_t len, size_t* i, size_t* cl
  * (scalar reference; the kernels table's json_stage1 slot carries the
  * ISA twins). Writes the token positions stage 2 dispatches on —
  * operators, string OPEN quotes, scalar-run starts — and returns 0
- * only for an unterminated string. idx holds len+2 entries. */
-YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx);
+ * only for an unterminated string. idx holds len+2 entries. flags
+ * (never NULL) accumulates the YEP_S1_* doc-level facts. */
+YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx,
+                                       unsigned* flags);
+/* The classification half (no emission) — the kernels table's
+ * json_stage1_masks slot carries the ISA twins. */
+YEPTRIS_API int yep_json_stage1_masks_scalar(const char* p, size_t len,
+                                             struct yep_s1_block* blocks, size_t* nblocks,
+                                             unsigned* flags);
 
 /* The per-chunk byte-class classifier behind the flow kernels: the
  * kernels table's json_chunk slot (common/simd_text.h) — yep_chunk_masks

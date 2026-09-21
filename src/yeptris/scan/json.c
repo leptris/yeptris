@@ -761,12 +761,13 @@ yep_jw_status yep_json_walk_next(yep_json_walk* w, yep_json_tok* t) {
  * parity error. The mask-level identity set (escape scanner via the
  * ODD_BITS borrow trick, prefix-xor string parity) is simdjson's. */
 
-YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx) {
+YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx, size_t* nidx,
+                                       unsigned* flags) {
     size_t n = 0;
-    uint64_t prev_in_string = 0, esc_carry = 0, follows_carry = 0;
+    uint64_t prev_in_string = 0, esc_carry = 0;
     for (size_t off = 0; off < len; off += 64) {
         size_t cn = len - off < 64 ? len - off : 64;
-        uint64_t q = 0, bs = 0, op = 0, ws = 0;
+        uint64_t q = 0, bs = 0, op = 0, ws = 0, c0 = 0;
         for (size_t k = 0; k < cn; k++) {
             unsigned char c = (unsigned char)p[off + k];
             uint64_t bit = 1ull << k;
@@ -779,12 +780,50 @@ YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx,
             } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
                 ws |= bit;
             }
+            if (c < 0x20) {
+                c0 |= bit;
+            }
         }
         uint64_t valid = cn == 64 ? ~0ull : ((1ull << cn) - 1ull);
-        n = yep_json_stage1_resolve(q, bs, op, ws, valid, &prev_in_string, &esc_carry,
-                                    &follows_carry, off, idx, n);
+        n = yep_json_stage1_resolve(q, bs, op, ws, c0, valid, &prev_in_string, &esc_carry, off,
+                                    idx, n, flags);
     }
     *nidx = n;
+    return prev_in_string ? 0 : 1;
+}
+
+YEPTRIS_API int yep_json_stage1_masks_scalar(const char* p, size_t len,
+                                             struct yep_s1_block* blocks, size_t* nblocks,
+                                             unsigned* flags) {
+    size_t nb = 0;
+    uint64_t prev_in_string = 0, esc_carry = 0;
+    for (size_t off = 0; off < len; off += 64) {
+        size_t cn = len - off < 64 ? len - off : 64;
+        uint64_t q = 0, bs = 0, op = 0, c0 = 0;
+        for (size_t k = 0; k < cn; k++) {
+            unsigned char c = (unsigned char)p[off + k];
+            uint64_t bit = 1ull << k;
+            if (c == '"') {
+                q |= bit;
+            } else if (c == '\\') {
+                bs |= bit;
+            } else if (c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ':') {
+                op |= bit;
+            }
+            if (c < 0x20) {
+                c0 |= bit;
+            }
+        }
+        uint64_t valid = cn == 64 ? ~0ull : ((1ull << cn) - 1ull);
+        blocks[nb].q = q;
+        blocks[nb].bs = bs;
+        blocks[nb].op = op;
+        blocks[nb].c0 = c0;
+        blocks[nb].tokens =
+            yep_json_stage1_tokens(q, bs, op, c0, valid, &prev_in_string, &esc_carry, flags);
+        nb++;
+    }
+    *nblocks = nb;
     return prev_in_string ? 0 : 1;
 }
 
