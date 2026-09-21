@@ -646,11 +646,12 @@ YEPTRIS_API YeptrisNode yeptris_node_seq_at(YeptrisNode handle, size_t index) {
     if (n == NULL || n->kind != YEP_DOM_SEQUENCE || index >= n->count) {
         return NULL;
     }
-    const yep_dom* dom = ((yeptris_node*)handle)->doc->dom;
-    uint32_t id = n->first_child;
-    for (size_t i = 0; i < index && id != UINT32_MAX; i++) {
-        const yep_dnode* cur = yep_dom_node(dom, id);
-        id = cur ? cur->next_sibling : UINT32_MAX;
+    yep_dom* dom = ((yeptris_node*)handle)->doc->dom;
+    uint32_t count = 0;
+    /* the node id IS its dnode index */
+    uint32_t id = dom_indexed_child(dom, ((yeptris_node*)handle)->id, index, &count); /* #377 */
+    if (id == UINT32_MAX) {
+        return NULL;
     }
     return wrap((yeptris_node*)handle, id);
 }
@@ -685,10 +686,11 @@ YEPTRIS_API int yeptris_node_map_at(YeptrisNode handle, size_t index, YeptrisNod
         return -1;
     }
     yeptris_node* h = (yeptris_node*)handle;
-    const yep_dom* d = h->doc->dom;
-    uint32_t child = n->first_child;
-    for (size_t i = 0; i < index * 2; i++) {
-        child = d->nodes[child].next_sibling; /* pairs are key,value,… */
+    yep_dom* d = h->doc->dom;
+    uint32_t count = 0;
+    uint32_t child = dom_indexed_child(d, h->id, (size_t)index * 2, &count); /* #377 */
+    if (child == UINT32_MAX) {
+        return -1;
     }
     if (key != NULL) {
         *key = wrap(h, child);

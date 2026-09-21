@@ -241,6 +241,9 @@ void dom_link(yep_dom* d, uint32_t parent, uint32_t child) {
     }
     p->last_child = child;
     p->count++;
+    /* every link changes SOME container's child list (#377's cache) */
+    d->child_cache_id = UINT32_MAX;
+    d->child_cache_len = 0;
 }
 
 /* ---- mutation side tables (64-2a) ---- */
@@ -485,6 +488,9 @@ yep_dom* yep_dom_create(const yep_allocator* sys) {
      * document that decode-only consumers (CBOR load, serialize, free)
      * never touch; yep_dom_handles() materializes it on first use */
     d->handles = NULL;
+    d->child_cache = NULL;
+    d->child_cache_id = UINT32_MAX;
+    d->child_cache_len = 0;
     if (yep_mutex_init(&d->midx.mu) != 0) {
         yep_pool_destroy(pool);
         yep_free(sys, d);
@@ -513,6 +519,69 @@ struct yep_hpool* yep_dom_handles(yep_dom* d) {
     return h;
 }
 
+/* #377 (ruby #168): seq_at/map_at were O(i) sibling walks — the
+ * bindings' per-element loops made an 80k-row sequence quadratic
+ * (the relaton index: 238-328s where stdlib takes ~3s). The bulk
+ * drain (yeptris_node_children) fixed the bindings; THIS fixes the
+ * accessor: the last indexed container's child ids cache under the
+ * lazy-init mutex, O(1) after the first call. Invalidated by every
+ * child-list mutation (dom_invalidate_child_cache). */
+void dom_invalidate_child_cache(yep_dom* d) {
+    if (d == NULL) {
+        return;
+    }
+    d->child_cache_id = UINT32_MAX;
+    d->child_cache_len = 0;
+}
+
+/* Returns child id at index (UINT32_MAX when out of range); the
+ * container's child count rides *count_out. */
+uint32_t dom_indexed_child(yep_dom* d, uint32_t cid, size_t index, uint32_t* count_out) {
+    const yep_dnode* n = yep_dom_node(d, cid);
+    if (n == NULL) {
+        *count_out = 0;
+        return UINT32_MAX;
+    }
+    *count_out = n->count;
+    if (d->child_cache_id == cid) {
+        if (index < d->child_cache_len) {
+            return d->child_cache[index];
+        }
+        return UINT32_MAX;
+    }
+    /* miss: build once under the lazy-init mutex (Threads.
+     * ReadOnlySharing — concurrent first calls race here exactly like
+     * the handle pool's) */
+    yep_mutex_lock(&d->midx.mu);
+    if (d->child_cache_id != cid) {
+        yep_free(d->sys, d->child_cache);
+        d->child_cache = NULL;
+        d->child_cache_len = 0;
+        if (n->count > 0) {
+            uint32_t* arr = yep_alloc(d->sys, n->count * sizeof(uint32_t));
+            if (arr != NULL) {
+                uint32_t k = 0;
+                for (uint32_t id = n->first_child; id != UINT32_MAX && k < n->count;) {
+                    const yep_dnode* cn = yep_dom_node(d, id);
+                    if (cn == NULL) {
+                        break;
+                    }
+                    arr[k++] = id;
+                    id = cn->next_sibling;
+                }
+                d->child_cache = arr;
+                d->child_cache_len = k;
+            }
+        }
+        d->child_cache_id = cid;
+    }
+    yep_mutex_unlock(&d->midx.mu);
+    if (index < d->child_cache_len) {
+        return d->child_cache[index];
+    }
+    return UINT32_MAX;
+}
+
 void yep_dom_destroy(yep_dom* d) {
     if (d == NULL) {
         return;
@@ -523,6 +592,7 @@ void yep_dom_destroy(yep_dom* d) {
     yep_free(d->sys, d->mut_att);
     yep_free(d->sys, d->mut_depth);
     yep_hpool_destroy(d->handles);
+    yep_free(d->sys, d->child_cache);
     yep_pool_destroy(d->pool);
     yep_free(d->sys, d);
 }
