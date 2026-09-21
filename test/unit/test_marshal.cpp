@@ -246,3 +246,37 @@ TEST(Marshal, BignumLimbCountFullWidth) {
 }
 
 } // namespace
+
+/* #178: an explicit tag anywhere in the subtree bails marshal_node —
+ * the value records carry the resolver's verdict, not the source tag,
+ * so a `!ruby/object` map would otherwise marshal as a plain hash
+ * (psych's visitor revives it; the tag must not vanish). */
+TEST(MarshalNode, ExplicitTagsBail) {
+    const char* docs[] = {
+        "a: 1\nb: !ruby/object {}\n",
+        "- !ruby/struct::Point2 {x: 3, y: 4}\n",
+        "top:\n  inner: !!str tagged\n",
+        "k: !custom/tag v\n",
+    };
+    for (const char* y : docs) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse_ex(y, strlen(y), NULL, &st);
+        ASSERT_EQ(st, YEPTRIS_OK) << y;
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        char* out = NULL;
+        size_t olen = 0;
+        EXPECT_EQ(yeptris_marshal_node(root, &out, &olen), YEPTRIS_ERROR_UNSUPPORTED) << y;
+        yeptris_marshal_free(out);
+        yeptris_document_free(doc);
+    }
+    /* untagged bulk data still marshals (the fast path's payload) */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse("- :id: 1\n  file: x\n", strlen("- :id: 1\n  file: x\n"), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    char* out = NULL;
+    size_t olen = 0;
+    ASSERT_EQ(yeptris_marshal_node(yeptris_document_root(doc, 0), &out, &olen), YEPTRIS_OK);
+    yeptris_marshal_free(out);
+    yeptris_document_free(doc);
+}
