@@ -65,7 +65,9 @@ enum {
                                     (default: last, as at parse) */
 };
 
-/* One plan node. 32 bytes, ABI-pinned. */
+/* One plan node. ABI-pinned: a pointer plus 16 fixed-width bytes —
+ * 24 on LP64, 20 on 32-bit (the hosts' FFI mirrors size :pointer
+ * per-process, so the layout contract is the POINTER plus the tail). */
 typedef struct yeptris_desc_node {
     const char* wire_name; /* mapping key to match (NULL: the root) */
     uint8_t kind;          /* YEP_SK_* */
@@ -77,7 +79,7 @@ typedef struct yeptris_desc_node {
     uint32_t reserved;     /* must be 0 (ABI headroom) */
 } yeptris_desc_node;
 
-YEPTRIS_CT_ASSERT(sizeof(yeptris_desc_node) == 24);
+YEPTRIS_CT_ASSERT(sizeof(yeptris_desc_node) == sizeof(const char*) + 16);
 
 /* One column's output. Caller allocates the payload array (sized by
  * expectation); the call fills it and sets count. No per-value FFI:
