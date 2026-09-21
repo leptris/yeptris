@@ -588,6 +588,24 @@ YEPTRIS_API YeptrisNode yeptris_node_seq_at(YeptrisNode handle, size_t index) {
     return wrap((yeptris_node*)handle, id);
 }
 
+YEPTRIS_API size_t yeptris_node_children(YeptrisNode handle, YeptrisNode* out, size_t cap) {
+    const yep_dnode* n = node_of(handle);
+    if (n == NULL || (n->kind != YEP_DOM_SEQUENCE && n->kind != YEP_DOM_MAPPING)) {
+        return 0;
+    }
+    size_t count = 0;
+    uint32_t id = n->first_child;
+    while (id != UINT32_MAX) {
+        if (out != NULL && count < cap) {
+            out[count] = wrap((yeptris_node*)handle, id);
+        }
+        count++;
+        const yep_dnode* cur = yep_dom_node(((yeptris_node*)handle)->doc->dom, id);
+        id = cur ? cur->next_sibling : UINT32_MAX;
+    }
+    return count;
+}
+
 YEPTRIS_API size_t yeptris_node_map_count(YeptrisNode handle) {
     const yep_dnode* n = node_of(handle);
     return (n && n->kind == YEP_DOM_MAPPING) ? n->count / 2 : 0;
