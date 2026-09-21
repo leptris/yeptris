@@ -286,6 +286,105 @@ jobs:
             gem push "$GEM"
           fi
 
+  # The qemu-emulated platform gems (issue #376: the family's 14-gem
+  # matrix — armv7 gnu+musl, ppc64le, s390x). The teptris-ruby recipe:
+  # binfmt on ubuntu-latest, the arch ruby image per cell, the SAME
+  # build-platform-gem.sh script the musl leg rides, smoke INSIDE the
+  # container, then the already-pushed check. s390x is big-endian —
+  # the engine's first BE binding surface; its smoke is load-bearing.
+  platform-gems-qemu:
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.republish_version != '')
+    runs-on: ubuntu-latest
+    needs: publish
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: arm-linux
+            image: ruby:3.4-bookworm
+            platform: linux/arm/v7
+            packages: build-essential bash git cmake ninja
+          - name: arm-linux-musl
+            image: ruby:3.4-alpine
+            platform: linux/arm/v7
+            packages: build-base bash git cmake ninja
+          - name: ppc64le-linux
+            image: ruby:3.4-bookworm
+            platform: linux/ppc64le
+            packages: build-essential bash git cmake ninja
+          - name: s390x-linux
+            image: ruby:3.4-bookworm
+            platform: linux/s390x
+            packages: build-essential bash git cmake ninja
+    steps:
+      - name: Resolve the release version
+        shell: bash
+        run: |
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
+          echo "YEP_V=$V" >> "$GITHUB_ENV"
+
+      - name: Install binfmt emulators
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
+
+      - name: Build the ${{ matrix.name }} platform gem
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/pgem-${{ matrix.name }}"
+          docker run --rm --platform "${{ matrix.platform }}" \
+            -v "$RUNNER_TEMP:/work" -w /work -e V="$YEP_V" "${{ matrix.image }}" sh -c '
+            set -eux
+            apt-get update -qq 2>/dev/null || apk add --no-cache true >/dev/null
+            apk add --no-cache $PKGS 2>/dev/null || apt-get install -y -qq $PKGS
+            git clone --quiet https://github.com/leptris/yeptris-ruby /work/rubyrepo
+            bash /work/rubyrepo/scripts/build-platform-gem.sh "$V" https://github.com/leptris/yeptris-ruby "/work/pgem-${{ matrix.name }}"
+          '
+        env:
+          PKGS: ${{ matrix.packages }}
+
+      - name: Smoke the ${{ matrix.name }} platform gem (in the container)
+        shell: bash
+        run: |
+          GEM="$(find "$RUNNER_TEMP/pgem-${{ matrix.name }}" -name "yeptris-*.gem" | head -1)"
+          test -n "$GEM" || { echo "no gem this run"; exit 1; }
+          echo "gem: $GEM"
+          GEM_CTR="/work${GEM#$RUNNER_TEMP}"
+          docker run --rm --platform "${{ matrix.platform }}" \
+            -v "$RUNNER_TEMP:/work" -w /work "${{ matrix.image }}" sh -c '
+            set -eux
+            gem install ffi --no-document
+            gem install --local --no-document "'"$GEM_CTR"'"
+            ruby -e "require %(yeptris); abort %(smoke) unless Yeptris::YAML.load(%(a: [1, 2])) == { %(a) => [1, 2] }; puts %(SMOKE PASS yeptris ${{ matrix.name }})"
+          '
+
+      - name: Configure RubyGems credentials (trusted publisher)
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
+
+      - name: Push the ${{ matrix.name }} platform gem
+        shell: bash
+        run: |
+          GEM="$(cat "$RUNNER_TEMP/pgem-${{ matrix.name }}/gempath" 2>/dev/null | cut -d= -f2 || true)"
+          test -n "$GEM" || { echo "no gem this run"; exit 1; }
+          GEM="${GEM#/work}"
+          GEM="$RUNNER_TEMP$GEM"
+          BASE="$(basename "$GEM")"
+          VER="$(echo "$BASE" | sed -E 's/^yeptris-([0-9.]+)-.*/\1/')"
+          PLAT="${BASE%.gem}"
+          PLAT="${PLAT#yeptris-$VER-}"
+          echo "pushing $VER / $PLAT"
+          if curl -sf https://rubygems.org/api/v1/versions/yeptris.json | \
+              ruby -rjson -e 'exit(JSON.parse(STDIN.read).any? { |v| v["number"]==ARGV[0] && v["platform"]==ARGV[1] } ? 0 : 1)' "$VER" "$PLAT"; then
+            echo "already pushed; skipping"
+          else
+            gem push "$GEM"
+          fi
+
   # The macOS 26 (Tahoe) smoke — the OS that reported #125 (its
   # darwin-25 could not match the old suffixed platform and fell back
   # to the DLL-less pure-ruby gem). Coverage needs NO per-OS builds
