@@ -721,6 +721,34 @@ YEPTRIS_API YeptrisStatus yeptris_marshal(const char* data, size_t len, YeptrisS
     return st;
 }
 
+/* #178 (ruby #168's fast path): the value records carry the resolver's
+ * verdict, NOT the source's explicit tag — a `!ruby/object` mapping
+ * would marshal as a plain hash, silently dropping the tag (psych's
+ * visitor revives it). One cheap pre-walk: any explicitly tagged node
+ * in the subtree → UNSUPPORTED, the host walks. Explicit CORE tags
+ * (!!str and friends) ride the same bail — correct, just conservative;
+ * bulk data is untagged. */
+static int dom_subtree_tagged(const yep_dom* d, uint32_t id) {
+    const yep_dnode* n = yep_dom_node(d, id);
+    if (n == NULL) {
+        return 0;
+    }
+    if (n->tag.len != 0) {
+        return 1;
+    }
+    for (uint32_t c = n->first_child; c != UINT32_MAX;) {
+        const yep_dnode* cn = yep_dom_node(d, c);
+        if (cn == NULL) {
+            break;
+        }
+        if (dom_subtree_tagged(d, c) != 0) {
+            return 1;
+        }
+        c = cn->next_sibling;
+    }
+    return 0;
+}
+
 YEPTRIS_API YeptrisStatus yeptris_marshal_node(YeptrisNode node, char** out, size_t* out_len) {
     if (node == NULL || out == NULL || out_len == NULL) {
         return YEPTRIS_ERROR_ARG;
@@ -728,6 +756,12 @@ YEPTRIS_API YeptrisStatus yeptris_marshal_node(YeptrisNode node, char** out, siz
     *out = NULL;
     *out_len = 0;
     yeptris_node* h = (yeptris_node*)node;
+    if (dom_subtree_tagged(h->doc->dom, h->id) != 0) {
+        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
+                      "marshal: explicitly tagged node not expressible; "
+                      "fall back to the value walk");
+        return YEPTRIS_ERROR_UNSUPPORTED;
+    }
     yep_value_ctx* c = NULL;
     if (yep_values_from_dom(h->doc->dom, h->id, 0, &c) != 0) {
         return YEPTRIS_ERROR_MEMORY;
