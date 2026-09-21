@@ -272,7 +272,8 @@ TEST(MarshalNode, ExplicitTagsBail) {
     }
     /* untagged bulk data still marshals (the fast path's payload) */
     YeptrisStatus st = YEPTRIS_OK;
-    YeptrisDocument doc = yeptris_parse("- :id: 1\n  file: x\n", strlen("- :id: 1\n  file: x\n"), &st);
+    YeptrisDocument doc =
+        yeptris_parse("- :id: 1\n  file: x\n", strlen("- :id: 1\n  file: x\n"), &st);
     ASSERT_EQ(st, YEPTRIS_OK);
     char* out = NULL;
     size_t olen = 0;
