@@ -134,8 +134,17 @@ static void wr_indent(yep_writer* w, int depth) {
 
 static void emit_dq(yep_writer* w, const char* p, uint32_t n) {
     wr_byte(w, '"');
+    uint32_t run = 0;
     for (uint32_t i = 0; i < n; i++) {
         unsigned char c = (unsigned char)p[i];
+        if (c >= 0x20 && c != '"' && c != '\\' && c != 0x7f) {
+            run++;
+            continue;
+        }
+        if (run) {
+            wr_put(w, p + i - run, run);
+            run = 0;
+        }
         if (c == '"' || c == '\\') {
             wr_byte(w, '\\');
             wr_byte(w, (char)c);
@@ -161,9 +170,10 @@ static void emit_dq(yep_writer* w, const char* p, uint32_t n) {
                 char hex[4] = {'\\', 'x', hd[(c >> 4) & 0xf], hd[c & 0xf]};
                 wr_put(w, hex, 4);
             }
-        } else {
-            wr_byte(w, (char)c);
         }
+    }
+    if (run) {
+        wr_put(w, p + n - run, run);
     }
     wr_byte(w, '"');
 }
@@ -315,6 +325,10 @@ enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL };
 
 static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in,
                         int has_tag) {
+    if ((sty_in == 1) && len > 0 &&
+        (as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len))) {
+        return YEP_SC_PLAIN; /* plain-safe implies no breaks: memchr skipped */
+    }
     int multiline = (len > 0 && memchr(p, '\n', len) != NULL);
     int blockable = 0;
     if (multiline && !as_key) {
