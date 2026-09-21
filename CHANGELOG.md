@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.14] - 2026-09-21
 ### Added
 - Lazy DOM materialization (#342 slice 2): `yeptris_parse_json`'s
   gate-clean route rides the fused lenient walk (one pass, records
