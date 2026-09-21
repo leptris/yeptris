@@ -22,11 +22,11 @@ typedef struct yeptris_document {
     void* finish_pool; /* engine finish pool: resolved tags, folded and
                           escaped scalars outlive the engine through the
                           document */
-    void* lazy_tape; /* #342 slice 2: the parsed tape when the tree is
-                      * deferred (gate-clean strict JSON). dom==NULL until
-                      * the first tree access materializes via dom_from_tape;
-                      * freed with the document. void* to avoid a header
-                      * cycle — parse.c casts to yeptris_json_tape* */
+    void* lazy_tape;   /* #342 slice 2: the parsed tape when the tree is
+                        * deferred (gate-clean strict JSON). dom==NULL until
+                        * the first tree access materializes via dom_from_tape;
+                        * freed with the document. void* to avoid a header
+                        * cycle — parse.c casts to yeptris_json_tape* */
 } yeptris_document;
 
 /* Node handle: a (document, node-id) pair so nodes stay usable even if

@@ -142,8 +142,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
          * pinned agreement). A tab-carrying buffer must NOT take the
          * lazy walk — the validating sequence below reports exactly
          * the pinned reject. */
-        if (off < len && (buf[off] == '[' || buf[off] == '{') &&
-            memchr(buf, '\t', len) == NULL) {
+        if (off < len && (buf[off] == '[' || buf[off] == '{') && memchr(buf, '\t', len) == NULL) {
             /* #342 slice 2: the fused LENIENT walk (one pass, records
              * only — no node building) settles the deferred number
              * grammar inline, then the tape rides the document and

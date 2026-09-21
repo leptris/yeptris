@@ -80,15 +80,15 @@ YEPTRIS_API yeptris_plan* yeptris_plan_compile(const char* spec, size_t len, Yep
         return NULL;
     }
     yeptris_document* d = (yeptris_document*)doc;
+    yeptris_plan* plan = calloc(1, sizeof(*plan)); /* before any goto: out frees it */
+    if (plan == NULL) {
+        goto mem;
+    }
     yep_dom* dd = yep_doc_dom(d); /* #342 lazy: the spec parse may defer */
     if (dd == NULL) {
         goto mem;
     }
     const yep_dnode* root = yep_dom_node(dd, dd->docs[0]);
-    yeptris_plan* plan = calloc(1, sizeof(*plan));
-    if (plan == NULL) {
-        goto mem;
-    }
     if (root == NULL || root->kind != 2) { /* the spec root is a mapping */
         goto bad;
     }
@@ -661,7 +661,6 @@ yeptris_document_plan_walk(YeptrisDocument doc, const yeptris_plan* plan, Yeptri
     if (st != NULL) {
         *st = YEPTRIS_OK;
     }
-    const yeptris_document* d = (const yeptris_document*)doc;
     const yep_dom* dd = doc == NULL ? NULL : yep_doc_dom((yeptris_document*)doc);
     if (doc == NULL || plan == NULL || dd == NULL || dd->dcount == 0) {
         if (st != NULL) {
