@@ -601,7 +601,7 @@ reject:
  * (the classify scan carries no accept/reject structure) and
  * yeptris_tape_convert owns validation. Everything else matches
  * tape_walk state for state. */
-static YeptrisStatus tape_walk_lnt_fused(const char* p, size_t len, size_t open,
+YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
                                          yeptris_json_tape* t) {
     if (tape_carve(t, len) != YEPTRIS_OK) {
         return YEPTRIS_ERROR_MEMORY;
@@ -1090,7 +1090,7 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape_lenient(const char* source, si
         }
         free(idx);
 #endif
-        return tape_walk_lnt_fused(source, len, at, tape);
+        return yep_tape_walk_lenient_fused(source, len, at, tape);
     }
 
     /* scalar root: one record, same deferred split for numbers */

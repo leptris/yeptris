@@ -866,12 +866,18 @@ int dom_on_flow_commit(void* ctx) {
 }
 
 int dom_from_tape(yep_dom* d, const yeptris_json_tape* t) {
-    if (d == NULL || t == NULL || t->_src == NULL) {}
+    if (d == NULL || t == NULL || t->_src == NULL) {
+        return -1;
+    }
     /* the columns are the one representation valid on every route
      * (strict: native; lenient fused: lazily materialized from the
      * records; scalar-root lenient: native column writes) */
-    if (yeptris_tape_columns((yeptris_json_tape*)t) != 0) {}
-    if (t->kinds == NULL) {}
+    if (yeptris_tape_columns((yeptris_json_tape*)t) != 0) {
+        return -1;
+    }
+    if (t->kinds == NULL) {
+        return -1;
+    }
     d->input_base = (const char*)t->_src;
     d->input_len = t->_srclen;
     const char* src = (const char*)t->_src;
@@ -885,17 +891,23 @@ int dom_from_tape(yep_dom* d, const yeptris_json_tape* t) {
             break; /* the stream boundary record */
         case YEP_T_SEQ_OPEN:
         case YEP_T_MAP_OPEN: {
-            if (d->depth >= YEP_DOM_MAX_DEPTH) {}
+            if (d->depth >= YEP_DOM_MAX_DEPTH) {
+                return -1;
+            }
             uint32_t id =
                 dom_open_node(d, kind == YEP_T_SEQ_OPEN ? YEP_DOM_SEQUENCE : YEP_DOM_MAPPING, NULL,
                               NULL, 0, 0, 0, 1);
-            if (id == UINT32_MAX || dom_place(d, id) != 0) {}
+            if (id == UINT32_MAX || dom_place(d, id) != 0) {
+                return -1;
+            }
             d->map_pending_key[d->depth] = 0;
             d->stack[d->depth++] = id;
             break;
         }
         case YEP_T_CLOSE:
-            if (d->depth == 0) {}
+            if (d->depth == 0) {
+                return -1;
+            }
             d->depth--;
             break;
         case YEP_T_NULL:
@@ -952,7 +964,9 @@ int dom_from_tape(yep_dom* d, const yeptris_json_tape* t) {
                     /* escaped: unescape into the arena (the fused
                      * builder's arm, byte for byte) */
                     char* dst = yep_dom_str_tail(d, len);
-                    if (dst == NULL) {}
+                    if (dst == NULL) {
+                        return -1;
+                    }
                     d->nodes[id].value = yep_dom_str_commit(
                         d, yep_finish_double_into(src, off, off + len, dst, len));
                 } else {

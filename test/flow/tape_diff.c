@@ -272,7 +272,7 @@ static void diff_one(const char* name, const char* buf, size_t len) {
         fprintf(stderr, "TAPE-DIFF %s: status %d vs %d\n", name, ds, ts);
         g_fail++;
     } else if (ds == YEPTRIS_OK) {
-        if (!tape_matches_dom(doc->dom, &tape, buf, name)) {
+        if (!tape_matches_dom(yep_doc_dom(doc), &tape, buf, name)) {
             g_fail++;
         }
     }
@@ -343,7 +343,7 @@ static void fuzz_parity(void) {
             fprintf(stderr, "\n");
             g_fail++;
         } else if (ds == YEPTRIS_OK && doc != NULL) {
-            if (!tape_matches_dom(doc->dom, &tape, buf, "fuzz")) {
+            if (!tape_matches_dom(yep_doc_dom(doc), &tape, buf, "fuzz")) {
                 fprintf(stderr, "TAPE-DIFF fuzz buf=[");
                 for (size_t i = 0; i < len; i++) {
                     fputc(buf[i] >= 0x20 ? buf[i] : '.', stderr);
