@@ -76,6 +76,15 @@ YEPTRIS_API YeptrisNode yeptris_node_map_get(YeptrisNode node, const char* key, 
 YEPTRIS_API int yeptris_node_map_at(YeptrisNode node, size_t index, YeptrisNode* key,
                                     YeptrisNode* value);
 
+/* Bulk children drain — the O(n) iteration primitive (ruby #168: the
+ * per-index seq_at/map_at walks make an 80k-row sequence O(n^2)). One
+ * call walks the child list once and fills out[0..cap) with handles:
+ * sequence elements in order; mapping KEY,VALUE pairs interleaved.
+ * Returns the total child count (mapping pairs count twice); out==NULL
+ * or cap==0 returns the count without allocating handles. Handles come
+ * from the document's pool — document_free reclaims them. */
+YEPTRIS_API size_t yeptris_node_children(YeptrisNode node, YeptrisNode* out, size_t cap);
+
 /* ---- Construction (TODO.impl/11 phase 3) ----
  *
  * Build documents from scratch and mutate them; the emitter and every

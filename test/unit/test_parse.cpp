@@ -573,3 +573,95 @@ TEST(JsonMode, EscapesAndDeep) {
     EXPECT_NE(doc2, nullptr);
     yeptris_document_free(doc2);
 }
+
+/* ruby #168: the bulk children drain — one walk instead of the
+ * per-index O(i) seq_at/map_at loops (the 80k-row relaton index paid
+ * n^2/2 sibling steps). */
+TEST(NodeChildren, BulkDrainMatchesIndexedAccess) {
+    const char* y = "top:\n"
+                    "  - one\n"
+                    "  - [a, b]\n"
+                    "  - k: v\n"
+                    "    k2: v2\n";
+    YeptrisStatus st;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+
+    /* count-only: no handles allocated, same count as seq_count */
+    EXPECT_EQ(yeptris_node_children(root, NULL, 0), 2u);
+
+    /* mapping: key,value interleaved — one walk equals map_at pairs */
+    YeptrisNode kids[2];
+    EXPECT_EQ(yeptris_node_children(root, kids, 2), 2u);
+    EXPECT_EQ(val(kids[0]), "top");
+    YeptrisNode seq = kids[1];
+    ASSERT_NE(seq, nullptr);
+    EXPECT_EQ(yeptris_node_kind(seq), YEPTRIS_NODE_SEQUENCE);
+
+    EXPECT_EQ(yeptris_node_children(seq, NULL, 0), 3u);
+    YeptrisNode items[3];
+    EXPECT_EQ(yeptris_node_children(seq, items, 3), 3u);
+    EXPECT_EQ(val(items[0]), "one");
+    EXPECT_EQ(yeptris_node_kind(items[1]), YEPTRIS_NODE_SEQUENCE);
+    EXPECT_EQ(yeptris_node_kind(items[2]), YEPTRIS_NODE_MAPPING);
+
+    /* differential: the drain's values equal seq_at's, in order */
+    for (size_t i = 0; i < 3; i++) {
+        EXPECT_EQ(yeptris_node_id(items[i]), yeptris_node_id(yeptris_node_seq_at(seq, i)));
+    }
+
+    /* the nested mapping: pairs interleaved — the map_at equivalence */
+    YeptrisNode m = items[2];
+    YeptrisNode pairs[4];
+    EXPECT_EQ(yeptris_node_children(m, pairs, 4), 4u);
+    for (size_t i = 0; i < 2; i++) {
+        YeptrisNode k, v;
+        ASSERT_EQ(yeptris_node_map_at(m, i, &k, &v), 0);
+        EXPECT_EQ(yeptris_node_id(pairs[2 * i]), yeptris_node_id(k));
+        EXPECT_EQ(yeptris_node_id(pairs[2 * i + 1]), yeptris_node_id(v));
+    }
+    yeptris_document_free(doc);
+}
+
+TEST(NodeChildren, ScalarsAndShortBuffers) {
+    YeptrisStatus st;
+    YeptrisDocument doc = yeptris_parse_json("[10, 20, 30]", strlen("[10, 20, 30]"), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+
+    /* a scalar has no children */
+    YeptrisNode ten = yeptris_node_seq_at(root, 0);
+    ASSERT_NE(ten, nullptr);
+    EXPECT_EQ(yeptris_node_children(ten, NULL, 0), 0u);
+
+    /* a short buffer fills what fits and still returns the total */
+    YeptrisNode one[1];
+    EXPECT_EQ(yeptris_node_children(root, one, 1), 3u);
+    EXPECT_EQ(val(one[0]), "10");
+
+    /* NULL handle */
+    EXPECT_EQ(yeptris_node_children(NULL, NULL, 0), 0u);
+    yeptris_document_free(doc);
+}
+
+TEST(NodeChildren, LargeSequenceDrainsOnce) {
+    /* the repro shape from ruby #168: 80k top-level rows */
+    std::string y = "- k: 1\n";
+    y.reserve(y.size() * 80000);
+    for (int i = 1; i < 80000; i++) {
+        y += "- k: 1\n";
+    }
+    YeptrisStatus st;
+    YeptrisDocument doc = yeptris_parse(y.c_str(), y.size(), &st);
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(yeptris_node_children(root, NULL, 0), 80000u);
+    std::vector<YeptrisNode> kids(80000);
+    EXPECT_EQ(yeptris_node_children(root, kids.data(), kids.size()), 80000u);
+    EXPECT_EQ(yeptris_node_kind(kids[79999]), YEPTRIS_NODE_MAPPING);
+    yeptris_document_free(doc);
+}
