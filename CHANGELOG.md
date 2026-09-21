@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.16] - 2026-09-21
 ### Added
 - The lazy child-index (#377): `yeptris_node_seq_at` and
   `yeptris_node_map_at` are O(1) after the first call (the last
