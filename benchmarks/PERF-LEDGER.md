@@ -2145,3 +2145,38 @@ memo is a fixed cold store+load).
 Traps: wr_grow reallocs through w->p — any caller-held buffer
 pointer is stale after growth (the first round's heap abort);
 always read em->w.p after the run.
+
+## 2026-09-23 — lazy-YAML via event recording: MEASURED DEAD (reverted, #378)
+
+The #378 prototype (recorder sink: plain `yep_event` structs into a
+growable array; replay through `yep_dom_on_event` on first access,
+opt-in `lazy_tree` flag) parsed-and-freed the committed corpus
+slower than the EAGER fused build on every shape — parse-only, the
+exact workload the route exists for:
+
+| shape | eager parse+build | lazy record (parse-only) |
+|---|---|---|
+| block-heavy | 157 MB/s | 129 MB/s (−18%) |
+| flow-single | 234 MB/s | 113 MB/s (−52%) |
+| anchor-heavy | 135 MB/s | 104 MB/s (−23%) |
+| deep-nesting | 394 MB/s | 260 MB/s (−34%) |
+
+(same-run A/B, one binary, min-wall discipline; dev-machine context
+only.) Why it loses: the eager route's direct builders (TODO 54/57/
+78/79 — on_block_pair/open/item, on_scalar, the fused flow build)
+REPLACE event emission with the node build itself — the DOM lane is
+fused into the parse, not a pass after it. Forcing the general event
+path (the pull/push/recorder contract) pays event construction +
+dispatch + a 48 B/event struct copy, which costs more than the node
+lane saves. The JSON lazy tape (#342) wins precisely because its
+packed 8 B/node records are CHEAPER than nodes; a YAML `yep_event`
+is 6× that. (The realloc-growth chains inflate the worst shape, but
+block-heavy's −18% is the emission-cost floor — pre-sizing cannot
+close it.)
+
+The live lever for #378's YAML route: a PACKED record tape for YAML
+(the #342 pattern — 8-16 B/node records carrying spans+flags, not
+event structs), with the replay decoding spans. That is a design
+campaign, not a sink swap; plain event recording is closed. The CBOR
+route already ships its answer: the #157 sink seam lets hosts build
+VALUEs directly with no DOM intermediate at all.
