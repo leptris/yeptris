@@ -6,6 +6,30 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- The CBOR decode sink seam (#157): the grammar loop drives a
+  `yep_cbor_sink` (text/int/float/str/bytes/open/close); the DOM
+  builder is the default sink and the native bindings' VALUE builder
+  rides the same grammar — decode to Ruby objects in one pass with no
+  DOM intermediate and no per-number text round trip.
+### Changed
+- The emit front's double-quote and plain-scalar routing is
+  run-batched (#352): the writer batches by run instead of
+  re-deriving per scalar.
+- CBOR map keys intern in the native walk (#157): repeated keys share
+  one VALUE per document.
+### Fixed
+- The qemu platform-gem cells (#376): the per-cell setup now reaches
+  the container, the debian cells install their packages, the s390x
+  cell pins ruby:3.2-bookworm (3.3+ dropped the variant), and the
+  setup string is parsed as shell (env expansion never re-parses
+  metacharacters). ppc64le and s390x gems shipped in the 0.6.16.1
+  binding release.
+- The `yeptris_desc_node` layout gate is arch-relative
+  (`sizeof(const char*) + 16`): 32-bit ARM builds again (armv7 gems
+  follow the next binding release).
+
 ## [0.6.16] - 2026-09-21
 ### Added
 - The lazy child-index (#377): `yeptris_node_seq_at` and
