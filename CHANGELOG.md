@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.18] - 2026-09-22
 ### Fixed
 - The emit's 128-bit float tier (`yep_u128`) compiles for any compiler:
   the portable lo/hi-limbs fallback serves 32-bit GCC (the armv7
