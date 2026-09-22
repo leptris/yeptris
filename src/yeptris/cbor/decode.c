@@ -45,14 +45,15 @@
 #define YEP_CBOR_MAX_ARG_BYTES 8
 
 typedef struct {
-    uint64_t rem;     /* items left; maps count 2*pairs; INDEF = until break */
+    uint64_t rem;      /* items left; maps count 2*pairs; INDEF = until break */
     uint64_t consumed; /* items landed (the key/value parity) */
     uint8_t is_map;
 } yep_cframe;
 
-#define YEP_CBOR_TAGBUF 512 /* a semantic-tag chain over ~23 links is
-                             * pathological; the arena form had no cap,
-                             * the stack form does (documented) */
+#define YEP_CBOR_TAGBUF                                                                            \
+    512 /* a semantic-tag chain over ~23 links is                                                  \
+         * pathological; the arena form had no cap,                                                \
+         * the stack form does (documented) */
 
 typedef struct {
     yep_dom* d; /* the DOM sink's ctx (NULL for pure sinks) */
@@ -218,8 +219,8 @@ static int cbor_open(yep_cdec* c, int is_map, uint64_t cap) {
 static int cbor_note_tag(yep_cdec* c, uint64_t tag) {
     if (c->taglen + 1 + 20 > sizeof c->tagbuf) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, c->i,
-                      "semantic-tag chain exceeds %u bytes at byte %zu",
-                      (unsigned)sizeof c->tagbuf, c->i);
+                      "semantic-tag chain exceeds %u bytes at byte %zu", (unsigned)sizeof c->tagbuf,
+                      c->i);
         c->status = YEPTRIS_ERROR_PARSE;
         return 0;
     }
@@ -282,8 +283,8 @@ static int cbor_indef_string(yep_cdec* c, int is_text) {
     /* one value over the accumulated span */
     uint32_t tag_len;
     const char* tag = cbor_take_tag(c, &tag_len);
-    int ok = (is_text ? c->s->str_val : c->s->bytes_val)(c->s->ctx, c->ibuf, total, 0, 0, tag,
-                                                         tag_len);
+    int ok =
+        (is_text ? c->s->str_val : c->s->bytes_val)(c->s->ctx, c->ibuf, total, 0, 0, tag, tag_len);
     if (!ok) {
         c->status = YEPTRIS_ERROR_MEMORY;
         return 0;
@@ -378,8 +379,7 @@ static int cbor_item(yep_cdec* c) {
      * built: even items consumed = key, odd = value (the frame's own
      * parity — the DOM's placement machine tracks its own copy) */
     int key_slot = 0;
-    if (c->depth > 0 && c->frame[c->depth - 1].is_map &&
-        c->frame[c->depth - 1].consumed % 2 == 0) {
+    if (c->depth > 0 && c->frame[c->depth - 1].is_map && c->frame[c->depth - 1].consumed % 2 == 0) {
         key_slot = 1;
     }
 
@@ -756,14 +756,8 @@ static int dom_sink_float(void* dp, double dv, int is_key, const char* tag, uint
 }
 
 static const yep_cbor_sink yep_cbor_dom_sink_impl = {
-    NULL,
-    dom_sink_text,
-    dom_sink_int,
-    dom_sink_float,
-    dom_sink_str,
-    dom_sink_bytes,
-    dom_sink_open,
-    dom_sink_close,
+    NULL,         dom_sink_text,  dom_sink_int,  dom_sink_float,
+    dom_sink_str, dom_sink_bytes, dom_sink_open, dom_sink_close,
 };
 
 int yep_cbor_decode_gen(const unsigned char* p, size_t len, int strict, size_t* consumed,
