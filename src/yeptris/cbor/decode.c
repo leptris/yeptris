@@ -27,6 +27,8 @@
 #include <math.h>
 #include <string.h>
 
+#include <stdlib.h>
+
 #include <yeptris/cbor.h>
 #include <yeptris/resolve.h>
 
@@ -37,29 +39,40 @@
 #include "../memory/allocator.h"
 #include "../parse/events.h"
 #include "doc.h"
+#include "sink.h"
 
 #define YEP_CBOR_INDEF UINT64_MAX
 #define YEP_CBOR_MAX_ARG_BYTES 8
 
 typedef struct {
-    uint64_t rem; /* items left; maps count 2*pairs; INDEF = until break */
+    uint64_t rem;     /* items left; maps count 2*pairs; INDEF = until break */
+    uint64_t consumed; /* items landed (the key/value parity) */
     uint8_t is_map;
 } yep_cframe;
 
+#define YEP_CBOR_TAGBUF 512 /* a semantic-tag chain over ~23 links is
+                             * pathological; the arena form had no cap,
+                             * the stack form does (documented) */
+
 typedef struct {
-    yep_dom* d;
+    yep_dom* d; /* the DOM sink's ctx (NULL for pure sinks) */
     const unsigned char* p;
     size_t len;
     size_t i;
     int strict;
     YeptrisStatus status;
-    /* pending tag chain: tag numbers arrive before their content and
-     * render into the arena as "N N N" (outermost first — the encoder
-     * splits it back); the span attaches to the next data item */
-    yep_sview pending_tag;
-    int have_pending;
+    /* the pending semantic-tag chain, text form ("N N N", outermost
+     * first — the next item's writer consumes it) */
+    char tagbuf[YEP_CBOR_TAGBUF];
+    uint32_t taglen;
+    /* indefinite-string accumulation (chunk framing is the grammar's;
+     * the finished span goes to one str/bytes callback) */
+    unsigned char* ibuf;
+    size_t icap;
+    uint32_t ilen;
+    const yep_cbor_sink* s;
     yep_cframe frame[YEP_DOM_MAX_DEPTH];
-    int depth; /* == d->depth by construction */
+    int depth;
 } yep_cdec;
 
 static void cbor_fail(yep_cdec* c, yep_err_code code, const char* msg) {
@@ -146,116 +159,74 @@ static double cbor_half(uint16_t h) {
     return (h & 0x8000u) != 0 ? -val : val;
 }
 
-/* Scalar from arena text (numbers, diagnostics, literals). */
-static uint32_t cbor_text_node(yep_cdec* c, const char* text, uint32_t n, uint8_t tag_id) {
-    yep_view tag_v;
-    const yep_view* tag = NULL;
-    if (c->have_pending) {
-        /* the pending chain lives in the DOM arena (offsets, not
-         * pointers — the arena reallocs as it grows) */
-        tag_v.p = c->d->str + (c->pending_tag.off & YEP_SV_OFF);
-        tag_v.len = c->pending_tag.len;
-        tag = &tag_v;
-        c->have_pending = 0;
+/* The pending semantic-tag chain, consumed by the next writer. */
+static const char* cbor_take_tag(yep_cdec* c, uint32_t* len) {
+    if (c->taglen == 0) {
+        *len = 0;
+        return NULL;
     }
-    uint32_t id = dom_open_node(c->d, YEP_DOM_SCALAR, tag, NULL, 0, YEP_STYLE_PLAIN, 1, 0);
-    if (id == UINT32_MAX) {
-        c->status = YEPTRIS_ERROR_MEMORY;
-        return UINT32_MAX;
-    }
-    yep_dnode* node = &c->d->nodes[id];
-    char* dst = yep_dom_str_tail(c->d, n);
-    if (dst == NULL) {
-        c->status = YEPTRIS_ERROR_MEMORY;
-        return UINT32_MAX;
-    }
-    memcpy(dst, text, n);
-    node->value = yep_dom_str_commit(c->d, n);
-    node->tag_id = tag_id;
-    if (dom_place(c->d, id) != 0) {
-        c->status = YEPTRIS_ERROR_MEMORY;
-        return UINT32_MAX;
-    }
-    return id;
+    *len = c->taglen;
+    c->taglen = 0;
+    return c->tagbuf;
 }
 
-/* Scalar borrowing the input (definite strings, bignum byte strings). */
-static uint32_t cbor_span_node(yep_cdec* c, const unsigned char* p, uint32_t n) {
-    yep_view tag_v;
-    const yep_view* tag = NULL;
-    if (c->have_pending) {
-        tag_v.p = c->d->str + (c->pending_tag.off & YEP_SV_OFF);
-        tag_v.len = c->pending_tag.len;
-        tag = &tag_v;
-        c->have_pending = 0;
-    }
-    uint32_t id = dom_open_node(c->d, YEP_DOM_SCALAR, tag, NULL, 0, YEP_STYLE_DOUBLE_QUOTED, 0, 0);
-    if (id == UINT32_MAX) {
+/* Rendered text (numbers-as-text, literals, diagnostics). */
+static uint32_t cbor_text_node(yep_cdec* c, const char* text, uint32_t n, uint8_t tag_id,
+                               int is_key) {
+    uint32_t tag_len;
+    const char* tag = cbor_take_tag(c, &tag_len);
+    if (!c->s->text(c->s->ctx, text, n, tag_id, is_key, tag, tag_len)) {
         c->status = YEPTRIS_ERROR_MEMORY;
         return UINT32_MAX;
     }
-    yep_dnode* node = &c->d->nodes[id];
-    node->value.off = (uint32_t)((const char*)p - c->d->input_base);
-    node->value.len = n;
-    if (dom_place(c->d, id) != 0) {
-        c->status = YEPTRIS_ERROR_MEMORY;
-        return UINT32_MAX;
-    }
-    return id;
+    return 0; /* item identity is the sink's business */
 }
 
-static int cbor_open(yep_cdec* c, int is_map) {
+/* Definite string (mt2 -> bytes_val, mt3 -> str_val), borrowing the input. */
+static uint32_t cbor_span_node(yep_cdec* c, const unsigned char* p, uint32_t n, uint8_t mt,
+                               int is_key) {
+    uint32_t tag_len;
+    const char* tag = cbor_take_tag(c, &tag_len);
+    int ok = (mt == 2) ? c->s->bytes_val(c->s->ctx, p, n, 1, is_key, tag, tag_len)
+                       : c->s->str_val(c->s->ctx, p, n, 1, is_key, tag, tag_len);
+    if (!ok) {
+        c->status = YEPTRIS_ERROR_MEMORY;
+        return UINT32_MAX;
+    }
+    return 0;
+}
+
+static int cbor_open(yep_cdec* c, int is_map, uint64_t cap) {
     if (c->depth >= YEP_DOM_MAX_DEPTH) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, c->i,
                       "CBOR nesting exceeds the depth guard at byte %zu", c->i);
         c->status = YEPTRIS_ERROR_DEPTH;
         return 0;
     }
-    yep_view tag_v;
-    const yep_view* tag = NULL;
-    if (c->have_pending) {
-        tag_v.p = c->d->str + (c->pending_tag.off & YEP_SV_OFF);
-        tag_v.len = c->pending_tag.len;
-        tag = &tag_v;
-        c->have_pending = 0;
-    }
-    uint32_t id =
-        dom_open_node(c->d, is_map ? YEP_DOM_MAPPING : YEP_DOM_SEQUENCE, tag, NULL, 0, 0, 0, 1);
-    if (id == UINT32_MAX) {
+    uint32_t tag_len;
+    const char* tag = cbor_take_tag(c, &tag_len);
+    if (!c->s->open(c->s->ctx, is_map, cap, tag, tag_len)) {
         c->status = YEPTRIS_ERROR_MEMORY;
         return 0;
     }
-    if (dom_place(c->d, id) != 0) {
-        c->status = YEPTRIS_ERROR_MEMORY;
-        return 0;
-    }
-    c->d->map_pending_key[c->d->depth] = 0;
-    c->d->stack[c->d->depth++] = id;
-    c->depth++; /* the frame mirrors the DOM's stack one-to-one */
+    /* a sibling at this depth may have left state behind */
+    c->frame[c->depth].consumed = 0;
+    c->depth++;
     return 1;
 }
 
 static int cbor_note_tag(yep_cdec* c, uint64_t tag) {
-    char buf[24];
-    uint32_t n = 0;
-    if (c->have_pending) {
-        buf[n++] = ' '; /* separator between chain links */
-    }
-    n += cbor_u64dec(tag, buf + n);
-    char* dst = yep_dom_str_tail(c->d, n);
-    if (dst == NULL) {
-        c->status = YEPTRIS_ERROR_MEMORY;
+    if (c->taglen + 1 + 20 > sizeof c->tagbuf) {
+        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, c->i,
+                      "semantic-tag chain exceeds %u bytes at byte %zu",
+                      (unsigned)sizeof c->tagbuf, c->i);
+        c->status = YEPTRIS_ERROR_PARSE;
         return 0;
     }
-    yep_sview piece = yep_dom_str_commit(c->d, n);
-    if (!c->have_pending) {
-        c->pending_tag = piece;
-        c->pending_tag.len = 0;
-        c->have_pending = 1;
+    if (c->taglen > 0) {
+        c->tagbuf[c->taglen++] = ' '; /* separator between chain links */
     }
-    memcpy(dst, buf, n);
-    /* piece-by-piece commit keeps the chain contiguous in the arena */
-    c->pending_tag.len += n;
+    c->taglen += cbor_u64dec(tag, c->tagbuf + c->taglen);
     return 1;
 }
 
@@ -263,7 +234,6 @@ static int cbor_note_tag(yep_cdec* c, uint64_t tag) {
  * arena; text chunks validate per chunk — RFC 8949 s3.2.3's code-point
  * boundary rule makes per-chunk validity imply whole-string validity). */
 static int cbor_indef_string(yep_cdec* c, int is_text) {
-    uint32_t first = 0;
     uint32_t total = 0;
     for (;;) {
         if (c->i >= c->len) {
@@ -291,75 +261,55 @@ static int cbor_indef_string(yep_cdec* c, int is_text) {
             return 0;
         }
         if (n > 0) { /* zero-length chunks are legal, just empty */
-            char* dst = yep_dom_str_tail(c->d, (uint32_t)n);
-            if (dst == NULL) {
-                c->status = YEPTRIS_ERROR_MEMORY;
-                return 0;
+            if (total + n > c->icap) {
+                size_t ncap = c->icap ? c->icap * 2 : 256;
+                while (ncap < total + n) {
+                    ncap *= 2;
+                }
+                unsigned char* nib = realloc(c->ibuf, ncap);
+                if (nib == NULL) {
+                    c->status = YEPTRIS_ERROR_MEMORY;
+                    return 0;
+                }
+                c->ibuf = nib;
+                c->icap = ncap;
             }
-            yep_sview piece = yep_dom_str_commit(c->d, (uint32_t)n);
-            memcpy(dst, c->p + c->i, (size_t)n);
-            if (total == 0) {
-                first = piece.off;
-            }
+            memcpy(c->ibuf + total, c->p + c->i, (size_t)n);
             total += (uint32_t)n;
         }
         c->i += (size_t)n;
     }
-    /* node over the concatenated arena span */
-    yep_view tag_v;
-    const yep_view* tag = NULL;
-    if (c->have_pending) {
-        tag_v.p = c->d->str + (c->pending_tag.off & YEP_SV_OFF);
-        tag_v.len = c->pending_tag.len;
-        tag = &tag_v;
-        c->have_pending = 0;
-    }
-    uint32_t id = dom_open_node(c->d, YEP_DOM_SCALAR, tag, NULL, 0, YEP_STYLE_DOUBLE_QUOTED, 0, 0);
-    if (id == UINT32_MAX) {
-        c->status = YEPTRIS_ERROR_MEMORY;
-        return 0;
-    }
-    yep_dnode* node = &c->d->nodes[id];
-    node->value.off = first;
-    node->value.len = total;
-    if (dom_place(c->d, id) != 0) {
+    /* one value over the accumulated span */
+    uint32_t tag_len;
+    const char* tag = cbor_take_tag(c, &tag_len);
+    int ok = (is_text ? c->s->str_val : c->s->bytes_val)(c->s->ctx, c->ibuf, total, 0, 0, tag,
+                                                         tag_len);
+    if (!ok) {
         c->status = YEPTRIS_ERROR_MEMORY;
         return 0;
     }
     return 1;
 }
 
-/* yep_json_number-style inline render: one node for a known integer. */
-static int cbor_int_node(yep_cdec* c, int negative, uint64_t mag) {
-    char buf[24];
-    uint32_t n = 0;
-    uint8_t tag_id;
-    if (negative) {
-        buf[n++] = '-';
+/* Known integer: value = negative ? -mag : mag, mag <= 2^63. */
+static int cbor_int_node(yep_cdec* c, int negative, uint64_t mag, int is_key) {
+    uint32_t tag_len;
+    const char* tag = cbor_take_tag(c, &tag_len);
+    if (!c->s->int_val(c->s->ctx, negative, mag, is_key, tag, tag_len)) {
+        c->status = YEPTRIS_ERROR_MEMORY;
+        return 0;
     }
-    n += cbor_u64dec(mag, buf + n);
-    tag_id = YEPTRIS_TAG_INT;
-    return cbor_text_node(c, buf, n, tag_id) != UINT32_MAX;
+    return 1;
 }
 
-static int cbor_float_node(yep_cdec* c, double dv) {
-    char buf[48];
-    uint32_t n;
-    uint8_t tag_id = YEPTRIS_TAG_FLOAT;
-    if (dv != dv) {
-        memcpy(buf, "NaN", 3);
-        n = 3;
-    } else if (dv > 1.7976931348623157e308) {
-        memcpy(buf, "Infinity", 8);
-        n = 8;
-    } else if (dv < -1.7976931348623157e308) {
-        memcpy(buf, "-Infinity", 9);
-        n = 9;
-    } else {
-        n = (uint32_t)yep_d2s_shortest(dv, buf);
+static int cbor_float_node(yep_cdec* c, double dv, int is_key) {
+    uint32_t tag_len;
+    const char* tag = cbor_take_tag(c, &tag_len);
+    if (!c->s->float_val(c->s->ctx, dv, is_key, tag, tag_len)) {
+        c->status = YEPTRIS_ERROR_MEMORY;
+        return 0;
     }
-    (void)tag_id;
-    return cbor_text_node(c, buf, n, YEPTRIS_TAG_FLOAT) != UINT32_MAX;
+    return 1;
 }
 
 /* The diagnostic renderer for lenient-mode non-string SCALAR map keys
@@ -408,9 +358,9 @@ static int cbor_key_diag(yep_cdec* c, uint8_t mt, uint64_t val, double dv) {
         }
         break;
     default:
-        return cbor_float_node(c, dv); /* floats: the shortest text */
+        return cbor_float_node(c, dv, 1); /* floats: the shortest text */
     }
-    return cbor_text_node(c, buf, n, 0) != UINT32_MAX;
+    return cbor_text_node(c, buf, n, 0, 1) != UINT32_MAX;
 }
 
 /* Decodes ONE data item (scalar: creates+places the node; container:
@@ -425,9 +375,11 @@ static int cbor_item(yep_cdec* c) {
     uint8_t ai = ib & 0x1F;
 
     /* the map-key position decides representation before the item is
-     * built (the DOM pairs whatever node lands there) */
+     * built: even items consumed = key, odd = value (the frame's own
+     * parity — the DOM's placement machine tracks its own copy) */
     int key_slot = 0;
-    if (c->depth > 0 && c->frame[c->depth - 1].is_map && !c->d->map_pending_key[c->d->depth - 1]) {
+    if (c->depth > 0 && c->frame[c->depth - 1].is_map &&
+        c->frame[c->depth - 1].consumed % 2 == 0) {
         key_slot = 1;
     }
 
@@ -444,7 +396,7 @@ static int cbor_item(yep_cdec* c) {
             if (key_slot) {
                 CBOR_REJECT("structure as map key");
             }
-            if (!cbor_open(c, 0)) {
+            if (!cbor_open(c, 0, YEP_CBOR_INDEF)) {
                 return 0;
             }
             c->frame[c->depth - 1].rem = YEP_CBOR_INDEF;
@@ -454,7 +406,7 @@ static int cbor_item(yep_cdec* c) {
             if (key_slot) {
                 CBOR_REJECT("structure as map key");
             }
-            if (!cbor_open(c, 1)) {
+            if (!cbor_open(c, 1, YEP_CBOR_INDEF)) {
                 return 0;
             }
             c->frame[c->depth - 1].rem = YEP_CBOR_INDEF;
@@ -482,9 +434,9 @@ static int cbor_item(yep_cdec* c) {
             return cbor_key_diag(c, 0, arg, 0) ? 1 : 0;
         }
         if (arg <= (uint64_t)INT64_MAX) {
-            return cbor_int_node(c, 0, arg) ? 1 : 0;
+            return cbor_int_node(c, 0, arg, key_slot) ? 1 : 0;
         }
-        return cbor_float_node(c, (double)arg) ? 1 : 0;
+        return cbor_float_node(c, (double)arg, key_slot) ? 1 : 0;
     }
     case 1: {
         if (key_slot && c->strict) {
@@ -495,9 +447,9 @@ static int cbor_item(yep_cdec* c) {
         }
         if (arg <= (uint64_t)INT64_MAX + 1) { /* -1-2^63 == INT64_MIN */
             uint64_t mag = arg + 1;
-            return cbor_int_node(c, 1, mag) ? 1 : 0;
+            return cbor_int_node(c, 1, mag, key_slot) ? 1 : 0;
         }
-        return cbor_float_node(c, -((double)arg + 1.0)) ? 1 : 0;
+        return cbor_float_node(c, -((double)arg + 1.0), key_slot) ? 1 : 0;
     }
     case 2:
     case 3: {
@@ -518,7 +470,7 @@ static int cbor_item(yep_cdec* c) {
             c->i += (size_t)arg;
             return ok ? 1 : 0;
         }
-        uint32_t id = cbor_span_node(c, c->p + c->i, (uint32_t)arg);
+        uint32_t id = cbor_span_node(c, c->p + c->i, (uint32_t)arg, (uint8_t)mt, key_slot);
         c->i += (size_t)arg;
         return id != UINT32_MAX ? 1 : 0;
     }
@@ -529,7 +481,7 @@ static int cbor_item(yep_cdec* c) {
         if (arg > c->len - c->i) { /* every item consumes >= 1 byte */
             CBOR_REJECT("array overruns the input");
         }
-        if (!cbor_open(c, 0)) {
+        if (!cbor_open(c, 0, arg)) {
             return 0;
         }
         c->frame[c->depth - 1].rem = arg;
@@ -543,7 +495,7 @@ static int cbor_item(yep_cdec* c) {
         if (arg > (c->len - c->i) / 2) { /* pairs need 2 items each */
             CBOR_REJECT("map overruns the input");
         }
-        if (!cbor_open(c, 1)) {
+        if (!cbor_open(c, 1, arg * 2)) {
             return 0;
         }
         c->frame[c->depth - 1].rem = arg * 2;
@@ -566,22 +518,22 @@ static int cbor_item(yep_cdec* c) {
         if (key_slot) {
             return cbor_key_diag(c, 7, 20, 0) ? 1 : 0;
         }
-        return cbor_text_node(c, "false", 5, YEPTRIS_TAG_BOOL) != UINT32_MAX ? 1 : 0;
+        return cbor_text_node(c, "false", 5, YEPTRIS_TAG_BOOL, key_slot) != UINT32_MAX ? 1 : 0;
     case 21:
         if (key_slot) {
             return cbor_key_diag(c, 7, 21, 0) ? 1 : 0;
         }
-        return cbor_text_node(c, "true", 4, YEPTRIS_TAG_BOOL) != UINT32_MAX ? 1 : 0;
+        return cbor_text_node(c, "true", 4, YEPTRIS_TAG_BOOL, key_slot) != UINT32_MAX ? 1 : 0;
     case 22:
         if (key_slot) {
             return cbor_key_diag(c, 7, 22, 0) ? 1 : 0;
         }
-        return cbor_text_node(c, "null", 4, YEPTRIS_TAG_NULL) != UINT32_MAX ? 1 : 0;
+        return cbor_text_node(c, "null", 4, YEPTRIS_TAG_NULL, key_slot) != UINT32_MAX ? 1 : 0;
     case 23:
         if (key_slot) {
             return cbor_key_diag(c, 7, 23, 0) ? 1 : 0;
         }
-        return cbor_text_node(c, "undefined", 9, 0) != UINT32_MAX ? 1 : 0;
+        return cbor_text_node(c, "undefined", 9, 0, key_slot) != UINT32_MAX ? 1 : 0;
     case 24: {
         if (c->len - c->i < 1) {
             CBOR_REJECT("truncated simple value");
@@ -597,7 +549,7 @@ static int cbor_item(yep_cdec* c) {
         memcpy(buf, "simple(", 7);
         uint32_t n = 7 + cbor_u64dec(v, buf + 7);
         buf[n++] = ')';
-        return cbor_text_node(c, buf, n, 0) != UINT32_MAX ? 1 : 0;
+        return cbor_text_node(c, buf, n, 0, key_slot) != UINT32_MAX ? 1 : 0;
     }
     case 25: {
         if (c->len - c->i < 2) {
@@ -641,7 +593,7 @@ static int cbor_item(yep_cdec* c) {
             memcpy(buf, "simple(", 7);
             uint32_t n = 7 + cbor_u64dec(ai, buf + 7);
             buf[n++] = ')';
-            return cbor_text_node(c, buf, n, 0) != UINT32_MAX ? 1 : 0;
+            return cbor_text_node(c, buf, n, 0, key_slot) != UINT32_MAX ? 1 : 0;
         }
         CBOR_REJECT("reserved additional information");
     }
@@ -652,34 +604,197 @@ static int cbor_item(yep_cdec* c) {
     if (key_slot) {
         return cbor_key_diag(c, 8, 0, dv) ? 1 : 0;
     }
-    return cbor_float_node(c, dv) ? 1 : 0;
+    return cbor_float_node(c, dv, key_slot) ? 1 : 0;
 }
 
-int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int strict,
-                        size_t* consumed) {
+/* The DOM sink: the yeptris_cbor_decode public path. Each impl is the
+ * pre-sink writer, byte for byte (the differential suite pins it). */
+
+static int dom_sink_text(void* dp, const char* s, uint32_t n, uint8_t tag_id, int is_key,
+                         const char* tag, uint32_t tag_len) {
+    yep_dom* d = dp;
+    (void)is_key;
+    yep_view tag_v;
+    const yep_view* tagp = NULL;
+    if (tag != NULL) {
+        char* dst = yep_dom_str_tail(d, tag_len);
+        if (dst == NULL) {
+            return 0;
+        }
+        memcpy(dst, tag, tag_len);
+        yep_sview piece = yep_dom_str_commit(d, tag_len);
+        tag_v.p = d->str + (piece.off & YEP_SV_OFF);
+        tag_v.len = tag_len;
+        tagp = &tag_v;
+    }
+    uint32_t id = dom_open_node(d, YEP_DOM_SCALAR, tagp, NULL, 0, YEP_STYLE_PLAIN, 1, 0);
+    if (id == UINT32_MAX) {
+        return 0;
+    }
+    yep_dnode* node = &d->nodes[id];
+    char* dst = yep_dom_str_tail(d, n);
+    if (dst == NULL) {
+        return 0;
+    }
+    memcpy(dst, s, n);
+    node->value = yep_dom_str_commit(d, n);
+    node->tag_id = tag_id;
+    return dom_place(d, id) == 0;
+}
+
+static int dom_sink_span(void* dp, const unsigned char* p, uint32_t n, int borrowed, int is_key,
+                         const char* tag, uint32_t tag_len) {
+    yep_dom* d = dp;
+    (void)is_key;
+    (void)borrowed; /* 0 rides the scratch buffer: still copied to the arena */
+    yep_view tag_v;
+    const yep_view* tagp = NULL;
+    if (tag != NULL) {
+        char* dst = yep_dom_str_tail(d, tag_len);
+        if (dst == NULL) {
+            return 0;
+        }
+        memcpy(dst, tag, tag_len);
+        yep_sview piece = yep_dom_str_commit(d, tag_len);
+        tag_v.p = d->str + (piece.off & YEP_SV_OFF);
+        tag_v.len = tag_len;
+        tagp = &tag_v;
+    }
+    uint32_t id = dom_open_node(d, YEP_DOM_SCALAR, tagp, NULL, 0, YEP_STYLE_DOUBLE_QUOTED, 0, 0);
+    if (id == UINT32_MAX) {
+        return 0;
+    }
+    yep_dnode* node = &d->nodes[id];
+    if (borrowed) {
+        node->value.off = (uint32_t)((const char*)p - d->input_base);
+        node->value.len = n;
+    } else if (n > 0) { /* the empty indefinite string needs no arena */
+        char* dst = yep_dom_str_tail(d, n);
+        if (dst == NULL) {
+            return 0;
+        }
+        memcpy(dst, p, n);
+        node->value = yep_dom_str_commit(d, n);
+    }
+    return dom_place(d, id) == 0;
+}
+
+static int dom_sink_str(void* dp, const unsigned char* p, uint32_t n, int borrowed, int is_key,
+                        const char* tag, uint32_t tag_len) {
+    return dom_sink_span(dp, p, n, borrowed, is_key, tag, tag_len);
+}
+
+static int dom_sink_bytes(void* dp, const unsigned char* p, uint32_t n, int borrowed, int is_key,
+                          const char* tag, uint32_t tag_len) {
+    return dom_sink_span(dp, p, n, borrowed, is_key, tag, tag_len);
+}
+
+static int dom_sink_open(void* dp, int is_map, uint64_t cap, const char* tag, uint32_t tag_len) {
+    yep_dom* d = dp;
+    (void)cap;
+    yep_view tag_v;
+    const yep_view* tagp = NULL;
+    if (tag != NULL) {
+        char* dst = yep_dom_str_tail(d, tag_len);
+        if (dst == NULL) {
+            return 0;
+        }
+        memcpy(dst, tag, tag_len);
+        yep_sview piece = yep_dom_str_commit(d, tag_len);
+        tag_v.p = d->str + (piece.off & YEP_SV_OFF);
+        tag_v.len = tag_len;
+        tagp = &tag_v;
+    }
+    uint32_t id =
+        dom_open_node(d, is_map ? YEP_DOM_MAPPING : YEP_DOM_SEQUENCE, tagp, NULL, 0, 0, 0, 1);
+    if (id == UINT32_MAX) {
+        return 0;
+    }
+    if (dom_place(d, id) != 0) {
+        return 0;
+    }
+    d->map_pending_key[d->depth] = 0;
+    d->stack[d->depth++] = id;
+    return 1;
+}
+
+static int dom_sink_close(void* dp, int is_map) {
+    yep_dom* d = dp;
+    (void)is_map;
+    d->depth--;
+    return 1;
+}
+
+static int dom_sink_int(void* dp, int negative, uint64_t mag, int is_key, const char* tag,
+                        uint32_t tag_len) {
+    char buf[24];
+    uint32_t n = 0;
+    if (negative) {
+        buf[n++] = '-';
+    }
+    n += cbor_u64dec(mag, buf + n);
+    return dom_sink_text(dp, buf, n, YEPTRIS_TAG_INT, is_key, tag, tag_len);
+}
+
+static int dom_sink_float(void* dp, double dv, int is_key, const char* tag, uint32_t tag_len) {
+    char buf[48];
+    (void)is_key;
+    uint32_t n;
+    if (dv != dv) {
+        memcpy(buf, "NaN", 3);
+        n = 3;
+    } else if (dv > 1.7976931348623157e308) {
+        memcpy(buf, "Infinity", 8);
+        n = 8;
+    } else if (dv < -1.7976931348623157e308) {
+        memcpy(buf, "-Infinity", 9);
+        n = 9;
+    } else {
+        n = (uint32_t)yep_d2s_shortest(dv, buf);
+    }
+    return dom_sink_text(dp, buf, n, YEPTRIS_TAG_FLOAT, is_key, tag, tag_len);
+}
+
+static const yep_cbor_sink yep_cbor_dom_sink_impl = {
+    NULL,
+    dom_sink_text,
+    dom_sink_int,
+    dom_sink_float,
+    dom_sink_str,
+    dom_sink_bytes,
+    dom_sink_open,
+    dom_sink_close,
+};
+
+int yep_cbor_decode_gen(const unsigned char* p, size_t len, int strict, size_t* consumed,
+                        const yep_cbor_sink* sink) {
     yep_cdec c;
     memset(&c, 0, sizeof(c));
-    c.d = d;
+    c.s = sink;
     c.p = p;
     c.len = len;
     c.strict = strict;
     c.status = YEPTRIS_OK;
     int done_top = 0; /* the ONE top-level item is done (tags never count) */
+    int rc;
     for (;;) {
         if (c.depth == 0) {
             if (done_top) { /* the root closed; one data item per call */
                 if (c.i != len && consumed == NULL) {
                     cbor_fail(&c, YEP_ERR_UNEXPECTED, "trailing bytes after the data item");
-                    return YEPTRIS_ERROR_PARSE;
+                    rc = YEPTRIS_ERROR_PARSE;
+                    goto done;
                 }
                 if (consumed != NULL) {
                     *consumed = c.i;
                 }
-                return YEPTRIS_OK;
+                rc = YEPTRIS_OK;
+                goto done;
             }
             int st = cbor_item(&c);
             if (st == 0) {
-                return (int)c.status;
+                rc = (int)c.status;
+                goto done;
             }
             if (st == 2) {
                 continue; /* tag chain: the content item follows */
@@ -689,19 +804,26 @@ int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int stri
         }
         yep_cframe* fr = &c.frame[c.depth - 1];
         if (fr->rem == 0) { /* definite container complete */
-            c.d->depth--;
+            if (!c.s->close(c.s->ctx, fr->is_map)) {
+                rc = YEPTRIS_ERROR_MEMORY;
+                goto done;
+            }
             c.depth--;
             continue;
         }
         if (fr->rem == YEP_CBOR_INDEF) {
             if (c.i < c.len && c.p[c.i] == 0xFF) {
-                if (fr->is_map && c.d->map_pending_key[c.d->depth - 1]) {
+                if (fr->is_map && fr->consumed % 2 == 1) {
                     cbor_fail(&c, YEP_ERR_UNEXPECTED,
                               "break in a map value position (odd item count)");
-                    return YEPTRIS_ERROR_PARSE;
+                    rc = YEPTRIS_ERROR_PARSE;
+                    goto done;
                 }
                 c.i++;
-                c.d->depth--;
+                if (!c.s->close(c.s->ctx, fr->is_map)) {
+                    rc = YEPTRIS_ERROR_MEMORY;
+                    goto done;
+                }
                 c.depth--;
                 continue;
             }
@@ -709,16 +831,33 @@ int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int stri
         size_t parent = (size_t)(c.depth - 1);
         int st = cbor_item(&c);
         if (st == 0) {
-            return (int)c.status;
+            rc = (int)c.status;
+            goto done;
         }
         if (st == 2) {
             continue; /* tags never consume a container slot */
         }
+        c.frame[parent].consumed++;
         if (c.frame[parent].rem != YEP_CBOR_INDEF) {
             c.frame[parent].rem--;
             /* one item (scalar, or a container now open) consumed a parent slot */
         }
     }
+done:
+    free(c.ibuf);
+    return rc;
+}
+
+int yep_cbor_decode_dom_sink(void* dp, const unsigned char* p, size_t len, int strict,
+                             size_t* consumed) {
+    yep_cbor_sink s = yep_cbor_dom_sink_impl;
+    s.ctx = dp;
+    return yep_cbor_decode_gen(p, len, strict, consumed, &s);
+}
+
+int yep_cbor_decode_dom(yep_dom* d, const unsigned char* p, size_t len, int strict,
+                        size_t* consumed) {
+    return yep_cbor_decode_dom_sink(d, p, len, strict, consumed);
 }
 
 static YeptrisDocument cbor_wrap(yep_dom* dom, const void* buf, const yep_allocator* sys) {
