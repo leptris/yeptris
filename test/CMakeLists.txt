@@ -27,6 +27,7 @@ add_executable(test_unit
     unit/test_stepping.cpp
     unit/test_emit.cpp
     unit/test_float.cpp
+    unit/test_float_limbs.cpp
     unit/test_resolve.cpp
     unit/test_error.cpp
     unit/test_memory.cpp

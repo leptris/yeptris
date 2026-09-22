@@ -23,10 +23,13 @@
 
 #include "emit/float/api.h"
 
-#if defined(__SIZEOF_INT128__)
+/* YEP_FLOAT_FORCE_LIMBS: test hook — exercises the portable lo/hi
+ * tier on hosts that also have __int128 (the limbs math is otherwise
+ * only compiled on 32-bit targets). */
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS) && !defined(YEP_FLOAT_FORCE_LIMBS)
 typedef unsigned __int128 yep_u128;
 #define YEP_MUL64(a, b) ((yep_u128)(uint64_t)(a) * (uint64_t)(b))
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
 #include <intrin.h>
 /* MSVC has no __int128: the lo/hi pair behind the SAME helper surface
  * (print.c's interval loop rides only these — no operator arithmetic
@@ -35,10 +38,17 @@ typedef struct {
     uint64_t lo, hi;
 } yep_u128;
 #define YEP_MUL64(a, b) yep_u128_mul64(a, b)
+#else
+/* Any compiler without __int128 (32-bit GCC/Clang, MSVC x86-32): the
+ * same lo/hi pair; multiplication via 32-bit limbs (below). */
+typedef struct {
+    uint64_t lo, hi;
+} yep_u128;
+#define YEP_MUL64(a, b) yep_u128_mul64(a, b)
 #endif
 
 static inline yep_u128 yep_u128_of(uint64_t v) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS)
     return (yep_u128)v;
 #else
     yep_u128 r = {v, 0};
@@ -47,7 +57,7 @@ static inline yep_u128 yep_u128_of(uint64_t v) {
 }
 
 static inline yep_u128 yep_u128_max(void) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS)
     return ~(yep_u128)0;
 #else
     yep_u128 r = {~(uint64_t)0, ~(uint64_t)0};
@@ -56,7 +66,7 @@ static inline yep_u128 yep_u128_max(void) {
 }
 
 static inline yep_u128 yep_u128_add(yep_u128 a, yep_u128 b) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS)
     return a + b;
 #else
     yep_u128 r;
@@ -67,7 +77,7 @@ static inline yep_u128 yep_u128_add(yep_u128 a, yep_u128 b) {
 }
 
 static inline yep_u128 yep_u128_sub(yep_u128 a, yep_u128 b) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS)
     return a - b;
 #else
     yep_u128 r;
@@ -79,7 +89,7 @@ static inline yep_u128 yep_u128_sub(yep_u128 a, yep_u128 b) {
 
 /* n < 128 */
 static inline yep_u128 yep_u128_shl(yep_u128 a, unsigned n) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS)
     return a << n;
 #else
     yep_u128 r = {0, 0};
@@ -98,7 +108,7 @@ static inline yep_u128 yep_u128_shl(yep_u128 a, unsigned n) {
 
 /* n < 128 */
 static inline yep_u128 yep_u128_shr(yep_u128 a, unsigned n) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS)
     return a >> n;
 #else
     yep_u128 r = {0, 0};
@@ -116,7 +126,7 @@ static inline yep_u128 yep_u128_shr(yep_u128 a, unsigned n) {
 }
 
 static inline int yep_u128_cmp(yep_u128 a, yep_u128 b) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS)
     return a < b ? -1 : (a > b ? 1 : 0);
 #else
     if (a.hi != b.hi) {
@@ -142,29 +152,47 @@ static inline yep_u128 yep_u128_mul64(uint64_t a, uint64_t b) {
     r.lo = a * b;
     return r;
 }
+#elif !defined(__SIZEOF_INT128__) || defined(YEP_FLOAT_FORCE_LIMBS)
+/* portable: 32-bit limbs, exact (the struct tier only) */
+static inline yep_u128 yep_u128_mul64(uint64_t a, uint64_t b) {
+    uint64_t a0 = (uint32_t)a, a1 = a >> 32;
+    uint64_t b0 = (uint32_t)b, b1 = b >> 32;
+    uint64_t ll = a0 * b0;
+    uint64_t lh = a0 * b1;
+    uint64_t hl = a1 * b0;
+    uint64_t mid = (ll >> 32) + (uint32_t)lh + (uint32_t)hl;
+    yep_u128 r;
+    r.lo = (mid << 32) | (uint32_t)ll;
+    r.hi = (a1 * b1) + (lh >> 32) + (hl >> 32) + (mid >> 32);
+    return r;
+}
 #endif
 
 /* x * 10 stays in range */
 static inline int yep_u128_fits10(yep_u128 x) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS)
     return x <= (~(yep_u128)0) / 10;
 #else
-    /* exact: hi*10 must not overflow 64 bits (with the lo carry) */
-    uint64_t hi_prod_hi = __umulh(x.hi, 10u);
-    uint64_t hi_prod_lo = x.hi * 10u;
-    uint64_t lo_carry = __umulh(x.lo, 10u);
-    return hi_prod_hi == 0 && hi_prod_lo + lo_carry >= hi_prod_lo;
+    /* exact: x*10 = (hi*10 << 64) + lo*10 — overflow iff hi*10
+     * escapes 64 bits or the lo-carry wraps the sum */
+    yep_u128 hp = YEP_MUL64(x.hi, 10u);
+    if (hp.hi != 0) {
+        return 0;
+    }
+    yep_u128 lp = YEP_MUL64(x.lo, 10u);
+    return hp.lo + lp.hi >= hp.lo;
 #endif
 }
 
 /* m small (< 2^32); caller guarantees no overflow (fits10 guarded) */
 static inline yep_u128 yep_u128_mul_small(yep_u128 a, uint32_t m) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(YEP_FLOAT_FORCE_LIMBS)
     return a * m;
 #else
     yep_u128 r;
-    r.lo = a.lo * m;
-    r.hi = a.hi * m + __umulh(a.lo, m);
+    yep_u128 lp = YEP_MUL64(a.lo, m);
+    r.lo = lp.lo;
+    r.hi = a.hi * m + lp.hi;
     return r;
 #endif
 }
