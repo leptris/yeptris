@@ -6,6 +6,13 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- The emit's 128-bit float tier (`yep_u128`) compiles for any compiler:
+  the portable lo/hi-limbs fallback serves 32-bit GCC (the armv7
+  platform gems), with the limb math pinned by the forced-tier
+  `FloatLimbs.*` tests on 64-bit hosts.
+
 ## [0.6.17] - 2026-09-22
 ### Added
 - The CBOR decode sink seam (#157): the grammar loop drives a
