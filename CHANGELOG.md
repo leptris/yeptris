@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.17] - 2026-09-22
 ### Added
 - The CBOR decode sink seam (#157): the grammar loop drives a
   `yep_cbor_sink` (text/int/float/str/bytes/open/close); the DOM
