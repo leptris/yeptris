@@ -12,8 +12,12 @@
  * inside the test body's cold paths trigger an Apple-linker constant-
  * pool miscompile (EXC_BAD_ACCESS at the literal load, arm64 -O2);
  * through the call boundary the same assertions link clean. */
-__attribute__((noinline)) static void expect_u128(const char* what, yep_u128 r, uint64_t lo,
-                                                  uint64_t hi) {
+#if defined(_MSC_VER)
+#define YEP_NOINLINE __declspec(noinline)
+#else
+#define YEP_NOINLINE __attribute__((noinline))
+#endif
+static YEP_NOINLINE void expect_u128(const char* what, yep_u128 r, uint64_t lo, uint64_t hi) {
     EXPECT_EQ(r.lo, lo) << what;
     EXPECT_EQ(r.hi, hi) << what;
 }
