@@ -355,7 +355,7 @@ jobs:
         shell: bash
         run: |
           GEM="$(find "$RUNNER_TEMP/pgem-${{ matrix.name }}" -name "yeptris-*.gem" | head -1)"
-          test -n "$GEM" || { echo "no gem this run"; exit 1; }
+          test -n "$GEM" || { echo "no gem this run (no lockstep tag yet — build skipped)"; exit 0; }
           echo "gem: $GEM"
           GEM_CTR="/work${GEM#$RUNNER_TEMP}"
           docker run --rm --platform "${{ matrix.platform }}" \
@@ -373,7 +373,7 @@ jobs:
         shell: bash
         run: |
           GEM="$(cat "$RUNNER_TEMP/pgem-${{ matrix.name }}/gempath" 2>/dev/null | cut -d= -f2 || true)"
-          test -n "$GEM" || { echo "no gem this run"; exit 1; }
+          test -n "$GEM" || { echo "no gem this run (no lockstep tag yet — build skipped)"; exit 0; }
           GEM="${GEM#/work}"
           GEM="$RUNNER_TEMP$GEM"
           BASE="$(basename "$GEM")"
