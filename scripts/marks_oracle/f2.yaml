@@ -1,0 +1,14 @@
+a: 1
+b:
+  - foo
+  - bar
+c: &x val
+d: *x
+e: !!str 5
+f: "quoted s"
+g: >
+  folded text
+  more
+h: |
+  lit
+  eral

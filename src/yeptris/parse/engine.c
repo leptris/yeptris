@@ -104,8 +104,11 @@ struct yep_engine {
         yep_view handle, prefix;
     } tagmap[8];
     int tagmap_n;
-    int saw_yaml; /* %YAML seen for the pending document */
-    void* step;   /* yep_stepstate: resumable stepping (07) */
+    int saw_yaml;     /* %YAML seen for the pending document */
+    size_t doc_begin; /* #179: first directive line of the pending doc
+                       * (SIZE_MAX = none) — libyaml's DOCUMENT_START
+                       * start_mark includes directives */
+    void* step;       /* yep_stepstate: resumable stepping (07) */
 
     /* Flow single-pair deferral: a sequence entry's events are buffered
      * until we know whether ':' follows ("[a: b]" needs MAP_START before
@@ -132,6 +135,34 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col);
 
 static uint32_t e_col(const yep_engine* e, size_t at) {
     return at >= e->line_start ? (uint32_t)(at - e->line_start) : 0;
+}
+
+/* #179: the (1-based line, 1-based col) of a byte offset. Unlike
+ * e_col this handles offsets on PRIOR lines — event ends whose scan
+ * already advanced past them (block scalars, collection closes).
+ * The backward walk covers only the span's own lines, so the total
+ * across a document stays linear in its size. */
+static void e_pos_mark(const yep_engine* e, size_t at, uint32_t* line, uint32_t* col) {
+    if (at >= e->line_start) {
+        *line = e->line;
+        *col = (uint32_t)(at - e->line_start) + 1;
+        return;
+    }
+    uint32_t l = e->line;
+    size_t ls = e->line_start;
+    while (at < ls && ls > 0) {
+        /* p[ls-1] is the newline ENDED the previous line: start the
+         * walk below it, or ls never decreases (the infinite-loop bug
+         * the Stepping.Directive hang found) */
+        size_t q = ls - 1;
+        while (q > 0 && e->p[q - 1] != '\n') {
+            q--;
+        }
+        ls = q; /* line_start(l-1) */
+        l--;
+    }
+    *line = l;
+    *col = (uint32_t)(at - ls) + 1;
 }
 
 static int e_fail(yep_engine* e, yep_err_code code, size_t at) {
@@ -374,6 +405,8 @@ static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     ev.tag = tag;
     ev.line = line;
     ev.col = coln;
+    ev.end_line = line; /* block opens are zero-span (libyaml) */
+    ev.end_col = coln;
     return emit_now(e, &ev) == 0 ? 0 : -2;
 }
 
@@ -403,6 +436,8 @@ static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     ev.tag = tag;
     ev.line = line;
     ev.col = coln;
+    ev.end_line = line; /* block opens are zero-span (libyaml) */
+    ev.end_col = coln;
     return emit_now(e, &ev) == 0 ? 0 : -2;
 }
 
@@ -436,6 +471,16 @@ static int e_close_to(yep_engine* e, int to_depth) {
         yep_event ev;
         e_event_init(&ev,
                      e->frames[e->depth].kind == YEP_FRAME_SEQ ? YEP_EV_SEQ_END : YEP_EV_MAP_END);
+        { /* libyaml: a block END's mark is the next token's position
+           * (zero-span) — the first non-space at the cursor, or EOF */
+            size_t at = e->pos;
+            while (at < e->len && e->p[at] == ' ') {
+                at++;
+            }
+            e_pos_mark(e, at, &ev.line, &ev.col);
+            ev.end_line = ev.line;
+            ev.end_col = ev.col;
+        }
         if (emit_now(e, &ev) != 0) {
             return -2;
         }
@@ -1464,6 +1509,8 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
         ev.tag = tag;
         ev.line = cur_line;
         ev.col = (uint32_t)(open_pos + 1 - cur_ls) + 1;
+        ev.end_line = cur_line; /* flow opens end after the indicator */
+        ev.end_col = (uint32_t)(open_pos + 2 - cur_ls) + 1;
         if (emit_now(e, &ev) != 0) {
             return -2;
         }
@@ -1488,6 +1535,8 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
                 jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
             ev.line = cur_line;
             ev.col = (uint32_t)(i - cur_ls) + 1;
+            ev.end_line = cur_line;
+            ev.end_col = (uint32_t)(i + 1 - cur_ls) + 1;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }
@@ -1509,6 +1558,8 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
                 jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
             ev.line = cur_line;
             ev.col = (uint32_t)(i + 1 - cur_ls) + 1;
+            ev.end_line = cur_line; /* flow opens end after the indicator */
+            ev.end_col = (uint32_t)(i + 2 - cur_ls) + 1;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }
@@ -1652,6 +1703,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
     ev.tag = tag;
     ev.line = e->line;
     ev.col = e_col(e, e->pos);
+    ev.end_line = e->line; /* flow opens end after the indicator */
+    ev.end_col = e_col(e, e->pos) + 1;
     if (emit_now(e, &ev) != 0) {
         return -2;
     }
@@ -1755,6 +1808,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
             ev.tag = pt;
             ev.line = e->line;
             ev.col = e_col(e, e->pos);
+            ev.end_line = e->line; /* flow opens end after the indicator */
+            ev.end_col = e_col(e, e->pos) + 1;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }
@@ -1861,6 +1916,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                         mk.flow = 1;
                         mk.line = ev.line;
                         mk.col = ev.col;
+                        mk.end_line = ev.line; /* virtual opener: zero-span
+                                                * at the implied position */
+                        mk.end_col = ev.col;
                         if (emit_now(e, &mk) != 0) {
                             return -2;
                         }
@@ -2045,6 +2103,11 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
             }
             e->pos++;
             e_event_init(&ev, st[n - 1].kind ? YEP_EV_MAP_END : YEP_EV_SEQ_END);
+            /* the close indicator's span: e->pos sits just past it */
+            ev.line = e->line;
+            ev.col = e_col(e, e->pos - 1) + 1;
+            ev.end_line = e->line;
+            ev.end_col = e_col(e, e->pos) + 1;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }
@@ -2135,6 +2198,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 yep_event mk;
                 e_event_init(&mk, YEP_EV_MAP_START);
                 mk.flow = 1;
+                e_pos_mark(e, e->pos, &mk.line, &mk.col);
+                mk.end_line = mk.line; /* virtual opener: zero-span */
+                mk.end_col = mk.col;
                 if (emit_now(e, &mk) != 0) {
                     return -2;
                 }
@@ -3300,6 +3366,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     yep_nametab_clear(&e->anchors);
     e->tagmap_n = 0;
     e->saw_yaml = 0;
+    e->doc_begin = (size_t)-1;
     e->doc_content = 0;
     e->q_key_pending = 0;
     e->q_value_pending = 0;
@@ -3312,6 +3379,10 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     yep_event ev;
     if (emit_start) {
         e_event_init(&ev, YEP_EV_STREAM_START);
+        ev.line = 1;
+        ev.col = 1;
+        ev.end_line = 1;
+        ev.end_col = 1;
         if (emit_now(e, &ev) != 0) {
             return -2;
         }
@@ -3406,6 +3477,11 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                     e->tagmap_n++;
                 }
             }
+            if (e->doc_begin == (size_t)-1) {
+                e->doc_begin = li.offset; /* libyaml: DOCUMENT_START's
+                                           * start_mark includes the
+                                           * leading directive lines */
+            }
             e_line_done(e, li.end);
             continue;
         }
@@ -3428,6 +3504,10 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 }
                 e->doc_content = 0;
                 e_event_init(&ev, YEP_EV_DOCUMENT_END);
+                e_pos_mark(e, li.offset + li.indent, &ev.line, &ev.col);
+                ev.end_line = ev.line; /* zero-span at the new marker —
+                                        * libyaml's implicit close mark */
+                ev.end_col = ev.col;
                 if (emit_now(e, &ev) != 0) {
                     return -2;
                 }
@@ -3437,6 +3517,10 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
             }
             e_event_init(&ev, YEP_EV_DOCUMENT_START);
             ev.style = 1; /* explicit marker */
+            e_pos_mark(e, e->doc_begin != (size_t)-1 ? e->doc_begin : li.offset + li.indent,
+                       &ev.line, &ev.col);
+            e_pos_mark(e, li.offset + li.indent + 3, &ev.end_line, &ev.end_col);
+            e->doc_begin = (size_t)-1;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }
@@ -3485,7 +3569,9 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                     }
                 }
                 e_event_init(&ev, YEP_EV_DOCUMENT_END);
-                ev.style = 1;    /* explicit "..." marker */
+                ev.style = 1; /* explicit "..." marker */
+                e_pos_mark(e, li.offset + li.indent, &ev.line, &ev.col);
+                e_pos_mark(e, li.offset + li.indent + 3, &ev.end_line, &ev.end_col);
                 e->tagmap_n = 0; /* directives are per-document */
                 yep_nametab_clear(&e->anchors);
                 if (emit_now(e, &ev) != 0) {
@@ -3494,6 +3580,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 doc_open = 0;
                 e->doc_content = 0;
                 e->saw_yaml = 0;
+                e->doc_begin = (size_t)-1;
             }
             e_line_done(e, li.end);
             continue;
@@ -3501,6 +3588,14 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
 
         if (!doc_open) {
             e_event_init(&ev, YEP_EV_DOCUMENT_START);
+            if (e->doc_begin != (size_t)-1) {
+                e_pos_mark(e, e->doc_begin, &ev.line, &ev.col);
+            } else {
+                e_pos_mark(e, li.offset + li.indent, &ev.line, &ev.col);
+            }
+            ev.end_line = ev.line;
+            ev.end_col = ev.col;
+            e->doc_begin = (size_t)-1;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }
@@ -3670,6 +3765,9 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
             }
         }
         e_event_init(&ev, YEP_EV_DOCUMENT_END);
+        e_pos_mark(e, e->len, &ev.line, &ev.col);
+        ev.end_line = ev.line;
+        ev.end_col = ev.col;
         if (emit_now(e, &ev) != 0) {
             return -2;
         }
@@ -3678,6 +3776,9 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     }
     if (emit_end) {
         e_event_init(&ev, YEP_EV_STREAM_END);
+        e_pos_mark(e, e->len, &ev.line, &ev.col);
+        ev.end_line = ev.line;
+        ev.end_col = ev.col;
         if (emit_now(e, &ev) != 0) {
             return -2;
         }

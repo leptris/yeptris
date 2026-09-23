@@ -55,6 +55,12 @@ typedef struct yep_event {
                          * that key on it skip the name hash entirely. */
     uint32_t line;      /* 1-based position of the node start */
     uint32_t col;
+    uint32_t end_line; /* #179: 1-based position of the node's end —
+                        * libyaml's end_mark semantics: a START event
+                        * ends after its opening token, a scalar/alias
+                        * spans anchor/tag through content, an END
+                        * event spans its closing indicator */
+    uint32_t end_col;
 } yep_event;
 
 struct yep_block_value; /* value facts for on_block_pair (below) */

@@ -7,7 +7,7 @@
 #include "../../include/yeptris/events.h"
 
 /* The record IS the public ABI shape (events.h pins it). */
-YEPTRIS_CT_ASSERT(sizeof(YeptrisEventRecord) == 36);
+YEPTRIS_CT_ASSERT(sizeof(YeptrisEventRecord) == 44);
 
 void yep_rec_init(yep_rec_store* s) {
     s->recs = NULL;
@@ -114,6 +114,8 @@ int yep_rec_on_event(void* ctx, const yep_event* ev) {
     }
     r->line = ev->line;
     r->col = ev->col;
+    r->end_line = ev->end_line;
+    r->end_col = ev->end_col;
     r->value_off = arena_put(s, (const char*)ev->value.p, (uint32_t)ev->value.len);
     r->value_len = (uint32_t)ev->value.len;
     r->anchor_off = arena_put(s, (const char*)ev->anchor.p, (uint32_t)ev->anchor.len);
@@ -135,6 +137,8 @@ void yep_rec_materialize(const yep_rec_store* s, size_t i, void* out) {
     e->implicit = (r->flags & YEPTRIS_EF_IMPLICIT) != 0;
     e->line = r->line;
     e->col = r->col;
+    e->end_line = r->end_line;
+    e->end_col = r->end_col;
     if (r->value_len > 0) {
         e->value = s->arena + r->value_off;
         e->value_len = r->value_len;

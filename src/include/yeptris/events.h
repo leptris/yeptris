@@ -66,6 +66,9 @@ typedef struct {
     size_t tag_len;
     uint32_t line; /* 1-based node start */
     uint32_t col;
+    uint32_t end_line; /* #179: libyaml end_mark semantics — 1-based line,
+                        * col one past the node's end token */
+    uint32_t end_col;
 } YeptrisEvent;
 
 /* ---- push ------------------------------------------------------------- */
@@ -106,13 +109,17 @@ typedef struct {
                      * struct's pad byte: sizeof stays 36 (ABI-pinned) */
     uint32_t line;
     uint32_t col;
+    uint32_t end_line; /* #179: libyaml end_mark semantics (see the
+                        * internal event) — 1-based, col past the end */
+    uint32_t end_col;
     uint32_t value_off;
     uint32_t value_len;
     uint32_t anchor_off;
     uint32_t anchor_len;
     uint32_t tag_off;
     uint32_t tag_len;
-} YeptrisEventRecord;
+} YeptrisEventRecord; /* 44B — the bindings mirror this layout in the
+                         same lockstep window (the 0.6.9 law) */
 
 YEPTRIS_API YeptrisRecorder yeptris_recorder_new(void);
 
