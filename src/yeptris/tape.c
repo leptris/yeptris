@@ -618,12 +618,9 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
     uint8_t top_kind = p[open] == '[' ? 0 : 1;
     recs[1] =
         ((uint64_t)0 << 32) | ((uint64_t)0 << 8) | (top_kind ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN);
-    uint32_t top_open = 1;
     size_t count = 2;
-    uint8_t top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
-    int key_slot = top_kind ? 1 : 0;
     int depth = 1;
-    open_at[0] = top_open;
+    open_at[0] = 1;
     kind[0] = top_kind;
 
     size_t i = open + 1;
