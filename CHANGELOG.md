@@ -6,6 +6,19 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Added
+- libyaml-parity event end marks (#179): `yep_event`, `YeptrisEvent`, and
+  the recorder's `YeptrisEventRecord` (36 -> 44 bytes) carry
+  `end_line`/`end_col` with libyaml's exact end_mark semantics — every
+  event family (stream, document with directive-inclusive starts and
+  `---`/`...` spans, block and flow collections, plain/quoted/
+  literal/folded/multiline scalars, keys, aliases, deferred nulls)
+  matches stdlib psych's `event_location` marks byte-for-byte, pinned by
+  the psych-frozen `EventMarks` gate over the 13-fixture corpus
+  (`scripts/marks_oracle` regenerates it). The bindings mirror the
+  record layout in this lockstep window.
+
 ## [0.6.18] - 2026-09-22
 ### Fixed
 - The emit's 128-bit float tier (`yep_u128`) compiles for any compiler:
