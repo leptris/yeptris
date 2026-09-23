@@ -627,44 +627,127 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
     kind[0] = top_kind;
 
     size_t i = open + 1;
-    for (;;) {
-        while (i < len && (p[i] == ' ' || p[i] == '\n' || p[i] == '\r' || p[i] == '\t')) {
-            i++;
+
+    /* The specialized member loops (the #342 dispatch-chain cut): once
+     * inside a container the grammar is a 2-state cycle — member or
+     * separator — so the general chain's expect/key_slot machine and
+     * its per-token re-dispatch are replaced by direct loops per kind.
+     * Acceptance is IDENTICAL to the chain (the pinning suites hold:
+     * Tape suite, LenientMatchesStrict, ErrorParity, the json corpora).
+     *
+     * lmap / lseq: positioned at a member (or the container's closer).
+     * lvalue: scans one value (string/number/literal/container).
+     * lafter: positioned after a complete value — ',' or the closer.
+     * A close pops the frame; depth 0 ends the walk. */
+
+#define LWS()                                                                                      \
+    do {                                                                                           \
+        while (i < len && (p[i] == ' ' || p[i] == '\n' || p[i] == '\r' || p[i] == '\t')) {         \
+            i++;                                                                                   \
+        }                                                                                          \
+        if (i >= len) {                                                                            \
+            goto lreject;                                                                          \
+        }                                                                                          \
+    } while (0)
+
+#define LPUSH(k)                                                                                   \
+    do {                                                                                           \
+        if (depth >= YEP_JSON_WALK_DEPTH) {                                                        \
+            goto lreject;                                                                          \
+        }                                                                                          \
+        recs[count] = ((uint64_t)0 << 32) | ((uint64_t)0 << 8) |                                   \
+                      (uint64_t)((k) ? YEP_T_MAP_OPEN : YEP_T_SEQ_OPEN);                           \
+        kind[depth] = (k);                                                                         \
+        open_at[depth] = (uint32_t)count;                                                          \
+        count++;                                                                                   \
+        depth++;                                                                                   \
+        i++;                                                                                       \
+    } while (0)
+
+#define LCLOSE()                                                                                   \
+    do {                                                                                           \
+        char lc_ = p[i];                                                                           \
+        uint32_t lo_ = open_at[depth - 1];                                                         \
+        recs[count] = ((uint64_t)lo_ << 32) | ((uint64_t)0 << 8) | YEP_T_CLOSE;                    \
+        recs[lo_] =                                                                                \
+            (recs[lo_] & ~(uint64_t)0xFFFFFFFF00000000u) | ((uint64_t)(uint32_t)count << 32);      \
+        count++;                                                                                   \
+        i++;                                                                                       \
+        depth--;                                                                                   \
+        if (depth == 0) {                                                                          \
+            goto ldone;                                                                            \
+        }                                                                                          \
+        if (kind[depth - 1]) {                                                                     \
+            goto lmapafter;                                                                        \
+        }                                                                                          \
+        goto lseqafter;                                                                            \
+    } while (0)
+
+/* The map member cycle — ONE contiguous region (the json-doc lesson:
+ * a goto web across value/key/after regions scattered the hot path and
+ * cost 2.7x on the flat-map shape). Values scan inline; only nested
+ * containers, literals, and the kernel string fallback leave the
+ * cycle. Acceptance is the chain's: no trailing commas, string keys
+ * only, `:` required, closers only in first-member position. */
+lmap1: /* {} closes here */
+    LWS();
+    if (p[i] == '}') {
+        LCLOSE();
+    }
+    if (p[i] != '"') {
+        goto lreject;
+    }
+    goto lmapkey;
+
+lmap: /* a member MUST follow (after ','): JW_KEY — a closer rejects */
+    LWS();
+    if (p[i] != '"') {
+        goto lreject;
+    }
+lmapkey: {
+    size_t j = i + 1;
+    size_t close = 0;
+    if (j + 8 <= len) {
+        uint64_t w;
+        memcpy(&w, p + j, 8);
+        uint64_t qm = (w ^ 0x2222222222222222ull);
+        uint64_t bm = (w ^ 0x5C5C5C5C5C5C5C5Cull);
+        qm = (qm - 0x0101010101010101ull) & ~qm & 0x8080808080808080ull;
+        bm = (bm - 0x0101010101010101ull) & ~bm & 0x8080808080808080ull;
+        uint64_t c0 = (w - 0x2020202020202020ull) & ~w & 0x8080808080808080ull;
+        if (qm != 0 && ((bm | c0) & (qm - 1)) == 0) {
+            close = j + (size_t)yep_ctz64(qm) / 8;
+            recs[count] = ((uint64_t)((uint32_t)j) << 32) |
+                          ((uint64_t)((uint32_t)(close - j)) << 8) | (uint64_t)(YEP_T_STR);
+            count++;
+            i = close + 1;
+            goto lmapcolon;
         }
-        if (i >= len) {
-            goto lreject;
-        }
+    }
+    {
+        int esc = 0;
         size_t at = i;
-        char c = p[i];
-
-        if (top_expect == JW_COLON) {
-            if (c != ':') {
-                goto lreject;
-            }
-            top_expect = JW_VALUE;
-            key_slot = 0;
-            i = at + 1;
-            continue;
-        }
-        if (top_expect == JW_COMMA_OR_CLOSE) {
-            if (c == ',') {
-                top_expect = top_kind ? JW_KEY : JW_VALUE;
-                key_slot = top_kind ? 1 : 0;
-                i = at + 1;
-                continue;
-            }
-            if (c != ']' && c != '}') {
-                goto lreject;
-            }
-        } else if (key_slot && c != '"' && c != ']' && c != '}') {
+        if (!yep_json_string(p, len, &i, &close, &esc)) {
             goto lreject;
         }
-
+        recs[count] = ((uint64_t)((uint32_t)(at + 1)) << 32) |
+                      ((uint64_t)((uint32_t)(close - at - 1)) << 8) | (uint64_t)(YEP_T_STR);
+        count++;
+        i = close + 1;
+    }
+}
+lmapcolon:
+    LWS();
+    if (p[i] != ':') {
+        goto lreject;
+    }
+    i++;
+    LWS();
+    {
+        char c = p[i];
         if (c == '"') {
-            size_t j = at + 1;
+            size_t j = i + 1;
             size_t close = 0;
-            /* SWAR settle first (the lenient walk's own fast path); the
-             * kernel stays the authority on escapes/C0/long spans */
             if (j + 8 <= len) {
                 uint64_t w;
                 memcpy(&w, p + j, 8);
@@ -679,139 +762,212 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
                                   ((uint64_t)((uint32_t)(close - j)) << 8) | (uint64_t)(YEP_T_STR);
                     count++;
                     i = close + 1;
-                    goto lstr_done;
+                    goto lmapafter;
                 }
             }
+            {
+                int esc = 0;
+                size_t at = i;
+                if (!yep_json_string(p, len, &i, &close, &esc)) {
+                    goto lreject;
+                }
+                recs[count] = ((uint64_t)((uint32_t)(at + 1)) << 32) |
+                              ((uint64_t)((uint32_t)(close - at - 1)) << 8) | (uint64_t)(YEP_T_STR);
+                count++;
+                i = close + 1;
+            }
+            goto lmapafter;
+        }
+        if ((unsigned)(c - '0') <= 9u || c == '-') {
+            size_t k = i + 1;
+            while (k < len) {
+                char d = p[k];
+                if ((d >= '0' && d <= '9') || d == '-' || d == '+' || d == '.' || d == 'e' ||
+                    d == 'E') {
+                    k++;
+                    continue;
+                }
+                break;
+            }
+            recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
+                          (uint64_t)(YEP_T_NUM);
+            count++;
+            i = k;
+            goto lmapafter;
+        }
+        if (c == 't' || c == 'f' || c == 'n') {
+            size_t wl = c == 'f' ? 5 : 4;
+            if (i + wl > len) {
+                goto lreject;
+            }
+            uint32_t got4;
+            memcpy(&got4, p + i, 4);
+            if (got4 != (c == 't'   ? 0x65757274u /* "true" */
+                         : c == 'n' ? 0x6C6C756Eu /* "null" */
+                                    : 0x736C6166u /* "fals" */) ||
+                (c == 'f' && p[i + 4] != 'e')) {
+                goto lreject;
+            }
+            if (i + wl < len) {
+                char z = p[i + wl];
+                if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
+                    z != '}' && z != ':') {
+                    goto lreject;
+                }
+            }
+            recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)wl) << 8) |
+                          (uint64_t)(c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE));
+            count++;
+            i += wl;
+            goto lmapafter;
+        }
+        if (c == '{') {
+            LPUSH(1);
+            goto lmap1;
+        }
+        if (c == '[') {
+            LPUSH(0);
+            goto lseq1;
+        }
+        goto lreject;
+    }
+
+lmapafter:
+    LWS();
+    if (p[i] == ',') {
+        i++;
+        goto lmap;
+    }
+    if (p[i] == '}') {
+        LCLOSE();
+    }
+    goto lreject;
+
+/* The sequence member cycle — the same single-region shape. */
+lseq1: /* [] closes here */
+    LWS();
+    if (p[i] == ']') {
+        LCLOSE();
+    }
+    goto lseqval;
+
+lseq: /* a member MUST follow (after ','): JW_VALUE */
+    LWS();
+lseqval: {
+    char c = p[i];
+    if (c == '"') {
+        size_t j = i + 1;
+        size_t close = 0;
+        if (j + 8 <= len) {
+            uint64_t w;
+            memcpy(&w, p + j, 8);
+            uint64_t qm = (w ^ 0x2222222222222222ull);
+            uint64_t bm = (w ^ 0x5C5C5C5C5C5C5C5Cull);
+            qm = (qm - 0x0101010101010101ull) & ~qm & 0x8080808080808080ull;
+            bm = (bm - 0x0101010101010101ull) & ~bm & 0x8080808080808080ull;
+            uint64_t c0 = (w - 0x2020202020202020ull) & ~w & 0x8080808080808080ull;
+            if (qm != 0 && ((bm | c0) & (qm - 1)) == 0) {
+                close = j + (size_t)yep_ctz64(qm) / 8;
+                recs[count] = ((uint64_t)((uint32_t)j) << 32) |
+                              ((uint64_t)((uint32_t)(close - j)) << 8) | (uint64_t)(YEP_T_STR);
+                count++;
+                i = close + 1;
+                goto lseqafter;
+            }
+        }
+        {
             int esc = 0;
+            size_t at = i;
             if (!yep_json_string(p, len, &i, &close, &esc)) {
                 goto lreject;
             }
             recs[count] = ((uint64_t)((uint32_t)(at + 1)) << 32) |
                           ((uint64_t)((uint32_t)(close - at - 1)) << 8) | (uint64_t)(YEP_T_STR);
             count++;
-        lstr_done:
-            if (key_slot) {
-                if (i < len && p[i] == ':') {
-                    i++;
-                    top_expect = JW_VALUE;
-                    key_slot = 0;
-                } else {
-                    top_expect = JW_COLON;
-                }
-            } else {
-                goto lcomma;
-            }
-            continue;
+            i = close + 1;
         }
-        if ((unsigned)(c - '0') <= 9u || c == '-') {
-            /* deferred: classify-scan to the run's end — no grammar */
-            i = at + 1;
-            while (i < len) {
-                char d = p[i];
-                if ((d >= '0' && d <= '9') || d == '-' || d == '+' || d == '.' || d == 'e' ||
-                    d == 'E') {
-                    i++;
-                    continue;
-                }
-                break;
-            }
-            recs[count] = ((uint64_t)((uint32_t)at) << 32) | ((uint64_t)((uint32_t)(i - at)) << 8) |
-                          (uint64_t)(YEP_T_NUM);
-            count++;
-        lcomma:
-            if (i < len && p[i] == ',') {
-                i++;
-                top_expect = top_kind ? JW_KEY : JW_VALUE;
-                key_slot = top_kind ? 1 : 0;
-            } else {
-                top_expect = JW_COMMA_OR_CLOSE;
-            }
-            continue;
-        }
-        if (c == ']' || c == '}') {
-            int want = c == ']' ? 0 : 1;
-            if (top_kind != want ||
-                (top_expect != JW_VALUE_OR_CLOSE && top_expect != JW_KEY_OR_CLOSE &&
-                 top_expect != JW_COMMA_OR_CLOSE)) {
-                goto lreject;
-            }
-            recs[count] = ((uint64_t)top_open << 32) | ((uint64_t)0 << 8) | YEP_T_CLOSE;
-            /* back-patch the opener's count link: keep the original
-             * off/len, set the link into the record's off word */
-            recs[top_open] = (recs[top_open] & ~(uint64_t)0xFFFFFFFF00000000u) |
-                             ((uint64_t)(uint32_t)count << 32);
-            count++;
-            i = at + 1;
-            depth--;
-            if (depth == 0) {
-                break;
-            }
-            top_kind = kind[depth - 1];
-            top_expect = JW_COMMA_OR_CLOSE;
-            top_open = open_at[depth - 1];
-            key_slot = 0;
-            continue;
-        }
-        if (c == '{' || c == '[') {
-            if (depth >= YEP_JSON_WALK_DEPTH) {
-                goto lreject;
-            }
-            if (key_slot) {
-                goto lreject;
-            }
-            kind[depth - 1] = top_kind;
-            open_at[depth - 1] = top_open;
-            top_kind = c == '[' ? 0 : 1;
-            recs[count] = ((uint64_t)0 << 32) | ((uint64_t)0 << 8) |
-                          (uint64_t)(c == '[' ? YEP_T_SEQ_OPEN : YEP_T_MAP_OPEN);
-            top_open = (uint32_t)count;
-            count++;
-            top_expect = top_kind ? JW_KEY_OR_CLOSE : JW_VALUE_OR_CLOSE;
-            key_slot = top_kind ? 1 : 0;
-            kind[depth] = top_kind;
-            open_at[depth] = top_open;
-            depth++;
-            i = at + 1;
-            continue;
-        }
-        if (c == 't' || c == 'f' || c == 'n') {
-            size_t wl = c == 'f' ? 5 : 4;
-            if (at + wl > len) {
-                goto lreject;
-            }
-            uint32_t got4;
-            memcpy(&got4, p + at, 4);
-            if (got4 != (c == 't'   ? 0x65757274u /* "true" */
-                         : c == 'n' ? 0x6C6C756Eu /* "null" */
-                                    : 0x736C6166u /* "fals" */) ||
-                (c == 'f' && p[at + 4] != 'e')) {
-                goto lreject;
-            }
-            if (at + wl < len) {
-                char z = p[at + wl];
-                if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
-                    z != '}' && z != ':') {
-                    goto lreject;
-                }
-            }
-            recs[count] = ((uint64_t)((uint32_t)at) << 32) | ((uint64_t)((uint32_t)wl) << 8) |
-                          (uint64_t)(c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE));
-            count++;
-            i = at + wl;
-            goto lcomma;
-        }
-        goto lreject;
+        goto lseqafter;
     }
-    {
-        size_t tail = i;
-        while (tail < len &&
-               (p[tail] == ' ' || p[tail] == '\t' || p[tail] == '\n' || p[tail] == '\r')) {
-            tail++;
+    if ((unsigned)(c - '0') <= 9u || c == '-') {
+        size_t k = i + 1;
+        while (k < len) {
+            char d = p[k];
+            if ((d >= '0' && d <= '9') || d == '-' || d == '+' || d == '.' || d == 'e' ||
+                d == 'E') {
+                k++;
+                continue;
+            }
+            break;
         }
-        if (tail != len) {
+        recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
+                      (uint64_t)(YEP_T_NUM);
+        count++;
+        i = k;
+        goto lseqafter;
+    }
+    if (c == 't' || c == 'f' || c == 'n') {
+        size_t wl = c == 'f' ? 5 : 4;
+        if (i + wl > len) {
             goto lreject;
         }
+        uint32_t got4;
+        memcpy(&got4, p + i, 4);
+        if (got4 != (c == 't'   ? 0x65757274u /* "true" */
+                     : c == 'n' ? 0x6C6C756Eu /* "null" */
+                                : 0x736C6166u /* "fals" */) ||
+            (c == 'f' && p[i + 4] != 'e')) {
+            goto lreject;
+        }
+        if (i + wl < len) {
+            char z = p[i + wl];
+            if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
+                z != '}' && z != ':') {
+                goto lreject;
+            }
+        }
+        recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)wl) << 8) |
+                      (uint64_t)(c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE));
+        count++;
+        i += wl;
+        goto lseqafter;
     }
+    if (c == '{') {
+        LPUSH(1);
+        goto lmap1;
+    }
+    if (c == '[') {
+        LPUSH(0);
+        goto lseq1;
+    }
+    goto lreject;
+}
+
+lseqafter:
+    LWS();
+    if (p[i] == ',') {
+        i++;
+        goto lseq;
+    }
+    if (p[i] == ']') {
+        LCLOSE();
+    }
+    goto lreject;
+
+ldone:
+#undef LWS
+#undef LPUSH
+#undef LCLOSE
+
+{
+    size_t tail = i;
+    while (tail < len &&
+           (p[tail] == ' ' || p[tail] == '\t' || p[tail] == '\n' || p[tail] == '\r')) {
+        tail++;
+    }
+    if (tail != len) {
+        goto lreject;
+    }
+}
     t->count = count;
     t->_src = p;
     t->_srclen = len;
@@ -1119,14 +1275,16 @@ static YEP_UNUSED_FN YeptrisStatus tape_walk_lnt_span(const char* p, size_t len,
                 }
                 if (h == 't' || h == 'f' || h == 'n') {
                     size_t wl = h == 'f' ? 5 : 4;
-                    if (end - vs != wl ||
-                        memcmp(p + vs, h == 't' ? "true" : h == 'n' ? "null" : "false", wl) != 0) {
+                    if (end - vs != wl || memcmp(p + vs,
+                                                 h == 't'   ? "true"
+                                                 : h == 'n' ? "null"
+                                                            : "false",
+                                                 wl) != 0) {
                         goto reject;
                     }
-                    recs[count] = ((uint64_t)((uint32_t)vs) << 32) |
-                                  ((uint64_t)((uint32_t)wl) << 8) |
-                                  (uint64_t)(h == 'n' ? YEP_T_NULL
-                                                      : (h == 't' ? YEP_T_TRUE : YEP_T_FALSE));
+                    recs[count] =
+                        ((uint64_t)((uint32_t)vs) << 32) | ((uint64_t)((uint32_t)wl) << 8) |
+                        (uint64_t)(h == 'n' ? YEP_T_NULL : (h == 't' ? YEP_T_TRUE : YEP_T_FALSE));
                     count++;
                 } else {
                     if (!((unsigned)(h - '0') <= 9u || h == '-')) {
@@ -1134,8 +1292,8 @@ static YEP_UNUSED_FN YeptrisStatus tape_walk_lnt_span(const char* p, size_t len,
                     }
                     for (size_t k = vs; k < end; k++) {
                         char d = p[k];
-                        if ((d < '0' || d > '9') && d != '-' && d != '+' && d != '.' &&
-                            d != 'e' && d != 'E') {
+                        if ((d < '0' || d > '9') && d != '-' && d != '+' && d != '.' && d != 'e' &&
+                            d != 'E') {
                             goto reject;
                         }
                     }
@@ -1238,8 +1396,8 @@ static YEP_UNUSED_FN YeptrisStatus tape_walk_lnt_span(const char* p, size_t len,
                 continue;
             }
             if (c == '{' || c == '[') {
-                if (depth >= YEP_JSON_WALK_DEPTH || key_slot ||
-                    top_expect == JW_COMMA_OR_CLOSE || top_expect == JW_COLON) {
+                if (depth >= YEP_JSON_WALK_DEPTH || key_slot || top_expect == JW_COMMA_OR_CLOSE ||
+                    top_expect == JW_COLON) {
                     goto reject;
                 }
                 kind[depth - 1] = top_kind;
@@ -1262,7 +1420,8 @@ static YEP_UNUSED_FN YeptrisStatus tape_walk_lnt_span(const char* p, size_t len,
     }
     /* trailing residue: after the root close, only ws may follow */
     size_t last = pos + 1;
-    while (last < len && (p[last] == ' ' || p[last] == '\t' || p[last] == '\n' || p[last] == '\r')) {
+    while (last < len &&
+           (p[last] == ' ' || p[last] == '\t' || p[last] == '\n' || p[last] == '\r')) {
         last++;
     }
     if (last != len) {
