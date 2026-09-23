@@ -1,0 +1,8 @@
+keep: |+
+  a
+
+
+strip: |-
+  b
+custom: >2
+    indented

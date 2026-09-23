@@ -1,0 +1,7 @@
+outer:
+  inner: [1, {deep: [two]}]
+  # comment inside
+  plain: value
+seq:
+- {a: 1}
+- [b, 2]
