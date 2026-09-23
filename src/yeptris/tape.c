@@ -666,7 +666,6 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
 
 #define LCLOSE()                                                                                   \
     do {                                                                                           \
-        char lc_ = p[i];                                                                           \
         uint32_t lo_ = open_at[depth - 1];                                                         \
         recs[count] = ((uint64_t)lo_ << 32) | ((uint64_t)0 << 8) | YEP_T_CLOSE;                    \
         recs[lo_] =                                                                                \
