@@ -99,9 +99,9 @@ YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx,
                                        unsigned* flags);
 /* The classification half (no emission) — the kernels table's
  * json_stage1_masks slot carries the ISA twins. */
-YEPTRIS_API int yep_json_stage1_masks_scalar(const char* p, size_t len,
-                                             struct yep_s1_block* blocks, size_t* nblocks,
-                                             unsigned* flags);
+struct yep_s1_block; /* defined in scan/json.c (the span blocks) */
+YEPTRIS_API int yep_json_stage1_masks_scalar(const char* p, size_t len, struct yep_s1_block* blocks,
+                                             size_t* nblocks, unsigned* flags);
 
 /* The per-chunk byte-class classifier behind the flow kernels: the
  * kernels table's json_chunk slot (common/simd_text.h) — yep_chunk_masks
