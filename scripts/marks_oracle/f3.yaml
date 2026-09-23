@@ -1,0 +1,2 @@
+flow: {k1: v1, k2: [1, 2, {n: null}]}
+flowseq: [a, b, c]
