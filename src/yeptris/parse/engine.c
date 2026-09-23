@@ -405,8 +405,18 @@ static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
     ev.tag = tag;
     ev.line = line;
     ev.col = coln;
-    ev.end_line = line; /* block opens are zero-span (libyaml) */
+    ev.end_line = line; /* block opens are zero-span (libyaml) — except
+                         * the sequence at its parent mapping's column
+                         * ("k:\n- a"), which ends after the dash */
     ev.end_col = coln;
+    for (int i = e->depth - 1; i >= 0; i--) {
+        if (e->frames[i].kind == YEP_FRAME_MAP) {
+            if (col == e->frames[i].col) {
+                ev.end_col = coln + 1;
+            }
+            break;
+        }
+    }
     return emit_now(e, &ev) == 0 ? 0 : -2;
 }
 
@@ -676,6 +686,7 @@ static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int
         e->line_start = ls;
     }
     e->pos = after;
+    e_pos_mark(e, after, &ev->end_line, &ev->end_col);
     e_skip_inline_space(e);
     return 0;
 }
@@ -855,6 +866,7 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
     ev->value.p = out; /* may be NULL for an empty block; len 0 */
     ev->borrowed = 0;
     ev->style = folded ? YEP_STYLE_FOLDED : YEP_STYLE_LITERAL;
+    e_pos_mark(e, e->pos, &ev->end_line, &ev->end_col);
     return 0;
 }
 
@@ -931,6 +943,11 @@ static int e_plain_multiline(yep_engine* e, yep_span s0, uint32_t block_floor, y
             e_skip_to_eol(e);
             break; /* the comment ends the scalar; later lines are new */
         }
+    }
+    { /* #179: the source end = the last piece's content end */
+        const yep_view* last = &e->fold[e->fold_n - 1].content;
+        size_t lend = (size_t)(last->p - e->p) + last->len;
+        e_pos_mark(e, lend, &ev->end_line, &ev->end_col);
     }
     if (e->fold_n == 1) {
         return 0; /* single line: the borrowed view stands */
@@ -1127,6 +1144,7 @@ static int e_alias(yep_engine* e, yep_event* ev) {
                          the DOM borrows it like any plain scalar — no
                          arena copy per alias */
     ev->anchor_id = target;
+    e_pos_mark(e, e->pos, &ev->end_line, &ev->end_col);
     e_skip_inline_space(e);
     return 0;
 }
@@ -1269,6 +1287,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     if ((c == ',' || c == ']' || c == '}' || c == ':') &&
         (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
         ev->implicit = 1; /* properties with no node: a tagged null */
+        e_pos_mark(e, e->pos, &ev->end_line, &ev->end_col);
         return 1;
     }
     if (c == '"' || c == '\'') {
@@ -1358,6 +1377,10 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     ev->style = YEP_STYLE_PLAIN;
     ev->implicit = 1;
     ev->multiline = (e->fold_n > 1) || crossed_break;
+    { /* #179: the source end = the last fold piece's content end */
+        const yep_view* lastp = &e->fold[e->fold_n - 1].content;
+        e_pos_mark(e, (size_t)(lastp->p - e->p) + lastp->len, &ev->end_line, &ev->end_col);
+    }
     return 1;
 }
 
@@ -1633,6 +1656,11 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
                 return e_fail(e, YEP_ERR_KEY_TOO_LONG, vstart);
             }
         }
+        if (raw_end == vstart) {
+            raw_end = i; /* numbers/literals advance i, not raw_end */
+        }
+        ev.end_line = cur_line;
+        ev.end_col = (uint32_t)(raw_end - cur_ls) + 1;
         if (emit_now(e, &ev) != 0) {
             return -2;
         }
@@ -2348,6 +2376,9 @@ static void e_key_event(const yep_engine* e, const yep_line_shape* sh, uint16_t 
     kv->borrowed = 1;
     kv->line = line;
     kv->col = key_col + 1;
+    /* keys are single-line by the simple-key law; the cursor may have
+     * advanced past the line, so the mark comes from e_pos_mark */
+    e_pos_mark(e, sh->key_end, &kv->end_line, &kv->end_col);
 }
 
 static int e_classified(yep_engine* e, uint16_t floor_col) {
@@ -2852,6 +2883,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         kv.borrowed = 1;
         kv.line = e->line;
         kv.col = key_col + 1;
+        e_pos_mark(e, s.end, &kv.end_line, &kv.end_col);
         if (emit_now(e, &kv) != 0) {
             return -2;
         }
@@ -3024,6 +3056,20 @@ empty_value: {
     e->pend_anchor_id = 0;
     e->pend_tag.p = NULL;
     e->pend_tag.len = 0;
+    { /* libyaml: the implicit null sits just past the key's colon
+       * ("k:   " -> col 2, not the line end), zero-span */
+        size_t at = e->pos;
+        while (at > 0 && (e->p[at - 1] == ' ' || e->p[at - 1] == '\t' || e->p[at - 1] == '\n' ||
+                          e->p[at - 1] == '\r')) {
+            at--; /* the cursor may sit lines past the deferred key */
+        }
+        if (at == 0 || e->p[at - 1] != ':') {
+            at = e->pos; /* not a plain "key:" defer: the cursor stands */
+        }
+        e_pos_mark(e, at, &ev.line, &ev.col);
+        ev.end_line = ev.line;
+        ev.end_col = ev.col;
+    }
     return emit_now(e, &ev) == 0 ? 0 : -2;
 }
 }
