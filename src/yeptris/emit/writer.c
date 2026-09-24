@@ -91,7 +91,12 @@ static void wr_put(yep_writer* w, const char* p, uint32_t n) {
         w->len += n;
         return;
     }
-    if (w->grow && w->len + n > w->cap) {
+    /* the +1 reserves the terminator slot: the serializers write the
+     * NUL at p[len] after the run, and a write landing exactly on cap
+     * (len + n == cap) put that NUL one byte past the buffer — the
+     * first byte of the next heap block's header (the #182 flake:
+     * corrupt deterministic, detected later, timing-varying) */
+    if (w->grow && w->len + n + 1 > w->cap) {
         wr_grow(w, n);
     }
     if (w->oom) {
@@ -114,7 +119,7 @@ static void wr_byte(yep_writer* w, char c) {
         w->len++;
         return;
     }
-    if (w->grow && w->len + 1 > w->cap) {
+    if (w->grow && w->len + 2 > w->cap) { /* +1 write, +1 terminator */
         wr_grow(w, 1);
     }
     if (w->oom) {

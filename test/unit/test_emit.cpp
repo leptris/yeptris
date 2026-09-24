@@ -462,3 +462,50 @@ TEST(Emit, PlainNegativeNumbers) {
         yeptris_document_free(doc);
     }
 }
+
+/* #182 regression: the writer's grow trigger left no terminator slot,
+ * so a serialized size landing exactly on the buffer capacity wrote
+ * the closing NUL one byte past the allocation — the first byte of
+ * the next heap block's header. Corrupt deterministic, detected
+ * later (a malloc checksum botch at an unrelated free), which is why
+ * it presented as a load/GC-timing flake for years of emit changes.
+ * Sweep lengths through both doubling boundaries on a BUILT document
+ * (est=256: the dump path's shape — the parse route's est=input+64
+ * never grows on plain round trips). */
+TEST(Emit, TerminatorSlotSurvivesEveryBoundaryLength) {
+    for (int n = 240; n <= 1200; n++) {
+        YeptrisDocument doc = yeptris_document_new();
+        ASSERT_NE(doc, nullptr);
+        YeptrisNode root = yeptris_node_new_mapping(doc);
+        ASSERT_NE(root, nullptr);
+        ASSERT_EQ(yeptris_document_set_root(doc, root), YEPTRIS_OK);
+        std::string long_scalar(n, 'x');
+        YeptrisNode val =
+            yeptris_node_new_scalar(doc, long_scalar.data(), (size_t)n, YEPTRIS_STYLE_PLAIN);
+        ASSERT_NE(val, nullptr);
+        ASSERT_EQ(yeptris_node_map_add(root, "k", 1, val), YEPTRIS_OK);
+
+        size_t len = 0;
+        char* out = yeptris_serialize(doc, &len);
+        ASSERT_NE(out, nullptr) << "n=" << n;
+        /* the emitter folds nothing here: one line "k: xxx...\n" */
+        ASSERT_EQ(len, (size_t)n + 4) << "n=" << n;
+        EXPECT_EQ(out[len], '\0') << "n=" << n; /* ASAN: in-bounds */
+        std::string body(out, len);
+        yeptris_free(out);
+
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument back = yeptris_parse(body.data(), body.size(), &st);
+        ASSERT_NE(back, nullptr) << "n=" << n;
+        YeptrisNode r2 = yeptris_document_root(back, 0);
+        ASSERT_NE(r2, nullptr);
+        YeptrisNode v2 = yeptris_node_map_get(r2, "k", 1);
+        ASSERT_NE(v2, nullptr);
+        size_t bl = 0;
+        const char* bv = yeptris_node_value(v2, &bl);
+        ASSERT_EQ(bl, (size_t)n) << "n=" << n;
+        EXPECT_EQ(memcmp(bv, long_scalar.data(), (size_t)n), 0) << "n=" << n;
+        yeptris_document_free(back);
+        yeptris_document_free(doc);
+    }
+}
