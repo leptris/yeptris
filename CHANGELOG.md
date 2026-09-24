@@ -19,6 +19,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   eager sink's DOM; MSVC C4701 zero-init (#404 follow-up).
 
 ### Changed
+- **json parse: the secondary passes are gone** — numbers validate in-walk at
+  record time (the settle pass deleted; digits-only spans settle with a
+  leading-zero check, dot/exp spans through a single-pass strict validator),
+  the nametab pre-pass no longer runs in JSON mode, and the entry's
+  printability/tab pre-passes are replaced by the walk's own byte guarantees
+  (clean_only: tabs and non-ASCII reject in-walk; the strict sequence owns
+  the pinned precedences and re-gates only when taken). CI referee:
+  json-users at the simdjson parity band (0.95-1.01x); the lenient tape
+  entry's deferred number contract is unchanged (#342, #410/#411/#412).
+
 - **the packed YAML record tape is the DEFAULT YAML parse route (#378 slice 2)**:
   `yeptris_parse` records the engine's committed ops into 8-byte words and the
   tree materializes on first access — parse-only workloads never build nodes.
