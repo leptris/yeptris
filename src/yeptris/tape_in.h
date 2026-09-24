@@ -10,10 +10,22 @@
 
 #include <stddef.h>
 
+#include <yeptris/parse.h>
 #include <yeptris/tape.h>
 
 /* tape.c (was tape_walk_lnt_fused) */
 YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
                                           yeptris_json_tape* t);
+
+/* parse.c (#378 slice 1): the YAML parse carrying the packed record
+ * tape — the tree materializes on first access (yep_doc_dom). */
+#ifdef __cplusplus
+extern "C" {
+#endif
+YeptrisDocument yeptris_parse_ytape_ex(const char* buf, size_t len, const YeptrisParseOptions* opts,
+                                       YeptrisStatus* status);
+#ifdef __cplusplus
+}
+#endif
 
 #endif

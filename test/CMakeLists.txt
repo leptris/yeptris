@@ -50,9 +50,13 @@ add_executable(test_unit
     unit/test_line_shape.cpp
     unit/test_schema.cpp
     unit/test_tape.cpp
+    unit/test_ytape.cpp
     unit/test_plan.cpp
     unit/test_cbor.cpp
 )
+target_compile_definitions(test_unit PRIVATE
+    TEST_YTAPE_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/conformance/data")
+
 find_package(Threads REQUIRED)
 target_link_libraries(test_unit PRIVATE yeptris_static Threads::Threads
     $<TARGET_NAME_IF_EXISTS:yeptris_jsonc> $<TARGET_NAME_IF_EXISTS:yeptris_yajl> GTest::gtest_main)
