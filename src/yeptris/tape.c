@@ -602,7 +602,7 @@ reject:
  * yeptris_tape_convert owns validation. Everything else matches
  * tape_walk state for state. */
 YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
-                                          yeptris_json_tape* t) {
+                                          yeptris_json_tape* t, int strict_nums) {
     if (tape_carve(t, len) != YEPTRIS_OK) {
         return YEPTRIS_ERROR_MEMORY;
     }
@@ -628,6 +628,12 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
         goto lmap1;
     }
     goto lseq1;
+
+    /* strict_nums: the parse_json route's contract is RFC 8259 AT
+     * parse time, so its number arms validate the run in-place (the
+     * settle pass disappears — the span is cache-warm here); the
+     * standalone lenient entry keeps its deferred contract (0: the
+     * run records unvalidated, yeptris_tape_convert owns it). */
 
     /* The specialized member loops (the #342 dispatch-chain cut): once
      * inside a container the grammar is a 2-state cycle — member or
@@ -797,6 +803,14 @@ lmapcolon:
                 }
                 break;
             }
+            if (strict_nums) {
+                size_t adv = 0;
+                int flt = 0;
+                if (yep_json_number_shape(p + i, k - i, &adv, &flt) == 0 ||
+                    adv != (size_t)(k - i)) {
+                    goto lreject;
+                }
+            }
             recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
                           (uint64_t)(YEP_T_NUM);
             count++;
@@ -876,6 +890,13 @@ lseqval: {
                 continue;
             }
             break;
+        }
+        if (strict_nums) {
+            size_t adv = 0;
+            int flt = 0;
+            if (yep_json_number_shape(p + i, k - i, &adv, &flt) == 0 || adv != (size_t)(k - i)) {
+                goto lreject;
+            }
         }
         recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
                       (uint64_t)(YEP_T_NUM);
@@ -1465,7 +1486,7 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape_lenient(const char* source, si
             return st;
         }
         free(blocks);
-        return yep_tape_walk_lenient_fused(source, len, at, tape);
+        return yep_tape_walk_lenient_fused(source, len, at, tape, 0);
     }
 
     /* scalar root: one record, same deferred split for numbers */

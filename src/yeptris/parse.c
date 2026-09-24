@@ -102,46 +102,6 @@ yep_dom* yep_doc_dom(yeptris_document* doc) {
 }
 
 /* The strict-JSON document wrapper (both routes share it). */
-/* The lazy route's acceptance debt: the fused lenient walk records
- * number runs UNVALIDATED (its simdjson-style deferred contract).
- * parse_json's contract is RFC 8259 at parse time, so the deferred
- * spans settle HERE — full-span shape check per NUM record, decoding
- * the packed records directly (no columns build at parse; the walk
- * guarantees recs are primary on this route). */
-static int lazy_nums_settled(const yeptris_json_tape* t) {
-    const char* p = (const char*)t->_src;
-    for (uint32_t i = 0; i < t->count; i++) {
-        uint64_t r = t->recs[i];
-        if ((uint8_t)(r & 0xFFu) != YEP_T_NUM) {
-            continue;
-        }
-        uint32_t len = (uint32_t)((r >> 8) & 0x7FFFFFu);
-        uint32_t off = (uint32_t)(r >> 32);
-        { /* the pure-integer fast path: all digits (optional '-'), no
-           * leading zero unless a lone digit — number_shape would
-           * consume the whole span and answer float-less; skip it */
-            const char* q = p + off;
-            size_t d = (*q == '-') ? 1 : 0;
-            size_t w = d;
-            for (; w < len; w++) {
-                if ((unsigned)(unsigned char)q[w] - '0' > 9u) {
-                    break;
-                }
-            }
-            if (w == len && len > d && (len - d == 1 || q[d] != '0')) {
-                continue;
-            }
-        }
-        size_t adv = 0;
-        int flt = 0;
-        if (yep_json_number_shape(p + off, len, &adv, &flt) == 0 || adv != (size_t)len) {
-            return -1;
-        }
-    }
-    return 0;
-}
-
-/* The strict-JSON document wrapper (both routes share it). */
 static YeptrisDocument yep_json_doc_wrap(yep_dom* dom, const char* buf, size_t len,
                                          const yep_allocator* sys, YeptrisStatus* status) {
     (void)len;
@@ -207,8 +167,10 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
                 st = YEPTRIS_ERROR_MEMORY;
                 goto jfail;
             }
-            if (yep_tape_walk_lenient_fused(buf, len, off, t) == YEPTRIS_OK &&
-                lazy_nums_settled(t) == 0) {
+            if (yep_tape_walk_lenient_fused(buf, len, off, t, 1) == YEPTRIS_OK) {
+                /* strict_nums=1: the arms validated the numbers at
+                 * record time — the settle pass is gone (the profile's
+                 * 10% lane; the spans were cache-warm in the walk) */
                 YeptrisDocument h = yep_json_doc_wrap(NULL, buf, len, sys, status);
                 if (h != NULL) {
                     ((yeptris_document*)h)->lazy_tape = t;
@@ -379,9 +341,11 @@ engine_enter:
         dom->input_base = transcoded ? (const char*)transcoded : buf;
         yep_dom_prepare_len(dom, data_len);
     }
-    {
+    if (!json_mode) {
         /* the nametab reserve survives: a memchr chain for '&' is
-         * far cheaper than the class sweep it replaced */
+         * far cheaper than the class sweep it replaced. JSON skips it
+         * entirely — no anchors exist (the profile's 4.4% memchr
+         * lane on the json corpora). */
         yep_text_stats amp_only = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
         const char* q = data;
         const char* end = data + data_len;
