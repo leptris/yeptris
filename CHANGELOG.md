@@ -18,6 +18,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - lazy YAML-tape route: the parse-only document no longer allocates (and leaks) the
   eager sink's DOM; MSVC C4701 zero-init (#404 follow-up).
 
+### Changed
+- **the packed YAML record tape is the DEFAULT YAML parse route (#378 slice 2)**:
+  `yeptris_parse` records the engine's committed ops into 8-byte words and the
+  tree materializes on first access — parse-only workloads never build nodes.
+  CI referee (parse-only, interleaved medians): tape/eager 1.06-1.52x on the four
+  referee shapes, both ISA tables. The tree materialization is single-shot under
+  a per-document mutex (the read-only-sharing contract holds); the eager form
+  stays reachable internally for the A/B. Defects the flip exposed and fixed:
+  the flow `max_depth` now rides the tape, a failed materialization answers 0
+  from `yeptris_document_count` instead of dereferencing, and the marshal fast
+  path routes through the lazy choke point.
+
 ### Added
 - **the packed YAML record tape (#378 slice 1)**: a recording sink over the engine's
   seven committed-op callbacks packs the stream into 8-byte words; replay decodes
