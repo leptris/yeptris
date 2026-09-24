@@ -785,16 +785,15 @@ YEPTRIS_API int yep_json_stage1_scalar(const char* p, size_t len, uint32_t* idx,
             }
         }
         uint64_t valid = cn == 64 ? ~0ull : ((1ull << cn) - 1ull);
-        n = yep_json_stage1_resolve(q, bs, op, ws, c0, valid, &prev_in_string, &esc_carry, off,
-                                    idx, n, flags);
+        n = yep_json_stage1_resolve(q, bs, op, ws, c0, valid, &prev_in_string, &esc_carry, off, idx,
+                                    n, flags);
     }
     *nidx = n;
     return prev_in_string ? 0 : 1;
 }
 
-YEPTRIS_API int yep_json_stage1_masks_scalar(const char* p, size_t len,
-                                             struct yep_s1_block* blocks, size_t* nblocks,
-                                             unsigned* flags) {
+YEPTRIS_API int yep_json_stage1_masks_scalar(const char* p, size_t len, struct yep_s1_block* blocks,
+                                             size_t* nblocks, unsigned* flags) {
     size_t nb = 0;
     uint64_t prev_in_string = 0, esc_carry = 0;
     for (size_t off = 0; off < len; off += 64) {
