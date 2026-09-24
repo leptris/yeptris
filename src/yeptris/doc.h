@@ -23,10 +23,14 @@ typedef struct yeptris_document {
                           escaped scalars outlive the engine through the
                           document */
     void* lazy_tape;   /* #342 slice 2: the parsed tape when the tree is
-                        * deferred (gate-clean strict JSON). dom==NULL until
-                        * the first tree access materializes via dom_from_tape;
-                        * freed with the document. void* to avoid a header
-                        * cycle — parse.c casts to yeptris_json_tape* */
+                        * deferred (gate-clean strict JSON; #378: the YAML
+                        * record tape). dom==NULL until the first tree
+                        * access materializes; freed with the document.
+                        * void* to avoid a header cycle — parse.c casts
+                        * per lazy_kind */
+    int lazy_kind;     /* 0 = none/json (yeptris_json_tape), 1 = yaml
+                        * (yep_ytape) — every constructor must set it
+                        * (the field-by-field ctor trap) */
 } yeptris_document;
 
 /* Node handle: a (document, node-id) pair so nodes stay usable even if

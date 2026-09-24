@@ -5,6 +5,7 @@
 #include "common/simd_text.h"
 #include "doc.h"
 #include "dom/dom.h"
+#include "dom/ytape.h"
 #include "encoding/encoding.h"
 #include "memory/allocator.h"
 #include "memory/pool.h"
@@ -33,7 +34,7 @@ YEPTRIS_API const char* yeptris_last_error(uint32_t* line, uint32_t* col) {
 }
 
 static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisParseOptions* opts,
-                                  int json_mode, YeptrisStatus* status);
+                                  int json_mode, int lazy, YeptrisStatus* status);
 
 YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisStatus* status) {
     return yeptris_parse_ex(buf, len, NULL, status);
@@ -46,6 +47,31 @@ YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisSt
 yep_dom* yep_doc_dom(yeptris_document* doc) {
     if (doc == NULL) {
         return NULL;
+    }
+    if (doc->dom == NULL && doc->lazy_tape != NULL && doc->lazy_kind == 1) {
+        /* #378: the YAML record tape — replay through the eager
+         * builders; the finish pool (whose spans the records carry)
+         * dies once the builders copied what must outlive it */
+        yep_ytape* t = (yep_ytape*)doc->lazy_tape;
+        yep_dom* dom = yep_dom_create(doc->sys);
+        if (dom != NULL) {
+            dom->resolver = (doc->schema == YEPTRIS_SCHEMA_11_COMPAT) ? yep_resolver_compat11()
+                                                                      : yep_resolver_core12();
+        }
+        if (dom != NULL && dom_from_ytape(dom, t) == 0) {
+            doc->dom = dom;
+            ytap_free(t);
+            yep_free(doc->sys, t);
+            doc->lazy_tape = NULL;
+            yep_pool_destroy((yep_pool*)doc->finish_pool);
+            doc->finish_pool = NULL;
+        } else {
+            yep_dom_destroy(dom);
+            dom = NULL; /* the tape stays: a later access retries, or
+                         * free drops it (replay fails only on
+                         * allocation/depth, as the builders do) */
+        }
+        return dom;
     }
     if (doc->dom == NULL && doc->lazy_tape != NULL) {
         yeptris_json_tape* t = (yeptris_json_tape*)doc->lazy_tape;
@@ -122,6 +148,7 @@ static YeptrisDocument yep_json_doc_wrap(yep_dom* dom, const char* buf, size_t l
     doc->dom = dom;
     doc->sys = sys;
     doc->lazy_tape = NULL;
+    doc->lazy_kind = 0;
     doc->schema = YEPTRIS_SCHEMA_12_CORE; /* strict JSON is core by construction */
     doc->transcoded = NULL;
     doc->transcoded_len = 0;
@@ -176,6 +203,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
                 YeptrisDocument h = yep_json_doc_wrap(NULL, buf, len, sys, status);
                 if (h != NULL) {
                     ((yeptris_document*)h)->lazy_tape = t;
+                    ((yeptris_document*)h)->lazy_kind = 0;
                     return h;
                 }
                 yeptris_tape_free(t); /* wrap failed (memory): below */
@@ -221,7 +249,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
         }
         if (brc == -2) {
             yep_dom_destroy(dom);
-            return parse_impl(buf, len, NULL, 1, status);
+            return parse_impl(buf, len, NULL, 1, 0, status);
         }
         return yep_json_doc_wrap(dom, buf, len, sys, status);
     }
@@ -233,7 +261,7 @@ jfail:
 }
 
 static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisParseOptions* opts,
-                                  int json_mode, YeptrisStatus* status) {
+                                  int json_mode, int lazy, YeptrisStatus* status) {
     YeptrisStatus st = YEPTRIS_OK;
     if (buf == NULL && len != 0) {
         st = YEPTRIS_ERROR_ARG;
@@ -351,15 +379,31 @@ engine_enter:
         yep_engine_prepare(eng, &amp_only);
     }
 
-    yep_sink sink = {.on_event = yep_dom_on_event,
-                     .ctx = dom,
-                     .on_flow_build = dom_on_flow_build,
-                     .on_flow_commit = dom_on_flow_commit,
-                     .on_flow_rollback = dom_on_flow_rollback,
-                     .on_block_pair = dom_on_block_pair,
-                     .on_scalar = dom_on_scalar,
-                     .on_block_open = dom_on_block_open,
-                     .on_block_item = dom_on_block_item};
+    yep_ytape yt;
+    int have_tape = 0;
+    yep_sink sink;
+    if (lazy) {
+        /* #378: the recorder rides the SAME engine run — the fused
+         * arms stay hot, the builders' node lane defers to replay */
+        if (ytap_init(&yt, data, data_len, 0) != 0) {
+            yep_engine_destroy(eng);
+            yep_free(sys, transcoded);
+            st = YEPTRIS_ERROR_MEMORY;
+            goto fail;
+        }
+        ytap_sink(&yt, &sink);
+        have_tape = 1;
+    } else {
+        sink = (yep_sink){.on_event = yep_dom_on_event,
+                          .ctx = dom,
+                          .on_flow_build = dom_on_flow_build,
+                          .on_flow_commit = dom_on_flow_commit,
+                          .on_flow_rollback = dom_on_flow_rollback,
+                          .on_block_pair = dom_on_block_pair,
+                          .on_scalar = dom_on_scalar,
+                          .on_block_open = dom_on_block_open,
+                          .on_block_item = dom_on_block_item};
+    }
     int rc = yep_engine_run(eng, data, data_len, &sink);
     if (rc != 0) {
         const yep_error* ee = yep_engine_error(eng);
@@ -367,6 +411,9 @@ engine_enter:
         if (ee) {
             yep_error* tls = yep_error_tls();
             *tls = *ee;
+        }
+        if (have_tape) {
+            ytap_free(&yt);
         }
         yep_dom_destroy(dom);
         yep_engine_destroy(eng);
@@ -381,12 +428,14 @@ engine_enter:
      * dangle at engine teardown (found by ASAN). */
     yep_pool* finish = yep_engine_detach_pool(eng);
     yep_engine_destroy(eng);
-    /* DOM strings are input-offsets or arena copies; nothing in the
-     * tree references the finish pool anymore — release it now */
 
     /* Empty stream (no documents): NULL document with YEPTRIS_OK. */
-    if (dom->dcount == 0) {
-        yep_dom_destroy(dom);
+    if (have_tape ? (yt.docs == 0) : (dom->dcount == 0)) {
+        if (have_tape) {
+            ytap_free(&yt);
+        } else {
+            yep_dom_destroy(dom);
+        }
         yep_pool_destroy(finish);
         yep_free(sys, transcoded);
         if (status != NULL) {
@@ -394,6 +443,13 @@ engine_enter:
         }
         return NULL;
     }
+    if (!have_tape) {
+        /* DOM strings are input-offsets or arena copies; nothing in the
+         * tree references the finish pool anymore — release it now */
+        yep_pool_destroy(finish);
+        finish = NULL;
+    } /* the lazy route keeps it: the records carry pool spans until
+         replay copies (doc.h's finish_pool contract) */
 
     yeptris_document* doc = yep_alloc(sys, sizeof(yeptris_document));
     if (doc == NULL) {
@@ -403,7 +459,6 @@ engine_enter:
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
     }
-    doc->dom = dom;
     doc->sys = sys;
     doc->schema = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
                       ? YEPTRIS_SCHEMA_11_COMPAT
@@ -411,12 +466,26 @@ engine_enter:
     doc->transcoded = transcoded;
     doc->transcoded_len = transcoded_len;
     doc->input = buf;
-    /* the finish pool dies here: every DOM string is an input offset
-     * or an arena copy (dom_ev_str) — nothing references it */
-    yep_pool_destroy(finish);
-    doc->finish_pool = NULL;
-    doc->lazy_tape = NULL; /* field-by-field ctor: leave no garbage
-                            * (document_free frees a non-NULL tape) */
+    doc->finish_pool = finish; /* NULL on the eager route */
+    doc->lazy_tape = NULL;
+    doc->lazy_kind = 0;
+    if (have_tape) {
+        yep_ytape* heap_tape = yep_alloc(sys, sizeof(*heap_tape));
+        if (heap_tape == NULL) {
+            ytap_free(&yt);
+            yep_pool_destroy(finish);
+            yep_free(sys, transcoded);
+            yep_free(sys, doc);
+            st = YEPTRIS_ERROR_MEMORY;
+            goto fail;
+        }
+        *heap_tape = yt;
+        doc->dom = NULL;
+        doc->lazy_tape = heap_tape;
+        doc->lazy_kind = 1;
+    } else {
+        doc->dom = dom;
+    }
     return (YeptrisDocument)doc;
 
 fail:
@@ -429,7 +498,15 @@ fail:
 YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
                                              const YeptrisParseOptions* opts,
                                              YeptrisStatus* status) {
-    return parse_impl(buf, len, opts, 0, status);
+    return parse_impl(buf, len, opts, 0, 0, status);
+}
+
+/* #378 slice 1 (internal seam): the YAML parse rides the packed record
+ * tape — the tree materializes from the records on first access. Same
+ * grammar, same errors; parse-only workloads never build nodes. */
+YeptrisDocument yeptris_parse_ytape_ex(const char* buf, size_t len, const YeptrisParseOptions* opts,
+                                       YeptrisStatus* status) {
+    return parse_impl(buf, len, opts, 0, 1, status);
 }
 
 YEPTRIS_API void yeptris_document_free(YeptrisDocument handle) {
@@ -438,7 +515,11 @@ YEPTRIS_API void yeptris_document_free(YeptrisDocument handle) {
         return;
     }
     if (doc->lazy_tape != NULL) { /* never materialized: free stays free */
-        yeptris_tape_free((yeptris_json_tape*)doc->lazy_tape);
+        if (doc->lazy_kind == 1) {
+            ytap_free((yep_ytape*)doc->lazy_tape);
+        } else {
+            yeptris_tape_free((yeptris_json_tape*)doc->lazy_tape);
+        }
         yep_free(doc->sys, doc->lazy_tape);
     }
     yep_dom_destroy(doc->dom);

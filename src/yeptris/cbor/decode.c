@@ -868,6 +868,7 @@ static YeptrisDocument cbor_wrap(yep_dom* dom, const void* buf, const yep_alloca
     d->input = (const char*)buf;
     d->finish_pool = NULL;
     d->lazy_tape = NULL; /* field-by-field ctor: no garbage for free */
+    d->lazy_kind = 0;
     return (YeptrisDocument)d;
 }
 
