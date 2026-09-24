@@ -48,57 +48,57 @@ yep_dom* yep_doc_dom(yeptris_document* doc) {
     if (doc == NULL) {
         return NULL;
     }
+    /* the midx discipline (the #157 TSAN lesson): EVERY dom read and
+     * write rides the mutex — the unlock publishes the built tree
+     * (readers get their happens-before through the lock), so the
+     * plain field needs no atomics. Entry-level only: node walks ride
+     * handles created after this returns. */
+    yep_mutex_lock(&doc->lazy_mu);
     if (doc->dom == NULL && doc->lazy_tape != NULL) {
-        /* the materialization lock: concurrent first accesses build
-         * ONCE (the read-only-sharing contract); once dom is set this
-         * branch never runs — readers stay lock-free */
-        yep_mutex_lock(&doc->lazy_mu);
-        if (doc->dom == NULL && doc->lazy_tape != NULL) {
-            if (doc->lazy_kind == 1) {
-                /* #378: the YAML record tape — replay through the
-                 * eager builders; the finish pool (whose spans the
-                 * records carry) dies once the builders copied what
-                 * must outlive it */
-                yep_ytape* t = (yep_ytape*)doc->lazy_tape;
-                yep_dom* dom = yep_dom_create(doc->sys);
-                if (dom != NULL) {
-                    dom->resolver = (doc->schema == YEPTRIS_SCHEMA_11_COMPAT)
-                                        ? yep_resolver_compat11()
-                                        : yep_resolver_core12();
-                }
-                if (dom != NULL && dom_from_ytape(dom, t) == 0) {
-                    doc->dom = dom;
-                    ytap_free(t);
-                    yep_free(doc->sys, t);
-                    doc->lazy_tape = NULL;
-                    yep_pool_destroy((yep_pool*)doc->finish_pool);
-                    doc->finish_pool = NULL;
-                } else {
-                    yep_dom_destroy(dom);
-                    /* the tape stays: a later access retries, or free
-                     * drops it (replay fails only on allocation/
-                     * depth, as the builders do) */
-                }
+        if (doc->lazy_kind == 1) {
+            /* #378: the YAML record tape — replay through the eager
+             * builders; the finish pool (whose spans the records
+             * carry) dies once the builders copied what must outlive
+             * it */
+            yep_ytape* t = (yep_ytape*)doc->lazy_tape;
+            yep_dom* dom = yep_dom_create(doc->sys);
+            if (dom != NULL) {
+                dom->resolver = (doc->schema == YEPTRIS_SCHEMA_11_COMPAT) ? yep_resolver_compat11()
+                                                                          : yep_resolver_core12();
+            }
+            if (dom != NULL && dom_from_ytape(dom, t) == 0) {
+                doc->dom = dom;
+                ytap_free(t);
+                yep_free(doc->sys, t);
+                doc->lazy_tape = NULL;
+                yep_pool_destroy((yep_pool*)doc->finish_pool);
+                doc->finish_pool = NULL;
             } else {
-                yeptris_json_tape* t = (yeptris_json_tape*)doc->lazy_tape;
-                yep_dom* dom = yep_dom_create(doc->sys);
-                if (dom != NULL && dom_from_tape(dom, t) == 0) {
-                    doc->dom = dom;
-                    yeptris_tape_free(t);
-                    yep_free(doc->sys, t);
-                    doc->lazy_tape = NULL;
-                } else {
-                    yep_dom_destroy(dom);
-                    /* the tape stays: a later access retries, or free
-                     * drops it (the materializer only fails on
-                     * malformed NUM spans, which the strict gate
-                     * already rejected at parse) */
-                }
+                yep_dom_destroy(dom);
+                /* the tape stays: a later access retries, or free
+                 * drops it (replay fails only on allocation/depth, as
+                 * the builders do) */
+            }
+        } else {
+            yeptris_json_tape* t = (yeptris_json_tape*)doc->lazy_tape;
+            yep_dom* dom = yep_dom_create(doc->sys);
+            if (dom != NULL && dom_from_tape(dom, t) == 0) {
+                doc->dom = dom;
+                yeptris_tape_free(t);
+                yep_free(doc->sys, t);
+                doc->lazy_tape = NULL;
+            } else {
+                yep_dom_destroy(dom);
+                /* the tape stays: a later access retries, or free
+                 * drops it (the materializer only fails on malformed
+                 * NUM spans, which the strict gate already rejected at
+                 * parse) */
             }
         }
-        yep_mutex_unlock(&doc->lazy_mu);
     }
-    return doc->dom;
+    yep_dom* dom = doc->dom;
+    yep_mutex_unlock(&doc->lazy_mu);
+    return dom;
 }
 
 /* The strict-JSON document wrapper (both routes share it). */
