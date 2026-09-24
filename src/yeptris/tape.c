@@ -624,6 +624,10 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
     kind[0] = top_kind;
 
     size_t i = open + 1;
+    if (top_kind) {
+        goto lmap1;
+    }
+    goto lseq1;
 
     /* The specialized member loops (the #342 dispatch-chain cut): once
      * inside a container the grammar is a 2-state cycle — member or
