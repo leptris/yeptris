@@ -95,6 +95,11 @@ TEST(YTape, ReplayedTreeMatchesDirectParse) {
         "tagged anchor: &t !!str hello\ntarget: *t\n",
         "key anchor: &k v\npair: {&ik ik: *k}\n",
         "---\na: 1\n---\nb: 2\n",
+        /* the flow-root-with-doc-start gap (found by the canonical
+         * round-trip after the flip): DOCUMENT_START then a FLOW build */
+        "---\n{\"a\": 1, \"b\": [\"x\", \"y\"], \"c\": {\"d\": 2}}\n",
+        "--- [1, 2, 3]\n",
+        "---\n---\n",
         "---\n- a\n--- \n- b\n...\n",
         "# leading comment\nkey: value # trailing\n# end\n",
         "? complex\n: key\n",

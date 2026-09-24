@@ -24,6 +24,11 @@ extern "C" {
 #endif
 YeptrisDocument yeptris_parse_ytape_ex(const char* buf, size_t len, const YeptrisParseOptions* opts,
                                        YeptrisStatus* status);
+
+/* the eager form (the A/B reference lane): the engine builds nodes at
+ * parse, no tape */
+YeptrisDocument yeptris_parse_eager_ex(const char* buf, size_t len, const YeptrisParseOptions* opts,
+                                       YeptrisStatus* status);
 #ifdef __cplusplus
 }
 #endif

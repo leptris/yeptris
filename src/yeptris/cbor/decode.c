@@ -860,6 +860,7 @@ static YeptrisDocument cbor_wrap(yep_dom* dom, const void* buf, const yep_alloca
         yep_dom_destroy(dom);
         return NULL;
     }
+    yep_mutex_init(&d->lazy_mu);
     d->dom = dom;
     d->sys = sys;
     d->schema = YEPTRIS_SCHEMA_12_CORE;
@@ -967,6 +968,7 @@ YEPTRIS_API YeptrisDocument yeptris_cbor_decode(const void* buf, size_t len, uin
         }
         return NULL;
     }
+    yep_mutex_init(&doc->lazy_mu);
     doc->dom = dom;
     doc->sys = sys;
     doc->schema = YEPTRIS_SCHEMA_12_CORE; /* CBOR's model is the core schema */

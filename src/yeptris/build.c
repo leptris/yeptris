@@ -31,6 +31,7 @@ YEPTRIS_API YeptrisDocument yeptris_document_new(void) {
         yep_dom_destroy(dom);
         return NULL;
     }
+    yep_mutex_init(&doc->lazy_mu);
     memset(doc, 0, sizeof(*doc));
     doc->dom = dom;
     doc->sys = sys;

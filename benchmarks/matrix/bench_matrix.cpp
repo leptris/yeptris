@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "tape_in.h" /* #378 slice 2: yeptris_parse_ytape_ex (the record-tape route) */
 #include <yeptris.h>
 #include <yeptris/cbor.h> /* TODO.cbor/07: the CBOR tier */
 #include <yeptris/json.h> /* yeptris_parse_json: the strict-JSON direct build */
@@ -545,6 +546,51 @@ EmitSplit emit_split(const Corpus& c, int rounds) {
     double sm = s_ms[s_ms.size() / 2];
     return {am > 0 ? mb * 1000.0 / am : 0, im > 0 ? mb * 1000.0 / im : 0,
             sm > 0 ? mb * 1000.0 / sm : 0};
+}
+
+/* #378 slice 2: the packed record tape's referee — the eager build
+ * (engine into nodes) vs the lazy tape (records only), PARSE-ONLY
+ * (parse + free, no tree access), interleaved medians. The shapes the
+ * event-recorder post-mortem named (PERF-LEDGER 2026-09-23); the bar
+ * for flipping the default route is parse-only >= eager on all of
+ * them. */
+struct LazySplit {
+    double eager_mb;
+    double lazy_mb;
+};
+LazySplit lazy_split(const Corpus& c, int rounds) {
+    std::vector<double> e_ms, l_ms;
+    double mb = (double)c.data.size() / (1024.0 * 1024.0);
+    for (int r = 0; r < rounds; r++) {
+        auto t0 = clk::now();
+        {
+            YeptrisStatus st;
+            /* the EAGER lane: the default route is the tape since the
+             * #378 flip — the A/B pins both forms by name */
+            YeptrisDocument d = yeptris_parse_eager_ex(c.data.data(), c.data.size(), NULL, &st);
+            if (d == NULL) {
+                return {0, 0};
+            }
+            yeptris_document_free(d);
+        }
+        auto t1 = clk::now();
+        {
+            YeptrisStatus st;
+            YeptrisDocument d = yeptris_parse_ytape_ex(c.data.data(), c.data.size(), NULL, &st);
+            if (d == NULL) {
+                return {0, 0};
+            }
+            yeptris_document_free(d);
+        }
+        auto t2 = clk::now();
+        e_ms.push_back(ms_of(t0, t1));
+        l_ms.push_back(ms_of(t1, t2));
+    }
+    std::sort(e_ms.begin(), e_ms.end());
+    std::sort(l_ms.begin(), l_ms.end());
+    double em = e_ms[e_ms.size() / 2];
+    double lm = l_ms[l_ms.size() / 2];
+    return {em > 0 ? mb * 1000.0 / em : 0, lm > 0 ? mb * 1000.0 / lm : 0};
 }
 
 Result bench_emit(const Corpus& c, int iters) {
@@ -1184,6 +1230,28 @@ int main(int argc, char** argv) {
         char row[128];
         snprintf(row, sizeof(row), "| %s | %.2f | %.2f | %.0f%% | %.2f | %.2fx |\n", c.name.c_str(),
                  e.alloc_mb, e.into_mb, share * 100.0, e.stream_mb, two_over_one);
+        printf("%s", row);
+        md_h2h += row;
+    }
+
+    /* #378 slice 2's referee: the packed record tape, parse-only. */
+    printf("\n# lazy tape vs eager parse, parse-only (#378, interleaved medians)\n\n"
+           "| shape | eager MB/s | tape MB/s | tape/eager |\n|---|---|---|---|\n");
+    md_h2h += "\n# lazy tape vs eager parse, parse-only (#378, interleaved medians)\n\n"
+              "| shape | eager MB/s | tape MB/s | tape/eager |\n|---|---|---|---|\n";
+    for (const Corpus& c : corpora) {
+        if (c.name != "block-heavy" && c.name != "flow-single" && c.name != "anchor-heavy" &&
+            c.name != "deep-nesting") {
+            continue; /* the post-mortem's four shapes */
+        }
+        LazySplit l = lazy_split(c, full ? 9 : 5);
+        if (l.eager_mb == 0) {
+            continue;
+        }
+        double ratio = (l.eager_mb > 0) ? l.lazy_mb / l.eager_mb : 0;
+        char row[128];
+        snprintf(row, sizeof(row), "| %s | %.2f | %.2f | %.2fx |\n", c.name.c_str(), l.eager_mb,
+                 l.lazy_mb, ratio);
         printf("%s", row);
         md_h2h += row;
     }
