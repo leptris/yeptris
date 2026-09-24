@@ -83,6 +83,21 @@ static int lazy_nums_settled(const yeptris_json_tape* t) {
         }
         uint32_t len = (uint32_t)((r >> 8) & 0x7FFFFFu);
         uint32_t off = (uint32_t)(r >> 32);
+        { /* the pure-integer fast path: all digits (optional '-'), no
+           * leading zero unless a lone digit — number_shape would
+           * consume the whole span and answer float-less; skip it */
+            const char* q = p + off;
+            size_t d = (*q == '-') ? 1 : 0;
+            size_t w = d;
+            for (; w < len; w++) {
+                if ((unsigned)(unsigned char)q[w] - '0' > 9u) {
+                    break;
+                }
+            }
+            if (w == len && len > d && (len - d == 1 || q[d] != '0')) {
+                continue;
+            }
+        }
         size_t adv = 0;
         int flt = 0;
         if (yep_json_number_shape(p + off, len, &adv, &flt) == 0 || adv != (size_t)len) {
