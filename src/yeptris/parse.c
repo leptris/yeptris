@@ -135,39 +135,28 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
         st = YEPTRIS_ERROR_ARG;
         goto jfail;
     }
-    /* Clean-gate fast route (TODO.restructure/81 stage 2): a gate-clean
-     * buffer is printable ASCII, and the FUSED builder's walk runs
-     * STRICT here (dom->flow_strict) — one pass validates RFC 8259 and
-     * builds. Rejects, non-opener roots, and surprises fall to the
-     * original sequence below, whose error precedence is byte-for-byte
-     * the pinned behavior (json-suite-strict gates this). */
-    int gated = len > 0 && yep_text_active()->gate_scan(buf, len);
-    if (!gated) {
+    /* Clean-walk fast route (TODO.restructure/81 stage 2, #342): the
+     * fused walk runs clean_only — tabs and non-ASCII bytes REJECT —
+     * and ANY reject falls to the original sequence below, whose error
+     * precedence is byte-for-byte the pinned behavior
+     * (json-suite-strict gates this). The entry's full-input gate_scan
+     * + tab-memchr pre-passes are GONE: the walk's own byte guarantees
+     * route identically by construction, and the strict path re-gates
+     * only when actually taken (the profile's 5% + 2% lanes). */
+    {
         size_t off = 0;
         while (off < len &&
                (buf[off] == ' ' || buf[off] == '\t' || buf[off] == '\n' || buf[off] == '\r')) {
             off++;
         }
-        /* tabs: the lenient walk's own pinned acceptance (its route
-         * takes them); the strict routes reject them (ErrorParity's
-         * pinned agreement). A tab-carrying buffer must NOT take the
-         * lazy walk — the validating sequence below reports exactly
-         * the pinned reject. */
-        if (off < len && (buf[off] == '[' || buf[off] == '{') && memchr(buf, '\t', len) == NULL) {
-            /* #342 slice 2: the fused LENIENT walk (one pass, records
-             * only — no node building) settles the deferred number
-             * grammar inline, then the tape rides the document and
-             * dom_from_tape builds nodes on the first tree access.
-             * A reject or malformed span falls to the original
-             * sequence below, whose error precedence is byte-for-byte
-             * the pinned behavior. */
+        if (off < len && (buf[off] == '[' || buf[off] == '{')) {
             const yep_allocator* sys = yep_system_allocator();
             yeptris_json_tape* t = yep_alloc(sys, sizeof(*t));
             if (t == NULL) {
                 st = YEPTRIS_ERROR_MEMORY;
                 goto jfail;
             }
-            if (yep_tape_walk_lenient_fused(buf, len, off, t, 1) == YEPTRIS_OK) {
+            if (yep_tape_walk_lenient_fused(buf, len, off, t, 1, 1) == YEPTRIS_OK) {
                 /* strict_nums=1: the arms validated the numbers at
                  * record time — the settle pass is gone (the profile's
                  * 10% lane; the spans were cache-warm in the walk) */
@@ -179,7 +168,8 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
                 }
                 yeptris_tape_free(t); /* wrap failed (memory): below */
             } else {
-                yeptris_tape_free(t); /* reject/malformed: below */
+                yeptris_tape_free(t); /* reject (incl. clean-route tabs
+                                         and non-ASCII): below */
             }
             yep_free(sys, t);
         }
@@ -191,6 +181,9 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
         st = YEPTRIS_ERROR_PARSE;
         goto jfail;
     }
+    /* the fallback re-gates: a buffer here was walk-rejected, so its
+     * printability decides whether UTF-8 validation is owed */
+    int gated = len > 0 && yep_text_active()->gate_scan(buf, len);
     size_t uerr = 0;
     if (gated && !yep_utf8_validate((const unsigned char*)buf, len, &uerr)) {
         yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, uerr, "ill-formed UTF-8 at byte %zu",

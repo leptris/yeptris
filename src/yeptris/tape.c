@@ -648,7 +648,7 @@ static int tape_num_ok(const char* p, size_t len) {
 }
 
 YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
-                                          yeptris_json_tape* t, int strict_nums) {
+                                          yeptris_json_tape* t, int strict_nums, int clean_only) {
     if (tape_carve(t, len) != YEPTRIS_OK) {
         return YEPTRIS_ERROR_MEMORY;
     }
@@ -670,6 +670,13 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
     kind[0] = top_kind;
 
     size_t i = open + 1;
+    /* clean_only (parse_json's route): tabs and non-ASCII bytes REJECT
+     * — the caller falls to the strict sequence, which owns the pinned
+     * error precedences those inputs carry (the tab reject, the UTF-8
+     * gate). This replaces the entry's full-input gate_scan +
+     * tab-memchr pre-passes: same routing by construction, zero scans
+     * before the walk. */
+    int cl = clean_only;
     if (top_kind) {
         goto lmap1;
     }
@@ -695,7 +702,8 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
 
 #define LWS()                                                                                      \
     do {                                                                                           \
-        while (i < len && (p[i] == ' ' || p[i] == '\n' || p[i] == '\r' || p[i] == '\t')) {         \
+        while (i < len &&                                                                          \
+               (p[i] == ' ' || p[i] == '\n' || p[i] == '\r' || (p[i] == '\t' && !cl))) {           \
             i++;                                                                                   \
         }                                                                                          \
         if (i >= len) {                                                                            \
@@ -753,7 +761,8 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
             qm_ = (qm_ - 0x0101010101010101ull) & ~qm_ & 0x8080808080808080ull;                    \
             bm_ = (bm_ - 0x0101010101010101ull) & ~bm_ & 0x8080808080808080ull;                    \
             uint64_t c0_ = (w_ - 0x2020202020202020ull) & ~w_ & 0x8080808080808080ull;             \
-            if (qm_ != 0 && ((bm_ | c0_) & (qm_ - 1)) == 0) {                                      \
+            uint64_t hi_ = cl ? (w_ & 0x8080808080808080ull) : 0;                                  \
+            if (qm_ != 0 && ((bm_ | c0_ | hi_) & (qm_ - 1)) == 0) {                                \
                 size_t cl_ = j_ + (size_t)yep_ctz64(qm_) / 8;                                      \
                 recs[count] = ((uint64_t)((uint32_t)j_) << 32) |                                   \
                               ((uint64_t)((uint32_t)(cl_ - j_)) << 8) | (uint64_t)(YEP_T_STR);     \
@@ -772,12 +781,17 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
                     if (room_ >= 8) {                                                              \
                         uint64_t v_;                                                               \
                         memcpy(&v_, p + b_, 8);                                                    \
-                        if ((v_ - 0x2020202020202020ull) & ~v_ & 0x8080808080808080ull) {          \
+                        uint64_t bad_ =                                                            \
+                            (v_ - 0x2020202020202020ull) & ~v_ & 0x8080808080808080ull;            \
+                        if (cl) {                                                                  \
+                            bad_ |= v_ & 0x8080808080808080ull;                                    \
+                        }                                                                          \
+                        if (bad_) {                                                                \
                             goto lreject;                                                          \
                         }                                                                          \
                         b_ += 8;                                                                   \
                     } else {                                                                       \
-                        if ((unsigned char)p[b_] < 0x20) {                                         \
+                        if ((unsigned char)p[b_] < 0x20 || (cl && (unsigned char)p[b_] >= 0x80)) { \
                             goto lreject;                                                          \
                         }                                                                          \
                         b_++;                                                                      \
@@ -795,6 +809,16 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
             size_t cl_ = 0;                                                                        \
             if (!yep_json_string(p, len, &i, &cl_, &esc_)) {                                       \
                 goto lreject;                                                                      \
+            }                                                                                      \
+            if (cl) { /* escaped strings skip the sweeps above: the                                \
+                       * clean route still owes the strict sequence's                              \
+                       * byte guarantees over the content */                                       \
+                for (size_t b_ = at_ + 1; b_ < cl_; b_++) {                                        \
+                    unsigned char uc_ = (unsigned char)p[b_];                                      \
+                    if (uc_ < 0x20 || uc_ >= 0x80) {                                               \
+                        goto lreject;                                                              \
+                    }                                                                              \
+                }                                                                                  \
             }                                                                                      \
             recs[count] = ((uint64_t)((uint32_t)(at_ + 1)) << 32) |                                \
                           ((uint64_t)((uint32_t)(cl_ - at_ - 1)) << 8) | (uint64_t)(YEP_T_STR);    \
@@ -1031,7 +1055,7 @@ ldone:
 {
     size_t tail = i;
     while (tail < len &&
-           (p[tail] == ' ' || p[tail] == '\t' || p[tail] == '\n' || p[tail] == '\r')) {
+           (p[tail] == ' ' || p[tail] == '\n' || p[tail] == '\r' || (p[tail] == '\t' && !cl))) {
         tail++;
     }
     if (tail != len) {
@@ -1556,7 +1580,7 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape_lenient(const char* source, si
             return st;
         }
         free(blocks);
-        return yep_tape_walk_lenient_fused(source, len, at, tape, 0);
+        return yep_tape_walk_lenient_fused(source, len, at, tape, 0, 0);
     }
 
     /* scalar root: one record, same deferred split for numbers */
