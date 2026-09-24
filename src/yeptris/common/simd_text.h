@@ -254,7 +254,8 @@ static inline size_t yep_json_stage1_resolve(uint64_t q, uint64_t bs, uint64_t o
                                              uint64_t c0, uint64_t valid, uint64_t* prev_in_string,
                                              uint64_t* esc_carry, size_t off, uint32_t* idx,
                                              size_t n, unsigned* flags) {
-    uint64_t tokens = yep_json_stage1_tokens(q, bs, op, c0, valid, prev_in_string, esc_carry, flags);
+    uint64_t tokens =
+        yep_json_stage1_tokens(q, bs, op, c0, valid, prev_in_string, esc_carry, flags);
     while (tokens != 0) {
         idx[n++] = (uint32_t)(off + (size_t)yep_ctz64(tokens));
         tokens &= tokens - 1;

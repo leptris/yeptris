@@ -619,8 +619,8 @@ int yep_text_json_stage1_neon(const char* p, size_t len, uint32_t* idx, size_t* 
             ws |= fw << (16 * half);
             c0 |= fc << (16 * half);
         }
-        n = yep_json_stage1_resolve(q, bs, op, ws, c0, ~0ull, &prev_in_string, &esc_carry, off,
-                                    idx, n, flags);
+        n = yep_json_stage1_resolve(q, bs, op, ws, c0, ~0ull, &prev_in_string, &esc_carry, off, idx,
+                                    n, flags);
     }
     if (off < len) { /* the tail: byte-wise masks, no loads past len */
         size_t cn = len - off;
