@@ -601,6 +601,52 @@ reject:
  * (the classify scan carries no accept/reject structure) and
  * yeptris_tape_convert owns validation. Everything else matches
  * tape_walk state for state. */
+/* The strict RFC 8259 number check over one number-ish run — the
+ * in-walk float/exp validator (the out-of-line number_shape call +
+ * rescan was 13% of json-doc; the digits-only case never gets here).
+ * One pass, no state machine words: sign, digits (leading-zero rule),
+ * optional .digits, optional e[+-]digits, consume exactly len. */
+static int tape_num_ok(const char* p, size_t len) {
+    size_t k = 0;
+    if (k < len && p[k] == '-') {
+        k++;
+    }
+    size_t int_start = k;
+    while (k < len && (unsigned)(unsigned char)p[k] - '0' <= 9u) {
+        k++;
+    }
+    if (k == int_start) {
+        return 0; /* no integer part */
+    }
+    if (k - int_start > 1 && p[int_start] == '0') {
+        return 0; /* leading zero */
+    }
+    if (k < len && p[k] == '.') {
+        k++;
+        size_t frac = k;
+        while (k < len && (unsigned)(unsigned char)p[k] - '0' <= 9u) {
+            k++;
+        }
+        if (k == frac) {
+            return 0;
+        }
+    }
+    if (k < len && (p[k] == 'e' || p[k] == 'E')) {
+        k++;
+        if (k < len && (p[k] == '+' || p[k] == '-')) {
+            k++;
+        }
+        size_t exp = k;
+        while (k < len && (unsigned)(unsigned char)p[k] - '0' <= 9u) {
+            k++;
+        }
+        if (k == exp) {
+            return 0;
+        }
+    }
+    return k == len;
+}
+
 YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
                                           yeptris_json_tape* t, int strict_nums) {
     if (tape_carve(t, len) != YEPTRIS_OK) {
@@ -794,20 +840,33 @@ lmapcolon:
         }
         if ((unsigned)(c - '0') <= 9u || c == '-') {
             size_t k = i + 1;
+            /* the digits-only tracking makes the pure-integer case a
+             * 3-cycle leading-zero check — number_shape (a call + a
+             * rescan, 13% of json-doc) runs only for dot/exp spans */
+            int digits_only = 1, saw_digit = (c != '-');
             while (k < len) {
                 char d = p[k];
-                if ((d >= '0' && d <= '9') || d == '-' || d == '+' || d == '.' || d == 'e' ||
-                    d == 'E') {
+                if ((unsigned)(d - '0') <= 9u) {
+                    k++;
+                    saw_digit = 1;
+                    continue;
+                }
+                digits_only = 0;
+                if (d == '-' || d == '+' || d == '.' || d == 'e' || d == 'E') {
                     k++;
                     continue;
                 }
                 break;
             }
             if (strict_nums) {
-                size_t adv = 0;
-                int flt = 0;
-                if (yep_json_number_shape(p + i, k - i, &adv, &flt) == 0 ||
-                    adv != (size_t)(k - i)) {
+                int ok;
+                if (digits_only && saw_digit) {
+                    size_t d0 = (c == '-') ? i + 1 : i;
+                    ok = (k - d0 == 1) || p[d0] != '0';
+                } else {
+                    ok = tape_num_ok(p + i, (size_t)(k - i));
+                }
+                if (!ok) {
                     goto lreject;
                 }
             }
@@ -882,19 +941,30 @@ lseqval: {
     }
     if ((unsigned)(c - '0') <= 9u || c == '-') {
         size_t k = i + 1;
+        int digits_only = 1, saw_digit = (c != '-');
         while (k < len) {
             char d = p[k];
-            if ((d >= '0' && d <= '9') || d == '-' || d == '+' || d == '.' || d == 'e' ||
-                d == 'E') {
+            if ((unsigned)(d - '0') <= 9u) {
+                k++;
+                saw_digit = 1;
+                continue;
+            }
+            digits_only = 0;
+            if (d == '-' || d == '+' || d == '.' || d == 'e' || d == 'E') {
                 k++;
                 continue;
             }
             break;
         }
         if (strict_nums) {
-            size_t adv = 0;
-            int flt = 0;
-            if (yep_json_number_shape(p + i, k - i, &adv, &flt) == 0 || adv != (size_t)(k - i)) {
+            int ok;
+            if (digits_only && saw_digit) {
+                size_t d0 = (c == '-') ? i + 1 : i;
+                ok = (k - d0 == 1) || p[d0] != '0';
+            } else {
+                ok = tape_num_ok(p + i, (size_t)(k - i));
+            }
+            if (!ok) {
                 goto lreject;
             }
         }
