@@ -6,6 +6,32 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- **emit: the writer's grow trigger left no terminator slot** — a serialized size landing
+  exactly on the buffer capacity wrote the closing NUL one byte past the allocation
+  (the next heap block's header). Corruption deterministic, detection dependent on
+  allocation history: the multi-year "abort under load, position varies with GC timing"
+  flake (yeptris-ruby#182). The writer now reserves the terminator slot; the
+  boundary-sweep regression gate fires AddressSanitizer at the exact site when
+  reverted (#405).
+- lazy YAML-tape route: the parse-only document no longer allocates (and leaks) the
+  eager sink's DOM; MSVC C4701 zero-init (#404 follow-up).
+
+### Added
+- **the packed YAML record tape (#378 slice 1)**: a recording sink over the engine's
+  seven committed-op callbacks packs the stream into 8-byte words; replay decodes
+  into the same builder functions. Differential-gated (30-shape inline corpus +
+  the 67-file psych-pure sweep + compat-11 + error parity), behind the internal
+  `yeptris_parse_ytape_ex` seam — the default route is unchanged (#404).
+
+### Changed
+- **json parse: the fused lenient walk's map/seq member cycles** replace the
+  per-token state machine (#402); the three string arms collapse into one
+  SWAR/quote_scan fast path with the escape kernel as fallback, and pure-integer
+  spans settle without the number kernel (#403). CI referee: json-doc 0.77x ->
+  0.93x simdjson, json-users 0.64x -> 0.88x (#342).
+
 ## [0.6.19] - 2026-09-23
 ### Added
 - libyaml-parity event end marks (#179): `yep_event`, `YeptrisEvent`, and
