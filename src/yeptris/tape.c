@@ -683,6 +683,75 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
         goto lseqafter;                                                                            \
     } while (0)
 
+/* LSTR_SCAN(after) — the fused string arm, positioned at p[i] == '"'.
+ * One SWAR round settles the common short span; quote_scan (the SIMD
+ * close scan) settles longer no-escape spans, with a c0 sweep over the
+ * content (quote_scan never tests control bytes); the kernel runs only
+ * when escapes appear — its grammar authority covers the escape rules
+ * quote_scan skips. `after` names the post-member label. */
+#define LSTR_SCAN(after)                                                                           \
+    do {                                                                                           \
+        size_t j_ = i + 1;                                                                         \
+        int esc_ = 0;                                                                              \
+        if (j_ + 8 <= len) {                                                                       \
+            uint64_t w_;                                                                           \
+            memcpy(&w_, p + j_, 8);                                                                \
+            uint64_t qm_ = (w_ ^ 0x2222222222222222ull);                                           \
+            uint64_t bm_ = (w_ ^ 0x5C5C5C5C5C5C5C5Cull);                                           \
+            qm_ = (qm_ - 0x0101010101010101ull) & ~qm_ & 0x8080808080808080ull;                    \
+            bm_ = (bm_ - 0x0101010101010101ull) & ~bm_ & 0x8080808080808080ull;                    \
+            uint64_t c0_ = (w_ - 0x2020202020202020ull) & ~w_ & 0x8080808080808080ull;             \
+            if (qm_ != 0 && ((bm_ | c0_) & (qm_ - 1)) == 0) {                                      \
+                size_t cl_ = j_ + (size_t)yep_ctz64(qm_) / 8;                                      \
+                recs[count] = ((uint64_t)((uint32_t)j_) << 32) |                                   \
+                              ((uint64_t)((uint32_t)(cl_ - j_)) << 8) | (uint64_t)(YEP_T_STR);     \
+                count++;                                                                           \
+                i = cl_ + 1;                                                                       \
+                goto after;                                                                        \
+            }                                                                                      \
+        }                                                                                          \
+        {                                                                                          \
+            const yep_text_kernels* kk_ = yep_text_active();                                       \
+            ptrdiff_t r_ = kk_->quote_scan(p + j_, len - j_, '"', &esc_);                          \
+            if (r_ >= 0 && esc_ == 0) {                                                            \
+                size_t cl_ = j_ + (size_t)r_;                                                      \
+                for (size_t b_ = j_; b_ < cl_;) {                                                  \
+                    size_t room_ = cl_ - b_;                                                       \
+                    if (room_ >= 8) {                                                              \
+                        uint64_t v_;                                                               \
+                        memcpy(&v_, p + b_, 8);                                                    \
+                        if ((v_ - 0x2020202020202020ull) & ~v_ & 0x8080808080808080ull) {          \
+                            goto lreject;                                                          \
+                        }                                                                          \
+                        b_ += 8;                                                                   \
+                    } else {                                                                       \
+                        if ((unsigned char)p[b_] < 0x20) {                                         \
+                            goto lreject;                                                          \
+                        }                                                                          \
+                        b_++;                                                                      \
+                    }                                                                              \
+                }                                                                                  \
+                recs[count] = ((uint64_t)((uint32_t)j_) << 32) |                                   \
+                              ((uint64_t)((uint32_t)(cl_ - j_)) << 8) | (uint64_t)(YEP_T_STR);     \
+                count++;                                                                           \
+                i = cl_ + 1;                                                                       \
+                goto after;                                                                        \
+            }                                                                                      \
+        }                                                                                          \
+        {                                                                                          \
+            size_t at_ = i;                                                                        \
+            size_t cl_ = 0;                                                                        \
+            if (!yep_json_string(p, len, &i, &cl_, &esc_)) {                                       \
+                goto lreject;                                                                      \
+            }                                                                                      \
+            recs[count] = ((uint64_t)((uint32_t)(at_ + 1)) << 32) |                                \
+                          ((uint64_t)((uint32_t)(cl_ - at_ - 1)) << 8) | (uint64_t)(YEP_T_STR);    \
+            count++;                                                                               \
+            i = cl_ + 1;                                                                           \
+        }                                                                                          \
+        goto after;                                                                                \
+    } while (0)
+
 /* The map member cycle — ONE contiguous region (the json-doc lesson:
  * a goto web across value/key/after regions scattered the hot path and
  * cost 2.7x on the flat-map shape). Values scan inline; only nested
@@ -704,38 +773,7 @@ lmap: /* a member MUST follow (after ','): JW_KEY — a closer rejects */
     if (p[i] != '"') {
         goto lreject;
     }
-lmapkey: {
-    size_t j = i + 1;
-    size_t close = 0;
-    if (j + 8 <= len) {
-        uint64_t w;
-        memcpy(&w, p + j, 8);
-        uint64_t qm = (w ^ 0x2222222222222222ull);
-        uint64_t bm = (w ^ 0x5C5C5C5C5C5C5C5Cull);
-        qm = (qm - 0x0101010101010101ull) & ~qm & 0x8080808080808080ull;
-        bm = (bm - 0x0101010101010101ull) & ~bm & 0x8080808080808080ull;
-        uint64_t c0 = (w - 0x2020202020202020ull) & ~w & 0x8080808080808080ull;
-        if (qm != 0 && ((bm | c0) & (qm - 1)) == 0) {
-            close = j + (size_t)yep_ctz64(qm) / 8;
-            recs[count] = ((uint64_t)((uint32_t)j) << 32) |
-                          ((uint64_t)((uint32_t)(close - j)) << 8) | (uint64_t)(YEP_T_STR);
-            count++;
-            i = close + 1;
-            goto lmapcolon;
-        }
-    }
-    {
-        int esc = 0;
-        size_t at = i;
-        if (!yep_json_string(p, len, &i, &close, &esc)) {
-            goto lreject;
-        }
-        recs[count] = ((uint64_t)((uint32_t)(at + 1)) << 32) |
-                      ((uint64_t)((uint32_t)(close - at - 1)) << 8) | (uint64_t)(YEP_T_STR);
-        count++;
-        i = close + 1;
-    }
-}
+lmapkey: { LSTR_SCAN(lmapcolon); }
 lmapcolon:
     LWS();
     if (p[i] != ':') {
@@ -746,37 +784,7 @@ lmapcolon:
     {
         char c = p[i];
         if (c == '"') {
-            size_t j = i + 1;
-            size_t close = 0;
-            if (j + 8 <= len) {
-                uint64_t w;
-                memcpy(&w, p + j, 8);
-                uint64_t qm = (w ^ 0x2222222222222222ull);
-                uint64_t bm = (w ^ 0x5C5C5C5C5C5C5C5Cull);
-                qm = (qm - 0x0101010101010101ull) & ~qm & 0x8080808080808080ull;
-                bm = (bm - 0x0101010101010101ull) & ~bm & 0x8080808080808080ull;
-                uint64_t c0 = (w - 0x2020202020202020ull) & ~w & 0x8080808080808080ull;
-                if (qm != 0 && ((bm | c0) & (qm - 1)) == 0) {
-                    close = j + (size_t)yep_ctz64(qm) / 8;
-                    recs[count] = ((uint64_t)((uint32_t)j) << 32) |
-                                  ((uint64_t)((uint32_t)(close - j)) << 8) | (uint64_t)(YEP_T_STR);
-                    count++;
-                    i = close + 1;
-                    goto lmapafter;
-                }
-            }
-            {
-                int esc = 0;
-                size_t at = i;
-                if (!yep_json_string(p, len, &i, &close, &esc)) {
-                    goto lreject;
-                }
-                recs[count] = ((uint64_t)((uint32_t)(at + 1)) << 32) |
-                              ((uint64_t)((uint32_t)(close - at - 1)) << 8) | (uint64_t)(YEP_T_STR);
-                count++;
-                i = close + 1;
-            }
-            goto lmapafter;
+            LSTR_SCAN(lmapafter);
         }
         if ((unsigned)(c - '0') <= 9u || c == '-') {
             size_t k = i + 1;
@@ -856,37 +864,7 @@ lseq: /* a member MUST follow (after ','): JW_VALUE */
 lseqval: {
     char c = p[i];
     if (c == '"') {
-        size_t j = i + 1;
-        size_t close = 0;
-        if (j + 8 <= len) {
-            uint64_t w;
-            memcpy(&w, p + j, 8);
-            uint64_t qm = (w ^ 0x2222222222222222ull);
-            uint64_t bm = (w ^ 0x5C5C5C5C5C5C5C5Cull);
-            qm = (qm - 0x0101010101010101ull) & ~qm & 0x8080808080808080ull;
-            bm = (bm - 0x0101010101010101ull) & ~bm & 0x8080808080808080ull;
-            uint64_t c0 = (w - 0x2020202020202020ull) & ~w & 0x8080808080808080ull;
-            if (qm != 0 && ((bm | c0) & (qm - 1)) == 0) {
-                close = j + (size_t)yep_ctz64(qm) / 8;
-                recs[count] = ((uint64_t)((uint32_t)j) << 32) |
-                              ((uint64_t)((uint32_t)(close - j)) << 8) | (uint64_t)(YEP_T_STR);
-                count++;
-                i = close + 1;
-                goto lseqafter;
-            }
-        }
-        {
-            int esc = 0;
-            size_t at = i;
-            if (!yep_json_string(p, len, &i, &close, &esc)) {
-                goto lreject;
-            }
-            recs[count] = ((uint64_t)((uint32_t)(at + 1)) << 32) |
-                          ((uint64_t)((uint32_t)(close - at - 1)) << 8) | (uint64_t)(YEP_T_STR);
-            count++;
-            i = close + 1;
-        }
-        goto lseqafter;
+        LSTR_SCAN(lseqafter);
     }
     if ((unsigned)(c - '0') <= 9u || c == '-') {
         size_t k = i + 1;
@@ -957,6 +935,7 @@ ldone:
 #undef LWS
 #undef LPUSH
 #undef LCLOSE
+#undef LSTR_SCAN
 
 {
     size_t tail = i;
