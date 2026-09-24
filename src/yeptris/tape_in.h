@@ -15,7 +15,7 @@
 
 /* tape.c (was tape_walk_lnt_fused) */
 YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
-                                          yeptris_json_tape* t, int strict_nums);
+                                          yeptris_json_tape* t, int strict_nums, int clean_only);
 
 /* parse.c (#378 slice 1): the YAML parse carrying the packed record
  * tape — the tree materializes on first access (yep_doc_dom). */
