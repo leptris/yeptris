@@ -542,18 +542,18 @@ uint32_t dom_indexed_child(yep_dom* d, uint32_t cid, size_t index, uint32_t* cou
         *count_out = 0;
         return UINT32_MAX;
     }
+    /* the midx discipline (TSAN, Threads.ReadOnlySharing): READS of
+     * the cache ride the mutex too — a concurrent builder publishes
+     * under it, so the old unlocked hit path raced the build's
+     * stores. Uncontended in the single-threaded hot path. */
+    yep_mutex_lock(&d->midx.mu);
+    uint32_t out;
     *count_out = n->count;
     if (d->child_cache_id == cid) {
-        if (index < d->child_cache_len) {
-            return d->child_cache[index];
-        }
-        return UINT32_MAX;
-    }
-    /* miss: build once under the lazy-init mutex (Threads.
-     * ReadOnlySharing — concurrent first calls race here exactly like
-     * the handle pool's) */
-    yep_mutex_lock(&d->midx.mu);
-    if (d->child_cache_id != cid) {
+        out = index < d->child_cache_len ? d->child_cache[index] : UINT32_MAX;
+    } else {
+        /* miss: build once under the lazy-init mutex (concurrent
+         * first calls race here exactly like the handle pool's) */
         yep_free(d->sys, d->child_cache);
         d->child_cache = NULL;
         d->child_cache_len = 0;
@@ -574,12 +574,10 @@ uint32_t dom_indexed_child(yep_dom* d, uint32_t cid, size_t index, uint32_t* cou
             }
         }
         d->child_cache_id = cid;
+        out = index < d->child_cache_len ? d->child_cache[index] : UINT32_MAX;
     }
     yep_mutex_unlock(&d->midx.mu);
-    if (index < d->child_cache_len) {
-        return d->child_cache[index];
-    }
-    return UINT32_MAX;
+    return out;
 }
 
 void yep_dom_destroy(yep_dom* d) {
