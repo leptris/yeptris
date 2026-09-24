@@ -346,24 +346,30 @@ engine_enter:
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
     }
-    yep_dom* dom = yep_dom_create(sys);
-    if (dom == NULL) {
-        yep_engine_destroy(eng);
-        yep_free(sys, transcoded);
-        st = YEPTRIS_ERROR_MEMORY;
-        goto fail;
+    /* the lazy route builds NO tree at parse: the dom (and its whole
+     * setup) exists only for the eager sink (the ASAN leak lesson —
+     * an unused dom leaked per lazy parse) */
+    yep_dom* dom = NULL;
+    if (!lazy) {
+        dom = yep_dom_create(sys);
+        if (dom == NULL) {
+            yep_engine_destroy(eng);
+            yep_free(sys, transcoded);
+            st = YEPTRIS_ERROR_MEMORY;
+            goto fail;
+        }
+        /* the direct builders resolve with the engine's schema (the typing
+         * SSOT — one resolver decision per scalar, whichever path builds) */
+        dom->resolver = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
+                            ? yep_resolver_compat11()
+                            : yep_resolver_core12();
+        /* BEFORE the run: input-slice strings borrow as views (zero copy)
+         * — the document keeps `transcoded` alive for exactly this. Set
+         * after, every scalar was arena-copied (found 2026-09-10). */
+        dom->input_len = data_len;
+        dom->input_base = transcoded ? (const char*)transcoded : buf;
+        yep_dom_prepare_len(dom, data_len);
     }
-    /* the direct builders resolve with the engine's schema (the typing
-     * SSOT — one resolver decision per scalar, whichever path builds) */
-    dom->resolver = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
-                        ? yep_resolver_compat11()
-                        : yep_resolver_core12();
-    /* BEFORE the run: input-slice strings borrow as views (zero copy)
-     * — the document keeps `transcoded` alive for exactly this. Set
-     * after, every scalar was arena-copied (found 2026-09-10). */
-    dom->input_len = data_len;
-    dom->input_base = transcoded ? (const char*)transcoded : buf;
-    yep_dom_prepare_len(dom, data_len);
     {
         /* the nametab reserve survives: a memchr chain for '&' is
          * far cheaper than the class sweep it replaced */
@@ -379,7 +385,7 @@ engine_enter:
         yep_engine_prepare(eng, &amp_only);
     }
 
-    yep_ytape yt;
+    yep_ytape yt = {0}; /* zeroed: MSVC cannot couple have_tape to ytap_init's fill */
     int have_tape = 0;
     yep_sink sink;
     if (lazy) {
