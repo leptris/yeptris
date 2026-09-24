@@ -484,16 +484,16 @@ int yep_text_json_stage1_avx2(const char* p, size_t len, uint32_t* idx, size_t* 
                                                 _mm256_cmpeq_epi8(v, _mm256_set1_epi8('\r'))));
             uint64_t fw = (uint64_t)(uint32_t)_mm256_movemask_epi8(w);
             /* unsigned min(v, 0x20) == v  <=>  v < 0x20 */
-            uint64_t fc = (uint64_t)(uint32_t)_mm256_movemask_epi8(
-                _mm256_cmpeq_epi8(_mm256_min_epu8(v, _mm256_set1_epi8(0x20)), v));
+            uint64_t fc = (uint64_t)(uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(
+                _mm256_max_epu8(v, _mm256_set1_epi8(0x1F)), _mm256_set1_epi8(0x1F)));
             q |= fq << (32 * half);
             bs |= fb << (32 * half);
             op |= fo << (32 * half);
             ws |= fw << (32 * half);
             c0 |= fc << (32 * half);
         }
-        n = yep_json_stage1_resolve(q, bs, op, ws, c0, ~0ull, &prev_in_string, &esc_carry, off,
-                                    idx, n, flags);
+        n = yep_json_stage1_resolve(q, bs, op, ws, c0, ~0ull, &prev_in_string, &esc_carry, off, idx,
+                                    n, flags);
     }
     if (off < len) {
         size_t cn = len - off;
@@ -545,8 +545,8 @@ int yep_text_json_stage1_masks_avx2(const char* p, size_t len, struct yep_s1_blo
                                 _mm256_or_si256(_mm256_cmpeq_epi8(v, _mm256_set1_epi8(',')),
                                                 _mm256_cmpeq_epi8(v, _mm256_set1_epi8(':')))));
             uint64_t fo = (uint64_t)(uint32_t)_mm256_movemask_epi8(o);
-            uint64_t fc = (uint64_t)(uint32_t)_mm256_movemask_epi8(
-                _mm256_cmpeq_epi8(_mm256_min_epu8(v, _mm256_set1_epi8(0x20)), v));
+            uint64_t fc = (uint64_t)(uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(
+                _mm256_max_epu8(v, _mm256_set1_epi8(0x1F)), _mm256_set1_epi8(0x1F)));
             q |= fq << (32 * half);
             bs |= fb << (32 * half);
             op |= fo << (32 * half);
