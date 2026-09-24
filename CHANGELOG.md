@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.21] - 2026-09-24
 ### Fixed
 - **dom: the #377 child-index cache reads ride the mutex** — the hit path read
   the cache unlocked while a concurrent builder published it under midx.mu (a
