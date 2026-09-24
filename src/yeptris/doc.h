@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 
+#include "common/mutex.h"
 #include "dom/dom.h"
 #include "memory/allocator.h"
 
@@ -18,19 +19,24 @@ typedef struct yeptris_document {
                                 * conditioned on it (TODO.restructure/32) */
     unsigned char* transcoded; /* owned when non-NULL */
     size_t transcoded_len;
-    const char* input; /* borrowed input (lifetime documentation) */
-    void* finish_pool; /* engine finish pool: resolved tags, folded and
-                          escaped scalars outlive the engine through the
-                          document */
-    void* lazy_tape;   /* #342 slice 2: the parsed tape when the tree is
-                        * deferred (gate-clean strict JSON; #378: the YAML
-                        * record tape). dom==NULL until the first tree
-                        * access materializes; freed with the document.
-                        * void* to avoid a header cycle — parse.c casts
-                        * per lazy_kind */
-    int lazy_kind;     /* 0 = none/json (yeptris_json_tape), 1 = yaml
-                        * (yep_ytape) — every constructor must set it
-                        * (the field-by-field ctor trap) */
+    const char* input;     /* borrowed input (lifetime documentation) */
+    void* finish_pool;     /* engine finish pool: resolved tags, folded and
+                              escaped scalars outlive the engine through the
+                              document */
+    void* lazy_tape;       /* #342 slice 2: the parsed tape when the tree is
+                            * deferred (gate-clean strict JSON; #378: the YAML
+                            * record tape). dom==NULL until the first tree
+                            * access materializes; freed with the document.
+                            * void* to avoid a header cycle — parse.c casts
+                            * per lazy_kind */
+    int lazy_kind;         /* 0 = none/json (yeptris_json_tape), 1 = yaml
+                            * (yep_ytape) — every constructor must set it
+                            * (the field-by-field ctor trap) */
+    yep_mutex_raw lazy_mu; /* materialization lock: the first tree
+                            * access builds; concurrent first accesses
+                            * wait (read-only sharing stays lock-free
+                            * once dom is set — every constructor must
+                            * yep_mutex_init it, the ctor trap) */
 } yeptris_document;
 
 /* Node handle: a (document, node-id) pair so nodes stay usable even if

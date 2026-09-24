@@ -14,6 +14,7 @@
  * (test/unit/test_ytape.cpp) pins tree identity across the corpora.
  */
 
+#include <stdio.h>
 #include <string.h>
 
 #include "dom/dom.h"
@@ -327,6 +328,7 @@ static int yt_on_flow_build(void* ctx, const char* p, size_t open, size_t len, u
      * the same reject/long-key verdicts, then ONE record for the
      * whole staged span (replay runs the full build through
      * dom_on_flow_build). */
+    t->max_depth = max_depth; /* replay re-walks at the engine's limit */
     yep_json_walk w;
     yep_json_tok tok;
     yep_json_walk_init(&w, p, len, open, max_depth);

@@ -756,14 +756,19 @@ YEPTRIS_API YeptrisStatus yeptris_marshal_node(YeptrisNode node, char** out, siz
     *out = NULL;
     *out_len = 0;
     yeptris_node* h = (yeptris_node*)node;
-    if (dom_subtree_tagged(h->doc->dom, h->id) != 0) {
+    yep_dom* dom = yep_doc_dom(h->doc); /* #378: a lazy parse carries the
+                                         * tape — the tree materializes here */
+    if (dom == NULL) {
+        return YEPTRIS_ERROR_MEMORY; /* the lazy route's retry contract */
+    }
+    if (dom_subtree_tagged(dom, h->id) != 0) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
                       "marshal: explicitly tagged node not expressible; "
                       "fall back to the value walk");
         return YEPTRIS_ERROR_UNSUPPORTED;
     }
     yep_value_ctx* c = NULL;
-    if (yep_values_from_dom(h->doc->dom, h->id, 0, &c) != 0) {
+    if (yep_values_from_dom(dom, h->id, 0, &c) != 0) {
         return YEPTRIS_ERROR_MEMORY;
     }
     YeptrisStatus st = marshal_records(c, h->doc->schema == YEPTRIS_SCHEMA_11_COMPAT,

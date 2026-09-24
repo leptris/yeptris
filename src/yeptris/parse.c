@@ -48,47 +48,55 @@ yep_dom* yep_doc_dom(yeptris_document* doc) {
     if (doc == NULL) {
         return NULL;
     }
-    if (doc->dom == NULL && doc->lazy_tape != NULL && doc->lazy_kind == 1) {
-        /* #378: the YAML record tape — replay through the eager
-         * builders; the finish pool (whose spans the records carry)
-         * dies once the builders copied what must outlive it */
-        yep_ytape* t = (yep_ytape*)doc->lazy_tape;
-        yep_dom* dom = yep_dom_create(doc->sys);
-        if (dom != NULL) {
-            dom->resolver = (doc->schema == YEPTRIS_SCHEMA_11_COMPAT) ? yep_resolver_compat11()
-                                                                      : yep_resolver_core12();
-        }
-        if (dom != NULL && dom_from_ytape(dom, t) == 0) {
-            doc->dom = dom;
-            ytap_free(t);
-            yep_free(doc->sys, t);
-            doc->lazy_tape = NULL;
-            yep_pool_destroy((yep_pool*)doc->finish_pool);
-            doc->finish_pool = NULL;
-        } else {
-            yep_dom_destroy(dom);
-            dom = NULL; /* the tape stays: a later access retries, or
-                         * free drops it (replay fails only on
-                         * allocation/depth, as the builders do) */
-        }
-        return dom;
-    }
     if (doc->dom == NULL && doc->lazy_tape != NULL) {
-        yeptris_json_tape* t = (yeptris_json_tape*)doc->lazy_tape;
-        yep_dom* dom = yep_dom_create(doc->sys);
-        if (dom != NULL && dom_from_tape(dom, t) == 0) {
-            doc->dom = dom;
-            yeptris_tape_free(t);
-            yep_free(doc->sys, t);
-            doc->lazy_tape = NULL;
-        } else {
-            yep_dom_destroy(dom);
-            dom = NULL; /* the tape stays: a later access retries, or
-                           free drops it (the materializer only fails on
-                           malformed NUM spans, which the strict gate
-                           already rejected at parse) */
+        /* the materialization lock: concurrent first accesses build
+         * ONCE (the read-only-sharing contract); once dom is set this
+         * branch never runs — readers stay lock-free */
+        yep_mutex_lock(&doc->lazy_mu);
+        if (doc->dom == NULL && doc->lazy_tape != NULL) {
+            if (doc->lazy_kind == 1) {
+                /* #378: the YAML record tape — replay through the
+                 * eager builders; the finish pool (whose spans the
+                 * records carry) dies once the builders copied what
+                 * must outlive it */
+                yep_ytape* t = (yep_ytape*)doc->lazy_tape;
+                yep_dom* dom = yep_dom_create(doc->sys);
+                if (dom != NULL) {
+                    dom->resolver = (doc->schema == YEPTRIS_SCHEMA_11_COMPAT)
+                                        ? yep_resolver_compat11()
+                                        : yep_resolver_core12();
+                }
+                if (dom != NULL && dom_from_ytape(dom, t) == 0) {
+                    doc->dom = dom;
+                    ytap_free(t);
+                    yep_free(doc->sys, t);
+                    doc->lazy_tape = NULL;
+                    yep_pool_destroy((yep_pool*)doc->finish_pool);
+                    doc->finish_pool = NULL;
+                } else {
+                    yep_dom_destroy(dom);
+                    /* the tape stays: a later access retries, or free
+                     * drops it (replay fails only on allocation/
+                     * depth, as the builders do) */
+                }
+            } else {
+                yeptris_json_tape* t = (yeptris_json_tape*)doc->lazy_tape;
+                yep_dom* dom = yep_dom_create(doc->sys);
+                if (dom != NULL && dom_from_tape(dom, t) == 0) {
+                    doc->dom = dom;
+                    yeptris_tape_free(t);
+                    yep_free(doc->sys, t);
+                    doc->lazy_tape = NULL;
+                } else {
+                    yep_dom_destroy(dom);
+                    /* the tape stays: a later access retries, or free
+                     * drops it (the materializer only fails on
+                     * malformed NUM spans, which the strict gate
+                     * already rejected at parse) */
+                }
+            }
         }
-        return dom;
+        yep_mutex_unlock(&doc->lazy_mu);
     }
     return doc->dom;
 }
@@ -145,6 +153,7 @@ static YeptrisDocument yep_json_doc_wrap(yep_dom* dom, const char* buf, size_t l
         }
         return NULL;
     }
+    yep_mutex_init(&doc->lazy_mu);
     doc->dom = dom;
     doc->sys = sys;
     doc->lazy_tape = NULL;
@@ -465,6 +474,7 @@ engine_enter:
         st = YEPTRIS_ERROR_MEMORY;
         goto fail;
     }
+    yep_mutex_init(&doc->lazy_mu);
     doc->sys = sys;
     doc->schema = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
                       ? YEPTRIS_SCHEMA_11_COMPAT
@@ -504,7 +514,11 @@ fail:
 YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
                                              const YeptrisParseOptions* opts,
                                              YeptrisStatus* status) {
-    return parse_impl(buf, len, opts, 0, 0, status);
+    /* #378 slice 2: the default YAML route carries the packed record
+     * tape — the tree materializes on first access (yep_doc_dom).
+     * Same grammar, same errors; parse-only workloads never build
+     * nodes. The eager form stays on yeptris_parse_eager_ex. */
+    return parse_impl(buf, len, opts, 0, 1, status);
 }
 
 /* #378 slice 1 (internal seam): the YAML parse rides the packed record
@@ -513,6 +527,13 @@ YEPTRIS_API YeptrisDocument yeptris_parse_ex(const char* buf, size_t len,
 YeptrisDocument yeptris_parse_ytape_ex(const char* buf, size_t len, const YeptrisParseOptions* opts,
                                        YeptrisStatus* status) {
     return parse_impl(buf, len, opts, 0, 1, status);
+}
+
+/* The eager form, kept for the parse-only A/B (bench_matrix's #378
+ * table) and as the reference lane the differential gates ride. */
+YeptrisDocument yeptris_parse_eager_ex(const char* buf, size_t len, const YeptrisParseOptions* opts,
+                                       YeptrisStatus* status) {
+    return parse_impl(buf, len, opts, 0, 0, status);
 }
 
 YEPTRIS_API void yeptris_document_free(YeptrisDocument handle) {
@@ -528,6 +549,7 @@ YEPTRIS_API void yeptris_document_free(YeptrisDocument handle) {
         }
         yep_free(doc->sys, doc->lazy_tape);
     }
+    yep_mutex_destroy(&doc->lazy_mu);
     yep_dom_destroy(doc->dom);
     yep_pool_destroy((yep_pool*)doc->finish_pool);
     yep_free(doc->sys, doc->transcoded);
@@ -536,7 +558,10 @@ YEPTRIS_API void yeptris_document_free(YeptrisDocument handle) {
 
 YEPTRIS_API size_t yeptris_document_count(YeptrisDocument handle) {
     yeptris_document* doc = (yeptris_document*)handle;
-    return doc ? yep_doc_dom(doc)->dcount : 0;
+    yep_dom* dom = doc ? yep_doc_dom(doc) : NULL; /* NULL: the lazy
+                                                   * route's failed/retrying materialization — an
+                                                   * unusable tree counts as zero documents */
+    return dom ? dom->dcount : 0;
 }
 
 yeptris_node* yep_handle_new(yeptris_document* doc, uint32_t id) {
