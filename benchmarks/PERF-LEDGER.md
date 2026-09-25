@@ -2180,3 +2180,28 @@ event structs), with the replay decoding spans. That is a design
 campaign, not a sink swap; plain event recording is closed. The CBOR
 route already ships its answer: the #157 sink seam lets hosts build
 VALUEs directly with no DOM intermediate at all.
+
+## 2026-09-25 — the string arm's inline SWAR rounds to 32 B (#342 arm64 cell)
+
+The arm64 profile of the json-users walk (dev host, same ISA as the
+macos CI leg): the walk body is 88% self-time; the two remaining named
+lanes are CALLS — `quote_scan` (3.7%; every 9-31-byte clean string:
+~100k emails per parse) and `tape_num_ok` (3.1%; every dot/exp span).
+Both eliminated structurally: LSTR_SCAN continues inline over up to
+four clean SWAR words (round 1 untouched — ≤8-byte strings, the
+~500k-tag majority, pay zero), and `tape_num_ok` is always_inline (the
+symbol is gone from the archive). The >32-byte clean span still calls
+the kernel; its extra prologue is three word loads.
+
+Referee reads: ubuntu (the stable leg) holds the parity band across
+the two runs — 0.97/0.98 (#417) → 0.95/1.01 (this PR). macos is
+UNRESOLVABLE at this effect size: json-doc 1.05 → 1.25, json-users
+0.85 → 0.74 across the same two runs (runner bounce, ±0.25 band on a
+≤5% change). Local min-of-8 interleaved A/B: throttle spread 2.9x on
+the dev host — the instrument cannot see a 5% lane; recorded dead for
+effects under ~15% on this machine, matching the standing law.
+
+Verdict: merged on the structural case (strictly fewer instructions on
+the arm64 hot path, no added cost for any span class, 390/390,
+acceptance identical by construction). The #342 cell re-reads on the
+next serialbench snapshot with 0.6.21+ in the harness.
