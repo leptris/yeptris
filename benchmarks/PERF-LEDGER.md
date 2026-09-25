@@ -2205,3 +2205,33 @@ Verdict: merged on the structural case (strictly fewer instructions on
 the arm64 hot path, no added cost for any span class, 390/390,
 acceptance identical by construction). The #342 cell re-reads on the
 next serialbench snapshot with 0.6.21+ in the harness.
+
+## 2026-09-25 (ii) — the member cycle's compact fast paths + the SWAR digit run (#423)
+
+The calibrated arm64 xctrace per-PC histogram names the walk's self-time
+lanes (the earlier trace had hit the pre-#419 binary): the LWS
+whitespace-skip loop tops the profile — the compiler's shift-mask form
+costs ~8 instructions per member even when it exits on byte one, and
+compact JSON makes every exit byte one — with the per-byte digit run
+second. Three cuts: the map/seq cycles' compact fast paths (value ',' key
+/ key ':' value / value ',' value dispatch through the byte LWS would
+land on; the general form remains for whitespace-bearing input), and
+LNUM_RUN (the initial digit run in SWAR words — the all-digit prefix
+never borrows across lanes, the flags are exact to the first non-digit,
+the byte loop keeps the tail and the -+.eE classification; the
+consumed-only digits_only law untouched).
+
+Same-host same-instrument reads (the #420 calibrated bench, quick mode):
+json-doc 1.07x → 1.06x (flat, parity), **json-users 0.73x → 0.90x**.
+Order-alternated prof pairs: the new walk wins all three (8.2s vs 11.2s
+median user).
+
+**Instrument law extended — ordering bias**: A/B pairs where the new
+binary always runs SECOND on a monotonically throttling host read as a
+40% REGRESSION; reversed, the same pair reads +26%. Alternate the order
+or the local read is fiction. Cross-run CI ratios remain
+non-comparable at this effect size: between the baseline (#420) and the
+slice's runs, simdjson's own MB/s moved +90% (760 → 1445 on the ubuntu
+leg) while yeptris moved +48-75% — the 0.90→0.70 block-1 ratio move is
+runner variance, not code. 391/391, format clean, merged on the local
+instruments' agreement; the next CI runs accumulate the referee read.
