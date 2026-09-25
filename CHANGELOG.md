@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- **json parse: the strict number arm's digits-only flag clears only on a
+  consumed byte** — the flag was cleared when *inspecting* the run's
+  terminator (comma, bracket, newline), routing every delimiter-terminated
+  integer into the strict single-pass validator (~15% of json-doc parse
+  re-validating runs the cheap path already proved). CI referee: json-doc
+  at the simdjson parity band (0.97x ubuntu / 1.05x macos interleaved
+  medians, from 0.88x) (#342).
+
 ## [0.6.21] - 2026-09-24
 ### Fixed
 - **dom: the #377 child-index cache reads ride the mutex** — the hit path read
