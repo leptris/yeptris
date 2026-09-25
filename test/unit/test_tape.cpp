@@ -624,3 +624,35 @@ TEST(LazyDom, ScalarRootsStayEager) {
     EXPECT_EQ(((yeptris_document*)d)->lazy_tape, nullptr);
     yeptris_document_free(d);
 }
+
+/* #342: the digits_only flag in the strict number arms must clear only
+ * on a CONSUMED byte — the run's terminator (',', '}', ']') used to
+ * corrupt it, routing every comma-followed integer into the full
+ * validator. Pins accepts AND rejects across the delimiter set. */
+TEST(JsonTape, IntegerDelimitersKeepTheCheapSettle) {
+    struct Case {
+        const char* doc;
+        bool ok;
+    };
+    const Case cases[] = {
+        {"{\"a\": 123}", true}, {"{\"a\": 123, \"b\": 456}", true},
+        {"[1, 2, 3, 4]", true}, {"{\"a\": -42}", true},
+        {"[123]", true},        {"{\"a\": 0}", true},
+        {"{\"a\": 01}", false}, {"{\"a\": -01}", false},
+        {"[1-2]", false},       {"{\"a\": 1.2.3}", false},
+        {"[+1]", false},        {"{\"a\": .5}", false},
+        {"[1e3.5]", false},     {"{\"a\": 0x10}", false},
+        {"[1., 2]", false},     {"[1e, 2]", false},
+    };
+    for (const Case& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse_json(c.doc, strlen(c.doc), &st);
+        if (c.ok) {
+            ASSERT_NE(d, nullptr) << c.doc;
+        } else {
+            ASSERT_EQ(d, nullptr) << c.doc;
+            ASSERT_EQ(st, YEPTRIS_ERROR_PARSE) << c.doc;
+        }
+        yeptris_document_free(d);
+    }
+}
