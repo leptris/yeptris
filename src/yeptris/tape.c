@@ -605,8 +605,15 @@ reject:
  * in-walk float/exp validator (the out-of-line number_shape call +
  * rescan was 13% of json-doc; the digits-only case never gets here).
  * One pass, no state machine words: sign, digits (leading-zero rule),
- * optional .digits, optional e[+-]digits, consume exactly len. */
-static int tape_num_ok(const char* p, size_t len) {
+ * optional .digits, optional e[+-]digits, consume exactly len.
+ * always_inline: the spans are 3-8 bytes and the out-of-line call was
+ * the cost (the rescan itself is nothing). */
+#if defined(__GNUC__)
+#define TAPE_NUM_OK_INLINE __attribute__((always_inline)) inline
+#else
+#define TAPE_NUM_OK_INLINE
+#endif
+static TAPE_NUM_OK_INLINE int tape_num_ok(const char* p, size_t len) {
     size_t k = 0;
     if (k < len && p[k] == '-') {
         k++;
@@ -769,6 +776,38 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
                 count++;                                                                           \
                 i = cl_ + 1;                                                                       \
                 goto after;                                                                        \
+            }                                                                                      \
+            /* rounds 2-4 (up to 32 bytes inline): the email-class strings                         \
+             * close here without the quote_scan call and its redundant                            \
+             * content re-sweep; reached only when round 1 had no close,                           \
+             * so the short-string case pays nothing */                                            \
+            if ((qm_ | bm_ | c0_ | hi_) == 0) {                                                    \
+                size_t nr_ = (len - j_) >> 3;                                                      \
+                if (nr_ > 4) {                                                                     \
+                    nr_ = 4;                                                                       \
+                }                                                                                  \
+                for (size_t r_ = 1; r_ < nr_; r_++) {                                              \
+                    size_t b2_ = j_ + (r_ << 3);                                                   \
+                    memcpy(&w_, p + b2_, 8);                                                       \
+                    qm_ = (w_ ^ 0x2222222222222222ull);                                            \
+                    bm_ = (w_ ^ 0x5C5C5C5C5C5C5C5Cull);                                            \
+                    qm_ = (qm_ - 0x0101010101010101ull) & ~qm_ & 0x8080808080808080ull;            \
+                    bm_ = (bm_ - 0x0101010101010101ull) & ~bm_ & 0x8080808080808080ull;            \
+                    c0_ = (w_ - 0x2020202020202020ull) & ~w_ & 0x8080808080808080ull;              \
+                    hi_ = cl ? (w_ & 0x8080808080808080ull) : 0;                                   \
+                    if (qm_ != 0 && ((bm_ | c0_ | hi_) & (qm_ - 1)) == 0) {                        \
+                        size_t cl_ = b2_ + (size_t)yep_ctz64(qm_) / 8;                             \
+                        recs[count] = ((uint64_t)((uint32_t)j_) << 32) |                           \
+                                      ((uint64_t)((uint32_t)(cl_ - j_)) << 8) |                    \
+                                      (uint64_t)(YEP_T_STR);                                       \
+                        count++;                                                                   \
+                        i = cl_ + 1;                                                               \
+                        goto after;                                                                \
+                    }                                                                              \
+                    if ((qm_ | bm_ | c0_ | hi_) != 0) {                                            \
+                        break; /* escape, c0 or hi: kernel authority */                            \
+                    }                                                                              \
+                }                                                                                  \
             }                                                                                      \
         }                                                                                          \
         {                                                                                          \
