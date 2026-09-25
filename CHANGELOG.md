@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **bench: the simdjson referee lane parses a pre-built padded string** —
+  the raw-pointer parse overload's `realloc_if_needed` copies the whole
+  input on every timed parse (a tax simdjson's own harness and the
+  serialbench fixture runner don't pay), flattering every head-to-head
+  ratio the table printed: the "parity band" was partly instrument tax.
+  Calibrated local read: json-doc 1.07x, json-users 0.73x (#342, #420).
 - **json parse: the strict number arm's digits-only flag clears only on a
   consumed byte** — the flag was cleared when *inspecting* the run's
   terminator (comma, bracket, newline), routing every delimiter-terminated
@@ -15,6 +21,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-validating runs the cheap path already proved). CI referee: json-doc
   at the simdjson parity band (0.97x ubuntu / 1.05x macos interleaved
   medians, from 0.88x) (#342).
+
+### Changed
+- **json parse: the string arm settles inline to 32 bytes** — four clean
+  SWAR words before the `quote_scan` kernel: the 9-31-byte clean strings
+  (the email class; ~100k per parse on the users corpus) no longer pay
+  the kernel call plus a redundant content re-sweep, and the strict
+  number validator is always_inline (its out-of-line call cost more than
+  the 3-8-byte spans it checks). Round 1 is untouched — sub-8-byte
+  strings pay zero (#342).
 
 ## [0.6.21] - 2026-09-24
 ### Fixed
