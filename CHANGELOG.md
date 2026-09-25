@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.22] - 2026-09-25
 ### Fixed
 - **bench: the simdjson referee lane parses a pre-built padded string** —
   the raw-pointer parse overload's `realloc_if_needed` copies the whole
