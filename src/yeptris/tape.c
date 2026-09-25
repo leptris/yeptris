@@ -601,6 +601,36 @@ reject:
  * (the classify scan carries no accept/reject structure) and
  * yeptris_tape_convert owns validation. Everything else matches
  * tape_walk state for state. */
+/* LNUM_RUN — the initial digit run of a number span: SWAR words, eight
+ * bytes per pass, with the byte loop below as tail and classifier.
+ * digit iff 0x30-0x39: a lane flags when (c+0x46) carries into bit7
+ * (c > '9'), when ((c|0x80)-0xB0) goes negative (c < '0'), or when the
+ * byte is non-ASCII — and since the all-digit prefix never borrows
+ * across lanes, the flags are exact up to the first non-digit, where
+ * the scan stops and the byte loop classifies what follows (the
+ * consumed-only digits_only law is untouched: the run sets saw_digit,
+ * nothing else). */
+#define LNUM_RUN                                                                                   \
+    do {                                                                                           \
+        size_t ks_ = k;                                                                            \
+        while (k + 8 <= len) {                                                                     \
+            uint64_t w_;                                                                           \
+            memcpy(&w_, p + k, 8);                                                                 \
+            uint64_t nd_ =                                                                         \
+                ((w_ + 0x4646464646464646ull) & 0x8080808080808080ull) |                           \
+                (((w_ | 0x8080808080808080ull) - 0xB0B0B0B0B0B0B0B0ull) & 0x8080808080808080ull) | \
+                (w_ & 0x8080808080808080ull);                                                      \
+            if (nd_ != 0) {                                                                        \
+                k += (size_t)yep_ctz64(nd_) >> 3;                                                  \
+                break;                                                                             \
+            }                                                                                      \
+            k += 8;                                                                                \
+        }                                                                                          \
+        if (k > ks_) {                                                                             \
+            saw_digit = 1;                                                                         \
+        }                                                                                          \
+    } while (0)
+
 /* The strict RFC 8259 number check over one number-ish run — the
  * in-walk float/exp validator (the out-of-line number_shape call +
  * rescan was 13% of json-doc; the digits-only case never gets here).
@@ -884,103 +914,132 @@ lmap1: /* {} closes here */
     goto lmapkey;
 
 lmap: /* a member MUST follow (after ','): JW_KEY — a closer rejects */
+    /* compact fast path: the byte is the key's quote already — LWS's
+     * loop would examine it once and exit */
+    if (i < len && p[i] == '"') {
+        goto lmapkey;
+    }
     LWS();
     if (p[i] != '"') {
         goto lreject;
     }
 lmapkey: { LSTR_SCAN(lmapcolon); }
 lmapcolon:
+    if (i < len && p[i] == ':') {
+        i++;
+        /* compact fast path: the value byte follows the colon with no
+         * whitespace — one load dispatches it (the ws test below is
+         * what LWS would run anyway) */
+        if (i < len) {
+            char v = p[i];
+            if (v != ' ' && v != '\n' && v != '\r' && (cl || v != '\t')) {
+                goto lmapval;
+            }
+        }
+        LWS();
+        goto lmapval;
+    }
     LWS();
     if (p[i] != ':') {
         goto lreject;
     }
     i++;
     LWS();
-    {
-        char c = p[i];
-        if (c == '"') {
-            LSTR_SCAN(lmapafter);
-        }
-        if ((unsigned)(c - '0') <= 9u || c == '-') {
-            size_t k = i + 1;
-            /* the digits-only tracking makes the pure-integer case a
-             * 3-cycle leading-zero check — number_shape (a call + a
-             * rescan, 13% of json-doc) runs only for dot/exp spans */
-            int digits_only = 1, saw_digit = (c != '-');
-            while (k < len) {
-                char d = p[k];
-                if ((unsigned)(d - '0') <= 9u) {
-                    k++;
-                    saw_digit = 1;
-                    continue;
-                }
-                /* the flag clears only on a CONSUMED byte: the run's
-                 * terminator (',', '}', ']', whitespace) must leave
-                 * digits_only intact, or every plain integer followed
-                 * by a delimiter falls into the full validator */
-                if (d == '-' || d == '+' || d == '.' || d == 'e' || d == 'E') {
-                    digits_only = 0;
-                    k++;
-                    continue;
-                }
-                break;
-            }
-            if (strict_nums) {
-                int ok;
-                if (digits_only && saw_digit) {
-                    size_t d0 = (c == '-') ? i + 1 : i;
-                    ok = (k - d0 == 1) || p[d0] != '0';
-                } else {
-                    ok = tape_num_ok(p + i, (size_t)(k - i));
-                }
-                if (!ok) {
-                    goto lreject;
-                }
-            }
-            recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
-                          (uint64_t)(YEP_T_NUM);
-            count++;
-            i = k;
-            goto lmapafter;
-        }
-        if (c == 't' || c == 'f' || c == 'n') {
-            size_t wl = c == 'f' ? 5 : 4;
-            if (i + wl > len) {
-                goto lreject;
-            }
-            uint32_t got4;
-            memcpy(&got4, p + i, 4);
-            if (got4 != (c == 't'   ? 0x65757274u /* "true" */
-                         : c == 'n' ? 0x6C6C756Eu /* "null" */
-                                    : 0x736C6166u /* "fals" */) ||
-                (c == 'f' && p[i + 4] != 'e')) {
-                goto lreject;
-            }
-            if (i + wl < len) {
-                char z = p[i + wl];
-                if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
-                    z != '}' && z != ':') {
-                    goto lreject;
-                }
-            }
-            recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)wl) << 8) |
-                          (uint64_t)(c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE));
-            count++;
-            i += wl;
-            goto lmapafter;
-        }
-        if (c == '{') {
-            LPUSH(1);
-            goto lmap1;
-        }
-        if (c == '[') {
-            LPUSH(0);
-            goto lseq1;
-        }
-        goto lreject;
+lmapval: {
+    char c = p[i];
+    if (c == '"') {
+        LSTR_SCAN(lmapafter);
     }
+    if ((unsigned)(c - '0') <= 9u || c == '-') {
+        size_t k = i + 1;
+        /* the digits-only tracking makes the pure-integer case a
+         * 3-cycle leading-zero check — number_shape (a call + a
+         * rescan, 13% of json-doc) runs only for dot/exp spans */
+        int digits_only = 1, saw_digit = (c != '-');
+        LNUM_RUN;
+        while (k < len) {
+            char d = p[k];
+            if ((unsigned)(d - '0') <= 9u) {
+                k++;
+                saw_digit = 1;
+                continue;
+            }
+            /* the flag clears only on a CONSUMED byte: the run's
+             * terminator (',', '}', ']', whitespace) must leave
+             * digits_only intact, or every plain integer followed
+             * by a delimiter falls into the full validator */
+            if (d == '-' || d == '+' || d == '.' || d == 'e' || d == 'E') {
+                digits_only = 0;
+                k++;
+                continue;
+            }
+            break;
+        }
+        if (strict_nums) {
+            int ok;
+            if (digits_only && saw_digit) {
+                size_t d0 = (c == '-') ? i + 1 : i;
+                ok = (k - d0 == 1) || p[d0] != '0';
+            } else {
+                ok = tape_num_ok(p + i, (size_t)(k - i));
+            }
+            if (!ok) {
+                goto lreject;
+            }
+        }
+        recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
+                      (uint64_t)(YEP_T_NUM);
+        count++;
+        i = k;
+        goto lmapafter;
+    }
+    if (c == 't' || c == 'f' || c == 'n') {
+        size_t wl = c == 'f' ? 5 : 4;
+        if (i + wl > len) {
+            goto lreject;
+        }
+        uint32_t got4;
+        memcpy(&got4, p + i, 4);
+        if (got4 != (c == 't'   ? 0x65757274u /* "true" */
+                     : c == 'n' ? 0x6C6C756Eu /* "null" */
+                                : 0x736C6166u /* "fals" */) ||
+            (c == 'f' && p[i + 4] != 'e')) {
+            goto lreject;
+        }
+        if (i + wl < len) {
+            char z = p[i + wl];
+            if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
+                z != '}' && z != ':') {
+                goto lreject;
+            }
+        }
+        recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)wl) << 8) |
+                      (uint64_t)(c == 'n' ? YEP_T_NULL : (c == 't' ? YEP_T_TRUE : YEP_T_FALSE));
+        count++;
+        i += wl;
+        goto lmapafter;
+    }
+    if (c == '{') {
+        LPUSH(1);
+        goto lmap1;
+    }
+    if (c == '[') {
+        LPUSH(0);
+        goto lseq1;
+    }
+    goto lreject;
+}
 
 lmapafter:
+    /* compact fast path: value ',' key directly — the two LWS hops the
+     * general form runs both exit on byte one here */
+    if (i < len && p[i] == ',') {
+        i++;
+        if (i < len && p[i] == '"') {
+            goto lmapkey;
+        }
+        goto lmap;
+    }
     LWS();
     if (p[i] == ',') {
         i++;
@@ -1009,6 +1068,7 @@ lseqval: {
     if ((unsigned)(c - '0') <= 9u || c == '-') {
         size_t k = i + 1;
         int digits_only = 1, saw_digit = (c != '-');
+        LNUM_RUN;
         while (k < len) {
             char d = p[k];
             if ((unsigned)(d - '0') <= 9u) {
@@ -1080,6 +1140,18 @@ lseqval: {
 }
 
 lseqafter:
+    /* compact fast path: value ',' value directly — both LWS hops exit
+     * on byte one here */
+    if (i < len && p[i] == ',') {
+        i++;
+        if (i < len) {
+            char v = p[i];
+            if (v != ' ' && v != '\n' && v != '\r' && (cl || v != '\t')) {
+                goto lseqval;
+            }
+        }
+        goto lseq;
+    }
     LWS();
     if (p[i] == ',') {
         i++;
@@ -1092,6 +1164,7 @@ lseqafter:
 
 ldone:
 #undef LWS
+#undef LNUM_RUN
 #undef LPUSH
 #undef LCLOSE
 #undef LSTR_SCAN

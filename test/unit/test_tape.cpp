@@ -656,3 +656,47 @@ TEST(JsonTape, IntegerDelimitersKeepTheCheapSettle) {
         yeptris_document_free(d);
     }
 }
+
+/* #342: the SWAR digit run — every digit width around and across the
+ * 8-byte word boundaries, sign interaction, terminator bytes at each
+ * width, leading zeros past word width, and non-ASCII stopping the scan
+ * into the byte classifier's reject. The compact member-cycle fast
+ * paths (value ',' key with no whitespace) ride the same corpus. */
+TEST(JsonTape, DigitRunSurvivesEveryWidth) {
+    std::string doc;
+    auto parse_ok = [](const std::string& s, bool want) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse_json(s.data(), s.size(), &st);
+        if (want) {
+            ASSERT_NE(d, nullptr) << s;
+        } else {
+            ASSERT_EQ(d, nullptr) << s;
+            ASSERT_EQ(st, YEPTRIS_ERROR_PARSE) << s;
+        }
+        yeptris_document_free(d);
+    };
+    for (int w = 1; w <= 24; w++) {
+        /* w digits, value "," key after — the SWAR word boundary at 8
+         * and 16 must not eat the comma */
+        doc = "{\"a\": " + std::string(w, '7') + ", \"b\": 1}";
+        parse_ok(doc, true);
+        /* leading zero past word width still rejects */
+        doc = "{\"a\": " + std::string(w, '0') + "}";
+        parse_ok(doc, w == 1);
+        /* signed */
+        doc = "[" + std::string(w, '9') + "]";
+        parse_ok(doc, true);
+        doc = "[-" + std::string(w, '9') + "]";
+        parse_ok(doc, true);
+    }
+    /* a full 8-digit word exactly at the buffer's tail */
+    parse_ok("[12345678]", true);
+    parse_ok("[-12345678]", true);
+    /* non-ASCII stops the run into the classifier: reject, never absorb */
+    std::string hi = "[1\xC3\xA9]";
+    parse_ok(hi, false);
+    /* float + exponent forms across the boundary ride the validator */
+    parse_ok("{\"a\": 12345678.90123456, \"b\": 1e12345678}", true);
+    parse_ok("[1.2e+345678901]", true);
+    parse_ok("[1.2e34567890]", true);
+}
