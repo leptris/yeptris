@@ -875,8 +875,12 @@ lmapcolon:
                     saw_digit = 1;
                     continue;
                 }
-                digits_only = 0;
+                /* the flag clears only on a CONSUMED byte: the run's
+                 * terminator (',', '}', ']', whitespace) must leave
+                 * digits_only intact, or every plain integer followed
+                 * by a delimiter falls into the full validator */
                 if (d == '-' || d == '+' || d == '.' || d == 'e' || d == 'E') {
+                    digits_only = 0;
                     k++;
                     continue;
                 }
@@ -973,8 +977,9 @@ lseqval: {
                 saw_digit = 1;
                 continue;
             }
-            digits_only = 0;
+            /* consumed-only clearing: see the map arm's comment */
             if (d == '-' || d == '+' || d == '.' || d == 'e' || d == 'E') {
+                digits_only = 0;
                 k++;
                 continue;
             }
