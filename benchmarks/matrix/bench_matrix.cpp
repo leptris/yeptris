@@ -787,10 +787,16 @@ double h2h_ratio(const Corpus& c, int rounds, double* yep_mb) {
  * order-alternating, median of per-round ratios. */
 Result bench_simdjson(const Corpus& c, int iters) {
     simdjson::dom::parser parser;
+    /* parse a PRE-BUILT padded string: the raw-pointer overload's
+     * realloc_if_needed copies the whole input on every parse — a tax
+     * the serialbench harness (padded_string, built once) does not pay.
+     * Uncalibrated, this lane flattered every ratio the table prints
+     * (#342): the input copy is 5-10% of a parse at these sizes. */
+    simdjson::padded_string pdoc(c.data.data(), c.data.size());
     double best_ms = 1e9;
     for (int i = 0; i < iters; i++) {
         auto t0 = clk::now();
-        simdjson::dom::element doc = parser.parse(c.data.data(), c.data.size());
+        simdjson::dom::element doc = parser.parse(pdoc);
         auto t1 = clk::now();
         (void)doc;
         double ms = ms_of(t0, t1);
@@ -904,6 +910,10 @@ struct H2hJson {
  * each ratioed against simdjson DOM per round, median of ratios. */
 H2hJson h2h_vs_simdjson(const Corpus& c, int rounds) {
     simdjson::dom::parser parser;
+    /* padded, built once — same calibration as bench_simdjson: the
+     * raw-pointer overload copies the input per parse (a tax simdjson's
+     * own harness and serialbench don't pay) (#342). */
+    simdjson::padded_string pdoc(c.data.data(), c.data.size());
     std::vector<double> dom_ratios, tape_ratios;
     double best_yep = 1e9;
     double best_tape = 1e9;
@@ -920,7 +930,7 @@ H2hJson h2h_vs_simdjson(const Corpus& c, int rounds) {
         double ty, tp, tr, tl;
         if (i & 1) {
             auto b0 = clk::now();
-            simdjson::dom::element doc = parser.parse(c.data.data(), c.data.size());
+            simdjson::dom::element doc = parser.parse(pdoc);
             auto b1 = clk::now();
             (void)doc;
             auto a0 = clk::now();
@@ -957,7 +967,7 @@ H2hJson h2h_vs_simdjson(const Corpus& c, int rounds) {
             auto a1 = clk::now();
             yeptris_document_free(d);
             auto b0 = clk::now();
-            simdjson::dom::element doc = parser.parse(c.data.data(), c.data.size());
+            simdjson::dom::element doc = parser.parse(pdoc);
             auto b1 = clk::now();
             (void)doc;
             ty = ms_of(a0, a1);
