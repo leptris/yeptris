@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.24] - 2026-09-26
 ### Fixed
 - **parse: the 11-COMPAT grammar accepts multi-line flows libyaml
   accepts** — the block-level flow indent floor (9C9N, VJP3) rejected
