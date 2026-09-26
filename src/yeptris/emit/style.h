@@ -10,6 +10,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* A plain scalar may be re-emitted plain only when every byte is safe
  * in ANY position of a block context: no leading/trailing space, no
  * indicator first byte, no ": " / " #" inside, no tab, no break, and
@@ -20,5 +24,9 @@ int yep_style_plain_safe(const char* p, uint32_t len);
 /* A plain scalar is key-safe when it may sit directly before ':'
  * (plain_safe plus: no ':' at all unless followed by a non-blank). */
 int yep_style_plain_key_safe(const char* p, uint32_t len);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* YEP_EMIT_STYLE_H */
