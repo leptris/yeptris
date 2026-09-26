@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.25] - 2026-09-26
 ### Fixed
 - **recorder: the compat schema's engine runs floor-free** — the
   recorder's engine creation set only the resolver, so every consumer
