@@ -2470,13 +2470,20 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
     yep_block_value v;
     memset(&v, 0, sizeof(v));
     v.cls = (uint8_t)sh->val;
-    yep_event vv; /* value/end-mark fields only where a helper fills
-                   * them as a byproduct; fully assembled in fallback */
+    yep_event vv; /* the fields the fallback reads are assigned HERE and
+                   * overwritten by the arms/helpers — MSVC C4701 cannot
+                   * see through the helpers' bypointer writes, so the
+                   * zero-init lives in this function, not a memset */
+    vv.value.p = NULL;
+    vv.value.len = 0;
+    vv.borrowed = 0;
+    vv.anchor.p = NULL;
+    vv.anchor.len = 0;
+    vv.anchor_id = 0;
+    vv.end_line = 0;
+    vv.end_col = 0;
     int prepared = 0;
     if (sh->val == YEP_LVAL_ALIAS) {
-        vv.anchor.p = NULL; /* no anchor: the fallback copies these —
-                             * keep the old memset's zeros */
-        vv.anchor.len = 0;
         e->pos = sh->val_start;
         if (e_alias(e, &vv) != 0) {
             return -1; /* undefined alias: the chain's error */
@@ -2497,11 +2504,6 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
             v.anchor_id = anchor_define(e, v.anchor);
             vv.anchor = v.anchor;
             vv.anchor_id = v.anchor_id;
-        } else {
-            /* the fallback copies these: keep the old memset's zeros */
-            vv.anchor.p = NULL;
-            vv.anchor.len = 0;
-            vv.anchor_id = 0;
         }
         vv.value.p = e->p + sh->val_span.start;
         vv.value.len = sh->val_span.end - sh->val_span.start;
