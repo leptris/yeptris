@@ -423,8 +423,8 @@ TEST(Parse, NullValues) {
 TEST(Parse, CompatGrammarFlowFloorParity) {
     struct {
         const char* y;
-        int core_ok;      /* the strict engine's verdict */
-        int root_is_map;  /* compat: the root node's kind */
+        int core_ok;     /* the strict engine's verdict */
+        int root_is_map; /* compat: the root node's kind */
     } cases[] = {
         /* close at the parent's column — libyaml accepts, suite rejects */
         {"a: {\n  x: 1\n}\nb: 3\n", 0, 1},
@@ -453,9 +453,7 @@ TEST(Parse, CompatGrammarFlowFloorParity) {
         ASSERT_EQ(st, YEPTRIS_OK) << "compat input: " << c.y;
         YeptrisNode root = yeptris_document_root(doc, 0);
         ASSERT_NE(root, nullptr);
-        EXPECT_EQ(yeptris_node_kind(root) == YEPTRIS_NODE_MAPPING,
-                  c.root_is_map != 0)
-            << c.y;
+        EXPECT_EQ(yeptris_node_kind(root) == YEPTRIS_NODE_MAPPING, c.root_is_map != 0) << c.y;
         yeptris_document_free(doc);
     }
 
