@@ -2457,13 +2457,12 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
     }
     /* Whole-line fast path (TODO.restructure/54): the sink may build
      * the key and its classified value as one unit — no events. The
-     * value EVENT is prepared first (folded content, resolved alias,
-     * defined anchor: exactly what the chain below would emit), so a
-     * rejection emits key + prepared value unchanged. */
-    yep_event vv;
-    e_event_init(&vv, YEP_EV_SCALAR);
-    vv.line = e->line;
-    vv.col = e_col(e, sh->val_start) + 1;
+     * value EVENT is assembled ONLY on the fallback path (the sinks
+     * that take the pair read the yep_block_value and ignore it): the
+     * semantic helpers run unchanged (alias resolution, anchor
+     * definition, the fold), the fallback reuses the pair facts
+     * captured before the fold — e_plain_multiline advances
+     * line/pos across continuations, so post-fold e_col would lie. */
     /* the pair facts are captured BEFORE the fold: e_plain_multiline
      * advances line/pos across continuations */
     uint32_t pair_line = e->line;
@@ -2471,8 +2470,13 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
     yep_block_value v;
     memset(&v, 0, sizeof(v));
     v.cls = (uint8_t)sh->val;
+    yep_event vv; /* value/end-mark fields only where a helper fills
+                   * them as a byproduct; fully assembled in fallback */
     int prepared = 0;
     if (sh->val == YEP_LVAL_ALIAS) {
+        vv.anchor.p = NULL; /* no anchor: the fallback copies these —
+                             * keep the old memset's zeros */
+        vv.anchor.len = 0;
         e->pos = sh->val_start;
         if (e_alias(e, &vv) != 0) {
             return -1; /* undefined alias: the chain's error */
@@ -2493,12 +2497,15 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
             v.anchor_id = anchor_define(e, v.anchor);
             vv.anchor = v.anchor;
             vv.anchor_id = v.anchor_id;
+        } else {
+            /* the fallback copies these: keep the old memset's zeros */
+            vv.anchor.p = NULL;
+            vv.anchor.len = 0;
+            vv.anchor_id = 0;
         }
         vv.value.p = e->p + sh->val_span.start;
         vv.value.len = sh->val_span.end - sh->val_span.start;
         vv.borrowed = 1;
-        vv.style = YEP_STYLE_PLAIN;
-        vv.implicit = 1;
         e->pos = sh->val_span.end;
         if (e_plain_multiline(e, sh->val_span, key_col, &vv, 0) != 0) {
             return -1;
@@ -2523,9 +2530,30 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
                 return 1;
             }
         }
+        /* Fallback: assemble the value event with the helper-filled
+         * fields preserved — e_alias stamps type=ALIAS + the end marks,
+         * e_plain_multiline stamps the fold end marks; the pair facts
+         * taken pre-fold (post-fold e_col would read the advanced
+         * line/pos). Field-for-field what the pre-fill built. */
+        yep_event ve;
+        e_event_init(&ve, YEP_EV_SCALAR);
+        ve.line = pair_line;
+        ve.col = (uint32_t)pair_val_col + 1;
+        ve.value = vv.value;
+        ve.borrowed = vv.borrowed;
+        ve.anchor = vv.anchor;
+        ve.anchor_id = vv.anchor_id;
+        ve.end_line = vv.end_line;
+        ve.end_col = vv.end_col;
+        if (sh->val == YEP_LVAL_ALIAS) {
+            ve.type = YEP_EV_ALIAS;
+        } else {
+            ve.style = YEP_STYLE_PLAIN;
+            ve.implicit = 1;
+        }
         yep_event kv;
         e_key_event(e, sh, key_col, pair_line, &kv);
-        if (emit_now(e, &kv) != 0 || emit_now(e, &vv) != 0) {
+        if (emit_now(e, &kv) != 0 || emit_now(e, &ve) != 0) {
             return -2;
         }
         return 1;
