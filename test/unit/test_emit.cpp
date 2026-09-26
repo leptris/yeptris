@@ -509,3 +509,109 @@ TEST(Emit, TerminatorSlotSurvivesEveryBoundaryLength) {
         yeptris_document_free(doc);
     }
 }
+
+/* #352: the plain-safety interior scan is SWAR — differential-pinned
+ * against a reference byte loop over adversarial alphabets at every
+ * length around the 8-byte word boundaries, plus the head rules. A
+ * mask bug shows up as a disagreement, not as silent misquoting. */
+#include "emit/style.h"
+
+namespace {
+int plain_safe_reference(const char* p, uint32_t len) {
+    if (len == 0)
+        return 0;
+    auto blank = [](char c) { return c == ' ' || c == '\t'; };
+    if (blank(p[0]) || blank(p[len - 1]))
+        return 0;
+    switch (p[0]) {
+    case ',':
+    case '[':
+    case ']':
+    case '{':
+    case '}':
+    case '#':
+    case '&':
+    case '*':
+    case '!':
+    case '|':
+    case '>':
+    case '\'':
+    case '"':
+    case '%':
+    case '@':
+    case '`':
+        return 0;
+    case '-':
+    case '?':
+        if (len == 1 || blank(p[1]))
+            return 0;
+        break;
+    default:
+        break;
+    }
+    for (uint32_t i = 0; i < len; i++) {
+        char c = p[i];
+        if (c == '\n' || c == '\r' || c == '\t')
+            return 0;
+        if (c == ':' && (i + 1 >= len || blank(p[i + 1])))
+            return 0;
+        if (c == '#' && i > 0 && blank(p[i - 1]))
+            return 0;
+    }
+    if (len == 3 && (memcmp(p, "---", 3) == 0 || memcmp(p, "...", 3) == 0))
+        return 0;
+    return 1;
+}
+} /* namespace */
+
+TEST(EmitStyle, PlainSafeSwarMatchesReference) {
+    const std::string alphabet = "ab: #\t-\n.?";
+    unsigned long seed = 0x9E3779B9u;
+    auto next = [&seed]() {
+        seed = seed * 6364136223846793005ull + 1442695040888963407ull;
+        return (unsigned)(seed >> 33);
+    };
+    /* exhaustive short strings over a 3-char core, all lengths 0..24 */
+    const std::string core = "a: #";
+    for (uint32_t len = 0; len <= 24; len++) {
+        unsigned long variants = 1u << (2 * (len > 8 ? 8 : len));
+        for (unsigned long v = 0; v < variants; v++) {
+            std::string s;
+            unsigned long bits = v;
+            for (uint32_t j = 0; j < len; j++) {
+                s += core[bits & 3u];
+                bits >>= 2;
+                if (j == 7 && len > 8)
+                    s += core[(v >> 13) & 3u]; /* boundary flavors */
+            }
+            ASSERT_EQ(yep_style_plain_safe(s.data(), (uint32_t)s.size()),
+                      plain_safe_reference(s.data(), (uint32_t)s.size()))
+                << "len=" << len << " v=" << v << " s='" << s << "'";
+        }
+        /* random long strings over the full alphabet */
+        for (int r = 0; r < 200; r++) {
+            std::string s;
+            for (uint32_t j = 0; j < len + 8; j++) {
+                s += alphabet[next() % alphabet.size()];
+            }
+            ASSERT_EQ(yep_style_plain_safe(s.data(), (uint32_t)s.size()),
+                      plain_safe_reference(s.data(), (uint32_t)s.size()))
+                << "len=" << s.size() << " s='" << s << "'";
+        }
+    }
+    /* the head rules, exact */
+    EXPECT_EQ(yep_style_plain_safe("", 0), 0);
+    EXPECT_EQ(yep_style_plain_safe(" x", 2), 0);
+    EXPECT_EQ(yep_style_plain_safe("x ", 2), 0);
+    EXPECT_EQ(yep_style_plain_safe("---", 3), 0);
+    EXPECT_EQ(yep_style_plain_safe("...", 3), 0);
+    EXPECT_EQ(yep_style_plain_safe("---x", 4), 1);
+    EXPECT_EQ(yep_style_plain_safe("-5", 2), 1);
+    EXPECT_EQ(yep_style_plain_safe("-", 1), 0);
+    EXPECT_EQ(yep_style_plain_safe("?", 1), 0);
+    EXPECT_EQ(yep_style_plain_safe("?x", 2), 1);
+    EXPECT_EQ(yep_style_plain_safe(":name", 5), 1);
+    EXPECT_EQ(yep_style_plain_safe(": name", 6), 0);
+    EXPECT_EQ(yep_style_plain_safe("#x", 2), 0);
+    EXPECT_EQ(yep_style_plain_safe("a#b", 3), 1);
+}
