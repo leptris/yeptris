@@ -2271,9 +2271,10 @@ Order-alternated A/B (dev host, DOM lane, 3 shapes x 3-5 pairs):
 block-heavy 182.3 vs 182.5 MB/s, scalar-heavy 388.8 vs 389.4,
 anchor-heavy 148.1 vs 147.7 — flat everywhere (±0.5%, inside noise).
 The floor it establishes, consistent with the ws-skip lesson: the
-sub-8-byte majority (block keys run 2-8 bytes) cannot ride SWAR at all
-under the exact-bounds law, and the 8-63-byte minority's 4-zdet chain
-merely matches the byte loop — short spans are predictor-friendly, the
+sub-8-byte majority (block keys run 2-8 bytes) can only ride SWAR via
+the facts kernel's NUL-padded buf copy, whose per-word copy cost
+exceeds 2-5 well-predicted byte iterations, and the 8-63-byte
+minority's 4-zdet chain merely matches the byte loop — short spans are predictor-friendly, the
 bitmap test per byte is well-predicted not-taken, and the zdet chain's
 extra ALU buys nothing at these lengths. REVERTED, not merged; the pin
 stays as scan_plain's executable contract (any future rewrite of the
