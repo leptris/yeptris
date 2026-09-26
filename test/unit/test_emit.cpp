@@ -566,18 +566,18 @@ int plain_safe_reference(const char* p, uint32_t len) {
 
 TEST(EmitStyle, PlainSafeSwarMatchesReference) {
     const std::string alphabet = "ab: #\t-\n.?";
-    unsigned long seed = 0x9E3779B9u;
+    uint64_t seed = 0x9E3779B9ull;
     auto next = [&seed]() {
         seed = seed * 6364136223846793005ull + 1442695040888963407ull;
-        return (unsigned)(seed >> 33);
+        return (uint32_t)(seed >> 33);
     };
     /* exhaustive short strings over a 3-char core, all lengths 0..24 */
     const std::string core = "a: #";
     for (uint32_t len = 0; len <= 24; len++) {
-        unsigned long variants = 1u << (2 * (len > 8 ? 8 : len));
-        for (unsigned long v = 0; v < variants; v++) {
+        uint64_t variants = 1ull << (2 * (len > 8 ? 8 : len));
+        for (uint64_t v = 0; v < variants; v++) {
             std::string s;
-            unsigned long bits = v;
+            uint64_t bits = v;
             for (uint32_t j = 0; j < len; j++) {
                 s += core[bits & 3u];
                 bits >>= 2;
