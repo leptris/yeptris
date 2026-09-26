@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- **parse: the 11-COMPAT grammar accepts multi-line flows libyaml
+  accepts** — the block-level flow indent floor (9C9N, VJP3) rejected
+  real-world locale files whose flow mappings close at their parent's
+  column ("k: {\n  a: b\n}"); libyaml/Psych parse those, the floor is
+  a yaml-test-suite rule the strict engine keeps. The floor now stays
+  on for the default 1.2 engine only; every 11-COMPAT parse entry
+  (yeptris_parse_ex, the value drains, the marshal fast path) runs
+  floor-free (metanorma-standoc CI breaker, isodoc i18n-en.yaml).
+
 ## [0.6.23] - 2026-09-26
 ### Fixed
 - **emit: parsed scalars `---`/`...` emitted plain** — the '-'/'?' head

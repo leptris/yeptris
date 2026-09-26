@@ -301,6 +301,12 @@ engine_enter:
         yep_engine_set_resolver(eng, opts->schema == YEPTRIS_SCHEMA_11_COMPAT
                                          ? yep_resolver_compat11()
                                          : yep_resolver_core12());
+        if (opts->schema == YEPTRIS_SCHEMA_11_COMPAT) {
+            /* the compat schema is the psych/libyaml surface: its grammar
+             * must accept what libyaml accepts (the flow floor is suite-
+             * strict, not libyaml — see yep_engine_set_compat_grammar) */
+            yep_engine_set_compat_grammar(eng, 1);
+        }
         if (opts->max_depth > 0) {
             yep_engine_set_max_depth(eng, opts->max_depth);
         }

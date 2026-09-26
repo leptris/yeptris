@@ -52,6 +52,13 @@ struct yep_resolver;
 void yep_engine_set_resolver(yep_engine* e, const struct yep_resolver* r);
 void yep_engine_set_max_depth(yep_engine* e, int depth);
 
+/* The 1.1-compat grammar (libyaml/psych parity): the block-level flow
+ * indent floor (9C9N, VJP3) is a yaml-test-suite rule libyaml never
+ * enforced — real-world locale files close multi-line flow collections
+ * at their parent's column ("k: {\n  a: b\n}"). Off by default (the
+ * strict 1.2 engine the conformance suite runs keeps the floor). */
+void yep_engine_set_compat_grammar(yep_engine* e, int on);
+
 /* Byte offset the last run reached (into that run's buffer); used by
  * consumers that stop the engine at a boundary and resume. */
 size_t yep_engine_pos(const yep_engine* e);
