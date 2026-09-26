@@ -2236,31 +2236,20 @@ leg) while yeptris moved +48-75% — the 0.90→0.70 block-1 ratio move is
 runner variance, not code. 391/391, format clean, merged on the local
 instruments' agreement; the next CI runs accumulate the referee read.
 
-## 2026-09-26 — the pair-seam cut (#425) and the SWAR plain-safety scan (#427)
+## 2026-09-26 (ii) — carve 1b, the fused map-pair scan: dead (+5%)
 
-Item 79 slice 0: the whole-line pair fast path filled the ~100 B
-yep_event unconditionally even when the sink took the yep_block_value
-(the recorder, the DOM builder — every default-route consumer). The
-event assembles only on the fallback now, field-for-field what the
-pre-fill built (pair facts taken pre-fold; e_alias's ALIAS type stamp
-preserved). MSVC C4701 forced the zero-init in-function — its flow
-analysis cannot see through the helpers' bypointer writes. 391/391, the
-yaml-test-suite event driver pins the fallback byte-identical.
+Item 79's "fuse the pair line" hypothesis, built and measured: one
+yep_scan_plain for the key, one for the value, a continuation peek, the
+record direct — replacing the memoized facts/line-info/shape chain and
+e_classified's dispatch on the monomorphic pair line. Correctness took
+three gate-caught fixes (leading-indicator keys are anchor PROPS; '#'
+values are comment-terminated empty pairs; the fold peek must measure
+indentation before its skip loop eats it) — block-pair-diff, tape-diff,
+emit-diff, the roundtrip corpus and the fuzz corpus all green at
+392/392 — and then the order-alternated A/B read +5% on block-heavy in
+every pair (41s vs 39.5s). Two scan_plain tiny-path calls plus a peek
+are simply more work than the specialized kernel chain; the seam was
+already cheaper than its replacement. REVERTED, not merged. The loop
+fusion's remaining form is the item's original one: a single scan
+owning facts+shape+record.
 
-The emit front's profiled lane: the plain-safety interior scan (22-35%
-of emit) runs in SWAR words — every reject condition is a byte-class
-adjacency, so five zero-detects per 8 bytes plus two shifted-mask
-intersections with one carried byte per boundary replace the branch
-ladder. The DIFFERENTIAL PIN (exhaustive short strings over the ':','#'
-blank core + random long strings vs a reference loop) caught two mask
-bugs the 279 emission goldens missed — a lane-shift direction swap and
-a never-set carry (the lane-7 flag is the lane's TOP bit) — and one
-latent behavior bug: the '-'/'?' head case early-returned past the
-document-marker check, so parsed scalars '---'/'...' emitted PLAIN
-where libyaml/Psych quote them (the head now falls through). Local A/B
-dead at this effect size (2x throttle); the bench-matrix emit lanes and
-serialbench's Sunday run are the referees.
-
-LAW: a rewrite of a byte-class predicate ships WITH its differential
-pin — the goldens are end-to-end and miss lane arithmetic; the pin is
-the instrument that sees it.
