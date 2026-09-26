@@ -389,6 +389,11 @@ int yep_values_from_input(const char* yaml, size_t len, int schema_compat, yep_v
         return -1;
     }
     yep_engine_set_resolver(eng, schema_compat ? yep_resolver_compat11() : yep_resolver_core12());
+    if (schema_compat) {
+        yep_engine_set_compat_grammar(eng, 1); /* libyaml grammar parity
+                                                * (the value drains ride the
+                                                * same compat contract) */
+    }
 
     yep_value_ctx* c = ctx_create();
     if (c == NULL) {

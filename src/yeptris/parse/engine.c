@@ -124,6 +124,13 @@ struct yep_engine {
     int doc_inline;                      /* content node opened on the --- line */
     uint16_t flow_floor;                 /* parent column of the current block-level flow */
     int flow_enforce;                    /* flow continuation lines must out-indent it */
+    int compat_grammar;                  /* 11-COMPAT: libyaml/psych grammar parity —
+                                          * the flow indent floor (9C9N/VJP3) is a
+                                          * yaml-test-suite rule libyaml never
+                                          * enforced, and real-world locale files
+                                          * close multi-line flows at the parent's
+                                          * column; the floor stays on for the
+                                          * strict 1.2 engine the suite runs */
 };
 
 /* ------------------------------------------------------------ forwards */
@@ -2308,7 +2315,7 @@ static int e_shape_flow_value(yep_engine* e, const yep_line_shape* sh, uint16_t 
     yep_view none = {NULL, 0};
     e->pos = sh->val_start;
     e->flow_floor = floor;
-    e->flow_enforce = (e->depth > 0);
+    e->flow_enforce = (e->depth > 0) && !e->compat_grammar;
     int fast = e_flow_json(e, none, none, 0);
     e->flow_enforce = 0;
     if (fast == -2) {
@@ -2735,7 +2742,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             /* JSON fast path first: its validating scan already finds the
              * close, replacing e_skip_flow's pre-scan when it applies. */
             e->flow_floor = floor_col;
-            e->flow_enforce = (e->depth > 0);
+            e->flow_enforce = (e->depth > 0) && !e->compat_grammar;
             int fast = e_flow_json(e, node_a, node_t, anchor_ordinal);
             e->flow_enforce = 0;
             if (fast == 1) {
@@ -2780,7 +2787,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         }
         {
             e->flow_floor = floor_col;
-            e->flow_enforce = (e->depth > 0);
+            e->flow_enforce = (e->depth > 0) && !e->compat_grammar;
             int rc = e_flow(e, node_a, node_t, node_aid);
             e->flow_enforce = 0;
             if (rc != 0) {
@@ -3109,6 +3116,12 @@ empty_value: {
 void yep_engine_set_resolver(yep_engine* e, const yep_resolver* r) {
     if (e != NULL) {
         e->resolver = r != NULL ? r : yep_resolver_core12();
+    }
+}
+
+void yep_engine_set_compat_grammar(yep_engine* e, int on) {
+    if (e != NULL) {
+        e->compat_grammar = on != 0;
     }
 }
 

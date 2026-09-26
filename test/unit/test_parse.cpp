@@ -413,6 +413,70 @@ TEST(Parse, NullValues) {
     yeptris_document_free(doc);
 }
 
+/* The block-level flow indent floor (9C9N/VJP3) is a yaml-test-suite
+ * rule libyaml never enforced: real-world locale files close multi-line
+ * flow collections at their parent's column. The strict 1.2 engine
+ * keeps the floor (the conformance suite demands the rejection); the
+ * 11-COMPAT surface (the psych/libyaml parity entry every Ruby adapter
+ * rides) must accept what libyaml accepts — isodoc's i18n-en.yaml is
+ * the real-world breaker (metanorma-standoc CI, 2026-09-26). */
+TEST(Parse, CompatGrammarFlowFloorParity) {
+    struct {
+        const char* y;
+        int core_ok;      /* the strict engine's verdict */
+        int root_is_map;  /* compat: the root node's kind */
+    } cases[] = {
+        /* close at the parent's column — libyaml accepts, suite rejects */
+        {"a: {\n  x: 1\n}\nb: 3\n", 0, 1},
+        /* 9C9N: continuation line at the parent's column */
+        {"flow: [a,\nb,\nc]", 0, 1},
+        /* VJP3#1: every line at column 0 */
+        {"k: {\nk\n:\nv\n}", 0, 1},
+        /* shapes both engines accept */
+        {"a: {x: 1}\n", 1, 1},
+        {"a: {x: 1,\n y: 2}\n", 1, 1},
+        {"[\n1,\n2\n]", 1, 0},
+    };
+    for (const auto& c : cases) {
+        YeptrisParseOptions opts;
+        memset(&opts, 0, sizeof(opts));
+
+        opts.schema = YEPTRIS_SCHEMA_12_CORE;
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse_ex(c.y, strlen(c.y), &opts, &st);
+        EXPECT_EQ(st == YEPTRIS_OK, c.core_ok != 0) << "core input: " << c.y;
+        yeptris_document_free(doc);
+
+        opts.schema = YEPTRIS_SCHEMA_11_COMPAT;
+        st = YEPTRIS_OK;
+        doc = yeptris_parse_ex(c.y, strlen(c.y), &opts, &st);
+        ASSERT_EQ(st, YEPTRIS_OK) << "compat input: " << c.y;
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(yeptris_node_kind(root) == YEPTRIS_NODE_MAPPING,
+                  c.root_is_map != 0)
+            << c.y;
+        yeptris_document_free(doc);
+    }
+
+    /* the compat parse is libyaml's, not just accepted: the outdented
+     * continuation is flow content ("a", "b", "c" — not block keys) */
+    const char* y = "flow: [a,\nb,\nc]";
+    YeptrisParseOptions opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.schema = YEPTRIS_SCHEMA_11_COMPAT;
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse_ex(y, strlen(y), &opts, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    YeptrisNode seq = yeptris_node_map_get(root, "flow", 4);
+    ASSERT_NE(seq, nullptr);
+    EXPECT_EQ(yeptris_node_kind(seq), YEPTRIS_NODE_SEQUENCE);
+    EXPECT_EQ(yeptris_node_seq_count(seq), 3u);
+    EXPECT_EQ(val(yeptris_node_seq_at(seq, 2)), "c");
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, Errors) {
     struct {
         const char* y;
