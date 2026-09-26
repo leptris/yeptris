@@ -7,6 +7,33 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Fixed
+- **emit: parsed scalars `---`/`...` emitted plain** — the '-'/'?' head
+  case early-returned past the document-marker check; libyaml/Psych
+  quote the bare markers, and the head now falls through to the rule
+  that owns them (#352).
+
+### Changed
+- **json parse: the member cycle's compact fast paths + the SWAR digit
+  run** — the walk's whitespace-skip loop topped the arm64 profile (~8
+  instructions per member even when it exits on byte one; compact JSON
+  makes every exit byte one), the per-byte digit run followed: the
+  map/seq cycles now dispatch value `,` key / key `:` value / value `,`
+  value directly through the byte LWS would land on (the general form
+  remains for whitespace-bearing input), and the initial digit run
+  scans SWAR words. Same-host calibrated reads: json-doc flat at
+  parity, json-users 0.73x to 0.90x (#342).
+- **engine: the pair path's value event assembles only on the
+  fallback** — the whole-line fast path filled the ~100-byte event even
+  when the sink took the block value and ignored it (every
+  default-route consumer); the fallback rebuilds it field-for-field
+  with the pair facts taken before the fold (item 79 seam).
+- **emit: the plain-safety interior scan runs in SWAR words** — five
+  zero-detects per 8 bytes plus shifted-mask adjacency with boundary
+  carries replace the per-byte branch ladder (22-35% of emit);
+  differential-pinned against a reference loop over adversarial
+  alphabets — the pin caught two mask bugs and the marker bug before
+  they shipped (#352).
 ### Changed
 - **json parse: the member cycle's compact fast paths + the SWAR digit
   run** — the walk's whitespace-skip loop topped the arm64 profile (~8
