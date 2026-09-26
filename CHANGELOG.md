@@ -6,6 +6,15 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- **recorder: the compat schema's engine runs floor-free** — the
+  recorder's engine creation set only the resolver, so every consumer
+  of `yeptris_recorder_new_ex(COMPAT)` + feed (the py safe_load path)
+  kept the flow indent floor #431 had removed everywhere else and
+  rejected the multi-line flows libyaml accepts; caught by the PyPI
+  clean-venv verification of the 0.6.24.1 wheel (#431 follow-up).
+
 ## [0.6.24] - 2026-09-26
 ### Fixed
 - **parse: the 11-COMPAT grammar accepts multi-line flows libyaml
