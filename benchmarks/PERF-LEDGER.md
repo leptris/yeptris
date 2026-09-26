@@ -2253,3 +2253,30 @@ already cheaper than its replacement. REVERTED, not merged. The loop
 fusion's remaining form is the item's original one: a single scan
 owning facts+shape+record.
 
+
+## 2026-09-27 — item 03, the scan_plain SWAR tiny path: dead (flat on all three shapes)
+
+Board item 03's hypothesis ("the tiny path tests the stopset bitmap one
+byte at a time; SWAR-ize it") built and measured: the byte loop replaced
+by an exact-bounds zdet word walk (one zero-detect per stop member —
+four in block, nine in flow — first lane via ctz, the <8-byte tail kept
+on the byte loop because there is no input-padding guarantee to read
+past `len`). The differential pin shipped first (the #427 law) and
+caught the mechanism's characteristic bug during development: the
+second+ word's hit offset was word-relative but the handler read it
+span-relative, so every stop past byte 8 landed 8k bytes early — the
+pin failed on 13 inputs before the suite passed.
+
+Order-alternated A/B (dev host, DOM lane, 3 shapes x 3-5 pairs):
+block-heavy 182.3 vs 182.5 MB/s, scalar-heavy 388.8 vs 389.4,
+anchor-heavy 148.1 vs 147.7 — flat everywhere (±0.5%, inside noise).
+The floor it establishes, consistent with the ws-skip lesson: the
+sub-8-byte majority (block keys run 2-8 bytes) cannot ride SWAR at all
+under the exact-bounds law, and the 8-63-byte minority's 4-zdet chain
+merely matches the byte loop — short spans are predictor-friendly, the
+bitmap test per byte is well-predicted not-taken, and the zdet chain's
+extra ALU buys nothing at these lengths. REVERTED, not merged; the pin
+stays as scan_plain's executable contract (any future rewrite of the
+stop walk inherits the gate). scan_plain is NOT the pair-line cost —
+item 79's fusion must make ONE scan own facts+shape+record, exactly as
+carve 1b concluded from the other side.
