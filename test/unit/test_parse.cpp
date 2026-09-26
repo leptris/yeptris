@@ -9,6 +9,7 @@
 
 #include <yeptris.h>
 
+#include "common/chartype.h"
 #include "common/simd_text.h"
 #include "scan/scan.h"
 #include <yeptris/json.h>
@@ -261,6 +262,132 @@ TEST(Parse, PlainStopSetsMatchRuntimeBuild) {
     yep_stopset_add(brk, '\r');
     yep_stopset_init(&ss, brk);
     EXPECT_EQ(0, memcmp(&yep_break_stopset, &ss, sizeof(ss)));
+}
+
+namespace {
+int ref_colon_terminates(const char* p, size_t len, size_t colon, int flow) {
+    size_t next = colon + 1;
+    if (next >= len) {
+        return 1;
+    }
+    unsigned char c = (unsigned char)p[next];
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+        return 1;
+    }
+    if (flow && yep_ct_is(c, YEP_CT_FLOW_IND)) {
+        return 1;
+    }
+    return 0;
+}
+
+/* The byte-loop scan_plain the SWAR tiny path must match span for span. */
+yep_span scan_plain_reference(const char* p, size_t len, size_t pos, int flow) {
+    const yep_stopset* stop = flow ? &yep_plain_stop_flow : &yep_plain_stop_block;
+    yep_span s;
+    s.start = (uint32_t)pos;
+    s.end = (uint32_t)pos;
+    s.term = YEP_TERM_EOF;
+    size_t i = pos;
+    while (i < len) {
+        size_t at = i;
+        while (at < len && !yep_stopset_test(stop->bitmap, (unsigned char)p[at])) {
+            at++;
+        }
+        unsigned char c = (at < len) ? (unsigned char)p[at] : 0;
+        if (at == len) {
+            i = len;
+            s.term = YEP_TERM_EOF;
+            break;
+        }
+        if (c == '\n' || c == '\r') {
+            i = at;
+            s.term = YEP_TERM_EOL;
+            break;
+        }
+        if (c == ':') {
+            if (ref_colon_terminates(p, len, at, flow)) {
+                i = at;
+                s.term = YEP_TERM_COLON;
+                break;
+            }
+            i = at + 1;
+            continue;
+        }
+        if (c == '#') {
+            if (at == s.start || (at > s.start && (p[at - 1] == ' ' || p[at - 1] == '\t'))) {
+                i = at;
+                s.term = YEP_TERM_COMMENT;
+                break;
+            }
+            i = at + 1;
+            continue;
+        }
+        i = at;
+        s.term = YEP_TERM_FLOW;
+        break;
+    }
+    size_t e = i;
+    while (e > s.start && (p[e - 1] == ' ' || p[e - 1] == '\t')) {
+        e--;
+    }
+    s.end = (uint32_t)e;
+    return s;
+}
+} /* namespace */
+
+TEST(Parse, ScanPlainSwarTinyMatchesByteReference) {
+    uint64_t seed = 0x9E3779B9ull;
+    auto next = [&seed]() {
+        seed = seed * 6364136223846793005ull + 1442695040888963407ull;
+        return (uint32_t)(seed >> 33);
+    };
+    auto check = [&](const std::string& s, size_t pos, int flow) {
+        yep_span got = yep_scan_plain(s.data(), s.size(), pos, flow);
+        yep_span want = scan_plain_reference(s.data(), s.size(), pos, flow);
+        ASSERT_EQ(got.start, want.start) << "pos=" << pos << " flow=" << flow << " s='" << s << "'";
+        ASSERT_EQ(got.end, want.end) << "pos=" << pos << " flow=" << flow << " s='" << s << "'";
+        ASSERT_EQ(got.term, want.term) << "pos=" << pos << " flow=" << flow << " s='" << s << "'";
+    };
+    /* exhaustive over a 4-char interaction core (colon/hash/space/lit),
+     * lengths crossing the 8-byte word boundary, both stop sets */
+    const std::string core = "a:#,";
+    for (int flow = 0; flow <= 1; flow++) {
+        for (uint32_t len = 0; len <= 24; len++) {
+            uint64_t variants = 1ull << (2 * (len > 8 ? 8 : len));
+            for (uint64_t v = 0; v < variants; v++) {
+                std::string s;
+                uint64_t bits = v;
+                for (uint32_t j = 0; j < len; j++) {
+                    s += core[bits & 3u];
+                    bits >>= 2;
+                    if (j == 7 && len > 8) {
+                        s += core[(v >> 13) & 3u]; /* word-boundary flavors */
+                    }
+                }
+                check(s, 0, flow);
+            }
+            /* random strings over the full member + filler alphabet */
+            const std::string alphabet = "ab: #\n\t\r,[]{}X\x01\x7f";
+            for (int r = 0; r < 300; r++) {
+                std::string s;
+                uint32_t n = 1 + next() % 100;
+                for (uint32_t j = 0; j < n; j++) {
+                    s += alphabet[next() % alphabet.size()];
+                }
+                size_t pos = (r % 3 == 0) ? (next() % s.size()) : 0;
+                check(s, pos, flow);
+            }
+        }
+    }
+    /* directed spans: multi-hit words, mid-token '#', non-terminating ':' */
+    check("aaaa:bbbb:cccc\nd", 0, 0);
+    check("aaa#bbb: c", 0, 0);
+    check("a:b:c ", 0, 0);
+    check("k:  v ", 3, 0);
+    check("a,b]c{d}e:f", 0, 1);
+    check("x:a[b]c{d}e,f g", 1, 1);
+    check("trailing spaces   ", 0, 0);
+    check("a{b}c", 0, 0); /* flow members do not stop block scans */
 }
 
 TEST(Parse, AnchorsAndAliases) {
