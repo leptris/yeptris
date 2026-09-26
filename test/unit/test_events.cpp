@@ -236,3 +236,33 @@ TEST(Events, AnchorsTagsAndAliasesSurviveTheModels) {
     EXPECT_EQ(events[4], "=VAL : &x <tag:yaml.org,2002:str> tagged");
     EXPECT_EQ(events[6], "=ALI *x");
 }
+
+/* #431 follow-up: the recorder's engine rode the flow indent floor on
+ * the compat schema too — the py safe_load path (recorder_new_ex +
+ * feed) rejected the multi-line flows libyaml accepts, the exact
+ * rejection the parse_ex wiring had fixed. Compat accepts, core keeps
+ * the floor (the suite's rejection). */
+TEST(Events, CompatRecorderAcceptsMultiLineFlow) {
+    const char* y = "a: {\n  x: 1\n}\nb: 3\n";
+
+    YeptrisRecorder compat = yeptris_recorder_new_ex(YEPTRIS_SCHEMA_11_COMPAT);
+    ASSERT_EQ(yeptris_recorder_feed(compat, y, strlen(y), 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* recs = yeptris_recorder_records(compat, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(compat, &alen);
+    ASSERT_GT(n, 0u);
+    bool saw_scalar_b = false;
+    for (size_t i = 0; i < n; i++) {
+        if (recs[i].value_len == 1 && arena[recs[i].value_off] == 'b') {
+            saw_scalar_b = true;
+        }
+    }
+    EXPECT_TRUE(saw_scalar_b) << "the sibling key after the flow must parse";
+    yeptris_recorder_free(compat);
+
+    YeptrisRecorder core = yeptris_recorder_new_ex(YEPTRIS_SCHEMA_12_CORE);
+    EXPECT_EQ(yeptris_recorder_feed(core, y, strlen(y), 1), YEPTRIS_ERROR_PARSE)
+        << "the strict 1.2 engine keeps the yaml-test-suite floor";
+    yeptris_recorder_free(core);
+}

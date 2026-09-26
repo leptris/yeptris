@@ -52,6 +52,12 @@ YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char*
         }
         yep_engine_set_resolver(rec->eng,
                                 rec->compat11 ? yep_resolver_compat11() : yep_resolver_core12());
+        /* the compat schema is the psych/libyaml surface: its grammar
+         * must accept what libyaml accepts (the flow indent floor is
+         * suite-strict, not libyaml — see yep_engine_set_compat_grammar;
+         * the recorder is the py safe_load path, which rode the floor
+         * and rejected multi-line flows #431 fixed everywhere else) */
+        yep_engine_set_compat_grammar(rec->eng, rec->compat11);
     }
     if (final) {
         rec->final_fed = 1;
