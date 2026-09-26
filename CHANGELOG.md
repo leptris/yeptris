@@ -6,6 +6,21 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- **json parse: the member cycle's compact fast paths + the SWAR digit
+  run** — the walk's whitespace-skip loop topped the arm64 profile (~8
+  instructions per member even when it exits on byte one; compact JSON
+  makes every exit byte one), the per-byte digit run followed: the map/seq
+  cycles now dispatch value `,` key / key `:` value / value `,` value
+  directly through the byte LWS would land on (the general form remains
+  for whitespace-bearing input), and the initial digit run scans SWAR
+  words (the all-digit prefix never borrows across lanes; the byte loop
+  keeps the tail and the `-+.eE` classification; the consumed-only
+  digits_only law is untouched and pinned across the word boundaries).
+  Same-host calibrated reads: json-doc flat at parity, json-users
+  0.73x to 0.90x (#342).
+
 ## [0.6.22] - 2026-09-25
 ### Fixed
 - **bench: the simdjson referee lane parses a pre-built padded string** —
