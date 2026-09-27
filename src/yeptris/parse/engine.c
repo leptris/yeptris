@@ -3179,10 +3179,46 @@ yep_engine* yep_engine_create(const yep_allocator* sys) {
  * input is copied with each normalized to a single '\n' (libyaml reader
  * behavior); inputs without them keep the zero-copy path. */
 static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len) {
+    char* out = yep_engine_normalize_breaks(e->sys, p, len, NULL);
+    if (out == NULL) {
+        return p;
+    }
+    e->norm_buf = out;
+    return out;
+}
+
+/* The NEL/LS/PS -> '\n' copy (the one-shot path rides this BEFORE the
+ * engine so the normalized bytes own the document's `transcoded` slot;
+ * the engine's per-feed copy stays for the streaming feeds). Returns
+ * NULL when the input has no exotic break. */
+/* The two possible LEAD bytes of a Unicode break (NEL = C2 85; LS/PS =
+ * E2 80 A8/A9). The whole-document probe rides the SIMD stopset kernel
+ * and only candidates get the byte check — the per-byte walk was 11%
+ * of every parse (exclusive profile, block-heavy DOM, 2026-09-27).
+ * Pinned against yep_stopset_init by Parse.NormBreakLeadsMatchRuntimeBuild. */
+const yep_stopset yep_norm_break_leads = {
+    .bitmap = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+               0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00},
+    .groups = 1,
+    .lo = {{0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00}},
+    .hi = {{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+            0x02, 0x00}},
+};
+
+char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_t len,
+                                  size_t* out_len) {
     const unsigned char* q = (const unsigned char*)p;
+    const yep_text_kernels* k = yep_text_active();
     size_t i = 0;
     int found = 0;
     while (i < len) {
+        ptrdiff_t hit = k->stopset_find(&yep_norm_break_leads, (const char*)q + i, len - i);
+        if (hit < 0) {
+            break;
+        }
+        i += (size_t)hit;
         if (q[i] == 0xC2 && i + 1 < len && q[i + 1] == 0x85) {
             found = 1;
             break;
@@ -3195,11 +3231,11 @@ static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len) 
         i++;
     }
     if (!found) {
-        return p;
+        return NULL;
     }
-    char* out = yep_alloc(e->sys, len + 1);
+    char* out = yep_alloc(sys, len + 1);
     if (out == NULL) {
-        return p; /* fall back: parse as-is */
+        return NULL;
     }
     size_t o = 0;
     for (size_t j = 0; j < len;) {
@@ -3215,7 +3251,9 @@ static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len) 
         }
     }
     out[o] = '\0';
-    e->norm_buf = out;
+    if (out_len != NULL) {
+        *out_len = o;
+    }
     return out;
 }
 

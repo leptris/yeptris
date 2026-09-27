@@ -11,6 +11,7 @@
 
 #include "common/chartype.h"
 #include "common/simd_text.h"
+#include "parse/engine.h"
 #include "scan/scan.h"
 #include <yeptris/json.h>
 
@@ -390,6 +391,70 @@ TEST(Parse, ScanPlainSwarTinyMatchesByteReference) {
     check("a{b}c", 0, 0); /* flow members do not stop block scans */
 }
 
+TEST(Parse, NormBreakLeadsMatchRuntimeBuild) {
+    /* the literal must equal what yep_stopset_init builds for {C2, E2}
+     * (the Unicode break lead bytes) — a drift would silently skip the
+     * NEL/LS/PS normalization on every parse */
+    unsigned char b[32];
+    yep_stopset_clear(b);
+    yep_stopset_add(b, 0xC2);
+    yep_stopset_add(b, 0xE2);
+    yep_stopset ss;
+    yep_stopset_init(&ss, b);
+    EXPECT_EQ(0, memcmp(&yep_norm_break_leads, &ss, sizeof(ss)));
+}
+
+TEST(Parse, UnicodeBreaksNormalizeLookalikesStay) {
+    /* real NEL/LS/PS normalize to a line break (folded plain picks up
+     * a space); the lookalike byte runs must ride through untouched */
+    /* NEL/LS/PS normalize to a line break BEFORE parsing, so each one
+     * below is exactly a '\n' in libyaml terms: an indented plain
+     * continuation folds with a space, and a break between pairs
+     * creates a second pair. The lookalike byte runs must ride through
+     * untouched (the detector's real predicate). */
+    struct {
+        const char* y;
+        const char* want;
+    } cases[] = {
+        {"k: a\xC2\x85"
+         " b\n",
+         "a b"}, /* NEL fold */
+        {"k: a\xE2\x80\xA8"
+         " b\n",
+         "a b"}, /* LS fold */
+        {"k: a\xE2\x80\xA9"
+         " b\n",
+         "a b"}, /* PS fold */
+        {"k: 012345678\xC2\x85"
+         " x\n",
+         "012345678 x"},                           /* past the byte loop's word */
+        {"k: \xC2\xA0x\n", "\xC2\xA0x"},           /* NBSP: C2 lead, not a break */
+        {"k: v\xE2\x80\x93x\n", "v\xE2\x80\x93x"}, /* en dash: E2 80, not A8/A9 */
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(c.y, strlen(c.y), &st);
+        ASSERT_NE(doc, nullptr) << "input=" << c.y << " err=" << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(map_str(root, "k"), c.want) << c.y;
+        yeptris_document_free(doc);
+    }
+    /* the pair-splitting shape: the NEL line break ends the 'k' pair */
+    {
+        const char* y = "k: v\xC2\x85"
+                        "j: w\n";
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(yeptris_node_map_count(root), 2u);
+        EXPECT_EQ(map_str(root, "k"), "v");
+        EXPECT_EQ(map_str(root, "j"), "w");
+        yeptris_document_free(doc);
+    }
+}
 TEST(Parse, AnchorsAndAliases) {
     const char* y = "base: &b\n"
                     "  x: 1\n"

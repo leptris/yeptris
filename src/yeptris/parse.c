@@ -293,6 +293,26 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
         }
     }
 
+    /* Unicode breaks (NEL/LS/PS) normalize to '\n' BEFORE the engine:
+     * the copy rides `transcoded`, whose ownership plumbing (input_base
+     * views, doc free, fail paths) already exists. Letting the engine's
+     * per-feed copy fire here returned views into ENGINE-owned memory
+     * that dies at yeptris_parse teardown — every one-shot NEL document
+     * dangled (no test ever covered one; found by the NormBreakLeads
+     * slice, 2026-09-27). JSON mode skips this: the JSON reader keeps
+     * U+0085 raw inside strings, only the YAML reader normalizes. */
+    {
+        size_t nlen = 0;
+        char* norm = yep_engine_normalize_breaks(sys, data, data_len, &nlen);
+        if (norm != NULL) {
+            yep_free(sys, transcoded);
+            transcoded = (unsigned char*)norm;
+            transcoded_len = nlen;
+            data = norm;
+            data_len = nlen;
+        }
+    }
+
     /* Engine → DOM. */
     yep_engine* eng = NULL;
 engine_enter:

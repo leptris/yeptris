@@ -2281,3 +2281,29 @@ stays as scan_plain's executable contract (any future rewrite of the
 stop walk inherits the gate). scan_plain is NOT the pair-line cost —
 item 79's fusion must make ONE scan own facts+shape+record, exactly as
 carve 1b concluded from the other side.
+
+## 2026-09-27 (ii) — the Unicode-break pre-pass: +13/+31% and a dangling-document fix
+
+The exclusive profile of block-heavy DOM (non-LTO build; LTO builds
+mis-attribute leaf PCs to call sites and led the first read astray)
+put the single biggest leaf at engine_run_impl's entry:
+e_normalize_breaks, a per-byte walk of the WHOLE document hunting the
+NEL/LS/PS lead bytes with a two-prefix check (~6 compares per byte),
+11% of block-heavy and far more of scalar-heavy. Fix: a static
+{0xC2, 0xE2} stopset literal probed through yep_text_active's
+stopset_find (NEON/AVX2/scalar), byte-checking only candidates —
+plus the NUL-padded exact-bounds discipline the facts kernel uses.
+
+The slice found a live memory bug on the way: the normalized COPY was
+engine-owned, so one-shot yeptris_parse returned views into memory
+freed at engine teardown (every NEL document dangled; the DOM's
+input_base also stayed on the ORIGINAL while spans came from the copy
+— offset drift past the first break). No test had ever parsed a real
+NEL document; the new behavior tests caught it immediately. Fix: the
+copy is produced BEFORE the engine and rides `transcoded`
+(document-owned, input_base-consistent); the engine's per-feed copy
+remains for the streaming feeds only.
+
+Order-alternated A/B (dev host, DOM lane): block-heavy 211 vs
+187 MB/s (+13%), scalar-heavy 512 vs 389 (+31%) — six rounds, all
+agreed. 397/397 green.

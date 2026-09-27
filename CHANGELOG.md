@@ -6,6 +6,24 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- **parse: NEL/LS/PS documents no longer dangle** — the one-shot
+  `yeptris_parse` normalized Unicode breaks (NEL, LS, PS) into an
+  ENGINE-owned buffer that dies at engine teardown, so every document
+  containing one returned views into freed memory (garbage values or
+  segfault on access); no test had ever parsed a real NEL document.
+  The copy now rides the document's `transcoded` ownership before the
+  engine runs; the streaming feeds keep the engine's per-chunk copy.
+### Changed
+- **parse: the Unicode-break probe rides the SIMD stopset kernel** —
+  the whole-document NEL/LS/PS pre-pass walked every byte with a
+  two-prefix check (~6 compares/byte); it now zero-detects the two
+  lead bytes per 8-byte word via `stopset_find` and byte-checks only
+  candidates. Block-heavy +13%, scalar-heavy +31% (order-alternated
+  DOM-lane medians). The lead-byte stopset literal is pinned by
+  `Parse.NormBreakLeadsMatchRuntimeBuild`.
+
 ## [0.6.25] - 2026-09-26
 ### Fixed
 - **recorder: the compat schema's engine runs floor-free** — the
