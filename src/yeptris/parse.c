@@ -156,7 +156,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
                 st = YEPTRIS_ERROR_MEMORY;
                 goto jfail;
             }
-            if (yep_tape_walk_lenient_fused(buf, len, off, t, 1, 1) == YEPTRIS_OK) {
+            if (yep_tape_walk_lenient_fused(buf, len, off, t, 1, 1, 0) == YEPTRIS_OK) {
                 /* strict_nums=1: the arms validated the numbers at
                  * record time — the settle pass is gone (the profile's
                  * 10% lane; the spans were cache-warm in the walk) */

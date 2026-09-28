@@ -451,7 +451,15 @@ static int yt_on_flow_build(void* ctx, const char* p, size_t open, size_t len, u
                  * even at strict=0 (M5DY's 2001-07-02 dates — an
                  * unvalidated accept here diverges from the engine's
                  * own reject) */
-                if (yep_tape_walk_lenient_fused(p, len, open, s, 1, 0) == YEPTRIS_OK) {
+                if (s->_block != NULL && s->_srclen < len + 2) {
+                    /* the block cannot hold this span: release it so the
+                     * walk's carve sizes a fresh one (carve's own growth
+                     * semantics belong to the strict route's live
+                     * pointers) */
+                    yeptris_tape_free(s);
+                    memset(s, 0, sizeof(yeptris_json_tape));
+                }
+                if (yep_tape_walk_lenient_fused(p, len, open, s, 1, 0, 1) == YEPTRIS_OK) {
                     if (s->_srclen < len + 2) {
                         s->_srclen = len + 2; /* the reuse watermark */
                     }
