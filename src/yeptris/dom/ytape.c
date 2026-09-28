@@ -1011,7 +1011,8 @@ static int yt_f_run(yt_fused* F) {
                         }
                     }
                     if (st[depth].anchored_first && F->resolver != NULL) {
-                        yep_tag_id tid = F->resolver->resolve(F->resolver->ctx, p + vt, (uint32_t)(vend - vt));
+                        yep_tag_id tid =
+                            F->resolver->resolve(F->resolver->ctx, p + vt, (uint32_t)(vend - vt));
                         (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u | (uint32_t)tid));
                         (void)yt_put(t, yt_span_in((uint32_t)vt, vend - (uint32_t)vt, YTP_SPAN_IN));
                         st[depth].anchored_first = 0;
@@ -1398,7 +1399,8 @@ static int yt_f_run(yt_fused* F) {
                         if (aid != 0 || F->resolver == NULL) {
                             return 1;
                         }
-                        yep_tag_id tid = F->resolver->resolve(F->resolver->ctx, p + vt, (uint32_t)(vend - vt));
+                        yep_tag_id tid =
+                            F->resolver->resolve(F->resolver->ctx, p + vt, (uint32_t)(vend - vt));
                         (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u));
                         (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
                         (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u | (uint32_t)tid));
