@@ -1470,19 +1470,19 @@ int ytap_fused_run(yep_ytape* t, const yep_resolver* resolver) {
     F->resolver = resolver;
     size_t mark = t->count;
     int rc = yt_f_run(F);
+    yep_pool* rpool = F->pool; /* capture before the runner frees */
     yep_free(yep_system_allocator(), F->anchors);
     yep_free(yep_system_allocator(), F);
     if (rc != 0) {
         t->count = (uint32_t)mark; /* unwind: the caller resets and re-runs */
         t->depth = 0;
-        if (t->pool != NULL) {
-            yep_pool_destroy(t->pool);
-            t->pool = NULL;
+        if (rpool != NULL) {
+            yep_pool_destroy(rpool);
         }
         return 1;
     }
-    if (F->pool != NULL) {
-        t->pool = F->pool; /* transferred to the document with the tape */
+    if (rpool != NULL) {
+        t->pool = rpool; /* transferred to the document with the tape */
     }
     return 0;
 }
