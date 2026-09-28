@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   siblings, the repeat-alias memo). Deep-nesting parses 3.09x the
   eager route (1078 MB/s DOM); wide-mapping holds 2.06x; byte-exact
   tape differential over the yaml-test-suite inputs.
+- **parse: the fused block runner owns monomorphic block documents**
+  — one SWAR sweep per line with inline classification writes the
+  packed tape directly, no engine pass; any line the loop does not
+  own bails to the engine route unchanged (restart fallback).
+  Wide-mapping parses at 2.06x (598 vs 290 MB/s); other shapes ride
+  the fallback until the column model widens coverage (#79 session 3).
 
 ## [0.6.26] - 2026-09-27
 ### Fixed
@@ -35,15 +41,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   candidates. Block-heavy +13%, scalar-heavy +31% (order-alternated
   DOM-lane medians). The lead-byte stopset literal is pinned by
   `Parse.NormBreakLeadsMatchRuntimeBuild`.
-
-## [Unreleased]
-### Changed
-- **parse: the fused block runner owns monomorphic block documents**
-  — one SWAR sweep per line with inline classification writes the
-  packed tape directly, no engine pass; any line the loop does not
-  own bails to the engine route unchanged (restart fallback).
-  Wide-mapping parses at 2.06x (598 vs 290 MB/s); other shapes ride
-  the fallback until the column model widens coverage (#79 session 3).
 
 ## [0.6.25] - 2026-09-26
 ### Fixed
