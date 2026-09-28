@@ -30,6 +30,7 @@ extern "C" {
 #endif
 
 typedef struct yep_pool yep_pool;
+struct yep_resolver;
 
 typedef struct yep_ytape {
     uint64_t* w;
@@ -42,7 +43,9 @@ typedef struct yep_ytape {
     int flow_strict; /* mirrors dom->flow_strict (0 everywhere today) */
     int docs;        /* DOCUMENT_START count (the empty-stream check) */
     int oom;
-    uint32_t flow_mark; /* record mark for the staged flow build */
+    uint32_t flow_mark;    /* record mark for the staged flow build */
+    struct yep_pool* pool; /* fused block-scalar content (owned by the doc
+                            * after a successful run; NULL on the engine route) */
 } yep_ytape;
 
 /* Record kinds — byte 7 of a word. */
@@ -67,7 +70,7 @@ int ytap_init(yep_ytape* t, const char* input, size_t len, int max_depth);
  * emitting the same records the engine's sink would. Returns 0 when
  * the document was fully owned; 1 on any bail (the caller resets the
  * tape and runs the engine route). */
-int ytap_fused_run(yep_ytape* t);
+int ytap_fused_run(yep_ytape* t, const struct yep_resolver* resolver);
 
 /* Rewind a bailed tape for the engine re-run. */
 void ytap_reset(yep_ytape* t);
