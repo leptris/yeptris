@@ -58,26 +58,12 @@ static int rec_put(tape_ctx* c, uint8_t kind, uint32_t off, uint32_t len) {
 
 static YeptrisStatus tape_carve(yeptris_json_tape* t, size_t len) {
     size_t cap = len + 2;
-    /* the watermark (_srclen, carried as carved-capacity when _src is
-     * unused by the route) lets repeated carves on one struct reuse
-     * the block — the flow recorder walks many spans per parse */
-    /* only a tape THIS walk carved before (interleaved records as the
-     * primary storage) may reuse: the strict and column routes carry
-     * _block/_srclen shapes the record walk must not write into */
-    if (t->_block != NULL && t->recs != NULL && t->_rec_primary && t->_srclen >= cap) {
-        t->_cols_ready = 0;
-        return YEPTRIS_OK;
-    }
     size_t off_o = (cap + 15) & ~(size_t)15;
     char* block = yep_alloc(yep_system_allocator(),
                             off_o + 2 * cap * sizeof(uint32_t) + cap * sizeof(yeptris_tape_rec));
     if (block == NULL) {
         return YEPTRIS_ERROR_MEMORY;
     }
-    yep_free(yep_system_allocator(), t->_block); /* growth on a live tape */
-    t->_srclen = len;                            /* the reuse watermark (callers may overwrite
-                                                  * _srclen with the source length — never smaller) */
-    t->_cols_ready = 0;
     t->_block = block;
     t->kinds = (uint8_t*)block;
     t->offs = (uint32_t*)(void*)(block + off_o);
@@ -699,10 +685,20 @@ static TAPE_NUM_OK_INLINE int tape_num_ok(const char* p, size_t len) {
 }
 
 YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
-                                          yeptris_json_tape* t, int strict_nums, int clean_only) {
-    if (tape_carve(t, len) != YEPTRIS_OK) {
+                                          yeptris_json_tape* t, int strict_nums, int clean_only,
+                                          int reuse_block) {
+    /* reuse_block: the caller owns the struct and zeroed it (the flow
+     * recorder's scratch) — a prior walk's block may be reused through
+     * the _srclen watermark. Consumer structs carry untrustworthy
+     * fields and always carve fresh. */
+    if (reuse_block && t->_block != NULL && t->recs != NULL && t->_rec_primary &&
+        t->_srclen >= len + 2) {
+        t->_cols_ready = 0;
+        t->_rec_primary = 1;
+    } else if (tape_carve(t, len) != YEPTRIS_OK) {
         return YEPTRIS_ERROR_MEMORY;
     }
+    t->_rec_primary = 1;
     /* the interleaved records are the primary storage (item 07); the
      * columns materialize lazily via yeptris_tape_columns */
     t->_rec_primary = 1;
@@ -1711,7 +1707,7 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape_lenient(const char* source, si
             return st;
         }
         free(blocks);
-        return yep_tape_walk_lenient_fused(source, len, at, tape, 0, 0);
+        return yep_tape_walk_lenient_fused(source, len, at, tape, 0, 0, 0);
     }
 
     /* scalar root: one record, same deferred split for numbers */
