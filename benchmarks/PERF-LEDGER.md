@@ -2481,3 +2481,42 @@ producer — no differential conflict. flow-json additionally needs the
 ITEM arm to delegate `- {...}` spans to the same path. Expected:
 json-users and flow-single from 2.50x/2.69x to 4x+ vs ryml;
 flow-json from 2.75x once the item arm lands.
+
+### The flow lane rides the fused lenient walk (item 86, slice 1)
+
+The recorder's classification swapped the naive `yep_json_walk_next`
+discard loop for a BUDGETED HYBRID: the naive loop runs first with a
+256-byte budget — the common per-line flow map finishes it (carrying
+the exact close and long_key verdicts for free); a budget exhaustion
+hands the span to the FUSED lenient walk (2.1x the naive loop at
+6.6 MB, the item-86 spike), whose verdicts come from a record scan
+over the reused scratch tape: the >1024 simple-key law (RAW token — a
+quoted key's record holds the inner span), the span's maximum nesting
+against the engine's max_depth, and strict_nums=1 (the general walk
+validates number runs even at strict=0 — M5DY's 2001-07-02 dates
+diverged otherwise). The carve grows a reuse watermark so the 200k
+per-line spans of flow-json never re-allocate. Non-JSON-class spans
+reject in the naive loop and take the general kernel unchanged; the
+scratch tape allocates only when a large span first exhausts the
+budget.
+
+Three acceptance-parity bugs the gates forced before green: the
+simple-key law counts the RAW token (+2 for the quotes), the depth
+limit needs the span-nesting check (Limits' max_depth=16 case), and
+number validation must match the general walk's reject
+(M5DY). parse-side DOM-lane medians (dev build):
+
+| shape | main | this slice |
+|---|---|---|
+| flow-json | 213 | 269 |
+| flow-single | 292 | 326 |
+| json-doc | 280 | 306 |
+| json-users | 309 | 320 |
+
+397/397; suite differential 16/220/108/0; the ASAN roundtrip corpus
+0 diffs / 0 unstable / 0 hard failures (the six canonical
+instabilities and the M5DY serialize failure were acceptance-parity
+bugs this slice fixed). The replay-side conversion (per-node flow
+records instead of the ONE FLOW record + the re-walk) is the follow-up
+slice; flow-json's next step is the block ITEM arm delegating its
+per-line spans without the engine's per-line dispatch.

@@ -23,6 +23,8 @@
 #include "resolve/resolver.h"
 #include "scan/json.h"
 #include "scan/scan.h"
+#include "tape_in.h"
+#include "yeptris/tape.h"
 #include "ytape.h"
 
 /* ---- word packing ---- */
@@ -60,6 +62,11 @@ int ytap_init(yep_ytape* t, const char* input, size_t len, int max_depth) {
 }
 
 void ytap_free(yep_ytape* t) {
+    if (t->flow_scratch != NULL) {
+        yeptris_tape_free((yeptris_json_tape*)t->flow_scratch);
+        yep_free(yep_system_allocator(), t->flow_scratch);
+        t->flow_scratch = NULL;
+    }
     if (t->w != NULL) {
         yep_free(yep_system_allocator(), t->w);
         t->w = NULL;
@@ -317,6 +324,64 @@ static int yt_on_block_item(void* ctx, const yep_block_value* v) {
     return 1;
 }
 
+/* the >1024 simple-key law, read off the scratch records: a STR at a
+ * map's key slot over the limit answers the general walk's long_key
+ * verdict (the fused walk carries no such flag). Members alternate
+ * key/value in a map frame; a container in the value slot completes
+ * at its CLOSE. len == 0xFFFFFF (a CONT-extended token, >16 MiB) is
+ * over the limit by definition. */
+static uint32_t yt_flow_scan(const yeptris_json_tape* s, int* long_key) {
+    /* the record-walk verdicts the fused walk does not carry: the
+     * >1024 simple-key law (a STR at a map's key slot over the limit;
+     * the law counts the RAW token — a quoted key's record holds the
+     * INNER span, so the two quotes add back on; 0xFFFFFF = a
+     * CONT-extended >16 MiB token, over by definition) and the span's
+     * maximum nesting (the fused walk's depth cap is its own, not the
+     * engine's max_depth — the caller falls back when exceeded) */
+    struct {
+        uint8_t map;
+        uint8_t key_next;
+    } st[257];
+    int d = 0;
+    uint32_t maxd = 0;
+    st[0].map = 0;
+    st[0].key_next = 0;
+    for (uint32_t i = 1; i < s->count; i++) { /* recs[0] is the DOC */
+        uint64_t r = s->recs[i];
+        uint8_t kind = (uint8_t)(r & 0xFFu);
+        if (kind == YEP_T_MAP_OPEN || kind == YEP_T_SEQ_OPEN) {
+            if (d >= 256) {
+                *long_key = 0;
+                return 0xFFFFu; /* deeper than the scratch stack: the
+                                 * general kernel's depth path decides */
+            }
+            d++;
+            if ((uint32_t)d > maxd) {
+                maxd = (uint32_t)d;
+            }
+            st[d].map = (uint8_t)(kind == YEP_T_MAP_OPEN);
+            st[d].key_next = 0;
+            continue;
+        }
+        if (kind == YEP_T_CLOSE) {
+            if (d > 0) {
+                d--;
+            }
+            continue;
+        }
+        if (st[d].map && st[d].key_next == 0) {
+            uint32_t mlen = (uint32_t)(r >> 8) & 0xFFFFFFu;
+            if (kind == YEP_T_STR && mlen + 2u > 1024u) {
+                *long_key = 1;
+            }
+            st[d].key_next = 1;
+        } else if (st[d].map) {
+            st[d].key_next = 0;
+        }
+    }
+    return maxd;
+}
+
 static int yt_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_t line,
                             size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id,
                             int max_depth, size_t* close) {
@@ -329,24 +394,114 @@ static int yt_on_flow_build(void* ctx, const char* p, size_t open, size_t len, u
     /* classification = the DOM's own walk with the builds stripped:
      * the same reject/long-key verdicts, then ONE record for the
      * whole staged span (replay runs the full build through
-     * dom_on_flow_build). */
+     * dom_on_flow_build). The verdict comes from the FUSED lenient
+     * walk into a reused scratch tape — 3.5x the naive token loop on
+     * the spike corpora (item 86); any refusal keeps the naive loop,
+     * whose accept/reject contract is the same by construction. */
+    if (t->flow_scratch == NULL) {
+        t->flow_scratch = yep_alloc(yep_system_allocator(), sizeof(yeptris_json_tape));
+        if (t->flow_scratch != NULL) {
+            memset(t->flow_scratch, 0, sizeof(yeptris_json_tape));
+        }
+    }
     t->max_depth = max_depth; /* replay re-walks at the engine's limit */
-    yep_json_walk w;
-    yep_json_tok tok;
-    yep_json_walk_init(&w, p, len, open, max_depth);
-    w.strict = t->flow_strict;
+    /* the naive token loop with a BYTE BUDGET: small spans (the common
+     * per-line flow map) finish it — the loop carries the exact close
+     * and long_key verdicts for free; a budget exhaustion hands the
+     * span to the fused lenient walk, which amortizes its fixed entry
+     * cost on large spans (2.1x the naive loop at 6.6 MB, item 86) */
+    {
+        yep_json_walk w;
+        yep_json_tok tok;
+        yep_json_walk_init(&w, p, len, open, max_depth);
+        w.strict = t->flow_strict;
+        int exhausted = 0;
+        for (;;) {
+            if (w.i - open > 256) {
+                exhausted = 1;
+                break;
+            }
+            yep_jw_status st = yep_json_walk_next(&w, &tok);
+            if (st == YEP_JW_REJECT) {
+                return 0; /* not JSON-class: the general kernel */
+            }
+            if (st == YEP_JW_DONE) {
+                if (w.long_key) {
+                    return 2; /* pass 2 owns the simple-key error */
+                }
+                *close = w.close; /* the walk's own position: exact */
+                goto record;
+            }
+        }
+        if (exhausted) {
+            yeptris_json_tape* s = t->flow_scratch;
+            if (s == NULL) {
+                s = (yeptris_json_tape*)yep_alloc(yep_system_allocator(),
+                                                  sizeof(yeptris_json_tape));
+                if (s != NULL) {
+                    memset(s, 0, sizeof(yeptris_json_tape));
+                    t->flow_scratch = s;
+                }
+            }
+            if (s != NULL) {
+                /* the carve reuses the block through the _srclen
+                 * watermark — no per-span free (flow-json walks 200k
+                 * spans per parse) */
+                /* strict_nums=1: the general walk validates number runs
+                 * even at strict=0 (M5DY's 2001-07-02 dates — an
+                 * unvalidated accept here diverges from the engine's
+                 * own reject) */
+                if (yep_tape_walk_lenient_fused(p, len, open, s, 1, 0) == YEPTRIS_OK) {
+                    if (s->_srclen < len + 2) {
+                        s->_srclen = len + 2; /* the reuse watermark */
+                    }
+                    int lk = 0;
+                    uint32_t smax = yt_flow_scan(s, &lk);
+                    if (lk) {
+                        return 2; /* pass 2 owns the simple-key error */
+                    }
+                    if (smax > (uint32_t)max_depth) {
+                        return 0; /* over the engine's depth limit: the
+                                   * general walk owns the exact DEPTH
+                                   * error shape */
+                    }
+                    goto record_fused;
+                }
+                return 0; /* the fused walk refused: the general kernel */
+            }
+            return 0; /* scratch alloc refused: the general kernel */
+        }
+    }
+    return -1; /* unreachable */
+record_fused: {
+    size_t c = open;
+    int depth = 0;
     for (;;) {
-        yep_jw_status st = yep_json_walk_next(&w, &tok);
-        if (st == YEP_JW_REJECT) {
-            return 0; /* not JSON-class: the general kernel */
+        unsigned char ch = (unsigned char)p[c];
+        if (ch == '"') { /* the walk validated the string; skip runs */
+            c++;
+            while (p[c] != '"') {
+                if (p[c] == '\\') {
+                    c++;
+                }
+                c++;
+            }
+            c++;
+            continue;
         }
-        if (st == YEP_JW_DONE) {
-            break;
+        if (ch == '{' || ch == '[') {
+            depth++;
+        } else if (ch == '}' || ch == ']') {
+            depth--;
+            if (depth == 0) {
+                break;
+            }
         }
+        c++;
     }
-    if (w.long_key) {
-        return 2; /* pass 2 owns the simple-key error, as the DOM's */
-    }
+    *close = c;
+}
+record:
     t->flow_mark = t->count;
     uint32_t anchor_hi = 0;
     uint32_t aid = anchor_id;
@@ -372,7 +527,6 @@ static int yt_on_flow_build(void* ctx, const char* p, size_t open, size_t len, u
     if (anchor_hi && yt_put(t, (uint64_t)anchor_id) != 0) {
         return -1;
     }
-    *close = w.close;
     return 1;
 }
 

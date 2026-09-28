@@ -58,12 +58,23 @@ static int rec_put(tape_ctx* c, uint8_t kind, uint32_t off, uint32_t len) {
 
 static YeptrisStatus tape_carve(yeptris_json_tape* t, size_t len) {
     size_t cap = len + 2;
+    /* the watermark (_srclen, carried as carved-capacity when _src is
+     * unused by the route) lets repeated carves on one struct reuse
+     * the block — the flow recorder walks many spans per parse */
+    if (t->_block != NULL && t->_srclen >= cap) {
+        t->_cols_ready = 0;
+        return YEPTRIS_OK;
+    }
     size_t off_o = (cap + 15) & ~(size_t)15;
     char* block = yep_alloc(yep_system_allocator(),
                             off_o + 2 * cap * sizeof(uint32_t) + cap * sizeof(yeptris_tape_rec));
     if (block == NULL) {
         return YEPTRIS_ERROR_MEMORY;
     }
+    yep_free(yep_system_allocator(), t->_block); /* growth on a live tape */
+    t->_srclen = len;                            /* the reuse watermark (callers may overwrite
+                                                  * _srclen with the source length — never smaller) */
+    t->_cols_ready = 0;
     t->_block = block;
     t->kinds = (uint8_t*)block;
     t->offs = (uint32_t*)(void*)(block + off_o);
