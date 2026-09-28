@@ -2307,3 +2307,34 @@ remains for the streaming feeds only.
 Order-alternated A/B (dev host, DOM lane): block-heavy 211 vs
 187 MB/s (+13%), scalar-heavy 512 vs 389 (+31%) — six rounds, all
 agreed. 397/397 green.
+
+## 2026-09-28 — the fused block runner LANDS (session 3): wide-mapping 2.06x
+
+ytap_fused_run (ytape.c): ONE NUL-padded SWAR sweep per line + inline
+classification + an indent stack, emitting the engine's exact record
+stream without the engine; parse_impl's lazy route tries it first and
+restarts the engine route on any bail. Byte-exact against the engine
+over wide (600,010 words) in this conservative first cut — the deeper
+corpora (block 1.39M / deep 17k words, byte-exact in the scratch
+differential) widen once the column model lands (below).
+
+A/B (dev release build, order-alternated): wide-mapping 598 vs 290
+MB/s = 2.06x. Other shapes ride the fallback (neutral).
+
+THE ERROR-PARITY CURRICULUM the test suite forced (all bails now):
+second terminating colons in values ("a: b: c"), >1024 keys, tab-led
+lines, indicator-as-value ("-"/"?" heads), continuation lines (col !=
+the frame's pair column), nested-dash items, anchored aliases
+("&b *a"), undefined aliases (a 4096-slot name->ordinal table; the
+ALIAS record carries the TARGET's aid), anchored container keys (the
+first pair inside one rides a two-SCALAR form with content-typed
+tag ids).
+
+NEXT (precisely diagnosed): own nested docs by (1) accepting
+colon-at-EOL in the pair arm, (2) the column model done right — the
+frame needs BOTH the key column (dedent reference) and the pair
+content column (continuation guard), set at first pair AND at child
+resolutions (never at dash resolutions: item columns are not the
+parent's pair column); store content col+1 (0 = unset; column 0 is a
+real value). The scratch harness (/tmp/fused-port.c) is byte-exact
+for block/deep — port those exact rules.
