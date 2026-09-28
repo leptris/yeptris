@@ -2338,3 +2338,41 @@ resolutions (never at dash resolutions: item columns are not the
 parent's pair column); store content col+1 (0 = unset; column 0 is a
 real value). The scratch harness (/tmp/fused-port.c) is byte-exact
 for block/deep — port those exact rules.
+
+### Fused block runner: nested ownership + the phantom frame model (item 79)
+
+The widening, landed. The runner now owns nested block YAML — deep
+nesting, indentless sequences, nested sequences under keys, sibling
+maps after child closes, null-resolved pending keys — with a frame
+model decoded from the engine's own tape streams (tape-dump over
+probes; the differential gate is byte-exact):
+
+- Maps pop STRICTLY shallower; a pair at the frame's own key column
+  closes the live *phantom* content map (one start event per content
+  column) and rides the frame silently — the engine's sibling-continue.
+- A pending "key:" resolved by a same-column sibling emits the null
+  scalar (SCALAR 0x0904 + empty pool span) — "empty:" + "other: ~"
+  is owned, not bailed.
+- Sequences push their OWN frame (the key's map survives below it);
+  indentless items ride at the frame column. The OPEN record fires
+  for seq children of fresh parents (not maps only).
+- The OPEN-vs-SCALAR key form follows the engine's column rule: the
+  contentless root always opens; otherwise a sibling column at the
+  parent's content/indent column takes the key-SCALAR form.
+- An event-started root closes; an OPEN-implied root never does.
+- The repeat-alias memo: the engine's anchor_id_of answers from the
+  LAST resolution before any probe, and anchor definitions never
+  invalidate it — re-aliasing after a redefinition reports the
+  memoized ordinal (3GZX). Replicated.
+- Bails added: colon-lead empty keys (": v" — the engine's
+  two-scalar 0x0904 form), empty plain keys. The seq push carries a
+  frame-stack guard (ASAN caught the overflow at depth 256).
+
+A/B (dev release build, bench_matrix, non-LTO): deep-nesting DOM
+1078 MB/s, tape 1069 MB/s = 3.09x the eager route (previously
+fallback); wide-mapping unchanged (2.06x). Suite differential: 15
+inputs byte-exact (was 9), 221 clean bails, 0 mismatches; 397/397.
+
+NEXT: block-heavy still bails (block scalars, quoted values); the
+anchored-container two-SCALAR arm, the quoted two-SCALAR arm, and
+the block-scalar POOL form extend ownership further.

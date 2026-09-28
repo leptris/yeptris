@@ -660,12 +660,14 @@ int dom_from_ytape(yep_dom* d, const yep_ytape* t) {
 #define YT_FUSED_ANCHORS 4096
 
 typedef struct {
-    uint32_t indent;      /* COLUMN */
-    uint8_t kind;         /* 0 map, 1 seq */
-    uint8_t pending;      /* a "key:" awaiting its child */
-    uint8_t started;      /* the start event went out */
-    uint8_t emitted;      /* a pair/item/child landed here */
-    uint32_t content_col; /* the column this frame's pairs live at */
+    uint32_t indent; /* the frame's key column */
+    uint8_t kind;    /* 0 map, 1 seq */
+    uint8_t pending; /* a "key:" awaiting its child */
+    uint8_t started; /* the content container's start event went out */
+    uint8_t
+        own_map; /* the frame carries its own map (OPEN/root/seq); the key-SCALAR form does not */
+    uint8_t phantom;      /* a content map opened by this frame's pairs is still live */
+    uint32_t content_col; /* the column this frame's pairs live at, +1 (0 = none) */
     uint32_t key_off, key_len;
     uint32_t aid; /* anchor ordinal on the pending container (bails) */
 } yt_frame;
@@ -675,7 +677,11 @@ typedef struct {
     const char* p;
     size_t len;
     uint32_t anchor_seq;
-    int parent_emitted;
+    /* the repeat-alias memo (engine anchor_id_of): the last alias
+     * resolution answers by name bytes before any probe, and anchor
+     * definitions never invalidate it — re-aliasing after a
+     * redefinition still reports the memoized ordinal */
+    uint32_t memo_off, memo_len, memo_ord;
     /* anchor name -> ordinal (the alias records carry the target's
      * id; a miss bails: the engine owns undefined aliases). Fixed
      * size (MSVC has no flexible array members); the struct is
@@ -684,6 +690,15 @@ typedef struct {
         uint32_t off, len, aid;
     } anchors[YT_FUSED_ANCHORS];
 } yt_fused;
+
+/* Frame model (engine-verified): st[] frames are the engine's *silent*
+ * containers — one OPEN record per frame (or one key SCALAR for the
+ * sibling form, which carries no map of its own). Pairs inside a frame
+ * open a *phantom* content map at the pair column (one start event per
+ * column); a later pair at the frame's own indent closes the phantom
+ * and rides the frame silently (the engine's sibling-continue). Maps
+ * pop strictly shallower; seqs also leave at their column when a
+ * non-dash arrives. The root closes only when its start event fired. */
 
 static uint32_t yt_anchor_hash(const char* p, uint32_t off, uint32_t len) {
     uint32_t h = 2166136261u;
@@ -712,7 +727,12 @@ static void yt_anchor_put(yt_fused* F, uint32_t off, uint32_t len, uint32_t aid)
     /* chain too long: leave unfindable — aliases to it will bail */
 }
 
-static int yt_anchor_get(const yt_fused* F, uint32_t off, uint32_t len, uint32_t* aid) {
+static int yt_anchor_get(yt_fused* F, uint32_t off, uint32_t len, uint32_t* aid) {
+    if (F->memo_len != 0 && F->memo_len == len &&
+        memcmp(F->p + F->memo_off, F->p + off, len) == 0) {
+        *aid = F->memo_ord;
+        return 1;
+    }
     uint32_t m = YT_FUSED_ANCHORS - 1;
     uint32_t i = yt_anchor_hash(F->p, off, len) & m;
     for (uint32_t n = 0; n < 64; n++) {
@@ -721,6 +741,9 @@ static int yt_anchor_get(const yt_fused* F, uint32_t off, uint32_t len, uint32_t
         }
         if (F->anchors[i].len == len && memcmp(F->p + F->anchors[i].off, F->p + off, len) == 0) {
             *aid = F->anchors[i].aid;
+            F->memo_off = off;
+            F->memo_len = len;
+            F->memo_ord = *aid;
             return 1;
         }
         i = (i + 1) & m;
@@ -741,6 +764,10 @@ static void yt_f_start(yt_fused* F, yt_frame* fr) {
     fr->started = 1;
     (void)yt_put(F->t, yt_props(YTP_EVENT, 0, fr->kind == 1 ? 5u : 7u));
     yt_f_empty_span(F);
+    F->t->depth++;
+    if (fr->kind == 0) {
+        fr->phantom = 1;
+    }
 }
 
 static void yt_f_close(yt_fused* F, uint8_t kind) {
@@ -749,18 +776,33 @@ static void yt_f_close(yt_fused* F, uint8_t kind) {
     F->t->depth--;
 }
 
-/* resolve a pending "key:": OPEN for a fresh parent, else the
- * key-SCALAR form; the start defers to the first content inside */
-static void yt_f_open(yt_fused* F, yt_frame* fr, uint8_t seq) {
-    if (!seq && fr->aid == 0 && fr->key_len < 0x1000000u && fr->key_off <= F->t->input_len &&
-        !F->parent_emitted) {
+/* the OPEN-vs-SCALAR key form: the engine opens via on_block_open
+ * unless its top frame is already a map continuing at this key's
+ * column (a sibling key) — the contentless root always opens */
+static uint8_t yt_f_open_form(const yt_frame* parent, int parent_is_root, uint32_t key_col) {
+    if (parent_is_root && parent->content_col == 0) {
+        return 1;
+    }
+    if (parent->content_col != 0) {
+        return (uint8_t)(key_col + 1 != parent->content_col && key_col != parent->indent);
+    }
+    return (uint8_t)(key_col != parent->indent);
+}
+
+/* resolve a pending "key:": the OPEN record materializes the key's
+ * map (it closes later); the SCALAR form is the bare key — the value
+ * container that follows IS the pair's, no map of its own */
+static void yt_f_open(yt_fused* F, yt_frame* fr, uint8_t open_form) {
+    if (open_form && fr->aid == 0 && fr->key_len < 0x1000000u && fr->key_off <= F->t->input_len) {
         (void)yt_put(F->t, yt_span_in(fr->key_off, fr->key_len, YTP_OPEN));
-        fr->started = 0;
+        fr->own_map = 1;
     } else {
         (void)yt_put(F->t, yt_props(YTP_SCALAR, 0, 0x2900u));
         (void)yt_put(F->t, yt_span_in(fr->key_off, fr->key_len, YTP_SPAN_IN));
-        fr->started = 0;
+        fr->own_map = 0;
     }
+    fr->started = 0;
+    fr->phantom = 0;
     F->t->depth++;
 }
 
@@ -771,7 +813,9 @@ static int yt_f_run(yt_fused* F) {
     yt_frame st[YT_FUSED_MAX_FRAMES];
     int depth = 0;
     memset(&st[0], 0, sizeof(st[0]));
+    st[0].started = 1; /* the root's start event defers to its first pair */
     int root_open = 0;
+    int root_evented = 0;
     (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 1u);
     (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 3u);
     size_t pos = 0;
@@ -849,30 +893,40 @@ static int yt_f_run(yt_fused* F) {
                 return 1; /* tab-led content: the engine's error */
             }
             if (dash && depth > 0 && st[depth].pending && col >= st[depth].indent) {
-                st[depth].kind = 1;
-                st[depth].indent = col;
-                F->parent_emitted = depth >= 1 ? st[depth - 1].emitted : root_open;
-                yt_f_open(F, &st[depth], 1);
-                yt_f_start(F, &st[depth]);
+                /* the pending key resolves into a sequence: its own
+                 * frame (the key's map survives below it) */
+                if (depth >= YT_FUSED_MAX_FRAMES - 1) {
+                    return 1; /* the frame stack is full: the engine route */
+                }
+                uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
+                yt_f_open(F, &st[depth], of);
                 root_open = 1;
                 st[depth].pending = 0;
-                if (depth >= 1) {
-                    st[depth - 1].emitted = 1; /* NOT content_col: item
-                                                * columns are not the parent's pair column */
-                }
+                depth++;
+                memset(&st[depth], 0, sizeof(st[depth]));
+                st[depth].kind = 1;
+                st[depth].indent = col;
+                st[depth].own_map = 1;
+                yt_f_start(F, &st[depth]);
             } else {
                 while (depth > 0 && (st[depth].kind == 1 ? (col < st[depth].indent ||
                                                             (col <= st[depth].indent && !dash))
-                                                         : col <= st[depth].indent)) {
+                                                         : col < st[depth].indent)) {
                     if (st[depth].pending) {
                         return 1; /* empty "key:" mid-doc: the engine owns it */
                     }
-                    yt_f_close(F, st[depth].kind);
+                    if (st[depth].phantom) {
+                        yt_f_close(F, st[depth].kind);
+                        st[depth].phantom = 0;
+                    }
+                    if (st[depth].own_map) {
+                        yt_f_close(F, st[depth].kind);
+                    }
                     depth--;
                 }
             }
             if (dash) {
-                if (st[depth].kind == 1 && col >= st[depth].indent) {
+                if (st[depth].kind == 1 && col == st[depth].indent) {
                     yt_f_start(F, &st[depth]);
                     size_t vt = t0 + 1;
                     while (vt < line_end && (p[vt] == ' ' || p[vt] == '\t')) {
@@ -904,20 +958,23 @@ static int yt_f_run(yt_fused* F) {
                         }
                     }
                     (void)yt_put(t, yt_span_in((uint32_t)vt, vend - (uint32_t)vt, YTP_ITEM));
-                    st[depth].emitted = 1;
                     if (!st[depth].content_col) {
                         st[depth].content_col = col + 1;
                     }
                 } else {
                     return 1;
                 }
-            } else if (stop_set && line_stop + 1 < line_end && p[line_stop] == ':' &&
-                       (p[line_stop + 1] == ' ' || p[line_stop + 1] == '\t') &&
+            } else if (stop_set && p[line_stop] == ':' &&
+                       (line_stop + 1 >= line_end || p[line_stop + 1] == ' ' ||
+                        p[line_stop + 1] == '\t') &&
                        !(c == '&' || c == '!' || c == '*' || c == '\'' || c == '"' || c == '[' ||
                          c == '{' || c == '|' || c == '>' || c == '%' || c == '?' || c == '-')) {
                 uint32_t kend = line_stop;
                 while (kend > t0 && (p[kend - 1] == ' ' || p[kend - 1] == '\t')) {
                     kend--;
+                }
+                if (kend == t0) {
+                    return 1; /* empty plain key (": v"): the engine's two-scalar form */
                 }
                 if ((uint32_t)(kend - t0) > 1024u) {
                     return 1; /* the simple-key length law: the engine errors */
@@ -952,22 +1009,23 @@ static int yt_f_run(yt_fused* F) {
                     if (aid != 0) {
                         return 1; /* anchored container: the engine route */
                     }
-                    if (st[depth].kind == 0 && st[depth].emitted &&
-                        col + 1 != st[depth].content_col) {
-                        return 1; /* continuation: the multiline arm */
+                    if (st[depth].kind == 0 && st[depth].content_col != 0 &&
+                        col + 1 != st[depth].content_col && col != st[depth].indent) {
+                        return 1; /* off-column: a continuation line — the multiline arm */
+                    }
+                    if (st[depth].kind == 0 && st[depth].content_col != 0 &&
+                        col + 1 != st[depth].content_col && st[depth].phantom) {
+                        yt_f_close(F, st[depth].kind);
+                        st[depth].phantom = 0;
                     }
                     if (depth >= YT_FUSED_MAX_FRAMES - 1) {
                         return 1;
                     }
                     if (depth > 0 && st[depth].pending) {
-                        F->parent_emitted = st[depth - 1].emitted;
-                        yt_f_open(F, &st[depth], 0);
+                        uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
+                        yt_f_open(F, &st[depth], of);
                         root_open = 1;
                         st[depth].pending = 0;
-                        st[depth - 1].emitted = 1;
-                        if (!st[depth - 1].content_col) {
-                            st[depth - 1].content_col = col + 1;
-                        }
                     }
                     depth++;
                     memset(&st[depth], 0, sizeof(st[depth]));
@@ -976,27 +1034,40 @@ static int yt_f_run(yt_fused* F) {
                     st[depth].key_off = (uint32_t)t0;
                     st[depth].key_len = kend - (uint32_t)t0;
                 } else {
-                    if (st[depth].kind == 0 && st[depth].emitted &&
-                        col + 1 != st[depth].content_col) {
-                        return 1; /* off-column: a continuation line — the
-                                   * multiline arm owns those */
+                    if (st[depth].kind == 0 && st[depth].content_col != 0 &&
+                        col + 1 != st[depth].content_col && col != st[depth].indent) {
+                        return 1; /* off-column: a continuation line — the multiline arm */
                     }
                     if (depth > 0 && st[depth].pending) {
-                        F->parent_emitted = st[depth - 1].emitted;
-                        yt_f_open(F, &st[depth], 0);
+                        uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
+                        yt_f_open(F, &st[depth], of);
                         root_open = 1;
                         st[depth].pending = 0;
-                        st[depth - 1].emitted = 1;
-                        if (!st[depth - 1].content_col) {
-                            st[depth - 1].content_col = col + 1;
+                        if (col == st[depth].indent) {
+                            /* a same-column sibling pair resolves the pending
+                             * key to null (the engine's empty-value scalar) */
+                            (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x0904u));
+                            yt_f_empty_span(F);
                         }
                     } else if (!root_open && depth == 0) {
                         (void)yt_put(t, yt_props(YTP_EVENT, 0, 7u));
                         yt_f_empty_span(F);
+                        t->depth++;
                         root_open = 1;
+                        root_evented = 1;
                         st[0].started = 1;
                     }
-                    yt_f_start(F, &st[depth]);
+                    if (col == st[depth].indent) {
+                        /* the engine's sibling-continue: the live phantom
+                         * content map closes, the pair rides the frame's
+                         * own map without a start event */
+                        if (st[depth].phantom) {
+                            yt_f_close(F, st[depth].kind);
+                            st[depth].phantom = 0;
+                        }
+                    } else {
+                        yt_f_start(F, &st[depth]);
+                    }
                     if (st[depth].kind != 0) {
                         return 1;
                     }
@@ -1023,7 +1094,9 @@ static int yt_f_run(yt_fused* F) {
                         (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
                         (void)yt_put(t, yt_span_in((uint32_t)(vt + 1), (uint32_t)(ne - vt - 1),
                                                    YTP_SPAN_IN));
-                        st[depth].emitted = 1;
+                        if (!st[depth].content_col) {
+                            st[depth].content_col = col + 1;
+                        }
                         goto line_done;
                     }
                     if (vc == '"' || vc == '\'' || vc == '|' || vc == '>' || vc == '[' ||
@@ -1069,7 +1142,6 @@ static int yt_f_run(yt_fused* F) {
                     if (aid != 0) {
                         (void)yt_put(t, yt_span_in(aoff, alen, YTP_SPAN_IN));
                     }
-                    st[depth].emitted = 1;
                     if (!st[depth].content_col) {
                         st[depth].content_col = col + 1;
                     }
@@ -1088,10 +1160,18 @@ static int yt_f_run(yt_fused* F) {
         if (st[depth].pending) {
             return 1; /* empty "key:" at EOF: the engine */
         }
-        yt_f_close(F, st[depth].kind);
+        if (st[depth].phantom) {
+            yt_f_close(F, st[depth].kind);
+            st[depth].phantom = 0;
+        }
+        if (st[depth].own_map) {
+            yt_f_close(F, st[depth].kind);
+        }
         depth--;
     }
-    yt_f_close(F, 0); /* the root always closes, started or not */
+    if (root_evented) {
+        yt_f_close(F, 0); /* only an event-started root closes */
+    }
     (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 4u);
     (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 2u);
     t->docs = 1;
