@@ -61,7 +61,10 @@ static YeptrisStatus tape_carve(yeptris_json_tape* t, size_t len) {
     /* the watermark (_srclen, carried as carved-capacity when _src is
      * unused by the route) lets repeated carves on one struct reuse
      * the block — the flow recorder walks many spans per parse */
-    if (t->_block != NULL && t->_srclen >= cap) {
+    /* only a tape THIS walk carved before (interleaved records as the
+     * primary storage) may reuse: the strict and column routes carry
+     * _block/_srclen shapes the record walk must not write into */
+    if (t->_block != NULL && t->recs != NULL && t->_rec_primary && t->_srclen >= cap) {
         t->_cols_ready = 0;
         return YEPTRIS_OK;
     }
