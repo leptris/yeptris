@@ -657,6 +657,7 @@ int dom_from_ytape(yep_dom* d, const yep_ytape* t) {
  * "key:" at EOF or mid-doc, undefined aliases, root sequences. */
 
 #define YT_FUSED_MAX_FRAMES 256
+#define YT_FUSED_ANCHORS 4096
 
 typedef struct {
     uint32_t indent;      /* COLUMN */
@@ -676,16 +677,16 @@ typedef struct {
     uint32_t anchor_seq;
     int parent_emitted;
     /* anchor name -> ordinal (the alias records carry the target's
-     * id; a miss bails: the engine owns undefined aliases) */
+     * id; a miss bails: the engine owns undefined aliases). Fixed
+     * size (MSVC has no flexible array members); the struct is
+     * heap-allocated per run. */
     struct {
         uint32_t off, len, aid;
-    } anchors[0];
+    } anchors[YT_FUSED_ANCHORS];
 } yt_fused;
 
 /* a fixed 4096-slot linear-probe table: the corpus bound is one entry
- * per '&' in the input; overflow or collision-chain saturation bails
- * (the engine route resolves names itself) */
-#define YT_FUSED_ANCHORS 4096
+
 
 static uint32_t yt_anchor_hash(const char* p, uint32_t off, uint32_t len) {
     uint32_t h = 2166136261u;
@@ -707,11 +708,11 @@ static void yt_anchor_put(yt_fused* F, uint32_t off, uint32_t len, uint32_t aid)
         }
         if (F->anchors[i].len == len && memcmp(F->p + F->anchors[i].off, F->p + off, len) == 0) {
             F->anchors[i].aid = aid; /* redefinition: latest wins */
-            return;
-        }
-        i = (i + 1) & m;
-    }
-    /* chain too long: leave unfindable — aliases to it will bail */
+return;
+}
+i = (i + 1) & m;
+}
+/* chain too long: leave unfindable — aliases to it will bail */
 }
 
 static int yt_anchor_get(const yt_fused* F, uint32_t off, uint32_t len, uint32_t* aid) {
@@ -1101,14 +1102,18 @@ static int yt_f_run(yt_fused* F) {
 }
 
 int ytap_fused_run(yep_ytape* t) {
-    char fbuf[sizeof(yt_fused) + sizeof(*((yt_fused*)0)->anchors) * YT_FUSED_ANCHORS];
-    yt_fused* F = (yt_fused*)fbuf;
-    memset(fbuf, 0, sizeof(fbuf));
+    yt_fused* F = (yt_fused*)yep_alloc(yep_system_allocator(), sizeof(*F));
+    if (F == NULL) {
+        return 1; /* allocation refused: the engine route */
+    }
+    memset(F, 0, sizeof(*F));
     F->t = t;
     F->p = t->input;
     F->len = t->input_len;
     size_t mark = t->count;
-    if (yt_f_run(F) != 0) {
+    int rc = yt_f_run(F);
+    yep_free(yep_system_allocator(), F);
+    if (rc != 0) {
         t->count = (uint32_t)mark; /* unwind: the caller resets and re-runs */
         t->depth = 0;
         return 1;
