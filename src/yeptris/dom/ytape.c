@@ -685,9 +685,6 @@ typedef struct {
     } anchors[YT_FUSED_ANCHORS];
 } yt_fused;
 
-/* a fixed 4096-slot linear-probe table: the corpus bound is one entry
-
-
 static uint32_t yt_anchor_hash(const char* p, uint32_t off, uint32_t len) {
     uint32_t h = 2166136261u;
     for (uint32_t i = 0; i < len; i++) {
@@ -708,11 +705,11 @@ static void yt_anchor_put(yt_fused* F, uint32_t off, uint32_t len, uint32_t aid)
         }
         if (F->anchors[i].len == len && memcmp(F->p + F->anchors[i].off, F->p + off, len) == 0) {
             F->anchors[i].aid = aid; /* redefinition: latest wins */
-return;
-}
-i = (i + 1) & m;
-}
-/* chain too long: leave unfindable — aliases to it will bail */
+            return;
+        }
+        i = (i + 1) & m;
+    }
+    /* chain too long: leave unfindable — aliases to it will bail */
 }
 
 static int yt_anchor_get(const yt_fused* F, uint32_t off, uint32_t len, uint32_t* aid) {
