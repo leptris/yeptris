@@ -2456,3 +2456,28 @@ bake measured ~10-15% combined); the flow-family DOM lane pays the
 replay's full node materialization. Next campaign: the flow-DOM
 replay (three shapes in the 2.5-2.75 band), then the anchor lane's
 record forms.
+
+### The flow-lane ceiling, proven (item 86 spike)
+
+The flow shapes' DOM lane measures the parse front-end (the replay is
+deferred) — so their gap is the flow SCAN. The recorder classifies each
+flow span with a naive `yep_json_walk_next` discard loop; the SAME
+bytes through the JSON route's fused lenient walk (`tape.c`'s
+stage-1/stage-2 design) run 3.5x faster on the same machine:
+
+| corpus | current flow lane | fused lenient walk (spike) |
+|---|---|---|
+| json-users (one flow doc) | 309 MB/s | **1094 MB/s** |
+| flow-single (one span) | 292 MB/s | 2889 MB/s (span-scan only) |
+| flow-json (200k per-line spans) | 213 MB/s | 205 MB/s via a naive
+| | | span-finder — needs the block ITEM-arm delegation |
+
+Design (next slice): `yt_on_flow_build` runs the fused lenient walk
+into a reused scratch `yeptris_json_tape`, then converts YEP_T_* →
+YTP_* words (EVENT/SCALAR+span parity with `dom_on_flow_build`'s
+styles and tag ids); any reject keeps today's ONE-record form. The
+fused block runner bails on flow values, so the recorder is the only
+producer — no differential conflict. flow-json additionally needs the
+ITEM arm to delegate `- {...}` spans to the same path. Expected:
+json-users and flow-single from 2.50x/2.69x to 4x+ vs ryml;
+flow-json from 2.75x once the item arm lands.
