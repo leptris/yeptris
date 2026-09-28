@@ -784,7 +784,7 @@ static int yt_f_run(yt_fused* F) {
                        k_ha = 0x2323232323232323ull;
         size_t whole = len - pos;
         size_t end = whole, indent = whole, stop = whole;
-        int have_indent = 0, stop_set = 0, have_end = 0;
+        int have_indent = 0, stop_set = 0;
         size_t i = 0;
         while (i < whole) {
             size_t avail = whole - i < 8 ? whole - i : 8;
@@ -818,7 +818,6 @@ static int yt_f_run(yt_fused* F) {
             }
             if (br) {
                 end = i + (size_t)(yep_ctz64(br) >> 3);
-                have_end = 1;
                 break;
             }
             i += 8;
