@@ -2418,3 +2418,41 @@ Suite differential: 16 exact / 220 bails / 108 rejects / 0 mismatches;
 REMAINING: folded scalars (>), chomp indicators, escaped quotes,
 multiline quotes, explicit-key (? k) forms, tagged values — all still
 engine-route. The JSON front (item 07, simdjson parity) is next.
+
+### The post-value-arms referee (ubuntu-latest, release, interleaved medians)
+
+The head-to-head table after PR #444 — the fused runner cleared the 3x
+bar on the entire nested-block family and json-doc:
+
+| shape | yeptris DOM | vs ryml |
+|---|---|---|
+| json-doc | 280.45 | 3.58x |
+| block-heavy | 337.16 | 3.31x |
+| deep-nesting | 845.23 | 3.22x |
+| wide-mapping | 469.64 | 3.22x |
+| flow-json | 212.50 | 2.75x |
+| flow-single | 292.01 | 2.69x |
+| scalar-heavy | 845.61 | 2.54x |
+| json-users | 308.91 | 2.50x |
+| anchor-heavy | 226.74 | 2.32x |
+
+vs simdjson (json-doc interleaved): **parse_json DOM 1.03x** (955 MB/s)
+and 0.93x on the second corpus — DOM-lane parity reached; the tape
+route reads 0.62-0.79x and stays the binding-side lever.
+
+Dead end (measured, not landed): replacing the pair arm's two libc
+memchr calls (terminating-colon check + comment search) with a
+self-contained SWAR mini-scan measured NEUTRAL on scalar-heavy
+(890 vs 895 MB/s alternated) and neutral-positive on block/anchor —
+the calls were not the per-line cost. Extending the MAIN sweep with
+last-colon/first-hash facts REGRESSED scalar-heavy ~16% (two more
+64-bit live values spill in the hot loop). Both reverted; the facts
+belong in a rewrite of the sweep's register budget, not a patch.
+
+Where the remaining gaps live: the fixed per-line floor (~50-60ns:
+sweep + dispatch + yt_puts) dominates the short-line shapes
+(anchor-heavy 13.7 B/line, 48ns/line — the anchor table and resolver
+bake measured ~10-15% combined); the flow-family DOM lane pays the
+replay's full node materialization. Next campaign: the flow-DOM
+replay (three shapes in the 2.5-2.75 band), then the anchor lane's
+record forms.
