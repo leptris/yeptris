@@ -46,6 +46,7 @@ typedef struct yep_ytape {
     uint32_t flow_mark;    /* record mark for the staged flow build */
     struct yep_pool* pool; /* fused block-scalar content (owned by the doc
                             * after a successful run; NULL on the engine route) */
+    void* flow_scratch;    /* the flow classifier's reused json-tape scratch */
 } yep_ytape;
 
 /* Record kinds — byte 7 of a word. */
