@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+- **parse: the fused block runner owns nested block YAML** — deep
+  nesting, indentless/nested sequences, sibling maps after child
+  closes, and null-resolved pending keys now run the fused SWAR
+  runner instead of falling back to the engine. The frame model
+  mirrors the engine's tape emission exactly (strict dedents,
+  per-column phantom content maps, null scalars for same-column
+  siblings, the repeat-alias memo). Deep-nesting parses 3.09x the
+  eager route (1078 MB/s DOM); wide-mapping holds 2.06x; byte-exact
+  tape differential over the yaml-test-suite inputs.
+
 ## [0.6.26] - 2026-09-27
 ### Fixed
 - **parse: NEL/LS/PS documents no longer dangle** — the one-shot
