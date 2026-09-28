@@ -2376,3 +2376,45 @@ inputs byte-exact (was 9), 221 clean bails, 0 mismatches; 397/397.
 NEXT: block-heavy still bails (block scalars, quoted values); the
 anchored-container two-SCALAR arm, the quoted two-SCALAR arm, and
 the block-scalar POOL form extend ownership further.
+
+### Fused runner: value arms — ALL block-family corpora owned (item 79)
+
+Four arms + one leak fix; the fused runner now owns every block-family
+corpus byte-exactly (block-heavy 1,012,934 / anchor-heavy 479,687 /
+scalar-heavy 185,342 / wide 600,006 / deep 17,089 words):
+
+- Dead-slot reuse: a spent key-SCALAR frame (resolved, phantom closed,
+  no own map) gives its slot to the next sibling pending — chained
+  same-column pendings grew the frame stack one per record and hit the
+  256-frame guard at ~record 254 (block-heavy's mystery bail).
+- Quoted values: the two-SCALAR form (plain key + styled value with
+  the INNER span, quotes stripped). Escapes, multiline quotes, the ''
+  escape, and trailing content bail; a comment after the close needs
+  separating whitespace ("v"#c is content — the fuzz harness caught
+  the wrongly-accepted form as an emit trap).
+- Literal blocks (bare |, clip chomp): S2900 key + SCALAR(0x0400) +
+  the POOL form; the content copies into a per-run yep_pool transferred
+  to doc->finish_pool (the engine's pool contract). Blank lines with
+  spaces past the block indent are CONTENT (L24T/H2RW); only
+  stripped-empty trailing lines clip away. Chomp indicators, folded,
+  and explicit indents bail.
+- Anchored containers: the key-SCALAR + anchored START event (map or
+  seq) with the anchor span; the FIRST pair/item inside rides the
+  two-SCALAR form with the ENGINE's tag classification (the resolver
+  threads into ytap_fused_run); subsequent pairs are normal. The
+  anchored frame pops on the CONTENT column. The root's content
+  column is set so following sibling pendings take the SCALAR form.
+- The anchor table: 64k slots, heap-allocated on the first definition
+  (anchor-heavy's 40k unique names overflowed 4096); an alias before
+  any definition bails (NULL-table guard — the error-parity suite
+  caught the segfault).
+
+A/B (dev release build, order-alternated, noisy laptop): block-heavy
+~400-430 MB/s DOM (was 175 fallback), scalar-heavy 550, anchor-heavy
+230 = 2.80x eager (was 1.14x fallback), deep-nesting 1104, wide 506.
+Suite differential: 16 exact / 220 bails / 108 rejects / 0 mismatches;
+397/397 tests.
+
+REMAINING: folded scalars (>), chomp indicators, escaped quotes,
+multiline quotes, explicit-key (? k) forms, tagged values — all still
+engine-route. The JSON front (item 07, simdjson parity) is next.

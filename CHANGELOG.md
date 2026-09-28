@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Changed
+- **parse: the fused block runner owns every block-family shape** —
+  quoted values, literal block scalars, and anchored containers join
+  the owned set, and chained same-column pendings no longer leak a
+  frame per record (the 256-frame guard at ~254 documents was
+  block-heavy's silent bail). block-heavy, scalar-heavy, and
+  anchor-heavy now run the fused SWAR runner end-to-end
+  (block-heavy ~2.4x, scalar-heavy ~4x, anchor-heavy 2.8x their eager
+  routes); block-scalar content rides a per-run pool transferred to
+  the document, and the first pair inside an anchored container bakes
+  the engine's tag classification via the threaded resolver.
+  Byte-exact tape differential over all five block-family corpora and
+  the yaml-test-suite inputs.
 - **parse: the fused block runner owns nested block YAML** — deep
   nesting, indentless/nested sequences, sibling maps after child
   closes, and null-resolved pending keys now run the fused SWAR

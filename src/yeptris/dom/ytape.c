@@ -19,6 +19,8 @@
 
 #include "dom/dom.h"
 #include "memory/allocator.h"
+#include "memory/pool.h"
+#include "resolve/resolver.h"
 #include "scan/json.h"
 #include "scan/scan.h"
 #include "ytape.h"
@@ -657,7 +659,7 @@ int dom_from_ytape(yep_dom* d, const yep_ytape* t) {
  * "key:" at EOF or mid-doc, undefined aliases, root sequences. */
 
 #define YT_FUSED_MAX_FRAMES 256
-#define YT_FUSED_ANCHORS 4096
+#define YT_FUSED_ANCHORS 65536
 
 typedef struct {
     uint32_t indent; /* the frame's key column */
@@ -669,7 +671,9 @@ typedef struct {
     uint8_t phantom;      /* a content map opened by this frame's pairs is still live */
     uint32_t content_col; /* the column this frame's pairs live at, +1 (0 = none) */
     uint32_t key_off, key_len;
-    uint32_t aid; /* anchor ordinal on the pending container (bails) */
+    uint32_t aid;           /* anchor ordinal on the pending container */
+    uint32_t a_off, a_len;  /* the pending anchor's name span */
+    uint8_t anchored_first; /* the first pair/item rides the two-SCALAR form */
 } yt_frame;
 
 typedef struct {
@@ -677,18 +681,21 @@ typedef struct {
     const char* p;
     size_t len;
     uint32_t anchor_seq;
+    const yep_resolver* resolver; /* the first pair inside an anchored container
+                                   * bakes the engine's tag classification */
+    yep_pool* pool;               /* block-scalar content (transferred to the doc) */
     /* the repeat-alias memo (engine anchor_id_of): the last alias
      * resolution answers by name bytes before any probe, and anchor
      * definitions never invalidate it — re-aliasing after a
      * redefinition still reports the memoized ordinal */
     uint32_t memo_off, memo_len, memo_ord;
     /* anchor name -> ordinal (the alias records carry the target's
-     * id; a miss bails: the engine owns undefined aliases). Fixed
-     * size (MSVC has no flexible array members); the struct is
-     * heap-allocated per run. */
+     * id; a miss bails: the engine owns undefined aliases). The table
+     * is heap-allocated on the first definition — small parses never
+     * pay for the 64k slots anchor-heavy documents need. */
     struct {
         uint32_t off, len, aid;
-    } anchors[YT_FUSED_ANCHORS];
+    }* anchors;
 } yt_fused;
 
 /* Frame model (engine-verified): st[] frames are the engine's *silent*
@@ -706,6 +713,18 @@ static uint32_t yt_anchor_hash(const char* p, uint32_t off, uint32_t len) {
         h = (h ^ (unsigned char)p[off + i]) * 16777619u;
     }
     return h;
+}
+
+static int yt_anchor_table(yt_fused* F) {
+    if (F->anchors == NULL) {
+        F->anchors =
+            (void*)yep_alloc(yep_system_allocator(), YT_FUSED_ANCHORS * sizeof(*F->anchors));
+        if (F->anchors == NULL) {
+            return 0;
+        }
+        memset(F->anchors, 0, YT_FUSED_ANCHORS * sizeof(*F->anchors));
+    }
+    return 1;
 }
 
 static void yt_anchor_put(yt_fused* F, uint32_t off, uint32_t len, uint32_t aid) {
@@ -728,6 +747,9 @@ static void yt_anchor_put(yt_fused* F, uint32_t off, uint32_t len, uint32_t aid)
 }
 
 static int yt_anchor_get(yt_fused* F, uint32_t off, uint32_t len, uint32_t* aid) {
+    if (F->anchors == NULL) {
+        return 0; /* no definitions yet: the engine owns the error */
+    }
     if (F->memo_len != 0 && F->memo_len == len &&
         memcmp(F->p + F->memo_off, F->p + off, len) == 0) {
         *aid = F->memo_ord;
@@ -898,16 +920,47 @@ static int yt_f_run(yt_fused* F) {
                 if (depth >= YT_FUSED_MAX_FRAMES - 1) {
                     return 1; /* the frame stack is full: the engine route */
                 }
-                uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
-                yt_f_open(F, &st[depth], of);
-                root_open = 1;
-                st[depth].pending = 0;
+                int anchored = st[depth].aid != 0;
+                if (anchored) {
+                    /* anchored sequence: S2900 key + the anchored SEQ start */
+                    if (depth == 1) {
+                        if (!root_open) {
+                            (void)yt_put(t, yt_props(YTP_EVENT, 0, 7u));
+                            yt_f_empty_span(F);
+                            t->depth++;
+                            root_open = 1;
+                            root_evented = 1;
+                            st[0].started = 1;
+                        }
+                    } else if (!st[depth - 1].started && col != st[depth - 1].indent) {
+                        yt_f_start(F, &st[depth - 1]);
+                    }
+                    uint32_t xaid = st[depth].aid;
+                    uint32_t xoff = st[depth].a_off;
+                    uint32_t xlen = st[depth].a_len;
+                    (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u));
+                    (void)yt_put(t, yt_span_in(st[depth].key_off, st[depth].key_len, YTP_SPAN_IN));
+                    (void)yt_put(t, yt_props(YTP_EVENT, xaid, 5u | (1u << 13)));
+                    yt_f_empty_span(F);
+                    (void)yt_put(t, yt_span_in(xoff, xlen, YTP_SPAN_IN));
+                    st[depth].pending = 0; /* the seq frame shadows this slot */
+                } else {
+                    uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
+                    yt_f_open(F, &st[depth], of);
+                    root_open = 1;
+                    st[depth].pending = 0;
+                }
                 depth++;
                 memset(&st[depth], 0, sizeof(st[depth]));
                 st[depth].kind = 1;
                 st[depth].indent = col;
                 st[depth].own_map = 1;
-                yt_f_start(F, &st[depth]);
+                st[depth].anchored_first = (uint8_t)anchored;
+                if (anchored) {
+                    st[depth].started = 1; /* the E5 went out above */
+                } else {
+                    yt_f_start(F, &st[depth]);
+                }
             } else {
                 while (depth > 0 && (st[depth].kind == 1 ? (col < st[depth].indent ||
                                                             (col <= st[depth].indent && !dash))
@@ -957,7 +1010,14 @@ static int yt_f_run(yt_fused* F) {
                             }
                         }
                     }
-                    (void)yt_put(t, yt_span_in((uint32_t)vt, vend - (uint32_t)vt, YTP_ITEM));
+                    if (st[depth].anchored_first && F->resolver != NULL) {
+                        yep_tag_id tid = F->resolver->resolve(F->resolver->ctx, p + vt, vend - vt);
+                        (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u | (uint32_t)tid));
+                        (void)yt_put(t, yt_span_in((uint32_t)vt, vend - (uint32_t)vt, YTP_SPAN_IN));
+                        st[depth].anchored_first = 0;
+                    } else {
+                        (void)yt_put(t, yt_span_in((uint32_t)vt, vend - (uint32_t)vt, YTP_ITEM));
+                    }
                     if (!st[depth].content_col) {
                         st[depth].content_col = col + 1;
                     }
@@ -998,6 +1058,9 @@ static int yt_f_run(yt_fused* F) {
                     alen = (uint32_t)(ne - vt - 1);
                     F->anchor_seq++;
                     aid = F->anchor_seq;
+                    if (!yt_anchor_table(F)) {
+                        return 1;
+                    }
                     yt_anchor_put(F, aoff, alen, aid);
                     vt = ne;
                     while (vt < line_end && (p[vt] == ' ' || p[vt] == '\t')) {
@@ -1005,10 +1068,9 @@ static int yt_f_run(yt_fused* F) {
                     }
                 }
                 if (vt >= line_end || p[vt] == '#') {
-                    /* "key:" with a following-lines container: push pending */
-                    if (aid != 0) {
-                        return 1; /* anchored container: the engine route */
-                    }
+                    /* "key:" with a following-lines container: push pending
+                     * (aid rides it: an anchored container resolves through
+                     * the S2900 + anchored-start form, not on_block_open) */
                     if (st[depth].kind == 0 && st[depth].content_col != 0 &&
                         col + 1 != st[depth].content_col && col != st[depth].indent) {
                         return 1; /* off-column: a continuation line — the multiline arm */
@@ -1018,27 +1080,75 @@ static int yt_f_run(yt_fused* F) {
                         yt_f_close(F, st[depth].kind);
                         st[depth].phantom = 0;
                     }
-                    if (depth >= YT_FUSED_MAX_FRAMES - 1) {
-                        return 1;
-                    }
                     if (depth > 0 && st[depth].pending) {
                         uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
                         yt_f_open(F, &st[depth], of);
                         root_open = 1;
                         st[depth].pending = 0;
                     }
-                    depth++;
+                    /* a spent key-SCALAR frame (resolved, phantom closed,
+                     * no map of its own) gives its slot to the sibling —
+                     * chained same-column pendings would otherwise grow
+                     * the stack by one per record (the frame-full bail) */
+                    if (!(depth > 0 && !st[depth].pending && !st[depth].phantom &&
+                          !st[depth].own_map)) {
+                        if (depth >= YT_FUSED_MAX_FRAMES - 1) {
+                            return 1;
+                        }
+                        depth++;
+                    }
                     memset(&st[depth], 0, sizeof(st[depth]));
                     st[depth].indent = col;
                     st[depth].pending = 1;
                     st[depth].key_off = (uint32_t)t0;
                     st[depth].key_len = kend - (uint32_t)t0;
+                    st[depth].aid = aid;
+                    st[depth].a_off = aoff;
+                    st[depth].a_len = alen;
+                    st[depth].anchored_first = (uint8_t)(aid != 0);
                 } else {
                     if (st[depth].kind == 0 && st[depth].content_col != 0 &&
                         col + 1 != st[depth].content_col && col != st[depth].indent) {
                         return 1; /* off-column: a continuation line — the multiline arm */
                     }
-                    if (depth > 0 && st[depth].pending) {
+                    if (depth > 0 && st[depth].pending && st[depth].aid != 0) {
+                        /* an anchored container resolves through the event
+                         * path: the parent's content map opens for the key
+                         * first, then the key SCALAR + the anchored start */
+                        if (depth == 1) {
+                            if (!root_open) {
+                                (void)yt_put(t, yt_props(YTP_EVENT, 0, 7u));
+                                yt_f_empty_span(F);
+                                t->depth++;
+                                root_open = 1;
+                                root_evented = 1;
+                                st[0].started = 1;
+                            }
+                            /* the root now has content: later sibling pendings
+                             * take the key-SCALAR form, not OPEN */
+                            if (st[0].content_col == 0) {
+                                st[0].content_col = st[depth].indent + 1;
+                            }
+                        } else if (!st[depth - 1].started && col != st[depth - 1].indent) {
+                            yt_f_start(F, &st[depth - 1]);
+                        }
+                        uint32_t xaid = st[depth].aid;
+                        uint32_t xoff = st[depth].a_off;
+                        uint32_t xlen = st[depth].a_len;
+                        (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u));
+                        (void)yt_put(t,
+                                     yt_span_in(st[depth].key_off, st[depth].key_len, YTP_SPAN_IN));
+                        (void)yt_put(t, yt_props(YTP_EVENT, xaid, 7u | (1u << 13)));
+                        yt_f_empty_span(F);
+                        (void)yt_put(t, yt_span_in(xoff, xlen, YTP_SPAN_IN));
+                        memset(&st[depth], 0, sizeof(st[depth]));
+                        st[depth].indent = col; /* the engine's frame pops on the CONTENT
+                                                 * column, not the anchored key's */
+                        st[depth].own_map = 1;
+                        st[depth].started = 1;
+                        st[depth].anchored_first = 1;
+                        t->depth++;
+                    } else if (depth > 0 && st[depth].pending) {
                         uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
                         yt_f_open(F, &st[depth], of);
                         root_open = 1;
@@ -1073,8 +1183,8 @@ static int yt_f_run(yt_fused* F) {
                     }
                     unsigned char vc = (unsigned char)p[vt];
                     uint32_t flags;
-                    if (vc == '*' && aid != 0) {
-                        return 1; /* an anchored alias: the engine owns it */
+                    if ((vc == '*' && aid != 0) || (vc == '*' && st[depth].anchored_first)) {
+                        return 1; /* an anchored/first alias: the engine owns it */
                     }
                     if (vc == '*') {
                         size_t ne = vt + 1;
@@ -1097,6 +1207,157 @@ static int yt_f_run(yt_fused* F) {
                         if (!st[depth].content_col) {
                             st[depth].content_col = col + 1;
                         }
+                        goto line_done;
+                    }
+                    if ((vc == '"' || vc == '\'') && aid == 0) {
+                        /* same-line quoted value: the two-SCALAR form (the
+                         * key plain + the styled value, quotes stripped);
+                         * escapes and multiline quotes stay with the engine */
+                        size_t ce = vt + 1;
+                        int esc = 0;
+                        while (ce < line_end) {
+                            if (p[ce] == '\\') {
+                                esc = 1;
+                                break;
+                            }
+                            if (p[ce] == vc) {
+                                break;
+                            }
+                            ce++;
+                        }
+                        if (ce >= line_end || esc) {
+                            return 1; /* unterminated or escaped: the engine */
+                        }
+                        if (vc == '\'' && ce + 1 < line_end && p[ce + 1] == '\'') {
+                            return 1; /* the '' escape: the engine */
+                        }
+                        size_t te = ce + 1;
+                        while (te < line_end && (p[te] == ' ' || p[te] == '\t')) {
+                            te++;
+                        }
+                        /* a comment needs separating whitespace — "#"
+                         * glued to the quote is content (the engine errors) */
+                        if (te < line_end && (p[te] != '#' || te == ce + 1)) {
+                            return 1; /* trailing content after the close */
+                        }
+                        (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u));
+                        (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
+                        (void)yt_put(t, yt_props(YTP_SCALAR, 0, vc == '"' ? 0x2300u : 0x2200u));
+                        (void)yt_put(t, yt_span_in((uint32_t)(vt + 1), (uint32_t)(ce - vt - 1),
+                                                   YTP_SPAN_IN));
+                        st[depth].anchored_first = 0;
+                        if (!st[depth].content_col) {
+                            st[depth].content_col = col + 1;
+                        }
+                        goto line_done;
+                    }
+                    if (vc == '|' && aid == 0 && !st[depth].anchored_first &&
+                        (vt + 1 >= line_end || p[vt + 1] == ' ' || p[vt + 1] == '\t')) {
+                        /* bare literal block, clip chomp: measure the block,
+                         * copy it into the finish pool, emit the pool form */
+                        size_t scan = next;
+                        uint32_t bindent = 0;
+                        int have_bi = 0, have_content = 0;
+                        size_t clen = 0, tb = 0;
+                        size_t end_scan = scan;
+                        while (scan < len) {
+                            size_t ls = scan;
+                            size_t le = ls;
+                            while (le < len && p[le] != '\n' && p[le] != '\r') {
+                                le++;
+                            }
+                            size_t ie = ls;
+                            while (ie < le && p[ie] == ' ') {
+                                ie++;
+                            }
+                            if (ie == le) {
+                                /* a blank line: spaces past the block indent are
+                                 * CONTENT; only stripped-empty lines clip away */
+                                size_t ind = ie - ls;
+                                size_t res = have_bi && ind > bindent ? ind - bindent : 0;
+                                clen += res + 1;
+                                if (res == 0) {
+                                    tb += 1;
+                                } else {
+                                    tb = 0;
+                                }
+                            } else {
+                                uint32_t ind = (uint32_t)(ie - ls);
+                                if (!have_bi) {
+                                    if (ind <= col) {
+                                        break; /* dedented past the block */
+                                    }
+                                    bindent = ind;
+                                    have_bi = 1;
+                                } else if (ind < bindent) {
+                                    break; /* the block ends */
+                                }
+                                if (memchr(p + ls, '\t', le - ls) != NULL) {
+                                    return 1; /* tabs: the engine's error */
+                                }
+                                clen += (le - (ls + bindent)) + 1;
+                                have_content = 1;
+                                tb = 0;
+                            }
+                            end_scan =
+                                (le < len && p[le] == '\r' && le + 1 < len) ? le + 2 : le + 1;
+                            scan = end_scan;
+                        }
+                        if (!have_content) {
+                            return 1; /* empty/blank-only block: the engine */
+                        }
+                        size_t flen = clen - tb; /* clip: the trailing stripped-empty lines */
+                        if (F->pool == NULL) {
+                            F->pool = yep_pool_create(yep_system_allocator(), 4096);
+                            if (F->pool == NULL) {
+                                return 1;
+                            }
+                        }
+                        char* dst = (char*)yep_pool_alloc(F->pool, flen, 16);
+                        if (dst == NULL) {
+                            return 1;
+                        }
+                        {
+                            char* q = dst;
+                            size_t s2 = next;
+                            while (s2 < scan) {
+                                size_t ls = s2;
+                                size_t le = ls;
+                                while (le < len && p[le] != '\n' && p[le] != '\r') {
+                                    le++;
+                                }
+                                size_t ie = ls;
+                                while (ie < le && p[ie] == ' ') {
+                                    ie++;
+                                }
+                                if (ie == le) {
+                                    size_t ind = ie - ls;
+                                    size_t res = have_bi && ind > bindent ? ind - bindent : 0;
+                                    if (res > 0) {
+                                        memset(q, ' ', res);
+                                        q += res;
+                                    }
+                                    *q++ = '\n';
+                                } else {
+                                    memcpy(q, p + ls + bindent, le - (ls + bindent));
+                                    q += le - (ls + bindent);
+                                    *q++ = '\n';
+                                }
+                                s2 = (le < len && p[le] == '\r' && le + 1 < len) ? le + 2 : le + 1;
+                            }
+                            if ((size_t)(q - dst) != clen) {
+                                return 1; /* measure/copy drift: bail, not corrupt */
+                            }
+                        }
+                        (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u));
+                        (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
+                        (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x0400u));
+                        (void)yt_put(t, ((uint64_t)YTP_SPAN_POOL << 56) | (uint64_t)flen);
+                        (void)yt_put(t, (uint64_t)(uintptr_t)dst);
+                        if (!st[depth].content_col) {
+                            st[depth].content_col = col + 1;
+                        }
+                        next = scan;
                         goto line_done;
                     }
                     if (vc == '"' || vc == '\'' || vc == '|' || vc == '>' || vc == '[' ||
@@ -1130,6 +1391,23 @@ static int yt_f_run(yt_fused* F) {
                     }
                     while (vend > vt && (p[vend - 1] == ' ' || p[vend - 1] == '\t')) {
                         vend--;
+                    }
+                    if (st[depth].anchored_first) {
+                        /* the first pair inside an anchored container: the
+                         * two-SCALAR form with the engine's tag bake */
+                        if (aid != 0 || F->resolver == NULL) {
+                            return 1;
+                        }
+                        yep_tag_id tid = F->resolver->resolve(F->resolver->ctx, p + vt, vend - vt);
+                        (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u));
+                        (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
+                        (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u | (uint32_t)tid));
+                        (void)yt_put(t, yt_span_in((uint32_t)vt, vend - (uint32_t)vt, YTP_SPAN_IN));
+                        st[depth].anchored_first = 0;
+                        if (!st[depth].content_col) {
+                            st[depth].content_col = col + 1;
+                        }
+                        goto line_done;
                     }
                     if (aid != 0) {
                         flags = 4u | (1u << 3) | (1u << 4);
@@ -1178,7 +1456,7 @@ static int yt_f_run(yt_fused* F) {
     return 0;
 }
 
-int ytap_fused_run(yep_ytape* t) {
+int ytap_fused_run(yep_ytape* t, const yep_resolver* resolver) {
     yt_fused* F = (yt_fused*)yep_alloc(yep_system_allocator(), sizeof(*F));
     if (F == NULL) {
         return 1; /* allocation refused: the engine route */
@@ -1187,13 +1465,22 @@ int ytap_fused_run(yep_ytape* t) {
     F->t = t;
     F->p = t->input;
     F->len = t->input_len;
+    F->resolver = resolver;
     size_t mark = t->count;
     int rc = yt_f_run(F);
+    yep_free(yep_system_allocator(), F->anchors);
     yep_free(yep_system_allocator(), F);
     if (rc != 0) {
         t->count = (uint32_t)mark; /* unwind: the caller resets and re-runs */
         t->depth = 0;
+        if (t->pool != NULL) {
+            yep_pool_destroy(t->pool);
+            t->pool = NULL;
+        }
         return 1;
+    }
+    if (F->pool != NULL) {
+        t->pool = F->pool; /* transferred to the document with the tape */
     }
     return 0;
 }

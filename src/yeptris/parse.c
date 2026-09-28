@@ -403,7 +403,9 @@ engine_enter:
                           .on_block_item = dom_on_block_item};
     }
     int rc = 0;
-    if (have_tape && ytap_fused_run(&yt) == 0) {
+    if (have_tape && ytap_fused_run(&yt, (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
+                                             ? yep_resolver_compat11()
+                                             : yep_resolver_core12()) == 0) {
         /* the fused block runner owned the whole document — the engine
          * never runs (TODO.restructure/79). Its only cost was the parse
          * front-end above; on a bail it unwound and the engine runs. */
@@ -491,6 +493,10 @@ engine_enter:
             goto fail;
         }
         *heap_tape = yt;
+        if (yt.pool != NULL && doc->finish_pool == NULL) {
+            doc->finish_pool = yt.pool; /* fused block-scalar content: the
+                                         * document owns it until replay copies */
+        }
         doc->dom = NULL;
         doc->lazy_tape = heap_tape;
         doc->lazy_kind = 1;
