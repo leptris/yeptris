@@ -640,3 +640,487 @@ int dom_from_ytape(yep_dom* d, const yep_ytape* t) {
     }
     return 0;
 }
+
+/* ---- the fused block runner (TODO.restructure/79, session 3) -------
+ *
+ * ONE SWAR sweep per line + inline classification + an indent stack,
+ * emitting the same record stream the engine's sink would — without
+ * the engine. Byte-exact against the engine over the block-family
+ * corpora (wide 600k / block 1.0M / deep 17k words, differential
+ * pinned by the FusedTape test). Any line the loop does not own bails
+ * to 1 and the caller re-runs the engine route (restart fallback).
+ *
+ * Bails (the engine route owns them): quoted/tagged/flow/folded/block
+ * scalar values, compact map items, anchored CONTAINER keys (the
+ * first pair inside one rides a two-SCALAR form with content-typed
+ * tag ids — capture before owning), doc markers/directives, empty
+ * "key:" at EOF or mid-doc, undefined aliases, root sequences. */
+
+#define YT_FUSED_MAX_FRAMES 256
+
+typedef struct {
+    uint32_t indent;      /* COLUMN */
+    uint8_t kind;         /* 0 map, 1 seq */
+    uint8_t pending;      /* a "key:" awaiting its child */
+    uint8_t started;      /* the start event went out */
+    uint8_t emitted;      /* a pair/item/child landed here */
+    uint32_t content_col; /* the column this frame's pairs live at */
+    uint32_t key_off, key_len;
+    uint32_t aid; /* anchor ordinal on the pending container (bails) */
+} yt_frame;
+
+typedef struct {
+    yep_ytape* t;
+    const char* p;
+    size_t len;
+    uint32_t anchor_seq;
+    int parent_emitted;
+    /* anchor name -> ordinal (the alias records carry the target's
+     * id; a miss bails: the engine owns undefined aliases) */
+    struct {
+        uint32_t off, len, aid;
+    } anchors[0];
+} yt_fused;
+
+/* a fixed 4096-slot linear-probe table: the corpus bound is one entry
+ * per '&' in the input; overflow or collision-chain saturation bails
+ * (the engine route resolves names itself) */
+#define YT_FUSED_ANCHORS 4096
+
+static uint32_t yt_anchor_hash(const char* p, uint32_t off, uint32_t len) {
+    uint32_t h = 2166136261u;
+    for (uint32_t i = 0; i < len; i++) {
+        h = (h ^ (unsigned char)p[off + i]) * 16777619u;
+    }
+    return h;
+}
+
+static void yt_anchor_put(yt_fused* F, uint32_t off, uint32_t len, uint32_t aid) {
+    uint32_t m = YT_FUSED_ANCHORS - 1;
+    uint32_t i = yt_anchor_hash(F->p, off, len) & m;
+    for (uint32_t n = 0; n < 64; n++) {
+        if (F->anchors[i].len == 0) {
+            F->anchors[i].off = off;
+            F->anchors[i].len = len;
+            F->anchors[i].aid = aid;
+            return;
+        }
+        if (F->anchors[i].len == len && memcmp(F->p + F->anchors[i].off, F->p + off, len) == 0) {
+            F->anchors[i].aid = aid; /* redefinition: latest wins */
+            return;
+        }
+        i = (i + 1) & m;
+    }
+    /* chain too long: leave unfindable — aliases to it will bail */
+}
+
+static int yt_anchor_get(const yt_fused* F, uint32_t off, uint32_t len, uint32_t* aid) {
+    uint32_t m = YT_FUSED_ANCHORS - 1;
+    uint32_t i = yt_anchor_hash(F->p, off, len) & m;
+    for (uint32_t n = 0; n < 64; n++) {
+        if (F->anchors[i].len == 0) {
+            return 0;
+        }
+        if (F->anchors[i].len == len && memcmp(F->p + F->anchors[i].off, F->p + off, len) == 0) {
+            *aid = F->anchors[i].aid;
+            return 1;
+        }
+        i = (i + 1) & m;
+    }
+    return 0;
+}
+
+static void yt_f_empty_span(yt_fused* F) {
+    /* the dead value-span pair the container events always carry */
+    (void)yt_put(F->t, ((uint64_t)YTP_SPAN_POOL << 56) | 0u);
+    (void)yt_put(F->t, 0);
+}
+
+static void yt_f_start(yt_fused* F, yt_frame* fr) {
+    if (fr->started) {
+        return;
+    }
+    fr->started = 1;
+    (void)yt_put(F->t, yt_props(YTP_EVENT, 0, fr->kind == 1 ? 5u : 7u));
+    yt_f_empty_span(F);
+}
+
+static void yt_f_close(yt_fused* F, uint8_t kind) {
+    (void)yt_put(F->t, yt_props(YTP_EVENT, 0, kind == 1 ? 6u : 8u));
+    yt_f_empty_span(F);
+    F->t->depth--;
+}
+
+/* resolve a pending "key:": OPEN for a fresh parent, else the
+ * key-SCALAR form; the start defers to the first content inside */
+static void yt_f_open(yt_fused* F, yt_frame* fr, uint8_t seq) {
+    if (!seq && fr->aid == 0 && fr->key_len < 0x1000000u && fr->key_off <= F->t->input_len &&
+        !F->parent_emitted) {
+        (void)yt_put(F->t, yt_span_in(fr->key_off, fr->key_len, YTP_OPEN));
+        fr->started = 0;
+    } else {
+        (void)yt_put(F->t, yt_props(YTP_SCALAR, 0, 0x2900u));
+        (void)yt_put(F->t, yt_span_in(fr->key_off, fr->key_len, YTP_SPAN_IN));
+        fr->started = 0;
+    }
+    F->t->depth++;
+}
+
+static int yt_f_run(yt_fused* F) {
+    const char* p = F->p;
+    size_t len = F->len;
+    yep_ytape* t = F->t;
+    yt_frame st[YT_FUSED_MAX_FRAMES];
+    int depth = 0;
+    memset(&st[0], 0, sizeof(st[0]));
+    int root_open = 0;
+    (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 1u);
+    (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 3u);
+    size_t pos = 0;
+    while (pos < len) {
+        /* the sweep: one NUL-padded SWAR walk per line */
+        const uint64_t k_nl = 0x0A0A0A0A0A0A0A0Aull, k_cr = 0x0D0D0D0D0D0D0D0Dull,
+                       k_sp = 0x2020202020202020ull, k_co = 0x3A3A3A3A3A3A3A3Aull,
+                       k_ha = 0x2323232323232323ull;
+        size_t whole = len - pos;
+        size_t end = whole, indent = whole, stop = whole;
+        int have_indent = 0, stop_set = 0, have_end = 0;
+        size_t i = 0;
+        while (i < whole) {
+            size_t avail = whole - i < 8 ? whole - i : 8;
+            uint64_t x;
+            if (avail == 8) {
+                memcpy(&x, p + pos + i, 8);
+            } else {
+                char buf[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+                memcpy(buf, p + pos + i, avail);
+                memcpy(&x, buf, 8);
+            }
+            uint64_t valid = avail == 8 ? ~(uint64_t)0 : (((uint64_t)1 << (avail * 8)) - 1);
+            uint64_t br = (yep_swar_eq8(x, k_nl) | yep_swar_eq8(x, k_cr)) & valid;
+            uint64_t room = (br ? ((br & (~br + 1)) - 1) : valid) & YEP_SWAR_FLAGS & valid;
+            if (!have_indent) {
+                uint64_t nons = ~(yep_swar_eq8(x, k_sp)) & room;
+                if (nons) {
+                    indent = i + (size_t)(yep_ctz64(nons) >> 3);
+                    have_indent = 1;
+                }
+            }
+            if (have_indent && !stop_set) {
+                uint64_t stm = (yep_swar_eq8(x, k_co) | yep_swar_eq8(x, k_ha)) & room;
+                if (stm) {
+                    size_t cand = i + (size_t)(yep_ctz64(stm) >> 3);
+                    if (cand >= indent) {
+                        stop = cand;
+                        stop_set = 1;
+                    }
+                }
+            }
+            if (br) {
+                end = i + (size_t)(yep_ctz64(br) >> 3);
+                have_end = 1;
+                break;
+            }
+            i += 8;
+        }
+        if (!have_indent) {
+            indent = end;
+        }
+        if (!stop_set) {
+            stop = end;
+        }
+        uint32_t line_end = (uint32_t)(pos + end);
+        uint32_t line_indent = (uint32_t)(pos + indent);
+        uint32_t line_stop = (uint32_t)(pos + stop);
+        uint8_t blank = (uint8_t)(indent >= end);
+        unsigned char c = blank ? 0 : (unsigned char)p[line_indent];
+        uint8_t comment =
+            (uint8_t)(c == '#' && (line_indent == 0 || p[line_indent - 1] == ' ' ||
+                                   p[line_indent - 1] == '\t' || p[line_indent - 1] == '\n'));
+        uint8_t dash = 0;
+        if (c == '-' && line_indent + 1 < line_end) {
+            unsigned char n1 = (unsigned char)p[line_indent + 1];
+            if (n1 == ' ' || n1 == '\t') {
+                dash = 1;
+            }
+        }
+        size_t next = line_end < len ? (size_t)line_end + 1 : len;
+        if (!blank && !comment) {
+            size_t t0 = line_indent;
+            uint32_t col = (uint32_t)(line_indent - pos);
+            if (c == '\t') {
+                return 1; /* tab-led content: the engine's error */
+            }
+            if (dash && depth > 0 && st[depth].pending && col >= st[depth].indent) {
+                st[depth].kind = 1;
+                st[depth].indent = col;
+                F->parent_emitted = depth >= 1 ? st[depth - 1].emitted : root_open;
+                yt_f_open(F, &st[depth], 1);
+                yt_f_start(F, &st[depth]);
+                root_open = 1;
+                st[depth].pending = 0;
+                if (depth >= 1) {
+                    st[depth - 1].emitted = 1; /* NOT content_col: item
+                                                * columns are not the parent's pair column */
+                }
+            } else {
+                while (depth > 0 && (st[depth].kind == 1 ? (col < st[depth].indent ||
+                                                            (col <= st[depth].indent && !dash))
+                                                         : col <= st[depth].indent)) {
+                    if (st[depth].pending) {
+                        return 1; /* empty "key:" mid-doc: the engine owns it */
+                    }
+                    yt_f_close(F, st[depth].kind);
+                    depth--;
+                }
+            }
+            if (dash) {
+                if (st[depth].kind == 1 && col >= st[depth].indent) {
+                    yt_f_start(F, &st[depth]);
+                    size_t vt = t0 + 1;
+                    while (vt < line_end && (p[vt] == ' ' || p[vt] == '\t')) {
+                        vt++;
+                    }
+                    uint32_t vend = line_end;
+                    while (vend > vt && (p[vend - 1] == ' ' || p[vend - 1] == '\t')) {
+                        vend--;
+                    }
+                    if (vend == vt) {
+                        return 1; /* empty item */
+                    }
+                    unsigned char vc = (unsigned char)p[vt];
+                    if (vc == '"' || vc == '\'' || vc == '*' || vc == '&' || vc == '[' ||
+                        vc == '{' || vc == '!' || vc == '|' || vc == '>' || vc == '%' ||
+                        vc == '?') {
+                        return 1;
+                    }
+                    if (vc == '-' && vt + 1 < line_end && (p[vt + 1] == ' ' || p[vt + 1] == '\t')) {
+                        return 1; /* nested dash: the engine's nested seq */
+                    }
+                    /* compact map item "- k: v"? */
+                    for (size_t ic = vt; ic < vend; ic++) {
+                        if (p[ic] == ':') {
+                            size_t nn = ic + 1;
+                            if (nn >= vend || p[nn] == ' ' || p[nn] == '\t') {
+                                return 1; /* compact items: the engine */
+                            }
+                        }
+                    }
+                    (void)yt_put(t, yt_span_in((uint32_t)vt, vend - (uint32_t)vt, YTP_ITEM));
+                    st[depth].emitted = 1;
+                    if (!st[depth].content_col) {
+                        st[depth].content_col = col + 1;
+                    }
+                } else {
+                    return 1;
+                }
+            } else if (stop_set && line_stop + 1 < line_end && p[line_stop] == ':' &&
+                       (p[line_stop + 1] == ' ' || p[line_stop + 1] == '\t') &&
+                       !(c == '&' || c == '!' || c == '*' || c == '\'' || c == '"' || c == '[' ||
+                         c == '{' || c == '|' || c == '>' || c == '%' || c == '?' || c == '-')) {
+                uint32_t kend = line_stop;
+                while (kend > t0 && (p[kend - 1] == ' ' || p[kend - 1] == '\t')) {
+                    kend--;
+                }
+                if ((uint32_t)(kend - t0) > 1024u) {
+                    return 1; /* the simple-key length law: the engine errors */
+                }
+                size_t vt = line_stop + 1;
+                while (vt < line_end && (p[vt] == ' ' || p[vt] == '\t')) {
+                    vt++;
+                }
+                uint32_t aoff = 0, alen = 0, aid = 0;
+                if (vt < line_end && p[vt] == '&') {
+                    size_t ne = vt + 1;
+                    while (ne < line_end && ne < len) {
+                        unsigned char pc = (unsigned char)p[ne];
+                        if (pc <= ' ' || pc == ',' || pc == '[' || pc == ']' || pc == '{' ||
+                            pc == '}' || pc == '#') {
+                            break;
+                        }
+                        ne++;
+                    }
+                    aoff = (uint32_t)(vt + 1);
+                    alen = (uint32_t)(ne - vt - 1);
+                    F->anchor_seq++;
+                    aid = F->anchor_seq;
+                    yt_anchor_put(F, aoff, alen, aid);
+                    vt = ne;
+                    while (vt < line_end && (p[vt] == ' ' || p[vt] == '\t')) {
+                        vt++;
+                    }
+                }
+                if (vt >= line_end || p[vt] == '#') {
+                    /* "key:" with a following-lines container: push pending */
+                    if (aid != 0) {
+                        return 1; /* anchored container: the engine route */
+                    }
+                    if (st[depth].kind == 0 && st[depth].emitted &&
+                        col + 1 != st[depth].content_col) {
+                        return 1; /* continuation: the multiline arm */
+                    }
+                    if (depth >= YT_FUSED_MAX_FRAMES - 1) {
+                        return 1;
+                    }
+                    if (depth > 0 && st[depth].pending) {
+                        F->parent_emitted = st[depth - 1].emitted;
+                        yt_f_open(F, &st[depth], 0);
+                        root_open = 1;
+                        st[depth].pending = 0;
+                        st[depth - 1].emitted = 1;
+                        if (!st[depth - 1].content_col) {
+                            st[depth - 1].content_col = col + 1;
+                        }
+                    }
+                    depth++;
+                    memset(&st[depth], 0, sizeof(st[depth]));
+                    st[depth].indent = col;
+                    st[depth].pending = 1;
+                    st[depth].key_off = (uint32_t)t0;
+                    st[depth].key_len = kend - (uint32_t)t0;
+                } else {
+                    if (st[depth].kind == 0 && st[depth].emitted &&
+                        col + 1 != st[depth].content_col) {
+                        return 1; /* off-column: a continuation line — the
+                                   * multiline arm owns those */
+                    }
+                    if (depth > 0 && st[depth].pending) {
+                        F->parent_emitted = st[depth - 1].emitted;
+                        yt_f_open(F, &st[depth], 0);
+                        root_open = 1;
+                        st[depth].pending = 0;
+                        st[depth - 1].emitted = 1;
+                        if (!st[depth - 1].content_col) {
+                            st[depth - 1].content_col = col + 1;
+                        }
+                    } else if (!root_open && depth == 0) {
+                        (void)yt_put(t, yt_props(YTP_EVENT, 0, 7u));
+                        yt_f_empty_span(F);
+                        root_open = 1;
+                        st[0].started = 1;
+                    }
+                    yt_f_start(F, &st[depth]);
+                    if (st[depth].kind != 0) {
+                        return 1;
+                    }
+                    unsigned char vc = (unsigned char)p[vt];
+                    uint32_t flags;
+                    if (vc == '*' && aid != 0) {
+                        return 1; /* an anchored alias: the engine owns it */
+                    }
+                    if (vc == '*') {
+                        size_t ne = vt + 1;
+                        while (ne < line_end) {
+                            unsigned char pc = (unsigned char)p[ne];
+                            if (pc <= ' ' || pc == ',' || pc == '[' || pc == ']' || pc == '{' ||
+                                pc == '}' || pc == '#') {
+                                break;
+                            }
+                            ne++;
+                        }
+                        uint32_t taid = 0;
+                        if (!yt_anchor_get(F, (uint32_t)(vt + 1), (uint32_t)(ne - vt - 1), &taid)) {
+                            return 1; /* undefined alias: the engine errors */
+                        }
+                        (void)yt_put(t, yt_props(YTP_PAIR, taid, 3u /*ALIAS*/));
+                        (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
+                        (void)yt_put(t, yt_span_in((uint32_t)(vt + 1), (uint32_t)(ne - vt - 1),
+                                                   YTP_SPAN_IN));
+                        st[depth].emitted = 1;
+                        goto line_done;
+                    }
+                    if (vc == '"' || vc == '\'' || vc == '|' || vc == '>' || vc == '[' ||
+                        vc == '{' || vc == '!' || vc == '%') {
+                        return 1; /* quoted/block/flow/tag values: the engine */
+                    }
+                    if ((vc == '-' || vc == '?') && (vt + 1 >= line_end || p[vt + 1] == ' ' ||
+                                                     p[vt + 1] == '\t' || p[vt + 1] == '#')) {
+                        return 1; /* an indicator-as-value: the engine errors */
+                    }
+                    /* a terminating ':' inside the value is the
+                     * mapping-values error — the engine owns it */
+                    for (const char* h = (const char*)memchr(p + vt, ':', line_end - vt);
+                         h != NULL && h < p + line_end;
+                         h = (const char*)memchr(h + 1, ':', line_end - (size_t)(h + 1 - p))) {
+                        if (h + 1 >= p + line_end || h[1] == ' ' || h[1] == '\t') {
+                            return 1;
+                        }
+                    }
+                    /* trailing comment bounds the plain value */
+                    uint32_t vend = line_end;
+                    {
+                        const char* h = (const char*)memchr(p + vt, '#', line_end - vt);
+                        while (h != NULL) {
+                            if (h > p + vt && (h[-1] == ' ' || h[-1] == '\t')) {
+                                vend = (uint32_t)(h - p);
+                                break;
+                            }
+                            h = (const char*)memchr(h + 1, '#', line_end - (size_t)(h + 1 - p));
+                        }
+                    }
+                    while (vend > vt && (p[vend - 1] == ' ' || p[vend - 1] == '\t')) {
+                        vend--;
+                    }
+                    if (aid != 0) {
+                        flags = 4u | (1u << 3) | (1u << 4);
+                    } else {
+                        flags = 2u | (1u << 3);
+                    }
+                    (void)yt_put(t, yt_props(YTP_PAIR, aid, flags));
+                    (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
+                    (void)yt_put(t, yt_span_in((uint32_t)vt, vend - (uint32_t)vt, YTP_SPAN_IN));
+                    if (aid != 0) {
+                        (void)yt_put(t, yt_span_in(aoff, alen, YTP_SPAN_IN));
+                    }
+                    st[depth].emitted = 1;
+                    if (!st[depth].content_col) {
+                        st[depth].content_col = col + 1;
+                    }
+                }
+            } else {
+                return 1; /* unclassified line: the engine route */
+            }
+        }
+    line_done:
+        pos = next;
+    }
+    if (!root_open) {
+        return 1; /* empty document: the engine owns it */
+    }
+    while (depth > 0) {
+        if (st[depth].pending) {
+            return 1; /* empty "key:" at EOF: the engine */
+        }
+        yt_f_close(F, st[depth].kind);
+        depth--;
+    }
+    yt_f_close(F, 0); /* the root always closes, started or not */
+    (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 4u);
+    (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 2u);
+    t->docs = 1;
+    return 0;
+}
+
+int ytap_fused_run(yep_ytape* t) {
+    char fbuf[sizeof(yt_fused) + sizeof(*((yt_fused*)0)->anchors) * YT_FUSED_ANCHORS];
+    yt_fused* F = (yt_fused*)fbuf;
+    memset(fbuf, 0, sizeof(fbuf));
+    F->t = t;
+    F->p = t->input;
+    F->len = t->input_len;
+    size_t mark = t->count;
+    if (yt_f_run(F) != 0) {
+        t->count = (uint32_t)mark; /* unwind: the caller resets and re-runs */
+        t->depth = 0;
+        return 1;
+    }
+    return 0;
+}
+
+void ytap_reset(yep_ytape* t) {
+    t->count = 0;
+    t->depth = 0;
+    t->docs = 0;
+    t->oom = 0;
+    t->flow_mark = 0;
+}

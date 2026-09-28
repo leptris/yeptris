@@ -402,7 +402,19 @@ engine_enter:
                           .on_block_open = dom_on_block_open,
                           .on_block_item = dom_on_block_item};
     }
-    int rc = yep_engine_run(eng, data, data_len, &sink);
+    int rc = 0;
+    if (have_tape && ytap_fused_run(&yt) == 0) {
+        /* the fused block runner owned the whole document — the engine
+         * never runs (TODO.restructure/79). Its only cost was the parse
+         * front-end above; on a bail it unwound and the engine runs. */
+        yep_engine_destroy(eng);
+        eng = NULL;
+    } else {
+        if (have_tape) {
+            ytap_reset(&yt);
+        }
+        rc = yep_engine_run(eng, data, data_len, &sink);
+    }
     if (rc != 0) {
         const yep_error* ee = yep_engine_error(eng);
         yep_err_code code = ee ? ee->code : YEP_ERR_UNEXPECTED;

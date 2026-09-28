@@ -24,6 +24,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   DOM-lane medians). The lead-byte stopset literal is pinned by
   `Parse.NormBreakLeadsMatchRuntimeBuild`.
 
+## [Unreleased]
+### Changed
+- **parse: the fused block runner owns monomorphic block documents**
+  — one SWAR sweep per line with inline classification writes the
+  packed tape directly, no engine pass; any line the loop does not
+  own bails to the engine route unchanged (restart fallback).
+  Wide-mapping parses at 2.06x (598 vs 290 MB/s); other shapes ride
+  the fallback until the column model widens coverage (#79 session 3).
+
 ## [0.6.25] - 2026-09-26
 ### Fixed
 - **recorder: the compat schema's engine runs floor-free** — the
