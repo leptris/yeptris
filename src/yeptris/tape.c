@@ -1591,17 +1591,17 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len
                 for (size_t i = 0; i < count; i++) {
                     yeptris_tape_rec r = recs[i];
                     uint8_t kind = (uint8_t)(r & 0xFFu);
-                    uint32_t off = (uint32_t)(r >> 32);
+                    uint32_t roff = (uint32_t)(r >> 32);
                     uint32_t ln = (uint32_t)((r >> 8) & 0xFFFFFFu);
                     if (kind == (uint8_t)YEP_T_NUM) {
                         size_t n = 0;
                         int flt = 0;
-                        if (yep_json_number_shape(source + off, ln, &n, &flt) != 0) {
+                        if (yep_json_number_shape(source + roff, ln, &n, &flt) != 0) {
                             kind = flt ? (uint8_t)YEP_T_FLOAT : (uint8_t)YEP_T_INT;
                         }
                     }
                     tape->kinds[i] = kind;
-                    tape->offs[i] = off;
+                    tape->offs[i] = roff;
                     tape->lens[i] = ln;
                 }
                 tape->_cols_ready = 1;
