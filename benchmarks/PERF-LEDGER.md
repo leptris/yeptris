@@ -2701,3 +2701,29 @@ no-LTO and ASAN.
 The depth-run specialist generalization (PR #456) measured in the same
 round: see the entry above — anchor-heavy 1.02x, deep 1.02x, the rest
 neutral; the anchor-path arms are that corpus's real lever.
+
+## The strict tape route rides the fused walk (contract kept, settle fused)
+
+The strict route's fast attempt was the column-primary tape_walk —
+three inline write streams per token, 0.61-0.64x simdjson on the
+referee while the record-primary fused walk (the same validation
+contract via the DOM route's exact flags) runs ~1.0x. The flip's first
+attempt broke the suite: this route's contract is COLUMNS-EAGER and
+settled — the tests read kinds/offs/lens directly and the columns
+carry the INT/FLOAT split the records defer to convert (YEP_T_NUM is
+the lenient route's kind). The landed shape: fused walk (strict_nums
++ clean_only, the DOM route's call) then ONE pass that decodes each
+record, writes the columns, and settles NUM kinds inline via
+number_shape — no separate columns pass, no separate settle.
+
+Measured (best-of, alternated libraries): json-doc 556 -> 641-642
+MB/s (+15%), json-users 660 -> 728-795 MB/s (+11-20%). The referee's
+parse_json_tape row should move 0.61-0.64x to ~0.70x — below the
+lenient lane's 0.91-1.07x, honestly so: the columns-eager contract
+pays ~1ms per 1M tokens of post-pass the lenient lane never pays. The
+design that removes the settle entirely: emit YEP_T_INT/YEP_T_FLOAT
+records from the fused walk's number arm under strict_nums (the
+digits_only flag already holds the answer) — a RECORD-contract change
+whose blast radius is every strict_nums=1 consumer (the DOM route's
+lazy replay, the flow recorder's scratch tape) and needs its own
+audited slice.
