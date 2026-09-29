@@ -2615,3 +2615,52 @@ Three measured results this round:
 The remaining honest path to 3x on scalar-heavy/anchor-heavy is the
 specialist function done cleanly, plus possibly a register-budget
 rewrite of the sweep. The other seven shapes hold 3.18x-5.29x.
+
+## The flat-map specialist lands (PR #454)
+
+The I-cache hypothesis held. `yt_flat_run` — plain `key: value` runs at
+one fixed content column as their own function, handed the run after the
+first qualifying root pair, its stop line reprocessed in place through
+the full arms (`line_done_keep`; the stale-`next` trap from the inline
+spike avoided). Every bail is a strict subset of `yt_f_run`'s verdicts,
+so parity holds by construction. The quoted plain-value arm went in with
+it (same-line close, no escapes, no `''` doubling, comments need
+separating whitespace) after the first measurement round showed
+scalar-heavy's 1/3-quoted lines paying a bail sweep per interruption and
+netting 0.97x.
+
+Local alternated medians, parse-only: wide-mapping 1.20x, pure flat runs
+1.15x, scalar-heavy 1.03x (the residual is one bail sweep per
+`key: |` literal-block header — ~5k interruptions in the corpus; owning
+the literal arm inside the specialist was judged not worth its I-cache
+cost at 8% of lines). Nested shapes neutral. DOM lane: wide +27%,
+scalar +9%, anchor +17%. Gates: 398/398 on the no-LTO and ASAN builds;
+suite 344 inputs 0 mismatches (one input newly owned, word-exact); 20
+targeted quoted-value edge cases clean; all five block-family corpora
+word-for-word EXACT.
+
+Ubuntu referee (this PR's run — a down-variance machine round, deep was
+3.21x at ~25% lower absolute MB/s in the previous run's table):
+json-doc 4.27x, wide-mapping 4.04x, block 3.60x, flow-single 3.41x,
+flow-json 3.36x over the bar; json-users 2.93x, anchor-heavy 2.79x,
+deep-nesting 2.74x, scalar-heavy 2.64x under (variance-straddling).
+Wide's absolute is the honest signal: 629 MB/s vs 471 in the prior
+table (+34%, matching the local A/B).
+
+## The JSON tape route's headroom is INTERNAL (task #85 scoping)
+
+Discriminating measurement on json-doc (local, best-of): the DOM route
+(yeptris_parse_json) runs the same bytes at ~900 MB/s while the tape
+route (parse_json_tape_lenient) manages ~510-550 MB/s — the gap to
+simdjson is NOT the scanning (the DOM lane is at simdjson parity with
+the same input) but the tape walk's own per-token overhead
+(~5 ns/token over the DOM route). Allocation is not the tax (the DOM
+arena is larger and still hits 900; samples never land in malloc/free).
+Recorded dead BEFORE coding: SWAR-8 whitespace skipping — json-doc's
+whitespace is 16% single-space separators (the byte loop already exits
+on byte one) and json-users is 1% (minified); the setup cost exceeds
+the hop. Next suspects, in order: the lmapval value dispatch cascade
+(up to 5 cmp+branches per value token), the LCLOSE cold-record patch,
+the LSTR round-2 fallback's share for 8+-char strings. The instrument
+to build next: an rdtsc-instrumented COPY of tape.c linked ahead of the
+archive (the sampler cannot split the fully-inlined walk).
