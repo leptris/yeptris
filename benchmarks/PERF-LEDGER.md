@@ -2582,3 +2582,29 @@ line and brace scans before the classification ran once) are gone:
 397/397; the roundtrip corpus 0/0/0 under ASAN; the suite
 differential 0 mismatches; the five block-family corpora byte-exact
 and untouched.
+
+### The post-#449 referee + the floor's profile (item 86)
+
+Interleaved medians: json-doc 5.29x, flow-json 4.36x, block-heavy
+4.12x, wide-mapping 4.07x, json-users 3.58x, deep-nesting 3.21x,
+flow-single 3.18x — EIGHT over the bar. Remaining: anchor-heavy
+2.74x (3.04x the run before — it straddles the bar with run
+variance) and scalar-heavy 2.69x (steady across runs — the real gap).
+
+scalar-heavy's parse-only profile (sampled, 2086 samples): the
+NEL/LS/PS stopset probe is 0.137 ms of 4.42 (29.6 GB/s — DEAD END,
+recorded), memchr ~10%, yt_put ~3%, and ~80% inside the inlined
+sweep+arms+dispatch (~54 ns/line on 62-byte lines). The two
+identified ~10% levers, for the next session:
+
+1. The sweep's TAIL ROUND pays the NUL-padded path (the memset+2x
+   memcpy slow load) on every line whose length is not a multiple
+   of 8 — the back-load trick (read the last 8 bytes unaligned from
+   within bounds, mask to the round's bytes) removes it, except for
+   the document's final <8 bytes. ASAN-sensitive: the overread must
+   stay provably in-bounds.
+2. The PAIR-RUN fast loop: after emitting a plain pair, speculatively
+   re-classify the next line under the run invariant (same frame,
+   col+1 == content_col, plain-pair shape) with a branch-bloom head
+   check (~1 compare replacing the ~10-char exclusion chain), breaking
+   to the main loop on any mismatch. Same records, fewer branches.
