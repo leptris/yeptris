@@ -2520,3 +2520,41 @@ bugs this slice fixed). The replay-side conversion (per-node flow
 records instead of the ONE FLOW record + the re-walk) is the follow-up
 slice; flow-json's next step is the block ITEM arm delegating its
 per-line spans without the engine's per-line dispatch.
+
+### The post-#447 referee: SEVEN shapes over the 3x bar (item 86)
+
+Interleaved medians, ubuntu release, AVX2:
+
+| shape | yeptris DOM | vs ryml |
+|---|---|---|
+| wide-mapping | 508.91 | 4.61x |
+| block-heavy | 343.63 | 4.22x |
+| flow-json | 220.52 | 4.17x |
+| json-doc | 227.78 | 3.84x |
+| deep-nesting | 941.38 | 3.15x |
+| anchor-heavy | 224.45 | 3.04x |
+| json-users | 248.80 | 2.85x |
+| scalar-heavy | 775.70 | 2.66x |
+| flow-single | 242.60 | 2.46x |
+
+(The run's absolute MB/s are globally low — a slow runner instance;
+the ratios are machine-relative and interleaved.)
+
+The remaining three, profiled: json-users parses at 357 MB/s locally
+(17.2 ms) of which the fused walk is ~5.3 — TWELVE milliseconds are
+front-end for a ONE-LINE document: the NEL/LS/PS stopset probe, the
+fused block runner's bail sweep (a full 6.6 MB line), and the
+engine's own line + balanced-brace scans all walk the bytes BEFORE
+the classification walk runs once.
+
+NEXT (designed): the flow-rooted fast path in the lazy front-end —
+after the encoding probe, if the first non-whitespace content byte is
+[ or { and the rest of the doc is that one span plus whitespace, emit
+the five-word scaffolding directly (STREAM, DOC, FLOW+words, DOC_END,
+STREAM_END — the engine's exact form for `{...}\n`, pinned by the
+tape dumps) through the recorder's budgeted classification, skipping
+the block-runner attempt and the engine entirely. Any marker,
+comment, anchor, or second document falls back to the engine route.
+Expected: json-users 17.2 to ~8 ms (~4x), flow-single likewise;
+flow-single's 2.46 on this run is variance-exposed — re-read it after
+this lands. scalar-heavy (2.66x) remains the per-line-floor problem.
