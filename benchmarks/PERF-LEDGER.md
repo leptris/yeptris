@@ -2740,3 +2740,24 @@ the record-level INT/FLOAT contract change. The same run's ryml table
 was variance-heavy again (anchor 2.36x this round vs 2.79x last;
 flow-json 2.73x vs 3.36x) — single-run referee rounds keep straddling
 the bar; the ledger's multi-run medians are the honest scoreboard.
+
+## INT/FLOAT records: the strict settle dies at the walk (the record contract lands)
+
+The walk's number arm already computed the classification for
+validation (`digits_only && saw_digit` — pure digits with an optional
+leading minus); the records now carry it under strict_nums:
+YEP_T_INT/YEP_T_FLOAT instead of YEP_T_NUM (which the enum reserves
+for the lenient route's deferred contract — unchanged at strict_nums=
+0). The audit: dom_from_tape already switched on all three kinds (and
+now SKIPS its per-number shape scan — a replay-side bonus); the flow
+recorder's scratch rides yt_flow_scan, kind-agnostic for numbers;
+convert handles all three; columns are generic. The strict route's
+post-pass collapses to the plain columns decode.
+
+Best-of alternated: json-doc 653-716 MB/s (settle version: 452-568,
++15-26%), json-users 783-799 (696-726, +8-15%). The strict lane's
+remaining distance to the lenient lane is exactly the columns-
+eager contract's materialization pass. Gates: 398/398 no-LTO + ASAN;
+the JsonTape number-contract tests (which pinned the settle) pass
+from the records directly — walk-time digits_only is number_shape's
+exact answer for validated spans.

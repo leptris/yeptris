@@ -997,8 +997,10 @@ lmapval: {
                 goto lreject;
             }
         }
-        recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
-                      (uint64_t)(YEP_T_NUM);
+        recs[count] =
+            ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
+            (uint64_t)(strict_nums ? ((digits_only && saw_digit) ? YEP_T_INT : YEP_T_FLOAT)
+                                   : (uint64_t)(YEP_T_NUM));
         count++;
         i = k;
         goto lmapafter;
@@ -1106,8 +1108,10 @@ lseqval: {
                 goto lreject;
             }
         }
-        recs[count] = ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
-                      (uint64_t)(YEP_T_NUM);
+        recs[count] =
+            ((uint64_t)((uint32_t)i) << 32) | ((uint64_t)((uint32_t)(k - i)) << 8) |
+            (uint64_t)(strict_nums ? ((digits_only && saw_digit) ? YEP_T_INT : YEP_T_FLOAT)
+                                   : (uint64_t)(YEP_T_NUM));
         count++;
         i = k;
         goto lseqafter;
@@ -1581,30 +1585,11 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len
              * fused scan plus one sequential decode pass, still ahead
              * of the column walk's inline three-stream writes. */
             if (yep_tape_walk_lenient_fused(source, len, off, tape, 1, 1, 0) == YEPTRIS_OK) {
-                /* this route's columns settle the INT/FLOAT split the
-                 * records defer to convert; strict_nums=1 already
-                 * validated every span, so the shape scan only
-                 * classifies. ONE pass: decode record, write the
-                 * columns, settle the number kind inline. */
-                size_t count = tape->count;
-                yeptris_tape_rec* recs = tape->recs;
-                for (size_t i = 0; i < count; i++) {
-                    yeptris_tape_rec r = recs[i];
-                    uint8_t kind = (uint8_t)(r & 0xFFu);
-                    uint32_t roff = (uint32_t)(r >> 32);
-                    uint32_t ln = (uint32_t)((r >> 8) & 0xFFFFFFu);
-                    if (kind == (uint8_t)YEP_T_NUM) {
-                        size_t n = 0;
-                        int flt = 0;
-                        if (yep_json_number_shape(source + roff, ln, &n, &flt) != 0) {
-                            kind = flt ? (uint8_t)YEP_T_FLOAT : (uint8_t)YEP_T_INT;
-                        }
-                    }
-                    tape->kinds[i] = kind;
-                    tape->offs[i] = roff;
-                    tape->lens[i] = ln;
-                }
-                tape->_cols_ready = 1;
+                /* strict_nums records carry the INT/FLOAT split in the
+                 * kind byte (digits_only answers at walk time) — this
+                 * route's columns-eager contract materializes straight
+                 * from them, no settle pass */
+                (void)yeptris_tape_columns(tape);
                 return YEPTRIS_OK;
             }
             YeptrisStatus st = tape_walk(source, len, off, tape, 1);
