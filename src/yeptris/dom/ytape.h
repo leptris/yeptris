@@ -73,6 +73,12 @@ int ytap_init(yep_ytape* t, const char* input, size_t len, int max_depth);
  * tape and runs the engine route). */
 int ytap_fused_run(yep_ytape* t, const struct yep_resolver* resolver);
 
+/* The flow-rooted fast path: a document that is exactly one flow
+ * collection plus whitespace takes the classification directly —
+ * the block runner and the engine never run. Returns 0 when owned;
+ * 1 on any fallback. */
+int ytap_flow_rooted(yep_ytape* t);
+
 /* Rewind a bailed tape for the engine re-run. */
 void ytap_reset(yep_ytape* t);
 void ytap_sink(yep_ytape* t, yep_sink* sink);

@@ -382,12 +382,27 @@ static uint32_t yt_flow_scan(const yeptris_json_tape* s, int* long_key) {
     return maxd;
 }
 
+static int yt_flow_classify_record(yep_ytape* t, const char* p, size_t open, size_t len,
+                                   const yep_view* anchor, const yep_view* tag, uint32_t anchor_id,
+                                   int max_depth, size_t* close);
+
 static int yt_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_t line,
                             size_t line_start, yep_view anchor, yep_view tag, uint32_t anchor_id,
                             int max_depth, size_t* close) {
     (void)line;
     (void)line_start; /* the flow builder reads neither */
-    yep_ytape* t = (yep_ytape*)ctx;
+    return yt_flow_classify_record((yep_ytape*)ctx, p, open, len, &anchor, &tag, anchor_id,
+                                   max_depth, close);
+}
+
+/* the shared flow-span classification + ONE-record emission (the
+ * sink's entry and the flow-rooted fast path both land here). Returns
+ * the sink's verdict codes: 0 = not JSON-class (the general kernel),
+ * 1 = recorded (with *close set), 2 = long-key (pass 2 owns the
+ * error). */
+static int yt_flow_classify_record(yep_ytape* t, const char* p, size_t open, size_t len,
+                                   const yep_view* anchor, const yep_view* tag, uint32_t anchor_id,
+                                   int max_depth, size_t* close) {
     if (t->depth >= YEP_DOM_MAX_DEPTH) {
         return 0; /* the event path owns the error shape */
     }
@@ -517,8 +532,8 @@ record:
         anchor_hi = 1;
         aid = 0xFFFFFFu;
     }
-    uint32_t tag_mode = (uint32_t)yt_mode(t, &tag);
-    uint32_t anchor_mode = (uint32_t)yt_mode(t, &anchor);
+    uint32_t tag_mode = (uint32_t)yt_mode(t, tag);
+    uint32_t anchor_mode = (uint32_t)yt_mode(t, anchor);
     uint32_t flags = tag_mode | (anchor_mode << 2) | (anchor_hi << 4);
     if (yt_put(t, yt_props(YTP_FLOW, aid, flags)) != 0) {
         return -1;
@@ -526,10 +541,10 @@ record:
     if (yt_put(t, (uint64_t)open | ((uint64_t)len << 32)) != 0) {
         return -1;
     }
-    if (tag_mode != YTM_ABSENT && yt_span_by_mode(t, &tag) != 0) {
+    if (tag_mode != YTM_ABSENT && yt_span_by_mode(t, tag) != 0) {
         return -1;
     }
-    if (anchor_mode != YTM_ABSENT && yt_span_by_mode(t, &anchor) != 0) {
+    if (anchor_mode != YTM_ABSENT && yt_span_by_mode(t, anchor) != 0) {
         return -1;
     }
     if (anchor_hi && yt_put(t, (uint64_t)anchor_id) != 0) {
@@ -1613,6 +1628,50 @@ static int yt_f_run(yt_fused* F) {
     }
     if (root_evented) {
         yt_f_close(F, 0); /* only an event-started root closes */
+    }
+    (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 4u);
+    (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 2u);
+    t->docs = 1;
+    return 0;
+}
+
+/* The flow-rooted fast path (item 86): a document whose entire content
+ * is ONE flow collection plus whitespace skips both the block runner
+ * and the engine — the budgeted classification runs once and the
+ * engine's exact five-word scaffolding lands directly. Any marker,
+ * comment, anchor-bearing prefix, or second content falls back. */
+int ytap_flow_rooted(yep_ytape* t) {
+    const char* p = t->input;
+    size_t len = t->input_len;
+    size_t i = 0;
+    while (i < len && (p[i] == ' ' || p[i] == '\t' || p[i] == '\n' || p[i] == '\r')) {
+        i++;
+    }
+    if (i >= len || (p[i] != '[' && p[i] != '{')) {
+        return 1; /* not flow-rooted: the block runner's turn */
+    }
+    size_t mark = t->count;
+    size_t open = i;
+    yep_view none = {NULL, 0};
+    (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 1u);
+    (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 3u);
+    size_t close = 0;
+    int v = yt_flow_classify_record(t, p, open, len - open, &none, &none, 0,
+                                    1000 /* YEP_MAX_DEPTH: the engine's
+                                          * default limit (engine.c) */
+                                    ,
+                                    &close);
+    if (v != 1) {
+        t->count = (uint32_t)mark; /* unwind: the engine route owns it */
+        t->depth = 0;
+        return 1;
+    }
+    for (size_t e = close + 1; e < len; e++) {
+        if (p[e] != ' ' && p[e] != '\t' && p[e] != '\n' && p[e] != '\r') {
+            t->count = (uint32_t)mark; /* trailing content: the engine */
+            t->depth = 0;
+            return 1;
+        }
     }
     (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 4u);
     (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 2u);

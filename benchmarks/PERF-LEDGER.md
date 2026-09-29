@@ -2558,3 +2558,27 @@ comment, anchor, or second document falls back to the engine route.
 Expected: json-users 17.2 to ~8 ms (~4x), flow-single likewise;
 flow-single's 2.46 on this run is variance-exposed — re-read it after
 this lands. scalar-heavy (2.66x) remains the per-line-floor problem.
+
+### The flow-rooted fast path (item 86, slice 2)
+
+A document whose entire content is ONE flow collection plus whitespace
+skips both the block runner and the engine: the front-end's gate
+(O(1) for non-flow docs — whitespace, then [ or {) hands the span to
+the budgeted classification and the engine's exact five-word
+scaffolding (STREAM, DOC, FLOW+words, DOC_END, STREAM_END) lands
+directly. Any marker, comment, trailing content, or a
+classification refusal unwinds and falls back — the classification
+core is now shared between the sink entry and the fast path
+(yt_flow_classify_record). The twelve milliseconds of front-end
+redundancy json-users paid (probe + bail sweep + the engine's own
+line and brace scans before the classification ran once) are gone:
+
+| shape | before | after |
+|---|---|---|
+| json-users | 17.24 ms (357 MB/s) | 11.27 ms (547 MB/s) |
+| flow-single | 1.32 ms (343 MB/s) | 0.93 ms (488 MB/s) |
+| flow-json / block family | unchanged | (not flow-rooted) |
+
+397/397; the roundtrip corpus 0/0/0 under ASAN; the suite
+differential 0 mismatches; the five block-family corpora byte-exact
+and untouched.

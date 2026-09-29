@@ -403,9 +403,15 @@ engine_enter:
                           .on_block_item = dom_on_block_item};
     }
     int rc = 0;
-    if (have_tape && ytap_fused_run(&yt, (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
-                                             ? yep_resolver_compat11()
-                                             : yep_resolver_core12()) == 0) {
+    if (have_tape && ytap_flow_rooted(&yt) == 0) {
+        /* a pure flow-rooted document: the classification ran once and
+         * the scaffolding landed — neither runner nor engine runs */
+        yep_engine_destroy(eng);
+        eng = NULL;
+    } else if (have_tape &&
+               ytap_fused_run(&yt, (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
+                                       ? yep_resolver_compat11()
+                                       : yep_resolver_core12()) == 0) {
         /* the fused block runner owned the whole document — the engine
          * never runs (TODO.restructure/79). Its only cost was the parse
          * front-end above; on a bail it unwound and the engine runs. */
