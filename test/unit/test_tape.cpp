@@ -374,6 +374,34 @@ TEST(JsonTapeLenient, StructuralErrorsStayParseErrors) {
     }
 }
 
+TEST(JsonTape, TabWhitespaceEverywhere) {
+    /* yeptris-ruby#229: RFC 8259 ws is space/TAB/LF/CR at every
+     * boundary. The number-scan's delimiter sets rejected a tab
+     * AFTER a number ("[\t1\t,\t2]" failed at the 1), which is the
+     * whole cause of lutaml-jsonschema's 36 failures. */
+    const char* ok[] = {
+        "[\t1\t,\t2\t]", "{\"a\"\t:\t1\t}", "{\"a\":\t1}", "[\t{\"k\"\t:\t[\t1\t]\t}\t]",
+        "[1\t,\t2]",     "\t[1]\t",         "[0\t]",       "[1e3\t]",
+    };
+    for (const char* s : ok) {
+        SCOPED_TRACE(s);
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse_json(s, strlen(s), &st);
+        EXPECT_NE(d, nullptr) << s;
+        EXPECT_EQ(st, YEPTRIS_OK) << s;
+        yeptris_document_free(d);
+        /* the YAML entry agrees on the same bytes */
+        YeptrisStatus ys = YEPTRIS_OK;
+        YeptrisDocument y = yeptris_parse(s, strlen(s), &ys);
+        EXPECT_NE(y, nullptr) << s;
+        yeptris_document_free(y);
+    }
+    /* "1x" stays YAML-not-JSON */
+    YeptrisStatus st = YEPTRIS_OK;
+    EXPECT_EQ(yeptris_parse_json("[1x]", 4, &st), nullptr);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+}
+
 TEST(JsonTapeLenient, TabWhitespaceIsLegal) {
     /* RFC 8259 ws includes tabs; the strict tape walk rejects them,
      * the lenient route accepts (simdjson semantics) */
