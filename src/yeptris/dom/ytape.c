@@ -1777,10 +1777,15 @@ static int yt_f_run(yt_fused* F) {
                     if (!st[depth].content_col) {
                         st[depth].content_col = col + 1;
                     }
-                    if (aid == 0 && depth == 0 && !st[0].phantom && st[0].content_col == col + 1) {
-                        /* the specialist takes the run: hand it the next
-                         * line; its stop line is reprocessed in place */
-                        size_t sp = yt_flat_run(t, p, next, len, st[0].content_col);
+                    if (aid == 0 && !st[depth].phantom && st[depth].content_col == col + 1) {
+                        /* the specialist takes the run at ANY frame's
+                         * content column: nested flat runs (anchored
+                         * containers, leaf maps) qualify; an off-column
+                         * line bails to the pop/nest arms as usual.
+                         * anchored_first is already cleared whenever a
+                         * plain emission reaches here (the anchored arm
+                         * leaves early), so no extra gate is owed. */
+                        size_t sp = yt_flat_run(t, p, next, len, st[depth].content_col);
                         if (sp != next) {
                             pos = sp;
                             goto line_done_keep;
