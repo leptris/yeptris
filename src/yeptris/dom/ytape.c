@@ -1005,6 +1005,181 @@ static void yt_f_open(yt_fused* F, yt_frame* fr, uint8_t open_form) {
     F->t->depth++;
 }
 
+/* The flat-map specialist (item 86): plain `key: value` lines at one
+ * fixed content column, one map frame, nothing else. A separate FUNCTION
+ * so its code stays inside the I-cache — the equivalent inline loop
+ * measured 26% SLOWER by bloating yt_f_run past the cache edge. Returns
+ * the position it stopped at; the caller reprocesses that line through
+ * the full arms, so every bail here is a strict subset of what yt_f_run
+ * would decide — parity holds by construction. */
+static size_t yt_flat_run(yep_ytape* t, const char* p, size_t pos, size_t len, uint32_t run_cc) {
+    const uint64_t k_nl = 0x0A0A0A0A0A0A0A0Aull, k_cr = 0x0D0D0D0D0D0D0D0Dull,
+                   k_sp = 0x2020202020202020ull, k_co = 0x3A3A3A3A3A3A3A3Aull,
+                   k_ha = 0x2323232323232323ull;
+    for (;;) {
+        if (pos >= len) {
+            return pos;
+        }
+        /* the sweep: the main loop's line facts, unchanged */
+        size_t whole = len - pos;
+        size_t end = whole, ind = whole;
+        int have_ind = 0;
+        size_t i = 0;
+        size_t stop = whole;
+        int stop_set = 0;
+        while (i < whole) {
+            size_t avail = whole - i < 8 ? whole - i : 8;
+            uint64_t x;
+            if (avail == 8) {
+                memcpy(&x, p + pos + i, 8);
+            } else {
+                char buf[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+                memcpy(buf, p + pos + i, avail);
+                memcpy(&x, buf, 8);
+            }
+            uint64_t valid = avail == 8 ? ~(uint64_t)0 : (((uint64_t)1 << (avail * 8)) - 1);
+            uint64_t br = (yep_swar_eq8(x, k_nl) | yep_swar_eq8(x, k_cr)) & valid;
+            uint64_t room = (br ? ((br & (~br + 1)) - 1) : valid) & YEP_SWAR_FLAGS & valid;
+            if (!have_ind) {
+                uint64_t nons = ~(yep_swar_eq8(x, k_sp)) & room;
+                if (nons) {
+                    ind = i + (size_t)(yep_ctz64(nons) >> 3);
+                    have_ind = 1;
+                }
+            }
+            if (have_ind && !stop_set) {
+                uint64_t stm = (yep_swar_eq8(x, k_co) | yep_swar_eq8(x, k_ha)) & room;
+                if (stm) {
+                    size_t cand = i + (size_t)(yep_ctz64(stm) >> 3);
+                    if (cand >= ind) {
+                        stop = cand;
+                        stop_set = 1;
+                    }
+                }
+            }
+            if (br) {
+                end = i + (size_t)(yep_ctz64(br) >> 3);
+                break;
+            }
+            i += 8;
+        }
+        if (!have_ind) {
+            ind = end;
+        }
+        if (!stop_set) {
+            stop = end;
+        }
+        uint32_t le = (uint32_t)(pos + end);
+        uint32_t li = (uint32_t)(pos + ind);
+        uint32_t ls = (uint32_t)(pos + stop);
+        uint32_t col = (uint32_t)(li - pos);
+        /* blank and comment lines ride silently — the main loop skips
+         * them with no state change */
+        if (ind >= end || (p[li] == '#' && (li == 0 || p[li - 1] == ' ' || p[li - 1] == '\t' ||
+                                            p[li - 1] == '\n'))) {
+            pos = le < len ? (size_t)le + 1 : len;
+            continue;
+        }
+        if (col + 1 != run_cc) {
+            return pos; /* off-column: the pop/nest logic owns it */
+        }
+        unsigned char c = (unsigned char)p[li];
+        if (c == '\t' || c == '-' || c == '&' || c == '!' || c == '*' || c == '\'' || c == '"' ||
+            c == '[' || c == '{' || c == '|' || c == '>' || c == '%' || c == '?') {
+            return pos; /* indicators, tab-led: the full arms */
+        }
+        if (!stop_set || p[ls] != ':' || (ls + 1 < le && p[ls + 1] != ' ' && p[ls + 1] != '\t')) {
+            return pos; /* not a plain key: value line */
+        }
+        size_t t0 = li;
+        uint32_t kend = ls;
+        while (kend > t0 && (p[kend - 1] == ' ' || p[kend - 1] == '\t')) {
+            kend--;
+        }
+        if (kend == t0 || (uint32_t)(kend - t0) > 1024u) {
+            return pos; /* empty key / the simple-key length law */
+        }
+        size_t vt = ls + 1;
+        while (vt < le && (p[vt] == ' ' || p[vt] == '\t')) {
+            vt++;
+        }
+        if (vt >= le || p[vt] == '#') {
+            return pos; /* "key:" pending: the main loop's frame arm */
+        }
+        unsigned char vc = (unsigned char)p[vt];
+        if (vc == '"' || vc == '\'') {
+            /* the quoted plain-value arm, same law as the main loop:
+             * same-line close, no backslash, no '' doubling, a comment
+             * needs separating whitespace */
+            size_t ce = vt + 1;
+            int esc = 0;
+            while (ce < le) {
+                if (p[ce] == '\\') {
+                    esc = 1;
+                    break;
+                }
+                if (p[ce] == vc) {
+                    break;
+                }
+                ce++;
+            }
+            if (ce >= le || esc) {
+                return pos; /* unterminated or escaped: the engine */
+            }
+            if (vc == '\'' && ce + 1 < le && p[ce + 1] == '\'') {
+                return pos; /* the '' escape: the engine */
+            }
+            size_t te = ce + 1;
+            while (te < le && (p[te] == ' ' || p[te] == '\t')) {
+                te++;
+            }
+            if (te < le && (p[te] != '#' || te == ce + 1)) {
+                return pos; /* trailing content after the close */
+            }
+            (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u));
+            (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
+            (void)yt_put(t, yt_props(YTP_SCALAR, 0, vc == '"' ? 0x2300u : 0x2200u));
+            (void)yt_put(t, yt_span_in((uint32_t)(vt + 1), (uint32_t)(ce - vt - 1), YTP_SPAN_IN));
+            pos = le < len ? (size_t)le + 1 : len;
+            continue;
+        }
+        if (vc == '*' || vc == '|' || vc == '>' || vc == '[' || vc == '{' || vc == '!' ||
+            vc == '%' || vc == '&' ||
+            ((vc == '-' || vc == '?') &&
+             (vt + 1 >= le || p[vt + 1] == ' ' || p[vt + 1] == '\t' || p[vt + 1] == '#'))) {
+            return pos; /* block/flow/anchor values: the full arms */
+        }
+        /* a terminating ':' inside the value is the mapping-values error */
+        {
+            const char* h = (const char*)memchr(p + vt, ':', le - vt);
+            while (h != NULL) {
+                if (h + 1 >= p + le || h[1] == ' ' || h[1] == '\t') {
+                    return pos; /* the engine's error route */
+                }
+                h = (const char*)memchr(h + 1, ':', le - (size_t)(h + 1 - p));
+            }
+        }
+        uint32_t vend = le;
+        {
+            const char* hh = (const char*)memchr(p + vt, '#', le - vt);
+            while (hh != NULL) {
+                if (hh > p + vt && (hh[-1] == ' ' || hh[-1] == '\t')) {
+                    vend = (uint32_t)(hh - p);
+                    break;
+                }
+                hh = (const char*)memchr(hh + 1, '#', le - (size_t)(hh + 1 - p));
+            }
+        }
+        while (vend > vt && (p[vend - 1] == ' ' || p[vend - 1] == '\t')) {
+            vend--;
+        }
+        (void)yt_put(t, yt_props(YTP_PAIR, 0, 2u | (1u << 3)));
+        (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
+        (void)yt_put(t, yt_span_in((uint32_t)vt, vend - (uint32_t)vt, YTP_SPAN_IN));
+        pos = le < len ? (size_t)le + 1 : len;
+    }
+}
+
 static int yt_f_run(yt_fused* F) {
     const char* p = F->p;
     size_t len = F->len;
@@ -1602,6 +1777,15 @@ static int yt_f_run(yt_fused* F) {
                     if (!st[depth].content_col) {
                         st[depth].content_col = col + 1;
                     }
+                    if (aid == 0 && depth == 0 && !st[0].phantom && st[0].content_col == col + 1) {
+                        /* the specialist takes the run: hand it the next
+                         * line; its stop line is reprocessed in place */
+                        size_t sp = yt_flat_run(t, p, next, len, st[0].content_col);
+                        if (sp != next) {
+                            pos = sp;
+                            goto line_done_keep;
+                        }
+                    }
                 }
             } else {
                 return 1; /* unclassified line: the engine route */
@@ -1609,6 +1793,8 @@ static int yt_f_run(yt_fused* F) {
         }
     line_done:
         pos = next;
+    line_done_keep: /* the specialist's stop line: reprocess it in place */
+        ;
     }
     if (!root_open) {
         return 1; /* empty document: the engine owns it */
