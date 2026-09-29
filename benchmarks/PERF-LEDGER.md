@@ -2727,3 +2727,16 @@ digits_only flag already holds the answer) — a RECORD-contract change
 whose blast radius is every strict_nums=1 consumer (the DOM route's
 lazy replay, the flow recorder's scratch tape) and needs its own
 audited slice.
+
+## Strict-route referee verdict (PR #457's run)
+
+The ubuntu referee: parse_json_tape 591.69 -> 632.34 MB/s on
+json-users (0.64x -> 0.69x simdjson) and 468.59 -> 473.81 on json-doc
+(0.61x -> 0.62x, flat). The NEON machine's +15% on json-doc did not
+transfer — the fused walk's advantage over the column walk is smaller
+on the runner's x86/AVX2 paths. Landed anyway: contract-preserving,
+positive on average, and the one-pass settle is the floor short of
+the record-level INT/FLOAT contract change. The same run's ryml table
+was variance-heavy again (anchor 2.36x this round vs 2.79x last;
+flow-json 2.73x vs 3.36x) — single-run referee rounds keep straddling
+the bar; the ledger's multi-run medians are the honest scoreboard.
