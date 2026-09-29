@@ -186,8 +186,7 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
 
     size_t i = open + 1;
     for (;;) {
-        while (i < len &&
-               (p[i] == ' ' || p[i] == '\t' || p[i] == '\n' || p[i] == '\r')) {
+        while (i < len && (p[i] == ' ' || p[i] == '\t' || p[i] == '\n' || p[i] == '\r')) {
             i++;
         }
         if (i >= len) {
