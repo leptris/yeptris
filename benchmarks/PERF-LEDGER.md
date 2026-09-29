@@ -2664,3 +2664,16 @@ the hop. Next suspects, in order: the lmapval value dispatch cascade
 the LSTR round-2 fallback's share for 8+-char strings. The instrument
 to build next: an rdtsc-instrumented COPY of tape.c linked ahead of the
 archive (the sampler cannot split the fully-inlined walk).
+
+## The specialist generalizes to any frame's content column (depth runs)
+
+The handoff's depth==0 gate was the only thing keeping nested flat
+runs out of the specialist. Dropping it (the bail conditions already
+route pops/dedents through the pop/nest arms; the specialist touches
+no frame state; anchored_first is cleared before any plain emission
+reaches the handoff) puts nested content pairs — anchored containers'
+pairs, leaf maps — on the same loop. Measured: anchor-heavy 1.02x,
+deep-nesting 1.02x, the rest neutral. Short runs (2-3 lines) barely
+amortize the handoff; the anchor machinery (table put, memo,
+pending/open forms) dominates that corpus, not the pair loop. The
+anchor-heavy lever that remains is the anchor-path arms themselves.
