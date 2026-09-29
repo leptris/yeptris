@@ -1572,6 +1572,41 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len
                 free(idx);
             }
 #endif
+            /* the record-primary fused walk first — the DOM route's
+             * exact call and flags (strict numbers at record time,
+             * clean-only gates; a reject frees the tape internally, so
+             * the column attempt below carves fresh). This route's
+             * contract is COLUMNS-EAGER (the suite reads kinds/offs/
+             * lens directly), so the records materialize here — the
+             * fused scan plus one sequential decode pass, still ahead
+             * of the column walk's inline three-stream writes. */
+            if (yep_tape_walk_lenient_fused(source, len, off, tape, 1, 1, 0) == YEPTRIS_OK) {
+                /* this route's columns settle the INT/FLOAT split the
+                 * records defer to convert; strict_nums=1 already
+                 * validated every span, so the shape scan only
+                 * classifies. ONE pass: decode record, write the
+                 * columns, settle the number kind inline. */
+                size_t count = tape->count;
+                yeptris_tape_rec* recs = tape->recs;
+                for (size_t i = 0; i < count; i++) {
+                    yeptris_tape_rec r = recs[i];
+                    uint8_t kind = (uint8_t)(r & 0xFFu);
+                    uint32_t off = (uint32_t)(r >> 32);
+                    uint32_t ln = (uint32_t)((r >> 8) & 0xFFFFFFu);
+                    if (kind == (uint8_t)YEP_T_NUM) {
+                        size_t n = 0;
+                        int flt = 0;
+                        if (yep_json_number_shape(source + off, ln, &n, &flt) != 0) {
+                            kind = flt ? (uint8_t)YEP_T_FLOAT : (uint8_t)YEP_T_INT;
+                        }
+                    }
+                    tape->kinds[i] = kind;
+                    tape->offs[i] = off;
+                    tape->lens[i] = ln;
+                }
+                tape->_cols_ready = 1;
+                return YEPTRIS_OK;
+            }
             YeptrisStatus st = tape_walk(source, len, off, tape, 1);
             if (st != YEPTRIS_ERROR_PARSE) {
                 return st; /* OK or MEMORY; a reject falls through */
