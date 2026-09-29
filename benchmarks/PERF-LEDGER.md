@@ -2761,3 +2761,25 @@ eager contract's materialization pass. Gates: 398/398 no-LTO + ASAN;
 the JsonTape number-contract tests (which pinned the settle) pass
 from the records directly — walk-time digits_only is number_shape's
 exact answer for validated spans.
+
+## Strict-route referee, round two (PR #460) — and the traffic analysis that ends this lane
+
+The strict lane's absolutes moved +10-11% on the referee (json-doc
+473.81 -> 525.19 MB/s, json-users 632.34 -> 692.91) — but the round's
+ratios read 0.65x because EVERY lane was down-variance (DOM 0.82x/
+0.88x, lenient 0.84x/0.90x; simdjson's implied number itself swung
++9-16% between runs). Single-run ratios are noise-bound; absolutes
+across runs are the honest trend.
+
+The traffic analysis that names the endgame: the strict route carves
+FOUR arrays (kinds/offs/lens/recs = 17B/slot) and then materializes
+columns from records — ~28MB of traffic on json-doc's 2.8MB, vs the
+lenient lane's ~11MB. On bandwidth-bound runners that IS the gap. The
+final design: a COLUMNS-PRIMARY fused walk — the lenient walk's arms
+(the specialized member cycles, LSTR_SCAN) emitting kinds/offs/lens
+directly, one pass, ~9MB, no records, no post-pass. That is tape_walk's
+shape with the optimizations tape_walk never received (it predates the
+#342/#45 specialized cycles). Implementation shape: the walk body
+include-once with a parameterized EMIT macro (record word vs three
+column stores), two thin wrappers — the repo's AOT-TU pattern at
+function granularity.
