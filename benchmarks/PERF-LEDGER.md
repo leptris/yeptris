@@ -2582,3 +2582,36 @@ line and brace scans before the classification ran once) are gone:
 397/397; the roundtrip corpus 0/0/0 under ASAN; the suite
 differential 0 mismatches; the five block-family corpora byte-exact
 and untouched.
+
+### The hyperperformance investigation: the floor's anatomy (item 86)
+
+The corrected profile attribution (the sample tree's counts are
+SUBTOTALS — the earlier reading double-counted the free path, which
+sits OUTSIDE the referee's timing): the fused runner owns ~88% of
+scalar-heavy's parse (~3.9 of 4.42 ms, ~60 ns/line on 62-byte lines);
+the front-end probes are ~8% (the stopset probe measured standalone
+at 29.6 GB/s — 0.137 ms, recorded dead); ytap_init's cap heuristic is
+trivial (len/2+64, no content walk — the earlier 30% attribution was
+a sample-tree misread).
+
+Three measured results this round:
+
+1. The sweep's tail-round NUL-padded path fires ONCE PER PARSE (the
+   loop breaks at the line's \n before any partial round except the
+   document's last) — the ledgered ~10% estimate was WRONG; the
+   back-load lever is void.
+2. The PAIR-RUN inline loop: CORRECT (398/398, tapes byte-exact) and
+   26% SLOWER (1035 to 763 MB/s) — the inlined duplicate bloated
+   yt_f_run past the I-cache edge. Dead end for the inline form.
+3. The FLAT-MAP SPECIALIST (the same idea as a separate function,
+   own I-cache footprint): the implementation is drafted
+   (/tmp/specialist.txt — plain-pair lines at a fixed content column,
+   handoff after the first qualifying pair, full fallback) but the
+   insertion landed mid-function through cascading edit-state
+   corruption; needs a fresh session applying to a clean checkout
+   with per-step verification. The design is sound; the I-cache
+   hypothesis is untested.
+
+The remaining honest path to 3x on scalar-heavy/anchor-heavy is the
+specialist function done cleanly, plus possibly a register-budget
+rewrite of the sweep. The other seven shapes hold 3.18x-5.29x.
