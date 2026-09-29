@@ -2677,3 +2677,27 @@ deep-nesting 1.02x, the rest neutral. Short runs (2-3 lines) barely
 amortize the handoff; the anchor machinery (table put, memo,
 pending/open forms) dominates that corpus, not the pair loop. The
 anchor-heavy lever that remains is the anchor-path arms themselves.
+
+## The lenient route takes the fused walk — the span route is dead (PR #455)
+
+The scoping theory was overturned first: `yeptris_parse_json` (the DOM
+lane) is ITSELF `yep_tape_walk_lenient_fused` + a lazy wrap — one pass
+at ~900-1100 MB/s local. The lenient entry's stage-1 + span two-pass
+route paid a full extra input pass and the block-table traffic; it had
+been ledgered a win when the fused walk was young and never re-judged.
+The entry now calls the fused walk directly (the call that already
+carried its escape/C0 verdicts as the fallback); `tape_walk_lnt_span`
+(233 lines) is deleted; the stage-1 kernels stay (exported ABI).
+
+Local best-of, alternated libraries: json-doc 1.46-1.58x, json-users
+1.72-1.74x. Ubuntu referee (PR #455): tape_lenient 689.46 MB/s (0.91x
+simdjson) and 978.76 MB/s (1.07x simdjson) — the lenient route now
+BEATS the DOM lane on both shapes and sits at/over simdjson parity.
+Task #85's bar is met on this route; the strict `parse_json_tape`
+route (0.61-0.64x) is the JSON-side remainder. Gates: tape-diff
+2,000,340 cases / 318 files / 0 failures; json-suite + strict; 398/398
+no-LTO and ASAN.
+
+The depth-run specialist generalization (PR #456) measured in the same
+round: see the entry above — anchor-heavy 1.02x, deep 1.02x, the rest
+neutral; the anchor-path arms are that corpus's real lever.
