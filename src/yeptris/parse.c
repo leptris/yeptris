@@ -156,7 +156,7 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
                 st = YEPTRIS_ERROR_MEMORY;
                 goto jfail;
             }
-            if (yep_tape_walk_lenient_fused(buf, len, off, t, 1, 1) == YEPTRIS_OK) {
+            if (yep_tape_walk_lenient_fused(buf, len, off, t, 1, 1, 0) == YEPTRIS_OK) {
                 /* strict_nums=1: the arms validated the numbers at
                  * record time — the settle pass is gone (the profile's
                  * 10% lane; the spans were cache-warm in the walk) */
@@ -293,6 +293,26 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
         }
     }
 
+    /* Unicode breaks (NEL/LS/PS) normalize to '\n' BEFORE the engine:
+     * the copy rides `transcoded`, whose ownership plumbing (input_base
+     * views, doc free, fail paths) already exists. Letting the engine's
+     * per-feed copy fire here returned views into ENGINE-owned memory
+     * that dies at yeptris_parse teardown — every one-shot NEL document
+     * dangled (no test ever covered one; found by the NormBreakLeads
+     * slice, 2026-09-27). JSON mode skips this: the JSON reader keeps
+     * U+0085 raw inside strings, only the YAML reader normalizes. */
+    {
+        size_t nlen = 0;
+        char* norm = yep_engine_normalize_breaks(sys, data, data_len, &nlen);
+        if (norm != NULL) {
+            yep_free(sys, transcoded);
+            transcoded = (unsigned char*)norm;
+            transcoded_len = nlen;
+            data = norm;
+            data_len = nlen;
+        }
+    }
+
     /* Engine → DOM. */
     yep_engine* eng = NULL;
 engine_enter:
@@ -382,7 +402,27 @@ engine_enter:
                           .on_block_open = dom_on_block_open,
                           .on_block_item = dom_on_block_item};
     }
-    int rc = yep_engine_run(eng, data, data_len, &sink);
+    int rc = 0;
+    if (have_tape && ytap_flow_rooted(&yt) == 0) {
+        /* a pure flow-rooted document: the classification ran once and
+         * the scaffolding landed — neither runner nor engine runs */
+        yep_engine_destroy(eng);
+        eng = NULL;
+    } else if (have_tape &&
+               ytap_fused_run(&yt, (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
+                                       ? yep_resolver_compat11()
+                                       : yep_resolver_core12()) == 0) {
+        /* the fused block runner owned the whole document — the engine
+         * never runs (TODO.restructure/79). Its only cost was the parse
+         * front-end above; on a bail it unwound and the engine runs. */
+        yep_engine_destroy(eng);
+        eng = NULL;
+    } else {
+        if (have_tape) {
+            ytap_reset(&yt);
+        }
+        rc = yep_engine_run(eng, data, data_len, &sink);
+    }
     if (rc != 0) {
         const yep_error* ee = yep_engine_error(eng);
         yep_err_code code = ee ? ee->code : YEP_ERR_UNEXPECTED;
@@ -459,6 +499,10 @@ engine_enter:
             goto fail;
         }
         *heap_tape = yt;
+        if (yt.pool != NULL && doc->finish_pool == NULL) {
+            doc->finish_pool = yt.pool; /* fused block-scalar content: the
+                                         * document owns it until replay copies */
+        }
         doc->dom = NULL;
         doc->lazy_tape = heap_tape;
         doc->lazy_kind = 1;

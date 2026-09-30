@@ -11,6 +11,7 @@
 
 #include "common/error.h"
 #include "common/simd_text.h"
+
 #include "memory/allocator.h"
 #include "memory/pool.h"
 #include "parse/events.h"
@@ -18,6 +19,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Pinned by Parse.NormBreakLeadsMatchRuntimeBuild (test_parse.cpp). */
+extern const yep_stopset yep_norm_break_leads;
 
 typedef struct yep_engine yep_engine;
 
@@ -64,6 +68,13 @@ void yep_engine_set_compat_grammar(yep_engine* e, int on);
 size_t yep_engine_pos(const yep_engine* e);
 
 const yep_error* yep_engine_error(const yep_engine* e);
+
+/* The NEL/LS/PS -> '\n' copy; NULL when the input is clean (probe rides
+ * the stopset kernel). One-shot parse runs this BEFORE the engine so
+ * the copy owns the document's transcoded slot; the engine's per-feed
+ * copy (norm_buf) stays for the streaming feeds. */
+char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_t len,
+                                  size_t* out_len);
 
 #ifdef __cplusplus
 }

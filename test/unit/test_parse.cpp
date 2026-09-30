@@ -9,7 +9,9 @@
 
 #include <yeptris.h>
 
+#include "common/chartype.h"
 #include "common/simd_text.h"
+#include "parse/engine.h"
 #include "scan/scan.h"
 #include <yeptris/json.h>
 
@@ -263,6 +265,196 @@ TEST(Parse, PlainStopSetsMatchRuntimeBuild) {
     EXPECT_EQ(0, memcmp(&yep_break_stopset, &ss, sizeof(ss)));
 }
 
+namespace {
+int ref_colon_terminates(const char* p, size_t len, size_t colon, int flow) {
+    size_t next = colon + 1;
+    if (next >= len) {
+        return 1;
+    }
+    unsigned char c = (unsigned char)p[next];
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+        return 1;
+    }
+    if (flow && yep_ct_is(c, YEP_CT_FLOW_IND)) {
+        return 1;
+    }
+    return 0;
+}
+
+/* The byte-loop scan_plain the SWAR tiny path must match span for span. */
+yep_span scan_plain_reference(const char* p, size_t len, size_t pos, int flow) {
+    const yep_stopset* stop = flow ? &yep_plain_stop_flow : &yep_plain_stop_block;
+    yep_span s;
+    s.start = (uint32_t)pos;
+    s.end = (uint32_t)pos;
+    s.term = YEP_TERM_EOF;
+    size_t i = pos;
+    while (i < len) {
+        size_t at = i;
+        while (at < len && !yep_stopset_test(stop->bitmap, (unsigned char)p[at])) {
+            at++;
+        }
+        unsigned char c = (at < len) ? (unsigned char)p[at] : 0;
+        if (at == len) {
+            i = len;
+            s.term = YEP_TERM_EOF;
+            break;
+        }
+        if (c == '\n' || c == '\r') {
+            i = at;
+            s.term = YEP_TERM_EOL;
+            break;
+        }
+        if (c == ':') {
+            if (ref_colon_terminates(p, len, at, flow)) {
+                i = at;
+                s.term = YEP_TERM_COLON;
+                break;
+            }
+            i = at + 1;
+            continue;
+        }
+        if (c == '#') {
+            if (at == s.start || (at > s.start && (p[at - 1] == ' ' || p[at - 1] == '\t'))) {
+                i = at;
+                s.term = YEP_TERM_COMMENT;
+                break;
+            }
+            i = at + 1;
+            continue;
+        }
+        i = at;
+        s.term = YEP_TERM_FLOW;
+        break;
+    }
+    size_t e = i;
+    while (e > s.start && (p[e - 1] == ' ' || p[e - 1] == '\t')) {
+        e--;
+    }
+    s.end = (uint32_t)e;
+    return s;
+}
+} /* namespace */
+
+TEST(Parse, ScanPlainSwarTinyMatchesByteReference) {
+    uint64_t seed = 0x9E3779B9ull;
+    auto next = [&seed]() {
+        seed = seed * 6364136223846793005ull + 1442695040888963407ull;
+        return (uint32_t)(seed >> 33);
+    };
+    auto check = [&](const std::string& s, size_t pos, int flow) {
+        yep_span got = yep_scan_plain(s.data(), s.size(), pos, flow);
+        yep_span want = scan_plain_reference(s.data(), s.size(), pos, flow);
+        ASSERT_EQ(got.start, want.start) << "pos=" << pos << " flow=" << flow << " s='" << s << "'";
+        ASSERT_EQ(got.end, want.end) << "pos=" << pos << " flow=" << flow << " s='" << s << "'";
+        ASSERT_EQ(got.term, want.term) << "pos=" << pos << " flow=" << flow << " s='" << s << "'";
+    };
+    /* exhaustive over a 4-char interaction core (colon/hash/space/lit),
+     * lengths crossing the 8-byte word boundary, both stop sets */
+    const std::string core = "a:#,";
+    for (int flow = 0; flow <= 1; flow++) {
+        for (uint32_t len = 0; len <= 24; len++) {
+            uint64_t variants = 1ull << (2 * (len > 8 ? 8 : len));
+            for (uint64_t v = 0; v < variants; v++) {
+                std::string s;
+                uint64_t bits = v;
+                for (uint32_t j = 0; j < len; j++) {
+                    s += core[bits & 3u];
+                    bits >>= 2;
+                    if (j == 7 && len > 8) {
+                        s += core[(v >> 13) & 3u]; /* word-boundary flavors */
+                    }
+                }
+                check(s, 0, flow);
+            }
+            /* random strings over the full member + filler alphabet */
+            const std::string alphabet = "ab: #\n\t\r,[]{}X\x01\x7f";
+            for (int r = 0; r < 300; r++) {
+                std::string s;
+                uint32_t n = 1 + next() % 100;
+                for (uint32_t j = 0; j < n; j++) {
+                    s += alphabet[next() % alphabet.size()];
+                }
+                size_t pos = (r % 3 == 0) ? (next() % s.size()) : 0;
+                check(s, pos, flow);
+            }
+        }
+    }
+    /* directed spans: multi-hit words, mid-token '#', non-terminating ':' */
+    check("aaaa:bbbb:cccc\nd", 0, 0);
+    check("aaa#bbb: c", 0, 0);
+    check("a:b:c ", 0, 0);
+    check("k:  v ", 3, 0);
+    check("a,b]c{d}e:f", 0, 1);
+    check("x:a[b]c{d}e,f g", 1, 1);
+    check("trailing spaces   ", 0, 0);
+    check("a{b}c", 0, 0); /* flow members do not stop block scans */
+}
+
+TEST(Parse, NormBreakLeadsMatchRuntimeBuild) {
+    /* the literal must equal what yep_stopset_init builds for {C2, E2}
+     * (the Unicode break lead bytes) — a drift would silently skip the
+     * NEL/LS/PS normalization on every parse */
+    unsigned char b[32];
+    yep_stopset_clear(b);
+    yep_stopset_add(b, 0xC2);
+    yep_stopset_add(b, 0xE2);
+    yep_stopset ss;
+    yep_stopset_init(&ss, b);
+    EXPECT_EQ(0, memcmp(&yep_norm_break_leads, &ss, sizeof(ss)));
+}
+
+TEST(Parse, UnicodeBreaksNormalizeLookalikesStay) {
+    /* real NEL/LS/PS normalize to a line break (folded plain picks up
+     * a space); the lookalike byte runs must ride through untouched */
+    /* NEL/LS/PS normalize to a line break BEFORE parsing, so each one
+     * below is exactly a '\n' in libyaml terms: an indented plain
+     * continuation folds with a space, and a break between pairs
+     * creates a second pair. The lookalike byte runs must ride through
+     * untouched (the detector's real predicate). */
+    struct {
+        const char* y;
+        const char* want;
+    } cases[] = {
+        {"k: a\xC2\x85"
+         " b\n",
+         "a b"}, /* NEL fold */
+        {"k: a\xE2\x80\xA8"
+         " b\n",
+         "a b"}, /* LS fold */
+        {"k: a\xE2\x80\xA9"
+         " b\n",
+         "a b"}, /* PS fold */
+        {"k: 012345678\xC2\x85"
+         " x\n",
+         "012345678 x"},                           /* past the byte loop's word */
+        {"k: \xC2\xA0x\n", "\xC2\xA0x"},           /* NBSP: C2 lead, not a break */
+        {"k: v\xE2\x80\x93x\n", "v\xE2\x80\x93x"}, /* en dash: E2 80, not A8/A9 */
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(c.y, strlen(c.y), &st);
+        ASSERT_NE(doc, nullptr) << "input=" << c.y << " err=" << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(map_str(root, "k"), c.want) << c.y;
+        yeptris_document_free(doc);
+    }
+    /* the pair-splitting shape: the NEL line break ends the 'k' pair */
+    {
+        const char* y = "k: v\xC2\x85"
+                        "j: w\n";
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(yeptris_node_map_count(root), 2u);
+        EXPECT_EQ(map_str(root, "k"), "v");
+        EXPECT_EQ(map_str(root, "j"), "w");
+        yeptris_document_free(doc);
+    }
+}
 TEST(Parse, AnchorsAndAliases) {
     const char* y = "base: &b\n"
                     "  x: 1\n"

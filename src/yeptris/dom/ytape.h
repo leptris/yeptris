@@ -30,6 +30,7 @@ extern "C" {
 #endif
 
 typedef struct yep_pool yep_pool;
+struct yep_resolver;
 
 typedef struct yep_ytape {
     uint64_t* w;
@@ -42,7 +43,10 @@ typedef struct yep_ytape {
     int flow_strict; /* mirrors dom->flow_strict (0 everywhere today) */
     int docs;        /* DOCUMENT_START count (the empty-stream check) */
     int oom;
-    uint32_t flow_mark; /* record mark for the staged flow build */
+    uint32_t flow_mark;    /* record mark for the staged flow build */
+    struct yep_pool* pool; /* fused block-scalar content (owned by the doc
+                            * after a successful run; NULL on the engine route) */
+    void* flow_scratch;    /* the flow classifier's reused json-tape scratch */
 } yep_ytape;
 
 /* Record kinds — byte 7 of a word. */
@@ -62,6 +66,21 @@ enum {
 /* Recorder lifecycle. Returns 0, or -1 when the word carve fails
  * (caller answers YEPTRIS_ERROR_MEMORY — bounded-parse law). */
 int ytap_init(yep_ytape* t, const char* input, size_t len, int max_depth);
+
+/* The fused block runner (TODO.restructure/79): ONE sweep per line
+ * emitting the same records the engine's sink would. Returns 0 when
+ * the document was fully owned; 1 on any bail (the caller resets the
+ * tape and runs the engine route). */
+int ytap_fused_run(yep_ytape* t, const struct yep_resolver* resolver);
+
+/* The flow-rooted fast path: a document that is exactly one flow
+ * collection plus whitespace takes the classification directly —
+ * the block runner and the engine never run. Returns 0 when owned;
+ * 1 on any fallback. */
+int ytap_flow_rooted(yep_ytape* t);
+
+/* Rewind a bailed tape for the engine re-run. */
+void ytap_reset(yep_ytape* t);
 void ytap_sink(yep_ytape* t, yep_sink* sink);
 void ytap_free(yep_ytape* t);
 

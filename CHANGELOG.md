@@ -7,6 +7,54 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Changed
+- **parse: the fused block runner owns every block-family shape** —
+  quoted values, literal block scalars, and anchored containers join
+  the owned set, and chained same-column pendings no longer leak a
+  frame per record (the 256-frame guard at ~254 documents was
+  block-heavy's silent bail). block-heavy, scalar-heavy, and
+  anchor-heavy now run the fused SWAR runner end-to-end
+  (block-heavy ~2.4x, scalar-heavy ~4x, anchor-heavy 2.8x their eager
+  routes); block-scalar content rides a per-run pool transferred to
+  the document, and the first pair inside an anchored container bakes
+  the engine's tag classification via the threaded resolver.
+  Byte-exact tape differential over all five block-family corpora and
+  the yaml-test-suite inputs.
+- **parse: the fused block runner owns nested block YAML** — deep
+  nesting, indentless/nested sequences, sibling maps after child
+  closes, and null-resolved pending keys now run the fused SWAR
+  runner instead of falling back to the engine. The frame model
+  mirrors the engine's tape emission exactly (strict dedents,
+  per-column phantom content maps, null scalars for same-column
+  siblings, the repeat-alias memo). Deep-nesting parses 3.09x the
+  eager route (1078 MB/s DOM); wide-mapping holds 2.06x; byte-exact
+  tape differential over the yaml-test-suite inputs.
+- **parse: the fused block runner owns monomorphic block documents**
+  — one SWAR sweep per line with inline classification writes the
+  packed tape directly, no engine pass; any line the loop does not
+  own bails to the engine route unchanged (restart fallback).
+  Wide-mapping parses at 2.06x (598 vs 290 MB/s); other shapes ride
+  the fallback until the column model widens coverage (#79 session 3).
+
+## [0.6.26] - 2026-09-27
+### Fixed
+- **parse: NEL/LS/PS documents no longer dangle** — the one-shot
+  `yeptris_parse` normalized Unicode breaks (NEL, LS, PS) into an
+  ENGINE-owned buffer that dies at engine teardown, so every document
+  containing one returned views into freed memory (garbage values or
+  segfault on access); no test had ever parsed a real NEL document.
+  The copy now rides the document's `transcoded` ownership before the
+  engine runs; the streaming feeds keep the engine's per-chunk copy.
+### Changed
+- **parse: the Unicode-break probe rides the SIMD stopset kernel** —
+  the whole-document NEL/LS/PS pre-pass walked every byte with a
+  two-prefix check (~6 compares/byte); it now zero-detects the two
+  lead bytes per 8-byte word via `stopset_find` and byte-checks only
+  candidates. Block-heavy +13%, scalar-heavy +31% (order-alternated
+  DOM-lane medians). The lead-byte stopset literal is pinned by
+  `Parse.NormBreakLeadsMatchRuntimeBuild`.
+
+## [0.6.25] - 2026-09-26
 ### Fixed
 - **recorder: the compat schema's engine runs floor-free** — the
   recorder's engine creation set only the resolver, so every consumer

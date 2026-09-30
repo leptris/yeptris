@@ -17,8 +17,12 @@ jobs:
       - name: Install perf
         run: sudo apt-get update && sudo apt-get install -y linux-tools-common linux-tools-generic
 
+      # LTO-Release builds mis-attribute sample PCs to post-call sites
+      # (leaf time inside callees reads as the caller's own time), so a
+      # Release profile points at the wrong functions; RelWithDebInfo
+      # with LTO off symbolizes honestly (2026-09-27 session law)
       - name: Configure and build
-        run: cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release -DYEPTRIS_BUILD_BENCHMARKS=ON
+        run: cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DYEPTRIS_ENABLE_LTO=OFF -DYEPTRIS_BUILD_BENCHMARKS=ON
 
       - name: Build benchmarks
         run: cmake --build build --target bench_matrix
