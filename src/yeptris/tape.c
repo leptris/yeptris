@@ -1318,7 +1318,7 @@ static YeptrisStatus yep_tape_walk_columns_fused(const char* p, size_t len, size
         kinds[count] = (uint8_t)YEP_T_CLOSE;                                                       \
         offs[count] = lo_;                                                                         \
         lens[count] = 0;                                                                           \
-        offs[lo_] = count;                                                                         \
+        offs[lo_] = (uint32_t)count;                                                                         \
         count++;                                                                                   \
         i++;                                                                                       \
         depth--;                                                                                   \
