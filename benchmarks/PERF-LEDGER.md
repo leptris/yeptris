@@ -2846,3 +2846,32 @@ much larger design than the measured-dead two-pass stage-1) — or
 declaring the walk at parity-class and spending the budget on the
 ryml front, where the gaps (+3% json-users, +8% anchor, +14% scalar)
 have named, untried levers.
+
+## Scalar-heavy's 43%: the root literal arm, sized and designed (next session's opening move)
+
+Corpus surgery pinned it: scalar-heavy full runs at ~958-975 MB/s;
+with the 4,976 literal blocks stripped (scalar-flat), the remaining
+flat pairs run at ~1,200-1,290 MB/s. The literal-family lines (5k
+headers + ~10k content lines) cost ~120 ns/line against the flat
+pairs' ~48 ns — the arm owns 1.79 ms of the 4.18 ms parse (43%). Cut
+by a third and scalar-heavy clears the ryml 3x bar (~1,090+ MB/s);
+halved, ~1,230 MB/s (~3.3x).
+
+The design, ready to execute: the arm walks every block line TWICE
+(measure pass, then the copy pass re-derives boundaries byte-wise).
+Restructure to one boundary walk storing per-line facts
+(ls/le/indent/blank) in a small fixed array, then sizing + memcpy from
+the array — the copy's re-scans and the drift check disappear by
+construction. The corpora's root blocks max at 2 lines (a 16-entry
+array never spills), BUT block-heavy's blocks are nested and can be
+large: entries past the cap must fall back to the existing two-pass
+code, which stays in place — the array path is an addition, not a
+replacement, and its I-cache cost is bounded by the arm's low line
+share. Fold the per-line content-tab memchr into the walk while there
+(scalar-heavy: 15k calls, ~0.3 ms) or detect at copy (waste-tolerant:
+a post-alloc bail emits nothing).
+
+First probe for the next session: instrument the arm with counters
+(blocks, lines, memchr calls, pool allocs, bytes — the link-order
+scratch-copy pattern) to split the 1.79 ms between the double walk,
+the memchrs, and the pool before cutting.
