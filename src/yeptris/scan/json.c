@@ -277,8 +277,8 @@ int yep_json_number_scan(const char* p, size_t len, size_t* i, int* is_float, in
                 /* no more digits and not a float/exponent — settle */
                 if (end < len) {
                     char c = p[end];
-                    if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' &&
-                        c != ':') {
+                    if (c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != ',' && c != ']' &&
+                        c != '}' && c != ':') {
                         return 0; /* "1x" is YAML, not JSON */
                     }
                 }
@@ -299,8 +299,8 @@ int yep_json_number_scan(const char* p, size_t len, size_t* i, int* is_float, in
                                (p[end] < '0' || p[end] > '9'))) {
                 if (end < len) {
                     char c = p[end];
-                    if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' &&
-                        c != ':') {
+                    if (c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != ',' && c != ']' &&
+                        c != '}' && c != ':') {
                         return 0;
                     }
                 }
@@ -387,7 +387,8 @@ int yep_json_number_scan(const char* p, size_t len, size_t* i, int* is_float, in
     }
     if (k < len) {
         char c = p[k];
-        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
+        if (c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' &&
+            c != ':') {
             return 0; /* "1x" is YAML, not JSON */
         }
     }
@@ -477,7 +478,8 @@ int yep_json_number_shape(const char* p, size_t len, size_t* i, int* is_float) {
     }
     if (k < len) {
         char c = p[k];
-        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
+        if (c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' &&
+            c != ':') {
             return 0; /* "1x" is YAML, not JSON */
         }
     }
@@ -497,7 +499,8 @@ int yep_json_literal(const char* p, size_t len, size_t* i, const char* word) {
     *i += w;
     if (*i < len) {
         char c = p[*i];
-        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
+        if (c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' &&
+            c != ':') {
             return 0; /* "truex" is a YAML plain, not JSON */
         }
     }

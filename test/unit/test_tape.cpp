@@ -247,8 +247,9 @@ TEST(JsonTape, ErrorParityWithParseJson) {
         "   ",
         "[\"\\u00e9\\u65e5\"]",
         "{\"k\": [0, -0, 1e-3, 1E+2, 3.14159]}",
-        /* tabs are legal RFC 8259 ws: the walker route rejects them,
-         * the document fallback accepts — both engines must agree */
+        /* tabs are legal RFC 8259 ws — every route accepts them, both
+         * engines must agree (the regression: the walkers' delimiter
+         * sets and the number scanners omitted the tab) */
         "[\t1,\t2\t]",
         "{\"a\"\t:\t1\t}",
     };
@@ -374,9 +375,45 @@ TEST(JsonTapeLenient, StructuralErrorsStayParseErrors) {
     }
 }
 
+TEST(JsonTape, TabWhitespaceIsLegalOnEveryRoute) {
+    /* the regression suite (lutaml-jsonschema, tab-indented schemas):
+     * a tab is RFC 8259 whitespace in every position — after open,
+     * before values, after numbers and literals, around the colon,
+     * at the tail — and the DOM and tape routes agree on all of it */
+    const char* docs[] = {
+        "[\t1]",
+        "[1,\t2]",
+        "[1\t,2]",
+        "[1\t]",
+        "{\"a\":\t1}",
+        "{\"a\"\t:1}",
+        "{\"a\"\t:\t1\t}",
+        "[true\t]",
+        "[1,\ttrue,\tnull]",
+        "true\t",
+        "{\n\t\"a\"\t:\t1\n}",
+    };
+    for (const char* s : docs) {
+        TapeGuard tp;
+        ASSERT_EQ(tp.parse(s), YEPTRIS_OK) << s;
+        YeptrisStatus dom_st = YEPTRIS_OK;
+        yeptris_document_free(yeptris_parse_json(s, strlen(s), &dom_st));
+        EXPECT_EQ(dom_st, YEPTRIS_OK) << s;
+    }
+    /* whitespace is not a separator: these stay rejects, tab or space */
+    const char* rejects[] = {"[1\t2]", "{\"a\"\t1}", "[1 2]", "{\"a\" 1}", "1\t2"};
+    for (const char* s : rejects) {
+        TapeGuard tp;
+        EXPECT_EQ(tp.parse(s), YEPTRIS_ERROR_PARSE) << s;
+        YeptrisStatus dom_st = YEPTRIS_OK;
+        yeptris_document_free(yeptris_parse_json(s, strlen(s), &dom_st));
+        EXPECT_EQ(dom_st, YEPTRIS_ERROR_PARSE) << s;
+    }
+}
+
 TEST(JsonTapeLenient, TabWhitespaceIsLegal) {
-    /* RFC 8259 ws includes tabs; the strict tape walk rejects them,
-     * the lenient route accepts (simdjson semantics) */
+    /* RFC 8259 ws includes tabs — strict and lenient both accept; the
+     * lenient entry pins it independently of the strict-route routing */
     TapeGuard l;
     yeptris_json_tape& lt = l.t;
     ASSERT_EQ(yeptris_parse_json_tape_lenient("[\t1\t]", 5, &lt), YEPTRIS_OK);
