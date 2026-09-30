@@ -6,6 +6,20 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- **parse: the fused runner bails on three anchored shapes it mishandled**
+  — an anchored key whose "content" sits at the key's own column (the
+  value is null; the line is a sibling) became a nested map; an
+  indentless anchored sequence lost every following sibling; and an
+  alias to an anchor whose container never opened (null-valued or
+  still pending) corrupted the tape. All three now fall back to the
+  engine route, byte-exact with it (the runner's own contract: any
+  line the loop does not own bails). Found by the binding's Psych
+  merge-key port (yeptris-ruby's CI gates the lockstep tag); the C
+  suite had no coverage for these shapes.
+
+
 ## [0.6.27] - 2026-09-30
 ### Changed
 - **parse: the fused block runner owns every block-family shape** —

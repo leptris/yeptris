@@ -873,6 +873,7 @@ typedef struct {
     struct {
         uint32_t off, len, aid, tag;
     }* anchors;
+    uint8_t* anchors_opened; /* per-aid: the anchored container's start event went out */
 } yt_fused;
 
 /* Frame model (engine-verified): st[] frames are the engine's *silent*
@@ -917,8 +918,20 @@ static int yt_anchor_table(yt_fused* F) {
             return 0;
         }
         memset(F->anchors, 0, YT_FUSED_ANCHORS * sizeof(*F->anchors));
+        F->anchors_opened =
+            (void*)yep_alloc(yep_system_allocator(), YT_FUSED_ANCHORS * sizeof(uint8_t));
+        if (F->anchors_opened == NULL) {
+            return 0;
+        }
+        memset(F->anchors_opened, 0, YT_FUSED_ANCHORS * sizeof(uint8_t));
     }
     return 1;
+}
+
+static void yt_anchor_open(yt_fused* F, uint32_t aid) {
+    if (F->anchors_opened != NULL && aid != 0 && aid <= YT_FUSED_ANCHORS) {
+        F->anchors_opened[aid - 1] = 1;
+    }
 }
 
 static void yt_anchor_put(yt_fused* F, uint32_t off, uint32_t len, uint32_t aid) {
@@ -1296,6 +1309,11 @@ static int yt_f_run(yt_fused* F) {
                 }
                 int anchored = st[depth].aid != 0;
                 if (anchored) {
+                    if (col == st[depth].indent) {
+                        return 1; /* indentless anchored seq: the engine owns it
+                                   * (the frame-close pairing assumes the seq's
+                                   * own column, deeper than the key's) */
+                    }
                     /* anchored sequence: S2900 key + the anchored SEQ start */
                     if (depth == 1) {
                         if (!root_open) {
@@ -1317,6 +1335,7 @@ static int yt_f_run(yt_fused* F) {
                     (void)yt_put(t, yt_props(YTP_EVENT, xaid, 5u | (1u << 13)));
                     yt_f_empty_span(F);
                     (void)yt_put(t, yt_span_in(xoff, xlen, YTP_SPAN_IN));
+                    yt_anchor_open(F, xaid);
                     st[depth].pending = 0; /* the seq frame shadows this slot */
                 } else {
                     uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
@@ -1487,6 +1506,10 @@ static int yt_f_run(yt_fused* F) {
                         return 1; /* off-column: a continuation line — the multiline arm */
                     }
                     if (depth > 0 && st[depth].pending && st[depth].aid != 0) {
+                        if (col <= st[depth].indent) {
+                            return 1; /* same-column "content": the anchored value is
+                                       * null and this line is a sibling — the engine */
+                        }
                         /* an anchored container resolves through the event
                          * path: the parent's content map opens for the key
                          * first, then the key SCALAR + the anchored start */
@@ -1516,6 +1539,7 @@ static int yt_f_run(yt_fused* F) {
                         (void)yt_put(t, yt_props(YTP_EVENT, xaid, 7u | (1u << 13)));
                         yt_f_empty_span(F);
                         (void)yt_put(t, yt_span_in(xoff, xlen, YTP_SPAN_IN));
+                        yt_anchor_open(F, xaid);
                         memset(&st[depth], 0, sizeof(st[depth]));
                         st[depth].indent = col; /* the engine's frame pops on the CONTENT
                                                  * column, not the anchored key's */
@@ -1574,6 +1598,11 @@ static int yt_f_run(yt_fused* F) {
                         uint32_t taid = 0;
                         if (!yt_anchor_get(F, (uint32_t)(vt + 1), (uint32_t)(ne - vt - 1), &taid)) {
                             return 1; /* undefined alias: the engine errors */
+                        }
+                        if (taid == 0 || taid > YT_FUSED_ANCHORS || F->anchors_opened == NULL ||
+                            !F->anchors_opened[taid - 1]) {
+                            return 1; /* alias to an anchor whose container never opened
+                                       * (null-valued or still pending): the engine */
                         }
                         (void)yt_put(t, yt_props(YTP_PAIR, taid, 3u /*ALIAS*/));
                         (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
@@ -1951,6 +1980,7 @@ int ytap_fused_run(yep_ytape* t, const yep_resolver* resolver) {
     int rc = yt_f_run(F);
     yep_pool* rpool = F->pool; /* capture before the runner frees */
     yep_free(yep_system_allocator(), F->anchors);
+    yep_free(yep_system_allocator(), F->anchors_opened);
     yep_free(yep_system_allocator(), F);
     if (rc != 0) {
         t->count = (uint32_t)mark; /* unwind: the caller resets and re-runs */
