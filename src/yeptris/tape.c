@@ -140,11 +140,12 @@ static int tape_put_root_scalar(tape_ctx* c, const char* p, size_t len, size_t a
 /* The punctuation inline (the simdjson tape-builder lesson): after a
  * value or a key, the next token is a comma/colon or the close —
  * consume it inline instead of paying a full loop iteration for a
- * one-byte state flip. Anything else (close, garbage, a tab) falls
- * through with the cursor parked for the main loop to judge. */
+ * one-byte state flip. Anything else (close, garbage) falls through
+ * with the cursor parked for the main loop to judge. Whitespace here
+ * is RFC 8259's set — tab included. */
 static inline uint8_t tape_inline_punct(const char* p, size_t len, size_t* i, uint8_t want) {
     size_t j = *i;
-    while (j < len && (p[j] == ' ' || p[j] == '\n' || p[j] == '\r')) {
+    while (j < len && (p[j] == ' ' || p[j] == '\t' || p[j] == '\n' || p[j] == '\r')) {
         j++;
     }
     if (j < len && (uint8_t)p[j] == want) {
@@ -329,8 +330,8 @@ static YeptrisStatus tape_walk(const char* p, size_t len, size_t open, yeptris_j
             }
             if (at + wl < len) {
                 char z = p[at + wl];
-                if (z != ' ' && z != '\n' && z != '\r' && z != ',' && z != ']' && z != '}' &&
-                    z != ':') {
+                if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
+                    z != '}' && z != ':') {
                     goto reject;
                 }
             }
@@ -546,8 +547,8 @@ static YEP_UNUSED_FN YeptrisStatus tape_walk_idx(const char* p, size_t len, size
             }
             if (at + wl < len) {
                 char z = p[at + wl];
-                if (z != ' ' && z != '\n' && z != '\r' && z != ',' && z != ']' && z != '}' &&
-                    z != ':') {
+                if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
+                    z != '}' && z != ':') {
                     goto reject;
                 }
             }

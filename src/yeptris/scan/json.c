@@ -499,7 +499,8 @@ int yep_json_literal(const char* p, size_t len, size_t* i, const char* word) {
     *i += w;
     if (*i < len) {
         char c = p[*i];
-        if (c != ' ' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' && c != ':') {
+        if (c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' &&
+            c != ':') {
             return 0; /* "truex" is a YAML plain, not JSON */
         }
     }
