@@ -871,7 +871,7 @@ typedef struct {
      * is heap-allocated on the first definition — small parses never
      * pay for the 64k slots anchor-heavy documents need. */
     struct {
-        uint32_t off, len, aid;
+        uint32_t off, len, aid, tag;
     }* anchors;
 } yt_fused;
 
@@ -884,12 +884,29 @@ typedef struct {
  * pop strictly shallower; seqs also leave at their column when a
  * non-dash arrives. The root closes only when its start event fired. */
 
+/* chunked name hash: 8 bytes per round, one mix per round (the
+ * byte-wise FNV chain cost ~6 cycles/byte on this corpus's 80k
+ * lookups+puts per parse). The tail masks to the real bytes so only
+ * equal names hash equal. */
 static uint32_t yt_anchor_hash(const char* p, uint32_t off, uint32_t len) {
-    uint32_t h = 2166136261u;
-    for (uint32_t i = 0; i < len; i++) {
-        h = (h ^ (unsigned char)p[off + i]) * 16777619u;
+    uint64_t h = 2166136261u;
+    uint32_t i = 0;
+    for (; i < len;) {
+        uint32_t room = len - i;
+        uint64_t w;
+        if (room >= 8) {
+            memcpy(&w, p + off + i, 8);
+            i += 8;
+        } else {
+            uint64_t tail = 0;
+            memcpy(&tail, p + off + i, room);
+            w = tail;
+            i = len;
+        }
+        h = (h ^ w) * 11400714819323198485ull;
+        h ^= h >> 29;
     }
-    return h;
+    return (uint32_t)(h ^ (h >> 32));
 }
 
 static int yt_anchor_table(yt_fused* F) {
@@ -906,15 +923,18 @@ static int yt_anchor_table(yt_fused* F) {
 
 static void yt_anchor_put(yt_fused* F, uint32_t off, uint32_t len, uint32_t aid) {
     uint32_t m = YT_FUSED_ANCHORS - 1;
-    uint32_t i = yt_anchor_hash(F->p, off, len) & m;
+    uint32_t tag = yt_anchor_hash(F->p, off, len);
+    uint32_t i = tag & m;
     for (uint32_t n = 0; n < 64; n++) {
         if (F->anchors[i].len == 0) {
             F->anchors[i].off = off;
             F->anchors[i].len = len;
             F->anchors[i].aid = aid;
+            F->anchors[i].tag = tag;
             return;
         }
-        if (F->anchors[i].len == len && memcmp(F->p + F->anchors[i].off, F->p + off, len) == 0) {
+        if (F->anchors[i].tag == tag && F->anchors[i].len == len &&
+            memcmp(F->p + F->anchors[i].off, F->p + off, len) == 0) {
             F->anchors[i].aid = aid; /* redefinition: latest wins */
             return;
         }
@@ -933,12 +953,14 @@ static int yt_anchor_get(yt_fused* F, uint32_t off, uint32_t len, uint32_t* aid)
         return 1;
     }
     uint32_t m = YT_FUSED_ANCHORS - 1;
-    uint32_t i = yt_anchor_hash(F->p, off, len) & m;
+    uint32_t tag = yt_anchor_hash(F->p, off, len);
+    uint32_t i = tag & m;
     for (uint32_t n = 0; n < 64; n++) {
         if (F->anchors[i].len == 0) {
             return 0;
         }
-        if (F->anchors[i].len == len && memcmp(F->p + F->anchors[i].off, F->p + off, len) == 0) {
+        if (F->anchors[i].tag == tag && F->anchors[i].len == len &&
+            memcmp(F->p + F->anchors[i].off, F->p + off, len) == 0) {
             *aid = F->anchors[i].aid;
             F->memo_off = off;
             F->memo_len = len;
