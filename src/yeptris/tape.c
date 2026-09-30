@@ -1203,6 +1203,557 @@ lreject:
     return YEPTRIS_ERROR_PARSE;
 }
 
+#define LNUM_RUN                                                                                   \
+    do {                                                                                           \
+        size_t ks_ = k;                                                                            \
+        while (k + 8 <= len) {                                                                     \
+            uint64_t w_;                                                                           \
+            memcpy(&w_, p + k, 8);                                                                 \
+            uint64_t nd_ =                                                                         \
+                ((w_ + 0x4646464646464646ull) & 0x8080808080808080ull) |                           \
+                (((w_ | 0x8080808080808080ull) - 0xB0B0B0B0B0B0B0B0ull) & 0x8080808080808080ull) | \
+                (w_ & 0x8080808080808080ull);                                                      \
+            if (nd_ != 0) {                                                                        \
+                k += (size_t)yep_ctz64(nd_) >> 3;                                                  \
+                break;                                                                             \
+            }                                                                                      \
+            k += 8;                                                                                \
+        }                                                                                          \
+        if (k > ks_) {                                                                             \
+            saw_digit = 1;                                                                         \
+        }                                                                                          \
+    } while (0)
+static YeptrisStatus yep_tape_walk_columns_fused(const char* p, size_t len, size_t open,
+                                                 yeptris_json_tape* t, int strict_nums,
+                                                 int clean_only) {
+    /* The columns-primary edition of the record walk below: the same
+     * arms (specialized member cycles, LSTR_SCAN, the digits law)
+     * emitting the three columns directly — one pass, no records, no
+     * materialization pass. The strict route's columns-eager contract
+     * at the lenient lane's memory traffic. The record walk stays
+     * byte-identical beside it; the differential suites pin the
+     * equivalence. */
+    if (tape_carve(t, len) != YEPTRIS_OK) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    uint8_t* kinds = t->kinds;
+    uint32_t* offs = t->offs;
+    uint32_t* lens = t->lens;
+    uint32_t open_at[YEP_JSON_WALK_DEPTH];
+    uint8_t kind[YEP_JSON_WALK_DEPTH];
+
+    kinds[0] = (uint8_t)YEP_T_DOC;
+    offs[0] = 0;
+    lens[0] = 0;
+
+    uint8_t top_kind = p[open] == '[' ? 0 : 1;
+    kinds[1] = top_kind ? (uint8_t)YEP_T_MAP_OPEN : (uint8_t)YEP_T_SEQ_OPEN;
+    offs[1] = 0;
+    lens[1] = 0;
+    size_t count = 2;
+    int depth = 1;
+    open_at[0] = 1;
+    kind[0] = top_kind;
+
+    size_t i = open + 1;
+    /* clean_only (parse_json's route): tabs and non-ASCII bytes REJECT
+     * — the caller falls to the strict sequence, which owns the pinned
+     * error precedences those inputs carry (the tab reject, the UTF-8
+     * gate). This replaces the entry's full-input gate_scan +
+     * tab-memchr pre-passes: same routing by construction, zero scans
+     * before the walk. */
+    int cl = clean_only;
+    if (top_kind) {
+        goto lmap1;
+    }
+    goto lseq1;
+
+    /* strict_nums: the parse_json route's contract is RFC 8259 AT
+     * parse time, so its number arms validate the run in-place (the
+     * settle pass disappears — the span is cache-warm here); the
+     * standalone lenient entry keeps its deferred contract (0: the
+     * run records unvalidated, yeptris_tape_convert owns it). */
+
+    /* The specialized member loops (the #342 dispatch-chain cut): once
+     * inside a container the grammar is a 2-state cycle — member or
+     * separator — so the general chain's expect/key_slot machine and
+     * its per-token re-dispatch are replaced by direct loops per kind.
+     * Acceptance is IDENTICAL to the chain (the pinning suites hold:
+     * Tape suite, LenientMatchesStrict, ErrorParity, the json corpora).
+     *
+     * lmap / lseq: positioned at a member (or the container's closer).
+     * lvalue: scans one value (string/number/literal/container).
+     * lafter: positioned after a complete value — ',' or the closer.
+     * A close pops the frame; depth 0 ends the walk. */
+
+#define LWS()                                                                                      \
+    do {                                                                                           \
+        while (i < len &&                                                                          \
+               (p[i] == ' ' || p[i] == '\n' || p[i] == '\r' || (p[i] == '\t' && !cl))) {           \
+            i++;                                                                                   \
+        }                                                                                          \
+        if (i >= len) {                                                                            \
+            goto lreject;                                                                          \
+        }                                                                                          \
+    } while (0)
+
+#define LPUSH(k)                                                                                   \
+    do {                                                                                           \
+        if (depth >= YEP_JSON_WALK_DEPTH) {                                                        \
+            goto lreject;                                                                          \
+        }                                                                                          \
+        kinds[count] = (k) ? (uint8_t)YEP_T_MAP_OPEN : (uint8_t)YEP_T_SEQ_OPEN;                    \
+        offs[count] = 0;                                                                           \
+        lens[count] = 0;                                                                           \
+        kind[depth] = (k);                                                                         \
+        open_at[depth] = (uint32_t)count;                                                          \
+        count++;                                                                                   \
+        depth++;                                                                                   \
+        i++;                                                                                       \
+    } while (0)
+
+#define LCLOSE()                                                                                   \
+    do {                                                                                           \
+        uint32_t lo_ = open_at[depth - 1];                                                         \
+        kinds[count] = (uint8_t)YEP_T_CLOSE;                                                       \
+        offs[count] = lo_;                                                                         \
+        lens[count] = 0;                                                                           \
+        offs[lo_] = count;                                                                         \
+        count++;                                                                                   \
+        i++;                                                                                       \
+        depth--;                                                                                   \
+        if (depth == 0) {                                                                          \
+            goto ldone;                                                                            \
+        }                                                                                          \
+        if (kind[depth - 1]) {                                                                     \
+            goto lmapafter;                                                                        \
+        }                                                                                          \
+        goto lseqafter;                                                                            \
+    } while (0)
+
+/* LSTR_SCAN(after) — the fused string arm, positioned at p[i] == '"'.
+ * One SWAR round settles the common short span; quote_scan (the SIMD
+ * close scan) settles longer no-escape spans, with a c0 sweep over the
+ * content (quote_scan never tests control bytes); the kernel runs only
+ * when escapes appear — its grammar authority covers the escape rules
+ * quote_scan skips. `after` names the post-member label. */
+#define LSTR_SCAN(after)                                                                           \
+    do {                                                                                           \
+        size_t j_ = i + 1;                                                                         \
+        int esc_ = 0;                                                                              \
+        if (j_ + 8 <= len) {                                                                       \
+            uint64_t w_;                                                                           \
+            memcpy(&w_, p + j_, 8);                                                                \
+            uint64_t qm_ = (w_ ^ 0x2222222222222222ull);                                           \
+            uint64_t bm_ = (w_ ^ 0x5C5C5C5C5C5C5C5Cull);                                           \
+            qm_ = (qm_ - 0x0101010101010101ull) & ~qm_ & 0x8080808080808080ull;                    \
+            bm_ = (bm_ - 0x0101010101010101ull) & ~bm_ & 0x8080808080808080ull;                    \
+            uint64_t c0_ = (w_ - 0x2020202020202020ull) & ~w_ & 0x8080808080808080ull;             \
+            uint64_t hi_ = cl ? (w_ & 0x8080808080808080ull) : 0;                                  \
+            if (qm_ != 0 && ((bm_ | c0_ | hi_) & (qm_ - 1)) == 0) {                                \
+                size_t cl_ = j_ + (size_t)yep_ctz64(qm_) / 8;                                      \
+                kinds[count] = (uint8_t)YEP_T_STR;                                                 \
+                offs[count] = (uint32_t)(j_);                                                      \
+                lens[count] = (uint32_t)((cl_ - j_));                                              \
+                count++;                                                                           \
+                i = cl_ + 1;                                                                       \
+                goto after;                                                                        \
+            }                                                                                      \
+            /* rounds 2-4 (up to 32 bytes inline): the email-class strings                         \
+             * close here without the quote_scan call and its redundant                            \
+             * content re-sweep; reached only when round 1 had no close,                           \
+             * so the short-string case pays nothing */                                            \
+            if ((qm_ | bm_ | c0_ | hi_) == 0) {                                                    \
+                size_t nr_ = (len - j_) >> 3;                                                      \
+                if (nr_ > 4) {                                                                     \
+                    nr_ = 4;                                                                       \
+                }                                                                                  \
+                for (size_t r_ = 1; r_ < nr_; r_++) {                                              \
+                    size_t b2_ = j_ + (r_ << 3);                                                   \
+                    memcpy(&w_, p + b2_, 8);                                                       \
+                    qm_ = (w_ ^ 0x2222222222222222ull);                                            \
+                    bm_ = (w_ ^ 0x5C5C5C5C5C5C5C5Cull);                                            \
+                    qm_ = (qm_ - 0x0101010101010101ull) & ~qm_ & 0x8080808080808080ull;            \
+                    bm_ = (bm_ - 0x0101010101010101ull) & ~bm_ & 0x8080808080808080ull;            \
+                    c0_ = (w_ - 0x2020202020202020ull) & ~w_ & 0x8080808080808080ull;              \
+                    hi_ = cl ? (w_ & 0x8080808080808080ull) : 0;                                   \
+                    if (qm_ != 0 && ((bm_ | c0_ | hi_) & (qm_ - 1)) == 0) {                        \
+                        size_t cl_ = b2_ + (size_t)yep_ctz64(qm_) / 8;                             \
+                        kinds[count] = (uint8_t)YEP_T_STR;                                         \
+                        offs[count] = (uint32_t)(j_);                                              \
+                        lens[count] = (uint32_t)((cl_ - j_));                                      \
+                        count++;                                                                   \
+                        i = cl_ + 1;                                                               \
+                        goto after;                                                                \
+                    }                                                                              \
+                    if ((qm_ | bm_ | c0_ | hi_) != 0) {                                            \
+                        break; /* escape, c0 or hi: kernel authority */                            \
+                    }                                                                              \
+                }                                                                                  \
+            }                                                                                      \
+        }                                                                                          \
+        {                                                                                          \
+            const yep_text_kernels* kk_ = yep_text_active();                                       \
+            ptrdiff_t r_ = kk_->quote_scan(p + j_, len - j_, '"', &esc_);                          \
+            if (r_ >= 0 && esc_ == 0) {                                                            \
+                size_t cl_ = j_ + (size_t)r_;                                                      \
+                for (size_t b_ = j_; b_ < cl_;) {                                                  \
+                    size_t room_ = cl_ - b_;                                                       \
+                    if (room_ >= 8) {                                                              \
+                        uint64_t v_;                                                               \
+                        memcpy(&v_, p + b_, 8);                                                    \
+                        uint64_t bad_ =                                                            \
+                            (v_ - 0x2020202020202020ull) & ~v_ & 0x8080808080808080ull;            \
+                        if (cl) {                                                                  \
+                            bad_ |= v_ & 0x8080808080808080ull;                                    \
+                        }                                                                          \
+                        if (bad_) {                                                                \
+                            goto lreject;                                                          \
+                        }                                                                          \
+                        b_ += 8;                                                                   \
+                    } else {                                                                       \
+                        if ((unsigned char)p[b_] < 0x20 || (cl && (unsigned char)p[b_] >= 0x80)) { \
+                            goto lreject;                                                          \
+                        }                                                                          \
+                        b_++;                                                                      \
+                    }                                                                              \
+                }                                                                                  \
+                kinds[count] = (uint8_t)YEP_T_STR;                                                 \
+                offs[count] = (uint32_t)(j_);                                                      \
+                lens[count] = (uint32_t)((cl_ - j_));                                              \
+                count++;                                                                           \
+                i = cl_ + 1;                                                                       \
+                goto after;                                                                        \
+            }                                                                                      \
+        }                                                                                          \
+        {                                                                                          \
+            size_t at_ = i;                                                                        \
+            size_t cl_ = 0;                                                                        \
+            if (!yep_json_string(p, len, &i, &cl_, &esc_)) {                                       \
+                goto lreject;                                                                      \
+            }                                                                                      \
+            if (cl) { /* escaped strings skip the sweeps above: the                                \
+                       * clean route still owes the strict sequence's                              \
+                       * byte guarantees over the content */                                       \
+                for (size_t b_ = at_ + 1; b_ < cl_; b_++) {                                        \
+                    unsigned char uc_ = (unsigned char)p[b_];                                      \
+                    if (uc_ < 0x20 || uc_ >= 0x80) {                                               \
+                        goto lreject;                                                              \
+                    }                                                                              \
+                }                                                                                  \
+            }                                                                                      \
+            kinds[count] = (uint8_t)YEP_T_STR;                                                     \
+            offs[count] = (uint32_t)((at_ + 1));                                                   \
+            lens[count] = (uint32_t)((cl_ - at_ - 1));                                             \
+            count++;                                                                               \
+            i = cl_ + 1;                                                                           \
+        }                                                                                          \
+        goto after;                                                                                \
+    } while (0)
+
+/* The map member cycle — ONE contiguous region (the json-doc lesson:
+ * a goto web across value/key/after regions scattered the hot path and
+ * cost 2.7x on the flat-map shape). Values scan inline; only nested
+ * containers, literals, and the kernel string fallback leave the
+ * cycle. Acceptance is the chain's: no trailing commas, string keys
+ * only, `:` required, closers only in first-member position. */
+lmap1: /* {} closes here */
+    LWS();
+    if (p[i] == '}') {
+        LCLOSE();
+    }
+    if (p[i] != '"') {
+        goto lreject;
+    }
+    goto lmapkey;
+
+lmap: /* a member MUST follow (after ','): JW_KEY — a closer rejects */
+    /* compact fast path: the byte is the key's quote already — LWS's
+     * loop would examine it once and exit */
+    if (i < len && p[i] == '"') {
+        goto lmapkey;
+    }
+    LWS();
+    if (p[i] != '"') {
+        goto lreject;
+    }
+lmapkey: { LSTR_SCAN(lmapcolon); }
+lmapcolon:
+    if (i < len && p[i] == ':') {
+        i++;
+        /* compact fast path: the value byte follows the colon with no
+         * whitespace — one load dispatches it (the ws test below is
+         * what LWS would run anyway) */
+        if (i < len) {
+            char v = p[i];
+            if (v != ' ' && v != '\n' && v != '\r' && (cl || v != '\t')) {
+                goto lmapval;
+            }
+        }
+        LWS();
+        goto lmapval;
+    }
+    LWS();
+    if (p[i] != ':') {
+        goto lreject;
+    }
+    i++;
+    LWS();
+lmapval: {
+    char c = p[i];
+    if (c == '"') {
+        LSTR_SCAN(lmapafter);
+    }
+    if ((unsigned)(c - '0') <= 9u || c == '-') {
+        size_t k = i + 1;
+        /* the digits-only tracking makes the pure-integer case a
+         * 3-cycle leading-zero check — number_shape (a call + a
+         * rescan, 13% of json-doc) runs only for dot/exp spans */
+        int digits_only = 1, saw_digit = (c != '-');
+        LNUM_RUN;
+        while (k < len) {
+            char d = p[k];
+            if ((unsigned)(d - '0') <= 9u) {
+                k++;
+                saw_digit = 1;
+                continue;
+            }
+            /* the flag clears only on a CONSUMED byte: the run's
+             * terminator (',', '}', ']', whitespace) must leave
+             * digits_only intact, or every plain integer followed
+             * by a delimiter falls into the full validator */
+            if (d == '-' || d == '+' || d == '.' || d == 'e' || d == 'E') {
+                digits_only = 0;
+                k++;
+                continue;
+            }
+            break;
+        }
+        if (strict_nums) {
+            int ok;
+            if (digits_only && saw_digit) {
+                size_t d0 = (c == '-') ? i + 1 : i;
+                ok = (k - d0 == 1) || p[d0] != '0';
+            } else {
+                ok = tape_num_ok(p + i, (size_t)(k - i));
+            }
+            if (!ok) {
+                goto lreject;
+            }
+        }
+        kinds[count] =
+            strict_nums ? ((digits_only && saw_digit) ? (uint8_t)YEP_T_INT : (uint8_t)YEP_T_FLOAT)
+                        : (uint8_t)YEP_T_NUM;
+        offs[count] = (uint32_t)i;
+        lens[count] = (uint32_t)(k - i);
+        count++;
+        i = k;
+        goto lmapafter;
+    }
+    if (c == 't' || c == 'f' || c == 'n') {
+        size_t wl = c == 'f' ? 5 : 4;
+        if (i + wl > len) {
+            goto lreject;
+        }
+        uint32_t got4;
+        memcpy(&got4, p + i, 4);
+        if (got4 != (c == 't'   ? 0x65757274u /* "true" */
+                     : c == 'n' ? 0x6C6C756Eu /* "null" */
+                                : 0x736C6166u /* "fals" */) ||
+            (c == 'f' && p[i + 4] != 'e')) {
+            goto lreject;
+        }
+        if (i + wl < len) {
+            char z = p[i + wl];
+            if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
+                z != '}' && z != ':') {
+                goto lreject;
+            }
+        }
+        kinds[count] = c == 'n' ? (uint8_t)YEP_T_NULL
+                                : (c == 't' ? (uint8_t)YEP_T_TRUE : (uint8_t)YEP_T_FALSE);
+        offs[count] = (uint32_t)i;
+        lens[count] = (uint32_t)wl;
+        count++;
+        i += wl;
+        goto lmapafter;
+    }
+    if (c == '{') {
+        LPUSH(1);
+        goto lmap1;
+    }
+    if (c == '[') {
+        LPUSH(0);
+        goto lseq1;
+    }
+    goto lreject;
+}
+
+lmapafter:
+    /* compact fast path: value ',' key directly — the two LWS hops the
+     * general form runs both exit on byte one here */
+    if (i < len && p[i] == ',') {
+        i++;
+        if (i < len && p[i] == '"') {
+            goto lmapkey;
+        }
+        goto lmap;
+    }
+    LWS();
+    if (p[i] == ',') {
+        i++;
+        goto lmap;
+    }
+    if (p[i] == '}') {
+        LCLOSE();
+    }
+    goto lreject;
+
+/* The sequence member cycle — the same single-region shape. */
+lseq1: /* [] closes here */
+    LWS();
+    if (p[i] == ']') {
+        LCLOSE();
+    }
+    goto lseqval;
+
+lseq: /* a member MUST follow (after ','): JW_VALUE */
+    LWS();
+lseqval: {
+    char c = p[i];
+    if (c == '"') {
+        LSTR_SCAN(lseqafter);
+    }
+    if ((unsigned)(c - '0') <= 9u || c == '-') {
+        size_t k = i + 1;
+        int digits_only = 1, saw_digit = (c != '-');
+        LNUM_RUN;
+        while (k < len) {
+            char d = p[k];
+            if ((unsigned)(d - '0') <= 9u) {
+                k++;
+                saw_digit = 1;
+                continue;
+            }
+            /* consumed-only clearing: see the map arm's comment */
+            if (d == '-' || d == '+' || d == '.' || d == 'e' || d == 'E') {
+                digits_only = 0;
+                k++;
+                continue;
+            }
+            break;
+        }
+        if (strict_nums) {
+            int ok;
+            if (digits_only && saw_digit) {
+                size_t d0 = (c == '-') ? i + 1 : i;
+                ok = (k - d0 == 1) || p[d0] != '0';
+            } else {
+                ok = tape_num_ok(p + i, (size_t)(k - i));
+            }
+            if (!ok) {
+                goto lreject;
+            }
+        }
+        kinds[count] =
+            strict_nums ? ((digits_only && saw_digit) ? (uint8_t)YEP_T_INT : (uint8_t)YEP_T_FLOAT)
+                        : (uint8_t)YEP_T_NUM;
+        offs[count] = (uint32_t)i;
+        lens[count] = (uint32_t)(k - i);
+        count++;
+        i = k;
+        goto lseqafter;
+    }
+    if (c == 't' || c == 'f' || c == 'n') {
+        size_t wl = c == 'f' ? 5 : 4;
+        if (i + wl > len) {
+            goto lreject;
+        }
+        uint32_t got4;
+        memcpy(&got4, p + i, 4);
+        if (got4 != (c == 't'   ? 0x65757274u /* "true" */
+                     : c == 'n' ? 0x6C6C756Eu /* "null" */
+                                : 0x736C6166u /* "fals" */) ||
+            (c == 'f' && p[i + 4] != 'e')) {
+            goto lreject;
+        }
+        if (i + wl < len) {
+            char z = p[i + wl];
+            if (z != ' ' && z != '\t' && z != '\n' && z != '\r' && z != ',' && z != ']' &&
+                z != '}' && z != ':') {
+                goto lreject;
+            }
+        }
+        kinds[count] = c == 'n' ? (uint8_t)YEP_T_NULL
+                                : (c == 't' ? (uint8_t)YEP_T_TRUE : (uint8_t)YEP_T_FALSE);
+        offs[count] = (uint32_t)i;
+        lens[count] = (uint32_t)wl;
+        count++;
+        i += wl;
+        goto lseqafter;
+    }
+    if (c == '{') {
+        LPUSH(1);
+        goto lmap1;
+    }
+    if (c == '[') {
+        LPUSH(0);
+        goto lseq1;
+    }
+    goto lreject;
+}
+
+lseqafter:
+    /* compact fast path: value ',' value directly — both LWS hops exit
+     * on byte one here */
+    if (i < len && p[i] == ',') {
+        i++;
+        if (i < len) {
+            char v = p[i];
+            if (v != ' ' && v != '\n' && v != '\r' && (cl || v != '\t')) {
+                goto lseqval;
+            }
+        }
+        goto lseq;
+    }
+    LWS();
+    if (p[i] == ',') {
+        i++;
+        goto lseq;
+    }
+    if (p[i] == ']') {
+        LCLOSE();
+    }
+    goto lreject;
+
+ldone:
+#undef LWS
+#undef LNUM_RUN
+#undef LPUSH
+#undef LCLOSE
+#undef LSTR_SCAN
+
+{
+    size_t tail = i;
+    while (tail < len &&
+           (p[tail] == ' ' || p[tail] == '\n' || p[tail] == '\r' || (p[tail] == '\t' && !cl))) {
+        tail++;
+    }
+    if (tail != len) {
+        goto lreject;
+    }
+}
+    t->count = count;
+    t->_src = p;
+    t->_srclen = len;
+    t->_cols_ready = 1;
+    return YEPTRIS_OK;
+
+lreject:
+    yeptris_tape_free(t);
+    return YEPTRIS_ERROR_PARSE;
+}
+
 static YEP_UNUSED_FN YeptrisStatus tape_walk_lnt(const char* p, size_t len, size_t open,
                                                  const uint32_t* idx, size_t nidx,
                                                  yeptris_json_tape* t) {
@@ -1584,12 +2135,9 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len
              * lens directly), so the records materialize here — the
              * fused scan plus one sequential decode pass, still ahead
              * of the column walk's inline three-stream writes. */
-            if (yep_tape_walk_lenient_fused(source, len, off, tape, 1, 1, 0) == YEPTRIS_OK) {
-                /* strict_nums records carry the INT/FLOAT split in the
-                 * kind byte (digits_only answers at walk time) — this
-                 * route's columns-eager contract materializes straight
-                 * from them, no settle pass */
-                (void)yeptris_tape_columns(tape);
+            /* the columns-primary fused walk: one pass, columns eager
+             * by construction, strict numbers classified at walk time */
+            if (yep_tape_walk_columns_fused(source, len, off, tape, 1, 1) == YEPTRIS_OK) {
                 return YEPTRIS_OK;
             }
             YeptrisStatus st = tape_walk(source, len, off, tape, 1);
