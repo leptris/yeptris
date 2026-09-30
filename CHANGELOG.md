@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.28] - 2026-09-30
 ### Fixed
 - **parse: the fused runner bails on three anchored shapes it mishandled**
   — an anchored key whose "content" sits at the key's own column (the
