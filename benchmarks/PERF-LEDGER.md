@@ -2821,3 +2821,28 @@ lane's residual against simdjson on fair rounds is single-digit
 percent — candidate shapes for the next round are the carve's first-
 touch pattern (madvise/hugepage the block) and the record walk's
 seq-item arm, NOT more member specialization.
+
+## The number-run cycle: correct, neutral — and the bandwidth ceiling that re-aims the hunt
+
+The seq number-run cycle (after a seq number, ", " + a digit stays in
+a tight loop reusing the arm's exact body; the comma is REWOUND on any
+non-continuation so the chain judges it — the first cut broke
+`[1,,2]` by consuming it) built correct: 398/398 including tape-diff's
+2M cases. Measured: NEUTRAL (+1% medians, noise-bound; json-users
+0.98-1.09x, json-doc 0.93-1.02x). Reverted — the walk's per-token
+floor is not dispatch structure. That is the third dispatch-level
+attack measured neutral/dead (member window, this, plus the older
+sweep facts): the ~30 cycles/token on json-doc's short tokens is
+intrinsic per-token work — the stores, the state transitions, the
+boundary branches.
+
+The bandwidth ceiling check kills the memory theory locally: this
+machine stores at 52 GB/s single-core (17MB footprint probe) while
+the walk moves ~20MB in ~3ms (~7 GB/s) — 7x headroom. The json-doc
+family's single-digit residual against simdjson on fair rounds is
+per-ISA codegen and two-pass amortization, not a missing arm. The
+honest remaining levers: a single-pass SIMD tokenizer (a different,
+much larger design than the measured-dead two-pass stage-1) — or
+declaring the walk at parity-class and spending the budget on the
+ryml front, where the gaps (+3% json-users, +8% anchor, +14% scalar)
+have named, untried levers.
