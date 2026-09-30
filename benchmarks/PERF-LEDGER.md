@@ -2783,3 +2783,23 @@ shape with the optimizations tape_walk never received (it predates the
 include-once with a parameterized EMIT macro (record word vs three
 column stores), two thin wrappers — the repo's AOT-TU pattern at
 function granularity.
+
+## The columns-primary fused walk (the traffic endgame, landed)
+
+yep_tape_walk_columns_fused: the record walk's arms (specialized
+member cycles, LSTR_SCAN, the digits law — everything the old column
+walk never received) emitting kinds/offs/lens directly — one pass, no
+records, no materialization pass, no settle. Generated from the record
+walk by asserted mechanical conversion of the twelve emission sites
+(the close's link patch becomes a plain offs[lo_] = count store); the
+record walk stays byte-identical beside it (the lenient lane and the
+DOM route untouched; the suites pin the equivalence — 398/398
+including tape-diff's 2M cases under ASAN).
+
+Best-of alternated: json-doc 828-839 MB/s (the records+columns-pass
+version 723-812, +3-16%), json-users 927-978 (817-885, +6-20%). The
+strict lane now sits in the lenient lane's speed class; the residual
+~4% is the ninth byte per token the three-column layout writes over
+the 8-byte record. Against the walk's own history: the strict lane
+went 473 (#457's referee) -> 525 (INT/FLOAT records) -> ~830-840
+local (this slice) — cumulative +75%.
