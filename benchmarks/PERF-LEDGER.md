@@ -2910,3 +2910,25 @@ memo already absorbs the repeated *def0 lookups). Anchor-heavy's
 ~51ns/line floor lives in the pending/open and alias/anchored-pair
 ARMS — the next lever there needs arm-level counter profiling, not
 hash tuning.
+
+## Anchor-heavy's surgery: the wall is the per-item frame cycle, not the arms
+
+The stripped corpus (anchors dropped, merge lines removed, structure
+kept): anchor-plain runs ~263 MB/s / ~57 ns per line against the
+full corpus's ~212 / ~64. Three facts fall out. (1) The anchor+merge
+family owns ~38% of the parse — but the table was already refuted at
+5% (#467), so ~33% sits in the alias-pair arm (the `<<: *def0`
+lines run ~82 ns each: name scan + get + the ALIAS-PAIR emission)
+and the anchored-value arm. Cutting even HALF the arm cost lands
+~2.76x — under the bar. (2) THE WALL: plain nested two-pair maps
+with zero anchors still cost 57 ns/line — 2.6x the flat pair's cost
+— because every `itemN:` pays the pending push + open + close frame
+cycle that a flat map amortizes across thousands of lines. The
+engine's record contract (OPEN/pending forms) fixes the word count;
+the ratio against ryml's similarly-structured tree is what it is on
+this corpus (~2.3-2.8x across rounds). (3) The only outs that change
+the shape: fewer record words per item (a contract change), or arm
+micro-cuts worth ~1.4 ms that still miss the bar. Anchor-heavy is
+DECLARED STRUCTURAL unless the record contract changes; the ryml
+front's live levers are the flow family (flow-json 2.77x, json-users
+2.58x — the replay-side conversion) and scalar's straddle.
