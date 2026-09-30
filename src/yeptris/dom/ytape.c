@@ -1613,6 +1613,18 @@ static int yt_f_run(yt_fused* F) {
                         int have_bi = 0, have_content = 0;
                         size_t clen = 0, tb = 0;
                         size_t end_scan = scan;
+                        /* per-line copy facts: blocks whose lines fit
+                         * the array copy straight from it — the second,
+                         * boundary-rederiving walk disappears. Larger
+                         * blocks (nested in block-heavy) keep the walk
+                         * below. */
+                        struct {
+                            uint32_t off;
+                            uint32_t n;
+                            uint8_t blank;
+                        } ln[16];
+                        size_t nl = 0;
+                        int spilled = 0;
                         while (scan < len) {
                             size_t ls = scan;
                             size_t le = ls;
@@ -1623,6 +1635,8 @@ static int yt_f_run(yt_fused* F) {
                             while (ie < le && p[ie] == ' ') {
                                 ie++;
                             }
+                            uint32_t cpy_off = 0, cpy_n = 0;
+                            uint8_t cpy_blank = 0;
                             if (ie == le) {
                                 /* a blank line: spaces past the block indent are
                                  * CONTENT; only stripped-empty lines clip away */
@@ -1634,6 +1648,8 @@ static int yt_f_run(yt_fused* F) {
                                 } else {
                                     tb = 0;
                                 }
+                                cpy_n = (uint32_t)res;
+                                cpy_blank = 1;
                             } else {
                                 uint32_t ind = (uint32_t)(ie - ls);
                                 if (!have_bi) {
@@ -1651,6 +1667,16 @@ static int yt_f_run(yt_fused* F) {
                                 clen += (le - (ls + bindent)) + 1;
                                 have_content = 1;
                                 tb = 0;
+                                cpy_off = (uint32_t)(ls + bindent);
+                                cpy_n = (uint32_t)(le - (ls + bindent));
+                            }
+                            if (nl < 16) {
+                                ln[nl].off = cpy_off;
+                                ln[nl].n = cpy_n;
+                                ln[nl].blank = cpy_blank;
+                                nl++;
+                            } else {
+                                spilled = 1;
                             }
                             end_scan =
                                 (le < len && p[le] == '\r' && le + 1 < len) ? le + 2 : le + 1;
@@ -1672,34 +1698,53 @@ static int yt_f_run(yt_fused* F) {
                         }
                         {
                             char* q = dst;
-                            size_t s2 = next;
-                            while (s2 < scan) {
-                                size_t ls = s2;
-                                size_t le = ls;
-                                while (le < len && p[le] != '\n' && p[le] != '\r') {
-                                    le++;
-                                }
-                                size_t ie = ls;
-                                while (ie < le && p[ie] == ' ') {
-                                    ie++;
-                                }
-                                if (ie == le) {
-                                    size_t ind = ie - ls;
-                                    size_t res = have_bi && ind > bindent ? ind - bindent : 0;
-                                    if (res > 0) {
-                                        memset(q, ' ', res);
-                                        q += res;
+                            if (!spilled) {
+                                /* the array path: sizing and copy derive
+                                 * from the SAME facts — exact by
+                                 * construction, no re-walk */
+                                for (size_t x = 0; x < nl; x++) {
+                                    if (ln[x].blank) {
+                                        if (ln[x].n > 0) {
+                                            memset(q, ' ', ln[x].n);
+                                            q += ln[x].n;
+                                        }
+                                    } else {
+                                        memcpy(q, p + ln[x].off, ln[x].n);
+                                        q += ln[x].n;
                                     }
                                     *q++ = '\n';
-                                } else {
-                                    memcpy(q, p + ls + bindent, le - (ls + bindent));
-                                    q += le - (ls + bindent);
-                                    *q++ = '\n';
                                 }
-                                s2 = (le < len && p[le] == '\r' && le + 1 < len) ? le + 2 : le + 1;
+                            } else {
+                                size_t s2 = next;
+                                while (s2 < scan) {
+                                    size_t ls = s2;
+                                    size_t le = ls;
+                                    while (le < len && p[le] != '\n' && p[le] != '\r') {
+                                        le++;
+                                    }
+                                    size_t ie = ls;
+                                    while (ie < le && p[ie] == ' ') {
+                                        ie++;
+                                    }
+                                    if (ie == le) {
+                                        size_t ind = ie - ls;
+                                        size_t res = have_bi && ind > bindent ? ind - bindent : 0;
+                                        if (res > 0) {
+                                            memset(q, ' ', res);
+                                            q += res;
+                                        }
+                                        *q++ = '\n';
+                                    } else {
+                                        memcpy(q, p + ls + bindent, le - (ls + bindent));
+                                        q += le - (ls + bindent);
+                                        *q++ = '\n';
+                                    }
+                                    s2 = (le < len && p[le] == '\r' && le + 1 < len) ? le + 2
+                                                                                     : le + 1;
+                                }
                             }
                             if ((size_t)(q - dst) != clen) {
-                                return 1; /* measure/copy drift: bail, not corrupt */
+                                return 1; /* drift: bail, not corrupt */
                             }
                         }
                         (void)yt_put(t, yt_props(YTP_SCALAR, 0, 0x2900u));

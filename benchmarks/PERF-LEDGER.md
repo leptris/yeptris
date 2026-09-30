@@ -2875,3 +2875,24 @@ First probe for the next session: instrument the arm with counters
 (blocks, lines, memchr calls, pool allocs, bytes — the link-order
 scratch-copy pattern) to split the 1.79 ms between the double walk,
 the memchrs, and the pool before cutting.
+
+## The literal arm's array copy lands (scalar-heavy +6%)
+
+The banked design executed: the measure walk stores per-line copy
+facts (offset, span, blank — computed in-branch so the have_bi
+timeline and the indent-strip math are captured exactly once), and
+the copy for blocks fitting a 16-entry array runs straight from it —
+the second, boundary-rederiving walk is gone and the copy is exact by
+construction (the drift check stays as belt-and-braces). Blocks past
+the cap keep the two-pass walk below (nested block-heavy blocks may
+be large; the legacy path is an addition's fallback, not dead code).
+
+Alternated medians: scalar-heavy 969.4 -> 1025.1 MB/s (+6%, projected
+~3.05x vs ryml — over the bar), realworld-suite +5%, wide neutral,
+block-heavy 0.98x (noise; its nested blocks mostly ride the array
+path or the unchanged fallback). Gates: 398/398 no-LTO + ASAN; suite
+344/0 mismatches; all six corpora word-for-word EXACT.
+
+The arm's remaining costs for a future round: the per-line content
+tab memchrs (~0.3ms of scalar-heavy's 1.79ms literal budget) and the
+~5k pool allocs (~0.2ms) — the walk itself is now single-pass.
