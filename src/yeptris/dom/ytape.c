@@ -1599,10 +1599,10 @@ static int yt_f_run(yt_fused* F) {
                         if (!yt_anchor_get(F, (uint32_t)(vt + 1), (uint32_t)(ne - vt - 1), &taid)) {
                             return 1; /* undefined alias: the engine errors */
                         }
-                        if (taid == 0 || taid > YT_FUSED_ANCHORS ||
-                            F->anchors_opened == NULL || !F->anchors_opened[taid - 1]) {
-                            return 1; /* alias to an anchor whose container never
-                                       * opened (null-valued or still pending): the engine */
+                        if (taid == 0 || taid > YT_FUSED_ANCHORS || F->anchors_opened == NULL ||
+                            !F->anchors_opened[taid - 1]) {
+                            return 1; /* alias to an anchor whose container never opened
+                                       * (null-valued or still pending): the engine */
                         }
                         (void)yt_put(t, yt_props(YTP_PAIR, taid, 3u /*ALIAS*/));
                         (void)yt_put(t, yt_span_in((uint32_t)t0, kend - (uint32_t)t0, YTP_SPAN_IN));
@@ -1980,6 +1980,7 @@ int ytap_fused_run(yep_ytape* t, const yep_resolver* resolver) {
     int rc = yt_f_run(F);
     yep_pool* rpool = F->pool; /* capture before the runner frees */
     yep_free(yep_system_allocator(), F->anchors);
+    yep_free(yep_system_allocator(), F->anchors_opened);
     yep_free(yep_system_allocator(), F);
     if (rc != 0) {
         t->count = (uint32_t)mark; /* unwind: the caller resets and re-runs */
