@@ -2803,3 +2803,21 @@ strict lane now sits in the lenient lane's speed class; the residual
 the 8-byte record. Against the walk's own history: the strict lane
 went 473 (#457's referee) -> 525 (INT/FLOAT records) -> ~830-840
 local (this slice) — cumulative +75%.
+
+## MEASURED DEAD: the fused 16-byte member window (do not retry this shape)
+
+json-doc's statistics invited it: 120k members, median 11 bytes, 96%
+within 16 bytes — one two-word SWAR window resolving the key close,
+colon, and a simple value, both records emitting with zero label hops,
+strict-subset bails everywhere. Measured: 0.93-0.95x on json-doc,
+0.84-0.85x on json-users. The 137-line macro bloated the walk past its
+I-cache edge (the campaign's third confirmation of the law: the
+pair-run inline -26%, the sweep colon/hash facts -16%, now this), and
+json-users' longer strings bail out of the window anyway — they pay
+the window cost AND the slow path. The #45 member cycles already
+harvested this territory; the walk's per-member branch cost is not
+where its time goes. The json-doc overparity lever is elsewhere: the
+lane's residual against simdjson on fair rounds is single-digit
+percent — candidate shapes for the next round are the carve's first-
+touch pattern (madvise/hugepage the block) and the record walk's
+seq-item arm, NOT more member specialization.
