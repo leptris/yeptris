@@ -2896,3 +2896,17 @@ path or the unchanged fallback). Gates: 398/398 no-LTO + ASAN; suite
 The arm's remaining costs for a future round: the per-line content
 tab memchrs (~0.3ms of scalar-heavy's 1.79ms literal budget) and the
 ~5k pool allocs (~0.2ms) — the walk itself is now single-pass.
+
+## The anchor table's chunked hash: +2% — the "hash dominates" theory refuted
+
+The analytic case looked strong: byte-wise FNV-1a (~6 cycles/byte on
+the multiply chain) + a memcmp per probe visit, 80k puts+lookups per
+anchor-heavy parse. Chunked 8-byte mixing with a stored u32 tag
+(tag compare before any memcmp) landed clean — anchor-heavy
+word-EXACT, 398/398 both builds — and measured +2% (250.1 -> 255.0;
+scalar +3%, block +1%). The table ops are ~5% of that corpus, not
+the estimated 25-35%: the estimate double-counted probe visits (the
+memo already absorbs the repeated *def0 lookups). Anchor-heavy's
+~51ns/line floor lives in the pending/open and alias/anchored-pair
+ARMS — the next lever there needs arm-level counter profiling, not
+hash tuning.
