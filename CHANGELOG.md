@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.27] - 2026-09-30
 ### Changed
 - **parse: the fused block runner owns every block-family shape** —
   quoted values, literal block scalars, and anchored containers join
