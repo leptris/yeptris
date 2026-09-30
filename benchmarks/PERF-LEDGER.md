@@ -2932,3 +2932,21 @@ micro-cuts worth ~1.4 ms that still miss the bar. Anchor-heavy is
 DECLARED STRUCTURAL unless the record contract changes; the ryml
 front's live levers are the flow family (flow-json 2.77x, json-users
 2.58x — the replay-side conversion) and scalar's straddle.
+
+## The flow family's verdict: at route speed — the "replay" lever was a mirage
+
+Two beliefs died on inspection. (1) The referee's DOM measure is
+`yeptris_parse` + free — the lazy design never materializes unless
+touched — so the replay-side per-node conversion (the #449-era
+designed slice) is NOT in the scoreboard numbers at all. (2)
+json-users' records (~150B) sit under the 256-byte budget: they ride
+the naive token-walk path with no scratch tape, no yt_flow_scan, no
+close re-walk — the three-pass machinery only fires above budget.
+The flow family parses at ~1000-1100 MB/s locally, the same class as
+the JSON DOM route: it is AT its route's speed, and its 2.58-2.77x
+vs ryml is what that route does on these shapes. The lane's remaining
+moves are the same class as the JSON walk's: a different tokenizer
+design, not arm cuts. The ryml scoreboard's under-bar shapes are now
+all explained: anchor structural (frame cycle), flow at route speed,
+scalar straddling with ~5% of ledgered scraps left. Everything else
+holds over 3x on fair rounds.
