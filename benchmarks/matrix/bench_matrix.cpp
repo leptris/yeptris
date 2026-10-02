@@ -778,6 +778,94 @@ double h2h_ratio(const Corpus& c, int rounds, double* yep_mb) {
     *yep_mb = best_yep < 1e9 ? mb * 1000.0 / best_yep : 0;
     return med;
 }
+
+/* #352's generation referee (serialbench's Sunday table, in-repo):
+ * yeptris parse + serialize + free (the fresh-string route callers
+ * get) vs ryml parse_in_place + emit_yaml into a caller buffer (tree
+ * and buffer reused) — the serialbench discipline, order-alternating,
+ * median of per-round ratios. The allocation asymmetry is the
+ * point: the row separates kernel speed from allocation strategy. */
+double h2h_gen_ratio(const Corpus& c, int rounds, double* yep_mb) {
+    ryml::Callbacks cb = ryml::get_callbacks();
+    cb.m_error_basic = [](ryml::csubstr, ryml::ErrorDataBasic const&, void*) {
+        throw RymlParseFailure();
+    };
+    cb.m_error_parse = [](ryml::csubstr, ryml::ErrorDataParse const&, void*) {
+        throw RymlParseFailure();
+    };
+    cb.m_error_visit = [](ryml::csubstr, ryml::ErrorDataVisit const&, void*) {
+        throw RymlParseFailure();
+    };
+    ryml::set_callbacks(cb);
+    std::string scratch;
+    scratch.resize(c.data.size());
+    ryml::Tree tree;
+    std::string out;
+    out.resize(c.data.size() * 2 + 64);
+    std::vector<double> ratios;
+    double best_yep = 1e9;
+    YeptrisStatus st = YEPTRIS_OK;
+    try {
+        for (int i = 0; i < rounds; i++) {
+            double ty, tr;
+            if (i & 1) {
+                memcpy(&scratch[0], c.data.data(), c.data.size());
+                auto b0 = clk::now();
+                ryml::parse_in_place(ryml::csubstr{}, ryml::to_substr(scratch), &tree);
+                ryml::csubstr yaml =
+                    ryml::emit_yaml(tree, tree.root_id(), ryml::to_substr(out), false);
+                auto b1 = clk::now();
+                if (tree.size() <= 1 || yaml.len == out.size()) {
+                    break; /* rejected corpus, or the buffer didn't fit */
+                }
+                auto a0 = clk::now();
+                YeptrisDocument d = yeptris_parse(c.data.data(), c.data.size(), &st);
+                size_t len = 0;
+                char* s = yeptris_serialize(d, &len);
+                auto a1 = clk::now();
+                yeptris_free(s);
+                yeptris_document_free(d);
+                ty = ms_of(a0, a1);
+                tr = ms_of(b0, b1);
+            } else {
+                auto a0 = clk::now();
+                YeptrisDocument d = yeptris_parse(c.data.data(), c.data.size(), &st);
+                size_t len = 0;
+                char* s = yeptris_serialize(d, &len);
+                auto a1 = clk::now();
+                yeptris_free(s);
+                yeptris_document_free(d);
+                memcpy(&scratch[0], c.data.data(), c.data.size());
+                auto b0 = clk::now();
+                ryml::parse_in_place(ryml::csubstr{}, ryml::to_substr(scratch), &tree);
+                ryml::csubstr yaml =
+                    ryml::emit_yaml(tree, tree.root_id(), ryml::to_substr(out), false);
+                auto b1 = clk::now();
+                if (tree.size() <= 1 || yaml.len == out.size()) {
+                    break;
+                }
+                ty = ms_of(a0, a1);
+                tr = ms_of(b0, b1);
+            }
+            if (ty < best_yep) {
+                best_yep = ty;
+            }
+            ratios.push_back(tr / ty); /* >1: yeptris faster */
+        }
+    } catch (RymlParseFailure&) {
+        ryml::reset_callbacks();
+        return 0;
+    }
+    ryml::reset_callbacks();
+    if (ratios.empty()) {
+        return 0;
+    }
+    std::sort(ratios.begin(), ratios.end());
+    double med = ratios[ratios.size() / 2];
+    double mb = (double)c.data.size() / (1024.0 * 1024.0);
+    *yep_mb = best_yep < 1e9 ? mb * 1000.0 / best_yep : 0;
+    return med;
+}
 #endif
 
 #if defined(YEP_BENCH_SIMDJSON)
@@ -1165,6 +1253,32 @@ int main(int argc, char** argv) {
     for (const Corpus& c : corpora) {
         double yep_mb = 0;
         double med = h2h_ratio(c, full ? 9 : 5, &yep_mb);
+        if (med == 0) {
+            printf("| %s | n/a | n/a |\n", c.name.c_str());
+            continue;
+        }
+        printf("| %s | %.2f | %.2fx |\n", c.name.c_str(), yep_mb, med);
+        char row[160];
+        snprintf(row, sizeof(row), "| %s | %.2f | %.2fx |\n", c.name.c_str(), yep_mb, med);
+        md_h2h += row;
+    }
+    printf("\n");
+
+    /* #352: generation (parse + emit) — the serialbench Sunday table,
+     * in-repo and per-push. yeptris pays parse+serialize+free per
+     * iteration; ryml reuses tree and output buffer (its harness's
+     * discipline) — the asymmetry is the subject of the issue. */
+    printf("\n# generation head-to-head vs rapidyaml (#352, interleaved, median of rounds)\n\n"
+           "| shape | yeptris gen MB/s | vs ryml |\n|---|---|---|\n");
+    md_h2h += "\n# generation head-to-head vs rapidyaml (#352, interleaved, median of rounds)\n\n"
+              "| shape | yeptris gen MB/s | vs ryml |\n|---|---|---|\n";
+    for (const Corpus& c : corpora) {
+        if (c.name != "block-heavy" && c.name != "flow-json" && c.name != "json-users" &&
+            c.name != "scalar-heavy" && c.name != "wide-mapping") {
+            continue; /* the emit-split family + wide: the generation shapes */
+        }
+        double yep_mb = 0;
+        double med = h2h_gen_ratio(c, full ? 9 : 5, &yep_mb);
         if (med == 0) {
             printf("| %s | n/a | n/a |\n", c.name.c_str());
             continue;
