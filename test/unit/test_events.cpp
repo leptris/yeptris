@@ -228,6 +228,30 @@ TEST(Events, ErrorsSurfaceInEveryModel) {
     yeptris_iterparse_free(it);
 }
 
+/* yeptris-ruby#258: libyaml never validates a block-scalar header's
+ * column — only the content must out-indent the parent. A "|" / ">"
+ * on its own line at the key's column is the pending key's value
+ * (metanorma-cli's collection fixture shape); a stray one after a
+ * completed pair still rejects. */
+TEST(Events, BlockScalarHeaderAtKeyColumn) {
+    const char* in = "prefatory-content:\n|\n  == Clause\n";
+    auto events = collect_pull(in, strlen(in));
+    /* SS +DOC +MAP =VAL prefatory-content =VAL |<literal> -MAP -DOC -STR */
+    ASSERT_EQ(events.size(), 8u) << "the header is the pending value";
+    EXPECT_EQ(events[4], "=VAL | == Clause\n") << events[4];
+
+    const char* folded = "prefatory-content:\n>-\n  folded text\n";
+    auto fe = collect_pull(folded, strlen(folded));
+    ASSERT_EQ(fe.size(), 8u) << "folded strips as libyaml does";
+    EXPECT_EQ(fe[4], "=VAL > folded text") << fe[4];
+
+    const char* stray = "k: 1\n|\n  stray\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(stray, strlen(stray), &st);
+    EXPECT_NE(st, YEPTRIS_OK) << "no pending key: still a syntax error";
+    yeptris_document_free(d);
+}
+
 TEST(Events, AnchorsTagsAndAliasesSurviveTheModels) {
     const char* in = "a: &x !!str tagged\nb: *x\n";
     auto events = collect_pull(in, strlen(in));
