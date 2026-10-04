@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.29] - 2026-10-04
 ### Fixed
 - **parse: a block-scalar header at the key's column is the pending
   value** — libyaml never validates a `|` / `>` header's own column
