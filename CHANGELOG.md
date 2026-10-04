@@ -6,6 +6,28 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- **parse: a block-scalar header at the key's column is the pending
+  value** — libyaml never validates a `|` / `>` header's own column
+  (only the content must out-indent the parent block), but the
+  engine's following-lines scan granted that same-column continuation
+  only to flow nodes (`k:
+[a]`). `prefatory-content:
+|
+  text` now
+  parses as the pending key's literal value instead of failing with
+  an unexpected-state error at the header — the metanorma-cli
+  collection fixture shape (yeptris-ruby#258). A stray header after a
+  completed pair still rejects, matching psych on both sides.
+
+### Changed
+- **release: gems belong to the binding's train** — the engine's
+  release flow no longer pushes any gem variant (the retired
+  trusted-publisher entry made every remaining gem step fail); it
+  keeps the version cut, the tag + GitHub Release, the native asset,
+  and now *reports* the lockstep binding tag instead of gating on it.
+
 ## [0.6.28] - 2026-09-30
 ### Fixed
 - **parse: the fused runner bails on three anchored shapes it mishandled**
