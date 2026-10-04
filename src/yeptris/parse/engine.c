@@ -3060,7 +3060,14 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
          * continue the value even at the parent column ("k:\n!!seq\n[a]"). */
         if (li.indent > floor_col || e->depth == 0 ||
             (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first != ':') ||
-            ((li.first == '[' || li.first == '{') && li.indent == floor_col)) {
+            ((li.first == '[' || li.first == '{') && li.indent == floor_col) ||
+            /* libyaml never validates a block-scalar HEADER's column —
+             * only the content must out-indent the parent (e_block_scalar
+             * enforces that), so "|" / ">" at the key's own column is the
+             * pending value (yeptris-ruby#258: the metanorma collection
+             * fixture shape) */
+            (vctx == YEP_CTX_VALUE_LINE && (li.first == '|' || li.first == '>') &&
+             li.indent == floor_col)) {
             e->pos += li.indent;
             return e_node(e, vctx, floor_col);
         }
