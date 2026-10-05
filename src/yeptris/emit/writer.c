@@ -611,6 +611,53 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
     uint32_t child = n->first_child;
     uint32_t pair = 0;
     while (child != UINT32_MAX) {
+        /* #352: the flat plain member specialist — tiny scalar pairs
+         * pay dispatch and props checks, not byte work. Strictly
+         * narrower than the general body below: plain unpropertied
+         * key, plain unpropertied scalar value, both safety-proven by
+         * the exact predicates sc_route consults (no memo touch, so
+         * the dry/wet sc_i streams stay aligned). Anything else falls
+         * through untouched — parity by construction. */
+        const yep_dnode* kn0 = yep_dom_node(d, child);
+        const yep_dnode* vn0 = yep_dom_node(d, kn0->next_sibling);
+        if (!w->canonical && !w->json && !w->force_flow && vn0 != NULL && kn0->kind == 0 &&
+            kn0->style == 1 && kn0->anchor.len == 0 && kn0->tag.len == 0 && kn0->count == 0 &&
+            vn0->kind == 0 && vn0->style == 1 && vn0->anchor.len == 0 && vn0->tag.len == 0 &&
+            vn0->count == 0) {
+            yep_view kv = wv(w, kn0->value);
+            yep_view vv = wv(w, vn0->value);
+            if (kv.len > 0 && yep_style_plain_key_safe((const char*)kv.p, kv.len)) {
+                if (vv.len == 0) {
+                    /* implicit-empty plain value rides bare `key:` */
+                    if (pair > 0) {
+                        if (w->last != '\n') {
+                            wr_byte(w, '\n');
+                        }
+                        wr_indent(w, content_col);
+                    }
+                    wr_put(w, (const char*)kv.p, kv.len);
+                    wr_byte(w, ':');
+                    pair++;
+                    child = vn0->next_sibling;
+                    continue;
+                }
+                if (yep_style_plain_safe((const char*)vv.p, vv.len)) {
+                    if (pair > 0) {
+                        if (w->last != '\n') {
+                            wr_byte(w, '\n');
+                        }
+                        wr_indent(w, content_col);
+                    }
+                    wr_put(w, (const char*)kv.p, kv.len);
+                    wr_byte(w, ':');
+                    wr_byte(w, ' ');
+                    wr_put(w, (const char*)vv.p, vv.len);
+                    pair++;
+                    child = vn0->next_sibling;
+                    continue;
+                }
+            }
+        }
         const yep_dnode* kn = yep_dom_node(d, child);
         const yep_dnode* vn = yep_dom_node(d, kn->next_sibling);
         if (pair > 0) {
