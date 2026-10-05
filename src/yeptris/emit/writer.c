@@ -626,36 +626,50 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             vn0->count == 0) {
             yep_view kv = wv(w, kn0->value);
             yep_view vv = wv(w, vn0->value);
-            if (kv.len > 0 && yep_style_plain_key_safe((const char*)kv.p, kv.len)) {
-                if (vv.len == 0) {
-                    /* implicit-empty plain value rides bare `key:` */
-                    if (pair > 0) {
-                        if (w->last != '\n') {
-                            wr_byte(w, '\n');
-                        }
-                        wr_indent(w, content_col);
-                    }
-                    wr_put(w, (const char*)kv.p, kv.len);
-                    wr_byte(w, ':');
-                    pair++;
-                    child = vn0->next_sibling;
-                    continue;
+            if (kv.len > 0 && yep_style_plain_key_safe((const char*)kv.p, kv.len) &&
+                (vv.len == 0 || yep_style_plain_safe((const char*)vv.p, vv.len))) {
+                /* fused member write: plain-safe spans carry no breaks,
+                 * so the col scan is arithmetic and one reservation
+                 * covers the whole member (line + key + ':' + value) */
+                uint32_t ind = pair > 0 ? (uint32_t)content_col : 0u;
+                uint32_t nl = (pair > 0 && w->last != '\n') ? 1u : 0u;
+                uint32_t total = nl + ind + kv.len + 1u + (vv.len > 0 ? vv.len + 1u : 0u);
+                w->last = vv.len > 0 ? (char)vv.p[vv.len - 1] : ':';
+                if (nl) {
+                    w->col = (int)(total - 1u); /* the break resets, then the line */
+                } else {
+                    w->col += (int)total;
                 }
-                if (yep_style_plain_safe((const char*)vv.p, vv.len)) {
-                    if (pair > 0) {
-                        if (w->last != '\n') {
-                            wr_byte(w, '\n');
-                        }
-                        wr_indent(w, content_col);
+                if (w->dry) {
+                    w->len += total;
+                } else {
+                    if (w->grow && w->len + total + 1 > w->cap) {
+                        wr_grow(w, total);
                     }
-                    wr_put(w, (const char*)kv.p, kv.len);
-                    wr_byte(w, ':');
-                    wr_byte(w, ' ');
-                    wr_put(w, (const char*)vv.p, vv.len);
-                    pair++;
-                    child = vn0->next_sibling;
-                    continue;
+                    if (w->oom) {
+                        w->len += total; /* keep counting: the caller fails on oom */
+                    } else {
+                        char* q = w->p + w->len;
+                        if (nl) {
+                            *q++ = '\n';
+                        }
+                        for (uint32_t i = 0; i < ind; i++) {
+                            *q++ = ' ';
+                        }
+                        memcpy(q, kv.p, kv.len);
+                        q += kv.len;
+                        *q++ = ':';
+                        if (vv.len > 0) {
+                            *q++ = ' ';
+                            memcpy(q, vv.p, vv.len);
+                        }
+                        w->len += total;
+                        wr_maybe_flush(w);
+                    }
                 }
+                pair++;
+                child = vn0->next_sibling;
+                continue;
             }
         }
         const yep_dnode* kn = yep_dom_node(d, child);

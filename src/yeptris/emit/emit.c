@@ -65,24 +65,31 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
-    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    memset(&em.canon_names, 0, sizeof(em.canon_names));
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return 0;
     }
     em.w.sc_dec = (uint8_t*)malloc(em.doc->dom->ncount > 0 ? em.doc->dom->ncount : 1);
     if (em.w.sc_dec == NULL) {
-        yep_nametab_free(&em.canon_names);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
         return 0;
     }
     size_t need = yep_emit_run(&em, 1);
     if (buf == NULL || cap < need + 1) {
         free(em.w.sc_dec);
-        yep_nametab_free(&em.canon_names);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
         return need;
     }
     em.w.p = buf;
     size_t wrote = yep_emit_run(&em, 0);
     free(em.w.sc_dec);
-    yep_nametab_free(&em.canon_names);
+    if (em.canon_names.sys != NULL) {
+        yep_nametab_free(&em.canon_names);
+    }
     buf[wrote] = '\0';
     return wrote;
 }
@@ -123,7 +130,8 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
-    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    memset(&em.canon_names, 0, sizeof(em.canon_names));
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
     /* #352 slice 2: ONE wet pass into a growable buffer — the dry
@@ -138,7 +146,9 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     }
     char* out = (char*)malloc(est);
     if (out == NULL) {
-        yep_nametab_free(&em.canon_names);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
         return NULL;
     }
     em.w.p = out;
@@ -152,16 +162,20 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     out = em.w.p;
     if (em.w.oom) {
         free(out);
-        yep_nametab_free(&em.canon_names);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
         return NULL;
     }
-    if (wrote + 1 < em.w.cap) {
+    if (em.w.cap - (wrote + 1) > em.w.cap / 8) {
         char* tight = (char*)realloc(out, wrote + 1);
         if (tight != NULL) {
             out = tight;
         }
     }
-    yep_nametab_free(&em.canon_names);
+    if (em.canon_names.sys != NULL) {
+        yep_nametab_free(&em.canon_names);
+    }
     out[wrote] = '\0';
     if (len != NULL) {
         *len = wrote;
@@ -200,18 +214,23 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
-    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    memset(&em.canon_names, 0, sizeof(em.canon_names));
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
     size_t need = yep_emit_run(&em, 1);
     char* out = malloc(need + 1);
     if (out == NULL) {
-        yep_nametab_free(&em.canon_names);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
         return NULL;
     }
     em.w.p = out;
     size_t wrote = yep_emit_run(&em, 0);
-    yep_nametab_free(&em.canon_names);
+    if (em.canon_names.sys != NULL) {
+        yep_nametab_free(&em.canon_names);
+    }
     out[wrote] = '\0';
     if (len != NULL) {
         *len = wrote;
@@ -253,18 +272,23 @@ YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len,
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
-    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    memset(&em.canon_names, 0, sizeof(em.canon_names));
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
     size_t need = yep_emit_run(&em, 1);
     char* out = malloc(need + 1);
     if (out == NULL) {
-        yep_nametab_free(&em.canon_names);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
         return NULL;
     }
     em.w.p = out;
     size_t wrote = yep_emit_run(&em, 0);
-    yep_nametab_free(&em.canon_names);
+    if (em.canon_names.sys != NULL) {
+        yep_nametab_free(&em.canon_names);
+    }
     out[wrote] = '\0';
     if (len != NULL) {
         *len = wrote;
@@ -300,18 +324,23 @@ char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
-    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    memset(&em.canon_names, 0, sizeof(em.canon_names));
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
     size_t need = yep_emit_run(&em, 1);
     char* out = malloc(need + 1);
     if (out == NULL) {
-        yep_nametab_free(&em.canon_names);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
         return NULL;
     }
     em.w.p = out;
     size_t wrote = yep_emit_run(&em, 0);
-    yep_nametab_free(&em.canon_names);
+    if (em.canon_names.sys != NULL) {
+        yep_nametab_free(&em.canon_names);
+    }
     out[wrote] = '\0';
     if (len != NULL) {
         *len = wrote;
@@ -347,18 +376,23 @@ char* yep_serialize_json_pretty(const yeptris_document* doc, size_t* len) {
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
-    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    memset(&em.canon_names, 0, sizeof(em.canon_names));
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
     size_t need = yep_emit_run(&em, 1);
     char* out = malloc(need + 1);
     if (out == NULL) {
-        yep_nametab_free(&em.canon_names);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
         return NULL;
     }
     em.w.p = out;
     size_t wrote = yep_emit_run(&em, 0);
-    yep_nametab_free(&em.canon_names);
+    if (em.canon_names.sys != NULL) {
+        yep_nametab_free(&em.canon_names);
+    }
     out[wrote] = '\0';
     if (len != NULL) {
         *len = wrote;
@@ -409,13 +443,16 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     em.w.sink = sink;
     em.w.sink_ctx = ctx;
     em.w.watermark = YEP_EMIT_WATERMARK;
-    if (!yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    memset(&em.canon_names, 0, sizeof(em.canon_names));
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return 0;
     }
     /* one scratch window; the writer flushes it when it fills */
     char* window = malloc(YEP_EMIT_WATERMARK * 2);
     if (window == NULL) {
-        yep_nametab_free(&em.canon_names);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
         return 0;
     }
     em.w.p = window;
@@ -429,6 +466,8 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
         }
     }
     free(window);
-    yep_nametab_free(&em.canon_names);
+    if (em.canon_names.sys != NULL) {
+        yep_nametab_free(&em.canon_names);
+    }
     return em.w.sink_aborted ? 0 : total;
 }
