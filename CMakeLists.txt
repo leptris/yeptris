@@ -206,10 +206,20 @@ endif()
 # config; relative paths keep relocatable installs.
 include(GNUInstallDirs)
 
-install(TARGETS yeptris_static
-    EXPORT yeptris-targets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
+if(TARGET yeptris_static)
+    install(TARGETS yeptris_static
+        EXPORT yeptris-targets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()
+if(TARGET yeptris_shared)
+    install(TARGETS yeptris_shared
+        EXPORT yeptris-targets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
 if(TARGET yeptris_jsonc)
     install(TARGETS yeptris_jsonc
         EXPORT yeptris-targets
