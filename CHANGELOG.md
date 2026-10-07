@@ -6,6 +6,31 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.30] - 2026-10-07
+### Performance
+- **emit: the flat plain member specialist (#352)** — a strictly
+  narrower fast path at the top of `emit_block_map`'s member loop
+  (plain unpropertied key + plain unpropertied scalar value, proven by
+  the exact predicates `sc_route` consults); anything else falls
+  through untouched, so byte parity holds by construction. serialbench
+  medium serialize-only -11.4%; gen table: wide-mapping +16.5%,
+  scalar-heavy +5.3%, json-users +2.7%.
+- **emit: fused flat-member write + lazy nametab + shrink guard
+  (#352)** — the specialist's whole member writes with one capacity
+  reservation and raw memcpy (plain-safe spans carry no breaks, so the
+  col scan is arithmetic); the emitter's canonical-names table
+  initializes only for canonical runs; the shrink-to-fit realloc is
+  skipped when the waste is under cap/8. Cumulative on the gen table:
+  wide-mapping +34%, scalar-heavy +20%, block-heavy +14%; serialbench
+  serialize-only 1.38x.
+### Fixed
+- **cmake: install survives `YEPTRIS_BUILD_STATIC=OFF` — and installs
+  the shared lib** — `install(TARGETS yeptris_static)` was
+  unconditional while the target only exists under the flag (and
+  nothing joined the export set with static off, so `install(EXPORT)`
+  failed too; `yeptris_shared` was never installed at all). Found by
+  yeptris-rs's CI.
+
 ## [0.6.29] - 2026-10-04
 ### Fixed
 - **parse: a block-scalar header at the key's column is the pending
