@@ -155,6 +155,19 @@ static void emit_dq(yep_writer* w, const char* p, uint32_t n) {
             i++;
             continue;
         }
+        /* LS/PS (U+2028/U+2029) are libyaml breaks: raw, re-parse
+         * folds them (the nightly's ";\\P" catch). 2-char escapes of
+         * 3-byte sequences: the one-pass dry count sizes them. */
+        if (c == 0xe2 && i + 2 < n && (unsigned char)p[i + 1] == 0x80 &&
+            ((unsigned char)p[i + 2] == 0xa8 || (unsigned char)p[i + 2] == 0xa9)) {
+            if (run) {
+                wr_put(w, p + i - run, run);
+                run = 0;
+            }
+            wr_put(w, (unsigned char)p[i + 2] == 0xa8 ? "\\L" : "\\P", 2);
+            i += 2;
+            continue;
+        }
         /* U+FEFF must never ride raw: at the buffer head it IS the
          * BOM and re-parse would strip it (the nightly's UTF-32LE
          * catch); Psych escapes it everywhere ("﻿") */
@@ -366,6 +379,12 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
     int has_bom = 0;
     for (uint32_t k = 0; k + 1 < len; k++) {
         if ((unsigned char)p[k] == 0xc2 && (unsigned char)p[k + 1] == 0x85) {
+            has_nel = 1;
+            break;
+        }
+        /* LS/PS are breaks like NEL: only their escapes are stable */
+        if ((unsigned char)p[k] == 0xe2 && k + 2 < len && (unsigned char)p[k + 1] == 0x80 &&
+            ((unsigned char)p[k + 2] == 0xa8 || (unsigned char)p[k + 2] == 0xa9)) {
             has_nel = 1;
             break;
         }
