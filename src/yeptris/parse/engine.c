@@ -1290,6 +1290,12 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     if (e_flow_ws(e) != 0) {
         return -1;
     }
+    if (e->pos >= e->len) {
+        /* props at EOF: no node follows the properties (the entry
+         * guard above cannot cover this — e_props consumed to the
+         * end; found by fuzz_parse, input "[!<<\r\n!]" x8) */
+        return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+    }
     c = (unsigned char)e->p[e->pos];
     if ((c == ',' || c == ']' || c == '}' || c == ':') &&
         (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
