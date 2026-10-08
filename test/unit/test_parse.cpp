@@ -87,6 +87,47 @@ TEST(Parse, FlowQuoteEscapeAtEofExactBuffer) {
     free(y);
 }
 
+TEST(Parse, AnchorNeedsName) {
+    /* the nightly fuzz_roundtrip trap (2026-10-08), input "&": an
+     * anchor with an EMPTY name was accepted (root, value, flow), the
+     * serializer emitted an empty document, and its re-parse returned
+     * NULL — parseable-implies-marshalable broken. libyaml/Psych
+     * reject all of these ("did not find expected alphabetic or
+     * numeric character"); a bare '!' tag stays legal. */
+    const char* bad[] = {"&", "&\n", "& x", "k: & v", "- & x", "k: &\n", "[&]", "[& ]", "{a: &}"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_NE(st, YEPTRIS_OK) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    /* the legal forms still round-trip: serialize then re-parse */
+    const char* ok[] = {"!", "&a", "k: &a v", "[&a]", "a: &b c"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        EXPECT_NE(doc2, nullptr) << y << " -> " << s1;
+        if (doc2 != NULL) {
+            size_t l2 = 0;
+            char* s2 = yeptris_serialize(doc2, &l2);
+            EXPECT_TRUE(s2 == NULL || (l1 == l2 && memcmp(s1, s2, l1) == 0)) << y;
+            free(s2);
+            yeptris_document_free(doc2);
+        }
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
