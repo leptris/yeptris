@@ -250,6 +250,44 @@ TEST(Parse, BomCharEscapesAsUFEFF) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, PropsChainRecursionCapped) {
+    /* the nightly fuzz_parse STACK OVERFLOW (2026-10-08, run
+     * 37839718900): the e_node <-> e_parse_value props/value-line
+     * chain opens NO container frame, so e->depth never grew and the
+     * C recursion ran unbounded (anchor-only lines at document root).
+     * A recursion counter capped at max_depth now rejects with
+     * YEPTRIS_ERROR_DEPTH — the depth-guard law: error, never crash. */
+    static const char rep[] = "&a\n";
+    size_t n = strlen(rep) * 20000;
+    char* y = (char*)malloc(n);
+    ASSERT_NE(y, nullptr);
+    for (size_t i = 0; i < 20000; i++) {
+        memcpy(y + i * strlen(rep), rep, strlen(rep));
+    }
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, n, &st);
+    EXPECT_EQ(doc, nullptr);
+    EXPECT_EQ(st, YEPTRIS_ERROR_DEPTH);
+    free(y);
+    /* ordinary nesting still parses: the cap rides the same 1000 */
+    static const char nested[] = "a:\n";
+    size_t m = strlen(nested) * 50;
+    char* z = (char*)malloc(m + 2);
+    ASSERT_NE(z, nullptr);
+    for (size_t i = 0; i < 50; i++) {
+        memcpy(z + i * strlen(nested), nested, strlen(nested));
+    }
+    z[m] = ' ';
+    z[m + 1] = '1';
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(z, m + 2, &st2);
+    EXPECT_NE(doc2, nullptr);
+    if (doc2 != NULL) {
+        yeptris_document_free(doc2);
+    }
+    free(z);
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
