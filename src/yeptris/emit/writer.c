@@ -155,6 +155,19 @@ static void emit_dq(yep_writer* w, const char* p, uint32_t n) {
             i++;
             continue;
         }
+        /* U+FEFF must never ride raw: at the buffer head it IS the
+         * BOM and re-parse would strip it (the nightly's UTF-32LE
+         * catch); Psych escapes it everywhere ("﻿") */
+        if (c == 0xef && i + 2 < n && (unsigned char)p[i + 1] == 0xbb &&
+            (unsigned char)p[i + 2] == 0xbf) {
+            if (run) {
+                wr_put(w, p + i - run, run);
+                run = 0;
+            }
+            wr_put(w, "\\uFEFF", 6);
+            i += 2;
+            continue;
+        }
         if (c >= 0x20 && c != '"' && c != '\\' && c != 0x7f) {
             run++;
             continue;
@@ -343,22 +356,33 @@ enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL };
 
 static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in,
                         int has_tag) {
+    /* U+0085 is a break (only its \\N escape is byte-stable) and U+FEFF
+     * raw is the BOM (re-parse would strip it): both force the
+     * double-quoted route BEFORE the plain fast path can take them
+     * (the nightly's fuzz_roundtrip crashers). The NEL scan matches
+     * the UTF-8 PAIR only — a lone 0x85 is a continuation byte
+     * (U+315B = E3 85 9B). */
+    int has_nel = 0;
+    int has_bom = 0;
+    for (uint32_t k = 0; k + 1 < len; k++) {
+        if ((unsigned char)p[k] == 0xc2 && (unsigned char)p[k + 1] == 0x85) {
+            has_nel = 1;
+            break;
+        }
+        if ((unsigned char)p[k] == 0xef && k + 2 < len && (unsigned char)p[k + 1] == 0xbb &&
+            (unsigned char)p[k + 2] == 0xbf) {
+            has_bom = 1;
+            break;
+        }
+    }
+    if (has_nel || has_bom) {
+        return YEP_SC_DQ;
+    }
     if ((sty_in == 1) && len > 0 &&
         (as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len))) {
         return YEP_SC_PLAIN; /* plain-safe implies no breaks: memchr skipped */
     }
     int multiline = (len > 0 && memchr(p, '\n', len) != NULL);
-    /* U+0085 is a break: only the double-quoted escape can carry it
-     * byte-stably (plain singles fold it like the nightly's crasher) */
-    int has_nel = 0;
-    for (uint32_t k = 0; k + 1 < len; k++) {
-        /* the UTF-8 PAIR only: a lone 0x85 byte is a continuation
-         * byte (U+315B = E3 85 9B — the nightly's next catch) */
-        if ((unsigned char)p[k] == 0xc2 && (unsigned char)p[k + 1] == 0x85) {
-            has_nel = 1;
-            break;
-        }
-    }
     int blockable = 0;
     if (multiline && !as_key) {
         int allws = 1;
@@ -374,9 +398,6 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
         blockable = !allws && !has_cr;
     }
     uint8_t sty = sty_in;
-    if (has_nel) {
-        return YEP_SC_DQ;
-    }
     if (sty == 4 || sty == 5) {
         if (multiline && as_key) {
             return YEP_SC_DQ;
