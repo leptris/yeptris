@@ -142,6 +142,27 @@ static void emit_dq(yep_writer* w, const char* p, uint32_t n) {
     uint32_t run = 0;
     for (uint32_t i = 0; i < n; i++) {
         unsigned char c = (unsigned char)p[i];
+        /* U+0085 (NEL) is a BREAK in YAML: raw it would fold on
+         * re-parse. Escape it ('\N' replaces the exact UTF-8 pair, so
+         * lengths stay equal). The nightly's fuzz_roundtrip
+         * byte-instability crasher, "\"1 \\N\"". */
+        if (c == 0xc2 && i + 1 < n && (unsigned char)p[i + 1] == 0x85) {
+            if (run) {
+                wr_put(w, p + i - run, run);
+                run = 0;
+            }
+            wr_put(w, "\\N", 2);
+            i++;
+            continue;
+        }
+        if (c == 0x85) {
+            if (run) {
+                wr_put(w, p + i - run, run);
+                run = 0;
+            }
+            wr_put(w, "\\x85", 4);
+            continue;
+        }
         if (c >= 0x20 && c != '"' && c != '\\' && c != 0x7f) {
             run++;
             continue;
@@ -335,6 +356,16 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
         return YEP_SC_PLAIN; /* plain-safe implies no breaks: memchr skipped */
     }
     int multiline = (len > 0 && memchr(p, '\n', len) != NULL);
+    /* U+0085 is a break: only the double-quoted escape can carry it
+     * byte-stably (plain singles fold it like the nightly's crasher) */
+    int has_nel = 0;
+    for (uint32_t k = 0; k + 1 < len; k++) {
+        if ((unsigned char)p[k] == 0x85 ||
+            ((unsigned char)p[k] == 0xc2 && (unsigned char)p[k + 1] == 0x85)) {
+            has_nel = 1;
+            break;
+        }
+    }
     int blockable = 0;
     if (multiline && !as_key) {
         int allws = 1;
@@ -350,6 +381,9 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
         blockable = !allws && !has_cr;
     }
     uint8_t sty = sty_in;
+    if (has_nel) {
+        return YEP_SC_DQ;
+    }
     if (sty == 4 || sty == 5) {
         if (multiline && as_key) {
             return YEP_SC_DQ;

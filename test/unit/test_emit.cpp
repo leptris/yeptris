@@ -99,6 +99,25 @@ TEST(Emit, QuotedAndEscapes) {
     EXPECT_EQ(roundtrip("a: 'it''s'\n"), "a: 'it''s'\n");
 }
 
+TEST(Emit, NelEscapesAsBackslashN) {
+    /* the nightly fuzz_roundtrip byte-instability trap (2026-10-08),
+     * input "\"1 \\N\"": U+0085 (NEL) is a BREAK in YAML — emitted raw,
+     * every re-parse folded it and each round drifted. The emitter
+     * escapes it as \\N (byte-length-equal to the UTF-8 pair, so the
+     * one-pass sizing stays exact), plain-safe rejects it, and
+     * literal/folded route to double-quoted. Byte parity with Psych
+     * (Psych.dump("a\u{85}b") == "--- \"a\\Nb\"\n"). */
+    const char* in[] = {"\"1 \\N\"\n", "\"\\N\"\n", "\"a\\Nb\"\n"};
+    for (const char* y : in) {
+        EXPECT_EQ(roundtrip(y), y) << y;
+    }
+    /* the lone \\x85 spelling canonicalizes to \\N */
+    EXPECT_EQ(roundtrip("\"\\x85\"\n"), "\"\\N\"\n");
+    /* a plain NEL value never goes plain or block */
+    const char* raw = "a: \"b\\Nc\"\n";
+    EXPECT_EQ(roundtrip(raw), raw);
+}
+
 TEST(Emit, LiteralBlocks) {
     /* libyaml's indicator rules (#290 family 4): the explicit indent
      * only when the first body line starts with a space or is blank */
