@@ -128,6 +128,43 @@ TEST(Parse, AnchorNeedsName) {
     }
 }
 
+TEST(Parse, VerbatimTagClosesSameLine) {
+    /* the nightly fuzz_roundtrip byte-instability trap (2026-10-08),
+     * input "!<": an unterminated/empty/spaced verbatim tag was
+     * accepted, then serialize/re-parse grew a blank line per round.
+     * libyaml requires the '>' to close on the same line with no
+     * interior space and non-empty content. */
+    const char* bad[] = {"!<", "!<\n", "!<>", "!<a", "k: !<", "!<a b>", "[!<]"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_NE(st, YEPTRIS_OK) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"!<a>", "!<a> v", "!", "!foo v", "!!str v", "a: !!int 1"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
