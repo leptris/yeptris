@@ -118,6 +118,17 @@ TEST(Emit, NelEscapesAsBackslashN) {
     EXPECT_EQ(roundtrip(raw), raw);
 }
 
+TEST(Emit, LsPsEscapeAsBackslashLP) {
+    /* the nightly fuzz_roundtrip byte-instability catch (2026-10-08,
+     * input ";\\P"): U+2028/U+2029 are libyaml breaks — raw, every
+     * re-parse folds them. The emitter escapes them as \\L/\\P
+     * (byte parity with Psych). */
+    EXPECT_EQ(roundtrip("\";\\P\"\n"), "\";\\P\"\n");
+    EXPECT_EQ(roundtrip("\"a\\Lb\"\n"), "\"a\\Lb\"\n");
+    EXPECT_EQ(roundtrip("\"\\P\"\n"), "\"\\P\"\n");
+    EXPECT_EQ(roundtrip("\"\\L\"\n"), "\"\\L\"\n");
+}
+
 TEST(Emit, LiteralBlocks) {
     /* libyaml's indicator rules (#290 family 4): the explicit indent
      * only when the first body line starts with a space or is blank */
