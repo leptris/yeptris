@@ -119,6 +119,11 @@ struct yep_engine {
     char* norm_buf;                      /* owned input copy with exotic breaks normalized */
     const struct yep_resolver* resolver; /* implicit-typing schema (10) */
     int max_depth;                       /* runtime nesting limit (options) */
+    uint16_t rec;                        /* e_node<->e_parse_value call depth:
+                                            the props/value-line chain opens NO
+                                            container frame, so e->depth cannot
+                                            bound it (the nightly's stack
+                                            overflow crasher) */
     int last_root_flow;                  /* a root-level flow node just completed */
     int tag_undef;                       /* an unresolved !handle! was seen (QLJ7) */
     int doc_inline;                      /* content node opened on the --- line */
@@ -2690,7 +2695,13 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         e->pend_anchor_id = anchor_ordinal;
         e->pend_tag = node_t;
         e->doc_inline = 0; /* the node starts on a later line */
-        return e_parse_value(e, ctx, floor_col);
+        if (++e->rec >= e->max_depth) {
+            e->rec--;
+            return e_fail(e, YEP_ERR_DEPTH, e->pos);
+        }
+        int rc = e_parse_value(e, ctx, floor_col);
+        e->rec--;
+        return rc;
         /* (ctx stays: AFTER_COLON converts to VALUE_LINE at the break) */
     }
 
@@ -3102,7 +3113,15 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             (vctx == YEP_CTX_VALUE_LINE && (li.first == '|' || li.first == '>') &&
              li.indent == floor_col)) {
             e->pos += li.indent;
-            return e_node(e, vctx, floor_col);
+            if (++e->rec >= e->max_depth) {
+                e->rec--;
+                return e_fail(e, YEP_ERR_DEPTH, e->pos);
+            }
+            {
+                int rc = e_node(e, vctx, floor_col);
+                e->rec--;
+                return rc;
+            }
         }
         /* indentless sequence as a mapping value; under a sequence frame
          * a dash at the same column is a SIBLING, not a continuation */
