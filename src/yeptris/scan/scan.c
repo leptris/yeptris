@@ -199,6 +199,10 @@ static void shape_value(const char* p, size_t len, const yep_line_info* li, size
     }
     if (c == '&') {
         size_t a_end = yep_scan_prop_end(p, len, vt + 1);
+        if (a_end == vt + 1) {
+            return; /* an anchor needs a name (libyaml): the general
+                     * chain owns the error */
+        }
         size_t t = a_end;
         while (t < len && (p[t] == ' ' || p[t] == '\t')) {
             t++;

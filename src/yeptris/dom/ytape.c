@@ -1451,6 +1451,10 @@ static int yt_f_run(yt_fused* F) {
                     }
                     aoff = (uint32_t)(vt + 1);
                     alen = (uint32_t)(ne - vt - 1);
+                    if (alen == 0) {
+                        return 1; /* an anchor needs a name (libyaml):
+                                     the engine owns the error */
+                    }
                     F->anchor_seq++;
                     aid = F->anchor_seq;
                     if (!yt_anchor_table(F)) {
@@ -1811,8 +1815,9 @@ static int yt_f_run(yt_fused* F) {
                         goto line_done;
                     }
                     if (vc == '"' || vc == '\'' || vc == '|' || vc == '>' || vc == '[' ||
-                        vc == '{' || vc == '!' || vc == '%') {
-                        return 1; /* quoted/block/flow/tag values: the engine */
+                        vc == '{' || vc == '!' || vc == '%' || vc == '&' || vc == '*') {
+                        return 1; /* quoted/block/flow/tag/anchor/alias values:
+                                     the engine */
                     }
                     if ((vc == '-' || vc == '?') && (vt + 1 >= line_end || p[vt + 1] == ' ' ||
                                                      p[vt + 1] == '\t' || p[vt + 1] == '#')) {

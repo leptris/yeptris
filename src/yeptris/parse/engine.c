@@ -1090,6 +1090,14 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
             e->pos = yep_scan_prop_end(e->p, e->len, start);
             anchor->p = e->p + start;
             anchor->len = (uint32_t)(e->pos - start);
+            if (anchor->len == 0) {
+                /* libyaml requires one or more anchor characters
+                 * ("did not find expected alphabetic or numeric
+                 * character"); the nightly fuzz_roundtrip crasher,
+                 * a lone '&' */
+                e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                return;
+            }
         } else if (c == '!') {
             size_t start = e->pos;
             e->pos++;
@@ -1282,6 +1290,9 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     ev->col = e_col(e, e->pos) + 1;
     yep_view anchor = {0}, tag = {0};
     e_props(e, &anchor, &tag);
+    if (e->err.code != YEP_ERR_NONE) {
+        return -1; /* e_props failed (empty anchor name, unresolved tag) */
+    }
     ev->anchor = anchor;
     ev->tag = tag;
     if (!yep_view_is_empty(anchor)) {
