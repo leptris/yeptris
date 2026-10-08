@@ -1102,12 +1102,20 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
             size_t start = e->pos;
             e->pos++;
             if (e->pos < e->len && e->p[e->pos] == '<') {
-                while (e->pos < e->len && e->p[e->pos] != '>') {
-                    e->pos++;
+                /* a verbatim tag closes '>' on the same line, with no
+                 * interior space and non-empty content — libyaml errors
+                 * otherwise ("did not find expected '>'"; the nightly's
+                 * fuzz_roundtrip byte-instability crasher, "!<") */
+                size_t gt = e->pos + 1;
+                while (gt < e->len && e->p[gt] != '>' && e->p[gt] != '\n' && e->p[gt] != '\r' &&
+                       e->p[gt] != ' ' && e->p[gt] != '\t') {
+                    gt++;
                 }
-                if (e->pos < e->len) {
-                    e->pos++;
+                if (gt >= e->len || e->p[gt] != '>' || gt == e->pos + 1) {
+                    e_fail(e, YEP_ERR_UNEXPECTED, start);
+                    return;
                 }
+                e->pos = gt + 1;
             } else {
                 while (e->pos < e->len && yep_scan_prop_char((unsigned char)e->p[e->pos])) {
                     e->pos++;
