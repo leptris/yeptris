@@ -118,6 +118,19 @@ std::vector<std::string> gen_buffers() {
         out.push_back(b);
     }
 
+    /* Adversarial for quote_scan: a quote-free span whose last byte is
+     * a lone backslash (or doubled quote), straddling the 32/16 chunk
+     * boundaries. The AVX2 block loop skips the escape past len; the
+     * tail delegation must not underflow (nightly fuzz_parse catch,
+     * 2026-10-08). */
+    for (size_t len : {15, 16, 17, 31, 32, 33, 47, 48, 63, 64, 65, 96, 97}) {
+        std::string t(len - 1, 'a');
+        t += '\\';
+        out.push_back(t);
+        std::string u(len - 2, 'a');
+        u += "''";
+        out.push_back(u);
+    }
     /* Quote-heavy corpus for quote_scan. */
     for (size_t len = 0; len <= 100; len++) {
         std::string q(len, '\0');
@@ -359,6 +372,25 @@ TEST(SimdText, QuoteScanSemantics) {
     /* trailing lone backslash */
     EXPECT_EQ(k->quote_scan("abc\\", 4, '"', &esc), -1);
     EXPECT_EQ(esc, 1);
+}
+
+TEST(SimdText, QuoteScanBoundaryEscapeExactBuffer) {
+    /* the nightly fuzz_parse crasher (2026-10-08): quote_scan's AVX2
+     * tail delegation computed len - i with i > len when an escape sat
+     * at the last byte, handing the scalar kernel a huge length.
+     * Exact-size heap buffers (no NUL slack) so ASAN builds see any
+     * read past the end on every ISA. */
+    const yep_text_kernels* k = yep_text_active();
+    for (size_t len : {31, 32, 33, 63, 64, 65, 96, 97}) {
+        char* s = (char*)malloc(len);
+        ASSERT_NE(s, nullptr) << "len=" << len;
+        memset(s, 'a', len);
+        s[len - 1] = '\\';
+        int esc = 0;
+        EXPECT_EQ(k->quote_scan(s, len, '"', &esc), -1) << "len=" << len;
+        EXPECT_EQ(esc, 1) << "len=" << len;
+        free(s);
+    }
 }
 
 TEST(SimdText, QbcFind) {

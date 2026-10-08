@@ -179,6 +179,11 @@ static ptrdiff_t yep_avx2_quote_scan(const char* s, size_t len, char q, int* has
             }
             return (ptrdiff_t)(i + k);
         }
+        if (i >= len) {
+            break; /* an escape at the boundary consumed the rest: unterminated
+                    * (a lone '\' as the last byte pushed i past len; the tail
+                    * call would underflow len - i and read out of bounds) */
+        }
         if (i + YEP_AVX2_CHUNK > len) {
             int tail_esc = 0;
             ptrdiff_t r = yep_text_quote_scan_scalar(s + i, len - i, q, &tail_esc);

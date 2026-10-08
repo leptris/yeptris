@@ -54,6 +54,7 @@ jobs:
         run: |
           mkdir -p corpus
           cp test/port/libyaml/snapshots/*.in corpus/ 2>/dev/null || true
+          cp test/fuzz/corpus/parse/* corpus/ 2>/dev/null || true
           find test/conformance/data/yaml-test-suite -name '*.yaml' -exec cp {} corpus/ \; 2>/dev/null || true
           find test/conformance/data/json-test-suite/test_parsing -name '*.json' -exec cp {} corpus/ \; 2>/dev/null || true
 

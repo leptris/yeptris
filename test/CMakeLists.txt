@@ -149,6 +149,11 @@ add_test(
 )
 
 add_test(
+    NAME fuzz-parse-regression
+    COMMAND fuzz_parse ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse
+)
+
+add_test(
     NAME fuzz-cbor-corpus
     COMMAND fuzz_cbor ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/cbor
 )
