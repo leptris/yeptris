@@ -43,6 +43,7 @@ jobs:
           cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
             -DYEPTRIS_ENABLE_FUZZING=ON \
             -DYEPTRIS_LIBYAML_ROOT=$GITHUB_WORKSPACE/deps/libyaml
 
@@ -119,4 +120,7 @@ jobs:
             ./build/test/test_unit --gtest_filter='-Float.DoubleRoundtripRandom:Float.ShortestIsShortest:MapIndex.LargeMapHitsAndMisses:MapIndex.ConcurrentFirstLookupsBuildOnce:Limits.*'
 
       - name: Conformance under valgrind
-        run: valgrind --error-exitcode=99 --leak-check=full ./build/test_conformance
+        # test_conformance's default corpus dir is relative to the
+        # build dir; from the repo root it must be passed explicitly
+        # (else it bails with no-cases, exit 2, before any allocation)
+        run: valgrind --error-exitcode=99 --leak-check=full ./build/test_conformance test/conformance/data/yaml-test-suite/src
