@@ -78,9 +78,8 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
             uint64_t blank = space | tab;
             uint64_t colon = YST_ZDET(w, ':');
             uint64_t hash = YST_ZDET(w, '#');
-            /* tab and the breaks reject outright; 0x85 too (NEL is a
-             * break: a plain scalar can never carry it) */
-            if (tab | YST_ZDET(w, '\n') | YST_ZDET(w, '\r') | YST_ZDET(w, 0x85)) {
+            /* tab and the breaks reject outright */
+            if (tab | YST_ZDET(w, '\n') | YST_ZDET(w, '\r')) {
                 return 0;
             }
             /* ':' + blank next: (blank >> 8) pulls lane i+1's flag down
