@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -30,6 +31,22 @@ std::string map_str(YeptrisNode map, const char* key) {
 }
 
 } // namespace
+
+TEST(Parse, FlowPropsAtEofExactBuffer) {
+    /* the nightly fuzz_parse crasher (2026-10-08): flow properties
+     * consumed to EOF, then the node read ran one byte past the
+     * input. Pinned with an EXACT-SIZE heap buffer (no NUL slack) so
+     * the ASAN build sees any regression of the bound. */
+    const char bytes[8] = {'[', '!', '<', '<', '\r', '\n', '!', ']'};
+    char* y = (char*)malloc(sizeof bytes);
+    ASSERT_NE(y, nullptr);
+    memcpy(y, bytes, sizeof bytes);
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, sizeof bytes, &st);
+    EXPECT_EQ(doc, nullptr);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    free(y);
+}
 
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
