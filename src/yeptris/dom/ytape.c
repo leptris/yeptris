@@ -1422,7 +1422,8 @@ static int yt_f_run(yt_fused* F) {
                        (line_stop + 1 >= line_end || p[line_stop + 1] == ' ' ||
                         p[line_stop + 1] == '\t') &&
                        !(c == '&' || c == '!' || c == '*' || c == '\'' || c == '"' || c == '[' ||
-                         c == '{' || c == '|' || c == '>' || c == '%' || c == '?' || c == '-')) {
+                         c == '{' || c == '|' || c == '>' || c == '%' || c == '?' || c == '-') &&
+                       yep_plain_first_ok((unsigned char)c)) {
                 uint32_t kend = line_stop;
                 while (kend > t0 && (p[kend - 1] == ' ' || p[kend - 1] == '\t')) {
                     kend--;
@@ -1816,6 +1817,12 @@ static int yt_f_run(yt_fused* F) {
                     if ((vc == '-' || vc == '?') && (vt + 1 >= line_end || p[vt + 1] == ' ' ||
                                                      p[vt + 1] == '\t' || p[vt + 1] == '#')) {
                         return 1; /* an indicator-as-value: the engine errors */
+                    }
+                    if (!yep_plain_first_ok(vc)) {
+                        return 1; /* '}' ']' ',' '@' '`' '%': no node
+                                   * content can start there (the nightly's
+                                   * fuzz_roundtrip crasher, "u: }") — the engine
+                                   * errors cleanly */
                     }
                     /* a terminating ':' inside the value is the
                      * mapping-values error — the engine owns it */

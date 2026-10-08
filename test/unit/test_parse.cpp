@@ -48,6 +48,23 @@ TEST(Parse, FlowPropsAtEofExactBuffer) {
     free(y);
 }
 
+TEST(Parse, RunnerRejectsIndicatorFirstPlain) {
+    /* the nightly fuzz_roundtrip trap (2026-10-08), "u: }": the fused
+     * block runner accepted plain scalars opening with a reserved
+     * indicator (c-indicator set) while the engine chain, the emitter,
+     * Psych and PyYAML all reject. Every form must fail cleanly. */
+    const char* bad[] = {"u: }", "u: ]", "u: ,", "u: @x", "u: `x", "u: %x", "k: }", "}: v", "- }"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_NE(st, YEPTRIS_OK) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
