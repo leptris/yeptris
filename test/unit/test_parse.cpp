@@ -220,6 +220,36 @@ TEST(Parse, Utf16RoundTripThroughContinuationByte) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, BomCharEscapesAsUFEFF) {
+    /* the nightly fuzz_roundtrip re-parse trap (2026-10-08, run
+     * 37833916837): a UTF-32LE document whose content decodes to a
+     * lone U+FEFF. Emitted raw, those three bytes ARE the UTF-8 BOM —
+     * the re-parse strips them and the document vanishes. Psych
+     * escapes U+FEFF everywhere: "\\uFEFF". */
+    static const unsigned char bytes[] = {0xff, 0xfe, 0x00, 0x00, 0xff, 0xfe, 0x00, 0x00};
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse((const char*)bytes, sizeof bytes, &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    static const char want[] = "\"\\uFEFF\"\n";
+    EXPECT_EQ(l1, sizeof want - 1);
+    if (l1 == sizeof want - 1) {
+        EXPECT_EQ(0, memcmp(s1, want, l1));
+    }
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0);
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
