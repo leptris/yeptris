@@ -1319,6 +1319,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     if ((c == ',' || c == ']' || c == '}' || c == ':') &&
         (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
         ev->implicit = 1; /* properties with no node: a tagged null */
+        ev->style = YEP_STYLE_PLAIN;
         e_pos_mark(e, e->pos, &ev->end_line, &ev->end_col);
         return 1;
     }
@@ -1838,6 +1839,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 /* '? : v' / '?' at the boundary: an EMPTY explicit key */
                 e_event_init(&ev, YEP_EV_SCALAR);
                 ev.implicit = 1;
+                ev.style = YEP_STYLE_PLAIN;
                 ev.line = e->line;
                 ev.col = e_col(e, e->pos) + 1;
                 rc = 1;
@@ -2009,6 +2011,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     yep_event nv;
                     e_event_init(&nv, YEP_EV_SCALAR);
                     nv.implicit = 1;
+                    nv.style = YEP_STYLE_PLAIN;
                     if (emit_now(e, &nv) != 0) {
                         return -2;
                     }
@@ -2051,6 +2054,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     yep_event nv;
                     e_event_init(&nv, YEP_EV_SCALAR);
                     nv.implicit = 1;
+                    nv.style = YEP_STYLE_PLAIN;
                     if (emit_now(e, &nv) != 0) {
                         return -2;
                     }
@@ -2084,6 +2088,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 yep_event nv;
                 e_event_init(&nv, YEP_EV_SCALAR);
                 nv.implicit = 1;
+                nv.style = YEP_STYLE_PLAIN;
                 if (emit_now(e, &nv) != 0) {
                     return -2;
                 }
@@ -2101,6 +2106,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     yep_event nv;
                     e_event_init(&nv, YEP_EV_SCALAR);
                     nv.implicit = 1;
+                    nv.style = YEP_STYLE_PLAIN;
                     if (emit_now(e, &nv) != 0) {
                         return -2;
                     }
@@ -2129,6 +2135,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 yep_event nv;
                 e_event_init(&nv, YEP_EV_SCALAR);
                 nv.implicit = 1;
+                nv.style = YEP_STYLE_PLAIN;
                 if (emit_now(e, &nv) != 0) {
                     return -2;
                 }
@@ -2139,6 +2146,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     yep_event nv;
                     e_event_init(&nv, YEP_EV_SCALAR);
                     nv.implicit = 1;
+                    nv.style = YEP_STYLE_PLAIN;
                     if (emit_now(e, &nv) != 0) {
                         return -2;
                     }
