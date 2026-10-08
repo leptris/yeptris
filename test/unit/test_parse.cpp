@@ -65,6 +65,28 @@ TEST(Parse, RunnerRejectsIndicatorFirstPlain) {
     }
 }
 
+TEST(Parse, FlowQuoteEscapeAtEofExactBuffer) {
+    /* the nightly fuzz_parse crasher (2026-10-08): a flow double-quoted
+     * scalar whose final input byte is a lone backslash drove the AVX2
+     * quote-scan tail past the buffer end. Exact-size heap buffer (no
+     * NUL slack) so ASAN builds see any regression of the bound; the
+     * parse must reject cleanly. */
+    static const unsigned char bytes[] = {
+        0x5b, 0x22, 0x5c, 0x75, 0x30, 0x79, 0x3a, 0x20, 0x2d, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c,
+        0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x30, 0x36, 0x30, 0x68, 0x68, 0x68, 0x36, 0x30,
+        0x68, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x68, 0x68,
+        0x68, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x2c, 0x20, 0x68, 0x68,
+        0x68, 0x68, 0x68, 0x30, 0x31, 0x62, 0x0a, 0x32, 0x60, 0x5c};
+    char* y = (char*)malloc(sizeof bytes);
+    ASSERT_NE(y, nullptr);
+    memcpy(y, bytes, sizeof bytes);
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, sizeof bytes, &st);
+    EXPECT_EQ(doc, nullptr);
+    EXPECT_NE(st, YEPTRIS_OK);
+    free(y);
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
