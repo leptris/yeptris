@@ -100,8 +100,12 @@ endif()
 
 # libFuzzer implies ASAN (libleptris TODO 40 pattern).
 if(YEPTRIS_ENABLE_FUZZING)
+    # instrument everything, but link the fuzzer MAIN only into the
+    # harnesses: a global -fsanitize=fuzzer link option demands
+    # LLVMFuzzerTestOneInput from every executable (the CLI and the
+    # test binaries died on it once CXX also pinned to clang++)
     add_compile_options(-fsanitize=fuzzer-no-link,address -fno-omit-frame-pointer -g)
-    add_link_options(-fsanitize=fuzzer,address)
+    add_link_options(-fsanitize=address)
     message(STATUS "libFuzzer: ENABLED (implies ASAN)")
 endif()
 

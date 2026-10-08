@@ -166,35 +166,42 @@ add_test(
 )
 
 if(YEPTRIS_ENABLE_FUZZING)
+    set(YEP_FUZZ_HARNESS_LINK_OPTIONS -fsanitize=fuzzer)
     add_executable(fuzz_parse_lf fuzz/fuzz_parse.c)
     target_link_libraries(fuzz_parse_lf PRIVATE yeptris_static)
     target_include_directories(fuzz_parse_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
     yeptris_set_warnings(fuzz_parse_lf)
+    target_link_options(fuzz_parse_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
 
     add_executable(fuzz_roundtrip_lf fuzz/fuzz_roundtrip.c)
     target_link_libraries(fuzz_roundtrip_lf PRIVATE yeptris_static)
     yeptris_set_warnings(fuzz_roundtrip_lf)
+    target_link_options(fuzz_roundtrip_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
 
     add_executable(fuzz_feed_lf fuzz/fuzz_feed.c)
     target_link_libraries(fuzz_feed_lf PRIVATE yeptris_static)
     target_include_directories(fuzz_feed_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
     yeptris_set_warnings(fuzz_feed_lf)
+    target_link_options(fuzz_feed_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
 
     add_executable(fuzz_transcode_lf fuzz/fuzz_transcode.c)
     target_link_libraries(fuzz_transcode_lf PRIVATE yeptris_static)
     target_include_directories(fuzz_transcode_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
     yeptris_set_warnings(fuzz_transcode_lf)
+    target_link_options(fuzz_transcode_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
 
     if(YEPTRIS_LIBYAML_ROOT)
         # differential under fuzzing: libyaml linked into the harness
         add_executable(fuzz_diff_lf fuzz/fuzz_diff.c)
         target_link_libraries(fuzz_diff_lf PRIVATE diff_core)
         yeptris_set_warnings(fuzz_diff_lf)
+    target_link_options(fuzz_diff_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
     
     add_executable(fuzz_cbor_lf fuzz/fuzz_cbor.c)
     target_link_libraries(fuzz_cbor_lf PRIVATE yeptris_static)
     target_include_directories(fuzz_cbor_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
     yeptris_set_warnings(fuzz_cbor_lf)
+    target_link_options(fuzz_cbor_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
 endif()
 endif()
 
