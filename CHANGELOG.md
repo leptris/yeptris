@@ -6,6 +6,37 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [0.6.31] - 2026-10-09
+### Fixed
+The resurrected nightly fuzz harness's first full hunt — nine engine
+defects, each Psych-parity-verified and pinned (every crasher joins
+the `fuzz-parse-regression` corpus the suite re-executes).
+- **parse: the flow-node read after props hit EOF** (#488) — an
+  exact-buffer heap overread (`[!<<
+!]`, 8 bytes).
+- **parse: the fused runner rejects indicator-first plain scalars**
+  (#489) — `u: }` parsed but never marshaled.
+- **parse: an anchor needs a name** (#491) — the empty form was
+  accepted at four sites; serialize then emitted an empty document.
+- **parse: a verbatim tag closes `>` on the same line** (#492) —
+  unterminated/empty/spaced forms accepted with drifting output.
+- **emit: synthesized flow nulls are plain** (#493) — value-less flow
+  entries round-tripped as `""`, drifting per serialize/re-parse round.
+- **emit: U+0085 (NEL) escapes as `\N`** (#494, #495) — it is a YAML
+  break; raw it folded on re-parse. The law matches the UTF-8 pair C2
+  85 only — a lone 0x85 is a continuation byte.
+- **emit: U+FEFF escapes as `\uFEFF`** (#496) — raw it IS the BOM and
+  re-parse strips it.
+- **emit: LS/PS escape as `\L`/`\P`** (#497) — the break set complete.
+- **parse: the props/value-line recursion is capped at max_depth**
+  (#498) — the frame-less chain stack-overflowed; it now rejects with
+  `YEPTRIS_ERROR_DEPTH`.
+### CI
+- fuzz-nightly: the valgrind corpus path + the gtest compiler pin
+  (#486); the fuzzer main links only into the harnesses (#487).
+
 ## [0.6.30] - 2026-10-07
 ### Performance
 - **emit: the flat plain member specialist (#352)** — a strictly
