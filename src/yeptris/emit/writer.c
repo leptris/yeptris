@@ -155,14 +155,6 @@ static void emit_dq(yep_writer* w, const char* p, uint32_t n) {
             i++;
             continue;
         }
-        if (c == 0x85) {
-            if (run) {
-                wr_put(w, p + i - run, run);
-                run = 0;
-            }
-            wr_put(w, "\\x85", 4);
-            continue;
-        }
         if (c >= 0x20 && c != '"' && c != '\\' && c != 0x7f) {
             run++;
             continue;
@@ -360,8 +352,9 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
      * byte-stably (plain singles fold it like the nightly's crasher) */
     int has_nel = 0;
     for (uint32_t k = 0; k + 1 < len; k++) {
-        if ((unsigned char)p[k] == 0x85 ||
-            ((unsigned char)p[k] == 0xc2 && (unsigned char)p[k + 1] == 0x85)) {
+        /* the UTF-8 PAIR only: a lone 0x85 byte is a continuation
+         * byte (U+315B = E3 85 9B — the nightly's next catch) */
+        if ((unsigned char)p[k] == 0xc2 && (unsigned char)p[k + 1] == 0x85) {
             has_nel = 1;
             break;
         }

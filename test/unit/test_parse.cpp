@@ -193,6 +193,33 @@ TEST(Parse, FlowNullStyleRoundTrips) {
     }
 }
 
+TEST(Parse, Utf16RoundTripThroughContinuationByte) {
+    /* the nightly fuzz_roundtrip re-parse trap (2026-10-08): a
+     * UTF-16LE document decoding to U+315B (E3 85 9B). The NEL fix's
+     * lone-0x85 escape fired on the CONTINUATION byte, corrupting the
+     * sequence into E3 + the TEXT "\\x85" + 9B — un-re-parseable.
+     * NEL is the C2 85 PAIR only; a lone 0x85 byte is a continuation
+     * byte that must ride untouched. */
+    static const unsigned char bytes[] = {0xff, 0xfe, 0x6f, 0x59, 0x26, 0x2b, 0x5b, 0x31};
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse((const char*)bytes, sizeof bytes, &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    EXPECT_EQ(l1, 10u) << "plain UTF-8, no quoting";
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0);
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
