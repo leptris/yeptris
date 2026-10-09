@@ -315,6 +315,35 @@ TEST(Parse, TagPercentEscapeRoundTrips) {
     }
 }
 
+TEST(Parse, EmptyKeyLineIsNotAValue) {
+    /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
+     * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line
+     * arriving as following-lines VALUE content was accepted and each
+     * serialize round drifted. libyaml errors on every form of this
+     * family ("did not find expected key"); the legitimate empty-key
+     * document forms (root ': v', '? :') do NOT pass through the
+     * following-lines arm and are unchanged. */
+    const char* bad[] = {"- &a\n :", "&a\n :", "- &a\n  : ", "- &b &a\n :", "a:\n  : v"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_NE(st, YEPTRIS_OK) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"? a\n: b"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
