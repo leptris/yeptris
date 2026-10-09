@@ -1391,6 +1391,12 @@ static int yt_f_run(yt_fused* F) {
                         vc == '?') {
                         return 1;
                     }
+                    if (!yep_plain_first_ok(vc)) {
+                        return 1; /* ']'/','/'}'/'@'/'`' first: no plain
+                                     item can start there (the nightly's
+                                     marshal crasher, "x:\n- ]\"#") — the
+                                     engine errors cleanly */
+                    }
                     if (vc == '-' && vt + 1 < line_end && (p[vt + 1] == ' ' || p[vt + 1] == '\t')) {
                         return 1; /* nested dash: the engine's nested seq */
                     }

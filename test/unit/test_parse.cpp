@@ -344,6 +344,31 @@ TEST(Parse, EmptyKeyLineIsNotAValue) {
     }
 }
 
+TEST(Parse, RunnerSeqItemPlainFirst) {
+    /* the nightly fuzz_roundtrip marshal trap (2026-10-09, run
+     * 38004241214, input "x:\n- ]\"#"): the fused runner's sequence
+     * item capture accepted a plain item starting with ']' — parse
+     * OK, marshal reject. Psych rejects every form. The item bail now
+     * requires yep_plain_first_ok like the key/value sites. */
+    const char* bad[] = {"x:\n- ]\"#", "- ]", "- ,x", "- }x", "- @x", "- `x"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_NE(st, YEPTRIS_OK) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    /* a plain item with an INTERIOR quote stays legal */
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse("a: b\"c", 6, &st2);
+    EXPECT_NE(doc2, nullptr);
+    if (doc2 != NULL) {
+        yeptris_document_free(doc2);
+    }
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
