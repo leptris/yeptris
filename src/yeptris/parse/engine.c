@@ -3112,6 +3112,17 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
              * fixture shape) */
             (vctx == YEP_CTX_VALUE_LINE && (li.first == '|' || li.first == '>') &&
              li.indent == floor_col)) {
+            /* an empty-key ':' line cannot be a pending value's
+             * content — libyaml errors ("did not find expected key";
+             * the nightly's "- &a\n :" byte-instability crasher).
+             * The same-line empty-key law lives in the shape arms. */
+            if (li.first == ':') {
+                size_t at2 = e->pos + li.indent + 1;
+                if (at2 >= e->len || e->p[at2] == ' ' || e->p[at2] == '\t' || e->p[at2] == '\n' ||
+                    e->p[at2] == '\r') {
+                    return e_fail(e, YEP_ERR_UNEXPECTED, e->pos + li.indent);
+                }
+            }
             e->pos += li.indent;
             if (++e->rec >= e->max_depth) {
                 e->rec--;
