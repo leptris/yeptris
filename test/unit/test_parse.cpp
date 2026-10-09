@@ -288,6 +288,33 @@ TEST(Parse, PropsChainRecursionCapped) {
     free(z);
 }
 
+TEST(Parse, TagPercentEscapeRoundTrips) {
+    /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
+     * run 37855784068, input "%.\n!%0a"): the parse side decodes tag
+     * URI escapes per the spec (libyaml does too) — "!%0a" becomes a
+     * tag containing a raw newline. The emitter must RE-ENCODE unsafe
+     * tag bytes as %XX; raw they corrupt the document each round. */
+    const char* ins[] = {"!%0a", "a: !%0a", "!%41", "%YAML 1.1\n--- !%0a"};
+    for (const char* y : ins) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;

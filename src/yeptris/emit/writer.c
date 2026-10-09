@@ -556,6 +556,27 @@ static void emit_alias_ex(yep_emitter* em, const yep_dnode* n) {
     }
 }
 
+/* Tag bytes outside ns-tag-char ride %XX (the parse side decodes them
+ * per the URI rule — a decoded newline emitted raw was the nightly's
+ * byte-instability crasher "!%0a"). Uppercase hex, libyaml's form. */
+static void wr_tag_uri(yep_writer* w, const yep_view* v) {
+    static const char hd[] = "0123456789ABCDEF";
+    const unsigned char* p = (const unsigned char*)v->p;
+    for (uint32_t i = 0; i < v->len; i++) {
+        unsigned char c = p[i];
+        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+            c == '-' || c == ';' || c == '/' || c == '?' || c == ':' || c == '@' || c == '&' ||
+            c == '=' || c == '+' || c == '$' || c == ',' || c == '.' || c == '!' || c == '~' ||
+            c == '*' || c == '\'' || c == '(' || c == ')') {
+            wr_byte(w, (char)c);
+        } else {
+            wr_byte(w, '%');
+            wr_byte(w, hd[c >> 4]);
+            wr_byte(w, hd[c & 0xf]);
+        }
+    }
+}
+
 /* Explicit tag, verbatim URI form ("!<tag:…> "). Never skipped: a
  * recorded tag always re-emits (implied-by-style skipping made the
  * roundtrip byte-unstable: plain+!!str and ""+!!str collided). */
@@ -567,13 +588,15 @@ static void emit_tag(yep_writer* w, const yep_dnode* n) {
     if (tdec.len > 0 && tdec.p[0] == '!') {
         /* already a shorthand ("!ruby/object:K", "!foo"): verbatim —
          * the !<...> wrapper is for verbatim URIs only */
-        wr_put(w, (const char*)tdec.p, tdec.len);
+        yep_view rest = {tdec.p + 1, tdec.len - 1};
+        wr_byte(w, '!');
+        wr_tag_uri(w, &rest);
         wr_byte(w, ' ');
         return;
     }
     wr_byte(w, '!');
     wr_byte(w, '<');
-    wr_put(w, (const char*)tdec.p, tdec.len);
+    wr_tag_uri(w, &tdec);
     wr_byte(w, '>');
     wr_byte(w, ' ');
 }
@@ -587,7 +610,7 @@ static void emit_props_tail(yep_writer* w, const yep_dnode* n) {
         yep_view tdec2 = wv(w, n->tag);
         wr_byte(w, '!');
         wr_byte(w, '<');
-        wr_put(w, (const char*)tdec2.p, tdec2.len);
+        wr_tag_uri(w, &tdec2);
         wr_byte(w, '>');
     }
     if (n->anchor.len > 0) {
