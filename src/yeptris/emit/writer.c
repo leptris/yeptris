@@ -168,6 +168,20 @@ static void emit_dq(yep_writer* w, const char* p, uint32_t n) {
             i += 2;
             continue;
         }
+        /* U+FFFE/U+FFFF are noncharacters: the printable validator
+         * rejects them raw, so emitting them raw makes the document
+         * un-re-parseable (the nightly's "["\\uFFFE"]" catch). Their
+         * escapes re-enter the doc the same way they left. */
+        if (c == 0xef && i + 2 < n && (unsigned char)p[i + 1] == 0xbf &&
+            ((unsigned char)p[i + 2] == 0xbe || (unsigned char)p[i + 2] == 0xbf)) {
+            if (run) {
+                wr_put(w, p + i - run, run);
+                run = 0;
+            }
+            wr_put(w, (unsigned char)p[i + 2] == 0xbe ? "\\uFFFE" : "\\uFFFF", 6);
+            i += 2;
+            continue;
+        }
         /* U+FEFF must never ride raw: at the buffer head it IS the
          * BOM and re-parse would strip it (the nightly's UTF-32LE
          * catch); Psych escapes it everywhere ("﻿") */
@@ -391,6 +405,11 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
         if ((unsigned char)p[k] == 0xef && k + 2 < len && (unsigned char)p[k + 1] == 0xbb &&
             (unsigned char)p[k + 2] == 0xbf) {
             has_bom = 1;
+            break;
+        }
+        if ((unsigned char)p[k] == 0xef && k + 2 < len && (unsigned char)p[k + 1] == 0xbf &&
+            ((unsigned char)p[k + 2] == 0xbe || (unsigned char)p[k + 2] == 0xbf)) {
+            has_nel = 1; /* noncharacter: only its escape re-parses */
             break;
         }
     }
