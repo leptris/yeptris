@@ -1293,6 +1293,8 @@ static int yt_f_run(yt_fused* F) {
             if (n1 == ' ' || n1 == '\t') {
                 dash = 1;
             }
+        } else if (c == '-' && line_indent + 1 >= line_end) {
+            dash = 1; /* a line-end dash is an indicator, not the scalar "-" */
         }
         size_t next = line_end < len ? (size_t)line_end + 1 : len;
         if (!blank && !comment) {
@@ -1397,8 +1399,13 @@ static int yt_f_run(yt_fused* F) {
                                      marshal crasher, "x:\n- ]\"#") — the
                                      engine errors cleanly */
                     }
-                    if (vc == '-' && vt + 1 < line_end && (p[vt + 1] == ' ' || p[vt + 1] == '\t')) {
-                        return 1; /* nested dash: the engine's nested seq */
+                    if (vc == '-' && (vt + 1 >= line_end || p[vt + 1] == ' ' || p[vt + 1] == '\t' ||
+                                      p[vt + 1] == '#')) {
+                        return 1; /* nested dash (incl. line-end — the
+                                     nightly's "n:\n- -\t" crasher: a
+                                     trailing bare '-' is an indicator,
+                                     never the plain scalar "-"): the
+                                     engine's nested seq */
                     }
                     /* compact map item "- k: v"? */
                     for (size_t ic = vt; ic < vend; ic++) {

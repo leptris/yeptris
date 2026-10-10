@@ -25,6 +25,10 @@ Psych-parity-verified and pinned (crashers in the regression corpus).
   gate** (#506) — UTF-16/32 input marshaled raw bytes; parseable
   input failed to marshal. One fix, three consumers (marshal, visit,
   drain).
+- **parse: a line-end dash is an indicator** (#508) — the runner's
+  nested-dash detection required a following blank byte, so a
+  line-ending '-' became the plain scalar "-" and the emitted form
+  re-parsed differently than its input.
 
 ## [0.6.31] - 2026-10-09
 ### Fixed
