@@ -29,6 +29,9 @@ Psych-parity-verified and pinned (crashers in the regression corpus).
   nested-dash detection required a following blank byte, so a
   line-ending '-' became the plain scalar "-" and the emitted form
   re-parsed differently than its input.
+- **parse: the document-end marker owns its line** (#509) — the fused
+  runners had no marker law; a '...' line carrying content was
+  swallowed as a plain pair while the engine and Psych reject.
 
 ## [0.6.31] - 2026-10-09
 ### Fixed

@@ -1118,6 +1118,14 @@ static size_t yt_flat_run(yep_ytape* t, const char* p, size_t pos, size_t len, u
         if (col + 1 != run_cc) {
             return pos; /* off-column: the pop/nest logic owns it */
         }
+        /* document markers are the engine's alone — the "..."+content
+         * error law lives there (the nightly's marshal crasher) */
+        if (le - li >= 3 && (memcmp(p + li, "...", 3) == 0 || memcmp(p + li, "---", 3) == 0)) {
+            size_t mk2 = li + 3;
+            if (mk2 >= le || p[mk2] == ' ' || p[mk2] == '\t') {
+                return pos;
+            }
+        }
         unsigned char c = (unsigned char)p[li];
         if (c == '\t' || c == '-' || c == '&' || c == '!' || c == '*' || c == '\'' || c == '"' ||
             c == '[' || c == '{' || c == '|' || c == '>' || c == '%' || c == '?') {
@@ -1302,6 +1310,18 @@ static int yt_f_run(yt_fused* F) {
             uint32_t col = (uint32_t)(line_indent - pos);
             if (c == '\t') {
                 return 1; /* tab-led content: the engine's error */
+            }
+            /* document markers are the engine's alone: only it carries
+             * the "..."+content error law (the nightly's marshal
+             * crasher, "a: b\n... vi an :  }" — the runner swallowed
+             * the post-'...' content as a pair) */
+            if (col == 0 && line_end - line_indent >= 3 &&
+                (memcmp(p + line_indent, "...", 3) == 0 ||
+                 memcmp(p + line_indent, "---", 3) == 0)) {
+                size_t mk = line_indent + 3;
+                if (mk >= line_end || p[mk] == ' ' || p[mk] == '\t') {
+                    return 1;
+                }
             }
             if (dash && depth > 0 && st[depth].pending && col >= st[depth].indent) {
                 /* the pending key resolves into a sequence: its own
