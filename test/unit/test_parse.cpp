@@ -448,6 +448,37 @@ TEST(Parse, LineEndDashIsAnIndicator) {
     }
 }
 
+TEST(Parse, DocEndMarkerOwnsItsLine) {
+    /* the nightly fuzz_roundtrip marshal trap (2026-10-10, run
+     * 38016589629, "a: b\n... vi an :  }"): the fused runners had no
+     * document-marker law — a '...' line carrying content was
+     * swallowed as a plain pair while the engine (and Psych) reject.
+     * Both runners now hand marker lines to the engine. */
+    const char* bad[] = {"a: b\n... vi an :  }\n", "Map&nopine: Doals\n... vi an :  }\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_NE(st, YEPTRIS_OK) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"a: b\n...\n", "a: b\n... \n", "Map&nopine: Doals\n"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        char* out = NULL;
+        size_t olen = 0;
+        YeptrisStatus ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT,
+                                           YEPTRIS_MARSHAL_ALL_DOCS, &out, &olen);
+        EXPECT_EQ(ms, YEPTRIS_OK) << y;
+        yeptris_marshal_free(out);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
