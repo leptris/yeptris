@@ -17,6 +17,12 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **parse: tag URI escapes need two hex digits** — a stray '%' rode
+  the tag raw while only the well-formed escape decoded; the stored
+  tag re-encoded to a form that parsed differently (nightly run
+  38095309044, `!e%2%21bz`). libyaml rejects the family at the tag
+  scan ("did not find URI escaped octet") — truncated, non-hex, and
+  verbatim forms included.
 - **parse: tag suffixes scan the URI set** — `!>` and friends
   parsed as tags whose serialization could never re-parse (nightly
   run 38057695714, `!>\r?\r\r:\r`). libyaml scans tag suffixes over
