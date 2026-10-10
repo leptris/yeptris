@@ -22,6 +22,12 @@ crashers in the regression corpus).
   run 38057695714, `!>\r?\r\r:\r`). libyaml scans tag suffixes over
   its URI charset and rejects the stray byte as the follower ("did
   not find expected whitespace or line break while scanning a tag").
+- **parse: pend props stay off the first key** — a props-only line
+  above a mapping attaches its tag/anchor to the mapping, but the
+  quoted- and flow-key promotions emitted the key carrying the merged
+  props; re-parse produced a tagged first key and the serialization
+  never re-stabilized (nightly run 38092896626, `!\r!\r?\r?\r:\r\r:\r`).
+  Same-line props stay on the key — the Psych law in both directions.
 - **emit: root block props carry their separator** — a tagged,
   anchored root collection emitted `!<...>&anchor` with no space;
   libyaml requires blank or break after a tag, so the anchor-first

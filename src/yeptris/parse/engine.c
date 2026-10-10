@@ -2846,7 +2846,10 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             if (rc != 0) {
                 return rc;
             }
-            rc = e_flow(e, node_a, node_t, node_aid);
+            /* the pend props went to the mapping; the key collection
+             * keeps only same-line props (Psych: "!t\n[a]: v" tags
+             * the map, "!t [a]: v" tags the key) */
+            rc = e_flow(e, anchor, tag, anchor_ordinal);
             if (rc != 0) {
                 return rc;
             }
@@ -2887,6 +2890,14 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             if (rc != 0) {
                 return rc;
             }
+            /* the pend props went to the mapping; the key keeps only
+             * same-line props — ev carries the merged views and would
+             * leak the map's tag onto the key (the nightly's
+             * byte-instability: "!<!>\n\"\":\n" re-parsed with a
+             * tagged first key and never re-stabilized) */
+            ev.anchor = anchor;
+            ev.anchor_id = anchor_ordinal;
+            ev.tag = tag;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }
