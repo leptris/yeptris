@@ -357,7 +357,14 @@ TEST(Parse, RootTagAnchorSerializeSeparator) {
     size_t l1 = 0;
     char* s1 = yeptris_serialize(doc, &l1);
     ASSERT_NE(s1, nullptr);
-    EXPECT_TRUE(memmem(s1, l1, "> &a4", 5) != NULL) << s1;
+    int sep_found = 0;
+    for (size_t i = 0; i + 5 <= l1; i++) {
+        if (memcmp(s1 + i, "> &a4", 5) == 0) {
+            sep_found = 1;
+            break;
+        }
+    }
+    EXPECT_TRUE(sep_found) << s1;
     YeptrisStatus st2 = YEPTRIS_OK;
     YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
     ASSERT_NE(doc2, nullptr) << s1;
