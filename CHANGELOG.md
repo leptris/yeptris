@@ -32,6 +32,9 @@ Psych-parity-verified and pinned (crashers in the regression corpus).
 - **parse: the document-end marker owns its line** (#509) — the fused
   runners had no marker law; a '...' line carrying content was
   swallowed as a plain pair while the engine and Psych reject.
+- **parse: the flat-run's key honors plain-first** (#513) — the
+  line-head bail listed '[' but not the plain-first law; a ']'
+  sibling key parsed while the marshal rejected.
 
 ## [0.6.31] - 2026-10-09
 ### Fixed

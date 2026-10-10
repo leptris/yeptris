@@ -1128,8 +1128,11 @@ static size_t yt_flat_run(yep_ytape* t, const char* p, size_t pos, size_t len, u
         }
         unsigned char c = (unsigned char)p[li];
         if (c == '\t' || c == '-' || c == '&' || c == '!' || c == '*' || c == '\'' || c == '"' ||
-            c == '[' || c == '{' || c == '|' || c == '>' || c == '%' || c == '?') {
-            return pos; /* indicators, tab-led: the full arms */
+            c == '[' || c == '{' || c == '|' || c == '>' || c == '%' || c == '?' ||
+            !yep_plain_first_ok(c)) {
+            return pos; /* indicators, tab-led, and the plain-first law
+                           (a ']' key rode the flat-run — the nightly's
+                           marshal crasher "<: .ba\n]ge: 21"): full arms */
         }
         if (!stop_set || p[ls] != ':' || (ls + 1 < le && p[ls + 1] != ' ' && p[ls + 1] != '\t')) {
             return pos; /* not a plain key: value line */

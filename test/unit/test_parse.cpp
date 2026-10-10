@@ -479,6 +479,24 @@ TEST(Parse, DocEndMarkerOwnsItsLine) {
     }
 }
 
+TEST(Parse, FlatRunKeyPlainFirst) {
+    /* the nightly fuzz_roundtrip marshal trap (2026-10-10, run
+     * 38018116500, "<: .ba\n]ge: 21"): the flat-run's line-head bail
+     * listed '[' but never enforced plain-first — a ']' sibling key
+     * was captured (parse OK) while the marshal rejected. Psych
+     * rejects the family. */
+    const char* bad[] = {"<: .ba\n]ge: 21\n", "]ge: 21\n", "a:\n  ]ge: 21\n", "k: ,v\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_NE(st, YEPTRIS_OK) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
