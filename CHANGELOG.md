@@ -6,7 +6,26 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.6.32] - 2026-10-10
+## [Unreleased]
+### Fixed
+Post-0.6.32 fuzz catches and the tag-props family (each pinned;
+crashers in the regression corpus).
+- **parse: the flat-run's key honors plain-first** (#513) — the
+  line-head bail listed '[' but not the plain-first law; a ']'
+  sibling key parsed while the marshal rejected.
+- **parse: \\U escapes stay under U+10FFFF** (#514) — an 8-digit
+  escape can name unencodable code points; the nightly's
+  "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
+  boundary.
+- **parse: tag suffixes scan the URI set** — `!>` and friends
+  parsed as tags whose serialization could never re-parse (nightly
+  run 38057695714, `!>\r?\r\r:\r`). libyaml scans tag suffixes over
+  its URI charset and rejects the stray byte as the follower ("did
+  not find expected whitespace or line break while scanning a tag").
+- **emit: root block props carry their separator** — a tagged,
+  anchored root collection emitted `!<...>&anchor` with no space;
+  libyaml requires blank or break after a tag, so the anchor-first
+  9KAX documents could not re-parse.
 
 ## [0.6.32] - 2026-10-10
 ### Fixed
@@ -32,13 +51,6 @@ Psych-parity-verified and pinned (crashers in the regression corpus).
 - **parse: the document-end marker owns its line** (#509) — the fused
   runners had no marker law; a '...' line carrying content was
   swallowed as a plain pair while the engine and Psych reject.
-- **parse: \\U escapes stay under U+10FFFF** (#514) — an 8-digit
-  escape can name unencodable code points; the nightly's
-  "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
-  boundary.
-- **parse: the flat-run's key honors plain-first** (#513) — the
-  line-head bail listed '[' but not the plain-first law; a ']'
-  sibling key parsed while the marshal rejected.
 
 ## [0.6.31] - 2026-10-09
 ### Fixed

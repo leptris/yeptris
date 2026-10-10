@@ -976,6 +976,9 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
                 wr_byte(w, '>');
             }
             if (root->anchor.len > 0) {
+                if (root->tag.len > 0) {
+                    wr_byte(w, ' '); /* props need the separator */
+                }
                 yep_view adec3 = wv(w, root->anchor);
                 wr_byte(w, '&');
                 wr_put(w, (const char*)adec3.p, adec3.len);

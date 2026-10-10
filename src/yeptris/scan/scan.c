@@ -151,6 +151,39 @@ size_t yep_scan_prop_end(const char* p, size_t len, size_t pos) {
     return pos;
 }
 
+int yep_scan_tag_char(unsigned char c) {
+    if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+        return 1;
+    }
+    if (c >= 0x80) {
+        return 1; /* UTF-8 suffix bytes pass through */
+    }
+    switch (c) {
+    case '-':
+    case '_':
+    case ';':
+    case '/':
+    case '?':
+    case ':':
+    case '@':
+    case '&':
+    case '=':
+    case '+':
+    case '$':
+    case '.':
+    case '!':
+    case '~':
+    case '*':
+    case '\'':
+    case '(':
+    case ')':
+    case '%':
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 /* ---- line-shape classification (TODO.restructure/49) ---- */
 
 /* blank/EOL/EOF directly after p[at] (the dash / explicit-key rule). */
