@@ -629,6 +629,18 @@ static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int
                     return e_fail(e, YEP_ERR_INVALID_ESCAPE, i); /* lone low */
                 }
             }
+            if (esc == 'U') {
+                /* 8 hex digits reach far past U+10FFFF — the nightly's
+                 * "\UA66DA66D" crasher: parse accepted an unencodable
+                 * code point and the emitted bytes never re-parsed */
+                uint32_t cp = 0;
+                for (size_t k = 1; k <= 8; k++) {
+                    cp = (cp << 4) | (uint32_t)hexval((unsigned char)e->p[i + 1 + k]);
+                }
+                if (cp > 0x10FFFF) {
+                    return e_fail(e, YEP_ERR_INVALID_ESCAPE, i);
+                }
+            }
             i += 1 + need; /* the digits are not escapes themselves */
             continue;
         }

@@ -32,6 +32,10 @@ Psych-parity-verified and pinned (crashers in the regression corpus).
 - **parse: the document-end marker owns its line** (#509) — the fused
   runners had no marker law; a '...' line carrying content was
   swallowed as a plain pair while the engine and Psych reject.
+- **parse: \\U escapes stay under U+10FFFF** (#514) — an 8-digit
+  escape can name unencodable code points; the nightly's
+  "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
+  boundary.
 - **parse: the flat-run's key honors plain-first** (#513) — the
   line-head bail listed '[' but not the plain-first law; a ']'
   sibling key parsed while the marshal rejected.

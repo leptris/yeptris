@@ -497,6 +497,43 @@ TEST(Parse, FlatRunKeyPlainFirst) {
     }
 }
 
+TEST(Parse, UEscapesStayUnder10FFFF) {
+    /* the nightly fuzz_roundtrip re-parse trap (2026-10-10, run
+     * 38051533028, "\"\\UA66DA66D\""): an 8-digit \U escape can name
+     * code points far past U+10FFFF — parse accepted an unencodable
+     * one and the emitted bytes never re-parsed. Psych rejects above
+     * the boundary; U+10FFFF itself accepts. */
+    const char* bad[] = {"\"\\UA66DA66D\"", "\"\\U00110000\""};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_NE(st, YEPTRIS_OK) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"\"\\U0010FFFF\"", "\"\\U0001F600\""};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, ScalarRoot) {
     const char* y = "hello";
     YeptrisStatus st = YEPTRIS_OK;
