@@ -1134,8 +1134,20 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
                 }
                 e->pos = gt + 1;
             } else {
-                while (e->pos < e->len && yep_scan_prop_char((unsigned char)e->p[e->pos])) {
+                /* libyaml scans URI chars only: bytes like '>' or '|'
+                 * end the suffix and surface as the follower, which
+                 * the check below rejects */
+                while (e->pos < e->len && yep_scan_tag_char((unsigned char)e->p[e->pos])) {
                     e->pos++;
+                }
+            }
+            if (e->pos < e->len) {
+                unsigned char after = (unsigned char)e->p[e->pos];
+                if (!(after == ' ' || after == '\t' || after == '\n' || after == '\r' ||
+                      after == ',' || after == '[' || after == ']' || after == '{' ||
+                      after == '}')) {
+                    e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                    return;
                 }
             }
             yep_view raw = {e->p + start, (uint32_t)(e->pos - start)};

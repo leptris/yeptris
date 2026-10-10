@@ -98,6 +98,13 @@ int yep_scan_prop_char(unsigned char c);
 /* First offset at/after pos that cannot continue an anchor/alias name. */
 size_t yep_scan_prop_end(const char* p, size_t len, size_t pos);
 
+/* Tag-shorthand suffix byte: libyaml's URI set (";/?:@&=+$,_.!~*'()%"
+ * plus alphanumerics; flow indicators and ',' terminate instead).
+ * Stray non-set bytes stay visible as the props follower, which
+ * e_props rejects ("did not find expected whitespace or line break
+ * while scanning a tag"). */
+int yep_scan_tag_char(unsigned char c);
+
 /* Scans a plain scalar starting at pos (must be content, not a comment).
  * flow != 0 adds flow stop characters; in flow, ':' terminates when
  * followed by blank/EOL/flow indicator. Leading whitespace is NOT

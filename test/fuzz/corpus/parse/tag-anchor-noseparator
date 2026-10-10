@@ -1,0 +1,3 @@
+---
+!<tag:yaml.org,2002:map>&a4
+!<tag:yaml.org,2002:str> &a5 key5: value4

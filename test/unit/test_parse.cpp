@@ -316,6 +316,60 @@ TEST(Parse, TagPercentEscapeRoundTrips) {
     }
 }
 
+TEST(Parse, TagSuffixRejectsNonUriFollower) {
+    /* libyaml scans tag suffixes over its URI set only; bytes like
+     * '>' leave the suffix and surface as the tag follower, which
+     * must be rejected ("did not find expected whitespace or line
+     * break while scanning a tag"). The nightly fuzz_roundtrip trap
+     * (2026-10-10, run 38057695714, input "!>\r?\r\r:\r") parsed
+     * "!>" as a tag whose serialization could never re-parse. */
+    const char* bad[] = {"!>\r?\r\r:\r", "!>x y", "!\"x y", "!|x y", "!`x y", "!\\x y"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    /* @ and ~ and % are URI bytes: these stay legal */
+    const char* good[] = {"!@x y", "!~x y", "!%41 y"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
+TEST(Parse, RootTagAnchorSerializeSeparator) {
+    /* a root block collection with both tag and anchor carried its
+     * props as "!<...>&a4" — no separator; libyaml requires blank or
+     * line break after a tag, so the output could not re-parse (the
+     * 9KAX emit-diff family). The writer must put a space between
+     * them. */
+    const char* y = "&a4 !!map\n&a5 !!str key5: value4\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    EXPECT_TRUE(memmem(s1, l1, "> &a4", 5) != NULL) << s1;
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0);
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line
