@@ -370,6 +370,39 @@ TEST(Parse, RootTagAnchorSerializeSeparator) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, PendPropsDoNotLeakOntoTheFirstKey) {
+    /* the nightly fuzz_roundtrip byte-instability trap (2026-10-10,
+     * run 38092896626, input "!\r!\r?\r\r:\r"): a props-only line
+     * above a mapping attaches its tag/anchor to the MAPPING
+     * (Psych: "!t\n\"a\": v" -> map tagged, key clean), but the
+     * quoted- and flow-key promotions emitted the key carrying the
+     * merged props — re-parse produced a tagged first key and the
+     * serialization never re-stabilized. Same-line props stay on the
+     * key (Psych: "!t \"a\": v" -> key tagged). */
+    const char* stable[] = {"!\r!\r?\r?\r:\r\r:\r", "!<t>\n\"a\": v\n", "!<t> \"a\": v\n",
+                            "!<t>\n[a]: v\n",       "!<t> [a]: v\n",    "&p\n!<t>\n\"a\": v\n"};
+    for (const char* y : stable) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y << "\n"
+                                                                       << s1 << "\nvs\n"
+                                                                       << (s2 ? s2 : "");
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line
