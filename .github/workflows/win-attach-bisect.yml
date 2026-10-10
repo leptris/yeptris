@@ -1,0 +1,38 @@
+name: Windows Attach Bisect
+
+# #504: mingw builds 0.6.20+ hang silently at FFI attach. A version
+# matrix over the published gems; each job installs one version and
+# runs the attach probe under a hard 120s timeout — a hang convicts.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  attach:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        gem: ["0.6.19", "0.6.20.2", "0.6.24.1", "0.6.26.2", "0.6.28.3", "0.6.31.2"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - run: gem install yeptris --version ${{ matrix.gem }} --verbose
+        shell: pwsh
+      - name: Attach probe (hard timeout)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath ruby -ArgumentList @("scripts/win-attach-probe.rb") -NoNewWindow -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          if (-not $p.WaitForExit(120000)) {
+            $p.Kill()
+            Get-Content out.txt, err.txt -ErrorAction SilentlyContinue
+            Write-Output "::error::HANG at attach (killed after 120s)"
+            exit 1
+          }
+          Get-Content out.txt, err.txt -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
