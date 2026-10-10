@@ -16,22 +16,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        gem: ["0.6.19", "0.6.20.2", "0.6.24.1", "0.6.26.2", "0.6.28.3", "0.6.31.2"]
+        layer: ["attach", "model", "cli"]
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
-      - run: gem install yeptris --version ${{ matrix.gem }} --verbose
+      - run: gem install expressir lutaml-model --verbose
         shell: pwsh
-      - name: Attach probe (hard timeout)
+      - name: Layer probe (hard timeout)
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath ruby -ArgumentList @("scripts/win-attach-probe.rb") -NoNewWindow -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          $p = Start-Process -FilePath ruby -ArgumentList @("scripts/win-attach-probe.rb", "${{ matrix.layer }}") -NoNewWindow -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           if (-not $p.WaitForExit(120000)) {
             $p.Kill()
             Get-Content out.txt, err.txt -ErrorAction SilentlyContinue
-            Write-Output "::error::HANG at attach (killed after 120s)"
+            Write-Output "::error::HANG at layer ${{ matrix.layer }} (killed after 120s)"
             exit 1
           }
           Get-Content out.txt, err.txt -ErrorAction SilentlyContinue
