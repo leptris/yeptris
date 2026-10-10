@@ -410,6 +410,33 @@ TEST(Parse, PendPropsDoNotLeakOntoTheFirstKey) {
     }
 }
 
+TEST(Parse, TagUriEscapesNeedTwoHexDigits) {
+    /* the nightly fuzz_roundtrip re-parse trap (2026-10-10, run
+     * 38095309044, input "!e%2%21bz"): the URI decoder passed a stray
+     * '%' through raw (decoding only the well-formed escape), so the
+     * stored tag re-encoded to a form that parsed differently.
+     * libyaml rejects the whole family at the tag scan ("did not
+     * find URI escaped octet"). */
+    const char* bad[] = {"!e%2%21bz\n", "!e%2\n", "!e%\n", "!e%zz v\n", "!<%2>x> v\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* good[] = {"!e%21bz v\n", "!e%0a\n"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line

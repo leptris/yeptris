@@ -1006,6 +1006,17 @@ static int e_hex_val(unsigned char c) {
 /* Tags carry URI escapes (%XX) in every form (verbatim, !!, %TAG). */
 static yep_view e_tag_uri_decode(yep_engine* e, yep_view v) {
     const char* p = v.p;
+    /* every '%' must be followed by two hex digits — libyaml rejects
+     * the family ("did not find URI escaped octet"); a stray '%' left
+     * raw would decode differently on re-parse of the re-encoded form
+     * (the nightly's tag-escape byte-instability) */
+    for (uint32_t i = 0; i < v.len; i++) {
+        if (p[i] == '%' && (i + 2 >= v.len || e_hex_val((unsigned char)p[i + 1]) < 0 ||
+                            e_hex_val((unsigned char)p[i + 2]) < 0)) {
+            e->tag_undef = 1; /* e_props reports it */
+            return v;
+        }
+    }
     for (uint32_t i = 0; i + 2 < v.len; i++) {
         if (p[i] == '%' && e_hex_val((unsigned char)p[i + 1]) >= 0 &&
             e_hex_val((unsigned char)p[i + 2]) >= 0) {
