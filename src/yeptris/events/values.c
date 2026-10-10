@@ -19,6 +19,7 @@
 #include "../../include/yeptris/values.h"
 #include "../common/simd_text.h"
 #include "../dom/dom.h"
+#include "../encoding/encoding.h"
 #include "../memory/allocator.h"
 #include "../parse/engine.h"
 #include "../parse/numbers.h"
@@ -377,54 +378,91 @@ static int drain_json_route(const char* yaml, size_t len, yep_value_ctx** out) {
  * record array + arena, ownership moves to the caller. */
 int yep_values_from_input(const char* yaml, size_t len, int schema_compat, yep_value_ctx** out) {
     *out = NULL;
-    if (looks_strict_json(yaml, len)) {
-        int jrc = drain_json_route(yaml, len, out);
-        if (jrc <= 0) {
-            return jrc == 0 ? 0 : -1;
+    /* The encoding gate the parse entry owns (parse.c): the marshal/
+     * visit / value drains must not feed raw UTF-16/32 bytes to the
+     * engine while yeptris_parse accepts them — the nightly's marshal
+     * crasher (a UTF-16BE doc whose raw bytes contain "-s"). */
+    yep_encoding enc = YEP_ENC_UNKNOWN;
+    size_t bom = yep_bom_sniff((const unsigned char*)yaml, len, &enc);
+    const char* data = yaml + bom;
+    size_t data_len = len - bom;
+    unsigned char* transcoded = NULL;
+    const yep_allocator* sys = yep_system_allocator();
+    if (enc == YEP_ENC_UTF16LE || enc == YEP_ENC_UTF16BE || enc == YEP_ENC_UTF32LE ||
+        enc == YEP_ENC_UTF32BE) {
+        size_t tlen = 0;
+        size_t terr = 0;
+        int rc = yep_transcode_to_utf8(sys, enc, (const unsigned char*)data, data_len, &transcoded,
+                                       &tlen, &terr);
+        if (rc != 0) {
+            return -2;
         }
-        /* fall through: engine */
+        size_t pverr = 0;
+        if (!yep_printable_validate(transcoded, tlen, &pverr)) {
+            yep_free(sys, transcoded);
+            return -2;
+        }
+        data = (const char*)transcoded;
+        data_len = tlen;
     }
-    yep_engine* eng = yep_engine_create(yep_system_allocator());
-    if (eng == NULL) {
-        return -1;
-    }
-    yep_engine_set_resolver(eng, schema_compat ? yep_resolver_compat11() : yep_resolver_core12());
-    if (schema_compat) {
-        yep_engine_set_compat_grammar(eng, 1); /* libyaml grammar parity
-                                                * (the value drains ride the
-                                                * same compat contract) */
-    }
+    int prc_final = -2;
+    do {
+        if (looks_strict_json(data, data_len)) {
+            int jrc = drain_json_route(data, data_len, out);
+            if (jrc <= 0) {
+                prc_final = (jrc == 0) ? 0 : -1;
+                break;
+            }
+            /* fall through: engine */
+        }
+        yep_engine* eng = yep_engine_create(yep_system_allocator());
+        if (eng == NULL) {
+            return -1;
+        }
+        yep_engine_set_resolver(eng,
+                                schema_compat ? yep_resolver_compat11() : yep_resolver_core12());
+        if (schema_compat) {
+            yep_engine_set_compat_grammar(eng, 1); /* libyaml grammar parity
+                                                    * (the value drains ride the
+                                                    * same compat contract) */
+        }
 
-    yep_value_ctx* c = ctx_create();
-    if (c == NULL) {
+        yep_value_ctx* c = ctx_create();
+        if (c == NULL) {
+            yep_engine_destroy(eng);
+            return -1;
+        }
+        yep_rec_store store;
+        yep_rec_init(&store);
+
+        int prc = -2;
+        yep_sink sink = {.on_event = yep_rec_on_event,
+                         .ctx = &store,
+                         .on_flow_build = NULL,
+                         .on_flow_commit = NULL,
+                         .on_flow_rollback = NULL,
+                         .on_block_pair = NULL,
+                         .on_block_open = NULL,
+                         .on_block_item = NULL};
+        /* strict JSON carries no anchors: no nametab reserve needed */
+        if (yep_engine_run(eng, data, data_len, &sink) == 0 && transform(c, &store) == 0) {
+            prc = 0;
+        } else if (c->oom) {
+            prc = -1;
+        }
         yep_engine_destroy(eng);
-        return -1;
+        yep_rec_free(&store);
+        if (prc != 0) {
+            yep_value_ctx_free(c);
+            break;
+        }
+        prc_final = ctx_finalize(c, out) == 0 ? 0 : -1;
+    } while (0);
+    yep_free(sys, transcoded);
+    if (prc_final != 0 && prc_final != -1) {
+        return -2;
     }
-    yep_rec_store store;
-    yep_rec_init(&store);
-
-    int prc = -2;
-    yep_sink sink = {.on_event = yep_rec_on_event,
-                     .ctx = &store,
-                     .on_flow_build = NULL,
-                     .on_flow_commit = NULL,
-                     .on_flow_rollback = NULL,
-                     .on_block_pair = NULL,
-                     .on_block_open = NULL,
-                     .on_block_item = NULL};
-    /* strict JSON carries no anchors: no nametab reserve needed */
-    if (yep_engine_run(eng, yaml, len, &sink) == 0 && transform(c, &store) == 0) {
-        prc = 0;
-    } else if (c->oom) {
-        prc = -1;
-    }
-    yep_engine_destroy(eng);
-    yep_rec_free(&store);
-    if (prc != 0) {
-        yep_value_ctx_free(c);
-        return prc == -1 ? -1 : -2;
-    }
-    return ctx_finalize(c, out) == 0 ? 0 : -1;
+    return prc_final;
 }
 
 static YeptrisStatus map_status(int rc) {
