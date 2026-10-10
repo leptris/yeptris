@@ -9,6 +9,7 @@
 #include <string>
 
 #include <yeptris.h>
+#include <yeptris/marshal.h>
 
 #include "common/chartype.h"
 #include "common/simd_text.h"
@@ -394,6 +395,28 @@ TEST(Parse, NoncharactersEscapeInOutput) {
         free(s1);
         yeptris_document_free(doc);
     }
+}
+
+TEST(Parse, MarshalHonorsTheEncodingGate) {
+    /* the nightly fuzz_roundtrip marshal trap (2026-10-10, run
+     * 38013837979, a UTF-16BE doc whose raw bytes contain "-s"):
+     * the value-drain entry (marshal/visit/drain) fed RAW UTF-16/32
+     * bytes to the engine while yeptris_parse accepted them via the
+     * transcode front-end — parseable-implies-marshalable broken.
+     * The drains now share the parse entry's encoding gate. */
+    static const unsigned char bytes[] = {0xfe, 0xff, 0x36, 0x01, 0x75, 0x73, 0x3a,
+                                          0x0a, 0x2d, 0x73, 0xff, 0xf6, 0x2c, 0x61};
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse((const char*)bytes, sizeof bytes, &st);
+    ASSERT_NE(doc, nullptr);
+    char* out = NULL;
+    size_t olen = 0;
+    YeptrisStatus ms = yeptris_marshal((const char*)bytes, sizeof bytes, YEPTRIS_SCHEMA_11_COMPAT,
+                                       YEPTRIS_MARSHAL_ALL_DOCS, &out, &olen);
+    EXPECT_EQ(ms, YEPTRIS_OK) << "parseable input must be marshalable";
+    EXPECT_GT(olen, 0u);
+    yeptris_marshal_free(out);
+    yeptris_document_free(doc);
 }
 
 TEST(Parse, ScalarRoot) {
