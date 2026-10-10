@@ -6,7 +6,25 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.6.31] - 2026-10-08
+## [Unreleased]
+
+## [0.6.32] - 2026-10-10
+### Fixed
+The nightly fuzz hunt's second wave — five more engine defects, each
+Psych-parity-verified and pinned (crashers in the regression corpus).
+- **emit: tag bytes re-encode as %XX** (#501) — the parse side decodes
+  tag URI escapes per the spec; the emitter now re-encodes unsafe
+  bytes (a decoded newline emitted raw drifted every round).
+- **parse: an empty-key ':' line is never a pending value** (#502) —
+  libyaml rejects the family; the following-lines arm now does too.
+- **parse: the runner's seq item honors plain-first** (#503) — a
+  plain item starting with ']' parsed but never marshaled.
+- **emit: the U+FFFE/U+FFFF noncharacters ride their escapes** (#505)
+  — raw, the printable validator rejects them on re-parse.
+- **marshal: the value drains share the parse entry's encoding
+  gate** (#506) — UTF-16/32 input marshaled raw bytes; parseable
+  input failed to marshal. One fix, three consumers (marshal, visit,
+  drain).
 
 ## [0.6.31] - 2026-10-09
 ### Fixed
