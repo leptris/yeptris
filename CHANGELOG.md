@@ -44,6 +44,19 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: the lenient flow walk enforces the simple-key law** — the
+  DOM fast path's lenient walk carried no >1024 key check (the record
+  walk's yt_flow_scan has one); a flow doc with a long key wrapped and
+  its YAML serialization could never re-parse. The wrap now defers to
+  the engine's clean error; the tape API keeps accepting (strict JSON
+  has no key-length limit).
+- **emit: a long flow key rides the explicit form** — JSON has no
+  key-length limit, so the strict-JSON route parses >1024-char keys —
+  but the YAML simple-key law caps one-line keys at 1024 and the
+  emitted flow form could never re-parse (nightly run 38143486175, a
+  JSON flow doc with >1000-char keys). The flow map member writer
+  rides the explicit `? key : ` form past the limit, libyaml's escape
+  for long keys.
 - **emit: flow-rendered plains quote the tag and quote indicators** —
   the explicit-key entry's inner map renders FLOW, and a plain
   carrying '!' (a tag indicator everywhere) or a lone '\'' (opens

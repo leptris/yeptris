@@ -685,6 +685,54 @@ static TAPE_NUM_OK_INLINE int tape_num_ok(const char* p, size_t len) {
     return k == len;
 }
 
+/* The >1024 simple-key law for the LENIENT walk's tape — the same
+ * verdict yt_flow_scan reads for the record walk: a STR at a map's
+ * key slot with a raw span past the limit (the law counts the RAW
+ * token, so a quoted key's two quotes add back). The DOM route must
+ * reject it BEFORE wrapping (strict JSON itself has no limit — the
+ * tape API keeps accepting; only the YAML serialization cannot carry
+ * a long simple key, so the fast parse defers to the engine's clean
+ * error — the nightly's run 38143486175). */
+int yep_tape_long_simple_key(const yeptris_json_tape* s) {
+    struct {
+        uint8_t map;
+        uint8_t key_next;
+    } st[257];
+    int d = 0;
+    st[0].map = 0;
+    st[0].key_next = 0;
+    for (uint32_t i = 1; i < s->count; i++) { /* recs[0] is the DOC */
+        uint64_t r = s->recs[i];
+        uint8_t kind = (uint8_t)(r & 0xFFu);
+        if (kind == YEP_T_MAP_OPEN || kind == YEP_T_SEQ_OPEN) {
+            if (d >= 256) {
+                return 1; /* deeper than the scratch stack: over by
+                           * definition, the engine's depth law decides */
+            }
+            d++;
+            st[d].map = (uint8_t)(kind == YEP_T_MAP_OPEN);
+            st[d].key_next = 0;
+            continue;
+        }
+        if (kind == YEP_T_CLOSE) {
+            if (d > 0) {
+                d--;
+            }
+            continue;
+        }
+        if (st[d].map && st[d].key_next == 0) {
+            uint32_t mlen = (uint32_t)(r >> 8) & 0xFFFFFFu;
+            if (kind == YEP_T_STR && mlen + 2u > 1024u) {
+                return 1;
+            }
+            st[d].key_next = 1;
+        } else if (st[d].map) {
+            st[d].key_next = 0;
+        }
+    }
+    return 0;
+}
+
 YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
                                           yeptris_json_tape* t, int strict_nums, int clean_only,
                                           int reuse_block) {

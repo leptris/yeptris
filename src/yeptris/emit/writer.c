@@ -798,6 +798,17 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
         }
         if (map) {
             int explicit_key = cn->anchor.len > 0 || cn->tag.len > 0 || cn->kind != 0;
+            if (!explicit_key && (uint32_t)cn->value.len + 2u > 1024u) {
+                { /* the quoted render's span vs the simple-key law */
+                    /* the simple-key law: a >1024 key cannot ride as a
+                     * flow simple key (the re-parse rejects it) — the
+                     * explicit "? key : " form carries it. Strict JSON
+                     * accepts keys of any length, so the JSON route
+                     * parses them and the YAML emission must re-parse
+                     * (the nightly's run 38143486175) */
+                    explicit_key = 1;
+                }
+            }
             if (explicit_key) {
                 wr_put(w, "? ", 2);
                 emit_node(em, child, 0, 1);
@@ -856,7 +867,8 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             vn0->count == 0) {
             yep_view kv = wv(w, kn0->value);
             yep_view vv = wv(w, vn0->value);
-            if (kv.len > 0 && yep_style_plain_key_safe((const char*)kv.p, kv.len) &&
+            if (kv.len > 0 && kv.len + 2u <= 1024u &&
+                yep_style_plain_key_safe((const char*)kv.p, kv.len) &&
                 (vv.len == 0 || yep_style_plain_safe((const char*)vv.p, vv.len))) {
                 /* fused member write: plain-safe spans carry no breaks,
                  * so the col scan is arithmetic and one reservation
@@ -911,6 +923,13 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             wr_indent(w, content_col);
         }
         int complex_key = (kn->kind != 0);
+        if (!complex_key && (uint32_t)kn->value.len + 2u > 1024u) {
+            /* the simple-key law, block side: a >1024 key cannot ride
+             * as a block simple key either — the explicit "? key" form
+             * carries it (the flow member writer gained the same law;
+             * the nightly's run 38143486175) */
+            complex_key = 1;
+        }
         if (complex_key) {
             w->force_flow = 1; /* collections as flow keys: compact and
                                   free of the block '?' layout edges */
