@@ -44,6 +44,16 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a dedented pair closes the child map's column** — after a
+  pending key resolved into its child map, the frame kept the CHILD's
+  content column: a dedented root pair closed the child's phantom map
+  but the next more-indented line rode the stale frame as a phantom
+  sibling — the runner accepted what the engine and libyaml reject
+  ("mapping values are not allowed in this context") and parse and
+  marshal disagreed. Off-column pairs on resolved frames now bail to
+  the engine, which owns both the error and the legit dedent; the
+  common `k:\n  nested: v` / dedent / same-column shapes ride the
+  fused path unchanged (nightly run 38179552341, catch 65).
 - **emit: a tagged block key rides the explicit form; explicit-key
   props emit once** — a TAGGED literal/folded key keeps the block
   form in the style chooser (the #290 law), so as a map key the value
