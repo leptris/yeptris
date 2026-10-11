@@ -44,6 +44,16 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a completed flow pair owns its value slot** — `[s: 2:]`,
+  `[a: b: c]`, `[s: : v]` opened a second single-pair wrapper inside
+  the first pair's value, unbalancing the event stream (the DOM then
+  silently dropped the `2`). Every completed-pair-plus-`:` shape now
+  rejects, matching libyaml; the legal `[a: b, c: d]` / `[s: , x]`
+  shapes are untouched (nightly run 38168927841, catch 60).
+- **emit: a block-styled collection nested in a flow member renders
+  flow** — the writer honored the node's parsed block form even
+  inside brackets, writing `- ` where only node content is legal.
+  The catch-55 law, collection arm: `w->in_flow` rides the dispatch.
 - **emit: root props emit once** — the root-collection props rode
   their own leading line AND the empty collection re-emitted them
   inline (`! &a\n! &a {}`), so every round shed a line (nightly run
