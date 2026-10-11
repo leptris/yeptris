@@ -1125,9 +1125,26 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
              * bang-name crashers; libyaml's own anchor charset is
              * stricter still: alphanumerics, '_' and '-') */
             for (uint32_t q = 0; q < anchor->len; q++) {
-                if (anchor->p[q] == '"' || anchor->p[q] == '\'' || anchor->p[q] == '!') {
+                switch (anchor->p[q]) {
+                case '"':
+                case '\'':
+                case '!':
+                case '?':
+                case '&':
+                case '*':
+                case ',':
+                case '[':
+                case ']':
+                case '{':
+                case '}':
+                case '%':
+                case '@':
+                case '`':
+                case '#':
                     e_fail(e, YEP_ERR_UNEXPECTED, start + q);
                     return;
+                default:
+                    break;
                 }
             }
             if (anchor->len == 0) {
