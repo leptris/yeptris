@@ -623,9 +623,17 @@ static void emit_tag(yep_writer* w, const yep_dnode* n) {
     yep_view tdec = wv(w, n->tag);
     if (tdec.len > 0 && tdec.p[0] == '!') {
         /* already a shorthand ("!ruby/object:K", "!foo"): verbatim —
-         * the !<...> wrapper is for verbatim URIs only */
+         * the !<...> wrapper is for verbatim URIs only. A suffix
+         * starting with '!' must escape it ("%21"): re-parsed raw it
+         * reads as the secondary handle and the tag changes meaning
+         * every round (the nightly's "!!%21bz" byte-instability) */
         yep_view rest = {tdec.p + 1, tdec.len - 1};
         wr_byte(w, '!');
+        if (rest.len > 0 && rest.p[0] == '!') {
+            wr_put(w, "%21", 3);
+            rest.p++;
+            rest.len--;
+        }
         wr_tag_uri(w, &rest);
         wr_byte(w, ' ');
         return;

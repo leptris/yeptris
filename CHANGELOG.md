@@ -17,6 +17,12 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **emit: a shorthand suffix escapes its leading bang** — a local tag
+  whose URI is `!!bz` re-emitted verbatim re-parses as the secondary
+  handle (`tag:yaml.org,2002:bz`), changing meaning every round
+  (nightly run 38099113018, `!!%21bz\n!%21bz`). The shorthand emitter
+  writes `%21` for a suffix-leading `!`, mirroring the escape grammar
+  the parse side decodes.
 - **emit: flow scalars quote the flow indicators** — the style
   chooser's plain predicate is block-context law, so ']' rode plain
   INSIDE "{}" where it terminates the scalar; the emitted form
