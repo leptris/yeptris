@@ -663,6 +663,31 @@ TEST(Parse, NullFlowSeqItemEmitsTilde) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, FlowPlainQuotesAndEscapesTakeTheQuotedRoute) {
+    /* the nightly fuzz_roundtrip re-parse trap (2026-10-11, run
+     * 38107485738, "? !str a\"\u1: -,,..."): a plain scalar carrying
+     * '"' and '\' rode plain INSIDE a flow map, where the bytes flip
+     * the scanner into quoted/escape mode ("unterminated quoted
+     * scalar"). The catch-25 flow gate now covers them. */
+    const char* y = "? !str a\"\\u1: -,,,,,,,,,:0tr!st\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0);
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line

@@ -427,6 +427,8 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
             case ']':
             case '{':
             case '}':
+            case '"':  /* flips the flow scanner into quoted mode */
+            case '\\': /* opens an escape sequence there */
                 return YEP_SC_DQ;
             default:
                 break;

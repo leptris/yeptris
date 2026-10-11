@@ -17,6 +17,11 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **emit: flow plains carrying quotes take the quoted route** — a
+  plain scalar with '"' or '\\' rode plain inside a flow map, where
+  the bytes flip the scanner into quoted/escape mode ("unterminated
+  quoted scalar"; nightly run 38107485738, `? !str a"\u1: -…`). The
+  catch-25 flow gate covers them.
 - **emit: a null flow-seq item rides '~'** — the item position
   emitted as nothing, so "[, x]" read as a leading comma and neither
   libyaml nor Psych re-parse it (nightly run 38106246351,
