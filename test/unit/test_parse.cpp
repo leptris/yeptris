@@ -487,7 +487,14 @@ TEST(Parse, FlowScalarsQuoteTheFlowIndicators) {
     char* s2 = yeptris_serialize(doc2, &l2);
     EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
     /* the indicator must not ride plain inside the flow form */
-    EXPECT_TRUE(memmem(s1, l1, "ta]}", 4) == NULL) << s1;
+    int raw_close = 0;
+    for (size_t i = 0; i + 4 <= l1; i++) {
+        if (memcmp(s1 + i, "ta]}", 4) == 0) {
+            raw_close = 1;
+            break;
+        }
+    }
+    EXPECT_FALSE(raw_close) << s1;
     free(s2);
     yeptris_document_free(doc2);
     free(s1);
