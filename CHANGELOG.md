@@ -44,6 +44,16 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: the simple-key law counts the written token** — the key
+  predicates estimated the RAW span; a ~1000-raw key whose quoted
+  render expands past 1024 (escapes) rode as a simple key and the
+  emission could never re-parse (nightly run 38145696566, the
+  `? licit k:[…]` family). One conservative rendered-span estimate
+  (factor-4 per expandable byte) now feeds all four sites — the flow
+  member loop, the block member loop, the flat-map specialist, and
+  the quoted-explicit-key emission — and the promoted scalar key
+  rides QUOTED so its interior ": " sequences cannot re-parse as
+  separators.
 - **parse: the lenient flow walk enforces the simple-key law** — the
   DOM fast path's lenient walk carried no >1024 key check (the record
   walk's yt_flow_scan has one); a flow doc with a long key wrapped and
