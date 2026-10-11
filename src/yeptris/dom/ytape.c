@@ -1370,6 +1370,18 @@ static int yt_f_run(yt_fused* F) {
                 } else {
                     uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
                     yt_f_open(F, &st[depth], of);
+                    if (st[depth].content_col == 0) {
+                        /* the opened map's pairs live at the KEY's
+                         * column (the anchored branch tracks this;
+                         * without it the off-column guard never fires
+                         * and a key line BETWEEN the resolved seq's
+                         * column and the parent's fell through to a
+                         * SILENTLY TRUNCATED document — the nightly's
+                         * run 38118641722, "ue:\n  - one\n woc:\n
+                         *  - one\n wt o-  : thrt" dropped lines 3-5
+                         * while the engine rejected at 3:2) */
+                        st[depth].content_col = st[depth].indent + 1;
+                    }
                     root_open = 1;
                     st[depth].pending = 0;
                 }

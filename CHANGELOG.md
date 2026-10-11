@@ -27,6 +27,15 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a pending key's seq resolution tracks the content column**
+  — the unanchored resolution never recorded the opened map's content
+  column (the anchored branch did), so the off-column guard could not
+  fire and a key line BETWEEN the resolved seq's column and the
+  parent's fell through to a SILENTLY TRUNCATED document — lines
+  dropped with a successful parse while the engine rejected (nightly
+  run 38118641722, `ue:\n  - one\n woc:\n  - one\n wt o-  : thrt`,
+  Psych: "did not find expected key"). The opened map now carries its
+  pairs' column; between-column keys reject everywhere.
 - **parse: an indented seq owns its column** — a block sequence
   indented past its parent map's key column rejects a non-dash line at
   that column (libyaml: "did not find expected '-' indicator"); the
