@@ -52,6 +52,7 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.in_flow = 0;
+    em.w.flow_item = 0;
     em.w.canonical = opts_canonical(opts);
     em.w.explicit_doc_start = opts_doc_marker(opts);
     em.w.json = 0;
@@ -118,6 +119,7 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.in_flow = 0;
+    em.w.flow_item = 0;
     em.w.canonical = opts_canonical(opts);
     em.w.explicit_doc_start = opts_doc_marker(opts);
     em.w.json = 0;
@@ -203,6 +205,7 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.in_flow = 0;
+    em.w.flow_item = 0;
     em.w.canonical = 0;
     em.w.explicit_doc_start = 0; /* JSON output carries no --- */
     em.w.json = 1;
@@ -262,6 +265,7 @@ YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len,
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.in_flow = 0;
+    em.w.flow_item = 0;
     em.w.canonical = 0;
     em.w.explicit_doc_start = 0; /* JSON output carries no --- */
     em.w.json = 1;
@@ -315,6 +319,7 @@ char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.in_flow = 0;
+    em.w.flow_item = 0;
     em.w.canonical = 0;
     em.w.explicit_doc_start = 0; /* JSON output carries no --- */
     em.w.json = 1;
@@ -368,6 +373,7 @@ char* yep_serialize_json_pretty(const yeptris_document* doc, size_t* len) {
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.in_flow = 0;
+    em.w.flow_item = 0;
     em.w.canonical = 0;
     em.w.explicit_doc_start = 0; /* JSON output carries no --- */
     em.w.json = 1;
@@ -437,6 +443,7 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     em.w.last = 0;
     em.w.force_flow = 0;
     em.w.in_flow = 0;
+    em.w.flow_item = 0;
     em.w.canonical = opts_canonical(opts);
     em.w.explicit_doc_start = opts_doc_marker(opts);
     em.w.json = 0;
