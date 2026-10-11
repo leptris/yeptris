@@ -119,7 +119,12 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
         }
     }
     /* document markers */
-    if ((len == 3 && (memcmp(p, "---", 3) == 0 || memcmp(p, "...", 3) == 0))) {
+    if (len >= 3 && (memcmp(p, "---", 3) == 0 || memcmp(p, "...", 3) == 0) &&
+        (len == 3 || p[3] == ' ' || p[3] == '\t' || p[3] == '\n' || p[3] == '\r')) {
+        /* a PREFIX marker is worse than the bare one: emitted plain at
+         * line start, "--- ..." re-reads as a document marker (the
+         * nightly's "--- --- >" folded-plain crasher) — libyaml quotes
+         * both */
         return 0;
     }
     return 1;
