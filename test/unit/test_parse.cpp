@@ -582,7 +582,8 @@ TEST(Parse, AnchorNamesRejectQuoteBytes) {
      * suite charset — colons ride them (2SXE), unicode parses (8XYN)
      * — but '"' and '\'' reject (libyaml's own charset is stricter
      * still: alphanumerics, '_' and '-'). */
-    const char* bad[] = {"[\"&\"\n?:\n? \n:\nu20\"]\n", "&\" v\n", "&a\"b v\n", "&x'y v\n"};
+    const char* bad[] = {
+        "[\"&\"\n?:\n? \n:\nu20\"]\n", "&\" v\n", "&a\"b v\n", "&x'y v\n", "&!!!+ v\n", "&a!b v\n"};
     for (const char* y : bad) {
         YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
