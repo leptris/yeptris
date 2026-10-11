@@ -820,6 +820,25 @@ static int key_written_over_limit(yep_writer* w, const yep_dnode* kn) {
     for (uint32_t i = 0; i < n; i++) {
         est += (q[i] < 0x20 || q[i] >= 0x7F || q[i] == '"' || q[i] == '\\') ? 4u : 1u;
     }
+    if (kn->tag.len > 0) {
+        /* the key's TAG rides the same written token: wr_tag_uri
+         * escapes every byte outside its URI set as %XX (even '_'),
+         * inflating a ~1000-byte tag past the re-parse's simple-key
+         * law (the nightly's run 38176016091: a ~975-raw tag wrote
+         * ~1030 and the emission never re-parsed) */
+        yep_view tv = wv(w, kn->tag);
+        const unsigned char* t = (const unsigned char*)tv.p;
+        for (uint32_t i = 0; i < tv.len; i++) {
+            unsigned char c = t[i];
+            int plain = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
+                        (c >= 'A' && c <= 'Z') || c == '-' || c == ';' || c == '/' || c == '?' ||
+                        c == ':' || c == '@' || c == '&' || c == '=' || c == '+' || c == '$' ||
+                        c == ',' || c == '.' || c == '!' || c == '~' || c == '*' || c == '\'' ||
+                        c == '(' || c == ')';
+            est += plain ? 1u : 3u;
+        }
+        est += 6u; /* the !!/!< > wrapper and the separating space */
+    }
     return est > 1024u;
 }
 
