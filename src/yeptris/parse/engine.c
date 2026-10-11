@@ -721,9 +721,12 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
     e->pos++;
     int chomp = 0;
     int explicit_indent = 0;
+    int saw_digit = 0;
+    int saw_blank = 0;
     while (e->pos < e->len && e->p[e->pos] != '\n' && e->p[e->pos] != '\r') {
         char c = e->p[e->pos];
         if (c == ' ' || c == '\t') {
+            saw_blank = 1;
             e->pos++;
             continue;
         }
@@ -731,12 +734,22 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
             e_skip_to_eol(e);
             break;
         }
+        if (saw_blank || (c == '-' && chomp != 0) || (c == '+' && chomp != 0) ||
+            (c >= '1' && c <= '9' && saw_digit)) {
+            /* libyaml: the params ride the indicator DIRECTLY (a
+             * spaced "| 2" is trailing content, not a param — "did
+             * not find expected comment or line break"), one
+             * indentation digit and one chomp sign at most (the
+             * nightly's run 38119775008 family) */
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
         if (c == '-') {
             chomp = 1;
         } else if (c == '+') {
             chomp = 2;
         } else if (c >= '1' && c <= '9') {
             explicit_indent = c - '0';
+            saw_digit = 1;
         } else {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }

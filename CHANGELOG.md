@@ -37,6 +37,16 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a block-scalar header tail is blank-or-comment** — the
+  runner's bare-literal arm took the block and silently dropped
+  trailing header bytes (`ext: | c* `) while the engine rejected —
+  parseable input failed to marshal (nightly run 38119775008, a
+  multi-doc literal family). The engine's header scan also accepted
+  params after a separator and repeated digits (`| 12`, `|12`).
+  libyaml's law lands at both sites: the indentation digit and chomp
+  sign ride the indicator directly, one each; after them only blanks
+  and an optional comment ("did not find expected comment or line
+  break"). All legal header forms parse unchanged.
 - **parse: a pending key's seq resolution tracks the content column**
   — the unanchored resolution never recorded the opened map's content
   column (the anchored branch did), so the off-column guard could not

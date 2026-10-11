@@ -727,6 +727,53 @@ TEST(Parse, PendingSeqResolutionTracksContentColumn) {
     }
 }
 
+TEST(Parse, BlockScalarHeaderTailIsBlankOrComment) {
+    /* the nightly's run 38119775008 ("ext: | c* " in a multi-doc
+     * literal family): the runner's bare-literal arm took the block and
+     * SILENTLY DROPPED the trailing header bytes while the engine
+     * rejected. libyaml's header law: the params (one indentation
+     * digit, one chomp sign) ride the indicator DIRECTLY; after them
+     * (or after a blank) only an optional comment may precede the
+     * break — "did not find expected comment or line break". */
+    const char* bad[] = {"k: | c* \n  d\n", "k: | x\n  d\n",  "k: | c\n  d\n",
+                         "k: | 12\n  d\n",  "k: |12\n  d\n",  "k: | -\n  d\n",
+                         "k: | 2\n  d\n",   "k: |\t-\n  d\n", "k: > 2\n  d\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        char* out = NULL;
+        size_t olen = 0;
+        int ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, YEPTRIS_MARSHAL_ALL_DOCS,
+                                 &out, &olen);
+        EXPECT_NE(ms, 0) << y;
+        free(out);
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"k: |\n  d\n",   "k: |-\n  d\n",  "k: |+\n  d\n",  "k: |2\n  d\n",
+                        "k: |2-\n  d\n", "k: |+2\n  d\n", "k: |2+\n  d\n", "k: | # c\n  d\n"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a
