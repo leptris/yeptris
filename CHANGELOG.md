@@ -44,6 +44,13 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **step: fused flow openers carry the general kernel's marks** —
+  the fused flow walk (spans >= 24 bytes) emitted collection opens
+  one column right of the general kernel, so a tiny document cut at
+  a `---` boundary (general kernel) and the same bytes parsed whole
+  (fused) disagreed on the open's column. The fused pass-2 now
+  mirrors the general kernel exactly (nightly run 38173499680,
+  catch 62 — fuzz_feed's whole-vs-chunked invariant).
 - **parse: the flow pre-scan reads tokens, not bytes** — a quote
   opened a quoted scalar wherever it appeared, so a tag suffix or a
   plain carrying one (`[!'str b]`, `[a'b]`) died as "unterminated

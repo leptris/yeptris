@@ -1697,9 +1697,15 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
         ev.anchor_id = anchor_id;
         ev.tag = tag;
         ev.line = cur_line;
-        ev.col = (uint32_t)(open_pos + 1 - cur_ls) + 1;
+        /* the general kernel's opener marks, mirrored exactly: col =
+         * the indicator's 1-based column, end one past it. The old +1
+         * made every fused open sit one column right of the same
+         * span's general-kernel parse — a <24-byte span cut at a
+         * chunk boundary routes general while the whole parse routes
+         * fused (the nightly's run 38173499680) */
+        ev.col = (uint32_t)(open_pos - cur_ls) + 1;
         ev.end_line = cur_line; /* flow opens end after the indicator */
-        ev.end_col = (uint32_t)(open_pos + 2 - cur_ls) + 1;
+        ev.end_col = (uint32_t)(open_pos - cur_ls) + 2;
         if (emit_now(e, &ev) != 0) {
             return -2;
         }
