@@ -774,6 +774,54 @@ TEST(Parse, BlockScalarHeaderTailIsBlankOrComment) {
     }
 }
 
+TEST(Parse, AnchorNameFollowerLaw) {
+    /* the nightly's run 38121449804 ("ow0: &f#o   \n  - :-0~on"): a
+     * glued '#' is junk on the anchor name — libyaml errors ("did not
+     * find expected alphabetic or numeric character"); the engine
+     * accepted and MANGLED the node (anchor kept, bytes after '#'
+     * dropped) while the runner kept a different shape. The name ends
+     * at a blank, break, or flow indicator; '#' needs a separating
+     * blank to be a comment. Suite charset cases (W5VH's
+     * &:@*!$"<foo>:) still parse — the check is the BOUNDARY only. */
+    const char* bad[] = {"ow0: &f#o   \n  - :-0~on\n", "a: &f#o x\n",
+                         "a: &f#o\n  b: 1\n",          "- &f#o x\n",
+                         "a:\n  - &f#o x\n",           "a: [&f#o x]\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        char* out = NULL;
+        size_t olen = 0;
+        int ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, YEPTRIS_MARSHAL_ALL_DOCS,
+                                 &out, &olen);
+        EXPECT_NE(ms, 0) << y;
+        free(out);
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"a: &f x\n", "a: &f-o x\n", "a: &f #o x\n",
+                        "a: &:@*!\"<foo>: k\n" /* the W5VH charset */};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a
