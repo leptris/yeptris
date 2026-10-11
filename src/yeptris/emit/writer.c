@@ -662,24 +662,26 @@ static void wr_tag_uri(yep_writer* w, const yep_view* v) {
 /* Explicit tag, verbatim URI form ("!<tag:…> "). Never skipped: a
  * recorded tag always re-emits (implied-by-style skipping made the
  * roundtrip byte-unstable: plain+!!str and ""+!!str collided). */
-static void emit_tag(yep_writer* w, const yep_dnode* n) {
-    if (n->tag.len == 0) {
+/* The tag token without separators: the core namespace rides the
+ * DEFAULT secondary handle (libyaml writes !!str, never
+ * !<tag:yaml.org,2002:str>); a leading-'!' shorthand re-escapes its
+ * interior bangs (a local tag's URI can carry them — re-parsed raw
+ * they read as handles and the meaning flips); everything else is a
+ * verbatim !<URI> wrap. Hosts pass the full core URI — the verbatim
+ * shorthand "!!str" as a node tag collides with a LOCAL tag of the
+ * same bytes (the binding's chevron-key dump regressed there). */
+static void wr_tag_token(yep_writer* w, const yep_view* tdec) {
+    static const char k_core_ns[] = "tag:yaml.org,2002:";
+    if (tdec->len > sizeof(k_core_ns) - 1 &&
+        memcmp(tdec->p, k_core_ns, sizeof(k_core_ns) - 1) == 0) {
+        yep_view suffix = {tdec->p + sizeof(k_core_ns) - 1, tdec->len - (sizeof(k_core_ns) - 1)};
+        wr_put(w, "!!", 2);
+        wr_tag_uri(w, &suffix);
         return;
     }
-    yep_view tdec = wv(w, n->tag);
-    if (tdec.len > 0 && tdec.p[0] == '!') {
-        /* already a shorthand ("!ruby/object:K", "!foo"): verbatim —
-         * the !<...> wrapper is for verbatim URIs only. A suffix
-         * starting with '!' must escape it ("%21"): re-parsed raw it
-         * reads as the secondary handle and the tag changes meaning
-         * every round (the nightly's "!!%21bz" byte-instability) */
-        yep_view rest = {tdec.p + 1, tdec.len - 1};
+    if (tdec->len > 0 && tdec->p[0] == '!') {
+        yep_view rest = {tdec->p + 1, tdec->len - 1};
         wr_byte(w, '!');
-        /* every '!' in the suffix must ride %21: re-parsed raw, a
-         * suffix-leading bang reads as the secondary handle and an
-         * interior one as a NAMED-handle boundary ("!(4!" ->
-         * undefined handle) — the parse side only tolerates the byte
-         * when escape-hidden (the nightly's "!(4%21bz" trap) */
         uint32_t run = 0;
         for (uint32_t i = 0; i < rest.len; i++) {
             if (rest.p[i] == '!') {
@@ -697,13 +699,20 @@ static void emit_tag(yep_writer* w, const yep_dnode* n) {
             yep_view seg = {rest.p + rest.len - run, run};
             wr_tag_uri(w, &seg);
         }
-        wr_byte(w, ' ');
         return;
     }
     wr_byte(w, '!');
     wr_byte(w, '<');
-    wr_tag_uri(w, &tdec);
+    wr_tag_uri(w, tdec);
     wr_byte(w, '>');
+}
+
+static void emit_tag(yep_writer* w, const yep_dnode* n) {
+    if (n->tag.len == 0) {
+        return;
+    }
+    yep_view tdec = wv(w, n->tag);
+    wr_tag_token(w, &tdec);
     wr_byte(w, ' ');
 }
 
@@ -714,10 +723,7 @@ static void emit_props_tail(yep_writer* w, const yep_dnode* n) {
     if (n->tag.len > 0) {
         wr_byte(w, ' ');
         yep_view tdec2 = wv(w, n->tag);
-        wr_byte(w, '!');
-        wr_byte(w, '<');
-        wr_tag_uri(w, &tdec2);
-        wr_byte(w, '>');
+        wr_tag_token(w, &tdec2);
     }
     if (n->anchor.len > 0) {
         wr_byte(w, ' ');
@@ -1063,10 +1069,7 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
              * scalars and flow collections carry them inline */
             if (root->tag.len > 0) {
                 yep_view tdec3 = wv(w, root->tag);
-                wr_byte(w, '!');
-                wr_byte(w, '<');
-                wr_put(w, (const char*)tdec3.p, tdec3.len);
-                wr_byte(w, '>');
+                wr_tag_token(w, &tdec3);
             }
             if (root->anchor.len > 0) {
                 if (root->tag.len > 0) {

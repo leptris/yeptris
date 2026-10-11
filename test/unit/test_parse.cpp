@@ -358,8 +358,8 @@ TEST(Parse, RootTagAnchorSerializeSeparator) {
     char* s1 = yeptris_serialize(doc, &l1);
     ASSERT_NE(s1, nullptr);
     int sep_found = 0;
-    for (size_t i = 0; i + 5 <= l1; i++) {
-        if (memcmp(s1 + i, "> &a4", 5) == 0) {
+    for (size_t i = 0; i + 9 <= l1; i++) {
+        if (memcmp(s1 + i, "!!map &a4", 9) == 0) {
             sep_found = 1;
             break;
         }
