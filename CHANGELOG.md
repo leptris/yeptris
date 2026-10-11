@@ -17,6 +17,11 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **parse: `%TAG` allows only a comment after the prefix** — the
+  directive's prefix scan ran to end-of-line, so trailing content rode
+  the prefix and the resolved tag could never re-parse (nightly run
+  38102517540, `%TAG !m! !mymy 3…`). libyaml rejects the family ("did
+  not find expected comment or line break").
 - **parse: the flat-run's value honors plain-first** — the
   specialist's value arm bailed on indicators but skipped the
   plain-first law, so a ']' first byte rode as a plain value and
