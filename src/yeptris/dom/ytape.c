@@ -1818,6 +1818,7 @@ static int yt_f_run(yt_fused* F) {
                          * copy it into the finish pool, emit the pool form */
                         size_t scan = next;
                         uint32_t bindent = 0;
+                        uint32_t lead_blank_max = 0;
                         int have_bi = 0, have_content = 0;
                         size_t clen = 0, tb = 0;
                         size_t end_scan = scan;
@@ -1849,6 +1850,9 @@ static int yt_f_run(yt_fused* F) {
                                 /* a blank line: spaces past the block indent are
                                  * CONTENT; only stripped-empty lines clip away */
                                 size_t ind = ie - ls;
+                                if (!have_content && ind > lead_blank_max) {
+                                    lead_blank_max = (uint32_t)ind;
+                                }
                                 size_t res = have_bi && ind > bindent ? ind - bindent : 0;
                                 clen += res + 1;
                                 if (res == 0) {
@@ -1863,6 +1867,22 @@ static int yt_f_run(yt_fused* F) {
                                 if (!have_bi) {
                                     if (ind <= col) {
                                         break; /* dedented past the block */
+                                    }
+                                    if (ind < lead_blank_max) {
+                                        return 1; /* a LEADING blank line
+                                                   * with MORE indent
+                                                   * floors the block
+                                                   * (libyaml's
+                                                   * auto-detect takes
+                                                   * the blanks' max;
+                                                   * content below the
+                                                   * floor breaks the
+                                                   * map — Psych: "did
+                                                   * not find expected
+                                                   * key"; the nightly's
+                                                   * run 38163867815,
+                                                   * "a: |\n    \n  b"):
+                                                   * the engine's error */
                                     }
                                     bindent = ind;
                                     have_bi = 1;

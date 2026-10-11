@@ -44,6 +44,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a leading blank floors the literal block** — a blank
+  line with MORE indent than the block's first content line floors it
+  (libyaml's auto-detect takes the blanks' max; the shallower content
+  breaks the mapping — Psych: "did not find expected key"); the
+  runner accepted what the engine rejected, so parseable input failed
+  to marshal (nightly run 38163867815, `a: |\n    \n  b`). The
+  runner bails the shape; deeper blanks AFTER content stay legal
+  content.
 - **emit: a seq item's props emit once** — the dash's props arm
   wrote "- " plus the props separator's own space (a DOUBLE space),
   and the empty propertied collection re-emitted the props
