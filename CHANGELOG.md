@@ -44,6 +44,13 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: the literal block's pool buffer is block-sized** — the
+  clip lives in the span (`flen = clen - tb`) but the copy paths write
+  every measured line, so allocating the clipped length wrote `tb`
+  bytes past the pool block whenever a literal ended with
+  stripped-empty lines (nightly run 38137087116, ASan
+  heap-buffer-overflow WRITE in the re-walk). The block allocates the
+  measured size; the span stays clipped.
 - **parse: a pending map's root resolution tracks the root column** —
   the same missing root bookkeeping the seq arm gained, in the
   pending->map resolution: a dedent past a map-valued root's column
