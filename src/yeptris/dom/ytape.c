@@ -1521,10 +1521,13 @@ static int yt_f_run(yt_fused* F) {
                         st[depth].phantom = 0;
                     }
                     if (depth > 0 && st[depth].pending) {
-                        uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
-                        yt_f_open(F, &st[depth], of);
-                        root_open = 1;
-                        st[depth].pending = 0;
+                        /* chained same-column pending ("a:\na:"): resolving
+                         * the first via yt_f_open corrupts the frame mapping
+                         * when the second's container carries valued pairs —
+                         * the OPEN'd map swallows the second key as the
+                         * first pair's value (the nightly's run 38110714729
+                         * tree corruption). The engine owns the shape */
+                        return 1;
                     }
                     /* a spent key-SCALAR frame (resolved, phantom closed,
                      * no map of its own) gives its slot to the sibling —

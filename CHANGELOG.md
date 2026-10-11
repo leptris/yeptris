@@ -33,6 +33,12 @@ crashers in the regression corpus).
   map and read the second line as a second root (nightly run
   38105178194, ` i1ak: ?o\nfr: ?ff` — the runner and Psych parse the
   shape, so parseable input failed to marshal).
+- **parse: chained same-column pendings keep the tree** — resolving
+  a pending "a:" via a same-column sibling key ("a:\na:") corrupted
+  the runner's frame mapping when the container carried valued pairs:
+  the OPEN'd map swallowed the second key as the first pair's value
+  ("a: a", nightly run 38110714729). The runner bails the shape to
+  the engine, whose tree is byte-identical to the input.
 - **emit: plain-prefix document markers quote** — a plain whose
   value STARTS with "--- " or "... " (plus blank) emitted plain and
   re-read as a document marker at line start (nightly run 38109609214,
