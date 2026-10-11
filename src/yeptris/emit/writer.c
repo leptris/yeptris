@@ -483,6 +483,15 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
     }
     uint8_t sty = sty_in;
     if (sty == 4 || sty == 5) {
+        /* BLOCK SCALARS ARE ILLEGAL IN FLOW: a flow-rendered explicit
+         * key's subtree wrote `yaml: |` + literal content lines and
+         * the emission could never re-parse (the nightly's run
+         * 38154662070, "? !\n- name: ..." — the forced-flow key
+         * subtree carried literal members). In flow, literal/folded
+         * values ride DQ. */
+        if (w->in_flow) {
+            return YEP_SC_DQ;
+        }
         if (multiline && as_key) {
             return YEP_SC_DQ;
         }
