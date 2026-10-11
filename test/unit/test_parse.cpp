@@ -689,6 +689,33 @@ TEST(Parse, FlowPlainQuotesAndEscapesTakeTheQuotedRoute) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, PlainPrefixDocumentMarkersQuote) {
+    /* the nightly fuzz_roundtrip re-parse trap (2026-10-11, run
+     * 38109609214, "--- --- >\nlfoo ]..."): a multi-line plain whose
+     * folded value STARTS with "--- " emitted plain — at line start it
+     * re-reads as a document marker. The bare-marker check now covers
+     * the prefix forms ("--- x", "... x"); libyaml quotes both. */
+    const char* ins[] = {"--- --- >\nlfoo ]\nin>\na  ]\nine3\n", "--- a: --- x\n", "k: ... x\n"};
+    for (const char* y : ins) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line

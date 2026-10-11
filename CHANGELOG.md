@@ -33,6 +33,11 @@ crashers in the regression corpus).
   map and read the second line as a second root (nightly run
   38105178194, ` i1ak: ?o\nfr: ?ff` — the runner and Psych parse the
   shape, so parseable input failed to marshal).
+- **emit: plain-prefix document markers quote** — a plain whose
+  value STARTS with "--- " or "... " (plus blank) emitted plain and
+  re-read as a document marker at line start (nightly run 38109609214,
+  `--- --- >\nlfoo ]…`). The bare-marker law now covers prefix forms;
+  libyaml quotes both.
 - **parse: anchor names reject quote and bang bytes** — quotes flip
   scanners and a bang re-reads as tag syntax on the raw re-emit
   (nightly runs 38103630412 and 38108543435, `&"…` and bang-name
