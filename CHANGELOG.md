@@ -37,6 +37,13 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a pending "key:" over a seq frame rejects** — the pending
+  arm lacked the kind check the valued arm carries: a bare ` bar:`
+  after an indentless seq item pushed the pending key UNDER the
+  sequence and it materialized as an ITEM while the engine rejected
+  (nightly run 38127584324, `~foo:\n- 42\n bar:\n  - 45 e.`).
+  libyaml: "mapping values are not allowed in this context". Same-column
+  siblings and legal containers parse unchanged.
 - **parse: an alias node is complete** — props or a second node
   after an alias on the same line (`<<: *base &bar`, `*x *x`, the
   glued `*x#y`) error in libyaml ("did not find expected key");
