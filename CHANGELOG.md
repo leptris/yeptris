@@ -17,6 +17,11 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **emit: a null flow-seq item rides '~'** — the item position
+  emitted as nothing, so "[, x]" read as a leading comma and neither
+  libyaml nor Psych re-parse it (nightly run 38106246351,
+  `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
+  (`{k: }` is valid).
 - **parse: a root map takes column-0 siblings** — libyaml's root
   block context floors at column 0, so a root map opened past it
   accepts col-0 pair lines as siblings; the engine alone popped the

@@ -378,7 +378,7 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
 /* The fidelity-mode emission route for one scalar (#352): the dry
  * pass derives it exactly once; the wet pass consumes the recorded
  * byte and skips the multiline/blockable/safety analysis entirely. */
-enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL };
+enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL, YEP_SC_TILDE };
 #define YEP_SC_MEMO_MIN 32u /* bytes; derive-below, memoize-above */
 
 static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in,
@@ -529,6 +529,13 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
     }
     switch (route) {
     case YEP_SC_NOTHING:
+        if (w->flow_item) {
+            /* a null flow-SEQ item must stay re-parseable: nothing
+             * after '[' reads as a leading comma ("[, x]", rejected by
+             * libyaml and Psych alike) — libyaml renders it '~' */
+            wr_put(w, "~", 1);
+            break;
+        }
         break; /* an empty plain value emits as nothing (libyaml's null
                   rendering, issue #290) */
     case YEP_SC_PLAIN:
@@ -741,7 +748,9 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
             child = cn->next_sibling;
             cn = yep_dom_node(d, child);
         } else {
+            w->flow_item = 1; /* a null item must ride '~' */
             emit_node(em, child, 0, 0);
+            w->flow_item = 0;
         }
         idx++;
         child = cn->next_sibling;
