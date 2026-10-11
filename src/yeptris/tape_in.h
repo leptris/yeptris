@@ -14,6 +14,8 @@
 #include <yeptris/tape.h>
 
 /* tape.c (was tape_walk_lnt_fused) */
+int yep_tape_long_simple_key(const yeptris_json_tape* t);
+
 YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open,
                                           yeptris_json_tape* t, int strict_nums, int clean_only,
                                           int reuse_block);

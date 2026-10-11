@@ -156,10 +156,14 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* buf, size_t len, Yept
                 st = YEPTRIS_ERROR_MEMORY;
                 goto jfail;
             }
-            if (yep_tape_walk_lenient_fused(buf, len, off, t, 1, 1, 0) == YEPTRIS_OK) {
+            if (yep_tape_walk_lenient_fused(buf, len, off, t, 1, 1, 0) == YEPTRIS_OK &&
+                !yep_tape_long_simple_key(t)) {
                 /* strict_nums=1: the arms validated the numbers at
                  * record time — the settle pass is gone (the profile's
-                 * 10% lane; the spans were cache-warm in the walk) */
+                 * 10% lane; the spans were cache-warm in the walk).
+                 * The simple-key law: a >1024 flow key cannot
+                 * re-serialize — the engine's clean error decides (run
+                 * 38143486175) */
                 YeptrisDocument h = yep_json_doc_wrap(NULL, buf, len, sys, status);
                 if (h != NULL) {
                     ((yeptris_document*)h)->lazy_tape = t;
