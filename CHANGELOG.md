@@ -27,12 +27,19 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
-- **parse: a root map takes column-0 siblings** — libyaml's root
-  block context floors at column 0, so a root map opened past it
-  accepts col-0 pair lines as siblings; the engine alone popped the
-  map and read the second line as a second root (nightly run
-  38105178194, ` i1ak: ?o\nfr: ?ff` — the runner and Psych parse the
-  shape, so parseable input failed to marshal).
+- **parse: a dedent below the root's own column is a second root**
+  — a line left of a root map opened past column 0 ends the root
+  node; content there is a second root without `---`, which libyaml
+  and Psych's load_stream reject ("did not find expected <document
+  start>") and the 1.2 grammar forbids (Psych.load only appears to
+  accept because it stops reading at the first document end). The
+  runner's root-floor exemption rode col-0 pair lines flat while the
+  engine nested them, so both the catch-31 shape (run 38105178194,
+  ` i1ak: ?o\nfr: ?ff`) and its three-line sibling (run
+  38115641999, ` k2: v2\nk1: v\n k2: v2`) split parse from marshal;
+  both routes now reject, matching the seq variant's existing
+  verdict. Same-column siblings, post-root markers, and comments
+  parse unchanged; the suite has no case pinning the shape.
 - **parse: chained same-column pendings keep the tree** — resolving
   a pending "a:" via a same-column sibling key ("a:\na:") corrupted
   the runner's frame mapping when the container carried valued pairs:
