@@ -186,8 +186,8 @@ TEST(Emit, MultiDoc) {
 }
 
 TEST(Emit, TagsPreserved) {
-    EXPECT_EQ(roundtrip("- !!str 5\n"), "- !<tag:yaml.org,2002:str> 5\n");
-    EXPECT_EQ(roundtrip("!!map\na: 1\n"), "!<tag:yaml.org,2002:map>\na: 1\n");
+    EXPECT_EQ(roundtrip("- !!str 5\n"), "- !!str 5\n");
+    EXPECT_EQ(roundtrip("!!map\na: 1\n"), "!!map\na: 1\n");
 }
 
 TEST(Emit, UnsafePlainFallsBack) {

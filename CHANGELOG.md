@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **emit: the core namespace rides the !! secondary handle** —
+  `tag:yaml.org,2002:X` tags emit as `!!X` at every tag site (scalar,
+  collection line-tail, root props), matching libyaml's default-handle
+  behavior instead of the `!<tag:yaml.org,2002:X>` verbatim wrap. A
+  node tagged with the verbatim shorthand "!!str" collides with a
+  LOCAL tag of the same bytes and rode the catch-27 %21 escape — the
+  binding's chevron-key dump emitted `!%21str '<<': *1` (a local tag)
+  and the key re-loaded as a merge, breaking the round-trip that
+  v0.6.32's `!!str '<<'` form carried. Hosts pass the full core URI;
+  local bang-bearing tags keep the %21 escape.
 - **parse: the flat-run's key honors plain-first** (#513) — the
   line-head bail listed '[' but not the plain-first law; a ']'
   sibling key parsed while the marshal rejected.
