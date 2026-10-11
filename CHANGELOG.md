@@ -17,6 +17,12 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **parse: a root map takes column-0 siblings** — libyaml's root
+  block context floors at column 0, so a root map opened past it
+  accepts col-0 pair lines as siblings; the engine alone popped the
+  map and read the second line as a second root (nightly run
+  38105178194, ` i1ak: ?o\nfr: ?ff` — the runner and Psych parse the
+  shape, so parseable input failed to marshal).
 - **parse: anchor names reject quote bytes** — anchors emit raw, so a
   '"' or '\'' in the name could never re-parse (nightly run
   38103630412, `[&"…]`); libyaml's charset is stricter still
