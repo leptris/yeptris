@@ -18,6 +18,8 @@
 
 #include "writer.h"
 
+#include "../scan/scan.h"
+
 #include <string.h>
 
 #include "style.h"
@@ -675,9 +677,24 @@ static void wr_tag_token(yep_writer* w, const yep_view* tdec) {
     if (tdec->len > sizeof(k_core_ns) - 1 &&
         memcmp(tdec->p, k_core_ns, sizeof(k_core_ns) - 1) == 0) {
         yep_view suffix = {tdec->p + sizeof(k_core_ns) - 1, tdec->len - (sizeof(k_core_ns) - 1)};
-        wr_put(w, "!!", 2);
-        wr_tag_uri(w, &suffix);
-        return;
+        int scan_ok = 1;
+        for (uint32_t si = 0; si < suffix.len; si++) {
+            if (!yep_scan_tag_char((unsigned char)suffix.p[si])) {
+                scan_ok = 0;
+                break;
+            }
+        }
+        /* the shorthand only holds if the suffix re-scans: the parse
+         * side's tag charset terminates on ',' (and flow indicators —
+         * our lenience vs libyaml's URI set), so a suffix carrying one
+         * re-parses truncated and the round-trip dies (the nightly's
+         * run 38132505901, the verbatim tag with an interior ',');
+         * the verbatim !<...> wrap carries those */
+        if (scan_ok) {
+            wr_put(w, "!!", 2);
+            wr_tag_uri(w, &suffix);
+            return;
+        }
     }
     if (tdec->len > 0 && tdec->p[0] == '!') {
         yep_view rest = {tdec->p + 1, tdec->len - 1};

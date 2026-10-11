@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **emit: the core shorthand's suffix must re-scan** — a core-URI
+  tag whose suffix carries a byte outside the parse side's tag charset
+  (ours terminates on ',' — the lenience vs libyaml's URI set)
+  re-parsed truncated when emitted `!!<suffix>`, killing the
+  round-trip (nightly run 38132505901, the verbatim tag with an
+  interior ','). Those fall back to the verbatim `!<...>` wrap; clean
+  suffixes keep the `!!` form.
 - **emit: the core namespace rides the !! secondary handle** —
   `tag:yaml.org,2002:X` tags emit as `!!X` at every tag site (scalar,
   collection line-tail, root props), matching libyaml's default-handle
