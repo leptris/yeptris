@@ -55,10 +55,13 @@ typedef struct yep_writer {
     size_t cap;
     int grow;
     int oom;
-    int in_flow;   /* scalars inside flow collections: plain must drop
-                      ',', '[', ']', '{', '}' — flow terminators */
-    int flow_item; /* the NEXT scalar is a flow-SEQ item: a null must
-                      emit '~' (a bare nothing reads as "[, x]") */
+    int in_flow;        /* scalars inside flow collections: plain must drop
+                           ',', '[', ']', '{', '}' — flow terminators */
+    int flow_item;      /* the NEXT scalar is a flow-SEQ item: a null must
+                           emit '~' (a bare nothing reads as "[, x]") */
+    int unserializable; /* an anchor name that cannot ride raw in flow
+                           context: the document has no safe spelling —
+                           serialize fails rather than corrupt */
 } yep_writer;
 
 typedef struct yep_emitter {

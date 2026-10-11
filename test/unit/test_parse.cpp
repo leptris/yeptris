@@ -575,29 +575,41 @@ TEST(Parse, TagDirectiveAllowsOnlyCommentAfterPrefix) {
     }
 }
 
-TEST(Parse, AnchorNamesRejectQuoteBytes) {
-    /* the nightly fuzz_roundtrip re-parse trap (2026-10-11, run
-     * 38103630412, "[&\"\n?:..."): anchor names emit raw, and a
-     * quote byte in the name can never re-parse. Names keep the
-     * suite charset — colons ride them (2SXE), unicode parses (8XYN)
-     * — but '"' and '\'' reject (libyaml's own charset is stricter
-     * still: alphanumerics, '_' and '-'). */
-    const char* bad[] = {"[\"&\"\n?:\n? \n:\nu20\"]\n",
-                         "&\" v\n",
-                         "&a\"b v\n",
-                         "&x'y v\n",
-                         "&!!!+ v\n",
-                         "&a!b v\n",
-                         "&? v\n",
-                         "&?2 v\n",
-                         "&a*b v\n",
-                         "&a,b v\n",
-                         "&a%b v\n",
-                         "&a@b v\n",
-                         "&a[b v\n",
-                         "&a{b v\n",
-                         "&a`b v\n"};
-    for (const char* y : bad) {
+TEST(Parse, AnchorNamesRideBlockAndRefuseFlow) {
+    /* the anchor-name law, scoped by the suite: names keep the full
+     * suite charset at PARSE (W5VH wants "&:@*!$\"<foo>:" to parse;
+     * colons ride — 2SXE; unicode — 8XYN) and ride raw fine in BLOCK
+     * emission (byte-stable round-trips). But anchors have no quoting
+     * syntax, and in FLOW context an indicator byte can never re-parse
+     * (the nightly's "&\"", bang, and question veins) — such documents
+     * have no safe spelling and serialize REFUSES them (NULL) rather
+     * than emitting a form that corrupts. */
+    const char* block_ok[] = {"a: &:@*!$\"<foo>: scalar a\nb: *:@*!$\"<foo>:\n", "&a*b v\n",
+                              "&a!b v\n", "&?2 v\n", "&a: key: &a value\nfoo:\n  *a:\n"};
+    for (const char* y : block_ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+    /* flow-context: an anchor name cannot start with a quote there —
+     * the flow prop scan ends empty and the empty-name law rejects
+     * (Psych agrees); names that DO parse in flow but carry unsafe
+     * bytes get the serialize refusal below */
+    const char* flow_rejects[] = {"[\"&\"\n?:\n? \n:\nu20\"]\n", "[&a\"b c]\n"};
+    for (const char* y : flow_rejects) {
         YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
         EXPECT_EQ(doc, nullptr) << y;
@@ -605,14 +617,18 @@ TEST(Parse, AnchorNamesRejectQuoteBytes) {
             yeptris_document_free(doc);
         }
     }
-    const char* good[] = {"&a: key: &a value\nfoo:\n  *a:\n", "&\xE3\x81\x82 v\n", "&x_1 v\n"};
-    for (const char* y : good) {
+    const char* flow_refused[] = {"[&a*b c]\n", "{k: &x!y: v}\n"};
+    for (const char* y : flow_refused) {
         YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
-        EXPECT_NE(doc, nullptr) << y;
-        if (doc != NULL) {
-            yeptris_document_free(doc);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        EXPECT_EQ(s1, nullptr) << y;
+        if (s1 != NULL) {
+            free(s1);
         }
+        yeptris_document_free(doc);
     }
 }
 

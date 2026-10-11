@@ -44,14 +44,15 @@ crashers in the regression corpus).
   re-read as a document marker at line start (nightly run 38109609214,
   `--- --- >\nlfoo ]…`). The bare-marker law now covers prefix forms;
   libyaml quotes both.
-- **parse: anchor names reject every indicator byte** — quotes flip
-  scanners, bang/question re-read as tag/explicit-key syntax, and the
-  flow/reserved indicators cannot survive a raw re-emit (nightly runs
-  38103630412, 38108543435, 38112005844 — the fuzzer mined the same
-  law byte by byte). The suite charset is untouched: colons ride names
-  (2SXE), unicode parses (8XYN); libyaml's own set (alphanumerics,
-  '_', '-') remains stricter still.
-  parsing.
+- **emit: flow-context anchor names that cannot ride raw are refused**
+  — anchors have no quoting syntax, and an indicator byte in a name
+  can never re-parse in flow context (the nightly's `&"`, bang, and
+  question veins — runs 38103630412, 38108543435, 38112005844,
+  38113259764). Parse keeps the full suite charset (W5VH wants
+  `&:@*!$"<foo>:` to parse; block-context emission round-trips
+  byte-stably); serialize returns NULL for the flow forms rather than
+  emitting output that corrupts.
+
 - **parse: `%TAG` allows only a comment after the prefix** — the
   directive's prefix scan ran to end-of-line, so trailing content rode
   the prefix and the resolved tag could never re-parse (nightly run
