@@ -1195,6 +1195,11 @@ static size_t yt_flat_run(yep_ytape* t, const char* p, size_t pos, size_t len, u
              (vt + 1 >= le || p[vt + 1] == ' ' || p[vt + 1] == '\t' || p[vt + 1] == '#'))) {
             return pos; /* block/flow/anchor values: the full arms */
         }
+        if (!yep_plain_first_ok(vc)) {
+            return pos; /* ']' '}' ',' '@' '`': no plain value can start
+                         * there (the nightly's "k1: --a &p{\n0: ]" marshal
+                         * crasher) — the engine errors cleanly */
+        }
         /* a terminating ':' inside the value is the mapping-values error */
         {
             const char* h = (const char*)memchr(p + vt, ':', le - vt);

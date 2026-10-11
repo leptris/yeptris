@@ -529,6 +529,24 @@ TEST(Parse, ShorthandSuffixEscapesItsLeadingBang) {
     }
 }
 
+TEST(Parse, FlatRunValueHonorsPlainFirst) {
+    /* the nightly fuzz_roundtrip marshal trap (2026-10-11, run
+     * 38101390216, "k1: --a &p{\n0: ]"): the flat-run specialist's
+     * value arm bailed on indicators but skipped the plain-first law
+     * — a ']' first byte rode as a plain value and parseable input
+     * failed to marshal. The engine rejects the family; now the
+     * flat-run bails to it (#489's law, fifth site). */
+    const char* bad[] = {"k1: --a &p{\n0: ]\n", "k: ]\n", "k: }\n", "k: ,x\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line

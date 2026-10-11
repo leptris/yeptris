@@ -17,6 +17,12 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **parse: the flat-run's value honors plain-first** — the
+  specialist's value arm bailed on indicators but skipped the
+  plain-first law, so a ']' first byte rode as a plain value and
+  parseable input failed to marshal (nightly run 38101390216,
+  `k1: --a &p{\n0: ]`). The engine rejects the family; the flat-run
+  now bails to it — #489's law, fifth site.
 - **emit: a shorthand suffix escapes every bang** — a suffix-leading
   `!` re-parses as the secondary handle (`!!bz` -> 
   `tag:yaml.org,2002:bz`, run 38099113018) and an interior one as a
