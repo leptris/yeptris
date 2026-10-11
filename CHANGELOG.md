@@ -44,6 +44,13 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a pending map's root resolution tracks the root column** —
+  the same missing root bookkeeping the seq arm gained, in the
+  pending->map resolution: a dedent past a map-valued root's column
+  popped to a content-column-0 root and the document accepted the
+  second root the engine rejects (nightly run 38134498534,
+  `  e:\n   f: g\nh: i`). The catch-39 law's map-valued variant;
+  col-0 root siblings and same-column maps parse unchanged.
 - **parse: a pending seq's root resolution tracks the root column** —
   the unanchored resolution set the opened map's content column (the
   catch-41 fix) but never the root's bookkeeping the anchored branch

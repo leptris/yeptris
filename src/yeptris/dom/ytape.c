@@ -1662,6 +1662,14 @@ static int yt_f_run(yt_fused* F) {
                     } else if (depth > 0 && st[depth].pending) {
                         uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
                         yt_f_open(F, &st[depth], of);
+                        if (depth == 1 && st[0].content_col == 0) {
+                            /* the pending->MAP resolution needs the same
+                             * root bookkeeping the seq arm gained (run
+                             * 38134498534, "  e:\n   f: g\nh: i" — the
+                             * dedent popped to a content_col-0 root and
+                             * the doc accepted what the engine rejects) */
+                            st[0].content_col = st[depth].indent + 1;
+                        }
                         root_open = 1;
                         st[depth].pending = 0;
                         if (col == st[depth].indent) {
