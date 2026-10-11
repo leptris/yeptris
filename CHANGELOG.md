@@ -44,11 +44,13 @@ crashers in the regression corpus).
   re-read as a document marker at line start (nightly run 38109609214,
   `--- --- >\nlfoo ]…`). The bare-marker law now covers prefix forms;
   libyaml quotes both.
-- **parse: anchor names reject quote and bang bytes** — quotes flip
-  scanners and a bang re-reads as tag syntax on the raw re-emit
-  (nightly runs 38103630412 and 38108543435, `&"…` and bang-name
-  anchors); libyaml's charset is stricter still (alphanumerics, '_'
-  and '-'), while the suite's colons (2SXE) and unicode (8XYN) keep
+- **parse: anchor names reject every indicator byte** — quotes flip
+  scanners, bang/question re-read as tag/explicit-key syntax, and the
+  flow/reserved indicators cannot survive a raw re-emit (nightly runs
+  38103630412, 38108543435, 38112005844 — the fuzzer mined the same
+  law byte by byte). The suite charset is untouched: colons ride names
+  (2SXE), unicode parses (8XYN); libyaml's own set (alphanumerics,
+  '_', '-') remains stricter still.
   parsing.
 - **parse: `%TAG` allows only a comment after the prefix** — the
   directive's prefix scan ran to end-of-line, so trailing content rode
