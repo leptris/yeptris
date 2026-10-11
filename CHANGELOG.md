@@ -17,6 +17,11 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **parse: anchor names reject quote bytes** — anchors emit raw, so a
+  '"' or '\'' in the name could never re-parse (nightly run
+  38103630412, `[&"…]`); libyaml's charset is stricter still
+  (alphanumerics, '_' and '-'), but the suite keeps colons in names
+  (2SXE) and unicode (8XYN) parseable.
 - **parse: `%TAG` allows only a comment after the prefix** — the
   directive's prefix scan ran to end-of-line, so trailing content rode
   the prefix and the resolved tag could never re-parse (nightly run

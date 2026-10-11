@@ -1118,6 +1118,17 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
             e->pos = yep_scan_prop_end(e->p, e->len, start);
             anchor->p = e->p + start;
             anchor->len = (uint32_t)(e->pos - start);
+            /* names keep the suite charset (colons ride them — 2SXE;
+             * unicode parses — 8XYN) but may not carry quote bytes:
+             * anchors emit raw, and a quoted byte can never re-parse
+             * (the nightly's "&\"" crasher; libyaml's own anchor
+             * charset is stricter still) */
+            for (uint32_t q = 0; q < anchor->len; q++) {
+                if (anchor->p[q] == '"' || anchor->p[q] == '\'') {
+                    e_fail(e, YEP_ERR_UNEXPECTED, start + q);
+                    return;
+                }
+            }
             if (anchor->len == 0) {
                 /* libyaml requires one or more anchor characters
                  * ("did not find expected alphabetic or numeric
