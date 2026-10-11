@@ -1771,7 +1771,9 @@ static int yt_f_run(yt_fused* F) {
                                 spilled = 1;
                             }
                             end_scan =
-                                (le < len && p[le] == '\r' && le + 1 < len) ? le + 2 : le + 1;
+                                (le < len && p[le] == '\r' && le + 1 < len && p[le + 1] == '\n')
+                                    ? le + 2
+                                    : le + 1; /* lone CR is a 1-byte break */
                             scan = end_scan;
                         }
                         if (!have_content) {
@@ -1831,8 +1833,10 @@ static int yt_f_run(yt_fused* F) {
                                         q += le - (ls + bindent);
                                         *q++ = '\n';
                                     }
-                                    s2 = (le < len && p[le] == '\r' && le + 1 < len) ? le + 2
-                                                                                     : le + 1;
+                                    s2 = (le < len && p[le] == '\r' && le + 1 < len &&
+                                          p[le + 1] == '\n')
+                                             ? le + 2
+                                             : le + 1; /* lone CR is a 1-byte break */
                                 }
                             }
                             if ((size_t)(q - dst) != clen) {

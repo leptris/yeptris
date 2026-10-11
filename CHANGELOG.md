@@ -17,6 +17,12 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **parse: a lone CR after a literal is a 1-byte break** — the
+  runner's literal-block line advance treated any '\r' as CRLF and
+  skipped 2 bytes, so the byte after a lone CR vanished as a phantom
+  line break and a trailing key-less line was silently dropped instead
+  of rejected (nightly run 38096448601, `2: |\n  h!\ro`; parseable
+  input then failed to marshal). Psych: "could not find expected ':'".
 - **parse: tag URI escapes need two hex digits** — a stray '%' rode
   the tag raw while only the well-formed escape decoded; the stored
   tag re-encoded to a form that parsed differently (nightly run
