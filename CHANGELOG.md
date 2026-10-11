@@ -37,6 +37,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: an alias node is complete** — props or a second node
+  after an alias on the same line (`<<: *base &bar`, `*x *x`, the
+  glued `*x#y`) error in libyaml ("did not find expected key");
+  the DOM route absorbed the stray props while the value drain
+  rejected — parseable input failed to marshal (nightly run
+  38123150843, a merge-key churn family). One follower law at the
+  engine's alias scan and the runner's alias-value branch; alias keys
+  (`? *x`), flow aliases, comments, and plain merges parse unchanged.
 - **parse: an anchor name ends at a blank or flow indicator** — a
   glued '#' is junk on the name (libyaml: "did not find expected
   alphabetic or numeric character"); the engine accepted it MANGLED —

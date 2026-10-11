@@ -774,6 +774,55 @@ TEST(Parse, BlockScalarHeaderTailIsBlankOrComment) {
     }
 }
 
+TEST(Parse, AliasNodeIsComplete) {
+    /* the nightly's run 38123150843 ("base: &base\n    n)ame: ...\n
+     * <<: *base &bar\n ..."): an alias node is COMPLETE — it carries
+     * no props and only a blank-then-comment may follow on the line.
+     * libyaml errors ("did not find expected key" / "alphabetic or
+     * numeric character" for a glued '#'); the DOM route absorbed the
+     * stray props while the value drain rejected — the routes split. */
+    const char* full = "base: &base\n    n)ame: Everyone has same o\n    <<: *base &bar\n    <<: "
+                       "*base\n    age: 20\n";
+    const char* bad[] = {full, "a: &x\n  k: 1\nb:\n  <<: *x &y\n",
+                         "a: &x\n  k: 1\nb:\n  <<: *x !str\n", "a: &x\n  k: 1\nb: *x *x\n",
+                         "a: &x\n  k: 1\nb: *x#y\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        char* out = NULL;
+        size_t olen = 0;
+        int ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, YEPTRIS_MARSHAL_ALL_DOCS,
+                                 &out, &olen);
+        EXPECT_NE(ms, 0) << y;
+        free(out);
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"a: &x\n  k: 1\n? *x\n: v\n", "a: &x\n  k: 1\nb: [*x, 2]\n",
+                        "a: &x\n  k: 1\nb: *x # c\n", "a: &x\n  k: 1\nb: *x\n",
+                        "a: &x\n  k: 1\nb:\n  <<: *x\n  j: 2\n"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, AnchorNameFollowerLaw) {
     /* the nightly's run 38121449804 ("ow0: &f#o   \n  - :-0~on"): a
      * glued '#' is junk on the anchor name — libyaml errors ("did not
