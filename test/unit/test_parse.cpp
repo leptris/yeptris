@@ -1492,6 +1492,37 @@ TEST(Parse, TaggedExplicitKeyRoundTrips) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, PendingResolveDedentPairRejects) {
+    /* the nightly's run 38179552341 ("foooo:\n  _: 1\nname: 2\n
+     * _=b: 2"): after a pending key resolved into its child map, the
+     * frame kept the CHILD's content column — a dedented root pair
+     * closed the child's phantom map but the next MORE-indented line
+     * rode the stale frame as a phantom sibling, and the runner
+     * accepted what the engine (and libyaml: "mapping values are not
+     * allowed in this context") rejects. Parse and marshal must agree
+     * with the engine; the legit dedent and continuation shapes ride. */
+    const char* bad[] = {"a:\n  b: 1\nc: 2\n  d: 3\n", "foooo:\n  _: 1\nname: 2\n  _=b: 2\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        yeptris_document_free(doc);
+        char* out = NULL;
+        size_t olen = 0;
+        YeptrisStatus ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT,
+                                           YEPTRIS_MARSHAL_ALL_DOCS, &out, &olen);
+        EXPECT_NE(ms, YEPTRIS_OK) << y;
+        yeptris_marshal_free(out);
+    }
+    const char* good[] = {"foo:\n  bar: 1\nbaz: 2\n", "a:\n  b: 1\n  c: 2\n", "k:\n  nested: v\n"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, TaggedBlockKeyRidesTheExplicitForm) {
     /* the nightly's run 38177622733 (":\n! |-\n r\n:"): a TAGGED
      * literal block keeps the block form in sc_route even single-line

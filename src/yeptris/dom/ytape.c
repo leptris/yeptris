@@ -1503,6 +1503,25 @@ static int yt_f_run(yt_fused* F) {
                        !(c == '&' || c == '!' || c == '*' || c == '\'' || c == '"' || c == '[' ||
                          c == '{' || c == '|' || c == '>' || c == '%' || c == '?' || c == '-') &&
                        yep_plain_first_ok((unsigned char)c)) {
+                if (st[depth].kind == 0 &&
+                    ((st[depth].content_col != 0 && col + 1 != st[depth].content_col &&
+                      (col != st[depth].indent || (depth == 0 && st[0].content_col > 1))) ||
+                     (st[depth].content_col == 0 && depth > 0 && !st[depth].pending &&
+                      col != st[depth].indent))) {
+                    /* an OFF-COLUMN pair. No pending key awaits it, so a
+                     * more-indented line cannot open a child and a
+                     * dedented one is a second root (the catch-39 law;
+                     * libyaml: "mapping values are not allowed in this
+                     * context"). Two states: a frame with its own content
+                     * column rejects every other column; a frame whose
+                     * content map already closed (the phantom close above)
+                     * only accepts pairs at its own key column. The pop
+                     * loop pops on col < indent alone — without these
+                     * checks "a:\n  b: 1\nc: 2\n  d: 3" rode the stale
+                     * frame as a phantom sibling (the nightly's run
+                     * 38179552341) */
+                    return 1;
+                }
                 uint32_t kend = line_stop;
                 while (kend > t0 && (p[kend - 1] == ' ' || p[kend - 1] == '\t')) {
                     kend--;
@@ -1693,6 +1712,10 @@ static int yt_f_run(yt_fused* F) {
                         if (st[depth].phantom) {
                             yt_f_close(F, st[depth].kind);
                             st[depth].phantom = 0;
+                            st[depth].content_col = 0; /* the content map is
+                                                        * gone: its column must not
+                                                        * greet later pairs (the
+                                                        * stale frame below) */
                         }
                     } else {
                         yt_f_start(F, &st[depth]);
