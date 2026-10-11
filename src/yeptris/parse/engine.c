@@ -2017,6 +2017,14 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 continue;
             }
             if (colon && st[n - 1].kind == 0) {
+                if (st[n - 1].pair_open && st[n - 1].pair_value) {
+                    /* "[s: 2:]" — the open pair already has its value;
+                     * a second single-pair would nest inside the value
+                     * slot and unbalance the event stream (the nightly's
+                     * run 38168927841). libyaml rejects the ':' mid-
+                     * scalar; so does the suite's flow grammar. */
+                    return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                }
                 if (!q_key && quoted && ev.value.len + 2 > YEP_MAX_SIMPLE_KEY) {
                     return e_fail(e, YEP_ERR_KEY_TOO_LONG, e->pos);
                 }
@@ -2307,6 +2315,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 continue;
             }
             if (st[n - 1].kind == 0 && st[n - 1].buf_from >= 0) {
+                if (st[n - 1].pair_open && st[n - 1].pair_value) {
+                    /* "[s: 2\n:]" — the loop-top twin of the inline
+                     * colon guard: a buffered value cannot wrap as
+                     * another pair once the open pair is complete */
+                    return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                }
                 if (st[n - 1].entry_line != e->line) {
                     /* the key ended on an earlier line */
                     return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
@@ -2337,6 +2351,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 continue; /* value next */
             }
             if (st[n - 1].kind == 0 && n >= 1) {
+                if (st[n - 1].pair_open) {
+                    /* "[s: : v]" — ':' in the open pair's value slot
+                     * is not node content (libyaml: "did not find
+                     * expected node content") */
+                    return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                }
                 /* '[ : v' — single-pair mapping with an empty key */
                 if (n >= e->max_depth) {
                     return e_fail(e, YEP_ERR_DEPTH, e->pos);

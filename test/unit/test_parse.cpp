@@ -1430,6 +1430,68 @@ TEST(Parse, LocalShorthandSuffixMustRescan) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, FlowPairValueColonRejects) {
+    /* the nightly's run 38168927841 (":\n!\n? [s: 2:]\n: -"): the
+     * engine accepted "[s: 2:]" and nested a second single-pair
+     * wrapper inside the first pair's VALUE slot — unbalanced events,
+     * the DOM silently dropped the "2". libyaml rejects every
+     * completed-pair-plus-colon shape; the legal multi-pair and
+     * trailing-comma shapes must keep parsing. */
+    const char* bad[] = {"[s: 2:]",     "[a: b: c]", "[s: : v]",
+                         "[s: [b]: c]", "[s: 2\n:]", "[a\n: b: c]"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        yeptris_document_free(doc);
+    }
+    const char* good[] = {"[a: b, c: d]", "[s: , x]", "[s:]", "{a: b}", "[a: b]"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        yeptris_document_free(doc);
+    }
+}
+
+TEST(Parse, NestedBlockCollectionRidesFlowEmit) {
+    /* a block-styled collection placed inside a flow member (the
+     * mutation API builds this freely) must render FLOW — its block
+     * dash is not node content inside brackets. The pre-fix emit
+     * wrote "- " under "[" and the output never re-parsed. */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse("[a]", 3, &st);
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    YeptrisNode child = yeptris_node_new_sequence(doc);
+    ASSERT_NE(child, nullptr);
+    YeptrisNode scalar = yeptris_node_new_scalar(doc, "b", 1, YEPTRIS_STYLE_PLAIN);
+    ASSERT_NE(scalar, nullptr);
+    ASSERT_EQ(yeptris_node_seq_add(child, scalar), 0);
+    ASSERT_EQ(yeptris_node_seq_add(root, child), 0);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    int has_member = 0;
+    for (size_t i = 0; i + 3 < l1; i++) {
+        if (memcmp(s1 + i, "[b]", 3) == 0) {
+            has_member = 1;
+        }
+    }
+    EXPECT_EQ(has_member, 1) << s1;
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, RootPropsEmitOnce) {
     /* the nightly's run 38167237445 ("! &a\n  ? &e)J  !((( &e..."):
      * the root-collection props rode their own leading line AND the

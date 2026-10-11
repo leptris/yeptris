@@ -1116,9 +1116,14 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
         emit_alias_ex(em, n);
         return;
     }
-    if ((n->kind == 1 || n->kind == 2) && (n->flow || w->canonical || w->json || w->force_flow)) {
+    if ((n->kind == 1 || n->kind == 2) &&
+        (n->flow || w->in_flow || w->canonical || w->json || w->force_flow)) {
         /* force_flow holds through the subtree: a complex key's nested
-         * collections all render flow (scalars are never collections) */
+         * collections all render flow (scalars are never collections).
+         * in_flow is the catch-55 law's collection arm: a block-styled
+         * node nested inside a flow member renders FLOW — its block
+         * dashes are not node content there (the nightly's run
+         * 38168927841) */
         emit_flow(em, id);
         return;
     }
