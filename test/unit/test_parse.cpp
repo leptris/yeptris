@@ -1210,6 +1210,32 @@ TEST(Parse, EscapeLongKeyRidesTheExplicitForm) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, ImplicitNullMarkStaysInBounds) {
+    /* the nightly's run 38147359781 (fuzz_parse ASan, READ 1 past a
+     * 23-byte exact buffer): after the flow close scan the cursor
+     * stood one past EOF, and the implicit-null position mark read
+     * e->p[at-1] out of bounds. The mark now clamps to e->len first
+     * — zero-copy means every read is bounds-checked. */
+    const char* y = "[&\"[?:\n?(\nu\n?\"]:\n\nu\n?\"]";
+    YeptrisStatus st = YEPTRIS_OK;
+    size_t n = strlen(y);
+    char* exact = (char*)malloc(n); /* no NUL slack: ASAN-precise */
+    ASSERT_NE(exact, nullptr);
+    memcpy(exact, y, n);
+    YeptrisDocument doc = yeptris_parse(exact, n, &st);
+    /* either verdict is fine — the bounds are the pin (the anchor
+     * &"[?: trips the flow-context serialize refusal, catch 38's
+     * documented NULL). The document BORROWS the buffer (zero-copy):
+     * serialize before free, or the read is a use-after-free */
+    if (doc != nullptr) {
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1); /* must not crash */
+        free(s1);
+        yeptris_document_free(doc);
+    }
+    free(exact);
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a

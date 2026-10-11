@@ -44,6 +44,12 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: the implicit-null mark stays in bounds** — after a flow
+  close scan the cursor could stand one past EOF, and the deferred
+  key's implicit-null position mark read one byte out of bounds
+  (fuzz_parse ASan, nightly run 38147359781, a 23-byte exact buffer).
+  The mark clamps to the buffer end first; zero-copy means every
+  read is bounds-checked.
 - **emit: the simple-key law counts the written token** — the key
   predicates estimated the RAW span; a ~1000-raw key whose quoted
   render expands past 1024 (escapes) rode as a simple key and the
