@@ -17,6 +17,14 @@ crashers in the regression corpus).
   escape can name unencodable code points; the nightly's
   "\\UA66DA66D" parsed and never re-parsed. Psych rejects above the
   boundary.
+- **emit: flow scalars quote the flow indicators** — the style
+  chooser's plain predicate is block-context law, so ']' rode plain
+  INSIDE "{}" where it terminates the scalar; the emitted form
+  re-parsed as a stray close (nightly run 38097567398,
+  `?  :\t555555ta]`). Flow-context scalars carrying ',', '[', ']',
+  '{' or '}' now take the quoted routes. (The fix also initializes
+  the new in-flow flag at every emitter site — the field-by-field
+  stack init had left it reading garbage.)
 - **parse: a lone CR after a literal is a 1-byte break** — the
   runner's literal-block line advance treated any '\r' as CRLF and
   skipped 2 bytes, so the byte after a lone CR vanished as a phantom

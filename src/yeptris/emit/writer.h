@@ -55,6 +55,8 @@ typedef struct yep_writer {
     size_t cap;
     int grow;
     int oom;
+    int in_flow; /* scalars inside flow collections: plain must drop
+                    ',', '[', ']', '{', '}' — flow terminators */
 } yep_writer;
 
 typedef struct yep_emitter {

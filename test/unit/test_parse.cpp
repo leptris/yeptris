@@ -465,6 +465,35 @@ TEST(Parse, LoneCrAfterLiteralIsABreakNotCrlf) {
     }
 }
 
+TEST(Parse, FlowScalarsQuoteTheFlowIndicators) {
+    /* the nightly fuzz_roundtrip re-parse trap (2026-10-11, run
+     * 38097567398, "?  :\t555555ta]"): the explicit-key nesting emits
+     * the inner map in flow style, and the style chooser's plain
+     * predicate is block-context law — ']' rides plain INSIDE "{}"
+     * where it is a flow terminator and the emitted form re-parses as
+     * a stray close. Flow-context scalars now take the quoted routes
+     * whenever they carry ',', '[', ']', '{' or '}'. */
+    const char* y = "?  :\t555555ta]\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    /* the indicator must not ride plain inside the flow form */
+    EXPECT_TRUE(memmem(s1, l1, "ta]}", 4) == NULL) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line

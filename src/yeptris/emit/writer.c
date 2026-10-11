@@ -416,6 +416,23 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
     if (has_nel || has_bom) {
         return YEP_SC_DQ;
     }
+    if (w->in_flow && len > 0) {
+        /* flow context: the indicators TERMINATE a plain scalar — a
+         * raw ']' inside "{}" re-parses as a stray close (the
+         * nightly's "555555ta]" explicit-key crasher) */
+        for (uint32_t k = 0; k < len; k++) {
+            switch (p[k]) {
+            case ',':
+            case '[':
+            case ']':
+            case '{':
+            case '}':
+                return YEP_SC_DQ;
+            default:
+                break;
+            }
+        }
+    }
     if ((sty_in == 1) && len > 0 &&
         (as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len))) {
         return YEP_SC_PLAIN; /* plain-safe implies no breaks: memchr skipped */
@@ -644,6 +661,8 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key);
 
 static void emit_flow(yep_emitter* em, uint32_t id) {
     yep_writer* w = &em->w;
+    int saved_flow = w->in_flow;
+    w->in_flow = 1;
     const yep_dom* d = em->doc->dom;
     const yep_dnode* n = yep_dom_node(d, id);
     emit_tag(w, n);
@@ -709,6 +728,7 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
         w->pretty_depth--;
     }
     wr_byte(w, map ? '}' : ']');
+    w->in_flow = saved_flow;
 }
 
 /* Block map: first key at the cursor (the caller placed it at
