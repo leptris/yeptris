@@ -3884,6 +3884,20 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
         while (e->depth > 0) {
             const yep_frame* fr = &e->frames[e->depth - 1];
             if (fr->col > c) {
+                if (e->depth == 1 && c == 0 && fr->kind == YEP_FRAME_MAP && !fr->inline_doc &&
+                    fr->col > 0 &&
+                    (yep_scan_is_key_start(li.first) || li.first == ':' || li.first == '?' ||
+                     (li.first == '-' && !dash_blank))) {
+                    /* libyaml root quirk: a root map opened past column 0
+                     * takes column-0 pair lines as SIBLINGS (the root
+                     * block context's floor is 0) — Psych accepts
+                     * " k1: v1\nk2: v2" while a strict pop would make the
+                     * second line a second root (the nightly's marshal
+                     * trap: the runner and Psych parse it, the engine
+                     * alone rejected) */
+                    e->frames[0].col = 0;
+                    break;
+                }
                 int rc = e_close_to(e, e->depth - 1);
                 if (rc != 0) {
                     return rc;
