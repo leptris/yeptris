@@ -170,6 +170,26 @@ static void emit_dq(yep_writer* w, const char* p, uint32_t n) {
             i += 2;
             continue;
         }
+        /* C1 controls (U+0080..U+009F, the UTF-8 pairs c2 80..c2 9f)
+         * are NON-PRINTABLE: raw, the re-parse's printability gate
+         * rejects the very document we just wrote (the nightly's
+         * "\x999" catch — \x99 decodes to U+0099 and the raw pair
+         * c2 99 cannot ride). Psych escapes the whole C1 range; the
+         * \xNN escape re-enters the doc the same way it left. */
+        if (c == 0xc2 && i + 1 < n && (unsigned char)p[i + 1] >= 0x80 &&
+            (unsigned char)p[i + 1] <= 0x9f) {
+            static const char hd[] = "0123456789ABCDEF";
+            if (run) {
+                wr_put(w, p + i - run, run);
+                run = 0;
+            }
+            wr_byte(w, '\\');
+            wr_byte(w, 'x');
+            wr_byte(w, hd[(unsigned char)p[i + 1] >> 4]);
+            wr_byte(w, hd[(unsigned char)p[i + 1] & 0xf]);
+            i++;
+            continue;
+        }
         /* U+FFFE/U+FFFF are noncharacters: the printable validator
          * rejects them raw, so emitting them raw makes the document
          * un-re-parseable (the nightly's "["\\uFFFE"]" catch). Their

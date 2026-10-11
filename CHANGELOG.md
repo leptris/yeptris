@@ -44,6 +44,12 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: C1 controls escape on output** — `\x99` decodes to
+  U+0099: valid UTF-8 but NON-PRINTABLE, so the raw pair in the
+  emission failed the re-parse's own printability gate (nightly run
+  38151866348, an escape-heavy doc). The whole C1 range
+  (U+0080..U+009F) rides the `\xNN` escape on output — Psych's form;
+  the escape re-enters the document the same way it left.
 - **parse: the implicit-null mark stays in bounds** — after a flow
   close scan the cursor could stand one past EOF, and the deferred
   key's implicit-null position mark read one byte out of bounds
