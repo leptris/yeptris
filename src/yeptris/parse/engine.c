@@ -3250,6 +3250,12 @@ empty_value: {
     { /* libyaml: the implicit null sits just past the key's colon
        * ("k:   " -> col 2, not the line end), zero-span */
         size_t at = e->pos;
+        if (at > e->len) {
+            at = e->len; /* the cursor may stand one past EOF after a
+                          * flow close scan (the nightly's run
+                          * 38147359781, '[&"[?:\n?(\nu\n?"]:...') —
+                          * zero-copy means the mark reads in-bounds */
+        }
         while (at > 0 && (e->p[at - 1] == ' ' || e->p[at - 1] == '\t' || e->p[at - 1] == '\n' ||
                           e->p[at - 1] == '\r')) {
             at--; /* the cursor may sit lines past the deferred key */
