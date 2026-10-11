@@ -679,6 +679,54 @@ TEST(Parse, IndentedSeqOwnsItsColumn) {
     }
 }
 
+TEST(Parse, PendingSeqResolutionTracksContentColumn) {
+    /* the nightly's run 38118641722 ("ue:\n  - one\n woc:\n  - one\n
+     * wt o-  : thrt"): the pending-key->seq resolution never recorded
+     * the opened map's content column, so the off-column guard could
+     * not fire and a key line BETWEEN the seq's column and the
+     * parent's fell through to a SILENTLY TRUNCATED document (lines
+     * 3-5 dropped) while the engine rejected. Psych: "did not find
+     * expected key". The anchored branch already tracked it. */
+    const char* bad[] = {"ue:\n  - one\n woc:\n  - one\n wt o-  : thrt", "ue:\n  - one\n woc: v\n",
+                         "a:\n  - x\n b: v\n", "ue:\n  - one\n woc:\n  - one",
+                         "a:\n  b:\n    - x\n   c: v"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        char* out = NULL;
+        size_t olen = 0;
+        int ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, YEPTRIS_MARSHAL_ALL_DOCS,
+                                 &out, &olen);
+        EXPECT_NE(ms, 0) << y;
+        free(out);
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"k:\n- j\nn: v\n",   /* indentless sibling */
+                        "k:\n  - j\nx: v\n", /* dedent to parent col */
+                        "ue:\n  - one\nnext: v\n"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a
