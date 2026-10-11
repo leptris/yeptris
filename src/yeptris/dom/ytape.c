@@ -1524,6 +1524,12 @@ static int yt_f_run(yt_fused* F) {
                         return 1; /* an anchor needs a name (libyaml):
                                      the engine owns the error */
                     }
+                    if (ne < line_end && p[ne] == '#') {
+                        return 1; /* a glued '#' is junk on the name
+                                     (libyaml: "did not find expected
+                                     alphabetic or numeric character") —
+                                     the engine owns it */
+                    }
                     F->anchor_seq++;
                     aid = F->anchor_seq;
                     if (!yt_anchor_table(F)) {

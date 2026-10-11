@@ -1139,6 +1139,17 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
                 e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
                 return;
             }
+            if (e->pos < e->len && e->p[e->pos] == '#') {
+                /* the name ends at a blank or flow indicator; a glued
+                 * '#' is junk on the name (libyaml: "did not find
+                 * expected alphabetic or numeric character") — the
+                 * nightly's run 38121449804, "&f#o": this scan kept
+                 * the anchor and DROPPED the bytes after '#',
+                 * mangling the node while the runner kept a different
+                 * shape */
+                e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                return;
+            }
         } else if (c == '!') {
             size_t start = e->pos;
             e->pos++;

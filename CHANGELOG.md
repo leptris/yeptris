@@ -37,6 +37,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: an anchor name ends at a blank or flow indicator** — a
+  glued '#' is junk on the name (libyaml: "did not find expected
+  alphabetic or numeric character"); the engine accepted it MANGLED —
+  anchor kept, the bytes after '#' dropped — while the runner kept a
+  different shape, so parseable input failed to marshal (nightly run
+  38121449804, `ow0: &f#o   `). One boundary check at all three anchor
+  captures; a separated '#' stays a comment and the suite charset
+  (W5VH's `&:@*!$"<foo>:`) parses unchanged.
 - **parse: a block-scalar header tail is blank-or-comment** — the
   runner's bare-literal arm took the block and silently dropped
   trailing header bytes (`ext: | c* `) while the engine rejected —
