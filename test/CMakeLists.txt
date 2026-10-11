@@ -166,6 +166,10 @@ add_test(
     COMMAND fuzz_feed ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
 )
 add_test(
+    NAME fuzz-feed-regression
+    COMMAND fuzz_feed ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/feed
+)
+add_test(
     NAME fuzz-transcode-corpus
     COMMAND fuzz_transcode ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
 )

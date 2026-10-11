@@ -1,0 +1,23 @@
+---
+nestedequs:
+- - - []
+- - - {}
+key1: []
+---
+nestedeques:
+- - - []
+- - - {}
+key1: []
+lit sequences:
+- - - []
+- - - {}
+key1: []
+literal: |2
+  vale
+foldelit sequences:
+- - - []
+- - - {}
+key1: []
+literal: |2
+  vale
+folded:

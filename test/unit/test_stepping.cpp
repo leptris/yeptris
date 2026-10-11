@@ -219,6 +219,36 @@ TEST(Stepping, LinesAreStreamAbsolute) {
     }
 }
 
+TEST(Stepping, TinyFlowCutMatchesWhole) {
+    /* the nightly's run 38173499680 ("[]\n---\nl sequences:\n- - ",
+     * minimized from a 284-byte artifact): the cut's <24-byte doc
+     * rode the general flow kernel while the whole parse fused the
+     * same span (e_flow_json's >=24-byte gate) — and the fused
+     * pass-2 emitted the opener one column RIGHT of the general
+     * kernel's. The fused marks now mirror the general kernel
+     * exactly; every split must agree. */
+    const std::string in = "[]\n---\nl sequences:\n- - ";
+    expect_identical(in, 24); /* one non-final chunk, then final: the crasher's split */
+    expect_identical(in, 6);
+    expect_identical(in, 3);
+    Stream w = whole(in);
+    ASSERT_EQ(w.recs.size(), 16u);
+    ASSERT_EQ(w.recs[2].type, YEPTRIS_EV_SEQUENCE_START);
+    EXPECT_EQ(w.recs[2].col, 1u); /* the indicator's column, not one past it */
+}
+
+TEST(Stepping, FusedOpenColIsTheIndicatorColumn) {
+    /* the fused kernel's opener marks, pinned directly: a >=24-byte
+     * flow rides the fused walk in the WHOLE parse; its SEQ_START col
+     * must equal the tiny-span general kernel's (the indicator's
+     * 1-based column), not one past it. */
+    Stream w = whole("[1,1,1,1,1,1,1,1,1,1,1,1]\n---\nk: v\n");
+    ASSERT_GE(w.recs.size(), 3u);
+    ASSERT_EQ(w.recs[2].type, YEPTRIS_EV_SEQUENCE_START);
+    EXPECT_EQ(w.recs[2].col, 1u);
+    expect_identical("[1,1,1,1,1,1,1,1,1,1,1,1]\n---\nk: v\n", 27);
+}
+
 TEST(Stepping, TruncatedMarkerAtChunkEdge) {
     /* every prefix length of a marker line is fed as a non-final
      * chunk; none of them may cut or error */
