@@ -1349,6 +1349,52 @@ TEST(Parse, SeqItemPropsEmitOnce) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, LeadingBlankFloorsTheLiteralBlock) {
+    /* the nightly's run 38163867815 ("foar: 2\n    \ntext: |\n    \n
+     *  b..."): a LEADING blank line with MORE indent than the first
+     * content line floors the block — libyaml's auto-detect takes the
+     * blanks' max, so the shallower content breaks the mapping
+     * (Psych: "did not find expected key"). The runner accepted what
+     * the engine rejected; it now bails to the engine. Deeper blanks
+     * AFTER content stay legal content (Psych-verified). */
+    const char* bad[] = {"a: |\n    \n  b\n\nc: 2\n",
+                         "foar: 2\n    \ntext: |\n    \n  b\n\n \ntext: |\n    \n  b\n\nt: |\n  "
+                         "a\n  \nbar: 2\n    \next: |\n  a\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        char* out = NULL;
+        size_t olen = 0;
+        int ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, YEPTRIS_MARSHAL_ALL_DOCS,
+                                 &out, &olen);
+        EXPECT_NE(ms, 0) << y;
+        free(out);
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    /* a deeper blank AFTER content is content; a dedent then ends the
+     * block and the sibling parses (Psych: {"a"=>"b\n  \n","c"=>2}) */
+    const char* y = "a: |\n  b\n    \nc: 2\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a
