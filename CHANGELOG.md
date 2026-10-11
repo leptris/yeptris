@@ -44,6 +44,12 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: the local shorthand's suffix must re-scan** — the catch-47
+  law, on the local arm: a `!suffix` tag whose suffix carries a byte
+  the parse side's charset terminates on (ours: ',') wrote it raw,
+  re-parsed truncated, and the round-trip died (nightly run
+  38165476712, `!<!<<b,,,,,-,,,,ar> :yam`). Non-scannable suffixes
+  fall to the verbatim `!<...>` wrap.
 - **parse: a leading blank floors the literal block** — a blank
   line with MORE indent than the block's first content line floors it
   (libyaml's auto-detect takes the blanks' max; the shallower content

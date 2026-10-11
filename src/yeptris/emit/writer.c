@@ -732,25 +732,41 @@ static void wr_tag_token(yep_writer* w, const yep_view* tdec) {
     }
     if (tdec->len > 0 && tdec->p[0] == '!') {
         yep_view rest = {tdec->p + 1, tdec->len - 1};
-        wr_byte(w, '!');
-        uint32_t run = 0;
-        for (uint32_t i = 0; i < rest.len; i++) {
-            if (rest.p[i] == '!') {
-                if (run > 0) {
-                    yep_view seg = {rest.p + i - run, run};
-                    wr_tag_uri(w, &seg);
-                    run = 0;
-                }
-                wr_put(w, "%21", 3);
-            } else {
-                run++;
+        /* the LOCAL shorthand re-scans too: the parse side's tag
+         * charset terminates on ',' (our lenience vs libyaml's URI
+         * set), so a suffix carrying one re-parses truncated — the
+         * same law the core-namespace arm gained (catch 47); the
+         * verbatim !<...> wrap carries those (the nightly's run
+         * 38165476712, "!<!<<b,,,,,-,,,,ar> :yam" emitted
+         * "!%3C%3Cb,,,,,-,,,,ar" and died at the first comma) */
+        int scan_ok = 1;
+        for (uint32_t si = 0; si < rest.len; si++) {
+            if (!yep_scan_tag_char((unsigned char)rest.p[si])) {
+                scan_ok = 0;
+                break;
             }
         }
-        if (run > 0) {
-            yep_view seg = {rest.p + rest.len - run, run};
-            wr_tag_uri(w, &seg);
+        if (scan_ok) {
+            wr_byte(w, '!');
+            uint32_t run = 0;
+            for (uint32_t i = 0; i < rest.len; i++) {
+                if (rest.p[i] == '!') {
+                    if (run > 0) {
+                        yep_view seg = {rest.p + i - run, run};
+                        wr_tag_uri(w, &seg);
+                        run = 0;
+                    }
+                    wr_put(w, "%21", 3);
+                } else {
+                    run++;
+                }
+            }
+            if (run > 0) {
+                yep_view seg = {rest.p + rest.len - run, run};
+                wr_tag_uri(w, &seg);
+            }
+            return;
         }
-        return;
     }
     wr_byte(w, '!');
     wr_byte(w, '<');
