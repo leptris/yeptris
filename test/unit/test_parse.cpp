@@ -1430,6 +1430,68 @@ TEST(Parse, LocalShorthandSuffixMustRescan) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, FlowTokenStartQuotes) {
+    /* the nightly's run 38171171360 ("? !'str a\"\\u1: -,,,,tr!st"):
+     * the flow PRE-SCAN read every quote byte as a quote-open, so a
+     * tag suffix or a plain carrying one ("[!'str b]", "[a'b]") died
+     * as an unterminated scalar before the real scan ran — and the
+     * emitted form never re-parsed. Quotes open only at token starts
+     * (libyaml accepts both shapes). Anchors/aliases have NO quoting:
+     * a quote in a FLOW name rejects (Psych agrees); block names ride
+     * quotes (the suite's W5VH). */
+    const char* ok[] = {"[a'b]",      "[a\"b]",       "[!'str b]",
+                        "[a, !'x b]", "{a: !'str b}", "[!<'%27x> b]"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+    const char* rejects[] = {"[&a'b x]", "[&a\"b c]", "[*'al x]"};
+    for (const char* y : rejects) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        yeptris_document_free(doc);
+    }
+}
+
+TEST(Parse, TaggedExplicitKeyRoundTrips) {
+    /* the crasher itself: a tagged explicit key whose plain value
+     * carries quote and backslash bytes — libyaml's one-line
+     * "? k : v" double-wrap shape, which must emit a form that
+     * re-parses to the same tree. */
+    const char* y = "? !'str a\"\\u1: -,,,,,,,,,tr!st\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, FlowPairValueColonRejects) {
     /* the nightly's run 38168927841 (":\n!\n? [s: 2:]\n: -"): the
      * engine accepted "[s: 2:]" and nested a second single-pair

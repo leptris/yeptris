@@ -1293,9 +1293,36 @@ static int e_skip_flow(yep_engine* e) {
     int n = 0;
     stk[n++] = (e->p[e->pos] == '[') ? 0 : 1;
     e->pos++;
+    /* quotes open only at a TOKEN start: a quote byte inside a tag
+     * suffix ("[!'str b]") or a plain ("[a'b]") is content — libyaml
+     * accepts both; the pre-scan must not read them as a quoted
+     * scalar (the nightly's run 38171171360) */
+    int tok_start = 1;
     while (e->pos < e->len && n > 0) {
         unsigned char c = (unsigned char)e->p[e->pos];
-        if (c == '"' || c == '\'') {
+        if (tok_start && (c == '!' || c == '&' || c == '*')) {
+            /* props/aliases ride the span: skip them the way the real
+             * scan does — a verbatim tag to its '>', names over the
+             * tag-char run (no quote/bracket bytes in the run) */
+            e->pos++;
+            if (c == '!' && e->pos < e->len && e->p[e->pos] == '<') {
+                while (e->pos < e->len && e->p[e->pos] != '>' && e->p[e->pos] != '\n' &&
+                       e->p[e->pos] != '\r' && e->p[e->pos] != ' ' && e->p[e->pos] != '\t') {
+                    e->pos++;
+                }
+                if (e->pos < e->len && e->p[e->pos] == '>') {
+                    e->pos++;
+                }
+                tok_start = 0;
+                continue;
+            }
+            while (e->pos < e->len && yep_scan_tag_char((unsigned char)e->p[e->pos])) {
+                e->pos++;
+            }
+            tok_start = 0;
+            continue;
+        }
+        if (tok_start && (c == '"' || c == '\'')) {
             int esc2 = 0;
             const yep_text_kernels* k = yep_text_active();
             ptrdiff_t r = k->quote_scan(e->p + e->pos + 1, e->len - e->pos - 1, (char)c, &esc2);
@@ -1303,6 +1330,7 @@ static int e_skip_flow(yep_engine* e) {
                 return e_fail(e, YEP_ERR_UNTERMINATED_QUOTE, e->pos);
             }
             e->pos += 1 + (size_t)r + 1;
+            tok_start = 0;
             continue;
         }
         if (c == '#' && e_comment_at(e)) {
@@ -1311,7 +1339,18 @@ static int e_skip_flow(yep_engine* e) {
         }
         if (c == '\n' || c == '\r') {
             e_line_done(e, e->pos);
+            tok_start = 1;
             continue;
+        }
+        if (c == ' ' || c == '\t' || c == '[' || c == '{' || c == ',') {
+            tok_start = 1;
+        } else if (c == ':' && e->pos + 1 < e->len &&
+                   (e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
+                    e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
+                    yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND))) {
+            tok_start = 1; /* a separating ':' only */
+        } else {
+            tok_start = 0;
         }
         if (c == '[') {
             if (n >= e->max_depth) {
@@ -1379,6 +1418,14 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     if (e->err.code != YEP_ERR_NONE) {
         return -1; /* e_props failed (empty anchor name, unresolved tag) */
     }
+    if (!yep_view_is_empty(anchor) &&
+        (memchr(anchor.p, '"', anchor.len) != NULL || memchr(anchor.p, '\'', anchor.len) != NULL)) {
+        /* anchors have no quoting: a quote byte in a FLOW anchor name
+         * has no safe spelling (Psych: "did not find expected
+         * alphabetic or numeric character"). Block names ride quotes
+         * (the suite's W5VH) — this law is flow-scoped. */
+        return (int)e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+    }
     ev->anchor = anchor;
     ev->tag = tag;
     if (!yep_view_is_empty(anchor)) {
@@ -1406,7 +1453,15 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
         return e_quoted_floor(e, ev, 0, 0) == 0 ? 1 : -1;
     }
     if (c == '*') {
-        return e_alias(e, ev) == 0 ? 1 : -1;
+        if (e_alias(e, ev) != 0) {
+            return -1;
+        }
+        if (ev->value.len > 0 && (memchr(ev->value.p, '"', ev->value.len) != NULL ||
+                                  memchr(ev->value.p, '\'', ev->value.len) != NULL)) {
+            /* the alias twin of the flow anchor-name law above */
+            return (int)e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
+        return 1;
     }
     if (c == '[' || c == '{') {
         return 2;
