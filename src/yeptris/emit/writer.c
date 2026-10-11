@@ -560,6 +560,42 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
  * flow context raw, and renaming preserves the binding semantics.
  * Deterministic by definition order -> byte-stable across roundtrips.
  * The emitter's nametab lives in yep_emitter (owner: yep_emit_run). */
+/* An anchor name carrying an indicator byte rides raw fine in block
+ * context (the suite's W5VH/2SXE/8XYN round-trip byte-stably), but in
+ * FLOW context the bytes flip scanners or terminate the entry — and
+ * anchors have no quoting syntax. Such a document has no safe flow
+ * spelling: mark it unserializable; serialize fails rather than
+ * emitting a form that can never re-parse (the nightly's "&\""/bang/
+ * question anchor vein). */
+static void wr_anchor_check(yep_writer* w, const yep_view* name) {
+    if (!w->in_flow) {
+        return;
+    }
+    for (uint32_t i = 0; i < name->len; i++) {
+        switch (name->p[i]) {
+        case '"':
+        case '\'':
+        case '!':
+        case '?':
+        case '&':
+        case '*':
+        case ',':
+        case '[':
+        case ']':
+        case '{':
+        case '}':
+        case '%':
+        case '@':
+        case '`':
+        case '#':
+            w->unserializable = 1;
+            return;
+        default:
+            break;
+        }
+    }
+}
+
 static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
     yep_writer* w = &em->w;
     if (n->anchor.len == 0) {
@@ -577,6 +613,7 @@ static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
         int nl = snprintf(name, sizeof(name), "a%u", idx);
         wr_put(w, name, (uint32_t)nl);
     } else {
+        wr_anchor_check(w, &adec);
         wr_put(w, (const char*)adec.p, adec.len);
     }
     wr_byte(w, ' ');
@@ -685,6 +722,7 @@ static void emit_props_tail(yep_writer* w, const yep_dnode* n) {
     if (n->anchor.len > 0) {
         wr_byte(w, ' ');
         yep_view adec2 = wv(w, n->anchor);
+        wr_anchor_check(w, &adec2);
         wr_byte(w, '&');
         wr_put(w, (const char*)adec2.p, adec2.len);
     }
