@@ -1395,6 +1395,41 @@ TEST(Parse, LeadingBlankFloorsTheLiteralBlock) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, LocalShorthandSuffixMustRescan) {
+    /* the nightly's run 38165476712 ("!<!<<b,,,,,-,,,,ar> :yam"): the
+     * LOCAL shorthand emission wrote a comma-carrying suffix raw —
+     * the parse side's tag charset terminates on ',' (our lenience),
+     * so the tag re-parsed truncated and the round-trip died. The
+     * catch-47 re-scan law now covers the local arm too: the verbatim
+     * !<...> wrap carries non-scannable suffixes. */
+    const char* y = "!<!<<b,,,,,-,,,,ar> :yam";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    /* the verbatim wrap appears, not the broken local shorthand */
+    int saw_verbatim = 0;
+    for (size_t i = 0; i + 2 <= l1; i++) {
+        if (memcmp(s1 + i, "!<", 2) == 0) {
+            saw_verbatim = 1;
+            break;
+        }
+    }
+    EXPECT_TRUE(saw_verbatim) << s1;
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a
