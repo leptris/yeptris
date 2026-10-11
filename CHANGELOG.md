@@ -33,11 +33,12 @@ crashers in the regression corpus).
   map and read the second line as a second root (nightly run
   38105178194, ` i1ak: ?o\nfr: ?ff` — the runner and Psych parse the
   shape, so parseable input failed to marshal).
-- **parse: anchor names reject quote bytes** — anchors emit raw, so a
-  '"' or '\'' in the name could never re-parse (nightly run
-  38103630412, `[&"…]`); libyaml's charset is stricter still
-  (alphanumerics, '_' and '-'), but the suite keeps colons in names
-  (2SXE) and unicode (8XYN) parseable.
+- **parse: anchor names reject quote and bang bytes** — quotes flip
+  scanners and a bang re-reads as tag syntax on the raw re-emit
+  (nightly runs 38103630412 and 38108543435, `&"…` and bang-name
+  anchors); libyaml's charset is stricter still (alphanumerics, '_'
+  and '-'), while the suite's colons (2SXE) and unicode (8XYN) keep
+  parsing.
 - **parse: `%TAG` allows only a comment after the prefix** — the
   directive's prefix scan ran to end-of-line, so trailing content rode
   the prefix and the resolved tag could never re-parse (nightly run
