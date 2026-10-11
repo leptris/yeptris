@@ -1687,6 +1687,29 @@ static int yt_f_run(yt_fused* F) {
                             }
                             ne++;
                         }
+                        if (ne < line_end && p[ne] == '#') {
+                            return 1; /* a glued '#' is junk on the
+                                       * name (the engine errors:
+                                       * "did not find expected
+                                       * alphabetic or numeric
+                                       * character") */
+                        }
+                        {
+                            size_t ae = ne;
+                            while (ae < line_end && (p[ae] == ' ' || p[ae] == '\t')) {
+                                ae++;
+                            }
+                            if (ae < line_end && p[ae] != '#') {
+                                return 1; /* an alias node is COMPLETE —
+                                           * on the line only a blank
+                                           * then a comment may follow
+                                           * ("<<: *x &y": the engine
+                                           * errors, libyaml "did not
+                                           * find expected key"; this
+                                           * branch silently dropped the
+                                           * bytes) */
+                            }
+                        }
                         uint32_t taid = 0;
                         if (!yt_anchor_get(F, (uint32_t)(vt + 1), (uint32_t)(ne - vt - 1), &taid)) {
                             return 1; /* undefined alias: the engine errors */

@@ -1225,6 +1225,21 @@ static int e_alias(yep_engine* e, yep_event* ev) {
         e->pos = star;
         return e_fail(e, YEP_ERR_UNDEFINED_ALIAS, star);
     }
+    if (e->pos < e->len && e->p[e->pos] == '#') {
+        /* the name ends at a blank or flow indicator; a glued '#' is
+         * junk (the anchor-name follower law, catch 43's family) */
+        return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+    }
+    e_skip_inline_space(e);
+    if (e->pos < e->len && (e->p[e->pos] == '&' || e->p[e->pos] == '!' || e->p[e->pos] == '*')) {
+        /* an alias node is COMPLETE — it carries no props and nothing
+         * can follow it on the line but a separator: "<<: *base &bar"
+         * (the nightly's run 38124486657 family) errored in libyaml
+         * ("did not find expected key") while the DOM route absorbed
+         * the stray props and the value drain rejected — the routes
+         * split */
+        return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+    }
     ev->type = YEP_EV_ALIAS;
     ev->value = name;
     ev->borrowed = 1; /* the name is an input view (TODO.restructure/73):
@@ -1232,7 +1247,6 @@ static int e_alias(yep_engine* e, yep_event* ev) {
                          arena copy per alias */
     ev->anchor_id = target;
     e_pos_mark(e, e->pos, &ev->end_line, &ev->end_col);
-    e_skip_inline_space(e);
     return 0;
 }
 
