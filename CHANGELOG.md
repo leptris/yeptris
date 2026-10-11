@@ -44,6 +44,11 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: root props emit once** — the root-collection props rode
+  their own leading line AND the empty collection re-emitted them
+  inline (`! &a\n! &a {}`), so every round shed a line (nightly run
+  38167237445, `! &a\n  ? &e...`). The catch-56 law, root side: an
+  empty propertied collection takes the inline empty-form.
 - **emit: the local shorthand's suffix must re-scan** — the catch-47
   law, on the local arm: a `!suffix` tag whose suffix carries a byte
   the parse side's charset terminates on (ours: ',') wrote it raw,

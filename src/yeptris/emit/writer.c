@@ -1187,7 +1187,12 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
                    4);
         }
         if (root != NULL && (root->kind == 1 || root->kind == 2) && !root->flow && !w->canonical &&
-            (root->tag.len > 0 || root->anchor.len > 0)) {
+            root->count > 0 && (root->tag.len > 0 || root->anchor.len > 0)) {
+            /* count > 0: an EMPTY propertied collection takes
+             * emit_node's inline empty-form ("! &a {}") — the leading
+             * props line DUPLICATED it ("! &a\n! &a {}") and every
+             * round shed a line (the nightly's run 38167237445; the
+             * catch-56 law, root side) */
             /* root block-collection props ride their own leading line;
              * scalars and flow collections carry them inline */
             if (root->tag.len > 0) {
