@@ -758,6 +758,26 @@ static void emit_props_tail(yep_writer* w, const yep_dnode* n) {
 
 static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key);
 
+/* The simple-key law counts the WRITTEN token. A quoted render
+ * expands escapes (a '"' doubles, controls ride \xNN, non-ASCII may);
+ * raw-length predicates let escape-heavy scalars through (the
+ * nightly's run 38145696566: a ~1000-raw key rendering ~3000
+ * written). Conservative factor-4 estimate for every expandable
+ * byte — overestimating only takes the (always-legal) explicit form. */
+static int key_written_over_limit(yep_writer* w, const yep_dnode* kn) {
+    uint64_t est = 2; /* the quotes */
+    yep_view kv_ = wv(w, kn->value);
+    const unsigned char* q = (const unsigned char*)kv_.p;
+    uint32_t n = kv_.len;
+    if (q == NULL) {
+        return 0;
+    }
+    for (uint32_t i = 0; i < n; i++) {
+        est += (q[i] < 0x20 || q[i] >= 0x7F || q[i] == '"' || q[i] == '\\') ? 4u : 1u;
+    }
+    return est > 1024u;
+}
+
 static void emit_flow(yep_emitter* em, uint32_t id) {
     yep_writer* w = &em->w;
     int saved_flow = w->in_flow;
@@ -798,7 +818,7 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
         }
         if (map) {
             int explicit_key = cn->anchor.len > 0 || cn->tag.len > 0 || cn->kind != 0;
-            if (!explicit_key && (uint32_t)cn->value.len + 2u > 1024u) {
+            if (!explicit_key && key_written_over_limit(w, cn)) {
                 { /* the quoted render's span vs the simple-key law */
                     /* the simple-key law: a >1024 key cannot ride as a
                      * flow simple key (the re-parse rejects it) — the
@@ -867,7 +887,7 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             vn0->count == 0) {
             yep_view kv = wv(w, kn0->value);
             yep_view vv = wv(w, vn0->value);
-            if (kv.len > 0 && kv.len + 2u <= 1024u &&
+            if (kv.len > 0 && !key_written_over_limit(w, kn0) &&
                 yep_style_plain_key_safe((const char*)kv.p, kv.len) &&
                 (vv.len == 0 || yep_style_plain_safe((const char*)vv.p, vv.len))) {
                 /* fused member write: plain-safe spans carry no breaks,
@@ -923,7 +943,7 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             wr_indent(w, content_col);
         }
         int complex_key = (kn->kind != 0);
-        if (!complex_key && (uint32_t)kn->value.len + 2u > 1024u) {
+        if (!complex_key && key_written_over_limit(w, kn)) {
             /* the simple-key law, block side: a >1024 key cannot ride
              * as a block simple key either — the explicit "? key" form
              * carries it (the flow member writer gained the same law;
@@ -939,7 +959,17 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
                 wr_byte(w, '\n');
                 wr_indent(w, content_col + 2);
             }
-            emit_node(em, child, content_col, 1);
+            if (kn->kind == 0 && key_written_over_limit(w, kn)) {
+                /* the 1024-promoted SCALAR key must ride QUOTED in the
+                 * explicit form: plain, its interior ': ' sequences
+                 * re-parse through the inline simple-key promotion and
+                 * die on the very law that forced the promotion (the
+                 * nightly's run 38145696566, the "? licit k:[...]"
+                 * emission) */
+                emit_dq(w, (const char*)wv(w, kn->value).p, (uint32_t)wv(w, kn->value).len);
+            } else {
+                emit_node(em, child, content_col, 1);
+            }
             wr_byte(w, '\n');
             wr_indent(w, content_col);
             wr_put(w, ": ", 2);

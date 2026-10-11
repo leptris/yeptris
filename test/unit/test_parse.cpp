@@ -1174,6 +1174,42 @@ TEST(Parse, LongFlowKeyRidesTheExplicitForm) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, EscapeLongKeyRidesTheExplicitForm) {
+    /* the nightly's run 38145696566: the simple-key law counts the
+     * WRITTEN token — a ~1000-raw key whose double-quoted render
+     * expands past 1024 rode as a simple key and the emission could
+     * never re-parse. The key-span predicates now estimate the
+     * rendered length (conservative factor-4 per expandable byte);
+     * the promoted scalar key rides QUOTED in the explicit form so
+     * its interior ": " sequences cannot re-parse as separators. */
+    YeptrisDocument doc = yeptris_document_new();
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_node_new_mapping(doc);
+    ASSERT_EQ(yeptris_document_set_root(doc, root), YEPTRIS_OK);
+    std::string key; /* ~350 quotes: raw 350, rendered ~1400 */
+    for (int i = 0; i < 350; i++) {
+        key += "\"";
+    }
+    ASSERT_EQ(yeptris_node_map_add(root, key.data(), key.size(),
+                                   yeptris_node_new_scalar(doc, "1", 1, YEPTRIS_STYLE_PLAIN)),
+              YEPTRIS_OK);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_GE(l1, (size_t)2);
+    EXPECT_EQ(s1[0], '?'); /* the explicit form at the head */
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a
