@@ -632,6 +632,53 @@ TEST(Parse, AnchorNamesRideBlockAndRefuseFlow) {
     }
 }
 
+TEST(Parse, IndentedSeqOwnsItsColumn) {
+    /* the nightly's run 38117287882 ("amer:\n  - j\n  n:\n  - Bksl,} --
+     * }"): a block seq INDENTED past its parent map's key column owns
+     * that column — a non-dash line there can neither join nor close
+     * it (libyaml: "did not find expected '-' indicator"). The runner
+     * popped the seq and SILENTLY DROPPED the remaining lines while
+     * the engine rejected. Only the INDENTLESS seq — parent map keys
+     * at the same column — closes on a key line there. */
+    const char* bad[] = {"amer:\n  - j\n  n:\n  - Bksl,} -- }", "k:\n  - j\n  n: v\n",
+                         "k:\n  - j\n  n:\n  - x\n", "k:\n  - j\n  n:\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        char* out = NULL;
+        size_t olen = 0;
+        int ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, YEPTRIS_MARSHAL_ALL_DOCS,
+                                 &out, &olen);
+        EXPECT_NE(ms, 0) << y;
+        free(out);
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"k:\n  - j\nx: v\n", /* dedent to parent col */
+                        "k:\n- j\nn: v\n",   /* indentless seq */
+                        "k:\n  - j\n  - n\n"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a

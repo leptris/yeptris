@@ -27,6 +27,15 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: an indented seq owns its column** — a block sequence
+  indented past its parent map's key column rejects a non-dash line at
+  that column (libyaml: "did not find expected '-' indicator"); the
+  runner had popped the seq and silently DROPPED the remaining lines
+  while the engine rejected — parseable input truncated to a smaller
+  tree (nightly run 38117287882, `amer:\n  - j\n  n:\n  - Bksl,} --
+  }`). Only the indentless seq — parent keys at the same column —
+  closes on a key line there; dedents to the parent column and dash
+  continuations parse unchanged.
 - **parse: a dedent below the root's own column is a second root**
   — a line left of a root map opened past column 0 ends the root
   node; content there is a second root without `---`, which libyaml
