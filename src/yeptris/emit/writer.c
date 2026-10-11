@@ -431,6 +431,11 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
             case '}':
             case '"':  /* flips the flow scanner into quoted mode */
             case '\\': /* opens an escape sequence there */
+            case '\'': /* opens flow single-quote mode */
+            case '!':  /* a tag indicator everywhere — "a!%!!a" rode
+                        * plain inside a flow-rendered explicit key and
+                        * the re-parse died in tag scanning (the
+                        * nightly's run 38139449828) */
                 return YEP_SC_DQ;
             default:
                 break;
