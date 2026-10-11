@@ -629,12 +629,28 @@ static void emit_tag(yep_writer* w, const yep_dnode* n) {
          * every round (the nightly's "!!%21bz" byte-instability) */
         yep_view rest = {tdec.p + 1, tdec.len - 1};
         wr_byte(w, '!');
-        if (rest.len > 0 && rest.p[0] == '!') {
-            wr_put(w, "%21", 3);
-            rest.p++;
-            rest.len--;
+        /* every '!' in the suffix must ride %21: re-parsed raw, a
+         * suffix-leading bang reads as the secondary handle and an
+         * interior one as a NAMED-handle boundary ("!(4!" ->
+         * undefined handle) — the parse side only tolerates the byte
+         * when escape-hidden (the nightly's "!(4%21bz" trap) */
+        uint32_t run = 0;
+        for (uint32_t i = 0; i < rest.len; i++) {
+            if (rest.p[i] == '!') {
+                if (run > 0) {
+                    yep_view seg = {rest.p + i - run, run};
+                    wr_tag_uri(w, &seg);
+                    run = 0;
+                }
+                wr_put(w, "%21", 3);
+            } else {
+                run++;
+            }
         }
-        wr_tag_uri(w, &rest);
+        if (run > 0) {
+            yep_view seg = {rest.p + rest.len - run, run};
+            wr_tag_uri(w, &seg);
+        }
         wr_byte(w, ' ');
         return;
     }
