@@ -44,6 +44,18 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: the flow pre-scan reads tokens, not bytes** — a quote
+  opened a quoted scalar wherever it appeared, so a tag suffix or a
+  plain carrying one (`[!'str b]`, `[a'b]`) died as "unterminated
+  quoted scalar" before the real scan ran, and the emitted form of
+  such documents never re-parsed. Quotes now open only at token
+  starts (libyaml accepts both shapes; nightly run 38171171360,
+  catch 61).
+- **parse: anchors and aliases have no quoting in flow** — a quote
+  byte in a flow anchor/alias name rejects (Psych: "did not find
+  expected alphabetic or numeric character"). Block names keep
+  riding quotes — the suite's W5VH anchor `&:@*!$"<foo>:` is
+  untouched.
 - **parse: a completed flow pair owns its value slot** — `[s: 2:]`,
   `[a: b: c]`, `[s: : v]` opened a second single-pair wrapper inside
   the first pair's value, unbalancing the event stream (the DOM then
