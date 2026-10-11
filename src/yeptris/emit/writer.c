@@ -1007,6 +1007,28 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             wr_indent(w, content_col);
         }
         int complex_key = (kn->kind != 0);
+        /* a literal/folded key cannot ride the simple form: the value
+         * separator would glue onto the block's CONTENT line (colons
+         * are data there) and the re-parse reads a different tree —
+         * the explicit "? key" form carries it. An EMPTY block-styled
+         * key rides simple: it has no content line for the separator
+         * to glue onto, and sc_route demotes it to the quoted form
+         * anyway (the nightly's run 38177622733, ":\n! |-\n r\n:") */
+        if (!complex_key && kn->style >= 4 && kn->style <= 5 && kn->value.len > 0 &&
+            kn->tag.len > 0) {
+            /* a TAGGED literal/folded key keeps the block form in
+             * sc_route (even single-line — the #290 law), so the value
+             * separator would glue onto the block's CONTENT line
+             * (colons are data there) and the re-parse reads a
+             * different tree — the explicit "? key" form carries it,
+             * and it keeps the block form there too, so both renders
+             * agree. Untagged/empty block styles demote to quoted or
+             * plain in sc_route and ride simple stably — promoting
+             * those would UNSTABILIZE them (the explicit path's
+             * rendering must match round two's parsed style; the
+             * nightly's run 38177622733, ":\n! |-\n r\n:") */
+            complex_key = 1;
+        }
         if (!complex_key && key_written_over_limit(w, kn)) {
             /* the simple-key law, block side: a >1024 key cannot ride
              * as a block simple key either — the explicit "? key" form
@@ -1018,12 +1040,20 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             w->force_flow = 1; /* collections as flow keys: compact and
                                   free of the block '?' layout edges */
             wr_put(w, "? ", 2);
-            emit_props_tail(w, kn); /* the key's props ride "? " */
-            if (kn->anchor.len > 0 || kn->tag.len > 0) {
-                wr_byte(w, '\n');
-                wr_indent(w, content_col + 2);
+            /* the props emit ONCE: the DQ-promoted path writes its own
+             * (emit_dq is bare), everything else lets emit_node/
+             * emit_flow carry tag+anchor inline — the pre-emit made
+             * every non-DQ explicit key re-emit its props ("? !\n  ! |-
+             " — the catch-56 law, explicit-key side) */
+            int dq_promoted = (kn->kind == 0 && key_written_over_limit(w, kn));
+            if (dq_promoted) {
+                emit_props_tail(w, kn);
+                if (kn->anchor.len > 0 || kn->tag.len > 0) {
+                    wr_byte(w, '\n');
+                    wr_indent(w, content_col + 2);
+                }
             }
-            if (kn->kind == 0 && key_written_over_limit(w, kn)) {
+            if (dq_promoted) {
                 /* the 1024-promoted SCALAR key must ride QUOTED in the
                  * explicit form: plain, its interior ': ' sequences
                  * re-parse through the inline simple-key promotion and
