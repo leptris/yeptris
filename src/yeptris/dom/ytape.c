@@ -1512,8 +1512,14 @@ static int yt_f_run(yt_fused* F) {
                      * (aid rides it: an anchored container resolves through
                      * the S2900 + anchored-start form, not on_block_open) */
                     if (st[depth].kind == 0 && st[depth].content_col != 0 &&
-                        col + 1 != st[depth].content_col && col != st[depth].indent) {
-                        return 1; /* off-column: a continuation line — the multiline arm */
+                        col + 1 != st[depth].content_col &&
+                        (col != st[depth].indent || (depth == 0 && st[0].content_col > 1))) {
+                        return 1; /* off-column: a continuation line — the multiline arm;
+                                   * at the ROOT the indent exemption dies once pairs
+                                   * live above column 0: a col-0 line under a col-1
+                                   * root is a DEDENT — a second root without "---",
+                                   * the engine's error (libyaml: "did not find
+                                   * expected <document start>") */
                     }
                     if (st[depth].kind == 0 && st[depth].content_col != 0 &&
                         col + 1 != st[depth].content_col && st[depth].phantom) {
@@ -1551,8 +1557,11 @@ static int yt_f_run(yt_fused* F) {
                     st[depth].anchored_first = (uint8_t)(aid != 0);
                 } else {
                     if (st[depth].kind == 0 && st[depth].content_col != 0 &&
-                        col + 1 != st[depth].content_col && col != st[depth].indent) {
-                        return 1; /* off-column: a continuation line — the multiline arm */
+                        col + 1 != st[depth].content_col &&
+                        (col != st[depth].indent || (depth == 0 && st[0].content_col > 1))) {
+                        return 1; /* off-column: a continuation line — the multiline arm;
+                                   * the root's indent exemption dies once pairs
+                                   * live above column 0 (dedent = second root) */
                     }
                     if (depth > 0 && st[depth].pending && st[depth].aid != 0) {
                         if (col <= st[depth].indent) {

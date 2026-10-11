@@ -632,15 +632,44 @@ TEST(Parse, AnchorNamesRideBlockAndRefuseFlow) {
     }
 }
 
-TEST(Parse, RootMapTakesColumnZeroSiblings) {
-    /* the nightly fuzz_roundtrip marshal trap (2026-10-11, run
-     * 38105178194, " i1ak: ?o\nfr: ?ff"): a root map opened past
-     * column 0 takes column-0 pair lines as SIBLINGS — the libyaml
-     * root block context's floor is 0. The runner and Psych parse the
-     * shape; the engine alone popped the map and rejected the second
-     * line as a second root, so parseable input failed to marshal. */
-    const char* ins[] = {" i1ak: ?o\nfr: ?ff\n", " a: x\nb: y\n", "  k: v\nj: w\n"};
+TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
+    /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
+     * k2: v2"): a line that DEDENTS below a root map's own column is a
+     * SECOND ROOT without "---" — an error in libyaml ("did not find
+     * expected <document start>"), Psych's load_stream, and the 1.2
+     * grammar; Psych.load only "accepts" because it stops reading at
+     * the first document end. The earlier catch-31 tolerance (flat
+     * siblings) diverged from every reference and made the engine and
+     * runner disagree (the runner flat, the engine nested). Both
+     * routes now reject; the suite has no case pinning the shape. */
+    const char* ins[] = {" k2: v2\nk1: v\n k2: v2", /* the catch */
+                         " k2: v2\nk1: v\n k2: v2\n",
+                         " i1ak: ?o\nfr: ?ff\n", /* catch 31 */
+                         " a: x\nb: y\n",
+                         "  k: v\nj: w\n",
+                         " a:\nb: 2\n",  /* pending key */
+                         " a: 1\n- b\n", /* dash line */
+                         " a: 1\nb",     /* bare scalar */
+                         " - a\n- b\n"}; /* seq variant */
     for (const char* y : ins) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        char* out = NULL;
+        size_t olen = 0;
+        int ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, YEPTRIS_MARSHAL_ALL_DOCS,
+                                 &out, &olen);
+        EXPECT_NE(ms, 0) << y; /* parseable-implies-marshalable, both ways */
+        free(out);
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    /* the LEGAL neighbors stay accepted: same-column siblings (with a
+     * comment between), markers after root content, nesting */
+    const char* ok[] = {" a: 1\n b: 2\n", " a: 1\n# c\n b: 2\n", " a: 1\n--- b\n",
+                        " a: 1\n...\n",   " - a\n - b\n",        "a:\n  b: 1\nc: 2\n"};
+    for (const char* y : ok) {
         YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
         ASSERT_NE(doc, nullptr) << y;
