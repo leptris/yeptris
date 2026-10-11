@@ -591,7 +591,7 @@ TEST(Parse, AnchorNamesRejectQuoteBytes) {
             yeptris_document_free(doc);
         }
     }
-    const char* good[] = {"&a: key: &a value\nfoo:\n  *a:\n", "&\u3042 v\n", "&x_1 v\n"};
+    const char* good[] = {"&a: key: &a value\nfoo:\n  *a:\n", "&\xE3\x81\x82 v\n", "&x_1 v\n"};
     for (const char* y : good) {
         YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
