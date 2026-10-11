@@ -1388,6 +1388,22 @@ static int yt_f_run(yt_fused* F) {
                 while (depth > 0 && (st[depth].kind == 1 ? (col < st[depth].indent ||
                                                             (col <= st[depth].indent && !dash))
                                                          : col < st[depth].indent)) {
+                    if (st[depth].kind == 1 && col == st[depth].indent && !dash &&
+                        !(depth > 1 && st[depth - 1].kind == 0 &&
+                          st[depth - 1].indent == st[depth].indent)) {
+                        return 1; /* a non-dash line at an INDENTED seq's
+                                   * column: the seq owns its column, the
+                                   * pair cannot join it and cannot close
+                                   * it (libyaml: "did not find expected
+                                   * '-' indicator"; the nightly's run
+                                   * 38117287882, "amer:\n  - j\n  n:\n
+                                   *  - Bksl,} -- }" — the runner popped
+                                   * the seq and SILENTLY DROPPED the
+                                   * lines while the engine rejected).
+                                   * Only the INDENTLESS seq — parent map
+                                   * keys at the same column — closes on
+                                   * a key line there ("k:\n- j\nn: v") */
+                    }
                     if (st[depth].pending) {
                         return 1; /* empty "key:" mid-doc: the engine owns it */
                     }
