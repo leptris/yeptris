@@ -1370,6 +1370,16 @@ static int yt_f_run(yt_fused* F) {
                 } else {
                     uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
                     yt_f_open(F, &st[depth], of);
+                    if (depth == 1 && st[0].content_col == 0) {
+                        /* the root bookkeeping the anchored branch carries:
+                         * without it a dedent past the root map's column
+                         * pops to a content_col-0 st[0] and the pair arm
+                         * read "root pairs at column 0" — the nightly's
+                         * run 38128905644, " american:\n  - Boston...\n
+                         * national:" split into PHANTOM DOCUMENTS
+                         * ("---\nb\n---\nv") while the engine rejected */
+                        st[0].content_col = st[depth].indent + 1;
+                    }
                     if (st[depth].content_col == 0) {
                         /* the opened map's pairs live at the KEY's
                          * column (the anchored branch tracks this;
