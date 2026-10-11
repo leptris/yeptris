@@ -547,6 +547,34 @@ TEST(Parse, FlatRunValueHonorsPlainFirst) {
     }
 }
 
+TEST(Parse, TagDirectiveAllowsOnlyCommentAfterPrefix) {
+    /* the nightly fuzz_roundtrip re-parse trap (2026-10-11, run
+     * 38102517540, "%TAG !m! !mymy 3\t..."): the %TAG prefix scan ran
+     * to end-of-line, so trailing content rode the prefix and the
+     * resolved tag could never re-parse. libyaml allows only blanks
+     * and an optional comment after the prefix ("did not find
+     * expected comment or line break"). */
+    const char* bad[] = {"%TAG !m! !mymy 3\n", "%TAG !m! !mymy 3\t\t,-tye\n!m!lie@n\n",
+                         "%TAG !m! !mymy !x\n--- v\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* good[] = {"%TAG !m! !mymy\n!m!lie@n\n", "%TAG !m! !mymy # c\n!m!x\n"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line

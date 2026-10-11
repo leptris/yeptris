@@ -3701,16 +3701,31 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                     h0++;
                 }
                 size_t h1 = h0;
-                while (h1 < li.end && e->p[h1] != ' ') {
+                while (h1 < li.end && e->p[h1] != ' ' && e->p[h1] != '\t') {
                     h1++;
                 }
                 size_t p0 = h1;
-                while (p0 < li.end && e->p[p0] == ' ') {
+                while (p0 < li.end && (e->p[p0] == ' ' || e->p[p0] == '\t')) {
                     p0++;
                 }
-                size_t p1 = li.end;
-                while (p1 > p0 && (e->p[p1 - 1] == ' ' || e->p[p1 - 1] == '\r')) {
-                    p1--;
+                size_t p1 = p0;
+                while (p1 < li.end && e->p[p1] != ' ' && e->p[p1] != '\t' && e->p[p1] != '#') {
+                    p1++;
+                }
+                {
+                    /* libyaml: only blanks and an optional comment may
+                     * follow the prefix ("did not find expected comment
+                     * or line break") — trailing content riding the
+                     * prefix made parseable tags that never re-parsed
+                     * (the nightly's "%TAG !m! !mymy 3 ..." trap) */
+                    size_t r = p1;
+                    while (r < li.end && (e->p[r] == ' ' || e->p[r] == '\t')) {
+                        r++;
+                    }
+                    if (r < li.end && e->p[r] != '#') {
+                        e_fail(e, YEP_ERR_BAD_DIRECTIVE, r);
+                        return -1;
+                    }
                 }
                 if (h1 > h0 && p1 > p0 && e->p[h0] == '!') {
                     e->tagmap[e->tagmap_n].handle.p = e->p + h0;
