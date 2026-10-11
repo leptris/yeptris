@@ -575,6 +575,33 @@ TEST(Parse, TagDirectiveAllowsOnlyCommentAfterPrefix) {
     }
 }
 
+TEST(Parse, AnchorNamesRejectQuoteBytes) {
+    /* the nightly fuzz_roundtrip re-parse trap (2026-10-11, run
+     * 38103630412, "[&\"\n?:..."): anchor names emit raw, and a
+     * quote byte in the name can never re-parse. Names keep the
+     * suite charset — colons ride them (2SXE), unicode parses (8XYN)
+     * — but '"' and '\'' reject (libyaml's own charset is stricter
+     * still: alphanumerics, '_' and '-'). */
+    const char* bad[] = {"[\"&\"\n?:\n? \n:\nu20\"]\n", "&\" v\n", "&a\"b v\n", "&x'y v\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* good[] = {"&a: key: &a value\nfoo:\n  *a:\n", "&\u3042 v\n", "&x_1 v\n"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line
