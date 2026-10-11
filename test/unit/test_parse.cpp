@@ -437,6 +437,34 @@ TEST(Parse, TagUriEscapesNeedTwoHexDigits) {
     }
 }
 
+TEST(Parse, LoneCrAfterLiteralIsABreakNotCrlf) {
+    /* the nightly fuzz_roundtrip marshal trap (2026-10-11, run
+     * 38096448601, input "2: |\n  h!\ro"): the runner's literal-block
+     * line advance treated ANY '\r' as CRLF and skipped 2 bytes, so a
+     * lone CR swallowed the next content byte as a phantom line break
+     * -- the trailing key-less line vanished instead of rejecting
+     * ("could not find expected ':'", the Psych verdict). */
+    const char* bad[] = {"2: |\n  h!\ro", "a: |\n  x\rb", "k:\n  v\rw"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    /* real CRLF and plain LF literals keep working */
+    const char* good[] = {"2: |\n  h!\r\n", "2: |\n  h!\n"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, EmptyKeyLineIsNotAValue) {
     /* the nightly fuzz_roundtrip byte-instability trap (2026-10-09,
      * run 38001436710, input "- &a\n :"): a ':'-led (empty-key) line
