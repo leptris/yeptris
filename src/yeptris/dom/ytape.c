@@ -1743,6 +1743,20 @@ static int yt_f_run(yt_fused* F) {
                     }
                     if (vc == '|' && aid == 0 && !st[depth].anchored_first &&
                         (vt + 1 >= line_end || p[vt + 1] == ' ' || p[vt + 1] == '\t')) {
+                        /* the header tail: only blanks and an optional
+                         * comment may follow the indicator (libyaml:
+                         * "did not find expected comment or line break";
+                         * the nightly's run 38119775008, "ext: | c* " —
+                         * this arm took the literal and SILENTLY DROPPED
+                         * the trailing header bytes while the engine
+                         * rejected) */
+                        size_t ht = vt + 1;
+                        while (ht < line_end && (p[ht] == ' ' || p[ht] == '\t')) {
+                            ht++;
+                        }
+                        if (ht < line_end && p[ht] != '#') {
+                            return 1;
+                        }
                         /* bare literal block, clip chomp: measure the block,
                          * copy it into the finish pool, emit the pool form */
                         size_t scan = next;
