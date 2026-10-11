@@ -871,6 +871,50 @@ TEST(Parse, AnchorNameFollowerLaw) {
     }
 }
 
+TEST(Parse, PendingKeyOverSeqFrameRejects) {
+    /* the nightly's run 38127584324 ("~foo:\n- 42\n bar:\n  - 45
+     * e."): a pending "key:" line over a SEQ frame — the key cannot
+     * join the sequence and the pending pushed UNDER the seq
+     * materialized as an ITEM while the engine rejected (libyaml:
+     * "mapping values are not allowed in this context"). The valued
+     * arm already carried the kind check; the pending arm now does. */
+    const char* bad[] = {"~foo:\n- 42\n bar:\n  - 45 e.", "k:\n- 42\n bar:\n  - 45 e.\n",
+                         "k:\n- 42\n bar: v\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        char* out = NULL;
+        size_t olen = 0;
+        int ms = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, YEPTRIS_MARSHAL_ALL_DOCS,
+                                 &out, &olen);
+        EXPECT_NE(ms, 0) << y;
+        free(out);
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* ok[] = {"k:\n- 42\nbar: v\n", "k:\n- 42\nnext:\n  - 45 e.\n"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a

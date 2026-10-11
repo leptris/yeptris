@@ -1555,6 +1555,16 @@ static int yt_f_run(yt_fused* F) {
                                    * the engine's error (libyaml: "did not find
                                    * expected <document start>") */
                     }
+                    if (st[depth].kind != 0) {
+                        return 1; /* a pending "key:" over a SEQ frame: the
+                                   * key cannot join the sequence (libyaml
+                                   * "mapping values are not allowed in
+                                   * this context"; the nightly's run
+                                   * 38127584324, "k:\n- 42\n bar:\n
+                                   *  - 45 e." — the pending pushed UNDER
+                                   * the seq and materialized as an ITEM
+                                   * while the engine rejected) */
+                    }
                     if (st[depth].kind == 0 && st[depth].content_col != 0 &&
                         col + 1 != st[depth].content_col && st[depth].phantom) {
                         yt_f_close(F, st[depth].kind);
