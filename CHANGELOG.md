@@ -44,6 +44,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: flow-rendered plains quote the tag and quote indicators** —
+  the explicit-key entry's inner map renders FLOW, and a plain
+  carrying '!' (a tag indicator everywhere) or a lone '\'' (opens
+  flow single-quote mode) rode plain inside "{}" — the emitted form
+  died in tag/quote scanning and never re-parsed (nightly run
+  38139449828, `- &a\n ? : a!%!!a\n ? : a'\n-\t `). The flow gate
+  gains both bytes; the suite's M2N8 ("- ? : x" must parse) keeps its
+  parse-side form.
 - **parse: the literal block's pool buffer is block-sized** — the
   clip lives in the span (`flen = clen - tb`) but the copy paths write
   every measured line, so allocating the clipped length wrote `tb`

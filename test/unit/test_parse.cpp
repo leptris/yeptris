@@ -1100,6 +1100,49 @@ TEST(Parse, LiteralTrailingBlankClipBounds) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, FlowRenderedPlainsQuoteIndicators) {
+    /* the nightly's run 38139449828 ("- &a\n ? : a!%!!a\n ? : a'\n
+     * -\t "): the explicit-key entry's inner map renders FLOW, and a
+     * plain carrying '!' (a tag indicator everywhere) or a lone '\''
+     * (opens flow single-quote mode) rode plain inside "{}" — the
+     * emitted form died in tag/quote scanning. The flow gate gains
+     * both bytes; the suite's M2N8 ("- ? : x" must parse) is
+     * untouched — the PARSE side keeps the form. */
+    const char* y = "- &a\n ? : a!%!!a\n ? : a'\n-\t ";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+    /* the suite's M2N8 form still parses and round-trips */
+    const char* m2n8 = "- ? : x\n";
+    st = YEPTRIS_OK;
+    doc = yeptris_parse(m2n8, strlen(m2n8), &st);
+    ASSERT_NE(doc, nullptr);
+    s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    st2 = YEPTRIS_OK;
+    doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0);
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, RootDedentBelowRootIndentIsSecondRoot) {
     /* corrected law (catch 39, run 38115641999, " k2: v2\nk1: v\n
      * k2: v2"): a line that DEDENTS below a root map's own column is a
