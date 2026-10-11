@@ -1492,6 +1492,52 @@ TEST(Parse, TaggedExplicitKeyRoundTrips) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, TaggedBlockKeyRidesTheExplicitForm) {
+    /* the nightly's run 38177622733 (":\n! |-\n r\n:"): a TAGGED
+     * literal block keeps the block form in sc_route even single-line
+     * (the #290 law), so as a map KEY its value separator glued onto
+     * the block's CONTENT line (colons are data there) — the re-parse
+     * read a different tree and every round shed bytes. Such keys ride
+     * the explicit form, which keeps the block form too — both rounds
+     * agree. Untagged/empty block styles demote to quoted/plain and
+     * ride simple stably (the suite's 5WE3). */
+    const char* y = ":\n! |-\n r\n:";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+    /* the props-emit-once law, explicit-key side: the key's tag rode
+     * "? " AND the node's own header — "? !\n  ! |-..." */
+    const char* y2 = "a: !x |\n  k\n: v\n";
+    YeptrisStatus st3 = YEPTRIS_OK;
+    YeptrisDocument doc3 = yeptris_parse(y2, strlen(y2), &st3);
+    ASSERT_NE(doc3, nullptr);
+    size_t l3 = 0;
+    char* s3 = yeptris_serialize(doc3, &l3);
+    ASSERT_NE(s3, nullptr);
+    int tags = 0;
+    for (size_t i = 0; i + 2 < l3; i++) {
+        if (memcmp(s3 + i, "!x", 2) == 0) {
+            tags++;
+        }
+    }
+    EXPECT_EQ(tags, 1) << s3;
+    free(s3);
+    yeptris_document_free(doc3);
+}
+
 TEST(Parse, TaggedKeyRidesTheExplicitFormWhenEscapedOverLimit) {
     /* the nightly's run 38176016091: a key carrying a ~975-byte tag
      * whose raw bytes escape as %XX (wr_tag_uri escapes even '_') —

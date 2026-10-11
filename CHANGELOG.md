@@ -44,6 +44,19 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: a tagged block key rides the explicit form; explicit-key
+  props emit once** — a TAGGED literal/folded key keeps the block
+  form in the style chooser (the #290 law), so as a map key the value
+  separator glued onto the block's content line (colons are data
+  there): the re-parse read a different tree and every round shed
+  bytes. Such keys now take the `? key` form, which keeps the block
+  form — both rounds agree. Untagged/empty block styles demote to
+  quoted/plain and ride simple stably (the suite's 5WE3 unchanged).
+  Along the way: the explicit-key writer pre-emitted the key's props
+  AND let the node re-emit them ("? !" + "! |-...") — the catch-56
+  law, explicit-key side: the DQ-promoted path keeps its pre-emit,
+  everything else carries tag+anchor inline (nightly run 38177622733,
+  catch 64).
 - **emit: a key's tag counts toward the written-token law** — the
   simple-key length check estimated the quoted key's written size but
   ignored the tag riding the same token; wr_tag_uri escapes every
