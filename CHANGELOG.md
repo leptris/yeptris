@@ -44,6 +44,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: a key's tag counts toward the written-token law** — the
+  simple-key length check estimated the quoted key's written size but
+  ignored the tag riding the same token; wr_tag_uri escapes every
+  byte outside its URI set as %XX (even `_`), so a ~975-raw-byte tag
+  wrote ~1030 and the emission died at the re-parse's 1024 law
+  ("simple key exceeds 1024"). Over-limit tagged keys now ride the
+  explicit form; short-tagged keys stay simple (nightly run
+  38176016091, catch 63).
 - **step: fused flow openers carry the general kernel's marks** —
   the fused flow walk (spans >= 24 bytes) emitted collection opens
   one column right of the general kernel, so a tiny document cut at
