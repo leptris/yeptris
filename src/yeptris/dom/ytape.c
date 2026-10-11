@@ -1902,7 +1902,14 @@ static int yt_f_run(yt_fused* F) {
                                 return 1;
                             }
                         }
-                        char* dst = (char*)yep_pool_alloc(F->pool, flen, 16);
+                        /* the BLOCK is clen-sized: both copy paths write
+                         * every measured line (the clip lives in the
+                         * SPAN, not the copy) — allocating flen wrote
+                         * tb bytes past the block whenever a literal
+                         * ended with stripped-empty lines (the nightly's
+                         * run 38137087116 ASan heap-buffer-overflow,
+                         * WRITE at ytape.c's re-walk memcpy) */
+                        char* dst = (char*)yep_pool_alloc(F->pool, clen, 16);
                         if (dst == NULL) {
                             return 1;
                         }
