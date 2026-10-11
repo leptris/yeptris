@@ -44,6 +44,12 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: block scalars never ride flow keys** — a flow-rendered
+  explicit key's subtree carried LITERAL members (`yaml: |` + content
+  lines inside what reads as a flow context) and the emission could
+  never re-parse (nightly run 38154662070, `? !\n- name: ...`).
+  BLOCK SCALARS ARE ILLEGAL IN FLOW: in flow context the style
+  chooser answers DQ for literal/folded styles.
 - **emit: C1 controls escape on output** — `\x99` decodes to
   U+0099: valid UTF-8 but NON-PRINTABLE, so the raw pair in the
   emission failed the re-parse's own printability gate (nightly run
