@@ -1064,17 +1064,24 @@ static void emit_block_seq(yep_emitter* em, uint32_t id, int content_col) {
             child = cn->next_sibling;
             continue;
         }
-        wr_put(w, "- ", 2);
-        if (cn->kind != 0 && cn->kind != 3 && !cn->flow &&
+        if (cn->kind != 0 && cn->kind != 3 && !cn->flow && cn->count > 0 &&
             (cn->anchor.len > 0 || cn->tag.len > 0)) {
             /* props may not precede a dash: they ride the dash line and
-             * the collection starts on the next line (SY6V) */
+             * the collection starts on the next line (SY6V). The dash
+             * carries NO trailing space — emit_props_tail adds its own
+             * separator, and "- " + " &a" doubled it (the nightly's run
+             * 38161738783). An EMPTY propertied collection takes the
+             * compact arm: emit_node's empty-form writes the props
+             * itself ("- &a {}"), and the next-line form re-emitted
+             * them ("- &a\n  &a {}") — every round grew/duplicated */
+            wr_byte(w, '-');
             emit_props_tail(w, cn);
             wr_byte(w, '\n');
             wr_indent(w, content_col + 2);
             emit_node(em, child, content_col, 0);
         } else {
             /* compact: a block collection starts right after "- " */
+            wr_put(w, "- ", 2);
             emit_node(em, child, content_col, 0);
         }
         idx++;

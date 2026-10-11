@@ -44,6 +44,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: a seq item's props emit once** — the dash's props arm
+  wrote "- " plus the props separator's own space (a DOUBLE space),
+  and the empty propertied collection re-emitted the props
+  `emit_node` had already written — every round duplicated
+  (`- &a\n  &a {}`) until the shape stabilized wrong (nightly run
+  38161738783, `- &a\n  ? &e...`). The props arm's dash carries no
+  trailing space; an empty propertied collection rides the compact
+  form (`- &a {}`).
 - **emit: block scalars never ride flow keys** — a flow-rendered
   explicit key's subtree carried LITERAL members (`yaml: |` + content
   lines inside what reads as a flow context) and the emission could
