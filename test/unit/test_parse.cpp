@@ -508,7 +508,7 @@ TEST(Parse, ShorthandSuffixEscapesItsLeadingBang) {
      * ("tag:yaml.org,2002:bz") — the tag changes meaning every
      * round. The shorthand emitter escapes a suffix-leading '!' as
      * %21, mirroring the escape grammar the parse side decodes. */
-    const char* ins[] = {"!%21bz\n", "!!%21bz\n!%21bz\n", "!foo\n"};
+    const char* ins[] = {"!%21bz\n", "!!%21bz\n!%21bz\n", "!foo\n", "!(4%21bz\n", "!a%21bz\n"};
     for (const char* y : ins) {
         YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
