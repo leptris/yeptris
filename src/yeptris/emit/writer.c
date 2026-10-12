@@ -823,6 +823,14 @@ static int key_written_over_limit(yep_writer* w, const yep_dnode* kn) {
             est += (q[i] < 0x20 || q[i] >= 0x7F || q[i] == '"' || q[i] == '\\') ? 4u : 1u;
         }
     }
+    if (kn->anchor.len > 0) {
+        /* the key's ANCHOR rides the same written token: the re-parse
+         * counts the '&name' bytes in the simple-key candidate, and
+         * anchor names carry interior colons (Y2GN) — a ~1700-byte
+         * name blew a 2-byte key past the law (the nightly's run
+         * 38206305189) */
+        est += (uint64_t)kn->anchor.len + 2u;
+    }
     if (kn->tag.len > 0) {
         /* the key's TAG rides the same written token: wr_tag_uri
          * escapes every byte outside its URI set as %XX (even '_'),
