@@ -1529,6 +1529,27 @@ TEST(Parse, PendingResolveDedentPairRejects) {
     }
 }
 
+TEST(Parse, AliasMemoResetPerDocument) {
+    /* the nightly's run 38266487549 ("  : &ORIGIN{}\n  *ORIGIN\n--- t:
+     * *ORIGIN\n 89"): the repeat-alias memo (TODO.restructure/71)
+     * answered doc 2's "*ORIGIN" from doc 1's memoized ordinal ACROSS
+     * the document boundary — the whole-buffer parse emitted the
+     * alias (resolving it) while the chunked feed (which resets the
+     * engine per cut) correctly failed: transport changed semantics.
+     * Anchors are per-document; the memo invalidates with them. */
+    const char* y = ": &ORIGIN{}\n*ORIGIN\n--- t: *ORIGIN\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    EXPECT_EQ(doc, nullptr) << y; /* doc 2's alias must NOT resolve */
+    yeptris_document_free(doc);
+    /* within ONE document the memo still serves (the merge-key law) */
+    const char* y2 = "a: &x 1\nb: *x\nc: *x\n";
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(y2, strlen(y2), &st2);
+    ASSERT_NE(doc2, nullptr) << y2;
+    yeptris_document_free(doc2);
+}
+
 TEST(Parse, SiblingPairFlushesBufferedExplicitKey) {
     /* issue #570 (the nightly's run 38261610465, "? &a\nt: &b\n*a"):
      * a same-column PLAIN-START pair line under an explicit key was

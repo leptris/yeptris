@@ -44,6 +44,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: the repeat-alias memo resets per document** — anchors are
+  per-document, but the alias memo (the merge-key fast path)
+  answered doc 2's identical alias name from doc 1's memoized
+  ordinal across the boundary: the whole-buffer parse resolved the
+  alias while the chunked feed (which rebuilds the engine per cut)
+  correctly rejected it — transport changed semantics. The memo
+  invalidates at every anchor-table reset (nightly run 38266487549,
+  catch 77).
 - **parse: a sibling pair flushes the buffered explicit key** — a
   same-column plain-start pair line under an explicit key was
   consumed as the key's content, stranding the buffered "? &a" key
