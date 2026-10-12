@@ -44,6 +44,12 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: a tagged EMPTY key counts its tag** — the written-token
+  estimate early-returned on an empty key value before the tag arm,
+  so a tagged empty key wrote ~2300 bytes of escaped tag as a simple
+  key and died at the re-parse's 1024 law. The tag arm now runs for
+  empty keys too; over-limit tagged keys ride the explicit form
+  (nightly run 38200627503, catch 67).
 - **emit: only single-line tagged block keys take the explicit form**
   — the clip-chomp twin of catch 64's key (":\n! |\n r\n:") keeps its
   trailing break, so the style chooser demotes it to quoted even in
