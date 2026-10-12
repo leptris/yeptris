@@ -44,6 +44,12 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: a leading BOM content key rides quoted** — the plain-safety
+  predicate let a LEADING U+FEFF ride raw (a UTF-16 double-BOM
+  transcodes to one as CONTENT); the re-parse consumed it as a
+  document BOM and the key became empty, every round shedding it.
+  Only its escape ("\uFEFF") is byte-stable; mid-token BOMs ride
+  plain (nightly run 38258674337, catch 74).
 - **emit: flow plains quote the separators** — a plain carrying ": "
   rode plain inside a flow-rendered pair, and the second ':' died at
   the completed-pair law ("{a: b : c}"); the gate gains ':' and its
