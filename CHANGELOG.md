@@ -44,6 +44,10 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: flow plains quote the separators** — a plain carrying ": "
+  rode plain inside a flow-rendered pair, and the second ':' died at
+  the completed-pair law ("{a: b : c}"); the gate gains ':' and its
+  explicit-key twin '?' (nightly run 38255134508, catch 73).
 - **emit: flow plains quote the anchor indicators** — a plain
   carrying '&' (or its alias twin '*') rode plain inside a
   flow-rendered explicit key, the '&' opened an anchor scan and the
