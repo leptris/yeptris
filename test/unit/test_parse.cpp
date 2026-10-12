@@ -1529,6 +1529,50 @@ TEST(Parse, PendingResolveDedentPairRejects) {
     }
 }
 
+TEST(Parse, SiblingPairFlushesBufferedExplicitKey) {
+    /* issue #570 (the nightly's run 38261610465, "? &a\nt: &b\n*a"):
+     * a same-column PLAIN-START pair line under an explicit key was
+     * consumed as the key's CONTENT — the buffered "&a" key stranded
+     * inside it, and the trailing "*a" emitted an alias to an anchor
+     * that no longer existed in the output. The continuation now
+     * stops at such pairs (dashes keep the old path — a block seq is
+     * the key's content, the catch-38154662070 pin's shape): the null
+     * value flushes, the pair proceeds, and the anchor emits. */
+    const char* y = "? &a\nt: &b\n*a";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    int has_anchor = 0;
+    for (size_t i = 0; i + 1 < l1; i++) {
+        if (memcmp(s1 + i, "&a", 2) == 0) {
+            has_anchor = 1;
+        }
+    }
+    EXPECT_EQ(has_anchor, 1) << s1; /* the anchor emits with its key */
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+    /* the unanchored twin keeps its tree */
+    const char* y2 = "? a\nb: c\n";
+    YeptrisStatus st3 = YEPTRIS_OK;
+    YeptrisDocument doc3 = yeptris_parse(y2, strlen(y2), &st3);
+    ASSERT_NE(doc3, nullptr);
+    YeptrisNode root3 = yeptris_document_root(doc3, 0);
+    ASSERT_NE(root3, nullptr);
+    EXPECT_EQ(yeptris_node_map_count(root3), 2u);
+    yeptris_document_free(doc3);
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain

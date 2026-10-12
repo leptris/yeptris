@@ -3281,6 +3281,32 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
          * at any indent is the value ("&a\n- x"). Explicit-key content
          * may align with the '?' column. Flow nodes and property runs
          * continue the value even at the parent column ("k:\n!!seq\n[a]"). */
+        if (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first != ':' &&
+            li.first != '-' && li.first != '?' && yep_plain_first_ok(li.first)) {
+            /* a same-column PLAIN-START pair line is a SIBLING, not
+             * the key's content: the buffered "? &a" key would strand
+             * inside it and an alias to the anchor emitted a dangling
+             * reference ("? &a\nt: &b\n*a"; the nightly's run
+             * 38261610465; libyaml: "could not find expected ':'
+             * while scanning a simple key"). Dashes keep the old path
+             * (a block seq is the key's content — the catch-38154662070
+             * pin's shape). Stop: the null value flushes and the main
+             * loop owns the pair. */
+            size_t sc = li.offset + li.indent;
+            int sibling = 0;
+            while (sc < li.end) {
+                if (e->p[sc] == ':' &&
+                    (sc + 1 >= (size_t)li.end || e->p[sc + 1] == ' ' || e->p[sc + 1] == '\t' ||
+                     e->p[sc + 1] == '\n' || e->p[sc + 1] == '\r')) {
+                    sibling = 1;
+                    break;
+                }
+                sc++;
+            }
+            if (sibling) {
+                goto empty_value;
+            }
+        }
         if (li.indent > floor_col || e->depth == 0 ||
             (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first != ':') ||
             ((li.first == '[' || li.first == '{') && li.indent == floor_col) ||

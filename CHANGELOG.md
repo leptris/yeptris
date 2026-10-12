@@ -44,6 +44,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a sibling pair flushes the buffered explicit key** — a
+  same-column plain-start pair line under an explicit key was
+  consumed as the key's content, stranding the buffered "? &a" key
+  inside it: the trailing alias emitted a dangling reference to the
+  dropped anchor and the output never re-parsed. The continuation
+  stops at such pairs (dashes keep the old path — a block seq is the
+  key's content); the null value flushes, the pair proceeds, and the
+  anchor emits (issue #570, nightly run 38261610465, catch 75).
 - **emit: a leading BOM content key rides quoted** — the plain-safety
   predicate let a LEADING U+FEFF ride raw (a UTF-16 double-BOM
   transcodes to one as CONTENT); the re-parse consumed it as a

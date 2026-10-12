@@ -1,0 +1,4 @@
+? &a
+tagorg,2002:nll: &b 
+:yaml.org,2002:nll: &b 
+: *a
