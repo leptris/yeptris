@@ -1724,6 +1724,54 @@ TEST(Parse, MultiLineFlowFloorAndMarkParity) {
     }
 }
 
+TEST(Parse, QPairStateResetsAtDocBoundary) {
+    /* catch 81 (the nightly's run 38287390219): doc 4's flow set
+     * q_key_pending and the '---' boundary left it set, so doc 5's
+     * bare ':' skipped its empty-key event — the whole-buffer stream
+     * lost a record the chunked feed (per-run reset) emitted. The
+     * boundary clears the pair state now, and the bare ':' key event
+     * carries the ':' mark instead of a zeroed one. */
+    const char* y = "---\n{\n a: b, : c\n}\n---\n# c\n:\n";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    int bare_map = 0, bare_key = 0, bare_val = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_MAPPING_START && rs[i].line == 7) {
+            bare_map = 1;
+        }
+        if (rs[i].type == YEPTRIS_EV_SCALAR && rs[i].line == 7 && rs[i].col == 1 &&
+            rs[i].value_len == 0) {
+            bare_key = 1; /* the empty key, marked at the ':' */
+        }
+        if (rs[i].type == YEPTRIS_EV_SCALAR && rs[i].line == 7 && rs[i].col == 2 &&
+            rs[i].value_len == 0) {
+            bare_val = 1; /* the empty value */
+        }
+    }
+    EXPECT_EQ(bare_map, 1);
+    EXPECT_EQ(bare_key, 1);
+    EXPECT_EQ(bare_val, 1);
+    yeptris_recorder_free(rec);
+    /* and the whole stream matches the chunked feed record for record */
+    YeptrisRecorder whole = yeptris_recorder_new();
+    ASSERT_NE(whole, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(whole, y, strlen(y), 1), YEPTRIS_OK);
+    size_t nw = 0;
+    yeptris_recorder_records(whole, &nw);
+    YeptrisRecorder ch = yeptris_recorder_new();
+    ASSERT_NE(ch, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(ch, y, 9, 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(ch, y + 9, strlen(y) - 9, 1), YEPTRIS_OK);
+    size_t nc = 0;
+    yeptris_recorder_records(ch, &nc);
+    EXPECT_EQ(nw, nc);
+    yeptris_recorder_free(whole);
+    yeptris_recorder_free(ch);
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain

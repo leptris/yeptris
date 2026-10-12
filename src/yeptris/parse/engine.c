@@ -4012,6 +4012,13 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
             doc_open = 1;
             e->saw_yaml = 0;
             e->last_root_flow = 0; /* a new document may carry its own directives */
+            /* the '?' / ':' pair state is per-document too: doc 4's flow
+             * set q_key_pending and the boundary left it set, so doc 5's
+             * bare ':' skipped its empty-key event — whole-buffer lost a
+             * record the chunked feed (per-run reset) emitted (the
+             * nightly's run 38287390219) */
+            e->q_key_pending = 0;
+            e->q_value_pending = 0;
             e->pos = li.offset + li.indent + 3;
             e_skip_inline_space(e);
             if (!e_at_eol(e)) {
@@ -4167,6 +4174,8 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 e_event_init(&kv, YEP_EV_SCALAR);
                 kv.style = YEP_STYLE_PLAIN;
                 kv.implicit = 1;
+                kv.line = e->line;
+                kv.col = (uint32_t)e_col(e, e->pos) + 1;
                 if (emit_now(e, &kv) != 0) {
                     return -2;
                 }
