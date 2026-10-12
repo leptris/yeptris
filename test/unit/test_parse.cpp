@@ -1523,6 +1523,45 @@ TEST(Parse, PendingResolveDedentPairRejects) {
     }
 }
 
+TEST(Parse, MidTokenHashIsContentInPropLines) {
+    /* the nightly's run 38204470906 ("  ? e\n  ? &e ?#"): the props-
+     * line classifier treated a MID-TOKEN '#' as a comment — "&a ?#:"
+     * scanned as props+comment (only_props) and failed, while the
+     * same plain parses fine unanchored ("?# : v"). '#' opens a
+     * comment only after a blank; mid-token it is content (libyaml
+     * accepts "&a ?#:" as {a: "?#"} shapes). The emit re-spelled the
+     * explicit key as "&a ?#:" — a form our own parser then rejected.
+     */
+    const char* ok[] = {"&a ?#: v\n", "e:\n&a ?#x:\n", "e:\n&a x#:\n", "?#:\n"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << y;
+        YeptrisStatus st2 = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+        ASSERT_NE(doc2, nullptr) << y << " -> " << s1;
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << y;
+        free(s2);
+        yeptris_document_free(doc2);
+        free(s1);
+        yeptris_document_free(doc);
+    }
+    /* a '#' after a blank is still a comment: props-only lines keep
+     * their law (the S2900 family regression guard) */
+    const char* bad[] = {"k: &x\n!!map\na: b\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, DeepAnchoredPendingRidesTheEngine) {
     /* the nightly's run 38202382251 ("4:\n4: r\n5:\n &5\n 5: e"): an
      * anchored pending BELOW the root frame dropped its pairs at EOF —
