@@ -3772,6 +3772,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     e->facts_cache_line = 0;
     e->depth = 0;
     yep_nametab_clear(&e->anchors);
+    e->alias_memo_len = 0;
     e->tagmap_n = 0;
     e->saw_yaml = 0;
     e->doc_begin = (size_t)-1;
@@ -3935,8 +3936,13 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                     return -2;
                 }
                 doc_open = 0;
-                e->tagmap_n = 0;                /* directives are per-document */
-                yep_nametab_clear(&e->anchors); /* so are anchors */
+                e->tagmap_n = 0; /* directives are per-document */
+                yep_nametab_clear(&e->anchors);
+                e->alias_memo_len = 0; /* so are anchors */
+                e->alias_memo_len = 0; /* and the repeat-alias memo: doc 1's
+                                        * "*ORIGIN" memoized the ordinal and doc 2's
+                                        * identical name answered from it ACROSS the
+                                        * boundary (the nightly's run 38266487549) */
             }
             e_event_init(&ev, YEP_EV_DOCUMENT_START);
             ev.style = 1; /* explicit marker */
@@ -3997,6 +4003,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 e_pos_mark(e, li.offset + li.indent + 3, &ev.end_line, &ev.end_col);
                 e->tagmap_n = 0; /* directives are per-document */
                 yep_nametab_clear(&e->anchors);
+                e->alias_memo_len = 0;
                 if (emit_now(e, &ev) != 0) {
                     return -2;
                 }
@@ -4196,6 +4203,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
         }
         e->tagmap_n = 0;
         yep_nametab_clear(&e->anchors);
+        e->alias_memo_len = 0;
     }
     if (emit_end) {
         e_event_init(&ev, YEP_EV_STREAM_END);
