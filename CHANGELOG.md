@@ -44,6 +44,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a deep anchored pending rides the engine** — the fused
+  runner's anchored-pending deferral only flushes its records at
+  depth 1; a pending resolved into an anchored map BELOW the root
+  frame dropped its pairs at EOF ("4:\n4: r\n5:\n &5\n 5: e" lost
+  the anchored map and every round shed bytes). Deeper anchored
+  pendings now bail to the engine, which resolves them; the depth-1
+  anchored shape keeps the fused path (nightly run 38202382251,
+  catch 68).
 - **emit: a tagged EMPTY key counts its tag** — the written-token
   estimate early-returned on an empty key value before the tag arm,
   so a tagged empty key wrote ~2300 bytes of escaped tag as a simple

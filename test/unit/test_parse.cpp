@@ -1523,6 +1523,46 @@ TEST(Parse, PendingResolveDedentPairRejects) {
     }
 }
 
+TEST(Parse, DeepAnchoredPendingRidesTheEngine) {
+    /* the nightly's run 38202382251 ("4:\n4: r\n5:\n &5\n 5: e"): an
+     * anchored pending BELOW the root frame dropped its pairs at EOF —
+     * the tree lost the anchored map and every round shed bytes. The
+     * deferral only flushes at depth 1; deeper anchored pendings now
+     * bail to the engine, which resolves them. The depth-1 anchored
+     * shape keeps the fused path. */
+    const char* y = "4:\n4: r\n5:\n &5\n 5: e";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(yeptris_node_map_count(root), 3u) << "the anchored map must survive";
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+    /* the depth-1 anchored pending keeps the fused path */
+    const char* y2 = "b: &5\n  c: d\n";
+    YeptrisStatus st3 = YEPTRIS_OK;
+    YeptrisDocument doc3 = yeptris_parse(y2, strlen(y2), &st3);
+    ASSERT_NE(doc3, nullptr);
+    YeptrisNode root3 = yeptris_document_root(doc3, 0);
+    ASSERT_NE(root3, nullptr);
+    YeptrisNode k = NULL, v = NULL;
+    ASSERT_EQ(yeptris_node_map_at(root3, 0, &k, &v), 0);
+    EXPECT_NE(v, nullptr);
+    yeptris_document_free(doc3);
+}
+
 TEST(Parse, TaggedEmptyKeyRidesTheExplicitForm) {
     /* the nightly's run 38200627503: the written-token estimate
      * EARLY-RETURNED on an empty key value, before the tag arm — a
