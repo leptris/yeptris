@@ -2845,6 +2845,17 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
 
     if (e_at_eol(e)) {
         /* properties with the value on following lines */
+        if (!yep_view_is_empty(pend_a) && !yep_view_is_empty(anchor)) {
+            /* a second props line carrying its own ANCHOR displaces the
+             * pend anchor (same-line-wins) — the displaced anchor stays
+             * in the nametab, so a later alias emits a dangling
+             * reference (the nightly's run 38271222289, "&a\n&a1\nF:
+             * *a" and its '? &a' explicit-key twin). libyaml rejects
+             * every nesting variant ("did not find expected <document
+             * start>" / "did not find expected key"); a TAG-only
+             * continuation ("&a\n!!str v") stays legal. */
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
         e->pend_anchor = node_a;
         e->pend_anchor_id = anchor_ordinal;
         e->pend_tag = node_t;
