@@ -19,6 +19,13 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
     if (is_blank(p[0]) || is_blank(p[len - 1])) {
         return 0;
     }
+    if (len >= 3 && (unsigned char)p[0] == 0xef && (unsigned char)p[1] == 0xbb &&
+        (unsigned char)p[2] == 0xbf) {
+        /* a LEADING U+FEFF re-parses as a document BOM and vanishes —
+         * the emitted form must carry its escape ("\uFEFF", the
+         * nightly's run 38258674337); mid-token BOMs ride plain */
+        return 0;
+    }
     switch (p[0]) {
     case ':':
         /* libyaml (Psych symbol dumps ":name"): a leading colon only

@@ -1529,6 +1529,32 @@ TEST(Parse, PendingResolveDedentPairRejects) {
     }
 }
 
+TEST(Parse, LeadingBomContentRidesQuoted) {
+    /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
+     * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain
+     * key): the plain-safety predicate let a LEADING U+FEFF ride raw —
+     * the re-parse consumed it as a document BOM and the key became
+     * empty, every round shedding it. Only its escape ("\uFEFF") is
+     * byte-stable; mid-token BOMs ride plain. */
+    const char* y = "\xef\xbb\xbf: v\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, FlowPlainsQuoteSeparators) {
     /* the nightly's run 38255134508 ("! &a\n? ~2: &)J  :(((( 6e"):
      * the flow-rendered pair's VALUE carried ": " — a second mapping
