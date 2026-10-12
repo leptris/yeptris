@@ -40,6 +40,13 @@ crashers in the regression corpus).
   cursor, so a multi-line flow's open event marks at the '{' on the
   slow route too (it marked at the pre-scan's far line, diverging
   from the fast path's mark) (nightly run 38280372447, catch 80).
+- **parse: the '?' / ':' pair state resets at document boundaries** —
+  doc 4's flow set q_key_pending and the '---' boundary left it set,
+  so doc 5's bare ':' skipped its empty-key event: the whole-buffer
+  stream lost a record the chunked feed (which rebuilds per cut)
+  emitted — transport changed the event stream. The boundary clears
+  the pair state now, and the bare ':' key event carries the ':' mark
+  instead of a zeroed one (nightly run 38287390219, catch 81).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)

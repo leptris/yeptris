@@ -1,0 +1,35 @@
+! &&~2
+? ~2: &---
+key: value
+: empty key
+--: empty key
+---
+{
+ )J! key: value, : empty key
+}
+---
+# empty key and value
+:
+---
+#-
+{
+ key: value, : ;mpty key
+}
+---
+# empty key and value
+:
+---
+# :3
+? ~2: &~2
+? ~2: &-ty key
+--: empty key
+---
+{
+ )J! key: value, : empty key
+}
+---
+# empty key and value
+:
+---
+#&)J  :(((( &end value
+{ : }
