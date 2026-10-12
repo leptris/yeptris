@@ -1640,6 +1640,36 @@ TEST(Parse, PendAnchorDisplacedBySecondAnchorRejects) {
     }
 }
 
+TEST(Parse, PropsOnlyLineAtPairPositionRejects) {
+    /* catch 79 (the nightly's run 38275208009): a props-only line at an
+     * ESTABLISHED pair position ("k: 1\n!!t: &b\n  n: m\nz: *b") was
+     * consumed as node props — the pair's key event vanished, the key's
+     * tag leaked onto the value node, and a long-tag value then lost
+     * its anchor at emit: the trailing alias emitted a reference the
+     * emitted document never defined. libyaml rejects every
+     * props-only-line-at-pair-position shape ("could not find expected
+     * ':' while scanning a simple key"); node-position props lines
+     * stay legal (the root tagged map, the first pair of a fresh map). */
+    const char* bad[] = {"k: 1\n!!t: v\n", "k: 1\n!!t: &b\n  n: m\nz: *b\n", "k: 1\n!!t\n  n: m\n",
+                         "k: 1\n&a\n  n: m\n", "k: 1\n&a\n- x\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_EQ(st, YEPTRIS_ERROR_PARSE) << y;
+    }
+    const char* good[] = {"!!t: &b\n  n: m\n", "!!t\n  n: m\n", "!!t x: v\n",
+                          "a:\n  !!t: &c\n    n: m\n"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain
