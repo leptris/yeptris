@@ -1670,6 +1670,60 @@ TEST(Parse, PropsOnlyLineAtPairPositionRejects) {
     }
 }
 
+TEST(Parse, MultiLineFlowFloorAndMarkParity) {
+    /* catch 80 (the nightly's run 38280372447): the JSON fast path's
+     * floor scan stopped at the flow's close, so the closer's own line
+     * escaped the suite-strict 9C9N floor whenever the span took the
+     * fast path — while short spans (chunk cuts, small documents) took
+     * the general kernel and rejected: whole vs chunked feeds
+     * disagreed over the same bytes. The fast scan now covers the
+     * closer line; the pre-scan also restores its line state with the
+     * cursor, so the slow path's open event marks at the '{' exactly
+     * like the fast path's. */
+    const char* reject = "k: {\n\n} \n---\nk2: v\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(reject, strlen(reject), &st);
+    EXPECT_EQ(doc, nullptr);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    /* compat has no floor: libyaml/Psych accept the same shape */
+    YeptrisParseOptions opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.schema = YEPTRIS_SCHEMA_11_COMPAT;
+    st = YEPTRIS_OK;
+    doc = yeptris_parse_ex(reject, strlen(reject), &opts, &st);
+    EXPECT_NE(doc, nullptr);
+    if (doc != NULL) {
+        yeptris_document_free(doc);
+    }
+    /* the open mark matches across the fast and slow routes: a short
+     * key rides the slow kernel, a 30-byte key clears the fast path's
+     * span gate — both must mark the flow at the '{' */
+    struct {
+        const char* y;
+        uint32_t open_col; /* the '{' column */
+    } marks[] = {
+        {"k: {\n  x: 1\n  }\n", 4},
+        {"k000000000000000000000000000: {\n  x: 1\n  }\n", 31},
+    };
+    for (const auto& m : marks) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        ASSERT_EQ(yeptris_recorder_feed(rec, m.y, strlen(m.y), 1), YEPTRIS_OK);
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        int found = 0;
+        for (size_t i = 0; i < n; i++) {
+            if (rs[i].type == YEPTRIS_EV_MAPPING_START && (rs[i].flags & YEPTRIS_EF_FLOW)) {
+                EXPECT_EQ(rs[i].line, 1u) << m.y;
+                EXPECT_EQ(rs[i].col, m.open_col) << m.y;
+                found = 1;
+            }
+        }
+        EXPECT_EQ(found, 1) << m.y;
+        yeptris_recorder_free(rec);
+    }
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain

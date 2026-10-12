@@ -1583,7 +1583,14 @@ static int e_flow_key_after(const char* p, size_t len, size_t close) {
 }
 
 /* Block-level flow lines must out-indent the parent (9C9N): any line
- * start inside the span at or left of the floor falls back. */
+ * start inside the span at or left of the floor falls back — the
+ * closer's own line included ("a: {\n  x: 1\n}\nb: 3" is a suite
+ * error; only libyaml accepts it). The scan must cover the closer
+ * line: its start sits AT the close offset, outside the loop below,
+ * so it is checked explicitly — the general kernel's per-line check
+ * rejects it, and the fast path must agree (the nightly's run
+ * 38280372447: whole vs chunked split across the fast/slow paths and
+ * produced two different verdicts for the same bytes). */
 static int e_flow_floor_ok(const char* p, size_t open, size_t close, uint16_t floor) {
     size_t j = open;
     while (j < close) {
@@ -1599,6 +1606,20 @@ static int e_flow_floor_ok(const char* p, size_t open, size_t close, uint16_t fl
             }
         }
         j++;
+    }
+    if (close < (size_t)-1 && close > open) {
+        size_t ls = close;
+        uint32_t ind = 0;
+        while (ls > 0 && p[ls - 1] != '\n') {
+            ls--;
+        }
+        while (ls < close && p[ls] == ' ') {
+            ind++;
+            ls++;
+        }
+        if (ind <= floor) {
+            return 0;
+        }
     }
     return 1;
 }
@@ -2985,12 +3006,20 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         }
         size_t save = e->pos;
         uint32_t line0 = e->line;
+        size_t ls0 = e->line_start;
         if (e_skip_flow(e) != 0) {
             return -1;
         }
         e_skip_inline_space(e);
         int is_key = e_colon_at(e, e->pos) && e->line == line0;
+        /* the pre-scan tracks lines while it crosses them; the re-scan
+         * below re-derives every mark from the open position, so the
+         * line state must go back with the cursor (the nightly's run
+         * 38280372447: a multi-line flow's open event marked at the
+         * pre-scan's far line, diverging from the JSON fast path) */
         e->pos = save;
+        e->line = line0;
+        e->line_start = ls0;
         if (is_key && ctx == YEP_CTX_AFTER_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }

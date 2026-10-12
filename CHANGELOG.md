@@ -29,6 +29,17 @@ crashers in the regression corpus).
   every such shape ("could not find expected ':' while scanning a
   simple key"); node-position props lines stay legal, including the
   first pair of a fresh map (nightly run 38275208009, catch 79).
+- **parse: the flow floor covers the closer line on every route** —
+  the JSON fast path's floor scan stopped at the flow's close, so the
+  closer's own line escaped the suite-strict 9C9N floor whenever the
+  span took the fast path, while short spans (chunk cuts, small
+  documents) took the general kernel and rejected: whole vs chunked
+  feeds disagreed over the same bytes ("k: {\n\n} \n---\nk2: v"
+  parsed whole and failed chunked). The fast scan now covers the
+  closer line. The key pre-scan also restores its line state with the
+  cursor, so a multi-line flow's open event marks at the '{' on the
+  slow route too (it marked at the pre-scan's far line, diverging
+  from the fast path's mark) (nightly run 38280372447, catch 80).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)
