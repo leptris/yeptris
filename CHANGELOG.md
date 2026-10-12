@@ -44,6 +44,12 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: a key's anchor counts toward the written-token law** — the
+  estimate counted the key's tag (catch 63) but not its anchor;
+  anchor names carry interior colons (Y2GN), so a ~1700-byte name
+  rode a 2-byte key past the re-parse's 1024 law and the emission
+  never re-parsed. Over-limit anchored keys now ride the explicit
+  form (nightly run 38206305189, catch 70).
 - **parse: a mid-token '#' is content in prop lines** — the props-line
   classifier ended the scan at any '#', so "&a ?#:" read as
   props-plus-comment (only_props) and failed, while libyaml parses it
