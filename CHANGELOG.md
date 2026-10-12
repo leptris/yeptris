@@ -44,6 +44,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a props-only line under an explicit key rejects** —
+  continuing "? &a\n&F" absorbed the new props INTO the key and
+  DROPPED the key's own anchor, so an alias referencing it emitted a
+  dangling reference that never re-parsed. libyaml rejects the shape
+  ("could not find expected ':' while scanning a simple key"); the
+  props-only-line law now covers the explicit-key context too, and
+  the legal explicit-key shapes ride (nightly run 38207965687,
+  catch 71).
 - **emit: a key's anchor counts toward the written-token law** — the
   estimate counted the key's tag (catch 63) but not its anchor;
   anchor names carry interior colons (Y2GN), so a ~1700-byte name

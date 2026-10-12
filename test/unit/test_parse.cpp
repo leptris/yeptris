@@ -1319,16 +1319,22 @@ TEST(Parse, SeqItemPropsEmitOnce) {
      * written — every round duplicated ("- &a\n  &a {}") until the
      * shape stabilized wrong. The dash carries no trailing space in
      * the props arm; an empty propertied collection rides compact. */
-    const char* y = "- &a\n  ? &e\n  ! &e\n  !  ? &?";
+    /* the original crasher's "? &e\n! &e" continuation now REJECTS
+     * (catch 71: a props-only line under an explicit '?' key — libyaml
+     * "could not find expected ':' while scanning a simple key"); the
+     * props-once subject rides a parsing shape */
+    const char* y = "- &a\n  x: y\n- &e \"s\": t\n";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
-    ASSERT_NE(doc, nullptr);
+    ASSERT_NE(doc, nullptr) << y;
     size_t l1 = 0;
     char* s1 = yeptris_serialize(doc, &l1);
     ASSERT_NE(s1, nullptr);
-    /* no double space, no duplicate anchor */
-    for (size_t i = 0; i + 1 < l1; i++) {
-        EXPECT_FALSE(s1[i] == ' ' && s1[i + 1] == ' ') << s1;
+    /* the dash's props arm carries no trailing space (no "- &a"
+     * double-dash spacing), and the anchor emits once; nested
+     * indentation legitimately carries double spaces */
+    for (size_t i = 0; i + 2 < l1; i++) {
+        EXPECT_FALSE(s1[i] == '-' && s1[i + 1] == ' ' && s1[i + 2] == ' ') << s1;
     }
     int anchors = 0;
     for (size_t i = 0; i + 2 < l1; i++) {
@@ -1516,6 +1522,32 @@ TEST(Parse, PendingResolveDedentPairRejects) {
     }
     const char* good[] = {"foo:\n  bar: 1\nbaz: 2\n", "a:\n  b: 1\n  c: 2\n", "k:\n  nested: v\n"};
     for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        yeptris_document_free(doc);
+    }
+}
+
+TEST(Parse, PropsLineUnderExplicitKeyRejects) {
+    /* the nightly's run 38207965687 ("? &a\n&F\n: *a"): a props-only
+     * line continuing an explicit '?' key — the key would span lines
+     * waiting for a ':' that its own props absorb, and the absorption
+     * DROPPED the key's anchor so the emission wrote an alias to an
+     * anchor that no longer existed. libyaml rejects the shape
+     * ("could not find expected ':' while scanning a simple key");
+     * we match. */
+    const char* bad[] = {"? &a\n&F\n: *a", "? &e\n! &e\n: v\n", "? &e\n!!t\n: v\n",
+                         "- &a\n  ? &e\n  ! &e\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        yeptris_document_free(doc);
+    }
+    /* the legal explicit-key shapes ride */
+    const char* ok[] = {"? &a\n: *a\n", "? &a\n  b\n: v\n"};
+    for (const char* y : ok) {
         YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
         ASSERT_NE(doc, nullptr) << y;

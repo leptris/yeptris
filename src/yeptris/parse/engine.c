@@ -3237,10 +3237,17 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             goto empty_value;
         }
         if (li.indent == floor_col && e->depth > 0 &&
-            (ctx == YEP_CTX_AFTER_COLON || ctx == YEP_CTX_VALUE_LINE) &&
+            (ctx == YEP_CTX_AFTER_COLON || ctx == YEP_CTX_VALUE_LINE || ctx == YEP_CTX_AFTER_Q) &&
             (li.first == '&' || li.first == '!')) {
             /* Only PROPS-ONLY lines are new nodes, not values
-             * ("key: &x\n!!map\na: b"); "&anchor c: 3" is a keyed pair */
+             * ("key: &x\n!!map\na: b"); "&anchor c: 3" is a keyed pair.
+             * UNDER AN EXPLICIT '?' KEY a props-only line is worse: the
+             * key would span lines waiting for a ':' that its own
+             * props absorb — libyaml rejects ("could not find expected
+             * ':' while scanning a simple key"), and absorbing the
+             * props DROPPED the key's anchor so the emission wrote an
+             * alias to an anchor that no longer existed ("? &a\n&F\n:
+             * *a", the nightly's run 38207965687) */
             size_t t = li.offset + li.indent;
             int only_props = 1;
             char prev = ' '; /* '#' is a comment only after a blank —
