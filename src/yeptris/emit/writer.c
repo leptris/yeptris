@@ -462,6 +462,10 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
                         * find expected alphabetic or numeric
                         * character"; the nightly's run 38250474732) */
             case '*':  /* the alias twin of '&' */
+            case ':':  /* a separating ':' — "{a: b : c}" died at the
+                        * second ':' (the completed-pair law, catch 60);
+                        * the nightly's run 38255134508 */
+            case '?':  /* the explicit-key twin of ':' */
                 return YEP_SC_DQ;
             default:
                 break;
