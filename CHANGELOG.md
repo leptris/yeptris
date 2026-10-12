@@ -44,6 +44,14 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: only single-line tagged block keys take the explicit form**
+  — the clip-chomp twin of catch 64's key (":\n! |\n r\n:") keeps its
+  trailing break, so the style chooser demotes it to quoted even in
+  the explicit path (as_key): promoting it made round one explicit
+  and round two simple — every round differed. Multiline tagged block
+  keys now ride the simple form in both rounds, stably; single-line
+  tagged ones keep the catch-64 explicit form (nightly run
+  38181819580, catch 66).
 - **parse: a dedented pair closes the child map's column** — after a
   pending key resolved into its child map, the frame kept the CHILD's
   content column: a dedented root pair closed the child's phantom map
