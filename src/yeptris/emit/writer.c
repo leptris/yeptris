@@ -814,11 +814,14 @@ static int key_written_over_limit(yep_writer* w, const yep_dnode* kn) {
     yep_view kv_ = wv(w, kn->value);
     const unsigned char* q = (const unsigned char*)kv_.p;
     uint32_t n = kv_.len;
-    if (q == NULL) {
-        return 0;
-    }
-    for (uint32_t i = 0; i < n; i++) {
-        est += (q[i] < 0x20 || q[i] >= 0x7F || q[i] == '"' || q[i] == '\\') ? 4u : 1u;
+    /* NO early return on an empty value: the tag arm below must run —
+     * a TAGGED EMPTY key writes ~2300 bytes of escaped tag and the
+     * re-parse's simple-key law rejects it ("the nightly's run
+     * 38200627503") */
+    if (q != NULL) {
+        for (uint32_t i = 0; i < n; i++) {
+            est += (q[i] < 0x20 || q[i] >= 0x7F || q[i] == '"' || q[i] == '\\') ? 4u : 1u;
+        }
     }
     if (kn->tag.len > 0) {
         /* the key's TAG rides the same written token: wr_tag_uri

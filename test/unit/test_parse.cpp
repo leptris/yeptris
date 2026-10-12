@@ -1523,6 +1523,48 @@ TEST(Parse, PendingResolveDedentPairRejects) {
     }
 }
 
+TEST(Parse, TaggedEmptyKeyRidesTheExplicitForm) {
+    /* the nightly's run 38200627503: the written-token estimate
+     * EARLY-RETURNED on an empty key value, before the tag arm — a
+     * TAGGED EMPTY key wrote ~2300 bytes of escaped tag as a simple
+     * key and the emission died at the re-parse's 1024 law. The tag
+     * arm must run for empty keys too. */
+    char y[512]; /* "!<400 underscores> : v" — a TAGGED EMPTY key */
+    {
+        size_t o = 0;
+        y[o++] = '!';
+        y[o++] = '!';
+        y[o++] = 'm';
+        y[o++] = 'a';
+        y[o++] = 'p';
+        for (int i = 0; i < 400; i++) {
+            y[o++] = '_';
+        }
+        y[o++] = ' ';
+        y[o++] = ':';
+        y[o++] = ' ';
+        y[o++] = 'v';
+        y[o] = '\0';
+    }
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    EXPECT_EQ(s1[0], '?') << s1; /* the explicit form */
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, MultilineTaggedBlockKeyRidesSimple) {
     /* the nightly's run 38181819580 (":\n! |\n r\n:"): the clip-chomp
      * twin of catch 64's key — its content keeps the trailing break,
