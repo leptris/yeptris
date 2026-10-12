@@ -1523,6 +1523,34 @@ TEST(Parse, PendingResolveDedentPairRejects) {
     }
 }
 
+TEST(Parse, MultilineTaggedBlockKeyRidesSimple) {
+    /* the nightly's run 38181819580 (":\n! |\n r\n:"): the clip-chomp
+     * twin of catch 64's key — its content keeps the trailing break,
+     * so the style chooser demotes it to QUOTED even in the explicit
+     * path (as_key), and promoting it would UNSTABILIZE the emission
+     * (round two parses a quoted style and rides simple). Only
+     * SINGLE-LINE tagged block keys keep the block form; the
+     * multiline ones ride simple in both rounds, stably. */
+    const char* y = ":\n! |\n r\n:";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    EXPECT_EQ(strstr(s1, "? "), (char*)NULL) << s1; /* the simple form */
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, TaggedBlockKeyRidesTheExplicitForm) {
     /* the nightly's run 38177622733 (":\n! |-\n r\n:"): a TAGGED
      * literal block keeps the block form in sc_route even single-line

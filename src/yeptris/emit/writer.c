@@ -1015,18 +1015,19 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
          * to glue onto, and sc_route demotes it to the quoted form
          * anyway (the nightly's run 38177622733, ":\n! |-\n r\n:") */
         if (!complex_key && kn->style >= 4 && kn->style <= 5 && kn->value.len > 0 &&
-            kn->tag.len > 0) {
-            /* a TAGGED literal/folded key keeps the block form in
-             * sc_route (even single-line — the #290 law), so the value
-             * separator would glue onto the block's CONTENT line
-             * (colons are data there) and the re-parse reads a
-             * different tree — the explicit "? key" form carries it,
-             * and it keeps the block form there too, so both renders
-             * agree. Untagged/empty block styles demote to quoted or
-             * plain in sc_route and ride simple stably — promoting
-             * those would UNSTABILIZE them (the explicit path's
-             * rendering must match round two's parsed style; the
-             * nightly's run 38177622733, ":\n! |-\n r\n:") */
+            kn->tag.len > 0 && memchr(wv(w, kn->value).p, '\n', wv(w, kn->value).len) == NULL) {
+            /* a TAGGED SINGLE-LINE literal/folded key keeps the block
+             * form in sc_route (the #290 law), so the value separator
+             * would glue onto the block's CONTENT line (colons are
+             * data there) and the re-parse reads a different tree —
+             * the explicit "? key" form carries it, and it keeps the
+             * block form there too, so both renders agree. A MULTILINE
+             * tagged key demotes to quoted even in the explicit path
+             * (as_key), so promoting it would UNSTABILIZE it: round
+             * two parses a quoted style and rides simple. Untagged and
+             * empty block styles demote likewise (the nightly's runs
+             * 38177622733 ":\n! |-\n r\n:" and 38181819580
+             * ":\n! |\n r\n:") */
             complex_key = 1;
         }
         if (!complex_key && key_written_over_limit(w, kn)) {
