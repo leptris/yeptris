@@ -1529,6 +1529,34 @@ TEST(Parse, PendingResolveDedentPairRejects) {
     }
 }
 
+TEST(Parse, FlowPlainsQuoteAnchorIndicators) {
+    /* the nightly's run 38250474732 ("! &a\n? ~2: &)J  :(((( &e"):
+     * the explicit key's nested pair rendered FLOW and its value
+     * "&)J :(((( &e" rode PLAIN — the '&' opened an anchor scan on
+     * ')' and the re-parse died ("did not find expected alphabetic or
+     * numeric character while scanning an anchor"). The flow-context
+     * DQ gate gains '&' and its alias twin '*'. The suite's M2N8
+     * ("- ? : x" must parse) is untouched — the PARSE side keeps the
+     * form (the suite outranks Psych here). */
+    const char* y = "! &a\n? ~2: &)J  :(((( &e";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, PropsLineUnderExplicitKeyRejects) {
     /* the nightly's run 38207965687 ("? &a\n&F\n: *a"): a props-only
      * line continuing an explicit '?' key — the key would span lines

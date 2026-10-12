@@ -44,6 +44,13 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **emit: flow plains quote the anchor indicators** — a plain
+  carrying '&' (or its alias twin '*') rode plain inside a
+  flow-rendered explicit key, the '&' opened an anchor scan and the
+  re-parse died ("did not find expected alphabetic or numeric
+  character while scanning an anchor"). The flow-context DQ gate
+  gains both bytes; the suite's M2N8 parse is untouched (nightly run
+  38250474732, catch 72).
 - **parse: a props-only line under an explicit key rejects** —
   continuing "? &a\n&F" absorbed the new props INTO the key and
   DROPPED the key's own anchor, so an alias referencing it emitted a

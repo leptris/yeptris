@@ -456,6 +456,12 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
                         * plain inside a flow-rendered explicit key and
                         * the re-parse died in tag scanning (the
                         * nightly's run 38139449828) */
+            case '&':  /* an anchor indicator — "&)J" inside a
+                        * flow-rendered explicit key opened an anchor
+                        * scan on ')' and the re-parse died ("did not
+                        * find expected alphabetic or numeric
+                        * character"; the nightly's run 38250474732) */
+            case '*':  /* the alias twin of '&' */
                 return YEP_SC_DQ;
             default:
                 break;
