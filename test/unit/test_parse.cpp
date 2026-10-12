@@ -255,10 +255,10 @@ TEST(Parse, PropsChainRecursionCapped) {
     /* the nightly fuzz_parse STACK OVERFLOW (2026-10-08, run
      * 37839718900): the e_node <-> e_parse_value props/value-line
      * chain opens NO container frame, so e->depth never grew and the
-     * C recursion ran unbounded (anchor-only lines at document root).
+     * C recursion ran unbounded (props-only lines at document root).
      * A recursion counter capped at max_depth now rejects with
      * YEPTRIS_ERROR_DEPTH — the depth-guard law: error, never crash. */
-    static const char rep[] = "&a\n";
+    static const char rep[] = "!t\n";
     size_t n = strlen(rep) * 20000;
     char* y = (char*)malloc(n);
     ASSERT_NE(y, nullptr);
@@ -270,6 +270,24 @@ TEST(Parse, PropsChainRecursionCapped) {
     EXPECT_EQ(doc, nullptr);
     EXPECT_EQ(st, YEPTRIS_ERROR_DEPTH);
     free(y);
+    /* an ANCHORED props chain cannot reach the cap: the second line's
+     * anchor displaces the pend anchor (same-line-wins), which leaves
+     * the displaced anchor defined but unemitted — a later alias would
+     * dangle (the nightly's run 38271222289). libyaml rejects every
+     * nesting variant ("did not find expected <document start>"); a
+     * TAG-only continuation ("&a\n!!str v") stays legal. */
+    static const char rep2[] = "&a\n";
+    size_t n2 = strlen(rep2) * 20000;
+    char* y2 = (char*)malloc(n2);
+    ASSERT_NE(y2, nullptr);
+    for (size_t i = 0; i < 20000; i++) {
+        memcpy(y2 + i * strlen(rep2), rep2, strlen(rep2));
+    }
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc3 = yeptris_parse(y2, n2, &st2);
+    EXPECT_EQ(doc3, nullptr);
+    EXPECT_EQ(st2, YEPTRIS_ERROR_PARSE);
+    free(y2);
     /* ordinary nesting still parses: the cap rides the same 1000 */
     static const char nested[] = "a:\n";
     size_t m = strlen(nested) * 50;
@@ -280,11 +298,11 @@ TEST(Parse, PropsChainRecursionCapped) {
     }
     z[m] = ' ';
     z[m + 1] = '1';
-    YeptrisStatus st2 = YEPTRIS_OK;
-    YeptrisDocument doc2 = yeptris_parse(z, m + 2, &st2);
-    EXPECT_NE(doc2, nullptr);
-    if (doc2 != NULL) {
-        yeptris_document_free(doc2);
+    YeptrisStatus st3 = YEPTRIS_OK;
+    YeptrisDocument doc4 = yeptris_parse(z, m + 2, &st3);
+    EXPECT_NE(doc4, nullptr);
+    if (doc4 != NULL) {
+        yeptris_document_free(doc4);
     }
     free(z);
 }
@@ -1592,6 +1610,34 @@ TEST(Parse, SiblingPairFlushesBufferedExplicitKey) {
     ASSERT_NE(root3, nullptr);
     EXPECT_EQ(yeptris_node_map_count(root3), 2u);
     yeptris_document_free(doc3);
+}
+
+TEST(Parse, PendAnchorDisplacedBySecondAnchorRejects) {
+    /* catch 78 (the nightly's run 38271222289, "&a\n&a1\nF: *a" and
+     * its '? &a' twin): a second props line carrying its own ANCHOR
+     * displaced the pend anchor via same-line-wins — the displaced
+     * anchor stayed defined in the nametab, so the trailing alias
+     * emitted a reference the emitted document never defined and the
+     * re-parse failed. libyaml rejects every nesting variant
+     * ("did not find expected <document start>" / "did not find
+     * expected key"); a TAG-only continuation stays legal. */
+    const char* bad[] = {"&a\n&1\nF: *a\n", "? &a \n &a1\nF: *a\n", "k: &a\n  &b v\n",
+                         "&a\n&b v\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_EQ(st, YEPTRIS_ERROR_PARSE) << y;
+    }
+    const char* good[] = {"&a\n!!str v\n", "k:\n  &a\n  !!str v\n"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
 }
 
 TEST(Parse, LeadingBomContentRidesQuoted) {

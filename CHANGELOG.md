@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: a second props line cannot displace a pending anchor** —
+  a props-only line followed by another props line carrying its own
+  anchor ("&a\n&a1\nF: *a", or the '? &a' explicit-key twin) let the
+  same-line anchor win the merge, so the displaced anchor stayed
+  defined in the nametab while never appearing in the output: the
+  trailing alias emitted a dangling reference and the emitted document
+  failed to re-parse. Every nesting variant is rejected now, matching
+  libyaml ("did not find expected <document start>" / "did not find
+  expected key"); a TAG-only continuation ("&a\n!!str v") stays legal
+  (nightly run 38271222289, catch 78).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)
