@@ -3243,19 +3243,26 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
              * ("key: &x\n!!map\na: b"); "&anchor c: 3" is a keyed pair */
             size_t t = li.offset + li.indent;
             int only_props = 1;
+            char prev = ' '; /* '#' is a comment only after a blank —
+                              * mid-token it is content ("&a ?#:" is a
+                              * keyed pair whose plain carries a '#',
+                              * the nightly's run 38204470906) */
             while (t < li.end) {
                 char pc = e->p[t];
                 if (pc == ' ' || pc == '\t') {
+                    prev = pc;
                     t++;
                     continue;
                 }
+                int pc_comment = (pc == '#' && (prev == ' ' || prev == '\t'));
                 if (pc == '&' || pc == '!' || pc == '<' || pc == ',' || pc == '>' ||
-                    (pc != '\n' && pc != '\r' && pc != '#' &&
+                    (pc != '\n' && pc != '\r' && !pc_comment &&
                      !yep_ct_is((unsigned char)pc, YEP_CT_FLOW_IND) && pc != ':' && pc != ' ')) {
+                    prev = pc;
                     t++;
                     continue;
                 }
-                only_props = (pc == '\n' || pc == '\r' || pc == '#');
+                only_props = (pc == '\n' || pc == '\r' || pc_comment);
                 break;
             }
             if (only_props) {

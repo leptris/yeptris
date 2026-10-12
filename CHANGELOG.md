@@ -44,6 +44,12 @@ crashers in the regression corpus).
   libyaml nor Psych re-parse it (nightly run 38106246351,
   `? - \n  - 2002-07-*2Yon`). Flow-map values keep the bare form
   (`{k: }` is valid).
+- **parse: a mid-token '#' is content in prop lines** — the props-line
+  classifier ended the scan at any '#', so "&a ?#:" read as
+  props-plus-comment (only_props) and failed, while libyaml parses it
+  — and the emitter's own re-spelling of such keys was the form our
+  parser rejected. '#' opens a comment only after a blank; mid-token
+  it rides the plain (nightly run 38204470906, catch 69).
 - **parse: a deep anchored pending rides the engine** — the fused
   runner's anchored-pending deferral only flushes its records at
   depth 1; a pending resolved into an anchored map BELOW the root
