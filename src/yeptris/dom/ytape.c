@@ -1637,6 +1637,15 @@ static int yt_f_run(yt_fused* F) {
                                    * live above column 0 (dedent = second root) */
                     }
                     if (depth > 0 && st[depth].pending && st[depth].aid != 0) {
+                        if (depth > 1) {
+                            /* an anchored pending BELOW the root frame: the
+                             * deferral's records only flush at depth 1 — a
+                             * deeper one drops its pairs at EOF ("4:\n4: r\n
+                             * 5:\n &5\n 5: e" lost the anchored map; the
+                             * nightly's run 38202382251) — the engine
+                             * resolves it */
+                            return 1;
+                        }
                         if (col <= st[depth].indent) {
                             return 1; /* same-column "content": the anchored value is
                                        * null and this line is a sibling — the engine */
