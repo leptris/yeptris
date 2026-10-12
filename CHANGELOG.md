@@ -20,6 +20,15 @@ crashers in the regression corpus).
   libyaml ("did not find expected <document start>" / "did not find
   expected key"); a TAG-only continuation ("&a\n!!str v") stays legal
   (nightly run 38271222289, catch 78).
+- **parse: a props-only line at a pair position rejects** — a line
+  carrying only properties (anchor, tag, or both) where the engine
+  expected a mapping key ("k: 1\n!!t: &b\n  n: m") was consumed as
+  node props: the pair's key event vanished, the key's tag leaked onto
+  the value node, and a long-tag value then lost its anchor at emit —
+  the trailing alias emitted a dangling reference. libyaml rejects
+  every such shape ("could not find expected ':' while scanning a
+  simple key"); node-position props lines stay legal, including the
+  first pair of a fresh map (nightly run 38275208009, catch 79).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)

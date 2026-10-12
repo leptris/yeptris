@@ -2845,6 +2845,22 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
 
     if (e_at_eol(e)) {
         /* properties with the value on following lines */
+        if (e->depth > 0 && e->frames[e->depth - 1].kind == YEP_FRAME_MAP &&
+            e->frames[e->depth - 1].col == e_col(e, node_at) &&
+            (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
+            /* a props-only line at an ESTABLISHED pair position: the
+             * scanner never finds the simple key's ':' (libyaml:
+             * "could not find expected ':' while scanning a simple
+             * key"; Psych rejects "k: 1\n!!t: &b\n  n: m" and the
+             * anchor-only twins). The old path consumed the line as
+             * node props — the pair's key event vanished, the key's
+             * tag leaked onto the value node, and a long-tag value
+             * then lost its anchor at emit (the nightly's run
+             * 38275208009). The FIRST pair of a fresh map ("a:\n
+             * !!t: &c\n    n: m") has no frame at the column yet and
+             * stays legal. */
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
         if (!yep_view_is_empty(pend_a) && !yep_view_is_empty(anchor)) {
             /* a second props line carrying its own ANCHOR displaces the
              * pend anchor (same-line-wins) — the displaced anchor stays
