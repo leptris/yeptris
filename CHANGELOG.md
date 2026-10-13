@@ -64,6 +64,14 @@ crashers in the regression corpus).
   state now, and doc-inline folds follow the root rule — only a later
   marker ends them; col-0 lines are content (nightly run 38352718743,
   catch 83).
+- **parse: node props cannot precede a second '?' on the same line** —
+  "? &a ? b" opened the nested key map with the props dropped: the
+  displaced anchor stayed defined in the nametab while never emitting,
+  so a later alias emitted a dangling reference and the round-trip
+  failed. libyaml: "mapping keys are not allowed in this context";
+  the cross-line twin ("? &a\n  ? b") composes, and the props-less
+  "? ? b" stays a legal nested key (nightly run 38355778230,
+  catch 84).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)

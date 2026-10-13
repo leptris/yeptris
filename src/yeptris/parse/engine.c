@@ -2935,6 +2935,16 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (ctx == YEP_CTX_AFTER_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "key: ? a" */
         }
+        if (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag)) {
+            /* node properties followed by a second key indicator on
+             * the SAME line: libyaml "mapping keys are not allowed in
+             * this context" (psych rejects "? &a ? b" and "k: &a ? b";
+             * the cross-line twin "? &a\n  ? b" composes and stays
+             * legal). The old path opened the nested key map with the
+             * props dropped — a later alias then emitted a dangling
+             * reference (the nightly's run 38355778230). */
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
         if (e->pos > 0 && e->p[e->pos - 1] == '\t') {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "?\t-" (Y79Y) */
         }
