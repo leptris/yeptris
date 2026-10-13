@@ -72,6 +72,14 @@ crashers in the regression corpus).
   the cross-line twin ("? &a\n  ? b") composes, and the props-less
   "? ? b" stays a legal nested key (nightly run 38355778230,
   catch 84).
+- **feed: the step scan tracks quotes at word starts** — a quote byte
+  after any indicator char opened phantom quote state, and plain
+  content like "A!'- %YAML" carried it across the "--- |" fold
+  marker: the fold went untracked and a later cut orphaned the
+  "%YAML" directive from its "---", shifting the document-start mark
+  by a line. Quotes now open only at a word start; a word that began
+  with an indicator still admits a quoted node after it (nightly run
+  38359507422, catch 85).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)

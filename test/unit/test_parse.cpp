@@ -1867,6 +1867,48 @@ TEST(Parse, PropsThenKeyIndicatorOnLineRejects) {
     }
 }
 
+TEST(Feed, PlainContentQuoteIsNeverTracked) {
+    /* catch 85 (the nightly's run 38359507422): the scan opened quote
+     * state on a quote byte after any indicator char — "A!'- %YAML" is
+     * a PLAIN whose apostrophe is content, but the phantom quote state
+     * suppressed the "--- |" fold and the later cut orphaned the
+     * "%YAML" directive from its "---", shifting the document-start
+     * mark by a line. Quotes now open only at a WORD start; a word
+     * that began with an indicator still admits a quoted node after
+     * it ("&a 'x'", "- 'x'"). */
+    const char* y = "A!'- %YAML 0.2\n--- |\n!e-2.0\n...\n%Y'AML 1.2\n---\n# Empty\n...\n";
+    YeptrisRecorder whole = yeptris_recorder_new();
+    ASSERT_NE(whole, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(whole, y, strlen(y), 1), YEPTRIS_OK);
+    size_t nw = 0;
+    yeptris_recorder_records(whole, &nw);
+    YeptrisRecorder ch = yeptris_recorder_new();
+    ASSERT_NE(ch, nullptr);
+    size_t half = strlen(y) / 2;
+    ASSERT_EQ(yeptris_recorder_feed(ch, y, half, 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(ch, y + half, strlen(y) - half, 1), YEPTRIS_OK);
+    size_t nc = 0;
+    yeptris_recorder_records(ch, &nc);
+    EXPECT_EQ(nw, nc);
+    yeptris_recorder_free(whole);
+    yeptris_recorder_free(ch);
+    /* a quote after an indicator-led word is still tracked */
+    const char* q = "&a 'x\n y'\n---\nz: 1\n";
+    YeptrisRecorder w2 = yeptris_recorder_new();
+    ASSERT_NE(w2, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(w2, q, strlen(q), 1), YEPTRIS_OK);
+    size_t n2 = 0;
+    const YeptrisEventRecord* r2 = yeptris_recorder_records(w2, &n2);
+    int folded = 0;
+    for (size_t i = 0; i < n2; i++) {
+        if (r2[i].type == YEPTRIS_EV_SCALAR && r2[i].style == 2 /* single-quoted */) {
+            folded = 1;
+        }
+    }
+    EXPECT_EQ(folded, 1);
+    yeptris_recorder_free(w2);
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain
