@@ -80,6 +80,14 @@ crashers in the regression corpus).
   by a line. Quotes now open only at a word start; a word that began
   with an indicator still admits a quoted node after it (nightly run
   38359507422, catch 85).
+- **feed: flow separators re-arm the word-start quote rule** — the
+  quote in "{\"O\" ..." sits adjacent to the '{' with no space, so
+  the word-start rule (catch 85) left it untracked: the scan counted
+  the ']' inside the quoted scalar as closing the flow and cut at a
+  '---' the engine never saw outside the quote — the chunked feed died
+  on an unterminated quoted scalar the whole parse had closed. ','
+  ':' '[' ']' '{' '}' re-arm tok_start immediately (nightly run
+  38366643713, catch 86).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)
