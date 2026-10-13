@@ -3770,7 +3770,7 @@ static size_t step_scan(yep_stepstate* st) {
                     hold = i; /* a marker possibly truncated by the chunk */
                     break;
                 }
-                if (!marker && ind <= st->bs_indent) {
+                if (!marker && st->bs_indent != (uint32_t)-1 && ind <= st->bs_indent) {
                     st->bs_open = 0; /* the fold ends here: normal processing resumes */
                 } else {
                     size_t e = k;
@@ -3820,6 +3820,25 @@ static size_t step_scan(yep_stepstate* st) {
                 if (p[i + 1] == '-' && p[i + 2] == '-') {
                     char after = p[i + 3];
                     if (after == '\n' || after == ' ' || after == '\t' || after == '\r') {
+                        /* a doc-inline block scalar ("--- |"): the node
+                         * hangs off the DOCUMENT, so its fold follows
+                         * the root rule — only a later marker ends it
+                         * (col-0 lines are content). The line-start
+                         * header check below cannot see it (the '|'
+                         * rides mid-line after the marker), and
+                         * without the state the fold's content
+                         * poisons the quote/flow tracking (the
+                         * nightly's run 38352718743). */
+                        if (!st->bs_open) {
+                            size_t k2 = i + 3;
+                            while (k2 < st->len && (p[k2] == ' ' || p[k2] == '\t')) {
+                                k2++;
+                            }
+                            if (k2 < st->len && (p[k2] == '>' || p[k2] == '|')) {
+                                st->bs_open = 1;
+                                st->bs_indent = (uint32_t)-1; /* root rule: markers only */
+                            }
+                        }
                         if (st->saw_directive == 0 && i > 0 && !st->bs_open) {
                             last_cut = i; /* interior document boundary */
                         }

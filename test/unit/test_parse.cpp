@@ -1806,6 +1806,40 @@ TEST(Feed, BlockScalarFoldIsNeverCut) {
     yeptris_recorder_free(ch);
 }
 
+TEST(Feed, DocInlineBlockScalarIsNeverCut) {
+    /* catch 83 (the nightly's run 38352718743): the scan's header
+     * check only fired at line starts, so "--- |" left the fold
+     * untracked — its flow-looking content ("b,w: [|PS-<...") poisoned
+     * the quote/flow state and the split diverged. Doc-inline folds
+     * follow the root rule (only a later marker ends them), so the
+     * marker arm now opens the state and the scan holds everything. */
+    const char* y = "--- |\nb,w: [|PS-<dobe-1be-2.0\n\nb,[|PS-<dobe-2be-2.0\n\nb,w: [x]\n";
+    YeptrisRecorder whole = yeptris_recorder_new();
+    ASSERT_NE(whole, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(whole, y, strlen(y), 1), YEPTRIS_OK);
+    size_t nw = 0;
+    const YeptrisEventRecord* rw = yeptris_recorder_records(whole, &nw);
+    size_t fold_len = 0;
+    for (size_t i = 0; i < nw; i++) {
+        if (rw[i].type == YEPTRIS_EV_SCALAR) {
+            fold_len = rw[i].value_len;
+            break;
+        }
+    }
+    EXPECT_GT(fold_len, 0u);
+    YeptrisRecorder ch = yeptris_recorder_new();
+    ASSERT_NE(ch, nullptr);
+    size_t third = strlen(y) / 3;
+    ASSERT_EQ(yeptris_recorder_feed(ch, y, third, 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(ch, y + third, strlen(y) - 2 * third, 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(ch, y + 2 * third, third + 2, 1), YEPTRIS_OK);
+    size_t nc = 0;
+    yeptris_recorder_records(ch, &nc);
+    EXPECT_EQ(nw, nc);
+    yeptris_recorder_free(whole);
+    yeptris_recorder_free(ch);
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain
