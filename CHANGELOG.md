@@ -47,6 +47,16 @@ crashers in the regression corpus).
   emitted — transport changed the event stream. The boundary clears
   the pair state now, and the bare ':' key event carries the ':' mark
   instead of a zeroed one (nightly run 38287390219, catch 81).
+- **feed: the step scan holds block-scalar state across cuts** — the
+  scan had no '>' / '|' notion: a cut inside an open fold changed the
+  scalar's value or split it into phantom documents (">\n---\n"
+  whole vs chunked), and fold content like "'* bullet" poisoned the
+  scanner's quote tracking so later cuts landed mid-fold. The scan now
+  consumes a fold's lines wholesale — they cannot poison quote, flow,
+  or comment state — and cuts only after the reader's own fold-end
+  rule: a dedented line that is not blank, not a comment, not a
+  marker; truncated marker fragments wait for the next chunk (nightly
+  run 38291177166, catch 82).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)

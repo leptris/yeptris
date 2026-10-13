@@ -3604,6 +3604,10 @@ typedef struct yep_stepstate {
     int saw_directive;  /* a % line awaits its --- document */
     int started;        /* STREAM_START emitted */
     uint32_t line_base; /* whole-stream lines consumed by earlier runs */
+    int bs_open;        /* a block scalar's content lines are pending: a
+                         * '>' / '|' header was seen and its terminator
+                         * has not */
+    uint32_t bs_indent; /* the header line's indent: the content floor */
 } yep_stepstate;
 
 static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep_sink* sink,
@@ -3726,6 +3730,84 @@ static size_t step_scan(yep_stepstate* st) {
             if (prev != '\n') {
                 continue;
             }
+            /* Block scalars: once a '>' / '|' header is seen, its
+             * content is literal and the fold reader's extent depends
+             * on bytes this run may not hold (markers, comments and
+             * blank lines all ride along to EOF in the lenient
+             * grammar) — so consume every line without updating the
+             * quote/flow/comment state and WITHOUT cutting: a split
+             * inside the fold changes the scalar's value (the
+             * nightly's run 38291177166, ">\n---\n" and friends).
+             * The fold ends only at the reader's own rule: a dedented
+             * line that is not blank, not a comment, not a marker. */
+            if (st->bs_open) {
+                size_t k = i;
+                uint32_t ind = 0;
+                while (k < st->len && p[k] == ' ') {
+                    ind++;
+                    k++;
+                }
+                if (k >= st->len) {
+                    hold = i; /* an incomplete line */
+                    break;
+                }
+                if (p[k] == '\n' || p[k] == '#') {
+                    size_t e = k;
+                    while (e < st->len && p[e] != '\n') {
+                        e++;
+                    }
+                    if (e >= st->len) {
+                        hold = i;
+                        break;
+                    }
+                    i = e; /* blank or comment content: the loop's i++ crosses the break */
+                    continue;
+                }
+                int marker =
+                    (p[k] == '-' && k + 2 < st->len && p[k + 1] == '-' && p[k + 2] == '-') ||
+                    (p[k] == '.' && k + 2 < st->len && p[k + 1] == '.' && p[k + 2] == '.');
+                if ((p[k] == '-' || p[k] == '.') && k + 2 >= st->len) {
+                    hold = i; /* a marker possibly truncated by the chunk */
+                    break;
+                }
+                if (!marker && ind <= st->bs_indent) {
+                    st->bs_open = 0; /* the fold ends here: normal processing resumes */
+                } else {
+                    size_t e = k;
+                    while (e < st->len && p[e] != '\n') {
+                        e++;
+                    }
+                    if (e >= st->len) {
+                        hold = i;
+                        break;
+                    }
+                    i = e;
+                    continue;
+                }
+            }
+            if ((c == '>' || c == '|') &&
+                (i + 1 >= st->len || p[i + 1] == ' ' || p[i + 1] == '\t' || p[i + 1] == '\n' ||
+                 p[i + 1] == '\r' || (p[i + 1] >= '0' && p[i + 1] <= '9') || p[i + 1] == '+' ||
+                 p[i + 1] == '-')) {
+                uint32_t ind = 0;
+                size_t k = i;
+                while (k > 0 && p[k - 1] == ' ') {
+                    k--;
+                    ind++;
+                }
+                st->bs_open = 1;
+                st->bs_indent = ind;
+                size_t e = i;
+                while (e < st->len && p[e] != '\n') {
+                    e++;
+                }
+                if (e >= st->len) {
+                    hold = i; /* an incomplete header line */
+                    break;
+                }
+                i = e;
+                continue;
+            }
             if (c == '%') {
                 st->saw_directive = 1; /* must stay with its --- line */
                 continue;
@@ -3738,7 +3820,7 @@ static size_t step_scan(yep_stepstate* st) {
                 if (p[i + 1] == '-' && p[i + 2] == '-') {
                     char after = p[i + 3];
                     if (after == '\n' || after == ' ' || after == '\t' || after == '\r') {
-                        if (st->saw_directive == 0 && i > 0) {
+                        if (st->saw_directive == 0 && i > 0 && !st->bs_open) {
                             last_cut = i; /* interior document boundary */
                         }
                         st->saw_directive = 0; /* this --- owns the directives */
