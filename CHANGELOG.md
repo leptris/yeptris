@@ -57,6 +57,13 @@ crashers in the regression corpus).
   rule: a dedented line that is not blank, not a comment, not a
   marker; truncated marker fragments wait for the next chunk (nightly
   run 38291177166, catch 82).
+- **feed: doc-inline block scalars hold the cut too** — the scan's
+  header check only fired at line starts, so "--- |" left the fold
+  untracked: the fold's flow-looking content poisoned the scanner's
+  quote/flow state and the split diverged. The marker arm opens the
+  state now, and doc-inline folds follow the root rule — only a later
+  marker ends them; col-0 lines are content (nightly run 38352718743,
+  catch 83).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)
