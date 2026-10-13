@@ -1909,6 +1909,34 @@ TEST(Feed, PlainContentQuoteIsNeverTracked) {
     yeptris_recorder_free(w2);
 }
 
+TEST(Feed, FlowAdjacentQuoteIsTracked) {
+    /* catch 86 (the nightly's run 38366643713): the word-start quote
+     * rule armed tok_start only across spaces, so the quote in
+     * "{\"O\" ..." — adjacent to the '{' with no space — went
+     * untracked: the scan counted the ']' inside the quoted scalar as
+     * closing the flow, cut at a '---' that the engine never saw
+     * outside the quote, and the chunked feed died on an unterminated
+     * quoted scalar the whole parse had closed. Flow separators now
+     * re-arm tok_start immediately. */
+    const char* y = "{\"a ]\": 1}\n---\nk: v\n";
+    YeptrisRecorder whole = yeptris_recorder_new();
+    ASSERT_NE(whole, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(whole, y, strlen(y), 1), YEPTRIS_OK);
+    size_t nw = 0;
+    yeptris_recorder_records(whole, &nw);
+    EXPECT_GT(nw, 4u); /* both docs parsed */
+    YeptrisRecorder ch = yeptris_recorder_new();
+    ASSERT_NE(ch, nullptr);
+    size_t half = strlen(y) / 2;
+    ASSERT_EQ(yeptris_recorder_feed(ch, y, half, 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(ch, y + half, strlen(y) - half, 1), YEPTRIS_OK);
+    size_t nc = 0;
+    yeptris_recorder_records(ch, &nc);
+    EXPECT_EQ(nw, nc);
+    yeptris_recorder_free(whole);
+    yeptris_recorder_free(ch);
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain

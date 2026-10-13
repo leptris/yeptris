@@ -3739,6 +3739,10 @@ static size_t step_scan(yep_stepstate* st) {
             }
             st->tok_start = 0;
         }
+        if (c == ',' || c == ':' || c == '[' || c == '{' || c == ']' || c == '}') {
+            st->tok_start = 1; /* flow separators: the next byte may begin a
+                                * token with no space ("{\"a\":...") */
+        }
         if (c == '[' || c == '{') {
             st->in_flow++;
             continue;
