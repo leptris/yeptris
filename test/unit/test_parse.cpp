@@ -1937,6 +1937,37 @@ TEST(Feed, FlowAdjacentQuoteIsTracked) {
     yeptris_recorder_free(ch);
 }
 
+TEST(Emit, ExplicitPairValueKeepsItsAnchor) {
+    /* catch 87 (the nightly's run 38371134997): the block map's
+     * explicit-key arm wrote "? key" then ": " and emitted the value
+     * directly — skipping the simple arm's emit_props_tail + fresh
+     * line for a nested block collection. An anchored map value lost
+     * its anchor (or, once the props call went in, glued it to the
+     * first key: "&basename"), and a later alias emitted a dangling
+     * reference the re-parse rejected. */
+    const char* y = "? k: &base\n   n: m\nz: *base\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    yeptris_document_free(doc);
+    st = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st);
+    EXPECT_NE(doc2, nullptr) << s1;
+    if (doc2 != NULL) {
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+        free(s2);
+        yeptris_document_free(doc2);
+    }
+    /* the anchor must appear in the output */
+    EXPECT_NE(strstr(s1, "&base"), nullptr) << s1;
+    free(s1);
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain
