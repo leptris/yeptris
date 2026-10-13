@@ -1099,7 +1099,6 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
                  * alias emitted a dangling reference (the nightly's
                  * run 38371134997, "? &d!se: &base\n   name: Esame"
                  * with a complex key forcing the explicit form) */
-                const yep_dnode* vn = yep_dom_node(d, kn->next_sibling);
                 if (!(vn->kind == 0 || vn->kind == 3 || vn->flow || vn->count == 0)) {
                     int seq_val = (vn->kind == 1 && !vn->flow);
                     int val_col = seq_val ? content_col : content_col + 2;
