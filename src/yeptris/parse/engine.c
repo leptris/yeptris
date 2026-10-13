@@ -3618,6 +3618,10 @@ typedef struct yep_stepstate {
                          * '>' / '|' header was seen and its terminator
                          * has not */
     uint32_t bs_indent; /* the header line's indent: the content floor */
+    int tok_start;      /* the next word may begin here: quotes are
+                         * tokens only at a word start (the "A!'- %YAML"
+                         * plain's apostrophe is content, not a quote) */
+    int word_led;       /* the current word began with an indicator */
 } yep_stepstate;
 
 static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep_sink* sink,
@@ -3662,12 +3666,6 @@ void yep_engine_destroy(yep_engine* e) {
 /* A quote opens a scalar only where a value can begin; anywhere else
  * it is literal plain text (the apostrophe in "don't"). This is exact
  * on valid YAML: a quote at a value position always opens. */
-static int quote_opens(char prev) {
-    return prev == '\n' || prev == ' ' || prev == '\t' || prev == '-' || prev == ':' ||
-           prev == '?' || prev == ',' || prev == '[' || prev == '{' || prev == '&' || prev == '*' ||
-           prev == '!';
-}
-
 /* Advances quote/flow/comment state over buf[scanned, len) and returns
  * the offset of the LAST safe cut (0 = none). When the final bytes'
  * meaning depends on bytes not yet fed (a quote that may be doubled,
@@ -3721,9 +3719,25 @@ static size_t step_scan(yep_stepstate* st) {
                 continue;
             }
         }
-        if ((c == '\'' || c == '"') && quote_opens(i > 0 ? p[i - 1] : '\n')) {
-            st->quote = c;
+        if (c == '\n') {
+            st->tok_start = 1;
+            st->word_led = 0;
             continue;
+        }
+        if (c == ' ' || c == '\t') {
+            st->tok_start = st->word_led; /* after an indicator-led word a
+                                           * quoted node may follow */
+            continue;
+        }
+        if (st->tok_start) {
+            st->word_led = (c == '&' || c == '*' || c == '!' || c == '-' || c == '?' || c == ':' ||
+                            c == ',' || c == '[' || c == '{' || c == ']' || c == '}');
+            if (c == '\'' || c == '"') {
+                st->quote = c; /* a quote at a word start IS a quoted token */
+                st->tok_start = 0;
+                continue;
+            }
+            st->tok_start = 0;
         }
         if (c == '[' || c == '{') {
             st->in_flow++;
@@ -3873,6 +3887,7 @@ int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, con
         }
     }
     yep_stepstate* st = e->step;
+    st->tok_start = 1; /* the buffer starts at a line start */
     if (len > 0) {
         if (st->len + len > st->cap) {
             size_t cap = st->cap ? st->cap : 4096;
