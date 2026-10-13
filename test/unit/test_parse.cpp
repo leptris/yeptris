@@ -1840,6 +1840,33 @@ TEST(Feed, DocInlineBlockScalarIsNeverCut) {
     yeptris_recorder_free(ch);
 }
 
+TEST(Parse, PropsThenKeyIndicatorOnLineRejects) {
+    /* catch 84 (the nightly's run 38355778230, "? &a ? &a&a ? &a ?.
+     * &a ? a\n: ?. &a ? a\n:-: *a"): node properties followed by a
+     * second '?' key indicator on the SAME line opened the nested key
+     * map with the props dropped — the displaced anchor stayed defined
+     * in the nametab while never emitting, so the trailing alias
+     * emitted a dangling reference and the round-trip failed. libyaml:
+     * "mapping keys are not allowed in this context"; the cross-line
+     * twin composes and the props-less "? ? b" is a legal nested key. */
+    const char* bad[] = {"? &a ? b\n: v\n", "? &a ? b\n", "k: &a ? b\n", "? &a ? b : v\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_EQ(st, YEPTRIS_ERROR_PARSE) << y;
+    }
+    const char* good[] = {"? ? b\n: v\n", "? &a\n  ? b\n  : v\n"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain
