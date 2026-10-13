@@ -1090,7 +1090,27 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             wr_indent(w, content_col);
             wr_put(w, ": ", 2);
             w->force_flow = 0;
-            emit_node(em, kn->next_sibling, content_col, 0);
+            {
+                /* the value's props ride the ':' line and a nested
+                 * block collection takes the fresh-line form, exactly
+                 * like the simple arm's path: the explicit twin
+                 * skipped both, so an anchored map value lost its
+                 * anchor (or glued it to the first key) and a later
+                 * alias emitted a dangling reference (the nightly's
+                 * run 38371134997, "? &d!se: &base\n   name: Esame"
+                 * with a complex key forcing the explicit form) */
+                const yep_dnode* vn = yep_dom_node(d, kn->next_sibling);
+                if (!(vn->kind == 0 || vn->kind == 3 || vn->flow || vn->count == 0)) {
+                    int seq_val = (vn->kind == 1 && !vn->flow);
+                    int val_col = seq_val ? content_col : content_col + 2;
+                    emit_props_tail(w, vn);
+                    wr_byte(w, '\n');
+                    wr_indent(w, val_col);
+                    emit_node(em, kn->next_sibling, val_col - 2, 0);
+                } else {
+                    emit_node(em, kn->next_sibling, content_col, 0);
+                }
+            }
         } else {
             emit_tag(w, kn);
             emit_anchor_ex(em, kn);

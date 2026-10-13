@@ -88,6 +88,13 @@ crashers in the regression corpus).
   on an unterminated quoted scalar the whole parse had closed. ','
   ':' '[' ']' '{' '}' re-arm tok_start immediately (nightly run
   38366643713, catch 86).
+- **emit: the explicit pair's value keeps its anchor** — the block
+  map's explicit-key arm wrote "? key" then ": " and emitted the value
+  directly, skipping the simple arm's props-tail + fresh-line path for
+  a nested block collection: an anchored map value lost its anchor (or
+  glued it to the first key, "&basename"), and a later alias emitted a
+  dangling reference the re-parse rejected. The explicit form now
+  mirrors the simple arm exactly (nightly run 38371134997, catch 87).
 - **emit: the core shorthand's suffix must re-scan** — a core-URI
   tag whose suffix carries a byte outside the parse side's tag charset
   (ours terminates on ',' — the lenience vs libyaml's URI set)
