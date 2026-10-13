@@ -1772,6 +1772,40 @@ TEST(Parse, QPairStateResetsAtDocBoundary) {
     yeptris_recorder_free(ch);
 }
 
+TEST(Feed, BlockScalarFoldIsNeverCut) {
+    /* catch 82 (the nightly's run 38291177166): the step scan had no
+     * block-scalar state — a cut inside an open fold changed the
+     * scalar's value ("@>\n---\n" whole vs chunked), and fold content
+     * like "'* bullet" poisoned the scanner's quote state. The scan
+     * now consumes a fold's lines wholesale and cuts only after the
+     * reader's own fold-end rule: a dedented line that is not blank,
+     * not a comment, not a marker. */
+    const char* y = ">\n--- folded\n line\n\n next\n   '* bullet\n\n# Comment\n---\n";
+    YeptrisRecorder whole = yeptris_recorder_new();
+    ASSERT_NE(whole, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(whole, y, strlen(y), 1), YEPTRIS_OK);
+    size_t nw = 0;
+    const YeptrisEventRecord* rw = yeptris_recorder_records(whole, &nw);
+    size_t fold_len = 0;
+    for (size_t i = 0; i < nw; i++) {
+        if (rw[i].type == YEPTRIS_EV_SCALAR) {
+            fold_len = rw[i].value_len; /* doc 1's fold (doc 2 is empty) */
+            break;
+        }
+    }
+    EXPECT_GT(fold_len, 0u);
+    YeptrisRecorder ch = yeptris_recorder_new();
+    ASSERT_NE(ch, nullptr);
+    size_t half = strlen(y) / 2;
+    ASSERT_EQ(yeptris_recorder_feed(ch, y, half, 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(ch, y + half, strlen(y) - half, 1), YEPTRIS_OK);
+    size_t nc = 0;
+    yeptris_recorder_records(ch, &nc);
+    EXPECT_EQ(nw, nc);
+    yeptris_recorder_free(whole);
+    yeptris_recorder_free(ch);
+}
+
 TEST(Parse, LeadingBomContentRidesQuoted) {
     /* the nightly's run 38258674337 ("\xff\xfe\xff\xfe:\x00" — a
      * UTF-16LE double-BOM transcodes to a CONTENT U+FEFF as a plain
