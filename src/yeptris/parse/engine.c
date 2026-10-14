@@ -800,9 +800,21 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
             e->pos == e->line_start ? e_line_info_here(e) : yep_scan_line(e->p, e->len, e->pos);
         int blank = (li.flags & YEP_LF_BLANK) != 0;
         if (!blank) {
-            if (saw_content && parent_col < 0 &&
-                (li.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END | YEP_LF_DIRECTIVE))) {
-                break; /* root block ends at ---/.../% even at the content column */
+            if (parent_col < 0 && (li.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END))) {
+                /* col-0 ---/... are document boundaries ALWAYS — even
+                 * with no content yet: libyaml scans the marker as a
+                 * document token regardless, so '>\n--- ' is an EMPTY
+                 * block scalar plus a second (empty) document, not a
+                 * block whose content is the marker line (the nightly's
+                 * run 38544774709: whole saw one doc, the chunked cut
+                 * at the marker saw two) */
+                break;
+            }
+            if (saw_content && parent_col < 0 && (li.flags & YEP_LF_DIRECTIVE)) {
+                /* a %-line after content ends the root block; as the
+                 * FIRST line it is content (M7A3/W4TN: the block's
+                 * value is '%!PS-Adobe-2.0 ...') */
+                break;
             }
             if (content_indent < 0) {
                 content_indent = li.indent;
