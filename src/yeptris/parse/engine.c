@@ -1998,6 +1998,7 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
         uint8_t pair_open;
         uint8_t pair_value;
         uint8_t pair_wrap;
+        uint8_t q_coll;      /* seq: an explicit '?' key collection awaits completion */
         int32_t buf_from;
         uint32_t entry_line;
         uint32_t entries;
@@ -2010,6 +2011,7 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
     st[idx].pair_open = 0;
     st[idx].pair_value = 0;
     st[idx].pair_wrap = 0;
+    st[idx].q_coll = 0;
     st[idx].buf_from = -1;
     st[idx].entry_line = 0;
     st[idx].entries = 0;
@@ -2024,6 +2026,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
         uint8_t pair_open;   /* seq: a buffered single-pair awaits its MAP_END */
         uint8_t pair_value;  /* seq: the open pair already has its value */
         uint8_t pair_wrap;   /* map frame pushed as a seq single-pair */
+        uint8_t q_coll;      /* seq: an explicit '?' key collection awaits completion */
         int32_t buf_from;    /* seq: entry events buffered from this index */
         uint32_t entry_line; /* seq: line where the buffered entry ended */
         uint32_t entries;    /* completed entries (for trailing-comma detection) */
@@ -2134,7 +2137,24 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
             if (n >= e->max_depth) {
                 return e_fail(e, YEP_ERR_DEPTH, e->pos);
             }
-            st[n - 1].pair_value = 1;
+            if (q_key) {
+                /* the EXPLICIT key is the collection: mark its frame so
+                 * the pair completes with a null value when no ':' line
+                 * follows ("? [a]" / "? {b: 1}") — without the marker the
+                 * key leaked as a plain seq entry and a map-entry key
+                 * vanished outright (the nightly's round 101) */
+                if (st[n - 1].kind == 1) {
+                    st[n - 1].pending_key = 2;
+                } else {
+                    st[n - 1].q_coll = 1;
+                }
+            }
+            if (!q_key) {
+                /* a VALUE collection completes the pending pair; a KEY
+                 * collection must not (its pair completes at ':' or the
+                 * boundary with a null value) */
+                st[n - 1].pair_value = 1;
+            }
             unsigned char oc = (unsigned char)e->p[e->pos];
             e->pos++;
             yep_view pa = ev.anchor, pt = ev.tag; /* props before the opener */
@@ -2300,11 +2320,11 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                             return brc;
                         }
                     }
-                    yep_event nv;
-                    e_event_init(&nv, YEP_EV_SCALAR);
-                    nv.implicit = 1;
-                    nv.style = YEP_STYLE_PLAIN;
-                    if (emit_now(e, &nv) != 0) {
+                    /* the parsed key rides the slot the empty stand-in
+                     * occupied — dropping it lost the key's content AND
+                     * its anchor (an alias to it then failed the
+                     * placed-anchor check: the nightly's round 101) */
+                    if (emit_now(e, &ev) != 0) {
                         return -2;
                     }
                     continue;
@@ -2341,6 +2361,22 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
         unsigned char c = (unsigned char)e->p[e->pos];
         if (c == ',') {
             e->pos++;
+            if (st[n - 1].q_coll && st[n - 1].buf_from >= 0) {
+                int32_t bf0 = st[n - 1].buf_from;
+                st[n - 1].buf_from = -1;
+                e->ev_scopes--;
+                if (e_buf_wrap(e, (uint32_t)bf0) != 0) {
+                    return -2;
+                }
+                if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
+                    int brc = e_buf_send(e, 0);
+                    if (brc != 0) {
+                        return brc;
+                    }
+                }
+                st[n - 1].q_coll = 0;
+                st[n - 1].pair_open = 1;
+            }
             if (st[n - 1].pair_open) {
                 if (!st[n - 1].pair_value) {
                     yep_event nv;
@@ -2391,6 +2427,22 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
             continue;
         }
         if (c == ']' || c == '}') {
+            if (st[n - 1].q_coll && st[n - 1].buf_from >= 0) {
+                int32_t bf0 = st[n - 1].buf_from;
+                st[n - 1].buf_from = -1;
+                e->ev_scopes--;
+                if (e_buf_wrap(e, (uint32_t)bf0) != 0) {
+                    return -2;
+                }
+                if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
+                    int brc = e_buf_send(e, 0);
+                    if (brc != 0) {
+                        return brc;
+                    }
+                }
+                st[n - 1].q_coll = 0;
+                st[n - 1].pair_open = 1;
+            }
             while (st[n - 1].pair_wrap) {
                 /* a single-pair wrapper inside a sequence closes on any
                  * bracket ("[ : v ]", CFD4) */
@@ -2532,6 +2584,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
                 }
                 /* '[ [a, b]: v' — the buffered collection is the pair key */
+                st[n - 1].q_coll = 0;
                 int32_t bf0 = st[n - 1].buf_from;
                 int was_empty = ((uint32_t)bf0 == e->ev_buf_n);
                 st[n - 1].buf_from = -1;
