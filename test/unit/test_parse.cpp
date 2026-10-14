@@ -3762,3 +3762,64 @@ TEST(NodeChildren, IndexedAccessSurvivesMutation) {
     }
     yeptris_document_free(doc);
 }
+
+TEST(Parse, NestedExplicitPairNullsAtOwnLevels) {
+    /* catch 88 (the nightly's run 38387614146): nested '? ?' pairs
+     * stacked two pending nulls over a single depth slot — the inner
+     * clobbered the outer's level, the outer null flushed inside the
+     * wrong map, and the DOM alternation desynced. The pending levels
+     * are a stack now: each '?' pair's null flushes directly inside
+     * its own map (the libyaml oracle: {{{"k" => "a"} => nil} =>
+     * nil}). */
+    const char* y = "? ? k : a\n";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    ASSERT_NE(rs, nullptr);
+    int map_starts = 0, map_ends = 0, nulls = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_MAPPING_START) {
+            map_starts++;
+        }
+        if (rs[i].type == YEPTRIS_EV_MAPPING_END) {
+            map_ends++;
+        }
+        if (rs[i].type == YEPTRIS_EV_SCALAR && rs[i].value_len == 0) {
+            nulls++;
+        }
+    }
+    EXPECT_EQ(map_starts, 3);
+    EXPECT_EQ(map_ends, 3);
+    EXPECT_EQ(nulls, 2); /* one per '?' pair, none missing, none doubled */
+    yeptris_recorder_free(rec);
+}
+
+TEST(Emit, NestedExplicitPairRoundTripsWithAnchors) {
+    /* catch 88's full minimum: the nested '?' nulls plus the anchored
+     * empty value of the following pair — the dropped anchor left the
+     * trailing alias dangling and the emitted document failed to
+     * re-parse. */
+    const char* y = ":\n  ? ? &? &a : a\n  ?\"&d!se: &base\nU name <: *base\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    yeptris_document_free(doc);
+    /* the anchor must survive the emit for the alias to resolve */
+    EXPECT_NE(strstr(s1, "&base"), nullptr) << s1;
+    st = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st);
+    EXPECT_NE(doc2, nullptr) << s1;
+    if (doc2 != NULL) {
+        size_t l2 = 0;
+        char* s2 = yeptris_serialize(doc2, &l2);
+        EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+        free(s2);
+        yeptris_document_free(doc2);
+    }
+    free(s1);
+}
