@@ -1702,6 +1702,12 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
         yep_json_walk w;
         yep_json_tok t;
         yep_json_walk_init(&w, p, len, open_pos, e->max_depth);
+        w.strict = 1; /* the YAML fast path is byte-for-byte JSON only:
+                       * a lenient walk accepted number/literal keys
+                       * ("{9:1}" -> {9->1}) that the general kernel
+                       * reads as the plain scalar "9:1" — whole and
+                       * chunked parses took different paths and
+                       * diverged (the nightly's run 38513849602) */
         for (;;) {
             yep_jw_status st = yep_json_walk_next(&w, &t);
             if (st == YEP_JW_REJECT) {

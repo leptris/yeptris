@@ -3823,3 +3823,78 @@ TEST(Emit, NestedExplicitPairRoundTripsWithAnchors) {
     }
     free(s1);
 }
+
+TEST(Parse, FlowNumberKeyRidesTheGeneralKernel) {
+    /* catch 89 (the nightly's run 38513849602): the JSON fast path's
+     * lenient walk accepted "{9:1}" — invalid JSON, a number key — and
+     * emitted {9 -> 1}, while a chunked feed fell under the <24-byte
+     * gate to the general kernel, which reads "9:1" as one plain
+     * scalar. Whole and chunked streams diverged on the same bytes.
+     * The fast paths are byte-for-byte JSON now; number/literal keys
+     * take the general kernel's colon rules in both modes. */
+    const char* y = "{9:1}\n---\n  ? ? &?  &a :\n";
+    size_t len = strlen(y);
+    /* the recorder resets at every feed entry — accumulate per feed,
+     * the fuzz_feed harness's discipline */
+    typedef struct {
+        uint16_t type;
+        uint32_t line, col;
+        uint32_t vlen;
+    } pin_rec;
+    pin_rec acc[2][128];
+    size_t an[2] = {0, 0};
+    int key_len = -1;
+    for (int mode = 0; mode < 2; mode++) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        if (mode == 0) {
+            ASSERT_EQ(yeptris_recorder_feed(rec, y, len, 0), YEPTRIS_OK);
+            size_t n = 0;
+            const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+            for (size_t i = 0; i < n && an[0] < 128; i++) {
+                acc[0][an[0]].type = rs[i].type;
+                acc[0][an[0]].line = rs[i].line;
+                acc[0][an[0]].col = rs[i].col;
+                acc[0][an[0]].vlen = rs[i].value_len;
+                if (rs[i].type == YEPTRIS_EV_SCALAR && rs[i].line == 1 && rs[i].col == 2) {
+                    key_len = (int)rs[i].value_len;
+                }
+                an[0]++;
+            }
+        } else {
+            for (size_t off = 0; off < len; off++) {
+                ASSERT_EQ(yeptris_recorder_feed(rec, y + off, 1, 0), YEPTRIS_OK);
+                size_t n = 0;
+                const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+                for (size_t i = 0; i < n && an[1] < 128; i++) {
+                    acc[1][an[1]].type = rs[i].type;
+                    acc[1][an[1]].line = rs[i].line;
+                    acc[1][an[1]].col = rs[i].col;
+                    acc[1][an[1]].vlen = rs[i].value_len;
+                    an[1]++;
+                }
+            }
+        }
+        ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        for (size_t i = 0; i < n && an[mode] < 128; i++) {
+            acc[mode][an[mode]].type = rs[i].type;
+            acc[mode][an[mode]].line = rs[i].line;
+            acc[mode][an[mode]].col = rs[i].col;
+            acc[mode][an[mode]].vlen = rs[i].value_len;
+            an[mode]++;
+        }
+        yeptris_recorder_free(rec);
+    }
+    /* the flow key is the plain scalar "9:1" (3 bytes), not 9 */
+    EXPECT_EQ(key_len, 3);
+    /* whole vs chunked: identical streams */
+    ASSERT_EQ(an[0], an[1]);
+    for (size_t i = 0; i < an[0]; i++) {
+        ASSERT_EQ(acc[0][i].type, acc[1][i].type);
+        ASSERT_EQ(acc[0][i].line, acc[1][i].line);
+        ASSERT_EQ(acc[0][i].col, acc[1][i].col);
+        ASSERT_EQ(acc[0][i].vlen, acc[1][i].vlen);
+    }
+}

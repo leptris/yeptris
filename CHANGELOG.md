@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: the JSON fast paths are byte-for-byte JSON** — the flow
+  walk's lenient mode accepted number and literal keys, so a whole
+  parse of `{9:1}` rode the fast path and emitted `{9 -> 1}` while a
+  chunked feed fell under the small-span gate to the general kernel,
+  which correctly reads `9:1` as one plain scalar (`{"9:1" -> null}`):
+  the same bytes produced two different streams depending on how the
+  input was split. The engine's pass-1 walk, the DOM fused builder,
+  and the ytape probe all walk strict now — non-JSON spans fall back
+  to the general kernel's colon rules in every mode (nightly run
+  38513849602, catch 89).
 - **parse: nested explicit-key pairs flush their nulls at their own
   levels** — `? ? k : a` stacked two pending pair values over a single
   depth slot: the inner pair clobbered the outer's level, the outer

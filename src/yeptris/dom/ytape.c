@@ -429,7 +429,9 @@ static int yt_flow_classify_record(yep_ytape* t, const char* p, size_t open, siz
         yep_json_walk w;
         yep_json_tok tok;
         yep_json_walk_init(&w, p, len, open, max_depth);
-        w.strict = t->flow_strict;
+        w.strict = 1; /* mirrors the engine pass-1 / dom builder gates:
+                       * reject anything non-JSON so the span falls to
+                       * the general kernel (whole/chunked agreement) */
         int exhausted = 0;
         for (;;) {
             if (w.i - open > 256) {
