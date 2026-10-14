@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: the fast path's single-line check treats any CR as
+  multi-line** — the check memchr'd only for `\n`, so a `{\r\r\r\r}`
+  span (valid JSON: `\r` is whitespace) skipped the per-event line
+  walk entirely and the `MAP_END` marked on line 1, while the
+  general kernel (and libyaml) counted four breaks (`MAP- 5:1`).
+  A span carrying any `\r` now takes the walk (nightly run
+  38585830922, catch 98).
 - **parse: the fast path's line walk counts a lone CR at the walk
   boundary** — `yep_scan_advance_line` cannot peek past its walk end
   (`p[to]` — it does not know the buffer length), so a lone `\r`
