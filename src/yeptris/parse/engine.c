@@ -3790,12 +3790,16 @@ static size_t step_scan(yep_stepstate* st) {
         }
         if (c == '#') {
             char prev = i > 0 ? p[i - 1] : '\n';
-            if (prev == '\n' || prev == ' ' || prev == '\t') {
+            if (prev == '\n' || prev == '\r' || prev == ' ' || prev == '\t') {
                 st->in_comment = 1;
                 continue;
             }
         }
-        if (c == '\n') {
+        if (c == '\n' || (c == '\r' && (i + 1 >= st->len || p[i + 1] != '\n'))) {
+            /* a lone \r is a line break too (the engine's break rule);
+             * missing it left the line-start state desynced across the
+             * cut and whole/chunked marked the flow's END differently
+             * (the nightly's run 38549939326) */
             st->tok_start = 1;
             st->word_led = 0;
             continue;
@@ -3849,7 +3853,7 @@ static size_t step_scan(yep_stepstate* st) {
         }
         if (st->in_flow == 0) {
             char prev = i > 0 ? p[i - 1] : '\n';
-            if (prev != '\n') {
+            if (prev != '\n' && prev != '\r') {
                 continue;
             }
             /* Block scalars: once a '>' / '|' header is seen, its
