@@ -1610,6 +1610,16 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
 static void jx_advance_line(yep_engine* e, size_t* from, size_t to, uint32_t* line,
                             size_t* line_start) {
     yep_scan_advance_line(e->p, from, to, line, line_start);
+    /* a lone \r sitting at the walk boundary (to - 1) ends the line
+     * AT to, but the scan's walk cannot peek at p[to] (it does not
+     * know the buffer end) — correct it here with the engine's own
+     * length: the fast path's marks after a \r-containing span sat
+     * one line low while the general kernel marked correctly (the
+     * nightly's runs 38549939326 + 38563005475) */
+    if (to > 0 && to <= e->len && e->p[to - 1] == '\r' && (to == e->len || e->p[to] != '\n')) {
+        (*line)++;
+        *line_start = to;
+    }
 }
 
 /* A flow node followed by ':' on the same line is a KEY: the caller

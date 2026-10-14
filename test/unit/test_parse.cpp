@@ -4196,3 +4196,32 @@ TEST(Parse, FastPathLineWalkCountsLoneCR) {
     EXPECT_EQ(seq_end_col, 2);
     yeptris_recorder_free(rec);
 }
+
+TEST(Parse, FastPathBoundaryCRCounts) {
+    /* catch 97 (the nightly's run 38563005475): the JSON fast path's
+     * line walk skipped a lone '\r' sitting exactly at the walk
+     * boundary (advance_line cannot peek at p[to] — it does not know
+     * the buffer end), so whole mode's flow END marked one line low
+     * ("[\n  \r ]|.\n---": SEQ_END on line 2) while the chunked cut
+     * (general kernel) and libyaml marked line 3. The engine's
+     * jx_advance_line wrapper corrects the boundary case with its own
+     * length. */
+    const char* y = "[\n  \r ]|.\n---\ntop3: seven\n";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    /* the input errors after the flow ('|.' past the close) — the
+     * SEQ_END that precedes the error is what this pin checks */
+    yeptris_recorder_feed(rec, y, strlen(y), 1);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    ASSERT_NE(rs, nullptr);
+    int seq_end_line = -1;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_SEQUENCE_END && seq_end_line == -1) {
+            seq_end_line = (int)rs[i].line;
+        }
+    }
+    /* libyaml: the flow END lands on line 3 (after the \r break) */
+    EXPECT_EQ(seq_end_line, 3);
+    yeptris_recorder_free(rec);
+}
