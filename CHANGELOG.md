@@ -10,6 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: an alias to a defined-but-unplaced anchor rejects** — the
+  props scan registers an anchor the moment it is scanned, but its
+  node may be placed later (a props anchor riding past other
+  placements): the parse accepted the document while the emit
+  re-ordered the anchor and the alias, and the re-parse rejected the
+  output ("alias references an undefined anchor"). Anchors are now
+  marked placed at every placement site (`emit_now`, the classified
+  pair's fused placement, the flow commit's subtree range) and an
+  alias to a defined-but-unplaced anchor is a forward reference —
+  rejected like libyaml's "found undefined alias" (nightly runs
+  38541356056 + 38590936636, catch 94; round 100's artifact rode in
+  corpus/parse/).
 - **parse: the fast path's single-line check treats any CR as
   multi-line** — the check memchr'd only for `\n`, so a `{\r\r\r\r}`
   span (valid JSON: `\r` is whitespace) skipped the per-event line
