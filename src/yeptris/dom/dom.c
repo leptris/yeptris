@@ -820,8 +820,11 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
     yep_json_walk w;
     yep_json_tok t;
     yep_json_walk_init(&w, p, len, open, max_depth);
-    w.strict = d->flow_strict; /* the strict-JSON route rides the same
-                                  fused walk (TODO.restructure/81) */
+    w.strict = 1; /* the same byte-for-byte JSON gate as the engine's
+                   * pass 1: a lenient walk split number/literal keys
+                   * across the fast/slow paths (whole {9->1} vs chunked
+                   * {"9:1"->null}); flow_strict keeps owning the TAG
+                   * route only (TODO.restructure/81) */
     for (;;) {
         yep_jw_status st = yep_json_walk_next(&w, &t);
         if (st == YEP_JW_REJECT) {
