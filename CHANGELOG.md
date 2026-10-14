@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: nested explicit-key pairs flush their nulls at their own
+  levels** — `? ? k : a` stacked two pending pair values over a single
+  depth slot: the inner pair clobbered the outer's level, the outer
+  null flushed inside the wrong map, and a following anchored value
+  lost its anchor — the trailing alias emitted a dangling reference
+  and the emitted document failed to re-parse. The pending levels are
+  a stack now; every `key: value` completion funnels through one
+  wrapper that resolves the innermost pending, and each null flushes
+  directly inside its own `?` map (matching the libyaml oracle
+  `{{{"k" => "a"} => nil} => nil}`; nightly run 38387614146, catch 88).
 - **parse: a second props line cannot displace a pending anchor** —
   a props-only line followed by another props line carrying its own
   anchor ("&a\n&a1\nF: *a", or the '? &a' explicit-key twin) let the

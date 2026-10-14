@@ -94,9 +94,13 @@ struct yep_engine {
     yep_view pend_anchor, pend_tag;
     uint32_t pend_anchor_id; /* the pend anchor's ordinal */
 
-    int doc_content;     /* any node emitted for the current document */
-    int q_key_pending;   /* an explicit '?' key awaits its ':' value line */
-    int q_map_depth;     /* frame depth of the '?' mapping (flush guard) */
+    int doc_content;   /* any node emitted for the current document */
+    int q_key_pending; /* an explicit '?' key awaits its ':' value line */
+    int qmd_stack[16]; /* the '?' pending pairs' map depths — a STACK:
+                        * nested '? ?' pairs stack two pendings and a
+                        * scalar slot let the inner clobber the
+                        * outer's level (the nightly's run 38387614146) */
+    int qmd_n;
     int q_value_pending; /* an explicit key was emitted; its value is null
                             until a ':' line supplies one */
     /* %TAG handle map for the current document (engine = tag SSOT) */
@@ -465,18 +469,37 @@ static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
 
 /* Emits the null value for an explicit key that never got its ':' line. */
 static int e_flush_q_value(yep_engine* e) {
-    if (!e->q_value_pending) {
+    if (!e->q_value_pending || e->qmd_n == 0) {
         return 0;
     }
-    if (e->depth > e->q_map_depth) {
-        return 0; /* the key's own structure is still open */
+    int top = e->qmd_stack[e->qmd_n - 1];
+    if (e->depth != top) {
+        return 0; /* the pending pair's map is not the current level */
     }
-    e->q_value_pending = 0;
+    e->qmd_n--;
+    /* nested '?' pairs stack one pending per level — the flag stays up
+     * while the stack still holds one, so the outer null flushes at its
+     * own level (the nightly's run 38387614146: `? ? k : a` lost it) */
+    e->q_value_pending = (e->qmd_n > 0);
     yep_event ev;
     e_event_init(&ev, YEP_EV_SCALAR);
     ev.style = YEP_STYLE_PLAIN;
     ev.implicit = 1;
     return emit_now(e, &ev) == 0 ? 0 : -2;
+}
+
+/* The pair-value completion: every `key: value` arm funnels its value
+ * parse through here. Under an AFTER_Q parse (a nested '?' pair whose
+ * value arrived inline) the innermost '?' pending resolves — without
+ * this pop the stack keeps a stale entry and the outer pair's null
+ * flushes inside the wrong map (the nightly's run 38387614146). */
+static int e_pair_value_done(yep_engine* e, yep_ctx ctx, uint16_t key_col) {
+    int rc = e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
+    if (rc >= 0 && ctx == YEP_CTX_AFTER_Q && e->qmd_n > 0 &&
+        e->depth == e->qmd_stack[e->qmd_n - 1]) {
+        e->qmd_n--; /* the inline value resolved the innermost '?' pending */
+    }
+    return rc;
 }
 
 static int e_close_to(yep_engine* e, int to_depth) {
@@ -486,7 +509,7 @@ static int e_close_to(yep_engine* e, int to_depth) {
         if (rc != 0) {
             return rc;
         }
-        if (e->q_value_pending && e->depth == e->q_map_depth) {
+        if (e->q_value_pending && e->qmd_n > 0 && e->depth == e->qmd_stack[e->qmd_n - 1]) {
             continue; /* flushed the null; this frame closes next round */
         }
         e->depth--;
@@ -2953,7 +2976,10 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (rc != 0) {
             return rc;
         }
-        e->q_map_depth = e->depth;
+        if (e->qmd_n >= 16) {
+            return e_fail(e, YEP_ERR_DEPTH, e->pos); /* the depth-guard law */
+        }
+        e->qmd_stack[e->qmd_n++] = e->depth;
         e->pos++;
         e_skip_inline_space(e);
         if (e->pos < e->len && e->p[e->pos] == ':' &&
@@ -2974,6 +3000,9 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                     return -2;
                 }
                 e->pos++;
+                if (e->qmd_n > 0) {
+                    e->qmd_n--; /* the ':' line supplied the innermost value */
+                }
                 return e_parse_value(e, YEP_CTX_AFTER_COLON, col);
             }
             /* '? : x' — the ':' starts a nested pair: the KEY is that map */
@@ -3050,7 +3079,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 return rc;
             }
             e->pos++; /* ':' */
-            return e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
+            return e_pair_value_done(e, ctx, key_col);
         }
         {
             e->flow_floor = floor_col;
@@ -3098,7 +3127,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 return -2;
             }
             e->pos++; /* ':' */
-            return e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
+            return e_pair_value_done(e, ctx, key_col);
         }
         if (!e_at_eol(e)) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
@@ -3129,7 +3158,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 return -2;
             }
             e->pos++;
-            return e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
+            return e_pair_value_done(e, ctx, key_col);
         }
         if (!e_at_eol(e)) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
@@ -3207,7 +3236,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             e->pos++;
         }
         e->pos++; /* past ':' */
-        return e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
+        return e_pair_value_done(e, ctx, key_col);
     }
 
     ev.value.p = e->p + s.start;
@@ -3965,6 +3994,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     e->doc_content = 0;
     e->q_key_pending = 0;
     e->q_value_pending = 0;
+    e->qmd_n = 0;
     e->sink = sink;
     yep_error_clear(&e->err);
     if (e->resolver == NULL) {
@@ -4149,6 +4179,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
              * nightly's run 38287390219) */
             e->q_key_pending = 0;
             e->q_value_pending = 0;
+            e->qmd_n = 0;
             e->pos = li.offset + li.indent + 3;
             e_skip_inline_space(e);
             if (!e_at_eol(e)) {
@@ -4312,6 +4343,9 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
             }
             e->q_key_pending = 0;
             e->q_value_pending = 0;
+            if (e->qmd_n > 0) {
+                e->qmd_n--; /* the ':' line supplied the innermost value */
+            }
             e->pos++;
             rc = e_parse_value(e, YEP_CTX_AFTER_DASH, e->frames[e->depth - 1].col);
             if (rc != 0) {
