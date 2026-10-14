@@ -4225,3 +4225,30 @@ TEST(Parse, FastPathBoundaryCRCounts) {
     EXPECT_EQ(seq_end_line, 3);
     yeptris_recorder_free(rec);
 }
+
+TEST(Parse, FlowSingleLineSkipsNothingWithCR) {
+    /* catch 98 (the nightly's run 38585830922): the JSON fast path's
+     * single_line check memchr'd only for '\n' — a '{\r\r\r\r}' span
+     * (valid JSON: \r is whitespace) was treated as single-line and
+     * the per-event line walk never ran, so the MAP_END marked on
+     * line 1 while the general kernel (and libyaml) counted four
+     * breaks (MAP- at 5:1). A span carrying any \r takes the walk. */
+    const char* y = "{\r\r\r\r} + \"muliweUE;\r---\n";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    /* the input errors after the flow ('+' past the close) — the
+     * MAP_END that precedes the error is what this pin checks */
+    yeptris_recorder_feed(rec, y, strlen(y), 1);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    ASSERT_NE(rs, nullptr);
+    int map_end_line = -1;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_MAPPING_END && map_end_line == -1) {
+            map_end_line = (int)rs[i].line;
+        }
+    }
+    /* libyaml: MAP- at 5:1 (four \r breaks) */
+    EXPECT_EQ(map_end_line, 5);
+    yeptris_recorder_free(rec);
+}

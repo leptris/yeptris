@@ -1756,7 +1756,13 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
      * skips the flow_enforce rescan AND the per-event line bookkeeping
      * below; both are no-ops without a newline, and pass 1 already
      * walked these bytes (TODO.restructure/45, Phase B slice). */
-    int single_line = (memchr(p + open_pos, '\n', close - open_pos) == NULL);
+    /* a span carrying ANY \r is multi-line for marking purposes: the
+     * lone-\r walk below counts real breaks, and a single-line span
+     * skips that walk entirely — a '{\r\r\r\r}' span kept its marks
+     * on line 1 while the general kernel (and libyaml) counted four
+     * breaks (the nightly's run 38585830922) */
+    int single_line = (memchr(p + open_pos, '\n', close - open_pos) == NULL) &&
+                      (memchr(p + open_pos, '\r', close - open_pos) == NULL);
 
     if (e_flow_key_after(p, len, close)) {
         return 0;
