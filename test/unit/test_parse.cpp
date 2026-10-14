@@ -1786,22 +1786,30 @@ TEST(Feed, BlockScalarFoldIsNeverCut) {
     ASSERT_EQ(yeptris_recorder_feed(whole, y, strlen(y), 1), YEPTRIS_OK);
     size_t nw = 0;
     const YeptrisEventRecord* rw = yeptris_recorder_records(whole, &nw);
-    size_t fold_len = 0;
-    for (size_t i = 0; i < nw; i++) {
-        if (rw[i].type == YEPTRIS_EV_SCALAR) {
-            fold_len = rw[i].value_len; /* doc 1's fold (doc 2 is empty) */
-            break;
-        }
-    }
-    EXPECT_GT(fold_len, 0u);
+    /* catch 95's refinement (run 38544774709): the col-0 '--- folded'
+     * line is a DOCUMENT boundary, not the fold's content — libyaml
+     * and Psych give doc 1 = "" (the empty block scalar) and doc 2 =
+     * "folded line". The cut discipline this pin guards is unchanged:
+     * whole and chunked streams stay identical. */
+    EXPECT_EQ(nw, 11u); /* libyaml: three docs — doc 1's fold empty, the
+                         * folded plain, the final empty doc */
     YeptrisRecorder ch = yeptris_recorder_new();
     ASSERT_NE(ch, nullptr);
     size_t half = strlen(y) / 2;
     ASSERT_EQ(yeptris_recorder_feed(ch, y, half, 0), YEPTRIS_OK);
     ASSERT_EQ(yeptris_recorder_feed(ch, y + half, strlen(y) - half, 1), YEPTRIS_OK);
     size_t nc = 0;
-    yeptris_recorder_records(ch, &nc);
+    const YeptrisEventRecord* rc2 = yeptris_recorder_records(ch, &nc);
+    ASSERT_NE(rc2, nullptr);
     EXPECT_EQ(nw, nc);
+    int same = 1;
+    for (size_t i = 0; i < nw && i < nc; i++) {
+        if (rw[i].type != rc2[i].type || rw[i].line != rc2[i].line || rw[i].col != rc2[i].col ||
+            rw[i].value_len != rc2[i].value_len) {
+            same = 0;
+        }
+    }
+    EXPECT_TRUE(same);
     yeptris_recorder_free(whole);
     yeptris_recorder_free(ch);
 }

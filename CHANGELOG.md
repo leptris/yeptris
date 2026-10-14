@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: a col-0 document marker ends a root block scalar even
+  before any content** — `>\n--- ` whole-parsed as ONE document (the
+  marker line became the block's content) while the chunked cut at
+  the marker produced the correct two documents, and libyaml agrees
+  with the chunked reading: the block is empty and `---` opens a
+  second (empty) document. A %-directive line keeps its
+  first-line-is-content rule (the suite's M7A3/W4TN blocks whose
+  value is `%!PS-Adobe-2.0 ...`); only `---`/`...` are unconditional
+  boundaries (nightly run 38544774709, catch 95).
 - **parse: step_scan tracks flow-value quotes and verbatim tags** —
   the incremental cut scanner's token-start rule after a plain-led
   key left the quote at a flow VALUE position untracked, so the cut
