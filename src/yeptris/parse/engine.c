@@ -3567,9 +3567,13 @@ yep_engine* yep_engine_create(const yep_allocator* sys) {
 
 /* YAML 1.2 line breaks beyond \n/\r: NEL, LS, PS. When present, the
  * input is copied with each normalized to a single '\n' (libyaml reader
- * behavior); inputs without them keep the zero-copy path. */
-static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len) {
-    char* out = yep_engine_normalize_breaks(e->sys, p, len, NULL);
+ * behavior); inputs without them keep the zero-copy path. The copied
+ * length is not strlen()'s: the INPUT may carry NUL bytes of its own,
+ * and a strlen() of the copy truncates the run at the first one (the
+ * nightly's run 38524928004: "\0\n---\r<U+2028>" whole-parsed as an
+ * empty stream while the chunked cut skipped the copy). */
+static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len, size_t* out_len) {
+    char* out = yep_engine_normalize_breaks(e->sys, p, len, out_len);
     if (out == NULL) {
         return p;
     }
@@ -3990,8 +3994,9 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     }
     yep_free(e->sys, e->norm_buf);
     e->norm_buf = NULL;
-    e->p = e_normalize_breaks(e, buf, len);
-    e->len = (e->norm_buf != NULL) ? strlen(e->norm_buf) : len;
+    size_t norm_len = len;
+    e->p = e_normalize_breaks(e, buf, len, &norm_len);
+    e->len = norm_len;
     e->pos = 0;
     e->line = 1 + e->line_base;
     e->line_base = 0;
