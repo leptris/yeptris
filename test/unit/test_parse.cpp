@@ -4256,27 +4256,47 @@ TEST(Parse, FlowSingleLineSkipsNothingWithCR) {
 TEST(Parse, AliasToUnplacedAnchorRejects) {
     /* catch 94 (the nightly's run 38541356075) + round 100's twin
      * (run 38590936636): an anchor whose node has not been PLACED
-     * yet (a props anchor riding unattached past other placements)
-     * still resolved through the nametab, so the parse accepted the
-     * document while its emit re-ordered the anchor and the alias —
-     * the re-parse rejected the output ("alias references an
-     * undefined anchor"). An alias to a defined-but-unplaced anchor
-     * is a forward reference: reject like libyaml's "found undefined
-     * alias" (anchors are marked placed at every placement site:
-     * emit_now, the classified pair's fused placement, and the flow
-     * commit's subtree range). */
-    /* the real c94 artifact bytes (the \r run is load-bearing: the
-     * anchors ride past other placements before the alias); the
-     * round-100 twin rides in corpus/parse/ for the fuzz replay */
+     * yet still resolved through the nametab, so the parse accepted
+     * the document while its emit re-ordered the anchor and the
+     * alias — the re-parse rejected the output. Anchors are marked
+     * placed at every placement site (emit_now, the classified
+     * pair's fused placement, the flow commit's subtree range) and
+     * a TRUE forward reference rejects like libyaml's "found
+     * undefined alias" (pinned at the bottom). */
+    /* the real c94 artifact bytes. Round 101 showed the alias here
+     * was BACKWARD all along: c94's rejection came from the flow
+     * explicit-key drop (catch 99) — the "? &a t" key event was
+     * never emitted, so &a never placed and "*a" looked forward.
+     * With the key emitted the document parses and roundtrips. */
     const char c94[] =
         "\x5b\x76\x29\x31\x2e\x2e\x2e\x2c\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d"
         "\x0d\x0d\x0d\x3f\x20\x26\x61\x0a\x74\x2c\x26\x62\x20\x0a\x3a\x20\x2a\x61\x0d\x3f\x20\x26"
         "\x61\x0a\x74\x0d\x0d\x0d\x0d\x7a\x75\x65\x5d";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(c94, sizeof(c94) - 1, &st);
-    EXPECT_EQ(doc, nullptr) << "the forward-reference family must reject";
-    if (doc != NULL) {
+    ASSERT_NE(doc, nullptr) << "the backward alias parses (catch 99's key drop fixed)";
+    {
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr);
         yeptris_document_free(doc);
+        st = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st);
+        EXPECT_NE(doc2, nullptr) << s1;
+        if (doc2 != NULL) {
+            yeptris_document_free(doc2);
+        }
+        free(s1);
+    }
+    /* true forward references still reject */
+    {
+        const char* fwd = "[*a, &a 1]";
+        st = YEPTRIS_OK;
+        YeptrisDocument fwd_doc = yeptris_parse(fwd, strlen(fwd), &st);
+        EXPECT_EQ(fwd_doc, nullptr) << "the forward reference must reject";
+        if (fwd_doc != NULL) {
+            yeptris_document_free(fwd_doc);
+        }
     }
     /* backward aliases stay legal: the anchor placed before the alias */
     const char* ok = "base: &b\n  x: 1\nsame: *b\nscalar: &s hello\nref: *s\n";
@@ -4294,4 +4314,45 @@ TEST(Parse, AliasToUnplacedAnchorRejects) {
         yeptris_document_free(doc2);
     }
     free(s1);
+}
+
+TEST(Parse, FlowExplicitKeyWithoutColonKeepsItsKey) {
+    /* catch 99 (the nightly's run 38645996340): the flow explicit-key
+     * path with no ':' line dropped the parsed KEY event and emitted
+     * a fresh empty scalar in its slot — "[? x]" became {"": ~} (the
+     * key's content lost) and "? &a" lost its anchor, so a later
+     * backward alias failed the placed-anchor check (catch 94's
+     * rejection was this bug in disguise). The parsed key now rides
+     * the slot; a collection key completes its pair with a null
+     * value ("? [a]" / "? {b: 1}" — the map-entry variant vanished
+     * outright before). libyaml: "[? x]" -> {'x': None}. */
+    struct {
+        const char* in;
+        const char* want;
+    } cases[] = {
+        {"[? x]", "[{x: ~}]"},
+        {"[? \"k\" , z]", "[{\"k\": ~}, z]"},
+        {"{? x}", "{x: }"},
+        {"[? &a , *a]", "[{? &a \"\" : ~}, *a]"},
+        {"[? [a]]", "[{? [a] : }]"},
+        {"{? [a]}", "{? [a] : }"},
+        {"[? {b: 1}]", "[{? {b: 1} : ~}]"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(cases[i].in, strlen(cases[i].in), &st);
+        ASSERT_NE(doc, nullptr) << cases[i].in;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr) << cases[i].in;
+        yeptris_document_free(doc);
+        EXPECT_EQ(std::string(s1), std::string(cases[i].want) + "\n") << cases[i].in;
+        st = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st);
+        EXPECT_NE(doc2, nullptr) << s1 << " (from " << cases[i].in << ")";
+        if (doc2 != NULL) {
+            yeptris_document_free(doc2);
+        }
+        free(s1);
+    }
 }

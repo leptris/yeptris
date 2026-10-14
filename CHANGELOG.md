@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: a flow explicit key with no ':' line keeps its key** — the
+  flow walker dropped the parsed key event and emitted a fresh empty
+  scalar in its slot: `[? x]` became `{"": ~}` (the key's content
+  lost), `? &a` lost its anchor (a later backward alias then failed
+  the placed-anchor check — catch 94's rejection was this bug in
+  disguise), and `? [a]` / `? {b: 1}` as a seq entry leaked the
+  collection as a plain entry or vanished outright as a map key. The
+  parsed key rides the slot, and an explicit-key collection completes
+  its pair with a null value (run 38645996340).
 - **parse: an alias to a defined-but-unplaced anchor rejects** — the
   props scan registers an anchor the moment it is scanned, but its
   node may be placed later (a props anchor riding past other
