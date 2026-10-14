@@ -1998,7 +1998,7 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
         uint8_t pair_open;
         uint8_t pair_value;
         uint8_t pair_wrap;
-        uint8_t q_coll;      /* seq: an explicit '?' key collection awaits completion */
+        uint8_t q_coll; /* seq: an explicit '?' key collection awaits completion */
         int32_t buf_from;
         uint32_t entry_line;
         uint32_t entries;
