@@ -4166,3 +4166,33 @@ TEST(Parse, FlowPreScanIncompleteDefersOnPartialFeeds) {
         ASSERT_EQ(a[i].col, b[i].col);
     }
 }
+
+TEST(Parse, FastPathLineWalkCountsLoneCR) {
+    /* catch 96 (the nightly's run 38549939326): the JSON fast path's
+     * line walk counted only '\n' — a lone '\r' inside a JSON-class
+     * flow ("[\n \r ]" is valid JSON: \r is JSON whitespace) never
+     * advanced the line, so whole mode's marks sat one line low while
+     * the chunked prefix (general kernel, which walks \r) marked
+     * correctly. yep_scan_advance_line is scan's SSOT — the DOM
+     * builder shares the fix. */
+    const char* y = "[\n \r ]|.\n---\ntop6: seven\n";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    yeptris_recorder_feed(rec, y, strlen(y), 0);
+    yeptris_recorder_feed(rec, "", 0, 1);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    ASSERT_NE(rs, nullptr);
+    /* the flow's SEQ_END marks at the ']' — line 3 (after the \r
+     * break), col 2 */
+    int seq_end_line = -1, seq_end_col = -1;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_SEQUENCE_END && seq_end_line == -1) {
+            seq_end_line = (int)rs[i].line;
+            seq_end_col = (int)rs[i].col;
+        }
+    }
+    EXPECT_EQ(seq_end_line, 3);
+    EXPECT_EQ(seq_end_col, 2);
+    yeptris_recorder_free(rec);
+}
