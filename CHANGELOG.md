@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: the fast path's line walk counts a lone CR at the walk
+  boundary** — `yep_scan_advance_line` cannot peek past its walk end
+  (`p[to]` — it does not know the buffer length), so a lone `\r`
+  sitting exactly at the boundary never advanced the line: the JSON
+  fast path's flow END marked one line low (`[\n  \r ]|.` → SEQ_END
+  on line 2) while the chunked cut (the general kernel) and libyaml
+  marked line 3. The engine's `jx_advance_line` wrapper corrects the
+  boundary case with its own length (nightly run 38563005475,
+  catch 97).
 - **scan: the line walk counts a lone CR** — `yep_scan_advance_line`
   (the JSON fast path's and the DOM builder's shared line walk)
   counted only `\n`, so a lone `\r` inside a JSON-class flow
