@@ -3967,3 +3967,66 @@ TEST(Parse, FlowKeyLookaheadRestoresTheLineState) {
         ASSERT_EQ(acc[0][i].col, acc[1][i].col);
     }
 }
+
+TEST(Parse, BreakNormalizationKeepsTheInputLength) {
+    /* catch 91 (the nightly's run 38524928004): the NEL/LS/PS break
+     * normalizer copies the input and null-terminates the copy, and
+     * the run measured that copy with strlen() — an input carrying a
+     * NUL byte of its own was truncated at it. "\0\n---\r<U+2028>"
+     * whole-parsed as an empty stream (the LS triggered the copy, the
+     * NUL cut it), while a chunked feed cut before the LS and never
+     * copied: 2 records vs 8, on the same bytes. The copied length is
+     * the normalizer's own count now. */
+    const char y[] = "\0\n---\r\xE2\x80\xA8";
+    typedef struct {
+        uint16_t type;
+        uint32_t line, col;
+    } pin_rec;
+    pin_rec acc[2][64];
+    size_t an[2] = {0, 0};
+    const size_t len = sizeof(y) - 1;
+    for (int mode = 0; mode < 2; mode++) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        size_t n = 0;
+        const YeptrisEventRecord* rs = NULL;
+        if (mode == 0) {
+            ASSERT_EQ(yeptris_recorder_feed(rec, y, len, 1), YEPTRIS_OK);
+            rs = yeptris_recorder_records(rec, &n);
+            for (size_t i = 0; i < n && an[0] < 64; i++) {
+                acc[0][an[0]].type = rs[i].type;
+                acc[0][an[0]].line = rs[i].line;
+                acc[0][an[0]].col = rs[i].col;
+                an[0]++;
+            }
+        } else {
+            for (size_t off = 0; off < len; off++) {
+                ASSERT_EQ(yeptris_recorder_feed(rec, y + off, 1, 0), YEPTRIS_OK);
+                rs = yeptris_recorder_records(rec, &n);
+                for (size_t i = 0; i < n && an[1] < 64; i++) {
+                    acc[1][an[1]].type = rs[i].type;
+                    acc[1][an[1]].line = rs[i].line;
+                    acc[1][an[1]].col = rs[i].col;
+                    an[1]++;
+                }
+            }
+            ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+            rs = yeptris_recorder_records(rec, &n);
+            for (size_t i = 0; i < n && an[1] < 64; i++) {
+                acc[1][an[1]].type = rs[i].type;
+                acc[1][an[1]].line = rs[i].line;
+                acc[1][an[1]].col = rs[i].col;
+                an[1]++;
+            }
+        }
+        yeptris_recorder_free(rec);
+    }
+    /* whole vs chunked: identical streams — and not the truncated one */
+    EXPECT_GT(an[0], 2u);
+    ASSERT_EQ(an[0], an[1]);
+    for (size_t i = 0; i < an[0]; i++) {
+        ASSERT_EQ(acc[0][i].type, acc[1][i].type);
+        ASSERT_EQ(acc[0][i].line, acc[1][i].line);
+        ASSERT_EQ(acc[0][i].col, acc[1][i].col);
+    }
+}

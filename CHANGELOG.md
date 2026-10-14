@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: the break normalizer keeps the input's own length** — the
+  NEL/LS/PS copy is null-terminated and the run measured it with
+  `strlen`, so an input carrying a NUL byte of its own was truncated
+  at the first one: `\0\n---\r<U+2028>` whole-parsed as an empty
+  stream (the line separator triggered the copy, the NUL cut it)
+  while a chunked feed cut before the separator and never copied —
+  two different streams for the same bytes (nightly run 38524928004,
+  catch 91). The copied length is the normalizer's own count now.
 - **parse: the flow key lookahead restores the line state with the
   cursor** — the key detection's whitespace lookahead crosses the
   newline after a flow value hunting for a `:`, and the no-colon
