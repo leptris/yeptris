@@ -3898,3 +3898,72 @@ TEST(Parse, FlowNumberKeyRidesTheGeneralKernel) {
         ASSERT_EQ(acc[0][i].vlen, acc[1][i].vlen);
     }
 }
+
+TEST(Parse, FlowKeyLookaheadRestoresTheLineState) {
+    /* catch 90 (the nightly's run 38518507064): the flow key
+     * detection's ws lookahead crossed the newline after a value and
+     * the no-colon rollback restored the cursor but not the line
+     * state — e->line stayed one high, the multi-line flow's END
+     * (and every mark after it) parsed one line low. Whole feeds took
+     * the JSON fast path (its own line walk) and never noticed. */
+    const char* y = "{\n\"b\":\"\"\n}\n--- #\n...\n%TA\n";
+    typedef struct {
+        uint16_t type;
+        uint32_t line, col;
+    } pin_rec;
+    pin_rec acc[2][64];
+    size_t an[2] = {0, 0};
+    for (int mode = 0; mode < 2; mode++) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        /* the recorder resets at every feed entry — accumulate per
+         * feed (the fuzz_feed harness's discipline) */
+        size_t n = 0;
+        const YeptrisEventRecord* rs = NULL;
+        if (mode == 0) {
+            ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+            rs = yeptris_recorder_records(rec, &n);
+            for (size_t i = 0; i < n && an[0] < 64; i++) {
+                acc[0][an[0]].type = rs[i].type;
+                acc[0][an[0]].line = rs[i].line;
+                acc[0][an[0]].col = rs[i].col;
+                an[0]++;
+            }
+        } else {
+            for (size_t off = 0; off < strlen(y); off++) {
+                ASSERT_EQ(yeptris_recorder_feed(rec, y + off, 1, 0), YEPTRIS_OK);
+                rs = yeptris_recorder_records(rec, &n);
+                for (size_t i = 0; i < n && an[1] < 64; i++) {
+                    acc[1][an[1]].type = rs[i].type;
+                    acc[1][an[1]].line = rs[i].line;
+                    acc[1][an[1]].col = rs[i].col;
+                    an[1]++;
+                }
+            }
+        }
+        ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+        rs = yeptris_recorder_records(rec, &n);
+        for (size_t i = 0; i < n && an[mode] < 64; i++) {
+            acc[mode][an[mode]].type = rs[i].type;
+            acc[mode][an[mode]].line = rs[i].line;
+            acc[mode][an[mode]].col = rs[i].col;
+            an[mode]++;
+        }
+        yeptris_recorder_free(rec);
+    }
+    /* the multi-line flow's END marks at the '}' (libyaml: 3:1) */
+    int map_end_line = -1;
+    for (size_t i = 0; i < an[0]; i++) {
+        if (acc[0][i].type == YEPTRIS_EV_MAPPING_END && map_end_line == -1) {
+            map_end_line = (int)acc[0][i].line;
+        }
+    }
+    EXPECT_EQ(map_end_line, 3);
+    /* whole vs chunked: identical marks everywhere */
+    ASSERT_EQ(an[0], an[1]);
+    for (size_t i = 0; i < an[0]; i++) {
+        ASSERT_EQ(acc[0][i].type, acc[1][i].type);
+        ASSERT_EQ(acc[0][i].line, acc[1][i].line);
+        ASSERT_EQ(acc[0][i].col, acc[1][i].col);
+    }
+}
