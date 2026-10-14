@@ -4252,3 +4252,46 @@ TEST(Parse, FlowSingleLineSkipsNothingWithCR) {
     EXPECT_EQ(map_end_line, 5);
     yeptris_recorder_free(rec);
 }
+
+TEST(Parse, AliasToUnplacedAnchorRejects) {
+    /* catch 94 (the nightly's run 38541356075) + round 100's twin
+     * (run 38590936636): an anchor whose node has not been PLACED
+     * yet (a props anchor riding unattached past other placements)
+     * still resolved through the nametab, so the parse accepted the
+     * document while its emit re-ordered the anchor and the alias —
+     * the re-parse rejected the output ("alias references an
+     * undefined anchor"). An alias to a defined-but-unplaced anchor
+     * is a forward reference: reject like libyaml's "found undefined
+     * alias" (anchors are marked placed at every placement site:
+     * emit_now, the classified pair's fused placement, and the flow
+     * commit's subtree range). */
+    /* the real c94 artifact bytes (the \r run is load-bearing: the
+     * anchors ride past other placements before the alias); the
+     * round-100 twin rides in corpus/parse/ for the fuzz replay */
+    const char c94[] =
+        "\x5b\x76\x29\x31\x2e\x2e\x2e\x2c\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x0d"
+        "\x0d\x0d\x0d\x3f\x20\x26\x61\x0a\x74\x2c\x26\x62\x20\x0a\x3a\x20\x2a\x61\x0d\x3f\x20\x26"
+        "\x61\x0a\x74\x0d\x0d\x0d\x0d\x7a\x75\x65\x5d";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(c94, sizeof(c94) - 1, &st);
+    EXPECT_EQ(doc, nullptr) << "the forward-reference family must reject";
+    if (doc != NULL) {
+        yeptris_document_free(doc);
+    }
+    /* backward aliases stay legal: the anchor placed before the alias */
+    const char* ok = "base: &b\n  x: 1\nsame: *b\nscalar: &s hello\nref: *s\n";
+    st = YEPTRIS_OK;
+    doc = yeptris_parse(ok, strlen(ok), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    yeptris_document_free(doc);
+    st = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st);
+    EXPECT_NE(doc2, nullptr) << s1;
+    if (doc2 != NULL) {
+        yeptris_document_free(doc2);
+    }
+    free(s1);
+}

@@ -77,6 +77,13 @@ struct yep_engine {
 
     yep_nametab anchors;    /* name interning: O(1) define/lookup at any scale */
     uint32_t anchor_serial; /* 1-based ordinals; the value IS the id */
+    uint8_t* anchor_placed; /* per-ordinal: the anchor's NODE has been
+                             * placed in the output (an alias to an
+                             * unplaced anchor would precede its
+                             * definition and the re-parse would reject
+                             * the document — the nightly's run
+                             * 38541356075) */
+    uint32_t anchor_placed_cap;
     /* repeat-alias memo (TODO.restructure/71): offset/len/ordinal of
      * the last alias resolved — hit by memcmp, not by the table */
     uint32_t alias_memo_at;
@@ -205,7 +212,10 @@ static void e_event_init(yep_event* ev, yep_event_type t) {
     ev->type = t;
 }
 
+static void e_anchor_mark(yep_engine* e, uint32_t id);
+
 static int emit_now(yep_engine* e, const yep_event* ev) {
+    e_anchor_mark(e, ev->anchor_id);
     if (ev->type == YEP_EV_SCALAR) {
         /* Resolution happens exactly here: every scalar path flows
          * through this choke point (the resolver is the typing SSOT) */
@@ -390,11 +400,37 @@ static uint32_t anchor_id_of(yep_engine* e, yep_view name) {
     return id;
 }
 
+/* The anchor's node has been PLACED (an event emitted, or the node
+ * handed to a fused sink callback): aliases to it may parse. */
+static void e_anchor_mark(yep_engine* e, uint32_t id) {
+    if (id != 0 && id <= e->anchor_serial && e->anchor_placed != NULL) {
+        e->anchor_placed[id - 1] = 1;
+    }
+}
+
 static uint32_t anchor_define(yep_engine* e, yep_view name) {
     /* Last definition wins (libyaml parity); OOM leaves the anchor
      * undefined so its alias errors. The VALUE is the anchor's 1-based
      * ordinal — sinks key on it and skip the name hash entirely. */
     uint32_t id = ++e->anchor_serial;
+    if (id > e->anchor_placed_cap) {
+        uint32_t cap = e->anchor_placed_cap ? e->anchor_placed_cap : 64;
+        while (cap < id) {
+            cap *= 2;
+        }
+        uint8_t* nb = yep_alloc(e->sys, cap);
+        if (nb == NULL) {
+            e->anchor_serial--;
+            return 0; /* OOM: the anchor stays undefined, its alias errors */
+        }
+        if (e->anchor_placed != NULL) {
+            memcpy(nb, e->anchor_placed, e->anchor_placed_cap);
+            yep_free(e->sys, e->anchor_placed);
+        }
+        memset(nb + e->anchor_placed_cap, 0, cap - e->anchor_placed_cap);
+        e->anchor_placed = nb;
+        e->anchor_placed_cap = cap;
+    }
     yep_nametab_set(&e->anchors, name, id);
     return id;
 }
@@ -1260,7 +1296,13 @@ static int e_alias(yep_engine* e, yep_event* ev) {
         return e_fail(e, YEP_ERR_UNEXPECTED, star);
     }
     uint32_t target = anchor_id_of(e, name);
-    if (target == 0) {
+    if (target == 0 || (target <= e->anchor_serial && e->anchor_placed != NULL &&
+                        e->anchor_placed[target - 1] == 0)) {
+        /* undefined, or defined-but-not-yet-placed: the props scan
+         * registers the name before the anchor's node reaches the
+         * output, so an alias here would precede its definition and
+         * the re-parse would reject the document (libyaml: "found
+         * undefined alias") */
         e->pos = star;
         return e_fail(e, YEP_ERR_UNDEFINED_ALIAS, star);
     }
@@ -1692,6 +1734,7 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
      * builder's close, then commit or roll back. ---- */
     if (e->ev_scopes == 0 && e->sink != NULL && e->sink->on_flow_build != NULL) {
         size_t bclose = 0;
+        uint32_t serial_at_open = e->anchor_serial;
         int rc = e->sink->on_flow_build(e->sink->ctx, p, open_pos, len, e->line, e->line_start,
                                         anchor, tag, anchor_id, e->max_depth, &bclose);
         if (rc < 0) {
@@ -1710,6 +1753,14 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             }
             if (e->sink->on_flow_commit(e->sink->ctx) != 1) {
                 return -2;
+            }
+            /* the commit places the whole subtree at once: every anchor
+             * defined during the flow's parse belongs to it (the builder
+             * placed their nodes; the engine never sees the ids
+             * individually) — mark the range so a later alias may parse */
+            e_anchor_mark(e, anchor_id);
+            for (uint32_t aid = serial_at_open + 1; aid <= e->anchor_serial; aid++) {
+                e_anchor_mark(e, aid);
             }
             size_t from = open_pos;
             uint32_t ln = e->line;
@@ -2816,6 +2867,12 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
     if (prepared) {
         if (e->sink != NULL && e->sink->on_block_pair != NULL) {
             yep_view key = {e->p + sh->key_start, sh->key_end - sh->key_start};
+            /* the fused placement places the value node: its anchor
+             * rides v — mark it so a later alias may parse (the
+             * placement sites are the alias check's ground truth; the
+             * classified KEY is always plain — anchored keys ride the
+             * general chain) */
+            e_anchor_mark(e, v.anchor_id);
             int built =
                 e->sink->on_block_pair(e->sink->ctx, &key, &v, pair_line, key_col, pair_val_col);
             if (built < 0) {
@@ -3727,6 +3784,7 @@ void yep_engine_destroy(yep_engine* e) {
         e->step = NULL;
     }
     yep_nametab_free(&e->anchors);
+    yep_free(e->sys, e->anchor_placed);
     yep_free(e->sys, e->norm_buf);
     yep_pool_destroy(e->pool);
     yep_free(e->sys, e);
@@ -4075,6 +4133,9 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     e->facts_cache_line = 0;
     e->depth = 0;
     yep_nametab_clear(&e->anchors);
+    if (e->anchor_placed != NULL) {
+        memset(e->anchor_placed, 0, e->anchor_placed_cap);
+    }
     e->alias_memo_len = 0;
     e->tagmap_n = 0;
     e->saw_yaml = 0;
@@ -4242,6 +4303,9 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 doc_open = 0;
                 e->tagmap_n = 0; /* directives are per-document */
                 yep_nametab_clear(&e->anchors);
+                if (e->anchor_placed != NULL) {
+                    memset(e->anchor_placed, 0, e->anchor_placed_cap);
+                }
                 e->alias_memo_len = 0; /* so are anchors */
                 e->alias_memo_len = 0; /* and the repeat-alias memo: doc 1's
                                         * "*ORIGIN" memoized the ordinal and doc 2's
@@ -4315,6 +4379,9 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 e_pos_mark(e, li.offset + li.indent + 3, &ev.end_line, &ev.end_col);
                 e->tagmap_n = 0; /* directives are per-document */
                 yep_nametab_clear(&e->anchors);
+                if (e->anchor_placed != NULL) {
+                    memset(e->anchor_placed, 0, e->anchor_placed_cap);
+                }
                 e->alias_memo_len = 0;
                 if (emit_now(e, &ev) != 0) {
                     return -2;
@@ -4520,6 +4587,9 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
         }
         e->tagmap_n = 0;
         yep_nametab_clear(&e->anchors);
+        if (e->anchor_placed != NULL) {
+            memset(e->anchor_placed, 0, e->anchor_placed_cap);
+        }
         e->alias_memo_len = 0;
     }
     if (emit_end) {
