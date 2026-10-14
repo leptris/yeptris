@@ -29,6 +29,15 @@ void yep_scan_advance_line(const char* p, size_t* from, size_t to, uint32_t* lin
         if (p[i] == '\n') {
             (*line)++;
             *line_start = i + 1;
+        } else if (p[i] == '\r' && i + 1 < to && p[i + 1] != '\n') {
+            /* a lone \r is a break too (the engine's break rule):
+             * the JSON fast path's walk missed it and marked every
+             * event after the \r one line low while the general
+             * kernel (which walks \r) marked them correctly — whole
+             * vs chunked diverged on `\r`-containing JSON-class flow
+             * (the nightly's run 38549939326) */
+            (*line)++;
+            *line_start = i + 1;
         }
     }
     *from = to;

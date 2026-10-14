@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **scan: the line walk counts a lone CR** — `yep_scan_advance_line`
+  (the JSON fast path's and the DOM builder's shared line walk)
+  counted only `\n`, so a lone `\r` inside a JSON-class flow
+  (`[\n \r ]` is valid JSON: `\r` is JSON whitespace) never
+  advanced the line: whole mode's event marks sat one line low while
+  the chunked prefix (the general kernel, which walks `\r`) marked
+  correctly — same bytes, two mark sets. The engine's backward
+  mark walk aligns too (nightly run 38549939326, catch 96).
 - **parse: a col-0 document marker ends a root block scalar even
   before any content** — `>\n--- ` whole-parsed as ONE document (the
   marker line became the block's content) while the chunked cut at

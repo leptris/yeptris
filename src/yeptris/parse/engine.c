@@ -175,7 +175,7 @@ static void e_pos_mark(const yep_engine* e, size_t at, uint32_t* line, uint32_t*
          * walk below it, or ls never decreases (the infinite-loop bug
          * the Stepping.Directive hang found) */
         size_t q = ls - 1;
-        while (q > 0 && e->p[q - 1] != '\n') {
+        while (q > 0 && e->p[q - 1] != '\n' && e->p[q - 1] != '\r') {
             q--;
         }
         ls = q; /* line_start(l-1) */
