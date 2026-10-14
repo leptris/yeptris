@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: the flow key lookahead restores the line state with the
+  cursor** — the key detection's whitespace lookahead crosses the
+  newline after a flow value hunting for a `:`, and the no-colon
+  rollback put the cursor back but left `e->line` one high: a
+  multi-line flow collection's END (and every mark after it) parsed
+  one line low in any chunked feed, while whole feeds took the JSON
+  fast path (its own line walk) and never noticed — whole and chunked
+  streams disagreed on the same bytes (nightly run 38518507064,
+  catch 90).
 - **parse: the JSON fast paths are byte-for-byte JSON** — the flow
   walk's lenient mode accepted number and literal keys, so a whole
   parse of `{9:1}` rode the fast path and emitted `{9 -> 1}` while a

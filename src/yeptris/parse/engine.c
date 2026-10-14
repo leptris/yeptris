@@ -2090,6 +2090,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
              * may precede it: "unquoted : value", "\"foo\"\n: bar").
              * After a QUOTED node the colon separates JSON-style. */
             size_t save_pos = e->pos;
+            uint32_t save_line = e->line;
+            size_t save_ls = e->line_start;
             if (e_flow_ws(e) != 0) {
                 return -1;
             } /* crosses newlines; restored below when no colon */
@@ -2110,7 +2112,13 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                           e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
                           yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND)));
             if (!colon) {
-                e->pos = save_pos; /* not a key; the caller re-reads */
+                /* not a key; the caller re-reads — the line state goes
+                 * back with the cursor (the ws lookahead crossed the
+                 * newline; a stale e->line marked everything after the
+                 * flow node one line low) */
+                e->pos = save_pos;
+                e->line = save_line;
+                e->line_start = save_ls;
             }
             if (colon && st[n - 1].kind == 1 && st[n - 1].pending_key == 0) {
                 if (!q_key && quoted && ev.value.len + 2 > YEP_MAX_SIMPLE_KEY) {
