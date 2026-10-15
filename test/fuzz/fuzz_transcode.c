@@ -127,11 +127,23 @@ static void probe_one(const uint8_t* data, size_t size) {
     char* base = NULL;
     size_t base_len = 0;
     if (parse_ok(data, size, &base, &base_len)) {
+        /* re-encode the DOCUMENT, not the file bytes: a leading UTF-8
+         * BOM is an encoding mark the engine strips ONCE (the parse
+         * above proves it) — re-encoding the raw bytes would turn the
+         * mark into a literal U+FEFF character in every UTF-16/32
+         * variant, and the documents would differ by construction, not
+         * by any transcoding fault (the nightly's round 107) */
+        const uint8_t* doc = data;
+        size_t doc_len = size;
+        if (size >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) {
+            doc += 3;
+            doc_len -= 3;
+        }
         static uint8_t enc[1 << 23];
         for (int width = 2; width <= 4; width += 2) {
             for (int be = 0; be <= 1; be++) {
                 for (int bom = 1; bom >= 0; bom--) { /* BOM first: explicit beats sniffing */
-                    size_t n = encode(data, size, width, be, bom, enc, sizeof(enc));
+                    size_t n = encode(doc, doc_len, width, be, bom, enc, sizeof(enc));
                     if (n == 0) {
                         continue;
                     }
