@@ -731,7 +731,9 @@ int yep_tape_long_simple_key(const yeptris_json_tape* s) {
         if (st[d].map && st[d].key_next == 0) {
             uint32_t mlen = (uint32_t)(r >> 8) & 0xFFFFFFu;
             if (kind == YEP_T_STR && mlen + 2u > 1024u &&
-                yep_simple_key_chars(s->_src + (size_t)((uint32_t)(r >> 32)), mlen) + 2 > 1024) {
+                yep_simple_key_chars((const char*)s->_src + (size_t)((uint32_t)(r >> 32)), mlen) +
+                        2 >
+                    1024) {
                 /* the budget counts characters, not bytes (the round-108
                  * shrink: a 2-byte code point at byte delta 1025 is
                  * legal); _src rides the walk that produced the tape */
