@@ -19,6 +19,18 @@
 extern "C" {
 #endif
 
+/* libyaml's simple-key budget counts characters, not bytes: a
+ * multibyte code point costs one (the round-108 fuzz shrink carries a
+ * 2-byte char at byte delta 1025). Shared by the engine scanners, the
+ * DOM JSON builder, and the tape key checker. */
+static inline int yep_simple_key_chars(const char* p, size_t n) {
+    int chars = 0;
+    for (size_t i = 0; i < n; i++) {
+        chars += ((((unsigned char)p[i]) & 0xC0) != 0x80);
+    }
+    return chars;
+}
+
 /* Finishes a double-quoted content span: escape sequences (\n \t \\ \" \x
  * \u \U …), backslash-at-EOL continuation, and multi-line folding.
  * Returns a pool-owned buffer of out_len bytes. */

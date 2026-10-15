@@ -34,6 +34,7 @@
 #include "common/simd_text.h"
 #include "encoding/encoding.h"
 #include "memory/allocator.h"
+#include "parse/scalars.h"
 #include "scan/json.h"
 
 typedef struct {
@@ -709,6 +710,13 @@ int yep_tape_long_simple_key(const yeptris_json_tape* s) {
                 return 1; /* deeper than the scratch stack: over by
                            * definition, the engine's depth law decides */
             }
+            /* the container consumes the parent frame's pending slot;
+             * after it closes the OTHER slot is next (yt_flow_scan's
+             * round-108 lesson: a pinned key_next hid every key that
+             * followed a container value) */
+            if (d > 0 && st[d].map) {
+                st[d].key_next = (uint8_t)!st[d].key_next;
+            }
             d++;
             st[d].map = (uint8_t)(kind == YEP_T_MAP_OPEN);
             st[d].key_next = 0;
@@ -722,7 +730,11 @@ int yep_tape_long_simple_key(const yeptris_json_tape* s) {
         }
         if (st[d].map && st[d].key_next == 0) {
             uint32_t mlen = (uint32_t)(r >> 8) & 0xFFFFFFu;
-            if (kind == YEP_T_STR && mlen + 2u > 1024u) {
+            if (kind == YEP_T_STR && mlen + 2u > 1024u &&
+                yep_simple_key_chars(s->_src + (size_t)((uint32_t)(r >> 32)), mlen) + 2 > 1024) {
+                /* the budget counts characters, not bytes (the round-108
+                 * shrink: a 2-byte code point at byte delta 1025 is
+                 * legal); _src rides the walk that produced the tape */
                 return 1;
             }
             st[d].key_next = 1;
@@ -2061,7 +2073,21 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape_lenient(const char* source, si
          * 1.65x, json-users 2.2x — the ledger's #85 scoping), and
          * this exact call already carried the route's verdicts as the
          * escape/C0 fallback, so acceptance is unchanged. */
-        return yep_tape_walk_lenient_fused(source, len, at, tape, 0, 0, 0);
+        int rc = yep_tape_walk_lenient_fused(source, len, at, tape, 0, 0, 0);
+        if (rc != YEPTRIS_OK) {
+            return rc;
+        }
+        /* the YAML simple-key law rides the fused route too: a key
+         * whose raw span crosses 1024 defers to the engine's clean
+         * error — the JSON-class walk has no YAML laws, and the other
+         * routes (engine_run, the marshal drains) reject the same
+         * span, so acceptance here broke whole/chunked marshal parity
+         * (the nightly's round 108) */
+        if (yep_tape_long_simple_key(tape)) {
+            yep_error_set(yep_error_tls(), YEP_ERR_KEY_TOO_LONG, 1, (uint32_t)(at + 1), at, NULL);
+            return YEPTRIS_ERROR_PARSE;
+        }
+        return YEPTRIS_OK;
     }
 
     /* scalar root: one record, same deferred split for numbers */

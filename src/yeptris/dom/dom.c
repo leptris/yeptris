@@ -750,6 +750,7 @@ static int jb_value(jbuilder* b) {
             return 0;
         }
         for (;;) {
+            size_t member_start = b->i;
             int rc = jb_value(b);
             if (rc != 0) {
                 return rc;
@@ -759,6 +760,14 @@ static int jb_value(jbuilder* b) {
                 /* a value must be followed by , or } — the map's key
                  * slot is pending until the ':' value completes */
                 if (b->i < b->len && b->p[b->i] == ':' && d->map_pending_key[d->depth - 1] != 0) {
+                    /* libyaml's simple-key law rides the JSON-class
+                     * route too: a key whose colon distance crosses
+                     * 1024 characters defers to the engine's clean
+                     * error (run 38143486175) */
+                    if (b->i - member_start > 1024 &&
+                        yep_simple_key_chars(b->p + member_start, b->i - member_start) > 1024) {
+                        return -2;
+                    }
                     b->i++;
                     rc = jb_value(b);
                     if (rc != 0) {

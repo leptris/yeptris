@@ -20,6 +20,7 @@
 #include "dom/dom.h"
 #include "memory/allocator.h"
 #include "memory/pool.h"
+#include "parse/scalars.h"
 #include "resolve/resolver.h"
 #include "scan/json.h"
 #include "scan/scan.h"
@@ -355,6 +356,14 @@ static uint32_t yt_flow_scan(const yeptris_json_tape* s, int* long_key) {
                 return 0xFFFFu; /* deeper than the scratch stack: the
                                  * general kernel's depth path decides */
             }
+            /* the container consumes the parent frame's pending slot
+             * (key or value); after it closes the OTHER slot is next —
+             * a container value left key_next pinned at 1, and every
+             * key after a container value skipped the law (the
+             * nightly's round-108 shape: {"": [...], "giant": x}) */
+            if (d > 0 && st[d].map) {
+                st[d].key_next = (uint8_t)!st[d].key_next;
+            }
             d++;
             if ((uint32_t)d > maxd) {
                 maxd = (uint32_t)d;
@@ -371,7 +380,10 @@ static uint32_t yt_flow_scan(const yeptris_json_tape* s, int* long_key) {
         }
         if (st[d].map && st[d].key_next == 0) {
             uint32_t mlen = (uint32_t)(r >> 8) & 0xFFFFFFu;
-            if (kind == YEP_T_STR && mlen + 2u > 1024u) {
+            if (kind == YEP_T_STR && mlen + 2u > 1024u &&
+                yep_simple_key_chars(s->_src + (size_t)((uint32_t)(r >> 32)), mlen) + 2 > 1024) {
+                /* the budget counts characters (the round-108 shrink:
+                 * a 2-byte code point at byte delta 1025 is legal) */
                 *long_key = 1;
             }
             st[d].key_next = 1;

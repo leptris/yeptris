@@ -16,6 +16,18 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **flow simple-key law: the 1024 budget counts characters from the
+  key's start to the colon, on every route** — the old raw-span checks
+  measured bytes at the scalar and missed two whole families: a
+  multibyte code point counts once (a 2-byte char at byte delta 1025
+  is legal, exactly the nightly's round-108 shrink), and a key that
+  follows a container value was never checked at all (the tape walkers
+  left the map frame's key slot pinned after OPEN/CLOSE records). The
+  law now lives at the colon in the fused pass-2 scanner and the
+  general flow kernel, in the DOM JSON builder (which defers over-
+  limit keys to the engine), and in both tape key walkers; all three
+  routes answer identically and match Psych's boundary cell by cell
+  (run 38713500461).
 - **feed: an unterminated quote inside an unbalanced flow span defers
   in the pre-scan** — the pre-scan only decides the key question, but
   its quote branch errored on a bad quote BEFORE the flow's first

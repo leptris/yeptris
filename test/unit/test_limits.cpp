@@ -10,6 +10,7 @@
 #include <string>
 
 #include <yeptris.h>
+#include <yeptris/marshal.h>
 #include <yeptris/parse.h>
 
 namespace {
@@ -149,6 +150,48 @@ TEST(Limits, ThousandDocumentStream) {
     ASSERT_EQ(yeptris_node_int(yeptris_document_root(doc, 999), &v), YEPTRIS_OK);
     EXPECT_EQ(v, 999);
     yeptris_document_free(doc);
+}
+
+/* libyaml's simple-key budget counts CHARACTERS from the key's first
+ * byte to the colon — quotes count against quoted keys, a multibyte
+ * code point costs one (the nightly's round-108 shrink: a 2-byte char
+ * at byte delta 1025 is legal), and every route (parse, marshal, the
+ * strict-JSON drains) must carry the same law (run 38143486175). */
+TEST(Limits, SimpleKey1024CharBudget) {
+    struct {
+        std::string yaml;
+        bool ok;
+        const char* label;
+    } cases[] = {
+        /* flow plain: no quotes to buy back, so the content is the budget */
+        {"{" + std::string(1024, 'x') + ": 1}", true, "flow plain 1024"},
+        {"{" + std::string(1025, 'x') + ": 1}", false, "flow plain 1025"},
+        /* multibyte: same byte distance, smaller character budget */
+        {R"({"¿¿)" + std::string(1020, 'x') + R"(": 1})", true, "quoted bytes 1024 chars 1022"},
+        {R"({¿¿)" + std::string(1022, 'x') + ": 1}", true, "plain bytes 1026 chars 1024"},
+        {R"({"¿)" + std::string(1022, 'x') + R"(": 1})", false, "quoted bytes 1025 chars 1023"},
+        /* the round-108 shrink's family: a giant key after a container
+         * value -- the shape the recorder's key-slot walk missed */
+        {std::string("{}: {\"\":[{\"\":\"\"}],\"") + std::string(1022, '-') + "\": \"\"}", true,
+         "shrink shape at the boundary (delta 1024)"},
+        {std::string("{}: {\"\": [{\"\": \"\"}],\"") + std::string(1023, '-') + "\": \"\"}", false,
+         "after-container key over the budget (delta 1025)"},
+    };
+    for (const auto& c : cases) {
+        const YeptrisParseOptions opts = {YEPTRIS_SCHEMA_11_COMPAT, 0, 0, 0, 0};
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse_ex(c.yaml.data(), c.yaml.size(), &opts, &st);
+        EXPECT_EQ(st == YEPTRIS_OK, c.ok) << c.label;
+        yeptris_document_free(doc);
+
+        /* route agreement: the marshal drain answers the same way */
+        char* out = NULL;
+        size_t olen = 0;
+        YeptrisStatus ms = yeptris_marshal(c.yaml.data(), c.yaml.size(), YEPTRIS_SCHEMA_11_COMPAT,
+                                           YEPTRIS_MARSHAL_ALL_DOCS, &out, &olen);
+        yeptris_marshal_free(out);
+        EXPECT_EQ(ms == YEPTRIS_OK, c.ok) << c.label;
+    }
 }
 
 TEST(Limits, SimpleKey1024Boundary) {
