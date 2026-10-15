@@ -21,8 +21,14 @@
 #include <yeptris/visit.h>
 
 static int probe_one(const uint8_t* data, size_t size) {
+    /* the marshal contract below rides the compat schema (the value
+     * drains' grammar = libyaml's), so the parse must ask the SAME
+     * grammar — a shape only the default core-1.2 grammar accepts is
+     * not marshalable and is not a violation (the nightly's round 103:
+     * a flow map whose giant quoted key libyaml's scanner rejects) */
+    const YeptrisParseOptions opts = {YEPTRIS_SCHEMA_11_COMPAT, 0, 0, 0, 0};
     YeptrisStatus st = YEPTRIS_OK;
-    YeptrisDocument doc = yeptris_parse((const char*)data, size, &st);
+    YeptrisDocument doc = yeptris_parse_ex((const char*)data, size, &opts, &st);
     if (doc == NULL) {
         return 0;
     }
