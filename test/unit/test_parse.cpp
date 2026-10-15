@@ -4362,6 +4362,44 @@ TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     }
 }
 
+TEST(Parse, DirectiveAfterDocEndMatchesAcrossChunkings) {
+    /* catch 107 (the nightly's run 38768645888): step_scan counted a
+     * '{' as a flow opener even mid-word — the block plain "U{" put
+     * the cut scanner in flow across the following directive line,
+     * whose marker logic lives in the block branch, so the cut landed
+     * between the directive and its '---' and the intermediate run
+     * rejected a legal multi-document stream ("invalid or unsupported
+     * directive") while the whole parse accepted, and the
+     * DOCUMENT_START mark lost the leading-directive lines across the
+     * step boundary. The opener gate reads tok_start as of the byte's
+     * arrival — the separator block sets it for the same byte. */
+    const char* y = "U{\n...\n%TAG ! t/\n---\nv\n";
+    size_t ylen = strlen(y);
+
+    size_t whole_n = 0;
+    {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        ASSERT_EQ(yeptris_recorder_feed(rec, y, ylen, 1), YEPTRIS_OK);
+        (void)yeptris_recorder_records(rec, &whole_n);
+        yeptris_recorder_free(rec);
+    }
+    ASSERT_GT(whole_n, 0u);
+
+    /* byte-at-a-time feeds: every cut the scanner can pick */
+    size_t chunked_n = 0;
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    for (size_t i = 0; i < ylen; i++) {
+        ASSERT_EQ(yeptris_recorder_feed(rec, y + i, 1, i + 1 == ylen), YEPTRIS_OK) << i;
+        size_t n = 0;
+        (void)yeptris_recorder_records(rec, &n);
+        chunked_n += n; /* records() resets at every feed entry */
+    }
+    yeptris_recorder_free(rec);
+    EXPECT_EQ(chunked_n, whole_n);
+}
+
 TEST(Parse, UnterminatedFlowEventStreamsMatchAcrossChunkings) {
     /* catch 102 (the nightly's run 38678519554): an unterminated flow
      * at final input errored in the PRE-SCAN — before the flow's first

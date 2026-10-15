@@ -16,6 +16,16 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **feed: a brace mid-word no longer puts the cut scanner in flow** —
+  the block plain scalar "U{" counted as a flow opener, the scan
+  stayed in flow across the following directive line (whose marker
+  logic lives in the block branch), and the chunk cut landed between
+  the directive and its '---': the intermediate run rejected a legal
+  multi-document stream ("invalid or unsupported directive") while the
+  whole parse accepted, and the DOCUMENT_START mark lost the leading
+  directive lines across the step boundary. The opener gate reads
+  tok_start as of the byte's arrival (the separator block sets it for
+  the same byte — run 38768645888).
 - **flow simple-key law: the 1024 budget counts characters from the
   key's start to the colon, on every route** — the old raw-span checks
   measured bytes at the scalar and missed two whole families: a
