@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **transcode harness: re-encode the document, not the file bytes** —
+  the equality property fed a leading UTF-8 BOM into the UTF-16/32
+  re-encoding, where the encoding mark became a literal U+FEFF
+  character and every variant differed from the base by construction.
+  The engine's once-only BOM strip is correct; the harness now
+  re-encodes the document content (run 38707248713).
 - **feed: an unterminated quote inside an unbalanced flow span defers
   in the pre-scan** — the pre-scan only decides the key question, but
   its quote branch errored on a bad quote BEFORE the flow's first
