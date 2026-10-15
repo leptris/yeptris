@@ -4337,10 +4337,6 @@ TEST(Parse, BlockKeyIndicatorValueShapeRoundTrips) {
             yeptris_document_free(doc);
         }
     }
-    /* the real c102 artifact bytes (67) — parses and roundtrips, the
-     * anchored "&base" node keeps its anchor through the emit */
-    const char c100[] = ":\n  ?\n  ? ? &? &a : a\n  ?\"&e ? &? &a : a\n  ?\"&e: &base\n"
-                        "U e <: *base\n";
     {
         /* the shrink is load-bearing (the full artifact rides the same
          * paths); the raw bytes ride in corpus/ for the fuzz replay */
