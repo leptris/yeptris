@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: the "..." marker's line ends at a lone `\r`** — the doc-end
+  marker's trailing-content check skipped `\r` as whitespace, so the
+  next line's `---` read as junk on the marker's own line and the
+  whole parse errored while the chunked feed split the lines
+  correctly (run 38684686593).
 - **feed: an unterminated flow's event streams now match across
   chunkings** — the whole parse's flow pre-scan errored BEFORE the
   flow's first events while the chunked feed had already streamed the
