@@ -4463,12 +4463,18 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
         }
         if (li.flags & YEP_LF_DOC_END) {
             {
+                /* the "..." marker's line ends at a break — a lone '\r'
+                 * included: skipping it as whitespace read the NEXT
+                 * line's "---" as trailing junk on the marker's own line
+                 * ("...\r---\n" errored whole-buffer while the chunked
+                 * feed's boundary split the lines correctly — the
+                 * nightly's round 105) */
                 size_t rest = li.offset + li.indent + 3;
-                while (rest < e->len &&
-                       (e->p[rest] == ' ' || e->p[rest] == '\t' || e->p[rest] == '\r')) {
+                while (rest < e->len && (e->p[rest] == ' ' || e->p[rest] == '\t')) {
                     rest++;
                 }
-                if (rest < e->len && e->p[rest] != '\n' && e->p[rest] != '#') {
+                if (rest < e->len && e->p[rest] != '\n' && e->p[rest] != '\r' &&
+                    e->p[rest] != '#') {
                     e_fail(e, YEP_ERR_UNEXPECTED, rest);
                     goto fail;
                 }

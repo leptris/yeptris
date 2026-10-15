@@ -4322,6 +4322,28 @@ static int on_count_events(void* ctx, const YeptrisEvent* ev) {
     return 0;
 }
 
+TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
+    /* catch 103 (the nightly's run 38684686593): the "..." marker's
+     * trailing-content check skipped '\r' as whitespace, so the next
+     * line's "---" read as junk on the marker's own line — the whole
+     * parse of "...\r---\n" errored while the chunked feed's boundary
+     * split the lines correctly (fuzz_feed: whole st=1 / chunked st=0).
+     * A lone '\r' is a line break: the follower set accepts it. */
+    const char* y = "...\r---\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr) << y;
+    yeptris_document_free(doc);
+    /* trailing junk after a plain break still rejects */
+    const char* bad = "... ---\n";
+    st = YEPTRIS_OK;
+    YeptrisDocument bad_doc = yeptris_parse(bad, strlen(bad), &st);
+    EXPECT_EQ(bad_doc, nullptr) << bad;
+    if (bad_doc != NULL) {
+        yeptris_document_free(bad_doc);
+    }
+}
+
 TEST(Parse, UnterminatedFlowEventStreamsMatchAcrossChunkings) {
     /* catch 102 (the nightly's run 38678519554): an unterminated flow
      * at final input errored in the PRE-SCAN — before the flow's first
