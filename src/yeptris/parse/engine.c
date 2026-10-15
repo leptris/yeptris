@@ -1414,7 +1414,14 @@ static int e_skip_flow(yep_engine* e) {
             const yep_text_kernels* k = yep_text_active();
             ptrdiff_t r = k->quote_scan(e->p + e->pos + 1, e->len - e->pos - 1, (char)c, &esc2);
             if (r < 0) {
-                return e_fail(e, YEP_ERR_UNTERMINATED_QUOTE, e->pos);
+                /* an unterminated quote inside the span: NOT-A-KEY — the
+                 * real parse (e_flow) owns the error AFTER it has streamed
+                 * the flow's open events. The pre-scan's own error here
+                 * fired BEFORE those events, so the whole buffer's stream
+                 * lost them while the chunked feed had already emitted
+                 * theirs (the nightly's round 106); the unbalanced-span
+                 * deferral below defers the same way. */
+                return 0;
             }
             e->pos += 1 + (size_t)r + 1;
             tok_start = 0;

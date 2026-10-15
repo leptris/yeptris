@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **feed: an unterminated quote inside an unbalanced flow span defers
+  in the pre-scan** — the pre-scan only decides the key question, but
+  its quote branch errored on a bad quote BEFORE the flow's first
+  events, so the whole buffer's stream lost the map open and its
+  first entry while the chunked feed had already emitted theirs. The
+  pre-scan answers NOT-A-KEY and the real parse streams then errors
+  (run 38688200266).
 - **parse: the "..." marker's line ends at a lone `\r`** — the doc-end
   marker's trailing-content check skipped `\r` as whitespace, so the
   next line's `---` read as junk on the marker's own line and the
