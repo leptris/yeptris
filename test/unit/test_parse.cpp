@@ -4322,6 +4322,24 @@ static int on_count_events(void* ctx, const YeptrisEvent* ev) {
     return 0;
 }
 
+TEST(Parse, UnterminatedQuoteInPrescanDefersNotErrors) {
+    /* catch 104 (the nightly's run 38688200266): an UNBALANCED flow
+     * span made the pre-scan walk past its bracket into the following
+     * lines, where its quote branch errored on an unterminated quote
+     * BEFORE the flow's first events — while the chunked feed had
+     * already streamed the map open and its first entry (fuzz_feed:
+     * whole n=2 / chunked n=4). The pre-scan only decides the key
+     * question: an unterminated quote is NOT-A-KEY (return 0), and the
+     * real parse streams the flow open and errors on the bad bytes —
+     * the same point the chunked route's final parse does. The spec
+     * verdict stands (yaml-1.2.2: two nodes without a separator in a
+     * flow mapping reject; ns-plain-first excludes c-indicator). */
+    const char* y = "{t\"{3002\"}\n--- '";
+    int events = 0;
+    yeptris_push_parse(y, strlen(y), on_count_events, &events);
+    EXPECT_GT(events, 2) << "the flow's open events must precede the error";
+}
+
 TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     /* catch 103 (the nightly's run 38684686593): the "..." marker's
      * trailing-content check skipped '\r' as whitespace, so the next
