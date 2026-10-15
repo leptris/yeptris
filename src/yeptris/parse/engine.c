@@ -1988,14 +1988,6 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             ev.style = YEP_STYLE_PLAIN;
             ev.implicit = 1;
         }
-        /* a map's first scalar of a pair is a KEY: the 1024-character
-         * simple-key limit applies (raw span, quotes included) */
-        if (stk[sd - 1] && kpending[sd - 1] == 0) {
-            size_t kspan = raw_end - vstart;
-            if (kspan > YEP_MAX_SIMPLE_KEY) {
-                return e_fail(e, YEP_ERR_KEY_TOO_LONG, vstart);
-            }
-        }
         if (raw_end == vstart) {
             raw_end = i; /* numbers/literals advance i, not raw_end */
         }
@@ -2005,6 +1997,15 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             return -2;
         }
         if (stk[sd - 1] && p[i] == ':' && kpending[sd - 1] == 0) {
+            /* the simple-key law rides the colon: libyaml keeps a flow
+             * key possible while (colon - key start) <= 1024 in
+             * characters -- the quotes count against quoted keys and a
+             * multibyte code point counts once (the nightly's round 108
+             * shrink carries a 2-byte char at byte delta 1025) */
+            if (i - vstart > YEP_MAX_SIMPLE_KEY &&
+                yep_simple_key_chars(p + vstart, i - vstart) > YEP_MAX_SIMPLE_KEY) {
+                return e_fail(e, YEP_ERR_KEY_TOO_LONG, vstart);
+            }
             kpending[sd - 1] = 2; /* key seen; the next scalar/collection is the value */
         }
     }
@@ -2259,10 +2260,10 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 e->line_start = save_ls;
             }
             if (colon && st[n - 1].kind == 1 && st[n - 1].pending_key == 0) {
-                if (!q_key && quoted && ev.value.len + 2 > YEP_MAX_SIMPLE_KEY) {
-                    return e_fail(e, YEP_ERR_KEY_TOO_LONG, e->pos);
-                }
-                if (!q_key && !quoted && ev.value.len > YEP_MAX_SIMPLE_KEY) {
+                if (!q_key && ((quoted && yep_simple_key_chars(ev.value.p, ev.value.len) + 2 >
+                                              YEP_MAX_SIMPLE_KEY) ||
+                               (!quoted && yep_simple_key_chars(ev.value.p, ev.value.len) >
+                                               YEP_MAX_SIMPLE_KEY))) {
                     return e_fail(e, YEP_ERR_KEY_TOO_LONG, e->pos);
                 }
                 e->pos++;
@@ -2282,10 +2283,10 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                      * scalar; so does the suite's flow grammar. */
                     return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
                 }
-                if (!q_key && quoted && ev.value.len + 2 > YEP_MAX_SIMPLE_KEY) {
-                    return e_fail(e, YEP_ERR_KEY_TOO_LONG, e->pos);
-                }
-                if (!q_key && !quoted && ev.value.len > YEP_MAX_SIMPLE_KEY) {
+                if (!q_key && ((quoted && yep_simple_key_chars(ev.value.p, ev.value.len) + 2 >
+                                              YEP_MAX_SIMPLE_KEY) ||
+                               (!quoted && yep_simple_key_chars(ev.value.p, ev.value.len) >
+                                               YEP_MAX_SIMPLE_KEY))) {
                     return e_fail(e, YEP_ERR_KEY_TOO_LONG, e->pos);
                 }
                 if (st[n - 1].buf_from >= 0 && !quoted && !q_key &&
