@@ -1468,11 +1468,13 @@ static int e_skip_flow(yep_engine* e) {
         e->pos++;
     }
     if (n != 0) {
-        if (!e->parsing_final) {
-            return 0; /* incomplete: more bytes may close it; the real
-                       * parse (e_flow) owns the deferral */
-        }
-        return e_fail(e, YEP_ERR_UNEXPECTED, e->len);
+        /* incomplete: the real parse (e_flow) owns the deferral in BOTH
+         * modes. The pre-emptive final error (removed here) fired
+         * BEFORE the flow's first events, while the chunked feed had
+         * already streamed MAP_START + the first entry — the two routes'
+         * event streams diverged at the error boundary (the nightly's
+         * round 104). e_flow errors on the unclosed span either way. */
+        return 0;
     }
     return 0;
 }
@@ -1614,6 +1616,17 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
             if (e->pos < e->len && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
                 e->p[e->pos] != ',' && !e_comment_at(e) && e->p[e->pos] != '\n' &&
                 e->p[e->pos] != '\r') {
+                /* a document marker line ends the scalar (and with it
+                 * the unclosed flow) — folding across "---" absorbed
+                 * the marker and the whole route's scalar grew past the
+                 * chunked route's deferral boundary (the nightly's
+                 * round 104) */
+                yep_line_info ml = e_line_info_here(e);
+                if (ml.flags & (YEP_LF_DOC_START | YEP_LF_DOC_END)) {
+                    break; /* real document markers end the scalar; a
+                            * directive-LIKE '%' line stays content
+                            * mid-flow (XLQ9, the UT92 spec example) */
+                }
                 continue; /* continuation on a following line */
             }
             break; /* at a boundary; pos is on the separator/close */

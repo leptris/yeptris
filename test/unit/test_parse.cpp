@@ -4316,6 +4316,29 @@ TEST(Parse, AliasToUnplacedAnchorRejects) {
     free(s1);
 }
 
+static int on_count_events(void* ctx, const YeptrisEvent* ev) {
+    (void)ev;
+    (*(int*)ctx)++;
+    return 0;
+}
+
+TEST(Parse, UnterminatedFlowEventStreamsMatchAcrossChunkings) {
+    /* catch 102 (the nightly's run 38678519554): an unterminated flow
+     * at final input errored in the PRE-SCAN — before the flow's first
+     * events — while the chunked feed had already streamed MAP_START +
+     * the first entry (the deferral boundary landed between them), so
+     * the whole and chunked event streams diverged at the error
+     * boundary (fuzz_feed's identity invariant; the real artifact
+     * rides in corpus/feed/ for the CI replay). The pre-scan now
+     * defers in BOTH modes — the whole parse streams the flow open
+     * too — and the flow plain fold ends at real document markers
+     * ('%' lines stay content mid-flow: XLQ9/UT92). */
+    const char* y = "Fatal:\n  Unknown variable \"bar\": {b\"\n--- ";
+    int events = 0;
+    yeptris_push_parse(y, strlen(y), on_count_events, &events);
+    EXPECT_GT(events, 2) << "the flow's open events must precede the error";
+}
+
 TEST(Parse, FlowColonDirectlyBeforeQuotedValue) {
     /* catch 101 (the nightly's run 38673766448): the flow pre-scan's
      * separating-':' rule required a blank or flow-indicator follower,

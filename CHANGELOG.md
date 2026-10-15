@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **feed: an unterminated flow's event streams now match across
+  chunkings** — the whole parse's flow pre-scan errored BEFORE the
+  flow's first events while the chunked feed had already streamed the
+  map open and its first entry, so the two routes diverged at the
+  error boundary. The pre-scan defers in both modes (the real parse
+  errors on the unclosed span), and the flow plain fold ends at real
+  document markers while directive-like '%' lines stay content
+  mid-flow (XLQ9) (run 38678519554).
 - **parse: a separating ':' directly before a quoted flow value** —
   the flow pre-scan's token-start rule required a blank or
   flow-indicator after ':', so `:"["` (valid JSON and YAML flow) read
