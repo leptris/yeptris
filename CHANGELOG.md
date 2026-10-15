@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: a key indicator cannot be a pair's value; an odd child
+  pairs with a null** — the main dispatch's ':' line parsed its value
+  in the dash context, so ": ?" accepted a key indicator as node
+  content, and stacked explicit-key pairs left an unpaired child the
+  DOM dropped: an anchored node lost its anchor and the later alias
+  emitted a dangling reference the re-parse rejected. The colon's own
+  line is now marked (libyaml rejects ": ?"), a later-line same-depth
+  pending explicit pair completes with a null value (libyaml's
+  same-indent KEY rule), and the DOM pairs an odd child with a null
+  instead of dropping it (run 38653909827).
 - **parse: a flow explicit key with no ':' line keeps its key** — the
   flow walker dropped the parsed key event and emitted a fresh empty
   scalar in its slot: `[? x]` became `{"": ~}` (the key's content

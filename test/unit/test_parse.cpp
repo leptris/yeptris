@@ -4316,6 +4316,53 @@ TEST(Parse, AliasToUnplacedAnchorRejects) {
     free(s1);
 }
 
+TEST(Parse, BlockKeyIndicatorValueShapeRoundTrips) {
+    /* catch 100 (the nightly's run 38653909827): a ':' pair's value
+     * position accepted a KEY indicator (": ?" same-line rode
+     * AFTER_DASH via the main dispatch), and the stacked explicit-key
+     * pairs left an unpaired (anchorable) child the DOM dropped — the
+     * emit lost the anchor and the later alias dangled. The main
+     * dispatch marks its colon's line, the q-branch flushes a
+     * later-line same-depth pending (libyaml's same-indent KEY rule),
+     * and the DOM pairs an odd child with a null instead of dropping
+     * it. libyaml rejects ": ?" and the ":\n  ?" family; the stacked
+     * shapes now roundtrip. */
+    /* the same-line law */
+    {
+        const char* y = ": ?";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << "a key indicator cannot be a pair value";
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    /* the real c102 artifact bytes (67) — parses and roundtrips, the
+     * anchored "&base" node keeps its anchor through the emit */
+    const char c100[] = ":\n  ?\n  ? ? &? &a : a\n  ?\"&e ? &? &a : a\n  ?\"&e: &base\n"
+                        "U e <: *base\n";
+    {
+        /* the shrink is load-bearing (the full artifact rides the same
+         * paths); the raw bytes ride in corpus/ for the fuzz replay */
+        const char* y = "?\n  a:\n  : &base\n: *base";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y;
+        size_t l1 = 0;
+        char* s1 = yeptris_serialize(doc, &l1);
+        ASSERT_NE(s1, nullptr);
+        ASSERT_NE(strstr(s1, "&base"), (char*)nullptr) << s1;
+        yeptris_document_free(doc);
+        st = YEPTRIS_OK;
+        YeptrisDocument doc2 = yeptris_parse(s1, l1, &st);
+        EXPECT_NE(doc2, nullptr) << s1;
+        if (doc2 != NULL) {
+            yeptris_document_free(doc2);
+        }
+        free(s1);
+    }
+}
+
 TEST(Parse, FlowExplicitKeyWithoutColonKeepsItsKey) {
     /* catch 99 (the nightly's run 38645996340): the flow explicit-key
      * path with no ':' line dropped the parsed KEY event and emitted
