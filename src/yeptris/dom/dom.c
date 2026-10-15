@@ -392,6 +392,27 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
         if (d->depth == 0) {
             return -1;
         }
+        if (ev->type == YEP_EV_MAP_END && d->map_pending_key[d->depth - 1]) {
+            /* an odd child reached the mapping: the unpaired node —
+             * possibly an ANCHORED one — used to be dropped here, its
+             * anchor lost, and a later alias then emitted a dangling
+             * reference the re-parse rejected (the nightly's round
+             * 102). Pair it with a null: "k:" with nothing is a null
+             * value in every other position. */
+            yep_event nv;
+            memset(&nv, 0, sizeof(nv));
+            nv.type = YEP_EV_SCALAR;
+            nv.style = YEP_STYLE_PLAIN;
+            nv.implicit = 1;
+            uint32_t nid = dom_new_node(d, &nv, YEP_DOM_SCALAR);
+            if (nid == UINT32_MAX) {
+                return -1;
+            }
+            uint32_t top = d->stack[d->depth - 1];
+            dom_link(d, top, d->pending_key_id[d->depth - 1]);
+            dom_link(d, top, nid);
+            d->map_pending_key[d->depth - 1] = 0;
+        }
         d->depth--;
         return 0;
 
@@ -978,6 +999,23 @@ int dom_from_tape(yep_dom* d, const yeptris_json_tape* t) {
         case YEP_T_CLOSE:
             if (d->depth == 0) {
                 return -1;
+            }
+            if (d->nodes[d->stack[d->depth - 1]].kind == YEP_DOM_MAPPING &&
+                d->map_pending_key[d->depth - 1]) {
+                /* an odd child reached the mapping (see the event-path
+                 * MAP_END): pair it with a null instead of dropping it */
+                yep_event nv;
+                memset(&nv, 0, sizeof(nv));
+                nv.type = YEP_EV_SCALAR;
+                nv.style = YEP_STYLE_PLAIN;
+                nv.implicit = 1;
+                uint32_t nid = dom_new_node(d, &nv, YEP_DOM_SCALAR);
+                if (nid == UINT32_MAX) {
+                    return -1;
+                }
+                dom_link(d, d->stack[d->depth - 1], d->pending_key_id[d->depth - 1]);
+                dom_link(d, d->stack[d->depth - 1], nid);
+                d->map_pending_key[d->depth - 1] = 0;
             }
             d->depth--;
             break;

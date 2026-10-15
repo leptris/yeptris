@@ -101,16 +101,22 @@ struct yep_engine {
     yep_view pend_anchor, pend_tag;
     uint32_t pend_anchor_id; /* the pend anchor's ordinal */
 
-    int doc_content;   /* any node emitted for the current document */
-    int parsing_final; /* engine_run_impl's emit_end: the buffer is the
-                        * complete input (pre-scan errors are real) vs a
-                        * partial step feed (an unclosed flow is
-                        * incomplete, not malformed) */
-    int q_key_pending; /* an explicit '?' key awaits its ':' value line */
-    int qmd_stack[16]; /* the '?' pending pairs' map depths — a STACK:
-                        * nested '? ?' pairs stack two pendings and a
-                        * scalar slot let the inner clobber the
-                        * outer's level (the nightly's run 38387614146) */
+    int doc_content;       /* any node emitted for the current document */
+    int parsing_final;     /* engine_run_impl's emit_end: the buffer is the
+                            * complete input (pre-scan errors are real) vs a
+                            * partial step feed (an unclosed flow is
+                            * incomplete, not malformed) */
+    int q_key_pending;     /* an explicit '?' key awaits its ':' value line */
+    uint32_t cv_line;      /* the line whose colon-value is being parsed: a
+                            * key indicator on it sits where a value belongs
+                            * (": ?") — libyaml rejects */
+    int qmd_stack[16];     /* the '?' pending pairs' map depths — a STACK:
+                            * nested '? ?' pairs stack two pendings and a
+                            * scalar slot let the inner clobber the
+                            * outer's level (the nightly's run 38387614146) */
+    uint32_t qmd_line[16]; /* each pending's open line: a LATER-line '?'
+                            * at the same level completes the previous
+                            * pair (libyaml's same-indent KEY rule) */
     int qmd_n;
     int q_value_pending; /* an explicit key was emitted; its value is null
                             until a ':' line supplies one */
@@ -3115,8 +3121,14 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
 
     if (c == '?' && (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
                      e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
-        if (ctx == YEP_CTX_AFTER_COLON) {
-            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "key: ? a" */
+        if (ctx == YEP_CTX_AFTER_COLON || e->cv_line == e->line) {
+            /* "key: ? a" and ": ?" — a key indicator where a value
+             * belongs (libyaml rejects); accepting it produced an
+             * unpairable event stream whose orphaned anchored node
+             * the emit dropped (the nightly's round 102). The
+             * main-dispatch ':' line rides AFTER_DASH, so the
+             * colon's own line marks it. */
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }
         if (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag)) {
             /* node properties followed by a second key indicator on
@@ -3139,6 +3151,29 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         if (e->qmd_n >= 16) {
             return e_fail(e, YEP_ERR_DEPTH, e->pos); /* the depth-guard law */
         }
+        /* a pending from an EARLIER line at this level completes with a
+         * null value before the new pair opens — without the flush the
+         * two pairs share one wrapper and the merge model leaves the
+         * later value an unpairable orphan (the nightly's round 102) */
+        /* a key indicator at the pending pair's own depth from a LATER
+         * line completes that pair with a null value (libyaml's
+         * same-indent KEY rule). The pending may still be mid-content
+         * (this '?' is being parsed as its content): arm the flag the
+         * flush keys on — the outer branch re-arms only if its slot
+         * survived. Without the flush the outer pair's value never
+         * emits and the DOM drops the unpaired node (the nightly's
+         * round 102). */
+        if (e->qmd_n > 0 && e->qmd_stack[e->qmd_n - 1] == e->depth &&
+            e->qmd_line[e->qmd_n - 1] != e->line) {
+            if (!e->q_value_pending) {
+                e->q_value_pending = 1;
+            }
+            int frc = e_flush_q_value(e);
+            if (frc != 0) {
+                return frc;
+            }
+        }
+        e->qmd_line[e->qmd_n] = e->line;
         e->qmd_stack[e->qmd_n++] = e->depth;
         e->pos++;
         e_skip_inline_space(e);
@@ -3171,11 +3206,17 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
          * its content may ALIGN with the '?' column */
         e->q_key_pending = 1;
         {
+            int my_qmd = e->qmd_n; /* this pair's stack slot is my_qmd - 1 */
             int qrc = e_parse_value(e, YEP_CTX_AFTER_Q, col);
             if (qrc != 0) {
                 return qrc;
             }
-            e->q_value_pending = 1; /* until a ':' line supplies the value */
+            /* a later-line '?' completed this pair inside the content
+             * parse (the flush popped our slot): the flag must not
+             * re-arm, or the stale pending emits a stray null */
+            if (e->qmd_n >= my_qmd) {
+                e->q_value_pending = 1; /* until a ':' line supplies the value */
+            }
             return 0;
         }
     }
@@ -4538,7 +4579,15 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                     goto fail;
                 }
             }
-            if (!e->q_key_pending) {
+            /* this ':' line completes the pending explicit pair only at
+             * the pending pair's own map depth — deeper inside the key's
+             * own content it is a plain bare-colon pair, and consuming
+             * the pending there skipped this line's empty-key emit,
+             * leaving an orphaned (anchorable) child the DOM could not
+             * pair and the emit dropped (the nightly's round 102) */
+            int completes_q =
+                e->q_key_pending && e->qmd_n > 0 && e->depth == e->qmd_stack[e->qmd_n - 1];
+            if (!completes_q) {
                 yep_event kv;
                 e_event_init(&kv, YEP_EV_SCALAR);
                 kv.style = YEP_STYLE_PLAIN;
@@ -4548,13 +4597,15 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 if (emit_now(e, &kv) != 0) {
                     return -2;
                 }
-            }
-            e->q_key_pending = 0;
-            e->q_value_pending = 0;
-            if (e->qmd_n > 0) {
-                e->qmd_n--; /* the ':' line supplied the innermost value */
+            } else {
+                e->q_key_pending = 0;
+                e->q_value_pending = 0;
+                if (e->qmd_n > 0) {
+                    e->qmd_n--; /* the ':' line supplied the innermost value */
+                }
             }
             e->pos++;
+            e->cv_line = e->line; /* the value parses on THIS line's colon */
             rc = e_parse_value(e, YEP_CTX_AFTER_DASH, e->frames[e->depth - 1].col);
             if (rc != 0) {
                 if (rc == -2) {
