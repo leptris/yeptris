@@ -4316,6 +4316,31 @@ TEST(Parse, AliasToUnplacedAnchorRejects) {
     free(s1);
 }
 
+TEST(Parse, FlowColonDirectlyBeforeQuotedValue) {
+    /* catch 101 (the nightly's run 38673766448): the flow pre-scan's
+     * separating-':' rule required a blank or flow-indicator follower,
+     * so ':"["' — a colon directly before a quoted value, valid JSON
+     * and YAML flow — read as mid-token: the value's quotes stopped
+     * being scanned as strings and the value's CLOSE quote surfaced
+     * as an unterminated opener ("unterminated quoted scalar"). The
+     * lazy tape route (256-byte budget, then the lenient walk)
+     * accepted while the marshal route's kernel rejected — a
+     * parseable input failed yeptris_marshal. Quoted followers keep
+     * the pre-scan in token-start state. */
+    const char* y = ": {\"k\"\t:\"[\"}";
+    const YeptrisParseOptions opts = {YEPTRIS_SCHEMA_11_COMPAT, 0, 0, 0, 0};
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse_ex(y, strlen(y), &opts, &st);
+    ASSERT_NE(doc, nullptr) << y;
+    char* out = NULL;
+    size_t olen = 0;
+    st = yeptris_marshal(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, YEPTRIS_MARSHAL_ALL_DOCS, &out,
+                         &olen);
+    EXPECT_EQ(st, YEPTRIS_OK) << "parseable input must marshal";
+    yeptris_marshal_free(out);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, BlockKeyIndicatorValueShapeRoundTrips) {
     /* catch 100 (the nightly's run 38653909827): a ':' pair's value
      * position accepted a KEY indicator (": ?" same-line rode

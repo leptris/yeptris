@@ -1434,8 +1434,13 @@ static int e_skip_flow(yep_engine* e) {
         } else if (c == ':' && e->pos + 1 < e->len &&
                    (e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
                     e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
+                    e->p[e->pos + 1] == '"' || e->p[e->pos + 1] == '\'' ||
                     yep_ct_is((unsigned char)e->p[e->pos + 1], YEP_CT_FLOW_IND))) {
-            tok_start = 1; /* a separating ':' only */
+            /* a separating ':' only — including directly before a
+             * quoted value: "{\"k\"\t:\"[\"}" is JSON- and YAML-flow-
+             * valid, and treating ':' as mid-token left the value's
+             * quotes unscanned, so its CLOSE read as an unterminated
+             * opener (the nightly's round 103) */
         } else {
             tok_start = 0;
         }

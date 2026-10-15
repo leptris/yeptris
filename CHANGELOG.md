@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: a separating ':' directly before a quoted flow value** —
+  the flow pre-scan's token-start rule required a blank or
+  flow-indicator after ':', so `:"["` (valid JSON and YAML flow) read
+  as mid-token: the value's quotes stopped being scanned as strings
+  and its close quote surfaced as an unterminated opener. The lazy
+  tape route accepted while the marshal route's kernel rejected — a
+  parseable input failed `yeptris_marshal` (run 38673766448).
 - **parse: a key indicator cannot be a pair's value; an odd child
   pairs with a null** — the main dispatch's ':' line parsed its value
   in the dash context, so ": ?" accepted a key indicator as node
