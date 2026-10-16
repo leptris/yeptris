@@ -16,6 +16,13 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **feed: the cut scanner's opener gate also reads the after-property
+  state** — an anchor/tag/alias name ends at a flow indicator, so
+  "&b[" is a real flow open with tok_start clear: the gate blocked it,
+  the scan stayed in block across the flow, and the chunk cut landed
+  inside it (whole streamed 44 events before its error, chunked 12
+  fewer). The gate reads word_led beside tok_start (run
+  38898618551).
 - **feed: the cut scanner's flow-opener gate reads tok_start before
   the token block consumes it** — the gate added for the mid-word
   brace read the flag after the token block had cleared it, so '['
