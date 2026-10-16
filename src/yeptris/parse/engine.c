@@ -4009,15 +4009,18 @@ static size_t step_scan(yep_stepstate* st) {
             st->tok_start = (st->in_flow > 0) ? 1 : st->word_led;
             continue;
         }
-        /* the opener gate reads tok_start as of the byte's arrival:
-         * the token block below consumes it, the separator block sets
-         * it for the SAME byte, and a brace mid-word is a block
-         * plain's content ("U{") -- counting that put the scan in flow
-         * across a directive line, whose marker logic lives in the
-         * block branch, so the cut landed between the directive and
-         * its --- and the intermediate run rejected a legal stream
-         * (the nightly's round 109) */
-        int open_at_tok = st->tok_start;
+        /* the opener gate reads the state as of the byte's arrival:
+         * the token block below consumes tok_start and the separator
+         * block sets it for the SAME byte, so both readings are stale
+         * by then. A brace mid-word is a block plain's content ("U{")
+         * -- counting that put the scan in flow across a directive
+         * line, whose marker logic lives in the block branch, so the
+         * cut landed between the directive and its --- (the nightly's
+         * round 109). But a flow opener right after a property is
+         * REAL flow: an anchor/tag/alias name ends at the indicator
+         * ("&b[" -- the nightly's round 111), and word_led marks that
+         * after-property state. */
+        int open_at_tok = st->tok_start || st->word_led;
         if (st->tok_start) {
             if (c == '!') {
                 if (i + 1 >= st->len) {

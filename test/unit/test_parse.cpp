@@ -4362,6 +4362,39 @@ TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     }
 }
 
+TEST(Parse, FlowOpenerAfterAnchorMatchesAcrossChunkings) {
+    /* catch 109 (the nightly's run 38898618551): the opener gate read
+     * only tok_start, but an anchor/tag/alias name ends at a flow
+     * indicator -- "&b[" is a REAL flow open with tok_start clear --
+     * so the scan stayed in block across the flow and the cut landed
+     * inside it (after the lone-CR run, before the marker): the whole
+     * parse streamed 44 events before its error and the chunked 12
+     * fewer. The gate also reads word_led, the after-property state. */
+    const char* y = "&b[^?\r\r\r---\n";
+    size_t ylen = strlen(y);
+
+    size_t whole_n = 0;
+    {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        (void)yeptris_recorder_feed(rec, y, ylen, 1);
+        (void)yeptris_recorder_records(rec, &whole_n);
+        yeptris_recorder_free(rec);
+    }
+
+    size_t chunked_n = 0;
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    for (size_t i = 0; i < ylen; i++) {
+        (void)yeptris_recorder_feed(rec, y + i, 1, i + 1 == ylen);
+        size_t n = 0;
+        (void)yeptris_recorder_records(rec, &n);
+        chunked_n += n; /* records() resets at every feed entry */
+    }
+    yeptris_recorder_free(rec);
+    EXPECT_EQ(chunked_n, whole_n);
+}
+
 TEST(Parse, FlowAcrossDocMarkerErrorBoundaryMatchesAcrossChunkings) {
     /* catch 108 (the nightly's run 38834514526): the cut scanner's
      * flow-opener gate read tok_start AFTER the token block had
