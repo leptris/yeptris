@@ -16,6 +16,12 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **feed: the cut scanner's flow-opener gate reads tok_start before
+  the token block consumes it** — the gate added for the mid-word
+  brace read the flag after the token block had cleared it, so '['
+  never opened flow in the scan: the chunk cut landed inside a flow
+  (at the '---' marker) and the chunked error boundary sat a line
+  above the whole parse's (run 38834514526).
 - **feed: a brace mid-word no longer puts the cut scanner in flow** —
   the block plain scalar "U{" counted as a flow opener, the scan
   stayed in flow across the following directive line (whose marker
