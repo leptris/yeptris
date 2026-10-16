@@ -4362,6 +4362,39 @@ TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     }
 }
 
+TEST(Parse, FlowAcrossDocMarkerErrorBoundaryMatchesAcrossChunkings) {
+    /* catch 108 (the nightly's run 38834514526): the cut scanner's
+     * flow-opener gate read tok_start AFTER the token block had
+     * consumed it, so '[' never opened flow in the scan -- the cut
+     * landed inside the flow (at the '---' marker) and the chunked
+     * error boundary sat a line above the whole parse's ("unexpected
+     * parser state" 2:1 vs 3:4). The gate captures tok_start as of
+     * the byte's arrival, before any state mutation. */
+    const char* y = "[\n---\n\"\"{]";
+    size_t ylen = strlen(y);
+
+    size_t whole_n = 0;
+    {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        (void)yeptris_recorder_feed(rec, y, ylen, 1);
+        (void)yeptris_recorder_records(rec, &whole_n);
+        yeptris_recorder_free(rec);
+    }
+
+    size_t chunked_n = 0;
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    for (size_t i = 0; i < ylen; i++) {
+        (void)yeptris_recorder_feed(rec, y + i, 1, i + 1 == ylen);
+        size_t n = 0;
+        (void)yeptris_recorder_records(rec, &n);
+        chunked_n += n; /* records() resets at every feed entry */
+    }
+    yeptris_recorder_free(rec);
+    EXPECT_EQ(chunked_n, whole_n);
+}
+
 TEST(Parse, DirectiveAfterDocEndMatchesAcrossChunkings) {
     /* catch 107 (the nightly's run 38768645888): step_scan counted a
      * '{' as a flow opener even mid-word — the block plain "U{" put

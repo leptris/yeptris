@@ -4009,6 +4009,15 @@ static size_t step_scan(yep_stepstate* st) {
             st->tok_start = (st->in_flow > 0) ? 1 : st->word_led;
             continue;
         }
+        /* the opener gate reads tok_start as of the byte's arrival:
+         * the token block below consumes it, the separator block sets
+         * it for the SAME byte, and a brace mid-word is a block
+         * plain's content ("U{") -- counting that put the scan in flow
+         * across a directive line, whose marker logic lives in the
+         * block branch, so the cut landed between the directive and
+         * its --- and the intermediate run rejected a legal stream
+         * (the nightly's round 109) */
+        int open_at_tok = st->tok_start;
         if (st->tok_start) {
             if (c == '!') {
                 if (i + 1 >= st->len) {
@@ -4031,14 +4040,6 @@ static size_t step_scan(yep_stepstate* st) {
             }
             st->tok_start = 0;
         }
-        /* the opener gate reads tok_start as of the byte's arrival:
-         * the separator block below sets it for the SAME byte, and a
-         * brace mid-word is a block plain's content ("U{") -- counting
-         * it put the scan in flow across the following directive line,
-         * whose marker logic lives in the block branch, so the cut
-         * landed between the directive and its --- and the intermediate
-         * run rejected a legal stream (the nightly's round 109) */
-        int open_at_tok = st->tok_start;
         if (c == ',' || c == ':' || c == '[' || c == '{' || c == ']' || c == '}') {
             st->tok_start = 1; /* flow separators: the next byte may begin a
                                 * token with no space ("{\"a\":...") */
