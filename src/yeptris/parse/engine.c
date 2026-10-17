@@ -3898,6 +3898,9 @@ typedef struct yep_stepstate {
                          * tokens only at a word start (the "A!'- %YAML"
                          * plain's apostrophe is content, not a quote) */
     int word_led;       /* the current word began with an indicator */
+    int at_break;       /* the previous position was a line break
+                         * (multibyte breaks leave a non-break byte as
+                         * p[i-1], so the '#' prev-byte test misses them) */
 } yep_stepstate;
 
 static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep_sink* sink,
@@ -3991,9 +3994,18 @@ static size_t step_scan(yep_stepstate* st) {
     size_t hold = st->len;
     size_t i = st->scanned;
     for (; i < st->len; i++) {
-        char c = p[i];
+        unsigned char c = (unsigned char)p[i];
         if (st->in_comment) {
+            /* the engine normalizes NEL/LS/PS to \n before the parse,
+             * so they end a comment too */
             if (c == '\n') {
+                st->in_comment = 0;
+            } else if (c == 0xC2 && i + 1 < st->len && (unsigned char)p[i + 1] == 0x85) {
+                i++;
+                st->in_comment = 0;
+            } else if (c == 0xE2 && i + 2 < st->len && (unsigned char)p[i + 1] == 0x80 &&
+                       ((unsigned char)p[i + 2] & 0xFE) == 0xA8) {
+                i += 2;
                 st->in_comment = 0;
             }
             continue;
@@ -4035,8 +4047,9 @@ static size_t step_scan(yep_stepstate* st) {
         }
         if (c == '#') {
             char prev = i > 0 ? p[i - 1] : '\n';
-            if (prev == '\n' || prev == '\r' || prev == ' ' || prev == '\t') {
+            if (prev == '\n' || prev == '\r' || prev == ' ' || prev == '\t' || st->at_break) {
                 st->in_comment = 1;
+                st->at_break = 0;
                 continue;
             }
         }
@@ -4047,7 +4060,50 @@ static size_t step_scan(yep_stepstate* st) {
              * (the nightly's run 38549939326) */
             st->tok_start = 1;
             st->word_led = 0;
+            st->at_break = 1;
             continue;
+        }
+        if (c == 0xC2) {
+            /* NEL (C2 85): the engine's normalize maps it to \n before
+             * the parse -- the scan must break on it too, or a comment
+             * after the break goes unseen and the cut lands inside the
+             * still-open flow (the nightly's round 120). C2 leads all
+             * of U+0080-U+00BF: bounds FIRST (the old condition read
+             * p[i+1] past the buffer on a split), hold only a prefix
+             * that may still complete. */
+            if (i + 1 >= st->len) {
+                hold = i;
+                break;
+            }
+            if ((unsigned char)p[i + 1] == 0x85) {
+                i++;
+                st->tok_start = 1;
+                st->word_led = 0;
+                st->at_break = 1;
+                continue;
+            }
+        }
+        if (c == 0xE2) {
+            /* LS/PS (E2 80 A8 / A9): the same normalize law. E2 also
+             * leads U+2000-U+2FFF symbols, so hold only a prefix that
+             * may still complete into a break across the chunk
+             * boundary (byte-by-byte feeding splits it every time). */
+            if (i + 1 >= st->len) {
+                hold = i;
+                break;
+            }
+            if ((unsigned char)p[i + 1] != 0x80) {
+                /* not the LS/PS family: plain content */
+            } else if (i + 2 >= st->len) {
+                hold = i;
+                break;
+            } else if (((unsigned char)p[i + 2] & 0xFE) == 0xA8) {
+                i += 2;
+                st->tok_start = 1;
+                st->word_led = 0;
+                st->at_break = 1;
+                continue;
+            }
         }
         if (c == ' ' || c == '\t') {
             /* in a flow a space always ends the token: the next byte
@@ -4061,6 +4117,8 @@ static size_t step_scan(yep_stepstate* st) {
             continue;
         }
         if (st->tok_start) {
+            st->at_break = 0; /* any content byte ends the line-start
+                               * state ("x#": the '#' is content) */
             if (c == '!') {
                 if (i + 1 >= st->len) {
                     hold = i; /* a possibly-truncated '!<': the next
