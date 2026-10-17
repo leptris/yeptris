@@ -4365,6 +4365,31 @@ TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     }
 }
 
+TEST(Parse, FusedNestedFlowOpenMarkIsTheOpener) {
+    /* catch 122 (the nightly's run 39027960012): the fused JSON-class
+     * walk's NESTED opener marked one column right -- "(i + 1 - ls) + 1"
+     * is one past the indicator -- while the outer opener and the
+     * general kernel mark the opener itself. A >=24-byte span routes
+     * fused while the <24-byte chunked prefix routes general, so "[[]"
+     * marked the inner SEQ_START 1:3 (whole) vs 1:2 (chunked). The
+     * chunking identity cannot pin it (byte chunks cut the span the
+     * same way both sides), so assert the mark itself. */
+    const char y[] = "[[]   ]\x05\x00\x00\x00 b\n--- !pre: fb[0.1,0.4e999%98:";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    (void)yeptris_recorder_feed(rec, y, sizeof(y) - 1, 1);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    ASSERT_GE(n, (size_t)4);
+    EXPECT_EQ(rs[2].type, YEPTRIS_EV_SEQUENCE_START);
+    EXPECT_EQ(rs[2].line, 1u);
+    EXPECT_EQ(rs[2].col, 1u); /* the outer '[' */
+    EXPECT_EQ(rs[3].type, YEPTRIS_EV_SEQUENCE_START);
+    EXPECT_EQ(rs[3].line, 1u);
+    EXPECT_EQ(rs[3].col, 2u); /* the inner '[' -- not one past it */
+    yeptris_recorder_free(rec);
+}
+
 TEST(Parse, PushRouteLoneUtf8BomIsEmptyStream) {
     /* catch 121 (the nightly's run 39024454385): the engine front-end
      * exempted UTF-8 heads ("a UTF-8 U+FEFF may be content") because
