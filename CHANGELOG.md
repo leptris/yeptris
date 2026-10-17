@@ -16,6 +16,14 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **engine: the directive name is validated** — libyaml's law is
+  [0-9A-Za-z_-]+ followed by a blank or the line end; the lenient
+  skip let "%]" ride as a legal directive line whose
+  DOCUMENT_START inclusion (the leading-directive-lines mark)
+  diverged across the step boundary: the whole parse marked doc 2 at
+  the directive's line, the chunked at the '---' (whole 3:1 vs
+  chunked 4:1 — run 39003631538). The catch-85 fixture's %Y'AML
+  became %Y-AML for the same law.
 - **engine: the fast path's key deferral skips tabs** — the check
   for a key-context colon after a flow collection skipped only
   spaces, so "[]\t\t: |-" committed the flow and then errored on the
