@@ -31,6 +31,11 @@ crashers in the regression corpus).
   piece that still took a fold slot, so the fold's break space rode
   into the value ("a\n#" parsed as "a " where libyaml ends the
   scalar at the comment).
+- **fuzz_diff: the UTF-16 content-BOM family is a documented
+  divergence** — libyaml's UTF-16 reader drops a U+FEFF following the
+  encoding mark while its own UTF-8 path keeps it; yeptris is
+  consistent across encodings (one mark stripped, content BOMs ride —
+  the catch-121 law) and the differential now recognizes the shape.
 - **fuzz_diff: the flow-'?' family is a documented divergence** —
   pinned libyaml makes a KEY token for a flow '?' with any follower
   ("[?p]" -> {p: null}) while yaml-test-suite pins the plain reading

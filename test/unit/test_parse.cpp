@@ -4379,6 +4379,27 @@ TEST(Parse, CommentLineEndsPlainWithoutFolding) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, Utf16ContentBomRidesLikeUtf8) {
+    /* catch 132 (the nightly's run 39058773258): UTF-16LE mark + U+FEFF
+     * + U+FEFE -- the mark is consumed once and the content U+FEFF
+     * rides, the SAME law the UTF-8 twin pins in
+     * PushRouteLoneUtf8BomIsEmptyStream's double-BOM half (libyaml is
+     * internally inconsistent: its UTF-8 path keeps the content BOM,
+     * its UTF-16 reader drops it -- the diff harness carries the shape
+     * as a documented divergence). */
+    const char y[] = "\xff\xfe\xff\xfe\xfe\xfe";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, sizeof(y) - 1, &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l = 0;
+    const char* v = yeptris_node_value(yeptris_document_root(doc, 0), &l);
+    ASSERT_NE(v, nullptr);
+    EXPECT_EQ(l, (size_t)6); /* U+FEFF + U+FEFE, both 3-byte UTF-8 */
+    EXPECT_EQ((unsigned char)v[0], 0xEF);
+    EXPECT_EQ((unsigned char)v[3], 0xEF);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, FlowQPlainPerSuite) {
     /* catch 131 (the nightly's run 39054546716): libyaml (pinned
      * 90a56d4) makes a KEY token for a flow '?' with ANY follower
