@@ -16,6 +16,12 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **push: the encoding front-end rides yeptris_push_parse too** —
+  parse.c and the value drains sniff the BOM and transcode UTF-16/32,
+  but the push event route fed raw bytes to the engine: a lone
+  UTF-16LE BOM parsed as a garbage scalar where libyaml's reader
+  yields an empty stream (fuzz_diff: +STR/=VAL/-STR vs +STR/-STR —
+  run 38997741246).
 - **transcode harness: the equality property rides the BOM variants
   only** — a BOM-less UTF-16/32 byte run can parse as UTF-8 garbage by
   construction (a 1-char document's UTF-16LE bytes ARE a valid YAML
