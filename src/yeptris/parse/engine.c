@@ -20,8 +20,8 @@
 #include "common/chartype.h"
 #include "common/nametab.h"
 #include "common/simd_text.h"
-#include "engine.h"
 #include "encoding/encoding.h"
+#include "engine.h"
 #include "memory/allocator.h"
 #include "memory/pool.h"
 #include "parse/scalars.h"
@@ -137,28 +137,30 @@ struct yep_engine {
      * the key's events, but ':' is only seen after them). */
     yep_event* ev_buf;
     uint32_t ev_buf_n, ev_buf_cap;
-    uint32_t ev_scopes;                  /* active entry-buffer scopes */
+    uint32_t ev_scopes; /* active entry-buffer scopes */
     char* norm_buf;
-    char* enc_buf;                       /* owned UTF-16/32 transcode scratch (run-owned) */                      /* owned input copy with exotic breaks normalized */
-    const struct yep_resolver* resolver; /* implicit-typing schema (10) */
-    int max_depth;                       /* runtime nesting limit (options) */
-    uint16_t rec;                        /* e_node<->e_parse_value call depth:
-                                            the props/value-line chain opens NO
-                                            container frame, so e->depth cannot
-                                            bound it (the nightly's stack
-                                            overflow crasher) */
-    int last_root_flow;                  /* a root-level flow node just completed */
-    int tag_undef;                       /* an unresolved !handle! was seen (QLJ7) */
-    int doc_inline;                      /* content node opened on the --- line */
-    uint16_t flow_floor;                 /* parent column of the current block-level flow */
-    int flow_enforce;                    /* flow continuation lines must out-indent it */
-    int compat_grammar;                  /* 11-COMPAT: libyaml/psych grammar parity —
-                                          * the flow indent floor (9C9N/VJP3) is a
-                                          * yaml-test-suite rule libyaml never
-                                          * enforced, and real-world locale files
-                                          * close multi-line flows at the parent's
-                                          * column; the floor stays on for the
-                                          * strict 1.2 engine the suite runs */
+    unsigned char* enc_buf;
+        /* owned UTF-16/32 transcode scratch (run-owned) */ /* owned input copy with exotic breaks
+                                                               normalized */
+    const struct yep_resolver* resolver;                    /* implicit-typing schema (10) */
+    int max_depth;                                          /* runtime nesting limit (options) */
+    uint16_t rec;                                           /* e_node<->e_parse_value call depth:
+                                                               the props/value-line chain opens NO
+                                                               container frame, so e->depth cannot
+                                                               bound it (the nightly's stack
+                                                               overflow crasher) */
+    int last_root_flow;  /* a root-level flow node just completed */
+    int tag_undef;       /* an unresolved !handle! was seen (QLJ7) */
+    int doc_inline;      /* content node opened on the --- line */
+    uint16_t flow_floor; /* parent column of the current block-level flow */
+    int flow_enforce;    /* flow continuation lines must out-indent it */
+    int compat_grammar;  /* 11-COMPAT: libyaml/psych grammar parity —
+                          * the flow indent floor (9C9N/VJP3) is a
+                          * yaml-test-suite rule libyaml never
+                          * enforced, and real-world locale files
+                          * close multi-line flows at the parent's
+                          * column; the floor stays on for the
+                          * strict 1.2 engine the suite runs */
 };
 
 /* ------------------------------------------------------------ forwards */
