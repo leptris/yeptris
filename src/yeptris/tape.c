@@ -1256,6 +1256,17 @@ ldone:
         goto lreject;
     }
 }
+    /* a col-0 tab-led continuation line inside the span is the suite's
+     * Y79Y#4 error: defer to the engine, whose e_flow_ws owns the law
+     * -- the walk's whitespace loops treat the tab as separation, which
+     * accepted exactly the span the marshal drain's engine rejected,
+     * splitting parseable from marshalable (the nightly's round 120) */
+    for (size_t k = open + 1; k < len; k++) {
+        if (p[k] == '\n' && k + 1 < len && p[k + 1] == '\t') {
+            yeptris_tape_free(t);
+            return YEPTRIS_ERROR_PARSE;
+        }
+    }
     t->count = count;
     t->_src = p;
     t->_srclen = len;

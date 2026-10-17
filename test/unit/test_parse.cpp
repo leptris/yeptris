@@ -4424,6 +4424,29 @@ TEST(Emit, BlockKeyWithBomContentRidesSimple) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, TabContinuationInLenientTapeDefersToEngine) {
+    /* catch 118 (the nightly's round 120, run 39013934405): a giant
+     * flow key pushed the doc past the tape walk's 256-byte classify
+     * budget; the tab-led continuation line inside the flow was
+     * separation to the walk but INDENTATION to the marshal drain's
+     * engine -- parse accepted, marshal refused ("tab character used
+     * as indentation"), breaking parseable-must-marshal. The lenient
+     * walk now defers newline+col-0-tab spans to the engine, whose
+     * Y79Y#4 law rejects them (the suite's conformance bar). */
+    std::string y = "{}: {\"" + std::string(254, '-') + "\":\n\t\"\"}";
+    const YeptrisParseOptions opts = {YEPTRIS_SCHEMA_11_COMPAT, 0, 0, 0, 0};
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse_ex(y.data(), y.size(), &opts, &st);
+    EXPECT_EQ(doc, nullptr) << st;
+
+    char* out = NULL;
+    size_t olen = 0;
+    YeptrisStatus ms = yeptris_marshal(y.data(), y.size(), YEPTRIS_SCHEMA_11_COMPAT,
+                                       YEPTRIS_MARSHAL_ALL_DOCS, &out, &olen);
+    yeptris_marshal_free(out);
+    EXPECT_NE(ms, YEPTRIS_OK);
+}
+
 TEST(Parse, MalformedDirectiveNameErrors) {
     /* catch 115 (the nightly's run 39003631538): a directive line's
      * name was never validated -- "%]" rode as a legal directive line

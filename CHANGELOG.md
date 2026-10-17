@@ -16,6 +16,14 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **tape: a col-0 tab-led continuation line inside a flow span defers
+  to the engine** — a giant flow key pushed the doc past the lenient
+  walk's 256-byte classify budget; the walk treated the tab-led line
+  as flow separation while the marshal drain's engine applied the
+  Y79Y#4 indentation law, so parse accepted and marshal refused
+  ("tab character used as indentation"). The walk now defers
+  newline+col-0-tab spans to the engine, whose law rejects them —
+  the suite's verdict (run 39013934405).
 - **engine: the encoding front-end rides yep_engine_run, and only for
   UTF-16/32 marks** — the libyaml differential's sem dump rides
   yep_engine_run directly (bypassing every public entry), so the
