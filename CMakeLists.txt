@@ -98,15 +98,27 @@ if(YEPTRIS_ENABLE_UBSAN)
     message(STATUS "UndefinedBehaviorSanitizer: ENABLED (fatal)")
 endif()
 
-# libFuzzer implies ASAN (libleptris TODO 40 pattern).
+# libFuzzer implies ASAN+UBSan (the teptris fuzz.yml pattern: the
+# memory-safety contracts ride the SAME binary as the fuzzer, so every
+# nightly round reports UB at the crash site instead of libFuzzer's
+# "combine with AddressSanitizer" note).
 if(YEPTRIS_ENABLE_FUZZING)
     # instrument everything, but link the fuzzer MAIN only into the
     # harnesses: a global -fsanitize=fuzzer link option demands
     # LLVMFuzzerTestOneInput from every executable (the CLI and the
     # test binaries died on it once CXX also pinned to clang++)
-    add_compile_options(-fsanitize=fuzzer-no-link,address -fno-omit-frame-pointer -g)
-    add_link_options(-fsanitize=address)
-    message(STATUS "libFuzzer: ENABLED (implies ASAN)")
+    if(APPLE)
+        # Apple ld64 cannot link UBSan'd static archives
+        # ("invalid r_symbolnum"): ASan-only locally
+        add_compile_options(-fsanitize=fuzzer-no-link,address -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=address)
+        message(STATUS "libFuzzer: ENABLED (implies ASAN; UBSan needs linux ld)")
+    else()
+        add_compile_options(-fsanitize=fuzzer-no-link,address,undefined
+            -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=address,undefined)
+        message(STATUS "libFuzzer: ENABLED (implies ASAN+UBSan)")
+    endif()
 endif()
 
 # -------------------------------------------------------------------- LTO --
