@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: (NULL, 0) is an empty range, not NULL + 0** — the anchor
+  pre-count computed `data + data_len` on a NULL buffer, which is UB
+  by the standard even for a zero offset; UBSan caught it on the
+  seed corpus in the first nightly under the combined ASan+UBSan fuzz
+  build (the teptris shape doing its job).
 - **engine: the fused walk's nested flow opener marks the opener** —
   the nested start rode the old +1 (one past the indicator) while the
   outer opener and the general kernel mark the opener itself; a ≥24-
