@@ -16,6 +16,15 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **engine: the encoding front-end rides yep_engine_run, and only for
+  UTF-16/32 marks** — the libyaml differential's sem dump rides
+  yep_engine_run directly (bypassing every public entry), so the
+  lone-BOM family re-diverged after the push fix: the raw-engine
+  consumers fed non-UTF-8 bytes to the scanner (whole +STR/=VAL/-STR
+  vs libyaml +STR/-STR). The front-end (sniff, transcode,
+  printable-validate) now lives in the engine itself, and it acts on
+  UTF-16/32 marks only -- a UTF-8-encoded U+FEFF at the head may be
+  content, and stripping it ate the document (the round-118 BOM pin).
 - **emitter: the block map's explicit-key promotion consults the DQ
   predicate** — a tagged single-line block key whose content carries
   U+FEFF (or NEL/LS/PS/noncharacters) was promoted to the explicit

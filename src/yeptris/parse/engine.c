@@ -21,6 +21,7 @@
 #include "common/nametab.h"
 #include "common/simd_text.h"
 #include "engine.h"
+#include "encoding/encoding.h"
 #include "memory/allocator.h"
 #include "memory/pool.h"
 #include "parse/scalars.h"
@@ -137,7 +138,8 @@ struct yep_engine {
     yep_event* ev_buf;
     uint32_t ev_buf_n, ev_buf_cap;
     uint32_t ev_scopes;                  /* active entry-buffer scopes */
-    char* norm_buf;                      /* owned input copy with exotic breaks normalized */
+    char* norm_buf;
+    char* enc_buf;                       /* owned UTF-16/32 transcode scratch (run-owned) */                      /* owned input copy with exotic breaks normalized */
     const struct yep_resolver* resolver; /* implicit-typing schema (10) */
     int max_depth;                       /* runtime nesting limit (options) */
     uint16_t rec;                        /* e_node<->e_parse_value call depth:
@@ -3900,7 +3902,43 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                            int emit_start, int emit_end);
 
 int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* sink) {
-    return engine_run_impl(e, buf, len, sink, 1, 1);
+    /* the encoding front-end every byte-taking entry owns (parse.c,
+     * the value drains, push): BOM sniff + UTF-16/32 transcode -- the
+     * raw-engine consumers (the libyaml differential's sem dump rides
+     * yep_engine_run directly) fed non-UTF-8 bytes to the scanner, and
+     * a lone UTF-16LE BOM parsed as a garbage scalar where libyaml's
+     * reader yields an empty stream (the nightly's rounds 115/119) */
+    /* UTF-16/32 marks only: a UTF-8-encoded U+FEFF at the head may be
+     * CONTENT (the entry already consumed the real encoding mark), and
+     * stripping it would eat the document (the round-118 BOM pin) */
+    yep_encoding enc = YEP_ENC_UNKNOWN;
+    size_t bom = yep_bom_sniff((const unsigned char*)buf, len, &enc);
+    if (enc == YEP_ENC_UTF8) {
+        bom = 0;
+        enc = YEP_ENC_UNKNOWN;
+    }
+    const char* data = buf + bom;
+    size_t data_len = len - bom;
+    if (enc == YEP_ENC_UTF16LE || enc == YEP_ENC_UTF16BE || enc == YEP_ENC_UTF32LE ||
+        enc == YEP_ENC_UTF32BE) {
+        size_t tlen = 0;
+        size_t terr = 0;
+        int rc = yep_transcode_to_utf8(e->sys, enc, (const unsigned char*)data, data_len,
+                                       &e->enc_buf, &tlen, &terr);
+        if (rc != 0) {
+            yep_error_set(&e->err, YEP_ERR_ENCODING, 1, 1, terr, "ill-formed input encoding");
+            return -1;
+        }
+        size_t pverr = 0;
+        if (!yep_printable_validate(e->enc_buf, tlen, &pverr)) {
+            yep_error_set(&e->err, YEP_ERR_ENCODING, 1, 1, pverr,
+                          "non-printable character at byte %zu", pverr);
+            return -1;
+        }
+        data = (const char*)e->enc_buf;
+        data_len = tlen;
+    }
+    return engine_run_impl(e, data, data_len, sink, 1, 1);
 }
 
 void yep_engine_destroy(yep_engine* e) {
@@ -3916,6 +3954,7 @@ void yep_engine_destroy(yep_engine* e) {
     yep_nametab_free(&e->anchors);
     yep_free(e->sys, e->anchor_placed);
     yep_free(e->sys, e->norm_buf);
+    yep_free(e->sys, e->enc_buf);
     yep_pool_destroy(e->pool);
     yep_free(e->sys, e);
 }
@@ -4268,6 +4307,8 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     }
     yep_free(e->sys, e->norm_buf);
     e->norm_buf = NULL;
+    yep_free(e->sys, e->enc_buf);
+    e->enc_buf = NULL;
     e->parsing_final = emit_end;
     size_t norm_len = len;
     e->p = e_normalize_breaks(e, buf, len, &norm_len);
