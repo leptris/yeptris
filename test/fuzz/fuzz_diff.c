@@ -19,6 +19,41 @@
  * NULL under libFuzzer — splits must then be ledgered by content. */
 static const char* probe_id = NULL;
 
+/* True when the two dumps differ ONLY by a leading content-U+FEFF:
+ * libyaml's UTF-16 reader drops a U+FEFF that follows the encoding
+ * mark, while its own UTF-8 path KEEPS it (catch 121 matched that
+ * twin) and yeptris is consistent across encodings -- one mark
+ * stripped, content BOMs ride (the catch-121 law). The suite is
+ * silent on the shape. The transform strips one leading EF BB BF
+ * from yeptris's first scalar and compares. */
+static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    const char* val = strstr(ydump, "=VAL : \xEF\xBB\xBF");
+    if (val == NULL) {
+        return 0; /* yeptris's first scalar must open with a content BOM */
+    }
+    char stripped[8192];
+    size_t head = (size_t)(val - ydump) + 7; /* keep "=VAL : " */
+    size_t left = strlen(ydump) - head;
+    if (left >= sizeof(stripped)) {
+        return 0;
+    }
+    memcpy(stripped, ydump, head); /* up to and incl. "=VAL : " */
+    size_t o = head;
+    const char* rest = ydump + head;
+    if (rest[0] == (char)0xEF && rest[1] == (char)0xBB && rest[2] == (char)0xBF) {
+        rest += 3; /* strip ONE content BOM */
+    } else {
+        return 0;
+    }
+    memcpy(stripped + o, rest, strlen(rest));
+    o += strlen(rest);
+    stripped[o] = '\0';
+    return strcmp(stripped, ldump) == 0;
+}
+
 /* True when the two dumps differ ONLY by the flow-'?' family: libyaml
  * (pinned 90a56d4, 2011) makes a KEY token for a flow '?' with any
  * follower ("[?p]" -> {p: null}), while yaml-test-suite pins the
@@ -91,7 +126,8 @@ static void probe_one(const uint8_t* data, size_t size) {
     int split = v == YD_YEPTRIS_ONLY || v == YD_LIBYAML_ONLY;
     /* a documented divergence, not a bug: the suite sides with
      * yeptris (see yd_qflow_divergence) */
-    int known = v == YD_DIFFER && yd_qflow_divergence(ydump, ldump);
+    int known = v == YD_DIFFER &&
+                (yd_qflow_divergence(ydump, ldump) || yd_bom_content_divergence(ydump, ldump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
