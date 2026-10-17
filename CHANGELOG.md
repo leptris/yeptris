@@ -16,6 +16,12 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **transcode harness: the equality property rides the BOM variants
+  only** — a BOM-less UTF-16/32 byte run can parse as UTF-8 garbage by
+  construction (a 1-char document's UTF-16LE bytes ARE a valid YAML
+  scalar), so its outcome is unbounded; crash-safety is the only
+  property there and the BOM variants carry the meaningful equality
+  (run 38994713064).
 - **pre-scan: a stray flow close defers instead of erroring** — the
   flow-span pre-scan's ']'/'}' handlers read their frame stack with no
   empty guard, so a stray close after a balanced flow read out of
