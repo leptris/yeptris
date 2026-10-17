@@ -4365,6 +4365,43 @@ TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     }
 }
 
+TEST(Parse, PushRouteLoneUtf8BomIsEmptyStream) {
+    /* catch 121 (the nightly's run 39024454385): the engine front-end
+     * exempted UTF-8 heads ("a UTF-8 U+FEFF may be content") because
+     * parse.c/values.c pre-strip -- so the raw entries (push, the
+     * libyaml differential) parsed a lone EF BB BF as a U+FEFF scalar
+     * where libyaml's reader ends an empty stream (fuzz_diff:
+     * +STR/=VAL/-STR vs +STR/-STR). The front-end now runs once per
+     * engine and strips ANY head BOM; the pre-stripping callers mark
+     * it done, and later chunked runs never re-sniff (a mid-stream
+     * U+FEFF is content -- iterparse chunk heads). */
+    const char bom[] = "\xef\xbb\xbf";
+    int events = 0;
+    YeptrisStatus st = yeptris_push_parse(bom, sizeof(bom) - 1, on_count_events, &events);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    EXPECT_EQ(events, 2); /* STREAM_START + STREAM_END, no document */
+
+    /* the second BOM is content: the mark is consumed once */
+    const char two[] = "\xef\xbb\xbf\xef\xbb\xbfk";
+    events = 0;
+    st = yeptris_push_parse(two, sizeof(two) - 1, on_count_events, &events);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    EXPECT_EQ(events, 5); /* stream, doc, scalar U+FEFFk, doc-end, stream */
+
+    /* the parse route pre-strips and marks the engine: the second BOM
+     * still rides content there, and the DOM route's lone-BOM stream
+     * is empty the same way */
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(two, sizeof(two) - 1, &st2);
+    ASSERT_NE(doc, nullptr);
+    yeptris_document_free(doc);
+    st2 = YEPTRIS_OK;
+    doc = yeptris_parse(bom, sizeof(bom) - 1, &st2);
+    /* all mark, no bytes: the empty-input law (doc NULL, status OK) */
+    EXPECT_EQ(doc, nullptr);
+    EXPECT_EQ(st2, YEPTRIS_OK);
+}
+
 TEST(Parse, PushRouteLoneUtf16BomIsEmptyStream) {
     /* catch 113 (the nightly's run 38997741246): the push event route
      * had no encoding front-end -- parse.c and the value drains sniff

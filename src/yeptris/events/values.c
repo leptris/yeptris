@@ -445,6 +445,7 @@ int yep_values_from_input(const char* yaml, size_t len, int schema_compat, yep_v
                          .on_block_open = NULL,
                          .on_block_item = NULL};
         /* strict JSON carries no anchors: no nametab reserve needed */
+        yep_engine_front_done(eng);
         if (yep_engine_run(eng, data, data_len, &sink) == 0 && transform(c, &store) == 0) {
             prc = 0;
         } else if (c->oom) {

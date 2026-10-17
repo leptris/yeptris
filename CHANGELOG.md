@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **engine: a lone UTF-8 BOM is an empty stream** — the encoding
+  front-end exempted UTF-8 heads, so the raw entries (push, the
+  libyaml differential) parsed a lone U+FEFF as a scalar where
+  libyaml's reader ends the stream. The front-end now runs once per
+  engine and strips any head BOM; pre-stripping callers (parse, the
+  value drains) mark it done, so mid-stream U+FEFF content and
+  chunked-run heads are untouched.
 - **emit: a flow alias whose name ends in ':' is unserializable** —
   in flow a trailing ':' is the key/value separator, so the re-parse
   truncated the alias name and the block definition went unmatched

@@ -76,6 +76,10 @@ struct yep_engine {
     yep_frame frames[YEP_MAX_DEPTH];
     int depth;
 
+    int front_done;         /* the encoding front-end ran on this engine:
+                             * parse/values pre-strip and set it; later
+                             * chunked runs never re-sniff (mid-stream
+                             * U+FEFF is content, not a mark) */
     yep_nametab anchors;    /* name interning: O(1) define/lookup at any scale */
     uint32_t anchor_serial; /* 1-based ordinals; the value IS the id */
     uint8_t* anchor_placed; /* per-ordinal: the anchor's NODE has been
@@ -3906,42 +3910,47 @@ typedef struct yep_stepstate {
 static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep_sink* sink,
                            int emit_start, int emit_end);
 
+void yep_engine_front_done(yep_engine* e) {
+    e->front_done = 1;
+}
+
 int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* sink) {
-    /* the encoding front-end every byte-taking entry owns (parse.c,
-     * the value drains, push): BOM sniff + UTF-16/32 transcode -- the
-     * raw-engine consumers (the libyaml differential's sem dump rides
-     * yep_engine_run directly) fed non-UTF-8 bytes to the scanner, and
-     * a lone UTF-16LE BOM parsed as a garbage scalar where libyaml's
-     * reader yields an empty stream (the nightly's rounds 115/119) */
-    /* UTF-16/32 marks only: a UTF-8-encoded U+FEFF at the head may be
-     * CONTENT (the entry already consumed the real encoding mark), and
-     * stripping it would eat the document (the round-118 BOM pin) */
-    yep_encoding enc = YEP_ENC_UNKNOWN;
-    size_t bom = yep_bom_sniff((const unsigned char*)buf, len, &enc);
-    if (enc == YEP_ENC_UTF8) {
-        bom = 0;
-        enc = YEP_ENC_UNKNOWN;
-    }
-    const char* data = buf + bom;
-    size_t data_len = len - bom;
-    if (enc == YEP_ENC_UTF16LE || enc == YEP_ENC_UTF16BE || enc == YEP_ENC_UTF32LE ||
-        enc == YEP_ENC_UTF32BE) {
-        size_t tlen = 0;
-        size_t terr = 0;
-        int rc = yep_transcode_to_utf8(e->sys, enc, (const unsigned char*)data, data_len,
-                                       &e->enc_buf, &tlen, &terr);
-        if (rc != 0) {
-            yep_error_set(&e->err, YEP_ERR_ENCODING, 1, 1, terr, "ill-formed input encoding");
-            return -1;
+    /* the encoding front-end every raw byte-taking entry owns (push,
+     * pull, schema, iterparse's first chunk, the libyaml differential):
+     * BOM sniff + UTF-16/32 transcode. ANY head BOM is a mark -- a lone
+     * one is an empty stream, UTF-8 included (libyaml's reader; the
+     * nightly's round 122 parsed a lone EF BB BF as a U+FEFF scalar
+     * where libyaml ended the stream). The front-end runs ONCE per
+     * engine: parse.c/values.c pre-strip and mark it, and later
+     * chunked runs never re-sniff (a mid-stream U+FEFF is content --
+     * iterparse's chunk heads would otherwise be eaten). */
+    const char* data = buf;
+    size_t data_len = len;
+    if (!e->front_done) {
+        e->front_done = 1;
+        yep_encoding enc = YEP_ENC_UNKNOWN;
+        size_t bom = yep_bom_sniff((const unsigned char*)buf, len, &enc);
+        data = buf + bom;
+        data_len = len - bom;
+        if (enc == YEP_ENC_UTF16LE || enc == YEP_ENC_UTF16BE || enc == YEP_ENC_UTF32LE ||
+            enc == YEP_ENC_UTF32BE) {
+            size_t tlen = 0;
+            size_t terr = 0;
+            int rc = yep_transcode_to_utf8(e->sys, enc, (const unsigned char*)data, data_len,
+                                           &e->enc_buf, &tlen, &terr);
+            if (rc != 0) {
+                yep_error_set(&e->err, YEP_ERR_ENCODING, 1, 1, terr, "ill-formed input encoding");
+                return -1;
+            }
+            size_t pverr = 0;
+            if (!yep_printable_validate(e->enc_buf, tlen, &pverr)) {
+                yep_error_set(&e->err, YEP_ERR_ENCODING, 1, 1, pverr,
+                              "non-printable character at byte %zu", pverr);
+                return -1;
+            }
+            data = (const char*)e->enc_buf;
+            data_len = tlen;
         }
-        size_t pverr = 0;
-        if (!yep_printable_validate(e->enc_buf, tlen, &pverr)) {
-            yep_error_set(&e->err, YEP_ERR_ENCODING, 1, 1, pverr,
-                          "non-printable character at byte %zu", pverr);
-            return -1;
-        }
-        data = (const char*)e->enc_buf;
-        data_len = tlen;
     }
     return engine_run_impl(e, data, data_len, sink, 1, 1);
 }

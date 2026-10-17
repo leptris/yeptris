@@ -36,6 +36,9 @@ int yep_engine_run(yep_engine* e, const char* buf, size_t len, const yep_sink* s
  * from the stream's '&' occurrences (every anchor definition carries
  * exactly one, so the count never undershoots). */
 void yep_engine_prepare(yep_engine* e, const yep_text_stats* st);
+/* the caller already BOM-sniffed/transcoded the bytes (parse.c,
+ * values.c): the engine must not re-strip a content U+FEFF */
+void yep_engine_front_done(yep_engine* e);
 
 /* Resumable stepping (TODO.impl/07): chunks accumulate; every feed
  * parses the complete DOCUMENTS received so far (cut at `---` / `...`

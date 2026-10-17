@@ -425,6 +425,7 @@ engine_enter:
         if (have_tape) {
             ytap_reset(&yt);
         }
+        yep_engine_front_done(eng);
         rc = yep_engine_run(eng, data, data_len, &sink);
     }
     if (rc != 0) {
