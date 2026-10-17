@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: a '?'-led line at the key's own column is never explicit-
+  key content** — the continuation swallowed it as a folded piece and
+  the pending pair lost its null value ("?\n?:" and the CR twin
+  parsed as one pair where libyaml yields {null: null} plus
+  {"?": null}); the content now ends and the main loop re-dispatches.
 - **engine: the UTF-16/32 transcode scratch is no longer freed under
   the run that uses it** — engine_run_impl reset `enc_buf` at entry,
   but the front-end moved above it (the catch-117 reshuffle) and

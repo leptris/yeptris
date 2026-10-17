@@ -4379,6 +4379,42 @@ TEST(Parse, CommentLineEndsPlainWithoutFolding) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, ExplicitKeySiblingQLineKeepsNullPair) {
+    /* catch 127 (the nightly's run 39041682907): a '?'-led line at the
+     * pending explicit key's own column was swallowed as the key's
+     * CONTENT (the continuation condition excluded only ':'), so the
+     * pending pair lost its null value -- "?\n?:" parsed as one pair
+     * where libyaml yields two ({null: null} and {"?": null}). A
+     * same-column '?' line is never content: indicator or plain-key
+     * pair alike, the pending key completes (null value) and the main
+     * loop re-dispatches the line. The CR twin rides the same law. */
+    const char* ys[] = {"?\n?:", "?\r?:"};
+    for (int v = 0; v < 2; v++) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(ys[v], strlen(ys[v]), &st);
+        ASSERT_NE(doc, nullptr) << ys[v];
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_EQ(yeptris_node_kind(root), YEPTRIS_NODE_MAPPING);
+        EXPECT_EQ(yeptris_node_map_count(root), (size_t)2);
+        /* pair 1: null => null (a null node's value is the empty
+         * string, not nullptr) */
+        YeptrisNode k1, v1;
+        ASSERT_EQ(yeptris_node_map_at(root, 0, &k1, &v1), YEPTRIS_OK);
+        size_t l = 99;
+        (void)yeptris_node_value(k1, &l);
+        EXPECT_EQ(l, (size_t)0);
+        (void)yeptris_node_value(v1, &l);
+        EXPECT_EQ(l, (size_t)0);
+        /* pair 2: "?" => null */
+        ASSERT_EQ(yeptris_node_map_at(root, 1, &k1, &v1), YEPTRIS_OK);
+        const char* sv = yeptris_node_value(k1, &l);
+        ASSERT_NE(sv, nullptr);
+        EXPECT_EQ(l, (size_t)1);
+        EXPECT_EQ(sv[0], '?');
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     /* catch 103 (the nightly's run 38684686593): the "..." marker's
      * trailing-content check skipped '\r' as whitespace, so the next
