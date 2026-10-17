@@ -4362,6 +4362,22 @@ TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     }
 }
 
+TEST(Parse, PushRouteLoneUtf16BomIsEmptyStream) {
+    /* catch 113 (the nightly's run 38997741246): the push event route
+     * had no encoding front-end -- parse.c and the value drains sniff
+     * + transcode, push_parse fed raw bytes to the engine, and a lone
+     * UTF-16LE BOM parsed as a garbage scalar where libyaml's reader
+     * yields an empty stream (fuzz_diff: +STR/=VAL/-STR vs +STR/-STR).
+     * The front-end now rides push_parse too. */
+    const char bom[] = "\xff\xfe";
+    int events = 0;
+    YeptrisStatus st = yeptris_push_parse(bom, sizeof(bom) - 1, on_count_events, &events);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    /* STREAM_START + STREAM_END only: the mark is all encoding, no
+     * document (libyaml reader parity) */
+    EXPECT_EQ(events, 2);
+}
+
 TEST(Parse, StrayFlowCloseDefersNotErrors) {
     /* catch 111 (the nightly's run 38992357043): the pre-scan's ']'/'}'
      * handlers read stk[n-1] with no n==0 guard -- a stray flow close
