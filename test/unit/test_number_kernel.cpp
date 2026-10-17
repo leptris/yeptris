@@ -95,6 +95,41 @@ TEST(NumberKernel, RandomCrossCheckVsStrtod) {
     }
 }
 
+TEST(NumberKernel, SexagesimalOverflowIsNotAnInt) {
+    /* catch 124 (the nightly's run 39032040511, the first round on
+     * the combined ASan+UBSan build): the sexagesimal fold multiplied
+     * without a guard -- "2222222222222222222:00" overflowed long
+     * long (UBSan) where the plain path returns not-an-int via
+     * strtoll's ERANGE. Every fold step now carries the same law. */
+    auto int_ok = [](const char* yaml, int64_t* out) {
+        /* sexagesimals are a 1.1-compat form: default-schema parses
+         * never reach the fold (the negatives would pass vacuously) */
+        YeptrisParseOptions o;
+        memset(&o, 0, sizeof(o));
+        o.schema = YEPTRIS_SCHEMA_11_COMPAT;
+        YeptrisStatus st = YEPTRIS_OK;
+        std::string doc = std::string("v: ") + yaml + "\n";
+        YeptrisDocument d = yeptris_parse_ex(doc.data(), doc.size(), &o, &st);
+        if (d == NULL) {
+            return false;
+        }
+        int ok = yeptris_node_int(yeptris_node_map_get(yeptris_document_root(d, 0), "v", 1), out);
+        yeptris_document_free(d);
+        return ok == YEPTRIS_OK;
+    };
+    int64_t v = 0;
+    EXPECT_FALSE(int_ok("2222222222222222222:00", &v));
+    EXPECT_FALSE(
+        int_ok("2222222222222222222222222222222222222222222222222216:4", &v)); /* the artifact */
+    EXPECT_FALSE(int_ok("2562047788015216:30", &v));                           /* *3600 overflows */
+    EXPECT_TRUE(int_ok("2562047788015215:30", &v)); /* the last that fits */
+    EXPECT_EQ(v, 9223372036854775800);
+    ASSERT_TRUE(int_ok("1:30", &v));
+    EXPECT_EQ(v, 5400);
+    ASSERT_TRUE(int_ok("-1:30", &v));
+    EXPECT_EQ(v, -1800); /* the sign rides the first component */
+}
+
 TEST(NumberKernel, IntFastPaths) {
     EXPECT_EQ(geti("42"), 42);
     EXPECT_EQ(geti("-42"), -42);
