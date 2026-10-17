@@ -16,6 +16,13 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **pre-scan: a stray flow close defers instead of erroring** — the
+  flow-span pre-scan's ']'/'}' handlers read their frame stack with no
+  empty guard, so a stray close after a balanced flow read out of
+  bounds and aborted the whole parse before a single event emitted,
+  while the chunked feed had already committed the prefix runs (whole
+  n=2 vs chunked n=4 on "{\"\":\"{\"}\n---\n\"]" — run 38992357043).
+  A stray close or a kind mismatch defers to the general path.
 - **feed: the cut scanner counts every brace and hoists the directive
   case out of its block branch** — the token-start gate could not
   separate a flow opener from a content brace ("k: {" — the ':'

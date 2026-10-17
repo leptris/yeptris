@@ -4362,6 +4362,38 @@ TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     }
 }
 
+TEST(Parse, StrayFlowCloseDefersNotErrors) {
+    /* catch 111 (the nightly's run 38992357043): the pre-scan's ']'/'}'
+     * handlers read stk[n-1] with no n==0 guard -- a stray flow close
+     * after a balanced flow read out of bounds and aborted the pre-
+     * scan before a single event emitted, while the chunked feed had
+     * already committed the prefix runs (whole n=2 vs chunked n=4).
+     * A stray close or kind mismatch defers to the general path. */
+    const char* y = "{\"\":\"{\"}\n---\n\"]";
+    size_t ylen = strlen(y);
+
+    size_t whole_n = 0;
+    {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        (void)yeptris_recorder_feed(rec, y, ylen, 1);
+        (void)yeptris_recorder_records(rec, &whole_n);
+        yeptris_recorder_free(rec);
+    }
+
+    size_t chunked_n = 0;
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    for (size_t i = 0; i < ylen; i++) {
+        (void)yeptris_recorder_feed(rec, y + i, 1, i + 1 == ylen);
+        size_t n = 0;
+        (void)yeptris_recorder_records(rec, &n);
+        chunked_n += n; /* records() resets at every feed entry */
+    }
+    yeptris_recorder_free(rec);
+    EXPECT_EQ(chunked_n, whole_n);
+}
+
 TEST(Parse, FlowValueOpenerMatchesAcrossChunkings) {
     /* catch 110 (the nightly's run 38989832309): "k: {" -- the ':'
      * arrived with tok_start clear, so no token-state rule could open
