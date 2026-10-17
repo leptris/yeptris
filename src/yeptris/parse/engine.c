@@ -981,6 +981,14 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
         }
     }
     trailing_breaks += pending_breaks;
+    if (!saw_content && trailing_breaks > 0 && e->pos == e->len && e->len > 0 &&
+        e->p[e->len - 1] != '\n' && e->p[e->len - 1] != '\r') {
+        /* keep-chomping counts COMPLETE blank lines only: the final
+         * blank line carries no break at EOF, so there is nothing to
+         * keep ("|+\n " is "" where the pre-fix kept "\n"; two
+         * complete blanks stay "\n\n" -- libyaml/psych oracle) */
+        trailing_breaks--;
+    }
     if (saw_content ? (max_blank_indent > content_indent) : blank_tab) {
         /* a leading blank line out-indents the first content line; a
          * tab-only line before any content is an error (5LLU/Y79Y) */

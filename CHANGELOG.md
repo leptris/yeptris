@@ -31,6 +31,11 @@ crashers in the regression corpus).
   piece that still took a fold slot, so the fold's break space rode
   into the value ("a\n#" parsed as "a " where libyaml ends the
   scalar at the comment).
+- **parse: keep-chomping keeps complete blank lines only** — a final
+  blank line with no break at EOF contributed a phantom kept break
+  ("|+\n " parsed as "\n" where libyaml ends the scalar empty);
+  complete blanks still keep their breaks ("|+\n\n\n" is "\n\n",
+  oracle-checked).
 - **numbers: the sexagesimal fold carries the ERANGE law** — every
   fold step (the first component's ×10, the ×3600 weight, the ×60
   group and the adds) overflowed `long long` unchecked where the
