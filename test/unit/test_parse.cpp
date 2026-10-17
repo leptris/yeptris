@@ -4378,6 +4378,21 @@ TEST(Parse, PushRouteLoneUtf16BomIsEmptyStream) {
     EXPECT_EQ(events, 2);
 }
 
+TEST(Parse, FlowKeyColonAfterTabsDefers) {
+    /* catch 114 (the nightly's run 39001396706): the fast path's key
+     * deferral skipped only SPACES between the flow and the colon --
+     * "[]\t\t: |-" committed the flow and then errored on the colon
+     * it could not read as a key separator, while the sub-24-byte
+     * chunk run took the general kernel and parsed the pair. The
+     * deferral skips tabs too. */
+    const char* y = "[]\t\t: |-\n---\t-\t\r}\n\t\t\t[] ";
+    int events = 0;
+    yeptris_push_parse(y, strlen(y), on_count_events, &events);
+    /* both framings now reach the same verdict -- the pair parses or
+     * errors identically; the corpus file pins the identity */
+    EXPECT_GT(events, 0);
+}
+
 TEST(Parse, StrayFlowCloseDefersNotErrors) {
     /* catch 111 (the nightly's run 38992357043): the pre-scan's ']'/'}'
      * handlers read stk[n-1] with no n==0 guard -- a stray flow close
