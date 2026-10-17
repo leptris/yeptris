@@ -3638,7 +3638,7 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
          * may align with the '?' column. Flow nodes and property runs
          * continue the value even at the parent column ("k:\n!!seq\n[a]"). */
         if (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first != ':' &&
-            li.first != '-' && li.first != '?' && yep_plain_first_ok(li.first)) {
+            li.first != '-' && yep_plain_first_ok(li.first)) {
             /* a same-column PLAIN-START pair line is a SIBLING, not
              * the key's content: the buffered "? &a" key would strand
              * inside it and an alias to the anchor emitted a dangling
@@ -3648,6 +3648,17 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
              * (a block seq is the key's content — the catch-38154662070
              * pin's shape). Stop: the null value flushes and the main
              * loop owns the pair. */
+            if (li.first == '?') {
+                /* a '?'-led line at the key's own column is NEVER the
+                 * key's content: an indicator ("? k") or a plain-key
+                 * pair ("?:") alike, libyaml completes the pending key
+                 * (null value) and the main loop re-dispatches the
+                 * line. The old continuation swallowed it as a folded
+                 * piece and the pending pair lost its null value
+                 * ("?\n?:" parsed as one pair, libyaml two: the
+                 * nightly's run 39041682907) */
+                goto empty_value;
+            }
             size_t sc = li.offset + li.indent;
             int sibling = 0;
             while (sc < li.end) {
@@ -4356,7 +4367,6 @@ int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, con
         if (cut == 0 || cut >= st->len) {
             return 0; /* no complete document yet */
         }
-        fprintf(stderr, "DBG step cut=%zu buflen=%zu\n", cut, st->len);
         e->line_base = st->line_base;
         int rc = engine_run_impl(e, st->buf, cut, sink, !st->started, 0);
         if (rc != 0) {
