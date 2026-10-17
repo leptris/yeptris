@@ -4009,18 +4009,6 @@ static size_t step_scan(yep_stepstate* st) {
             st->tok_start = (st->in_flow > 0) ? 1 : st->word_led;
             continue;
         }
-        /* the opener gate reads the state as of the byte's arrival:
-         * the token block below consumes tok_start and the separator
-         * block sets it for the SAME byte, so both readings are stale
-         * by then. A brace mid-word is a block plain's content ("U{")
-         * -- counting that put the scan in flow across a directive
-         * line, whose marker logic lives in the block branch, so the
-         * cut landed between the directive and its --- (the nightly's
-         * round 109). But a flow opener right after a property is
-         * REAL flow: an anchor/tag/alias name ends at the indicator
-         * ("&b[" -- the nightly's round 111), and word_led marks that
-         * after-property state. */
-        int open_at_tok = st->tok_start || st->word_led;
         if (st->tok_start) {
             if (c == '!') {
                 if (i + 1 >= st->len) {
@@ -4047,7 +4035,18 @@ static size_t step_scan(yep_stepstate* st) {
             st->tok_start = 1; /* flow separators: the next byte may begin a
                                 * token with no space ("{\"a\":...") */
         }
-        if ((c == '[' || c == '{') && open_at_tok) {
+        if (c == '[' || c == '{') {
+            /* EVERY opener counts -- the scan cannot tell a flow
+             * opener from a block plain's content brace: "k: {", "&b["
+             * and "[\n---" are real opens, "U{" is not, and no local
+             * state separates them (the nightly's rounds 109-112 went
+             * through unconditional counting, tok_start, and
+             * tok_start+word_led). Over-counting only SUPPRESSES cuts
+             * (the marker logic below stays out of flow), and a missed
+             * cut degrades toward whole-parse semantics -- the
+             * identity invariant's safe direction. The directive law
+             * does not depend on this branch: the '%' case is hoisted
+             * below. */
             st->in_flow++;
             continue;
         }
@@ -4055,6 +4054,16 @@ static size_t step_scan(yep_stepstate* st) {
             if (st->in_flow > 0) {
                 st->in_flow--;
             }
+            continue;
+        }
+        if (c == '%') {
+            /* hoisted out of the block branch: a directive line must
+             * pair with its --- even when brace over-counting keeps
+             * the scan "in flow" (a content brace never closed) --
+             * the marker cut below lives inside the block branch and
+             * would otherwise land between the directive and its ---
+             * (the nightly's round 109) */
+            st->saw_directive = 1; /* must stay with its --- line */
             continue;
         }
         if (st->in_flow == 0) {
@@ -4140,10 +4149,6 @@ static size_t step_scan(yep_stepstate* st) {
                 i = e;
                 continue;
             }
-            if (c == '%') {
-                st->saw_directive = 1; /* must stay with its --- line */
-                continue;
-            }
             if (c == '-') {
                 if (i + 3 >= st->len) {
                     hold = i; /* --- possibly truncated by the chunk */
@@ -4217,6 +4222,8 @@ int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, con
         if (cut == 0 || cut >= st->len) {
             return 0; /* no complete document yet */
         }
+        if (getenv("YEP_DBG_ROUTE"))
+            fprintf(stderr, "DBG step cut=%zu buflen=%zu\n", cut, st->len);
         e->line_base = st->line_base;
         int rc = engine_run_impl(e, st->buf, cut, sink, !st->started, 0);
         if (rc != 0) {

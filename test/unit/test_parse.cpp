@@ -4362,14 +4362,48 @@ TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     }
 }
 
+TEST(Parse, FlowValueOpenerMatchesAcrossChunkings) {
+    /* catch 110 (the nightly's run 38989832309): "k: {" -- the ':'
+     * arrived with tok_start clear, so no token-state rule could open
+     * the flow and the cut landed INSIDE the '---' marker ("k: {\n--"
+     * | "- [\"\"]}"): the whole parse errored at 2:8, the chunked at
+     * 2:1 -- one event apart. The scan cannot separate a flow opener
+     * from a content brace locally, so every opener counts and the
+     * directive law rides the hoisted '%' case instead of the block
+     * branch. */
+    const char* y = "k: {\n--- [\"\"}";
+    size_t ylen = strlen(y);
+
+    size_t whole_n = 0;
+    {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        (void)yeptris_recorder_feed(rec, y, ylen, 1);
+        (void)yeptris_recorder_records(rec, &whole_n);
+        yeptris_recorder_free(rec);
+    }
+
+    size_t chunked_n = 0;
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    for (size_t i = 0; i < ylen; i++) {
+        (void)yeptris_recorder_feed(rec, y + i, 1, i + 1 == ylen);
+        size_t n = 0;
+        (void)yeptris_recorder_records(rec, &n);
+        chunked_n += n; /* records() resets at every feed entry */
+    }
+    yeptris_recorder_free(rec);
+    EXPECT_EQ(chunked_n, whole_n);
+}
+
 TEST(Parse, FlowOpenerAfterAnchorMatchesAcrossChunkings) {
-    /* catch 109 (the nightly's run 38898618551): the opener gate read
-     * only tok_start, but an anchor/tag/alias name ends at a flow
-     * indicator -- "&b[" is a REAL flow open with tok_start clear --
-     * so the scan stayed in block across the flow and the cut landed
-     * inside it (after the lone-CR run, before the marker): the whole
-     * parse streamed 44 events before its error and the chunked 12
-     * fewer. The gate also reads word_led, the after-property state. */
+    /* catch 109 (the nightly's run 38898618551): an anchor/tag/alias
+     * name ends at a flow indicator -- "&b[" is a real flow open with
+     * tok_start clear -- so the token-start gate left the scan in
+     * block across the flow and the cut landed inside it (after the
+     * lone-CR run, before the marker): the whole parse streamed 44
+     * events before its error and the chunked 12 fewer. Every opener
+     * counts again. */
     const char* y = "&b[^?\r\r\r---\n";
     size_t ylen = strlen(y);
 
@@ -4396,13 +4430,13 @@ TEST(Parse, FlowOpenerAfterAnchorMatchesAcrossChunkings) {
 }
 
 TEST(Parse, FlowAcrossDocMarkerErrorBoundaryMatchesAcrossChunkings) {
-    /* catch 108 (the nightly's run 38834514526): the cut scanner's
-     * flow-opener gate read tok_start AFTER the token block had
-     * consumed it, so '[' never opened flow in the scan -- the cut
+    /* catch 108 (the nightly's run 38834514526): a '[' after a
+     * block-plain word opened no flow in the cut scanner, so the cut
      * landed inside the flow (at the '---' marker) and the chunked
      * error boundary sat a line above the whole parse's ("unexpected
-     * parser state" 2:1 vs 3:4). The gate captures tok_start as of
-     * the byte's arrival, before any state mutation. */
+     * parser state" 2:1 vs 3:4). Every opener counts again -- a
+     * missed cut degrades toward whole-parse semantics, the
+     * invariant's safe direction. */
     const char* y = "[\n---\n\"\"{]";
     size_t ylen = strlen(y);
 
@@ -4429,16 +4463,14 @@ TEST(Parse, FlowAcrossDocMarkerErrorBoundaryMatchesAcrossChunkings) {
 }
 
 TEST(Parse, DirectiveAfterDocEndMatchesAcrossChunkings) {
-    /* catch 107 (the nightly's run 38768645888): step_scan counted a
-     * '{' as a flow opener even mid-word — the block plain "U{" put
-     * the cut scanner in flow across the following directive line,
-     * whose marker logic lives in the block branch, so the cut landed
-     * between the directive and its '---' and the intermediate run
-     * rejected a legal multi-document stream ("invalid or unsupported
-     * directive") while the whole parse accepted, and the
-     * DOCUMENT_START mark lost the leading-directive lines across the
-     * step boundary. The opener gate reads tok_start as of the byte's
-     * arrival — the separator block sets it for the same byte. */
+    /* catch 107 (the nightly's run 38768645888): the cut scanner's
+     * directive handling lived inside its block-context branch, so a
+     * brace over-count ("U{" keeps the scan "in flow" forever) hid
+     * the '%' marker: the cut landed between the directive and its
+     * '---' and the intermediate run rejected a legal multi-document
+     * stream while the whole parse accepted. The '%' case is hoisted
+     * out of the block branch — a directive pairs with its '---'
+     * regardless of the brace count. */
     const char* y = "U{\n...\n%TAG ! t/\n---\nv\n";
     size_t ylen = strlen(y);
 

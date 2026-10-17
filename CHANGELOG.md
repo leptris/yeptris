@@ -16,6 +16,16 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **feed: the cut scanner counts every brace and hoists the directive
+  case out of its block branch** — the token-start gate could not
+  separate a flow opener from a content brace ("k: {" — the ':'
+  arrives with tok_start clear — put the cut inside the '---' marker;
+  whole errored at 2:8, chunked at 2:1). The scan cannot make that
+  call locally, so every opener counts (over-counting only suppresses
+  cuts — a missed cut degrades toward whole-parse semantics, the
+  invariant's safe direction) and the '%' case rides above the block
+  branch, pairing a directive with its '---' regardless of the brace
+  count (runs 38768645888, 38834514526, 38898618551, 38989832309).
 - **feed: the cut scanner's opener gate also reads the after-property
   state** — an anchor/tag/alias name ends at a flow indicator, so
   "&b[" is a real flow open with tok_start clear: the gate blocked it,
