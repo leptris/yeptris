@@ -4379,6 +4379,34 @@ TEST(Parse, CommentLineEndsPlainWithoutFolding) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, KeepChompIgnoresBreaklessEofFragment) {
+    /* catch 130 (the nightly's run 39050759339): keep-chomping counted
+     * the final blank line even though it carries NO break at EOF --
+     * "|+\n " parsed as "\n" where libyaml ends the empty scalar at
+     * "". Complete blank lines keep their breaks ("|+\n\n\n" is
+     * "\n\n", oracle-checked). */
+    const char* y = "|+\n ";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l = 99;
+    const char* v = yeptris_node_value(yeptris_document_root(doc, 0), &l);
+    (void)v;
+    EXPECT_EQ(l, (size_t)0); /* nothing to keep: the fragment has no break */
+    yeptris_document_free(doc);
+
+    /* two COMPLETE blank lines keep both breaks */
+    const char* y2 = "|+\n\n\n";
+    st = YEPTRIS_OK;
+    doc = yeptris_parse(y2, strlen(y2), &st);
+    ASSERT_NE(doc, nullptr);
+    l = 0;
+    v = yeptris_node_value(yeptris_document_root(doc, 0), &l);
+    ASSERT_NE(v, nullptr);
+    EXPECT_EQ(l, (size_t)2);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, ExplicitKeySiblingDashColonKeepsNullPair) {
     /* catch 128 (the nightly's run 39045959147): the '?'-fix's dash
      * carve-out was too coarse -- "-:" is a dash with a NON-SPACE
