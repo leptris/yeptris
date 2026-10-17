@@ -1462,13 +1462,19 @@ static int e_skip_flow(yep_engine* e) {
             }
             stk[n++] = 1;
         } else if (c == ']') {
-            if (stk[n - 1] != 0) {
-                return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+            if (n == 0 || stk[n - 1] != 0) {
+                /* a stray close outside any candidate span (or a kind
+                 * mismatch) is NOT a flow shape: defer to the general
+                 * path -- aborting here discarded the pre-scan's whole
+                 * document before a single event emitted, while the
+                 * chunked feed had already committed the prefix runs
+                 * (the nightly's round 113) */
+                return 0;
             }
             n--;
         } else if (c == '}') {
-            if (stk[n - 1] != 1) {
-                return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+            if (n == 0 || stk[n - 1] != 1) {
+                return 0;
             }
             n--;
         }
@@ -4222,8 +4228,7 @@ int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, con
         if (cut == 0 || cut >= st->len) {
             return 0; /* no complete document yet */
         }
-        if (getenv("YEP_DBG_ROUTE"))
-            fprintf(stderr, "DBG step cut=%zu buflen=%zu\n", cut, st->len);
+        fprintf(stderr, "DBG step cut=%zu buflen=%zu\n", cut, st->len);
         e->line_base = st->line_base;
         int rc = engine_run_impl(e, st->buf, cut, sink, !st->started, 0);
         if (rc != 0) {
