@@ -4392,8 +4392,13 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     }
     yep_free(e->sys, e->norm_buf);
     e->norm_buf = NULL;
-    yep_free(e->sys, e->enc_buf);
-    e->enc_buf = NULL;
+    /* enc_buf is NOT reset here: yep_engine_run's front-end may have
+     * transcoded THIS call's input into it microseconds ago -- buf
+     * points into it, and freeing it before the break-normalize scan
+     * was a use-after-free on every UTF-16/32 input (ASan: the 4-byte
+     * artifact "ff fe fe fe", the nightly's combined-build round).
+     * It is run-scoped scratch owned by the front-end; destroy frees
+     * it, and the next transcode replaces it. */
     e->parsing_final = emit_end;
     size_t norm_len = len;
     e->p = e_normalize_breaks(e, buf, len, &norm_len);
