@@ -150,14 +150,18 @@ static void probe_one(const uint8_t* data, size_t size) {
                     char* got = NULL;
                     size_t got_len = 0;
                     if (parse_ok(enc, n, &got, &got_len)) {
-                        if (got_len != base_len || memcmp(got, base, got_len) != 0) {
+                        /* equality rides the BOM variants only: the
+                         * BOM is the explicit encoding claim. A BOM-
+                         * less UTF-16/32 byte run can parse as UTF-8
+                         * garbage by construction (a 1-char doc's
+                         * UTF-16LE "A " IS a valid YAML scalar) and
+                         * its outcome is unbounded -- crash-safety is
+                         * the only property there (the nightly's
+                         * round 114) */
+                        if (bom && (got_len != base_len || memcmp(got, base, got_len) != 0)) {
                             abort(); /* transcoding changed the document */
                         }
                     }
-                    /* variants without a BOM may be read as UTF-8
-                     * garbage: any outcome is fine as long as it
-                     * never crashes (the property above covers the
-                     * meaningful equality) */
                     free(got);
                 }
             }
