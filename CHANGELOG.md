@@ -36,7 +36,9 @@ crashers in the regression corpus).
   group and the adds) overflowed `long long` unchecked where the
   plain path rejects unrepresentable values via strtoll; UBSan caught
   a 52-digit component on the combined-build nightly, and the fold
-  now returns not-an-int like everything else.
+  now returns not-an-int like everything else. (The catch-124 fix
+  guarded the hours loop but left the GROUP component's ×10 raw —
+  caught one round later.)
 - **parse: (NULL, 0) is an empty range, not NULL + 0** — the anchor
   pre-count computed `data + data_len` on a NULL buffer, which is UB
   by the standard even for a zero offset; UBSan caught it on the

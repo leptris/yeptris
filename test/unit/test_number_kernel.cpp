@@ -121,6 +121,9 @@ TEST(NumberKernel, SexagesimalOverflowIsNotAnInt) {
     EXPECT_FALSE(int_ok("2222222222222222222:00", &v));
     EXPECT_FALSE(
         int_ok("2222222222222222222222222222222222222222222222222216:4", &v)); /* the artifact */
+    EXPECT_FALSE(int_ok("1:99999999999999999999", &v));                        /* the GROUP
+                                                                                * component rides the same law (catch 129:
+                                                                                * the catch-124 fix left this loop raw) */
     EXPECT_FALSE(int_ok("2562047788015216:30", &v));                           /* *3600 overflows */
     EXPECT_TRUE(int_ok("2562047788015215:30", &v)); /* the last that fits */
     EXPECT_EQ(v, 9223372036854775800);

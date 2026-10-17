@@ -184,7 +184,16 @@ int yep_num_i64(const char* p, uint32_t len, int64_t* out) {
             long long g = 0;
             int d = 0;
             while (*q >= '0' && *q <= '9') {
-                g = g * 10 + (*q - '0');
+                int dg = *q - '0';
+                /* the group component rides the same ERANGE law as
+                 * the first component -- the catch-124 fix guarded
+                 * the hours loop but left this one raw (UBSan:
+                 * 999999999999999999 * 10, the nightly's run
+                 * 39049702014) */
+                if (g > (LLONG_MAX - (long long)dg) / 10) {
+                    return 1;
+                }
+                g = g * 10 + dg;
                 q++;
                 d++;
             }
