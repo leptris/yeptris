@@ -4340,6 +4340,26 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 goto fail;
             }
             {
+                /* libyaml: the directive name is [0-9A-Za-z_-]+
+                 * followed by a blank or the line end -- an empty or
+                 * malformed name is an error ("could not find expected
+                 * directive name"). The lenient skip let "%]" ride as a
+                 * legal directive line whose DOCUMENT_START inclusion
+                 * diverged across the step boundary (the nightly's
+                 * round 117) */
+                size_t n0 = li.offset + li.indent + 1;
+                while (n0 < li.end && (yep_ct_is((unsigned char)e->p[n0], YEP_CT_ALPHA) ||
+                                       yep_ct_is((unsigned char)e->p[n0], YEP_CT_DIGIT) ||
+                                       e->p[n0] == '_' || e->p[n0] == '-')) {
+                    n0++;
+                }
+                if (n0 == li.offset + li.indent + 1 ||
+                    (n0 < li.end && e->p[n0] != ' ' && e->p[n0] != '\t')) {
+                    e_fail(e, YEP_ERR_BAD_DIRECTIVE, li.offset + li.indent + 1);
+                    goto fail;
+                }
+            }
+            {
                 /* %YAML takes exactly one version argument */
                 size_t chk = li.offset + li.indent + 1;
                 if (li.end - chk >= 4 && memcmp(e->p + chk, "YAML", 4) == 0) {

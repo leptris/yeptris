@@ -1884,7 +1884,10 @@ TEST(Feed, PlainContentQuoteIsNeverTracked) {
      * mark by a line. Quotes now open only at a WORD start; a word
      * that began with an indicator still admits a quoted node after
      * it ("&a 'x'", "- 'x'"). */
-    const char* y = "A!'- %YAML 0.2\n--- |\n!e-2.0\n...\n%Y'AML 1.2\n---\n# Empty\n...\n";
+    /* %Y-AML: a valid directive name (catch 115's law rejects
+     * %Y'AML -- the apostrophe ends the name and is no blank --
+     * matching libyaml) */
+    const char* y = "A!'- %YAML 0.2\n--- |\n!e-2.0\n...\n%Y-AML 1.2\n---\n# Empty\n...\n";
     YeptrisRecorder whole = yeptris_recorder_new();
     ASSERT_NE(whole, nullptr);
     ASSERT_EQ(yeptris_recorder_feed(whole, y, strlen(y), 1), YEPTRIS_OK);
@@ -4391,6 +4394,20 @@ TEST(Parse, FlowKeyColonAfterTabsDefers) {
     /* both framings now reach the same verdict -- the pair parses or
      * errors identically; the corpus file pins the identity */
     EXPECT_GT(events, 0);
+}
+
+TEST(Parse, MalformedDirectiveNameErrors) {
+    /* catch 115 (the nightly's run 39003631538): a directive line's
+     * name was never validated -- "%]" rode as a legal directive line
+     * whose DOCUMENT_START inclusion (the leading-directive-lines
+     * mark) diverged across the step boundary: the whole parse marked
+     * doc 2 at the directive's line, the chunked at the '---' (whole
+     * 3:1 vs chunked 4:1). libyaml: the name is [0-9A-Za-z_-]+
+     * followed by a blank or EOL; anything else errors. */
+    const char* y = "-[\"\n...\n%\"]\n---\n";
+    int events = 0;
+    YeptrisStatus st = yeptris_push_parse(y, strlen(y), on_count_events, &events);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
 }
 
 TEST(Parse, StrayFlowCloseDefersNotErrors) {
