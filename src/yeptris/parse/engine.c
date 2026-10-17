@@ -1052,6 +1052,15 @@ static int e_plain_multiline(yep_engine* e, yep_span s0, uint32_t block_floor, y
         while (cs < e->len && (e->p[cs] == ' ' || e->p[cs] == '\t')) {
             cs++; /* continuation leading white space is stripped */
         }
+        if (cs < e->len && e->p[cs] == '#') {
+            /* a '#' opening a continuation line is a comment: the
+             * plain ends here and nothing folds -- the scan below
+             * returned an empty piece that still took a fold slot,
+             * adding a trailing fold-space ("a\n#" parsed as "a ",
+             * libyaml "a": the nightly's combined-build round) */
+            e_skip_to_eol(e);
+            break;
+        }
         yep_span s = yep_scan_plain(e->p, e->len, cs, 0);
         if (s.term == YEP_TERM_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, s.end);

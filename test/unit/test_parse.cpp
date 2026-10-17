@@ -4343,6 +4343,42 @@ TEST(Parse, UnterminatedQuoteInPrescanDefersNotErrors) {
     EXPECT_GT(events, 2) << "the flow's open events must precede the error";
 }
 
+TEST(Parse, CommentLineEndsPlainWithoutFolding) {
+    /* catch 125 (the nightly's run 39034157221): a '#' opening a
+     * continuation line went through yep_scan_plain as an EMPTY piece
+     * that still took a fold slot -- the fold inserted its break
+     * space and "a\n#" parsed as "a " where libyaml ends the scalar
+     * at the comment ("a"). The continuation loop now terminates at a
+     * leading '#' without folding. */
+    const char* y = "a\n#";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    size_t vl = 99;
+    const char* v = yeptris_node_value(root, &vl);
+    ASSERT_NE(v, nullptr);
+    EXPECT_EQ(vl, (size_t)1);
+    EXPECT_EQ(v[0], 'a');
+    yeptris_document_free(doc);
+
+    /* the mid-document twin (in a map: a second root node would be
+     * an error, matching libyaml): the comment still ends the value
+     * and the next key is NOT swallowed into the plain */
+    const char* y2 = "k: a\n# c\nj: 1\n";
+    st = YEPTRIS_OK;
+    doc = yeptris_parse(y2, strlen(y2), &st);
+    ASSERT_NE(doc, nullptr);
+    root = yeptris_document_root(doc, 0);
+    YeptrisNode j = yeptris_node_map_get(root, "j", 1);
+    ASSERT_NE(j, nullptr);
+    v = yeptris_node_value(j, &vl);
+    ASSERT_NE(v, nullptr);
+    EXPECT_EQ(vl, (size_t)1);
+    EXPECT_EQ(v[0], '1');
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, DocEndMarkerLoneCRBreaksTheLine) {
     /* catch 103 (the nightly's run 38684686593): the "..." marker's
      * trailing-content check skipped '\r' as whitespace, so the next
