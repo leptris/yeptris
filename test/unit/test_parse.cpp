@@ -4527,6 +4527,50 @@ TEST(Parse, FlowValueOpenerMatchesAcrossChunkings) {
     EXPECT_EQ(chunked_n, whole_n);
 }
 
+TEST(Parse, MultibyteBreakCommentMatchesAcrossChunkings) {
+    /* catch 119 (the nightly's run 39018460981): "[\u2029#]\n---\n" --
+     * the engine normalizes LS/PS/NEL to \n before the parse, so the
+     * '#' opens a comment that eats the ']'. The scan walked raw bytes
+     * and (a) broke on none of the multibyte breaks -- its 0xC2/0xE2
+     * compares were dead on a signed char -- and (b) even with the
+     * break fixed, the '#' prev-byte test saw 0xA9, not a break, so
+     * the ']' closed a flow the engine still had open and the cut
+     * landed on the '---' inside that flow (whole: depth error 4:1998,
+     * chunked: error 3:1). The scan now breaks on NEL/LS/PS with an
+     * at_break flag carrying the line-start truth across the multibyte
+     * gap. */
+    const char* y3[] = {
+        "[\xE2\x80\xA9#]\n---\n\"\"[{\"\"[{\"\"[{", /* PS */
+        "[\xE2\x80\xA8#]\n---\n\"\"[{\"\"[{\"\"[{", /* LS */
+        "[\xC2\x85#]\n---\n\"\"[{\"\"[{\"\"[{",     /* NEL */
+    };
+    for (int v = 0; v < 3; v++) {
+        const char* y = y3[v];
+        size_t ylen = strlen(y);
+
+        size_t whole_n = 0;
+        {
+            YeptrisRecorder rec = yeptris_recorder_new();
+            ASSERT_NE(rec, nullptr);
+            (void)yeptris_recorder_feed(rec, y, ylen, 1);
+            (void)yeptris_recorder_records(rec, &whole_n);
+            yeptris_recorder_free(rec);
+        }
+
+        size_t chunked_n = 0;
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        for (size_t i = 0; i < ylen; i++) {
+            (void)yeptris_recorder_feed(rec, y + i, 1, i + 1 == ylen);
+            size_t n = 0;
+            (void)yeptris_recorder_records(rec, &n);
+            chunked_n += n; /* records() resets at every feed entry */
+        }
+        yeptris_recorder_free(rec);
+        EXPECT_EQ(chunked_n, whole_n) << "break variant " << v;
+    }
+}
+
 TEST(Parse, FlowOpenerAfterAnchorMatchesAcrossChunkings) {
     /* catch 109 (the nightly's run 38898618551): an anchor/tag/alias
      * name ends at a flow indicator -- "&b[" is a real flow open with

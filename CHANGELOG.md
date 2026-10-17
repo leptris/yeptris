@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **feed: the chunk-cut scanner breaks on NEL/LS/PS** — the engine
+  normalizes those breaks to \n before the parse, but the scan walked
+  raw bytes with only \n/CR checks, and its 0xC2/0xE2 compares were
+  dead on a signed char; a comment after a multibyte break went
+  unseen and the cut landed inside a flow the engine still had open
+  (whole vs chunked disagreed). The scan breaks identically and an
+  `at_break` flag carries line-start across the multibyte gap.
 - **transcode harness: re-encode the document, not the file bytes** —
   the equality property fed a leading UTF-8 BOM into the UTF-16/32
   re-encoding, where the encoding mark became a literal U+FEFF
