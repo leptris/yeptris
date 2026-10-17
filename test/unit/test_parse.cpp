@@ -4469,6 +4469,47 @@ TEST(Parse, KeepChompIgnoresBreaklessEofFragment) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, CommentInternalBreakArmsLineStart) {
+    /* catch 133 (the nightly's run 39062394941): the comment-internal
+     * NEL/LS/PS branch ended the comment but left the line-start state
+     * disarmed -- the post-break '#' read as content, the ']' inside
+     * it closed the scan's flow while the engine's stayed open, and
+     * the next --- cut landed inside that flow ("{\n#\u2029#]\n---"
+     * whole 2 / chunked 3). Ending a comment at a multibyte break arms
+     * the same line-start state as the main path's break branches. */
+    const char* ys[] = {"{\n#\xe2\x80\xa9#]\n---\n{[{\"\"][{\"\"",
+                        "{\n#\xc2\x85#]\n---\n{[{\"\"][{\"\""};
+    for (int v = 0; v < 2; v++) {
+        const char* y = ys[v];
+        size_t ylen = strlen(y);
+
+        size_t whole_n = 0;
+        {
+            YeptrisRecorder rec = yeptris_recorder_new();
+            ASSERT_NE(rec, nullptr);
+            (void)yeptris_recorder_feed(rec, y, ylen, 1);
+            (void)yeptris_recorder_records(rec, &whole_n);
+            yeptris_recorder_free(rec);
+        }
+
+        /* the harness's law: a rejected feed ends the stream */
+        size_t chunked_n = 0;
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        for (size_t i = 0; i < ylen; i++) {
+            YeptrisStatus fst = yeptris_recorder_feed(rec, y + i, 1, i + 1 == ylen);
+            size_t n = 0;
+            (void)yeptris_recorder_records(rec, &n);
+            chunked_n += n;
+            if (fst != YEPTRIS_OK) {
+                break;
+            }
+        }
+        yeptris_recorder_free(rec);
+        EXPECT_EQ(chunked_n, whole_n) << "break variant " << v;
+    }
+}
+
 TEST(Parse, ExplicitKeySiblingDashColonKeepsNullPair) {
     /* catch 128 (the nightly's run 39045959147): the '?'-fix's dash
      * carve-out was too coarse -- "-:" is a dash with a NON-SPACE

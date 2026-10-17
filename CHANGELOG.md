@@ -31,6 +31,11 @@ crashers in the regression corpus).
   piece that still took a fold slot, so the fold's break space rode
   into the value ("a\n#" parsed as "a " where libyaml ends the
   scalar at the comment).
+- **parse: a break inside a comment arms the line-start state** — the
+  comment-internal NEL/LS/PS branch ended the comment but left
+  `at_break` disarmed, so the post-break '#' read as content and a
+  closer inside it closed the scan's flow while the engine's stayed
+  open; the next `---` cut landed inside that flow.
 - **fuzz_diff: the UTF-16 content-BOM family is a documented
   divergence** — libyaml's UTF-16 reader drops a U+FEFF following the
   encoding mark while its own UTF-8 path keeps it; yeptris is

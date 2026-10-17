@@ -4051,16 +4051,32 @@ static size_t step_scan(yep_stepstate* st) {
         unsigned char c = (unsigned char)p[i];
         if (st->in_comment) {
             /* the engine normalizes NEL/LS/PS to \n before the parse,
-             * so they end a comment too */
+             * so they end a comment too -- and they are LINE BREAKS:
+             * the line-start state must arm exactly like the main
+             * path's break branches, or the post-break '#' reads as
+             * content (at_break stays 0), a closer inside it closes
+             * the scan's flow while the engine's stays open, and the
+             * next --- cut lands inside that flow ("{\n#\u2029#]\n---
+             * {..." whole 2 / chunked 3, the nightly's run
+             * 39062394941) */
             if (c == '\n') {
                 st->in_comment = 0;
+                st->tok_start = 1;
+                st->word_led = 0;
+                st->at_break = 1;
             } else if (c == 0xC2 && i + 1 < st->len && (unsigned char)p[i + 1] == 0x85) {
                 i++;
                 st->in_comment = 0;
+                st->tok_start = 1;
+                st->word_led = 0;
+                st->at_break = 1;
             } else if (c == 0xE2 && i + 2 < st->len && (unsigned char)p[i + 1] == 0x80 &&
                        ((unsigned char)p[i + 2] & 0xFE) == 0xA8) {
                 i += 2;
                 st->in_comment = 0;
+                st->tok_start = 1;
+                st->word_led = 0;
+                st->at_break = 1;
             }
             continue;
         }
