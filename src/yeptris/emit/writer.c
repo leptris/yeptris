@@ -669,6 +669,19 @@ static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
 static void emit_alias_ex(yep_emitter* em, const yep_dnode* n) {
     yep_writer* w = &em->w;
     yep_view name_v = wv(w, n->value);
+    if (w->in_flow && !w->canonical) {
+        /* the alias twin of wr_anchor_check: a flow alias is spelled
+         * raw and the re-parse truncates the name -- a trailing ':'
+         * reads as the key/value separator there ("*n:}" names "n",
+         * the block definition "n:" went unmatched: the nightly's
+         * run 39021984786, "alias references an undefined anchor"
+         * 3:15), and quote bytes hit the engine's flow-alias law.
+         * Block aliases ride raw (2SXE/Y2GN round-trip byte-stably). */
+        wr_anchor_check(w, &name_v);
+        if (name_v.len > 0 && name_v.p[name_v.len - 1] == ':') {
+            w->unserializable = 1;
+        }
+    }
     wr_byte(w, '*');
     if (w->canonical) {
         uint32_t idx = yep_nametab_get(&em->canon_names, name_v);

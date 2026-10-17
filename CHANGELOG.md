@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **emit: a flow alias whose name ends in ':' is unserializable** —
+  in flow a trailing ':' is the key/value separator, so the re-parse
+  truncated the alias name and the block definition went unmatched
+  ("alias references an undefined anchor"). Anchor names have no
+  quoting: serialize now refuses such documents (the established
+  unspellable-anchor law) instead of emitting a form that can never
+  re-parse. Block spellings ride raw (2SXE/Y2GN).
 - **feed: the chunk-cut scanner breaks on NEL/LS/PS** — the engine
   normalizes those breaks to \n before the parse, but the scan walked
   raw bytes with only \n/CR checks, and its 0xC2/0xE2 compares were

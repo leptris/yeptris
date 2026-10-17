@@ -4396,6 +4396,45 @@ TEST(Parse, FlowKeyColonAfterTabsDefers) {
     EXPECT_GT(events, 0);
 }
 
+TEST(Emit, FlowAliasTrailingColonUnserializable) {
+    /* catch 120 (the nightly's run 39021984786): "a: &n: 1\n? k: *n:\n: v"
+     * parsed fine, but the emitter flow-rendered the explicit key and the
+     * re-parse truncated the alias -- in flow a trailing ':' is the
+     * key/value separator ("*n:}" names "n"), so the block definition
+     * "n:" went unmatched ("alias references an undefined anchor").
+     * Anchors have no quoting: the document has no safe flow spelling,
+     * so serialize refuses (the established "&\""/bang/question anchor
+     * vein). The block-only spelling still round-trips byte-stably. */
+    const char* y = "a: &n: 1\n? k: *n:\n: v\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t l1 = 7;
+    char* s1 = yeptris_serialize(doc, &l1);
+    EXPECT_EQ(s1, nullptr);
+    yeptris_document_free(doc);
+
+    /* the block spelling: the alias name keeps its trailing colon at
+     * EOL (2SXE) and round-trips */
+    const char* y2 = "a: &n: 1\nb: *n:\n";
+    doc = yeptris_parse(y2, strlen(y2), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    l1 = 0;
+    s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    yeptris_document_free(doc);
+    doc = yeptris_parse(s1, l1, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc, &l2);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_EQ(l1, l2);
+    EXPECT_EQ(memcmp(s1, s2, l1), 0);
+    free(s1);
+    free(s2);
+    yeptris_document_free(doc);
+}
+
 TEST(Emit, BlockKeyWithBomContentRidesSimple) {
     /* catch 116 (the nightly's run 39005989761): a tagged single-line
      * block key whose content carries U+FEFF was promoted to the
