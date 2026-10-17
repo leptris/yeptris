@@ -1938,9 +1938,16 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             if (!single_line)
                 jx_advance_line(e, &cur_scan, i, &cur_line, &cur_ls);
             ev.line = cur_line;
-            ev.col = (uint32_t)(i + 1 - cur_ls) + 1;
+            /* the opener's own column, like site 1 and the general
+             * kernel: the fused walk's nested open rode the OLD +1
+             * (one past the indicator) while the outer opener was
+             * already fixed -- whole parses >=24 bytes route fused,
+             * the <24-byte chunked prefix routes general, and the
+             * nested start sat one column right (the nightly's round
+             * 122, "[[]": whole 1:3 vs chunk 1:2) */
+            ev.col = (uint32_t)(i - cur_ls) + 1;
             ev.end_line = cur_line; /* flow opens end after the indicator */
-            ev.end_col = (uint32_t)(i + 2 - cur_ls) + 1;
+            ev.end_col = (uint32_t)(i + 1 - cur_ls) + 1;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }

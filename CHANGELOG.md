@@ -7,18 +7,14 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
-### Changed
-- **fuzz: the nightly rides teptris's shape** — ASan+UBSan live in the
-  SAME binary as the fuzzer (linux; Apple ld cannot link UBSan'd
-  archives), every harness gets `-timeout=5` and an equal share of a
-  dispatch-configurable budget (`minutes`, default 60), and the corpus
-  gains 72 deterministic grammar-shaped seeds from
-  `scripts/gen-fuzz-corpus.py` (fixed seed; block/flow/deep/anchors/
-  scalars/unicode/markers).
-
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **engine: the fused walk's nested flow opener marks the opener** —
+  the nested start rode the old +1 (one past the indicator) while the
+  outer opener and the general kernel mark the opener itself; a ≥24-
+  byte whole span routes fused while its <24-byte chunked prefix
+  routes general, so `[[]` disagreed by one column.
 - **engine: a lone UTF-8 BOM is an empty stream** — the encoding
   front-end exempted UTF-8 heads, so the raw entries (push, the
   libyaml differential) parsed a lone U+FEFF as a scalar where
