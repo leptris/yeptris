@@ -4396,6 +4396,34 @@ TEST(Parse, FlowKeyColonAfterTabsDefers) {
     EXPECT_GT(events, 0);
 }
 
+TEST(Emit, BlockKeyWithBomContentRidesSimple) {
+    /* catch 116 (the nightly's run 39005989761): a tagged single-line
+     * block key whose content carries U+FEFF was promoted to the
+     * explicit "? key" form, but sc_route demoted its render to
+     * double-quoted (the BOM re-parses as an encoding mark) -- round
+     * two parsed a QUOTED key and rode simple, one render behind.
+     * The promotion consults sc_dq_forced: DQ-demoting content rides
+     * simple from the start. */
+    const char* y = ":\n! |-\n \xef\xbb\xbf";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    yeptris_document_free(doc);
+    doc = yeptris_parse(s1, l1, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc, &l2);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_EQ(l1, l2);
+    EXPECT_EQ(memcmp(s1, s2, l1), 0);
+    free(s1);
+    free(s2);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, MalformedDirectiveNameErrors) {
     /* catch 115 (the nightly's run 39003631538): a directive line's
      * name was never validated -- "%]" rode as a legal directive line

@@ -16,6 +16,14 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **emitter: the block map's explicit-key promotion consults the DQ
+  predicate** — a tagged single-line block key whose content carries
+  U+FEFF (or NEL/LS/PS/noncharacters) was promoted to the explicit
+  "? key" form while sc_route demoted its render to double-quoted
+  (the BOM re-parses as an encoding mark): round two parsed a QUOTED
+  key and rode simple, one render behind (whole 20 bytes vs 16 on
+  ":\n! |-\n \uFEFF" — run 39005989761). The promotion now skips
+  DQ-demoting content via the shared sc_dq_forced scan.
 - **engine: the directive name is validated** — libyaml's law is
   [0-9A-Za-z_-]+ followed by a blank or the line end; the lenient
   skip let "%]" ride as a legal directive line whose

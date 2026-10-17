@@ -403,39 +403,40 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
 enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL, YEP_SC_TILDE };
 #define YEP_SC_MEMO_MIN 32u /* bytes; derive-below, memoize-above */
 
-static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in,
-                        int has_tag) {
-    /* U+0085 is a break (only its \\N escape is byte-stable) and U+FEFF
-     * raw is the BOM (re-parse would strip it): both force the
-     * double-quoted route BEFORE the plain fast path can take them
-     * (the nightly's fuzz_roundtrip crashers). The NEL scan matches
-     * the UTF-8 PAIR only — a lone 0x85 is a continuation byte
-     * (U+315B = E3 85 9B). */
-    int has_nel = 0;
-    int has_bom = 0;
+/* U+0085 is a break (only its \\N escape is byte-stable), U+FEFF raw is
+ * the BOM (re-parse would strip it), and U+2028/29 plus the
+ * noncharacters are their twins: content carrying any of these forces
+ * the double-quoted route BEFORE the plain fast path can take it (the
+ * nightly's fuzz_roundtrip crashers). The NEL scan matches the UTF-8
+ * PAIR only — a lone 0x85 is a continuation byte (U+315B = E3 85 9B).
+ * The block map's explicit-key promotion consults the same predicate:
+ * a key whose content demotes to DQ re-parses as a QUOTED key and must
+ * ride simple, or round two's render differs (the nightly's round 118). */
+static int sc_dq_forced(const char* p, uint32_t len) {
     for (uint32_t k = 0; k + 1 < len; k++) {
         if ((unsigned char)p[k] == 0xc2 && (unsigned char)p[k + 1] == 0x85) {
-            has_nel = 1;
-            break;
+            return 1;
         }
         /* LS/PS are breaks like NEL: only their escapes are stable */
         if ((unsigned char)p[k] == 0xe2 && k + 2 < len && (unsigned char)p[k + 1] == 0x80 &&
             ((unsigned char)p[k + 2] == 0xa8 || (unsigned char)p[k + 2] == 0xa9)) {
-            has_nel = 1;
-            break;
+            return 1;
         }
         if ((unsigned char)p[k] == 0xef && k + 2 < len && (unsigned char)p[k + 1] == 0xbb &&
             (unsigned char)p[k + 2] == 0xbf) {
-            has_bom = 1;
-            break;
+            return 1;
         }
         if ((unsigned char)p[k] == 0xef && k + 2 < len && (unsigned char)p[k + 1] == 0xbf &&
             ((unsigned char)p[k + 2] == 0xbe || (unsigned char)p[k + 2] == 0xbf)) {
-            has_nel = 1; /* noncharacter: only its escape re-parses */
-            break;
+            return 1; /* noncharacter: only its escape re-parses */
         }
     }
-    if (has_nel || has_bom) {
+    return 0;
+}
+
+static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in,
+                        int has_tag) {
+    if (sc_dq_forced(p, len)) {
         return YEP_SC_DQ;
     }
     if (w->in_flow && len > 0) {
@@ -1036,7 +1037,8 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
          * to glue onto, and sc_route demotes it to the quoted form
          * anyway (the nightly's run 38177622733, ":\n! |-\n r\n:") */
         if (!complex_key && kn->style >= 4 && kn->style <= 5 && kn->value.len > 0 &&
-            kn->tag.len > 0 && memchr(wv(w, kn->value).p, '\n', wv(w, kn->value).len) == NULL) {
+            kn->tag.len > 0 && memchr(wv(w, kn->value).p, '\n', wv(w, kn->value).len) == NULL &&
+            !sc_dq_forced(wv(w, kn->value).p, wv(w, kn->value).len)) {
             /* a TAGGED SINGLE-LINE literal/folded key keeps the block
              * form in sc_route (the #290 law), so the value separator
              * would glue onto the block's CONTENT line (colons are
@@ -1048,7 +1050,11 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
              * two parses a quoted style and rides simple. Untagged and
              * empty block styles demote likewise (the nightly's runs
              * 38177622733 ":\n! |-\n r\n:" and 38181819580
-             * ":\n! |\n r\n:") */
+             * ":\n! |\n r\n:") — and so does content carrying
+             * NEL/BOM/LS/PS/noncharacters (sc_dq_forced): a BOM in a
+             * key's content demoted the explicit form's key to DQ and
+             * round two rode simple, one render behind (the nightly's
+             * round 118) */
             complex_key = 1;
         }
         if (!complex_key && key_written_over_limit(w, kn)) {
