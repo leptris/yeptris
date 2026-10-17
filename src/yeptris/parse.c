@@ -370,8 +370,11 @@ engine_enter:
          * entirely — no anchors exist (the profile's 4.4% memchr
          * lane on the json corpora). */
         yep_text_stats amp_only = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-        const char* q = data;
-        const char* end = data + data_len;
+        /* (NULL, 0) passes the arg guard: NULL + 0 is UB, not an
+         * empty range (UBSan, the first nightly under the combined
+         * fuzz build) */
+        const char* q = data == NULL ? "" : data;
+        const char* end = q + data_len;
         if (q != NULL) {
             while ((q = memchr(q, '&', (size_t)(end - q))) != NULL) {
                 amp_only.amp++;
