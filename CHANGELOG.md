@@ -16,6 +16,12 @@ crashers in the regression corpus).
   character and every variant differed from the base by construction.
   The engine's once-only BOM strip is correct; the harness now
   re-encodes the document content (run 38707248713).
+- **engine: the fast path's key deferral skips tabs** — the check
+  for a key-context colon after a flow collection skipped only
+  spaces, so "[]\t\t: |-" committed the flow and then errored on the
+  colon it could not read as a separator, while the sub-24-byte chunk
+  run took the general kernel and parsed the pair (whole st=1 n=4 vs
+  chunked st=1 n=9 — run 39001396706).
 - **push: the encoding front-end rides yeptris_push_parse too** —
   parse.c and the value drains sniff the BOM and transcode UTF-16/32,
   but the push event route fed raw bytes to the engine: a lone

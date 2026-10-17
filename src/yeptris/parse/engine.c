@@ -1706,7 +1706,11 @@ static void jx_advance_line(yep_engine* e, size_t* from, size_t to, uint32_t* li
  * is_key logic runs. Shared by both fast paths (grammar fact). */
 static int e_flow_key_after(const char* p, size_t len, size_t close) {
     size_t j = close + 1;
-    while (j < len && p[j] == ' ') {
+    /* tabs are inline whitespace too: "[]\t\t: |-" defers to the key
+     * machinery like its all-spaces sibling, or the fast path commits
+     * the flow and then errors on the colon it cannot read as a key
+     * separator (the nightly's round 116) */
+    while (j < len && (p[j] == ' ' || p[j] == '\t')) {
         j++;
     }
     return j < len && p[j] == ':' &&
