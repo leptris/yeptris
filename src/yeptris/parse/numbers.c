@@ -5,6 +5,7 @@
  * strtod cross-checks. */
 
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -160,8 +161,19 @@ int yep_num_i64(const char* p, uint32_t len, int64_t* out) {
         }
         long long v = 0;
         while (*q >= '0' && *q <= '9') {
-            v = v * 10 + (*q - '0');
+            int d = *q - '0';
+            /* the ERANGE law, spelled out: the plain path rejects
+             * unrepresentable values via strtoll, so the fold must
+             * too (UBSan: 2222222222222222222 * 10 overflowed, the
+             * nightly's round on the combined build) */
+            if (v > (LLONG_MAX - (long long)d) / 10) {
+                return 1;
+            }
+            v = v * 10 + d;
             q++;
+        }
+        if (v > LLONG_MAX / 3600) {
+            return 1;
         }
         v *= 3600; /* e0 weight */
         if (sign < 0)
@@ -179,7 +191,11 @@ int yep_num_i64(const char* p, uint32_t len, int64_t* out) {
             if (d == 0) {
                 return 1;
             }
-            v += g * (groups == 0 ? 60 : 1); /* e1 then e2 */
+            long long w = groups == 0 ? 60 : 1; /* e1 then e2 */
+            if (g > LLONG_MAX / w || v > LLONG_MAX - g * w) {
+                return 1;
+            }
+            v += g * w;
             groups++;
         }
         if (groups == 0 || *q != '\0') {
