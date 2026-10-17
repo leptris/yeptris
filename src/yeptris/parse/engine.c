@@ -3637,6 +3637,16 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
          * at any indent is the value ("&a\n- x"). Explicit-key content
          * may align with the '?' column. Flow nodes and property runs
          * continue the value even at the parent column ("k:\n!!seq\n[a]"). */
+        if (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first == '-' &&
+            li.offset + 1 < li.end && e->p[li.offset + 1] != ' ' && e->p[li.offset + 1] != '\t' &&
+            e->p[li.offset + 1] != '\n' && e->p[li.offset + 1] != '\r') {
+            /* "-:" and friends: a dash with a non-space follower is a
+             * PLAIN key ("-" => null), never the pending key's content
+             * ("?\n-:" lost the null pair, the nightly's run
+             * 39045959147). A dash+space seq entry keeps the old
+             * content path below (the catch-38154662070 shape). */
+            goto empty_value;
+        }
         if (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first != ':' &&
             li.first != '-' && yep_plain_first_ok(li.first)) {
             /* a same-column PLAIN-START pair line is a SIBLING, not

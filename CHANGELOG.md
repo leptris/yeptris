@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: "-:" is a plain key, not explicit-key content** — the
+  '?'-fix's dash carve-out only split on the first byte; a dash with
+  a non-space follower is a plain-key pair, so "?\n-:" and the CR
+  twin kept losing the {null: null} pair. Dash+space seq entries stay
+  content (the catch-38154662070 shape).
 - **parse: a '?'-led line at the key's own column is never explicit-
   key content** — the continuation swallowed it as a folded piece and
   the pending pair lost its null value ("?\n?:" and the CR twin

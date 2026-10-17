@@ -4379,6 +4379,35 @@ TEST(Parse, CommentLineEndsPlainWithoutFolding) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, ExplicitKeySiblingDashColonKeepsNullPair) {
+    /* catch 128 (the nightly's run 39045959147): the '?'-fix's dash
+     * carve-out was too coarse -- "-:" is a dash with a NON-SPACE
+     * follower, a plain key "-" and never the pending key's content
+     * ("?\n-:" and the CR twin lost the {null: null} pair, one pair
+     * where libyaml yields two). A dash+space seq entry stays the
+     * key's content (the catch-38154662070 shape, still pinned). */
+    const char* ys[] = {"?\n-:", "?\r-:"};
+    for (int v = 0; v < 2; v++) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(ys[v], strlen(ys[v]), &st);
+        ASSERT_NE(doc, nullptr) << ys[v];
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_EQ(yeptris_node_kind(root), YEPTRIS_NODE_MAPPING);
+        EXPECT_EQ(yeptris_node_map_count(root), (size_t)2);
+        size_t l = 99;
+        YeptrisNode k, val;
+        ASSERT_EQ(yeptris_node_map_at(root, 0, &k, &val), YEPTRIS_OK);
+        (void)yeptris_node_value(k, &l);
+        EXPECT_EQ(l, (size_t)0); /* the null key survived */
+        ASSERT_EQ(yeptris_node_map_at(root, 1, &k, &val), YEPTRIS_OK);
+        const char* sv = yeptris_node_value(k, &l);
+        ASSERT_NE(sv, nullptr);
+        EXPECT_EQ(l, (size_t)1);
+        EXPECT_EQ(sv[0], '-');
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, ExplicitKeySiblingQLineKeepsNullPair) {
     /* catch 127 (the nightly's run 39041682907): a '?'-led line at the
      * pending explicit key's own column was swallowed as the key's
