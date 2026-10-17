@@ -4379,6 +4379,47 @@ TEST(Parse, CommentLineEndsPlainWithoutFolding) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, FlowQPlainPerSuite) {
+    /* catch 131 (the nightly's run 39054546716): libyaml (pinned
+     * 90a56d4) makes a KEY token for a flow '?' with ANY follower
+     * ("[?p]" -> {p: null}), but yaml-test-suite pins the PLAIN
+     * reading -- HM87 "[?x]" -> "=VAL :?x", 652Z "{ ?foo: bar }" ->
+     * "=VAL :?foo" -- and the suite is the conformance bar. The diff
+     * harness carries the divergence as a documented comparator
+     * (yd_qflow_divergence); mid-plain '?' stays content. */
+    const char* ys[] = {"[?x]", "{ ?foo: bar }"};
+    for (int v = 0; v < 2; v++) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(ys[v], strlen(ys[v]), &st);
+        ASSERT_NE(doc, nullptr) << ys[v];
+        size_t l = 99;
+        const char* sv = NULL;
+        if (v == 0) {
+            YeptrisNode e = yeptris_node_seq_at(yeptris_document_root(doc, 0), 0);
+            sv = yeptris_node_value(e, &l);
+        } else {
+            YeptrisNode k = nullptr;
+            YeptrisNode val = nullptr;
+            ASSERT_EQ(yeptris_node_map_at(yeptris_document_root(doc, 0), 0, &k, &val), 0);
+            sv = yeptris_node_value(k, &l);
+        }
+        ASSERT_NE(sv, nullptr);
+        EXPECT_EQ(l, v == 0 ? (size_t)2 : (size_t)4);
+        EXPECT_EQ(sv[0], '?'); /* the '?' rides the plain, per HM87/652Z */
+        yeptris_document_free(doc);
+    }
+    /* mid-plain stays content either way */
+    const char* y3 = "[a?b]";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y3, strlen(y3), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l = 0;
+    const char* sv = yeptris_node_value(yeptris_node_seq_at(yeptris_document_root(doc, 0), 0), &l);
+    ASSERT_NE(sv, nullptr);
+    EXPECT_EQ(l, (size_t)3);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, KeepChompIgnoresBreaklessEofFragment) {
     /* catch 130 (the nightly's run 39050759339): keep-chomping counted
      * the final blank line even though it carries NO break at EOF --

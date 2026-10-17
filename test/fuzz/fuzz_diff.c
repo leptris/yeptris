@@ -19,15 +19,83 @@
  * NULL under libFuzzer — splits must then be ledgered by content. */
 static const char* probe_id = NULL;
 
+/* True when the two dumps differ ONLY by the flow-'?' family: libyaml
+ * (pinned 90a56d4, 2011) makes a KEY token for a flow '?' with any
+ * follower ("[?p]" -> {p: null}), while yaml-test-suite pins the
+ * plain reading -- HM87 "[?x]" -> "=VAL :?x", 652Z "{ ?foo: bar }" ->
+ * "=VAL :?foo" -- and yeptris follows the suite (the conformance
+ * bar). The transform rewrites each libyaml single-pair map block
+ * "+MAP / =VAL :X / =VAL : / -MAP" into "=VAL :?X" and compares. */
+static int yd_qflow_divergence(const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    char out[8192];
+    size_t o = 0;
+    const char* lines[512];
+    size_t lens[512];
+    int n = 0;
+    const char* p = ldump;
+    while (*p != '\0' && n < 512) {
+        lines[n] = p;
+        const char* nl = strchr(p, '\n');
+        lens[n] = nl ? (size_t)(nl - p) : strlen(p);
+        n++;
+        p = nl ? nl + 1 : p + strlen(p);
+    }
+    for (int i = 0; i < n; i++) {
+        /* the event-dump format is "=VAL : <value>" */
+        if (lens[i] == 4 && strncmp(lines[i], "+MAP", 4) == 0 && i + 3 < n && lens[i + 1] >= 8 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && lens[i + 2] == 7 &&
+            strncmp(lines[i + 2], "=VAL : ", 7) == 0 && lens[i + 3] == 4 &&
+            strncmp(lines[i + 3], "-MAP", 4) == 0) {
+            /* a single-pair map: yeptris spells the key with a '?'
+             * prefix and no wrapper */
+            if (o + 8 + (lens[i + 1] - 7) + 1 >= sizeof(out)) {
+                return 0;
+            }
+            memcpy(out + o, "=VAL : ?", 8);
+            o += 8;
+            memcpy(out + o, lines[i + 1] + 7, lens[i + 1] - 7);
+            o += lens[i + 1] - 7;
+            out[o++] = '\n';
+            i += 3;
+            continue;
+        }
+        if (o + lens[i] + 2 >= sizeof(out)) {
+            return 0;
+        }
+        memcpy(out + o, lines[i], lens[i]);
+        o += lens[i];
+        out[o++] = '\n';
+    }
+    /* the yeptris dump is line-per-event too; compare line sets */
+    char ynorm[8192];
+    size_t yo = 0;
+    p = ydump;
+    while (*p != '\0' && yo < sizeof(ynorm) - 1) {
+        const char* nl = strchr(p, '\n');
+        size_t len = nl ? (size_t)(nl - p) : strlen(p);
+        memcpy(ynorm + yo, p, len);
+        yo += len;
+        ynorm[yo++] = '\n';
+        p = nl ? nl + 1 : p + strlen(p);
+    }
+    return o == yo && memcmp(out, ynorm, o) == 0;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
     yd_verdict v = yd_diff_classify((const char*)data, size, &ydump, &ldump);
     int split = v == YD_YEPTRIS_ONLY || v == YD_LIBYAML_ONLY;
+    /* a documented divergence, not a bug: the suite sides with
+     * yeptris (see yd_qflow_divergence) */
+    int known = v == YD_DIFFER && yd_qflow_divergence(ydump, ldump);
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
-    if ((v == YD_DIFFER || split) && !(probe_id != NULL && yd_ledger_has(probe_id))) {
+    if ((v == YD_DIFFER || split) && !known && !(probe_id != NULL && yd_ledger_has(probe_id))) {
         fprintf(stderr, "fuzz_diff: %s%s%s on input:\n--- yeptris:\n%s\n--- libyaml:\n%s\n",
                 yd_verdict_name(v), probe_id ? " (" : "", probe_id ? probe_id : "",
                 ydump ? ydump : "(error)", ldump ? ldump : "(error)");
@@ -40,7 +108,7 @@ static void probe_one(const uint8_t* data, size_t size) {
      * zone the ledger documents by input, not by mutation. */
     (void)split;
     (void)probe_id;
-    if (v == YD_DIFFER) {
+    if (v == YD_DIFFER && !known) {
         fprintf(stderr, "fuzz_diff: %s on mutated input:\n--- yeptris:\n%s\n--- libyaml:\n%s\n",
                 yd_verdict_name(v), ydump ? ydump : "(error)", ldump ? ldump : "(error)");
         abort();

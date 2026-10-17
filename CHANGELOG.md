@@ -31,6 +31,11 @@ crashers in the regression corpus).
   piece that still took a fold slot, so the fold's break space rode
   into the value ("a\n#" parsed as "a " where libyaml ends the
   scalar at the comment).
+- **fuzz_diff: the flow-'?' family is a documented divergence** —
+  pinned libyaml makes a KEY token for a flow '?' with any follower
+  ("[?p]" -> {p: null}) while yaml-test-suite pins the plain reading
+  (HM87/652Z) and yeptris follows the suite; the differential now
+  recognizes exactly this shape instead of failing the round.
 - **parse: keep-chomping keeps complete blank lines only** — a final
   blank line with no break at EOF contributed a phantom kept break
   ("|+\n " parsed as "\n" where libyaml ends the scalar empty);
