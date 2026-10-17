@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **engine: the UTF-16/32 transcode scratch is no longer freed under
+  the run that uses it** — engine_run_impl reset `enc_buf` at entry,
+  but the front-end moved above it (the catch-117 reshuffle) and
+  hands it the very buffer the run then parses: every transcoded
+  input was a use-after-free (ASan, 4-byte artifact `ff fe fe fe`).
+  The scratch is front-end-owned now; only `norm_buf` stays per-run.
 - **parse: a comment line ends a plain without folding** — a `#`
   opening a continuation line went through the plain scan as an empty
   piece that still took a fold slot, so the fold's break space rode
