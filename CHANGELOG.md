@@ -7,6 +7,15 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Changed
+- **fuzz: the nightly rides teptris's shape** — ASan+UBSan live in the
+  SAME binary as the fuzzer (linux; Apple ld cannot link UBSan'd
+  archives), every harness gets `-timeout=5` and an equal share of a
+  dispatch-configurable budget (`minutes`, default 60), and the corpus
+  gains 72 deterministic grammar-shaped seeds from
+  `scripts/gen-fuzz-corpus.py` (fixed seed; block/flow/deep/anchors/
+  scalars/unicode/markers).
+
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).

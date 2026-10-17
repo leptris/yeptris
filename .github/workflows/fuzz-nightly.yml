@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      minutes:
+        description: "total fuzz budget in minutes (split across harnesses)"
+        required: false
+        default: "60"
 
 permissions:
   contents: read
@@ -14,9 +19,9 @@ concurrency:
 
 jobs:
   fuzz:
-    name: libFuzzer (ubuntu, 10 min each)
+    name: libFuzzer+ASan+UBSan (ubuntu)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -53,32 +58,40 @@ jobs:
       - name: Seed corpus
         run: |
           mkdir -p corpus
+          python3 scripts/gen-fuzz-corpus.py corpus
           cp test/port/libyaml/snapshots/*.in corpus/ 2>/dev/null || true
           cp test/fuzz/corpus/parse/* corpus/ 2>/dev/null || true
           find test/conformance/data/yaml-test-suite -name '*.yaml' -exec cp {} corpus/ \; 2>/dev/null || true
           find test/conformance/data/json-test-suite/test_parsing -name '*.json' -exec cp {} corpus/ \; 2>/dev/null || true
 
-      - name: fuzz_parse (10 min)
-        run: ./build/test/fuzz_parse_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+      - name: Fuzz budget
+        run: |
+          MINS="${{ github.event.inputs.minutes || '60' }}"
+          SECS=$((MINS * 60))
+          SIXTH=$((SECS / 6))
+          echo "YEP_FUZZ_SECS=$SIXTH" >> "$GITHUB_ENV"
 
-      - name: fuzz_roundtrip (10 min)
-        run: ./build/test/fuzz_roundtrip_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+      - name: fuzz_parse
+        run: ./build/test/fuzz_parse_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
 
-      - name: fuzz_feed (10 min)
-        run: ./build/test/fuzz_feed_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+      - name: fuzz_roundtrip
+        run: ./build/test/fuzz_roundtrip_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
 
-      - name: fuzz_transcode (10 min)
-        run: ./build/test/fuzz_transcode_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+      - name: fuzz_feed
+        run: ./build/test/fuzz_feed_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
+
+      - name: fuzz_transcode
+        run: ./build/test/fuzz_transcode_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
 
       # semantic differential: both libraries accept, streams differ
-      - name: fuzz_diff (10 min)
-        run: ./build/test/fuzz_diff_lf -max_total_time=600 -rss_limit_mb=4096 corpus
+      - name: fuzz_diff
+        run: ./build/test/fuzz_diff_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
 
       - name: CBOR seeds
         run: python3 scripts/gen-cbor-seeds.py
 
-      - name: fuzz_cbor (10 min)
-        run: ./build/test/fuzz_cbor_lf -max_total_time=600 -rss_limit_mb=4096 test/fuzz/corpus/cbor
+      - name: fuzz_cbor
+        run: ./build/test/fuzz_cbor_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 test/fuzz/corpus/cbor
 
       - name: Retain crash artifacts
         if: failure()
