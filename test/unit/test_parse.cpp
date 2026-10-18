@@ -5131,3 +5131,54 @@ TEST(Parse, FlowExplicitKeyWithoutColonKeepsItsKey) {
         free(s1);
     }
 }
+
+TEST(Parse, FlowPlainFoldCountsEveryBreak) {
+    /* the nightly's run 39070140324 (issue #632): the flow-plain
+     * continuation loop hardcoded one break per piece, so blank lines
+     * folded like a single break -- "[0\r\r)]" parsed as "0 )" where
+     * the plain law (and Psych) fold 1 break to a space and n>1
+     * breaks to n-1 newlines ("0\n)"). The loop now counts every
+     * break up to the next piece. */
+    const struct {
+        const char* in;
+        const char* want;
+    } cases[] = {
+        {"[0\n)]", "0 )"},        {"[0\n\n)]", "0\n)"},   {"[0\r\r)]", "0\n)"},
+        {"[0\r\n\r\n)]", "0\n)"}, {"[0\r\n\n)]", "0\n)"}, {"[0\n\n\n)]", "0\n\n)"},
+        {"[0 \n )]", "0 )"},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.in, strlen(c.in), &st);
+        ASSERT_NE(doc, nullptr) << c.in;
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        EXPECT_EQ(val(yeptris_node_seq_at(root, 0)), c.want) << c.in;
+        yeptris_document_free(doc);
+    }
+
+    /* the artifact rides every chunking with the same fold count */
+    const char* y = "[0\r\r)]";
+    size_t ylen = strlen(y);
+    size_t whole_n = 0;
+    {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        (void)yeptris_recorder_feed(rec, y, ylen, 1);
+        (void)yeptris_recorder_records(rec, &whole_n);
+        yeptris_recorder_free(rec);
+    }
+    size_t chunked_n = 0;
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    for (size_t i = 0; i < ylen; i++) {
+        YeptrisStatus fst = yeptris_recorder_feed(rec, y + i, 1, i + 1 == ylen);
+        size_t n = 0;
+        (void)yeptris_recorder_records(rec, &n);
+        chunked_n += n;
+        if (fst != YEPTRIS_OK) {
+            break;
+        }
+    }
+    yeptris_recorder_free(rec);
+    EXPECT_EQ(chunked_n, whole_n);
+}

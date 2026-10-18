@@ -1619,6 +1619,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     }
     e->fold_n = 0;
     int crossed_break = 0;
+    uint32_t flow_breaks = 1; /* the break count before the next piece */
     for (;;) {
         yep_span s = yep_scan_plain(e->p, e->len, e->pos, 1);
         if (s.end == s.start && e->fold_n == 0) {
@@ -1630,7 +1631,7 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
         if (s.end > s.start) {
             e->fold[e->fold_n].content.p = e->p + s.start;
             e->fold[e->fold_n].content.len = s.end - s.start;
-            e->fold[e->fold_n].breaks_before = (e->fold_n == 0) ? 0 : 1;
+            e->fold[e->fold_n].breaks_before = (e->fold_n == 0) ? 0 : flow_breaks;
             e->fold_n++;
         }
         if (s.term == YEP_TERM_EOL || s.term == YEP_TERM_COMMENT) {
@@ -1639,21 +1640,47 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
                 e_skip_to_eol(e);
                 break; /* a comment ends the scalar: the next token is new */
             }
-            e_line_done(e, e->pos);
             crossed_break = 1;
-            {
+            /* Count EVERY break up to the next piece: 1 folds to a
+             * space, n>1 folds to n-1 newlines (the plain law —
+             * "[0\r\r)]" is "0\n)", the nightly's run 39070140324).
+             * The seed is 0 because the loop below consumes the
+             * piece-terminating break itself. Trailing spaces of the
+             * piece's own line are skipped first — yep_scan_plain can
+             * stop before them, and "br == 0 at a space" must never
+             * be read as content (that spun forever on "[0 \n )]"). */
+            uint32_t nbreaks = 0;
+            int ended = 0;
+            for (;;) {
+                e_skip_inline_space(e);
                 yep_line_info cl = e_line_info_here(e);
                 if (cl.flags & YEP_LF_COMMENT) {
                     e_line_done(e, cl.end);
-                    break; /* a comment line ends the scalar too */
+                    ended = 1; /* a comment line ends the scalar too */
+                    break;
+                }
+                size_t br = yep_scan_break_len(e->p, e->len, e->pos);
+                if (br == 0) {
+                    break; /* content on this line */
+                }
+                nbreaks++;
+                e->pos += br;
+                e->line++;
+                e->line_start = e->pos;
+                e->li_cache_line = 0;
+                e->shape_cache_line = 0;
+                e->facts_cache_line = 0;
+                if (e->pos >= e->len) {
+                    ended = 1;
+                    break;
                 }
             }
-            if (e_flow_ws(e) != 0) {
-                return -1;
+            flow_breaks = nbreaks;
+            if (ended) {
+                break;
             }
             if (e->pos < e->len && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
-                e->p[e->pos] != ',' && !e_comment_at(e) && e->p[e->pos] != '\n' &&
-                e->p[e->pos] != '\r') {
+                e->p[e->pos] != ',' && !e_comment_at(e)) {
                 /* a document marker line ends the scalar (and with it
                  * the unclosed flow) — folding across "---" absorbed
                  * the marker and the whole route's scalar grew past the
