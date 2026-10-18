@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **feed: the chunk cut scanner counts the flow '?' map** — the
+  scanner's flow depth tracked only brackets, but a flow '?'
+  opens the explicit-key map the engine stays inside: the scanner
+  believed the flow closed and cut at a '---' the engine read as
+  flow content, and the lone '-' at the chunk edge then errored
+  with a different trailing record than the whole parse
+  ("&a[? b '[a']?\r---\n", the nightly's run 39091724384). The
+  scanner now counts the flow '?'; over-counting only suppresses
+  cuts (the safe direction).
 - **tape: the second-root dedent law survives a pending root value** —
   a root pair whose value container follows (" k: &a" → the pending
   arm) never recorded the root's pair column, so a col-0 later line
