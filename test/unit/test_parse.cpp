@@ -5182,3 +5182,71 @@ TEST(Parse, FlowPlainFoldCountsEveryBreak) {
     yeptris_recorder_free(rec);
     EXPECT_EQ(chunked_n, whole_n);
 }
+
+TEST(Parse, FlowCollectionBareKeyCarriesNullValue) {
+    /* issue #631: a flow collection closing with no ':' is a bare
+     * implicit key -- libyaml/Psych emit the implicit null value
+     * ("{{}}" is { {}: null }, "{[a], z: 1}" is {[a]: null, z: 1}).
+     * The kernel set just_closed but only the ':' path consumed it;
+     * the ','/' }' boundaries dropped the pair's value entirely. A
+     * key_coll frame flag now records key candidacy at open time (a
+     * value-position open clears pending_key itself) and both
+     * boundaries synthesize the null. */
+    const char* ys[] = {"{{}}",     "{[a]}",       "[{{}}]",   "{[a], z: 1}", "{{}}: v",
+                        "{k: [a]}", "{k: {b: c}}", "[a, [b]]", "[{[b]: 2}]"};
+    /* expected scalar-event counts (the synthesized null included) */
+    const size_t scalars[] = {1, 2, 1, 4, 2, 2, 3, 2, 2};
+    for (size_t v = 0; v < sizeof(ys) / sizeof(ys[0]); v++) {
+        size_t ylen = strlen(ys[v]);
+        size_t whole_n = 0;
+        {
+            YeptrisRecorder rec = yeptris_recorder_new();
+            ASSERT_NE(rec, nullptr);
+            (void)yeptris_recorder_feed(rec, ys[v], ylen, 1);
+            size_t n = 0;
+            const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+            whole_n = n;
+            size_t sc = 0;
+            for (size_t i = 0; i < n; i++) {
+                if (rs[i].type == YEPTRIS_EV_SCALAR) {
+                    sc++;
+                }
+            }
+            EXPECT_EQ(sc, scalars[v]) << ys[v];
+            yeptris_recorder_free(rec);
+        }
+
+        /* the shape rides every chunking with the same event count */
+        size_t chunked_n = 0;
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        for (size_t i = 0; i < ylen; i++) {
+            YeptrisStatus fst = yeptris_recorder_feed(rec, ys[v] + i, 1, i + 1 == ylen);
+            size_t n = 0;
+            (void)yeptris_recorder_records(rec, &n);
+            chunked_n += n;
+            if (fst != YEPTRIS_OK) {
+                break;
+            }
+        }
+        yeptris_recorder_free(rec);
+        EXPECT_EQ(chunked_n, whole_n) << ys[v];
+    }
+
+    /* the exact law on the artifact: {{}} emits the null between the
+     * key's MAP_END and the frame's own MAP_END */
+    {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        (void)yeptris_recorder_feed(rec, "{{}}", 4, 1);
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        ASSERT_GE(n, (size_t)7);
+        EXPECT_EQ(rs[2].type, YEPTRIS_EV_MAPPING_START);
+        EXPECT_EQ(rs[3].type, YEPTRIS_EV_MAPPING_START);
+        EXPECT_EQ(rs[4].type, YEPTRIS_EV_MAPPING_END);
+        EXPECT_EQ(rs[5].type, YEPTRIS_EV_SCALAR); /* the implicit null */
+        EXPECT_EQ(rs[6].type, YEPTRIS_EV_MAPPING_END);
+        yeptris_recorder_free(rec);
+    }
+}

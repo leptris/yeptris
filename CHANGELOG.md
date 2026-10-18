@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: a bare flow collection key carries its null value** —
+  "{{}}" parsed as a pair whose value vanished; libyaml/Psych treat a
+  collection closing with no ':' as an implicit key and emit the
+  null ("{{}}" is { {}: null }, "{[a], z: 1}" is {[a]: null,
+  z: 1}). A key-candidacy frame flag recorded at open time now feeds
+  both the ',' and the close boundary, which synthesize the implicit
+  scalar (value-position collections are untouched).
 - **parse: flow plain folding counts every break** — the flow-plain
   continuation loop hardcoded one break per piece, so blank lines
   folded like a single break ("[0\r\r)]" parsed as "0 )" where the

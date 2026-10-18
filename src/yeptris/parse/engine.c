@@ -2099,7 +2099,8 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
         uint8_t pair_open;
         uint8_t pair_value;
         uint8_t pair_wrap;
-        uint8_t q_coll; /* seq: an explicit '?' key collection awaits completion */
+        uint8_t q_coll;   /* seq: an explicit '?' key collection awaits completion */
+        uint8_t key_coll; /* map: the nested collection opened in key position */
         int32_t buf_from;
         uint32_t entry_line;
         uint32_t entries;
@@ -2109,6 +2110,7 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
     st[idx].pending_key = (uint8_t)pending_key;
     st[idx].sep = 0;
     st[idx].just_closed = 0;
+    st[idx].key_coll = 0;
     st[idx].pair_open = 0;
     st[idx].pair_value = 0;
     st[idx].pair_wrap = 0;
@@ -2128,6 +2130,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
         uint8_t pair_value;  /* seq: the open pair already has its value */
         uint8_t pair_wrap;   /* map frame pushed as a seq single-pair */
         uint8_t q_coll;      /* seq: an explicit '?' key collection awaits completion */
+        uint8_t key_coll;    /* map: a nested collection opened in key position */
         int32_t buf_from;    /* seq: entry events buffered from this index */
         uint32_t entry_line; /* seq: line where the buffered entry ended */
         uint32_t entries;    /* completed entries (for trailing-comma detection) */
@@ -2275,9 +2278,11 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
             st[n - 1].just_closed = 0;
             /* the nested collection is an entry of the parent frame; when
              * it appears in a map's value position it completes the pair */
+            int coll_key = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0 && !q_key);
             if (st[n - 1].kind == 1 && st[n - 1].pending_key == 1) {
                 st[n - 1].pending_key = 0;
             }
+            st[n - 1].key_coll = (uint8_t)coll_key;
             st[n - 1].sep = 0;
             st[n - 1].entries++;
             e_flow_frame_init(st, n, (oc == '[') ? 0 : 1, 0);
@@ -2523,6 +2528,18 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 }
                 st[n - 1].pending_key = 0;
             }
+            if (st[n - 1].kind == 1 && st[n - 1].key_coll && st[n - 1].pending_key == 0) {
+                /* "{[a], z: 1}" — a closed collection with no ':' is a
+                 * bare key: libyaml emits the implicit null value */
+                yep_event nv;
+                e_event_init(&nv, YEP_EV_SCALAR);
+                nv.implicit = 1;
+                nv.style = YEP_STYLE_PLAIN;
+                if (emit_now(e, &nv) != 0) {
+                    return -2;
+                }
+                st[n - 1].key_coll = 0;
+            }
             st[n - 1].sep = 1;
             st[n - 1].just_closed = 0;
             continue;
@@ -2585,6 +2602,19 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     return -2;
                 }
                 st[n - 1].pending_key = 0;
+            }
+            if (st[n - 1].kind == 1 && st[n - 1].key_coll && st[n - 1].pending_key == 0) {
+                /* "{{}}" / "{[a]}" — the closed collection is a bare
+                 * key: libyaml emits the implicit null value before
+                 * the frame's own MAP_END */
+                yep_event nv;
+                e_event_init(&nv, YEP_EV_SCALAR);
+                nv.implicit = 1;
+                nv.style = YEP_STYLE_PLAIN;
+                if (emit_now(e, &nv) != 0) {
+                    return -2;
+                }
+                st[n - 1].key_coll = 0;
             }
             if (st[n - 1].pair_open) {
                 if (!st[n - 1].pair_value) {
@@ -2657,6 +2687,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
             if (st[n - 1].kind == 1 && st[n - 1].just_closed) {
                 /* '[a, b]: v' inside a map — the closed collection is the key */
                 st[n - 1].just_closed = 0;
+                st[n - 1].key_coll = 0;
                 st[n - 1].pending_key = 1;
                 continue;
             }
