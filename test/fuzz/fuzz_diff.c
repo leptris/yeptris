@@ -119,6 +119,57 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
     return o == yo && memcmp(out, ynorm, o) == 0;
 }
 
+/* True when the difference is exactly the documented LS/PS break-
+ * normalization family. yeptris normalizes LS/PS (U+2028/9) to '\n'
+ * BEFORE the parse; libyaml treats them as breaks in block context
+ * but keeps them as RAW CONTENT inside quoted scalars (Psych:
+ * k: "a\xe2\x80\xa8b" -> bytes 97 226 128 168 98; NEL folds inside
+ * quotes in both engines, so only LS/PS diverge). The transform:
+ * substitute LS/PS -> '\n' in a copy of the input; when libyaml's
+ * dump of THAT equals yeptris's dump of the original, the divergence
+ * is exactly this family. The full quote-aware normalization slice
+ * (the front end cannot see quote state) is a filed follow-up. */
+static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
+    if (ydump == NULL) {
+        return 0;
+    }
+    int has = 0;
+    for (size_t i = 0; i + 2 < size; i++) {
+        if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            has = 1;
+            break;
+        }
+    }
+    if (!has) {
+        return 0; /* no LS/PS: some other divergence */
+    }
+    char* sub = malloc(size);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    for (size_t i = 0; i < size;) {
+        if (i + 2 < size && (unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            sub[o++] = '\n';
+            i += 3;
+        } else {
+            sub[o++] = (char)data[i++];
+        }
+    }
+    int ok2 = 0;
+    char* ldump2 = yd_libyaml_dump(sub, o, &ok2);
+    free(sub);
+    if (ldump2 == NULL || !ok2) {
+        free(ldump2);
+        return 0;
+    }
+    int known = strcmp(ydump, ldump2) == 0;
+    free(ldump2);
+    return known;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -127,7 +178,8 @@ static void probe_one(const uint8_t* data, size_t size) {
     /* a documented divergence, not a bug: the suite sides with
      * yeptris (see yd_qflow_divergence) */
     int known = v == YD_DIFFER &&
-                (yd_qflow_divergence(ydump, ldump) || yd_bom_content_divergence(ydump, ldump));
+                (yd_qflow_divergence(ydump, ldump) || yd_bom_content_divergence(ydump, ldump) ||
+                 yd_breaknorm_divergence(data, size, ydump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */

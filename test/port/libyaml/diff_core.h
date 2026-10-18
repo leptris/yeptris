@@ -20,6 +20,11 @@ typedef enum {
  * present only for the side that parsed. */
 yd_verdict yd_diff_classify(const char* in, size_t n, char** yep_dump, char** ly_dump);
 
+/* libyaml's dump of an ARBITRARY buffer (the break-normalization
+ * comparator re-runs libyaml on an LS/PS-substituted copy). malloc'd,
+ * caller frees; NULL on failure. */
+char* yd_libyaml_dump(const char* in, size_t n, int* ok);
+
 const char* yd_verdict_name(yd_verdict v);
 
 /* Loads "<id> <note>" lines (comments/# skipped); returns the count,
