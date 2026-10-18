@@ -21,3 +21,7 @@
 *.png binary
 *.pdf binary
 *.gz  binary
+
+# Fuzz corpus entries are arbitrary input bytes (CR/NEL/multibyte
+# shapes) — keep every checkout byte-exact.
+test/fuzz/corpus/** binary

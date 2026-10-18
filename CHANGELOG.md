@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **parse: flow plain folding counts every break** — the flow-plain
+  continuation loop hardcoded one break per piece, so blank lines
+  folded like a single break ("[0\r\r)]" parsed as "0 )" where the
+  plain law folds 1 break to a space and n>1 breaks to n-1 newlines,
+  "0\n)", matching Psych); the loop now counts every break up to the
+  next piece, trailing spaces of the piece's own line included.
 - **parse: "-:" is a plain key, not explicit-key content** — the
   '?'-fix's dash carve-out only split on the first byte; a dash with
   a non-space follower is a plain-key pair, so "?\n-:" and the CR
