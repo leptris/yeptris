@@ -288,3 +288,20 @@ TEST(Stepping, EmptyAndFinalOnlyFeeds) {
     expect_identical_all_splits("---\n");
     expect_identical_all_splits("--- null\n");
 }
+
+TEST(Stepping, FlowQMapMarkerCutStaysInside) {
+    /* the nightly's run 39091724384 (crash-c2894d7e, 18-byte shrink
+     * "&a[? b '[a']?\r---\n"): the chunk cut scanner counted only
+     * bracket flow depth, but the flow '?' opens the explicit-key
+     * MAP the engine stays inside — the scanner believed the flow
+     * closed at ']' and cut at the '---', so the engine's non-final
+     * run ended in a lone '-' at the edge and its error-path record
+     * (empty + pending tag) diverged from the whole parse's ('---'
+     * scalar). The scanner now counts the flow '?' like the engine's
+     * map; over-counting only suppresses cuts (the safe direction). */
+    const std::string in = "&a[? b '[a']?\r---\n";
+    expect_identical(in, 14); /* the crasher's exact split */
+    expect_identical(in, 13);
+    expect_identical(in, 17);
+    expect_identical(in, 1);
+}

@@ -4261,6 +4261,19 @@ static size_t step_scan(yep_stepstate* st) {
             }
             st->word_led = (c == '&' || c == '*' || c == '!' || c == '-' || c == '?' || c == ':' ||
                             c == ',' || c == '[' || c == '{' || c == ']' || c == '}');
+            if (c == '?' && st->in_flow > 0) {
+                /* a flow '?' opens the explicit-key MAP: the engine is
+                 * inside one more collection than the bracket count
+                 * shows, so marker cuts must stay out of it. The map
+                 * closes only at a closer (or never, on garbage), so
+                 * this over-counts on "[? a : b, c]" — the safe
+                 * direction (a missed cut degrades toward whole-parse
+                 * identity; the nightly's crash-c2894d7e, run
+                 * 39091724384, cut at a --- the engine read as flow
+                 * content and the lone '-' at the chunk edge errored
+                 * differently than the whole parse). */
+                st->in_flow++;
+            }
             if (c == '\'' || c == '"') {
                 st->quote = c; /* a quote at a word start IS a quoted token */
                 st->tok_start = 0;
