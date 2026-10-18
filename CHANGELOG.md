@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **tape: the second-root dedent law survives a pending root value** —
+  a root pair whose value container follows (" k: &a" → the pending
+  arm) never recorded the root's pair column, so a col-0 later line
+  read as "root pairs at column 0" and the tape accepted the second
+  root the engine (and Psych) reject; the pending arm now arms the
+  column for col>0 roots (col-0 roots stay exempt — nothing dedents
+  below them).
 - **parse: a bare flow collection key carries its null value** —
   "{{}}" parsed as a pair whose value vanished; libyaml/Psych treat a
   collection closing with no ':' as an implicit key and emit the

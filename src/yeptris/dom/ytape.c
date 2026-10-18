@@ -1590,6 +1590,20 @@ static int yt_f_run(yt_fused* F) {
                     /* "key:" with a following-lines container: push pending
                      * (aid rides it: an anchored container resolves through
                      * the S2900 + anchored-start form, not on_block_open) */
+                    if (depth == 0 && col > 0 && st[0].content_col == 0) {
+                        /* the root's pairs' column must arm before the
+                         * guard below reads it — the pending arm is the
+                         * root opener for " k: &a" shapes whose value
+                         * container follows, and without it a col-0
+                         * later line reads as "root pairs at column 0"
+                         * and the second-root dedent never fires (the
+                         * nightly's run 39064966578, issue #630: the
+                         * inline-value arm sets content_col, this one
+                         * didn't). Col-0 roots are exempt: nothing
+                         * dedents below them, and arming them breaks
+                         * the content_col==0 special cases downstream. */
+                        st[0].content_col = col + 1;
+                    }
                     if (st[depth].kind == 0 && st[depth].content_col != 0 &&
                         col + 1 != st[depth].content_col &&
                         (col != st[depth].indent || (depth == 0 && st[0].content_col > 1))) {
