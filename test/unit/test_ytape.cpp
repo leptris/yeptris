@@ -268,10 +268,11 @@ TEST(YTape, RootPendingPairArmsTheSecondRootLaw) {
      * value container FOLLOWS (" k: &a" -> the pending arm) never set
      * st[0].content_col, so the col-0 later line read as "root pairs
      * at column 0" and the tape accepted the second root the engine
-     * (and Psych) reject. The pending arm now records the root's pair
-     * column for col>0 roots; col-0 roots stay exempt (nothing
-     * dedents below them, and arming them breaks the content_col==0
-     * special cases downstream). */
+     * (and Psych) reject. The walk now tracks root_pair_col (the
+     * first root pair's own column) beside root_open and rejects any
+     * dedent below it — content_col stays untouched (arming it broke
+     * the " k: \n j: w" siblings into four root scalars, the next
+     * nightly's crash-753ce4c1). */
     const char* reject = " k: &a\n  - r\na: b\n";
     const char* accept[] = {
         "k: &v\n  - x\nz: 2\n", /* col-0 root: a sibling, not a dedent */
