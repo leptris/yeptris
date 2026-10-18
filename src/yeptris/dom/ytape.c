@@ -1257,6 +1257,15 @@ static int yt_f_run(yt_fused* F) {
     st[0].started = 1; /* the root's start event defers to its first pair */
     int root_open = 0;
     int root_evented = 0;
+    uint32_t root_pair_col = 0; /* the root map's first pair line's column
+                                 * (0 = none seen): the second-root dedent
+                                 * law reads this, NOT content_col — the
+                                 * pending arm never set content_col (" k:
+                                 * &a", the nightly's run 39064966578,
+                                 * issue #630) and arming content_col here
+                                 * instead broke the " k: \n j: w" siblings
+                                 * (the next nightly's crash-753ce4c1: the
+                                 * map dissolved into four root scalars) */
     (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 1u);
     (void)yt_put(t, ((uint64_t)YTP_EV_COMPACT << 56) | 3u);
     size_t pos = 0;
@@ -1519,6 +1528,21 @@ static int yt_f_run(yt_fused* F) {
                        !(c == '&' || c == '!' || c == '*' || c == '\'' || c == '"' || c == '[' ||
                          c == '{' || c == '|' || c == '>' || c == '%' || c == '?' || c == '-') &&
                        yep_plain_first_ok((unsigned char)c)) {
+                if (depth == 0) {
+                    if (root_pair_col != 0 && col < root_pair_col) {
+                        /* a dedent below the root map's own pair column:
+                         * a SECOND root without "---" (issue #630, " k:
+                         * &a\n  - r\na: b" — the pending-value root arm
+                         * never arms content_col, so the off-column
+                         * guard below cannot see this; the engine and
+                         * libyaml reject with "did not find expected
+                         * <document start>") */
+                        return 1;
+                    }
+                    if (root_pair_col == 0) {
+                        root_pair_col = col; /* the first root pair owns its column */
+                    }
+                }
                 if (st[depth].kind == 0 &&
                     ((st[depth].content_col != 0 && col + 1 != st[depth].content_col &&
                       (col != st[depth].indent || (depth == 0 && st[0].content_col > 1))) ||
@@ -1590,20 +1614,6 @@ static int yt_f_run(yt_fused* F) {
                     /* "key:" with a following-lines container: push pending
                      * (aid rides it: an anchored container resolves through
                      * the S2900 + anchored-start form, not on_block_open) */
-                    if (depth == 0 && col > 0 && st[0].content_col == 0) {
-                        /* the root's pairs' column must arm before the
-                         * guard below reads it — the pending arm is the
-                         * root opener for " k: &a" shapes whose value
-                         * container follows, and without it a col-0
-                         * later line reads as "root pairs at column 0"
-                         * and the second-root dedent never fires (the
-                         * nightly's run 39064966578, issue #630: the
-                         * inline-value arm sets content_col, this one
-                         * didn't). Col-0 roots are exempt: nothing
-                         * dedents below them, and arming them breaks
-                         * the content_col==0 special cases downstream. */
-                        st[0].content_col = col + 1;
-                    }
                     if (st[depth].kind == 0 && st[depth].content_col != 0 &&
                         col + 1 != st[depth].content_col &&
                         (col != st[depth].indent || (depth == 0 && st[0].content_col > 1))) {

@@ -14,9 +14,12 @@ crashers in the regression corpus).
   a root pair whose value container follows (" k: &a" → the pending
   arm) never recorded the root's pair column, so a col-0 later line
   read as "root pairs at column 0" and the tape accepted the second
-  root the engine (and Psych) reject; the pending arm now arms the
-  column for col>0 roots (col-0 roots stay exempt — nothing dedents
-  below them).
+  root the engine (and Psych) reject; the walk now tracks
+  root_pair_col (the first root pair's own column) beside root_open
+  and rejects any dedent below it. content_col itself stays
+  untouched: arming it in the pending arm dissolved the " k: \n
+  j: w" siblings into four root scalars (the next nightly's
+  crash-753ce4c1).
 - **parse: a bare flow collection key carries its null value** —
   "{{}}" parsed as a pair whose value vanished; libyaml/Psych treat a
   collection closing with no ':' as an implicit key and emit the
