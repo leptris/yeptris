@@ -83,7 +83,7 @@ static int ly_line(const yaml_event_t* ev, char* out, size_t cap) {
     return (int)yd_line(&y, out, cap);
 }
 
-static char* ly_dump(const char* in, size_t n, int* ok) {
+char* yd_libyaml_dump(const char* in, size_t n, int* ok) {
     yaml_parser_t p;
     *ok = 0;
     if (!yaml_parser_initialize(&p)) {
@@ -138,7 +138,7 @@ yd_verdict yd_diff_classify(const char* in, size_t n, char** yep_dump, char** ly
     int yok = 0;
     char* ydump = yd_sem_dump(in, n, &yok);
     int lok = 0;
-    char* ldump = ly_dump(in, n, &lok);
+    char* ldump = yd_libyaml_dump(in, n, &lok);
 
     yd_verdict v;
     if (yok && lok) {
