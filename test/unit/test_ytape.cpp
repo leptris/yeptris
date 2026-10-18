@@ -262,3 +262,42 @@ TEST(YTape, Compat11SchemaMatches) {
     yeptris_document_free(direct);
     yeptris_document_free(lazy);
 }
+
+TEST(YTape, RootPendingPairArmsTheSecondRootLaw) {
+    /* issue #630 (the nightly's run 39064966578): a root pair whose
+     * value container FOLLOWS (" k: &a" -> the pending arm) never set
+     * st[0].content_col, so the col-0 later line read as "root pairs
+     * at column 0" and the tape accepted the second root the engine
+     * (and Psych) reject. The pending arm now records the root's pair
+     * column for col>0 roots; col-0 roots stay exempt (nothing
+     * dedents below them, and arming them breaks the content_col==0
+     * special cases downstream). */
+    const char* reject = " k: &a\n  - r\na: b\n";
+    const char* accept[] = {
+        "k: &v\n  - x\nz: 2\n", /* col-0 root: a sibling, not a dedent */
+        "- &a\n  - r\n- b\n",   /* seq root: no pair law */
+        "k: &v\n  - x\n",       /* pending value, no second root */
+        "k: &v\nz: 2\n",        /* inline-neighbour pending pair */
+        " k: v\n j: w\n",       /* the working twin, stays rejected */
+    };
+    YeptrisStatus st1 = YEPTRIS_OK, st2 = YEPTRIS_OK;
+    YeptrisDocument e1 = yeptris_parse_ex(reject, strlen(reject), NULL, &st1);
+    YeptrisDocument e2 = yeptris_parse_ytape_ex(reject, strlen(reject), NULL, &st2);
+    EXPECT_NE(st1, YEPTRIS_OK) << reject;
+    EXPECT_EQ(st1, st2) << reject; /* the routes must not split */
+    yeptris_document_free(e1);
+    yeptris_document_free(e2);
+    for (const char* s : accept) {
+        st1 = YEPTRIS_OK;
+        st2 = YEPTRIS_OK;
+        e1 = yeptris_parse_ex(s, strlen(s), NULL, &st1);
+        e2 = yeptris_parse_ytape_ex(s, strlen(s), NULL, &st2);
+        EXPECT_EQ(st1, YEPTRIS_OK) << s;
+        ASSERT_EQ(st1, st2) << s;
+        EXPECT_TRUE(
+            doms_equal(yep_doc_dom((yeptris_document*)e1), yep_doc_dom((yeptris_document*)e2)))
+            << s;
+        yeptris_document_free(e1);
+        yeptris_document_free(e2);
+    }
+}
