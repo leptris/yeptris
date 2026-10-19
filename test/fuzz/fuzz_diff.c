@@ -450,6 +450,79 @@ static int yd_anchor_name_colon_divergence(const uint8_t* data, size_t size, con
     return 0;
 }
 
+/* True when the difference is the glued-indicator-comment family:
+ * a line starting with a block-scalar indicator IMMEDIATELY followed
+ * by '#' (">#' > ':\tg" — the nightly's run 39258457271,
+ * crash-d4bb362b). libyaml reads header + comment right after the
+ * indicator (the spec's s-separate-in-line may be empty) and yields
+ * an empty scalar; yeptris's comment law requires a preceding blank
+ * (e_comment_at), so the line is plain CONTENT — a documented
+ * lenient divergence (the suite has no glued-indicator test). The
+ * gate: the pattern exists, and spacing it out ("> #") leaves
+ * libyaml's dump byte-identical (its reading was never sensitive to
+ * the space) while yeptris's dump differs — the divergence is then
+ * exactly the indicator-comment law. */
+static int yd_header_glued_comment_divergence(const uint8_t* data, size_t size,
+                                              const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL || strcmp(ydump, ldump) == 0) {
+        return 0;
+    }
+    size_t at = 0;
+    int found = 0;
+    while (at < size) {
+        size_t line_end = at;
+        while (line_end < size && data[line_end] != '\n' && data[line_end] != '\r') {
+            line_end++;
+        }
+        size_t t = at;
+        while (t < line_end && (data[t] == ' ' || data[t] == '\t')) {
+            t++;
+        }
+        if (t + 1 < line_end && (data[t] == '>' || data[t] == '|') && data[t + 1] == '#') {
+            found = 1;
+            break;
+        }
+        at = line_end + 1;
+    }
+    if (!found) {
+        return 0;
+    }
+    char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    /* space the glued comment out on EVERY matching line */
+    size_t o = 0;
+    at = 0;
+    while (at < size) {
+        size_t line_end = at;
+        while (line_end < size && data[line_end] != '\n' && data[line_end] != '\r') {
+            line_end++;
+        }
+        size_t t = at;
+        while (t < line_end && (data[t] == ' ' || data[t] == '\t')) {
+            t++;
+        }
+        int glue = t + 1 < line_end && (data[t] == '>' || data[t] == '|') && data[t + 1] == '#';
+        for (size_t i = at; i < line_end; i++) {
+            if (glue && i == t + 1) {
+                sub[o++] = ' ';
+            }
+            sub[o++] = (char)data[i];
+        }
+        if (line_end < size) {
+            sub[o++] = (char)data[line_end];
+        }
+        at = line_end + 1;
+    }
+    int ok2 = 0;
+    char* ldump2 = yd_libyaml_dump(sub, o, &ok2);
+    free(sub);
+    int known = (ldump2 != NULL && ok2 && strcmp(ldump, ldump2) == 0);
+    free(ldump2);
+    return known;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -462,7 +535,8 @@ static void probe_one(const uint8_t* data, size_t size) {
                  yd_breaknorm_divergence(data, size, ydump) ||
                  yd_clip_breakless_divergence(data, size, ydump) ||
                  yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
-                 yd_anchor_name_colon_divergence(data, size, ydump, ldump));
+                 yd_anchor_name_colon_divergence(data, size, ydump, ldump) ||
+                 yd_header_glued_comment_divergence(data, size, ydump, ldump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */

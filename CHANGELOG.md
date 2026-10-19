@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **fuzz_diff: carry the glued-indicator-comment family** — a line
+  starting with `>` or `|` IMMEDIATELY followed by `#` (the
+  nightly's run 39258457271, crash-d4bb362b): libyaml reads header +
+  comment (the spec's s-separate-in-line may be empty) and yields an
+  empty scalar; yeptris's comment law requires a preceding blank, so
+  the line is plain content. The suite has no glued-indicator test;
+  the comparator spaces the glue out and requires libyaml's dump to
+  be byte-identical (its reading was never space-sensitive).
 - **fuzz_diff: the LS/PS family's UTF-16 twin** — through the BOM
   transcode front-end the raw bytes never contain the UTF-8 LS/PS
   triple, so the break-normalization comparator missed the family
