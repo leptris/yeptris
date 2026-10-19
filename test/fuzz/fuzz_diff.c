@@ -78,45 +78,65 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
         n++;
         p = nl ? nl + 1 : p + strlen(p);
     }
+    /* the yeptris dump, split into lines for the parallel walk */
+    const char* ylines[512];
+    size_t ylens[512];
+    int yn = 0;
+    p = ydump;
+    while (*p != '\0' && yn < 512) {
+        ylines[yn] = p;
+        const char* nl = strchr(p, '\n');
+        ylens[yn] = nl ? (size_t)(nl - p) : strlen(p);
+        yn++;
+        p = nl ? nl + 1 : p + strlen(p);
+    }
+    /* The counts legitimately differ: libyaml carries the +MAP/-MAP
+     * wrappers (and sometimes the empty value line) that yeptris
+     * flattens away; the walk below reconciles them. Parallel walk:
+     * the dumps must be line-identical EXCEPT that yeptris spells a
+     * flow-'?' key with a '?' prefix where libyaml consumed it, and
+     * libyaml wraps the entry in +MAP/-MAP that yeptris flattens.
+     * Both pair shapes ride: the single-pair
+     * "+MAP / =VAL :X / =VAL : / -MAP" block (the classic [?x]) and
+     * the multi-pair map where only the KEY lines carry the '?'
+     * ("{\n?(e etry,\n?\n}", the nightly's crash-36f7f5f9). Every
+     * branch advances j itself; the loop header never does. */
+    int j = 0;
     for (int i = 0; i < n; i++) {
-        /* the event-dump format is "=VAL : <value>" */
+        if (j >= yn) {
+            return 0;
+        }
+        /* the single-pair wrapper block */
         if (lens[i] == 4 && strncmp(lines[i], "+MAP", 4) == 0 && i + 3 < n && lens[i + 1] >= 8 &&
             strncmp(lines[i + 1], "=VAL : ", 7) == 0 && lens[i + 2] == 7 &&
             strncmp(lines[i + 2], "=VAL : ", 7) == 0 && lens[i + 3] == 4 &&
-            strncmp(lines[i + 3], "-MAP", 4) == 0) {
-            /* a single-pair map: yeptris spells the key with a '?'
-             * prefix and no wrapper */
-            if (o + 8 + (lens[i + 1] - 7) + 1 >= sizeof(out)) {
-                return 0;
+            strncmp(lines[i + 3], "-MAP", 4) == 0 && ylens[j] >= 8 &&
+            strncmp(ylines[j], "=VAL : ?", 8) == 0 && ylens[j] == 8 + (lens[i + 1] - 7) &&
+            memcmp(ylines[j] + 8, lines[i + 1] + 7, lens[i + 1] - 7) == 0) {
+            i += 3; /* +MAP, the key, the empty value; -MAP rides the ++ */
+            j++;    /* yeptris's flat key line */
+            if (j < yn && ylens[j] == 7 && strncmp(ylines[j], "=VAL : ", 7) == 0) {
+                j++; /* the empty value line, when yeptris kept it */
             }
-            memcpy(out + o, "=VAL : ?", 8);
-            o += 8;
-            memcpy(out + o, lines[i + 1] + 7, lens[i + 1] - 7);
-            o += lens[i + 1] - 7;
-            out[o++] = '\n';
-            i += 3;
             continue;
         }
-        if (o + lens[i] + 2 >= sizeof(out)) {
+        /* the key-line twin inside a bigger map: yeptris's value
+         * carries the leading '?' libyaml consumed */
+        if (lens[i] >= 8 && strncmp(lines[i], "=VAL : ", 7) == 0 && ylens[j] == lens[i] + 1 &&
+            strncmp(ylines[j], "=VAL : ?", 8) == 0 &&
+            memcmp(ylines[j] + 8, lines[i] + 7, lens[i] - 7) == 0) {
+            j++;
+            continue;
+        }
+        if (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0) {
             return 0;
         }
-        memcpy(out + o, lines[i], lens[i]);
-        o += lens[i];
-        out[o++] = '\n';
+        j++;
     }
-    /* the yeptris dump is line-per-event too; compare line sets */
-    char ynorm[8192];
-    size_t yo = 0;
-    p = ydump;
-    while (*p != '\0' && yo < sizeof(ynorm) - 1) {
-        const char* nl = strchr(p, '\n');
-        size_t len = nl ? (size_t)(nl - p) : strlen(p);
-        memcpy(ynorm + yo, p, len);
-        yo += len;
-        ynorm[yo++] = '\n';
-        p = nl ? nl + 1 : p + strlen(p);
+    if (j != yn) {
+        return 0; /* trailing yeptris lines: not the ?-family shape */
     }
-    return o == yo && memcmp(out, ynorm, o) == 0;
+    return 1;
 }
 
 /* True when the difference is exactly the documented LS/PS break-
