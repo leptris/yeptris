@@ -5288,6 +5288,10 @@ TEST(Parse, BlockClipAtBreaklessEofKeepsTheBreak) {
     }
 }
 
+static const char KEY_WITH_FEFF[] = "\xEF\xBB\xBF"
+                                    "o #t |-\n"
+                                    "\xEF\xBB\xBF";
+
 TEST(Parse, TaggedQuotedKeyWithSpaceHash) {
     /* the nightly's run 39223056891 (crash-7987a601): a tagged quoted
      * KEY whose interior ' #' is inside the quotes. The props-only
@@ -5307,8 +5311,7 @@ TEST(Parse, TaggedQuotedKeyWithSpaceHash) {
         {"x:\n!t 'a #b': y\n", "a #b", "y"},
         {"x:\n!t \"a\\nb\": y\n", "a\nb", "y"},
         /* the crasher's own emitted form, byte-exact */
-        {"\"\":\n!t \"\\uFEFFo #t |-\\n\\uFEFF\":\n",
-         "\xEF\xBB\xBF" "o #t |-\n\xEF\xBB\xBF", ""},
+        {"\"\":\n!t \"\\uFEFFo #t |-\\n\\uFEFF\":\n", KEY_WITH_FEFF, ""},
     };
     for (const auto& c : cases) {
         YeptrisStatus st = YEPTRIS_OK;
