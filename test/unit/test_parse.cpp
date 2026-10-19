@@ -5287,3 +5287,52 @@ TEST(Parse, BlockClipAtBreaklessEofKeepsTheBreak) {
         yeptris_document_free(doc);
     }
 }
+
+TEST(Parse, TaggedQuotedKeyWithSpaceHash) {
+    /* the nightly's run 39223056891 (crash-7987a601): a tagged quoted
+     * KEY whose interior ' #' is inside the quotes. The props-only
+     * pre-walk ("Only PROPS-ONLY lines are new nodes") walked straight
+     * through the opening quote -- '"' is not a flow indicator -- read
+     * the quoted ' #' as a comment and rejected the keyed pair, so the
+     * emitted form of the crasher's map failed yeptris's own re-parse.
+     * libyaml accepts every case here (scan+parse; only the unknown
+     * !t constructor fails downstream). */
+    const struct {
+        const char* in;
+        const char* key;
+        const char* want;
+    } cases[] = {
+        {"x:\n!t \"a #b\": y\n", "a #b", "y"},
+        {"x:\n!t \"a #b\": y\nz: 1\n", "a #b", "y"},
+        {"x:\n!t 'a #b': y\n", "a #b", "y"},
+        {"x:\n!t \"a\\nb\": y\n", "a\nb", "y"},
+        /* the crasher's own emitted form, byte-exact */
+        {"\"\":\n!t \"\\uFEFFo #t |-\\n\\uFEFF\":\n", "\xEF\xBB\xBF" "o #t |-\n\xEF\xBB\xBF", ""},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.in, strlen(c.in), &st);
+        ASSERT_NE(doc, nullptr) << c.in;
+        EXPECT_EQ(map_str(yeptris_document_root(doc, 0), c.key), c.want) << c.in;
+        yeptris_document_free(doc);
+    }
+    /* roundtrip: parse -> emit -> re-parse must stay green and stable */
+    const char* src = ":\n!t |-\n \xEF\xBB\xBFo #t |-\n \xEF\xBB\xBF";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(src, strlen(src), &st);
+    ASSERT_NE(doc, nullptr);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    yeptris_document_free(doc);
+    ASSERT_NE(s1, nullptr);
+    YeptrisDocument d2 = yeptris_parse(s1, l1, &st);
+    ASSERT_NE(d2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(d2, &l2);
+    yeptris_document_free(d2);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_EQ(l1, l2);
+    EXPECT_EQ(memcmp(s1, s2, l1), 0);
+    free(s1);
+    free(s2);
+}
