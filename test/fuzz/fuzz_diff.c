@@ -51,7 +51,32 @@ static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
     memcpy(stripped + o, rest, strlen(rest));
     o += strlen(rest);
     stripped[o] = '\0';
-    return strcmp(stripped, ldump) == 0;
+    if (strcmp(stripped, ldump) == 0) {
+        return 1;
+    }
+    /* the value-vanishes twin (the nightly's crash-dbbc083c, two
+     * content BOMs): libyaml strips BOTH BOM bytes and emits an EMPTY
+     * stream, so the scalar line is GONE from its dump -- drop
+     * yeptris's whole scalar line too and compare. */
+    const char* line = stripped + (size_t)(val - ydump);
+    while (line > stripped && line[-1] != '\n') {
+        line--; /* back to the scalar line's start */
+    }
+    const char* lend = strchr(line, '\n');
+    if (lend == NULL) {
+        lend = line + strlen(line);
+    } else {
+        lend++;
+    }
+    char dropped[8192];
+    size_t head2 = (size_t)(line - stripped);
+    size_t tail = strlen(lend);
+    if (head2 + tail < sizeof(dropped)) {
+        memcpy(dropped, stripped, head2);
+        memcpy(dropped + head2, lend, tail + 1);
+        return strcmp(dropped, ldump) == 0;
+    }
+    return 0;
 }
 
 /* True when the two dumps differ ONLY by the flow-'?' family: libyaml
