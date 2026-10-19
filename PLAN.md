@@ -290,3 +290,47 @@ ASAN/leak regressions.
 3. Whether the libyaml-event-compatible push API stays public long-term or is
    a porting-only shim.
 4. Canonical-YAML mode scope in v1 (C14N-equivalent guarantee level).
+
+## 10. The best-ever program
+
+The mission — *the best (multiple dimensions) YAML/JSON parser/builder
+ever, in C, Ruby, Rust, JS* — decomposes into six dimensions held
+simultaneously. Standing as of 2026-10, and the sequenced work that
+closes each gap.
+
+### Dimension standing
+
+| dimension | standing today | remaining work |
+| --- | --- | --- |
+| Conformance | yaml-test-suite 395/395; psych-pure `.tml` 67/67; JSONTestSuite strict 95/95 accept, 188/188 reject; libyaml emission goldens 0-divergence; the fuzz-divergence families carried as documented comparators | the open feed family (#645 depth-cap whole-vs-chunked bookkeeping, needs its own session); #638 quote-aware LS/PS normalization; the iterparse LS/PS model split |
+| Performance | parse 2–3.4x libyaml same-binary; emission at parity-or-better; the JSON surface at simdjson parity (record tape + lazy numbers + packed records) | #352 the fused-writer architecture (the rapidyaml gap on 10/12 platforms); #474 arm64 tape-walk columns; the ledger discipline continues — every lever shipped or measured dead |
+| Safety / hardening | nightly libFuzzer ASan/UBSan across parse/roundtrip/feed/transcode/diff + a Valgrind leg; every catch fixed and pinned (unit + corpus) or carried as a suite-over-libyaml comparator | keep the green streak; extend fuzzing to the newer surfaces (visit, plan-walk, CBOR) as they grow |
+| API surfaces | C: DOM / pull / push / recorder / visit / plan-walk / builder behind one engine; Ruby: the Psych drop-in + `JSON` + CBOR + ValueML; Python: PyYAML-compatible + CBOR | Rust: the events/recorder surface + a serde bridge once the ABI settles; JS: the recorder bulk-drain (O(chunks) over WASM) + iterparse, then the first owner-manual npm publish |
+| Transport correctness | `docs/FFI.md` + `docs/ABI.md` pins; lockstep trains (`{c-semver}.{binding-patch}`); the publisher boundary holds (engine stops at the tag; each binding owns its train) | per-language transports keep tracking the ABI pins; release drills on every new binding |
+| Trust | perf ledger, documented divergences, pinned fixes with repro, corpora fetched pinned by script | keep claims carrying numbers; keep the CHANGELOG per-catch honest |
+
+### Language standing (the bar per binding)
+
+- **C — this repo.** The reference core; every law above applies here
+  first.
+- **Ruby — `yeptris-ruby`.** The most complete binding: the Psych
+  drop-in namespace, `JSON.parse` parity with the strict-dup contract,
+  CBOR, ValueML, the marshal bridge. Tracks every engine train.
+- **Python — `yeptris-py`.** PyYAML-compatible loader/dumper; rides
+  the lockstep trains; the ctypes FFI mirrors the Ruby one-bulk
+  contracts.
+- **Rust — `yeptris-rs`.** Thin safe handles today. Planned: the
+  events/recorder surface and a serde bridge, sequenced after the C
+  ABI stabilizes the shapes they mirror.
+- **JS/TS — `yeptris-ts`.** The thinnest. Planned: recorder
+  bulk-drain over WASM (the O(chunks) FFI lesson), iterparse, then
+  the first owner-manual npm publish.
+
+### The operating loop that keeps it
+
+The nightly fuzz loop feeds the engine board; each catch is
+reproduced, shrunk, root-caused, and either fixed (pin + corpus +
+CHANGELOG) or carried as a documented comparator with the suite as
+the bar. Lockstep release trains ship every fix wave across all
+bindings. The perf ledger records every lever — shipped or measured
+dead — so the performance dimension never regresses by accident.

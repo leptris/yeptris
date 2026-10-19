@@ -14,6 +14,21 @@ Mission, in priority order:
 
 The repository starts empty. libleptris is the architectural source of truth: every trick it validated is the default answer here unless YAML's grammar demands otherwise. Port leptris's *machinery*, not its XML grammar.
 
+## The mission: the best ever, on every axis at once
+
+**We have to be the best (multiple dimensions) YAML/JSON parser/builder ever — in C, Ruby, Rust, JS.** Not best-in-one-metric: best held SIMULTANEOUSLY across six dimensions and every language we ship.
+
+The six dimensions:
+
+1. **Conformance** — the suite bar; every divergence documented and carried.
+2. **Performance** — beat libyaml, Psych, rapidyaml, and simdjson on every measure and platform; every claim carries harness numbers; dead ends recorded in the perf ledger.
+3. **Safety / hardening** — fuzz-clean by construction (nightly ASan/UBSan/Valgrind across every harness); depth-bounded; every catch fixed and pinned, or carried as a documented comparator.
+4. **API surfaces** — the right idiom per language: DOM/pull/push/recorder/visit/builder in C, the Psych drop-in + JSON + CBOR + ValueML in Ruby, PyYAML-compatible in Python, thin-safe with serde in Rust, WASM with the recorder bulk-drain in JS.
+5. **Transport correctness** — FFI/wire contracts pinned and ABI-tracked; lockstep release trains; byte-stable `serialize(parse(serialize(x)))`.
+6. **Trust** — divergences documented, corpora published, fixes attributed, releases reproducible.
+
+Language standing: **C** (this repo) is the reference core; **Ruby** is the most complete binding; **Python** rides the lockstep trains; **Rust** and **JS** are the thinnest today with their surfaces planned in `PLAN.md` ("The best-ever program"). When a dimension and a language conflict, the dimension wins; when speed and correctness conflict, correctness wins — then we make speed catch up.
+
 ## Reference repositories
 
 | Path | What it is | What we take from it |
