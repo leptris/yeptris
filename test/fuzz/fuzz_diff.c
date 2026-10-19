@@ -268,6 +268,71 @@ static int yd_flow_anchor_colon_divergence(const uint8_t* data, size_t size, con
     return 0;
 }
 
+/* True when the difference is the anchor-name charset family: the
+ * suite keeps ':' (and more) INSIDE anchor names (W5VH
+ * "&:@*!$\"<foo>:", 2SXE "&a: key") and yeptris follows, while
+ * libyaml stops the name at the colon ("&b:a!b:a!c" anchors 'b' and
+ * reads ":a!b:a!c" as the value -- Psych's AST confirms). libyaml is
+ * behind the suite; the gate is a depth-0 mini-scan for an '&' whose
+ * name (up to the first blank/EOF) contains a ':', outside quotes,
+ * no aliases or prop chains. */
+static int yd_anchor_name_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                           const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    int depth = 0;
+    int quote = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\') {
+                i++;
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            continue;
+        }
+        if (c == '\'' || c == '"') {
+            quote = c;
+            continue;
+        }
+        if (c == '#' && depth == 0) {
+            break;
+        }
+        if (c == '[' || c == '{') {
+            depth++;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            if (depth > 0) {
+                depth--;
+            }
+            continue;
+        }
+        if (c == '*' || c == '@' || c == '`' || c == '<' || c == '!') {
+            return 0; /* aliases/verbatim/shorthand tags: out of family */
+        }
+        if (c == '&' && depth == 0) {
+            size_t j = i + 1;
+            int colon = 0;
+            while (j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
+                   data[j] != '\r') {
+                if (data[j] == ':') {
+                    colon = 1;
+                }
+                j++;
+            }
+            if (colon && j > i + 1) {
+                return 1; /* the name rides through ':' at block level */
+            }
+        }
+    }
+    return 0;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -279,7 +344,8 @@ static void probe_one(const uint8_t* data, size_t size) {
                 (yd_qflow_divergence(ydump, ldump) || yd_bom_content_divergence(ydump, ldump) ||
                  yd_breaknorm_divergence(data, size, ydump) ||
                  yd_clip_breakless_divergence(data, size, ydump) ||
-                 yd_flow_anchor_colon_divergence(data, size, ydump, ldump));
+                 yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
+                 yd_anchor_name_colon_divergence(data, size, ydump, ldump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */

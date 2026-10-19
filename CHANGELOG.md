@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **fuzz_diff: carry the anchor-name-charset family** — the suite
+  keeps ':' INSIDE anchor names (W5VH "&:@*!\"<foo>:", 2SXE
+  "&a: key") and yeptris follows; libyaml stops the name at the
+  colon ("&b:a!b:a!c" anchors 'b' and reads the rest as the value).
+  libyaml is behind the suite; the family rides a depth-0 mini-scan
+  comparator (&-names containing ':' at block level, quotes and
+  alias/tag chains excluded).
 - **fuzz_diff: carry the flow-anchor-colon family** — inside a flow
   collection libyaml reads "&name:" as an anchored empty key
   ("[&a: x]" -> {anchored-empty => x}); yeptris's designed lenience
