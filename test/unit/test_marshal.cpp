@@ -18,6 +18,7 @@
 
 #include <yeptris.h>
 #include <yeptris/dom.h>
+#include <yeptris/json.h>
 #include <yeptris/marshal.h>
 #include <yeptris/parse.h>
 #include <yeptris/values.h>
@@ -277,6 +278,55 @@ TEST(MarshalNode, ExplicitTagsBail) {
     ASSERT_EQ(st, YEPTRIS_OK);
     char* out = NULL;
     size_t olen = 0;
+    ASSERT_EQ(yeptris_marshal_node(yeptris_document_root(doc, 0), &out, &olen), YEPTRIS_OK);
+    yeptris_marshal_free(out);
+    yeptris_document_free(doc);
+}
+
+TEST(Marshal, StrictDuplicateKeysRaiseBeforeAnyBytes) {
+    /* yeptris-ruby#278: the JSON fallback's strict route must raise on
+     * duplicate keys exactly like the native materializer's rb_hash_aref
+     * probe (json 3 default). The JSON DOM keeps both pairs, so the
+     * pre-scan sees them; non-strict stays last-wins (json 2.x). */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc =
+        yeptris_parse_json("{\"a\":1,\"a\":2,\"b\":{\"k\":1,\"k\":2}}", strlen("{\"a\":1,\"a\":2,\"b\":{\"k\":1,\"k\":2}}"),
+                           &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    char* out = nullptr;
+    size_t olen = 0;
+    EXPECT_EQ(yeptris_marshal_node_ex(root, YEPTRIS_MARSHAL_STRICT_DUP_KEYS, &out, &olen),
+              YEPTRIS_ERROR_PARSE);
+    EXPECT_EQ(out, nullptr);
+    EXPECT_STREQ(yeptris_last_error(nullptr, nullptr), "duplicate key in object");
+    EXPECT_EQ(yeptris_marshal_node_ex(root, YEPTRIS_MARSHAL_STRICT_DUP_KEYS, &out, &olen),
+              YEPTRIS_ERROR_PARSE); /* nested dup under "b" raises too */
+    EXPECT_EQ(out, nullptr);
+    yeptris_marshal_free(out);
+    /* flags are validated: an unknown bit is ARG */
+    EXPECT_EQ(yeptris_marshal_node_ex(root, 0x2, &out, &olen), YEPTRIS_ERROR_ARG);
+    /* non-strict emission still succeeds (last-wins) */
+    ASSERT_EQ(yeptris_marshal_node_ex(root, 0, &out, &olen), YEPTRIS_OK);
+    ASSERT_NE(out, nullptr);
+    yeptris_marshal_free(out);
+    yeptris_document_free(doc);
+
+    /* clean strict input emits normally */
+    doc = yeptris_parse_json("{\"a\":1,\"b\":[1,2]}", strlen("{\"a\":1,\"b\":[1,2]}"), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_EQ(
+        yeptris_marshal_node_ex(yeptris_document_root(doc, 0), YEPTRIS_MARSHAL_STRICT_DUP_KEYS, &out, &olen),
+        YEPTRIS_OK);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(out[0], 0x04);
+    EXPECT_EQ(out[1], 0x08);
+    yeptris_marshal_free(out);
+    yeptris_document_free(doc);
+
+    /* the plain (non-JSON) node entry keeps its contract */
+    doc = yeptris_parse("a: 1", strlen("a: 1"), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
     ASSERT_EQ(yeptris_marshal_node(yeptris_document_root(doc, 0), &out, &olen), YEPTRIS_OK);
     yeptris_marshal_free(out);
     yeptris_document_free(doc);

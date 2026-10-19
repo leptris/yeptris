@@ -656,6 +656,171 @@ static YeptrisStatus map_fail(int rc) {
     return rc == -1 ? YEPTRIS_ERROR_MEMORY : YEPTRIS_ERROR_UNSUPPORTED;
 }
 
+/* ---- strict duplicate-key pre-scan (yeptris-ruby#278) ----------------
+ *
+ * json 3 makes duplicate keys an error by DEFAULT; the marshal route
+ * must raise before any bytes are written, exactly like the native
+ * materializer's rb_hash_aref probe. One linear pass over the same
+ * records the writer consumes — the writer itself stays untouched
+ * (the dup law lives here, once). The JSON DOM keeps both pairs
+ * ("{\"a\":1,\"a\":2}" map_count=2), so the records see them; the
+ * non-strict Marshal stream stays last-wins, which is json 2.x's
+ * contract.
+ *
+ * Key identity is the record's typed payload: span kinds compare the
+ * arena bytes, the rest compare (kind, b, payload). One growable
+ * open-addressing table serves the INNERMOST open map (cleared on
+ * close) — duplicates are per-map by definition.
+ */
+
+typedef struct {
+    uint64_t p;  /* 0 = empty slot (payload 0 with kind 0 cannot be a key) */
+    uint32_t off, len;
+    uint8_t kind, b;
+} dup_slot;
+
+typedef struct {
+    dup_slot* slots;
+    size_t cap; /* power of two */
+} dup_set;
+
+static uint64_t dup_hash(const dup_slot* k, const char* arena) {
+    uint64_t h = 1469598103934665603ull;
+    if (k->len != UINT32_MAX && (k->kind == YEP_V_STR || k->kind == YEP_V_TIMESTAMP ||
+                                 k->kind == YEP_V_ALIAS || k->kind == YEP_V_ANCHOR)) {
+        for (uint32_t i = 0; i < k->len; i++) {
+            h ^= (unsigned char)arena[k->off + i];
+            h *= 1099511628211ull;
+        }
+    }
+    h ^= k->kind;
+    h *= 1099511628211ull;
+    h ^= k->b;
+    h *= 1099511628211ull;
+    h ^= k->p;
+    h *= 1099511628211ull;
+    return h;
+}
+
+static int dup_eq(const dup_slot* a, const dup_slot* b, const char* arena) {
+    if (a->kind != b->kind || a->b != b->b || a->p != b->p) {
+        return 0;
+    }
+    int spanned = (a->kind == YEP_V_STR || a->kind == YEP_V_TIMESTAMP || a->kind == YEP_V_ALIAS ||
+                   a->kind == YEP_V_ANCHOR);
+    if (!spanned) {
+        return 1;
+    }
+    if (a->len != b->len) {
+        return 0;
+    }
+    return a->len == 0 || memcmp(arena + a->off, arena + b->off, a->len) == 0;
+}
+
+static int dup_set_grow(dup_set* s) {
+    size_t ncap = s->cap ? s->cap * 2 : 16;
+    dup_slot* ns = calloc(ncap, sizeof(*ns));
+    if (ns == NULL) {
+        return -1;
+    }
+    if (s->slots != NULL) {
+        free(s->slots);
+    }
+    s->slots = ns;
+    s->cap = ncap;
+    return 0;
+}
+
+/* 1 = duplicate found (TLS error set), 0 = clean, -1 = oom */
+static int strict_dup_scan(const yep_value_ctx* c) {
+    dup_set s = {NULL, 0};
+    int rc = 0;
+    const YeptrisValue* vals = c->vals;
+    for (size_t i = 0; i < c->n && rc == 0; i++) {
+        const YeptrisValue* v = &vals[i];
+        if (v->kind == YEP_V_MAP_OPEN) {
+            if (s.slots != NULL) {
+                memset(s.slots, 0, s.cap * sizeof(*s.slots)); /* innermost map only */
+            }
+            continue;
+        }
+        if (v->kind == YEP_V_CLOSE || v->is_key != 1) {
+            continue;
+        }
+        dup_slot k = {v->p, v->off, v->len, v->kind, v->b};
+        if (k.p == 0) {
+            k.p = 1; /* never aliases the empty-slot sentinel */
+        }
+        if (s.cap == 0 && dup_set_grow(&s) != 0) {
+            rc = -1;
+            break;
+        }
+        uint64_t h = dup_hash(&k, c->arena);
+        for (;;) {
+            dup_slot* slot = &s.slots[h & (s.cap - 1)];
+            if (slot->p == 0) {
+                *slot = k;
+                break;
+            }
+            if (dup_eq(slot, &k, c->arena)) {
+                yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
+                              "duplicate key in object");
+                rc = 1;
+                break;
+            }
+            h++;
+        }
+    }
+    free(s.slots);
+    return rc;
+}
+
+static int dom_subtree_tagged(const yep_dom* d, uint32_t id);
+static YeptrisStatus marshal_records(const yep_value_ctx* c, int compat, YeptrisMarshalMode mode,
+                                     int node_mode, char** out, size_t* out_len);
+
+YEPTRIS_API YeptrisStatus yeptris_marshal_node_ex(YeptrisNode node, uint32_t flags, char** out,
+                                                  size_t* out_len) {
+    if (node == NULL || out == NULL || out_len == NULL ||
+        (flags & ~YEPTRIS_MARSHAL_STRICT_DUP_KEYS) != 0) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    *out = NULL;
+    *out_len = 0;
+    yeptris_node* h = (yeptris_node*)node;
+    yep_dom* dom = yep_doc_dom(h->doc); /* #378: a lazy parse carries the
+                                         * tape — the tree materializes here */
+    if (dom == NULL) {
+        return YEPTRIS_ERROR_MEMORY; /* the lazy route's retry contract */
+    }
+    if (dom_subtree_tagged(dom, h->id) != 0) {
+        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
+                      "marshal: explicitly tagged node not expressible; "
+                      "fall back to the value walk");
+        return YEPTRIS_ERROR_UNSUPPORTED;
+    }
+    yep_value_ctx* c = NULL;
+    if (yep_values_from_dom(dom, h->id, 0, &c) != 0) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    if ((flags & YEPTRIS_MARSHAL_STRICT_DUP_KEYS) != 0) {
+        int drc = strict_dup_scan(c);
+        if (drc != 0) {
+            yep_value_ctx_free(c);
+            return drc < 0 ? YEPTRIS_ERROR_MEMORY : YEPTRIS_ERROR_PARSE;
+        }
+    }
+    YeptrisStatus st = marshal_records(c, h->doc->schema == YEPTRIS_SCHEMA_11_COMPAT,
+                                       YEPTRIS_MARSHAL_ALL_DOCS, 1, out, out_len);
+    if (st == YEPTRIS_ERROR_UNSUPPORTED) {
+        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
+                      "marshal: merge key, timestamp or forward alias not expressible; "
+                      "fall back to the value walk");
+    }
+    yep_value_ctx_free(c);
+    return st;
+}
+
 static YeptrisStatus marshal_records(const yep_value_ctx* c, int compat, YeptrisMarshalMode mode,
                                      int node_mode, char** out, size_t* out_len) {
     *out = NULL;
@@ -749,37 +914,9 @@ static int dom_subtree_tagged(const yep_dom* d, uint32_t id) {
     return 0;
 }
 
+
 YEPTRIS_API YeptrisStatus yeptris_marshal_node(YeptrisNode node, char** out, size_t* out_len) {
-    if (node == NULL || out == NULL || out_len == NULL) {
-        return YEPTRIS_ERROR_ARG;
-    }
-    *out = NULL;
-    *out_len = 0;
-    yeptris_node* h = (yeptris_node*)node;
-    yep_dom* dom = yep_doc_dom(h->doc); /* #378: a lazy parse carries the
-                                         * tape — the tree materializes here */
-    if (dom == NULL) {
-        return YEPTRIS_ERROR_MEMORY; /* the lazy route's retry contract */
-    }
-    if (dom_subtree_tagged(dom, h->id) != 0) {
-        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
-                      "marshal: explicitly tagged node not expressible; "
-                      "fall back to the value walk");
-        return YEPTRIS_ERROR_UNSUPPORTED;
-    }
-    yep_value_ctx* c = NULL;
-    if (yep_values_from_dom(dom, h->id, 0, &c) != 0) {
-        return YEPTRIS_ERROR_MEMORY;
-    }
-    YeptrisStatus st = marshal_records(c, h->doc->schema == YEPTRIS_SCHEMA_11_COMPAT,
-                                       YEPTRIS_MARSHAL_ALL_DOCS, 1, out, out_len);
-    if (st == YEPTRIS_ERROR_UNSUPPORTED) {
-        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
-                      "marshal: merge key, timestamp or forward alias not expressible; "
-                      "fall back to the value walk");
-    }
-    yep_value_ctx_free(c);
-    return st;
+    return yeptris_marshal_node_ex(node, 0, out, out_len);
 }
 
 YEPTRIS_API void yeptris_marshal_free(char* out) {
