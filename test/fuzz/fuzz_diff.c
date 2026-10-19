@@ -178,6 +178,78 @@ static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char*
     if (ydump == NULL) {
         return 0;
     }
+    /* The UTF-16 twin (the nightly's run 39258457271, crash-bad91ebf:
+     * "fe ff 2d 3a 20 28 62 2d 2d 2b" — UTF-16BE whose U+2028 is the
+     * 20 28 UNIT): the raw bytes never contain the UTF-8 LS/PS
+     * triple, so the scan below misses the family through the
+     * transcode front-end. Decode the BOM'd UTF-16 to UTF-8 with
+     * LS/PS substituted by '\n' and apply the same transform law. */
+    if (size >= 4 && size % 2 == 0) {
+        int be = -1;
+        if (data[0] == 0xFE && data[1] == 0xFF) {
+            be = 1;
+        } else if (data[0] == 0xFF && data[1] == 0xFE) {
+            be = 0;
+        }
+        if (be >= 0) {
+            char* sub = malloc(size * 2);
+            if (sub != NULL) {
+                size_t o = 0;
+                int decodable = 1;
+                for (size_t i = 2; i + 1 < size && decodable;) {
+                    uint32_t u = be ? (uint32_t)((data[i] << 8) | data[i + 1])
+                                    : (uint32_t)((data[i + 1] << 8) | data[i]);
+                    i += 2;
+                    if (u >= 0xD800 && u <= 0xDBFF && i + 1 < size) {
+                        uint32_t lo = be ? (uint32_t)((data[i] << 8) | data[i + 1])
+                                         : (uint32_t)((data[i + 1] << 8) | data[i]);
+                        if (lo >= 0xDC00 && lo <= 0xDFFF) {
+                            u = 0x10000 + ((u - 0xD800) << 10) + (lo - 0xDC00);
+                            i += 2;
+                        } else {
+                            decodable = 0; /* lone high surrogate */
+                            break;
+                        }
+                    } else if (u >= 0xD800 && u <= 0xDFFF) {
+                        decodable = 0;
+                        break;
+                    }
+                    if (u == 0x2028 || u == 0x2029) {
+                        sub[o++] = '\n';
+                    } else if (u < 0x80) {
+                        sub[o++] = (char)u;
+                    } else if (u < 0x800) {
+                        sub[o++] = (char)(0xC0 | (u >> 6));
+                        sub[o++] = (char)(0x80 | (u & 0x3F));
+                    } else if (u < 0x10000) {
+                        sub[o++] = (char)(0xE0 | (u >> 12));
+                        sub[o++] = (char)(0x80 | ((u >> 6) & 0x3F));
+                        sub[o++] = (char)(0x80 | (u & 0x3F));
+                    } else {
+                        sub[o++] = (char)(0xF0 | (u >> 18));
+                        sub[o++] = (char)(0x80 | ((u >> 12) & 0x3F));
+                        sub[o++] = (char)(0x80 | ((u >> 6) & 0x3F));
+                        sub[o++] = (char)(0x80 | (u & 0x3F));
+                    }
+                }
+                int known = 0;
+                if (decodable) {
+                    int ok2 = 0;
+                    char* ldump2 = yd_libyaml_dump(sub, o, &ok2);
+                    known = (ldump2 != NULL && ok2 && strcmp(ydump, ldump2) == 0);
+                    free(ldump2);
+                }
+                free(sub);
+                if (known) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    if (ydump == NULL) {
+        return 0;
+    }
     int has = 0;
     for (size_t i = 0; i + 2 < size; i++) {
         if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
