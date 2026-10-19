@@ -5307,7 +5307,8 @@ TEST(Parse, TaggedQuotedKeyWithSpaceHash) {
         {"x:\n!t 'a #b': y\n", "a #b", "y"},
         {"x:\n!t \"a\\nb\": y\n", "a\nb", "y"},
         /* the crasher's own emitted form, byte-exact */
-        {"\"\":\n!t \"\\uFEFFo #t |-\\n\\uFEFF\":\n", "\xEF\xBB\xBF" "o #t |-\n\xEF\xBB\xBF", ""},
+        {"\"\":\n!t \"\\uFEFFo #t |-\\n\\uFEFF\":\n",
+         "\xEF\xBB\xBF" "o #t |-\n\xEF\xBB\xBF", ""},
     };
     for (const auto& c : cases) {
         YeptrisStatus st = YEPTRIS_OK;
