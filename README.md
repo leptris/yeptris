@@ -5,6 +5,17 @@ the YAML counterpart of
 [libleptris](https://github.com/leptris/leptris). Zero required
 runtime dependencies, a stable C ABI, opaque handles.
 
+The bar we hold: **the best YAML/JSON parser/builder ever built — on
+every axis at once, in C, Ruby, Rust, and JavaScript.** Conformance
+(the suite bar, every divergence documented), performance (every
+claim carries harness numbers), safety (nightly fuzzing across every
+harness; every catch fixed and pinned), APIs (the right idiom per
+language), transport correctness (pinned FFI/ABI contracts, lockstep
+release trains, byte-stable roundtrips), and trust (published
+corpora and reproducible releases). The achievement program lives in
+[`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
+their own repos — see "The ecosystem" below.
+
 ## Build, test, validate
 
 ```sh
