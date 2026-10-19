@@ -290,8 +290,8 @@ TEST(Marshal, StrictDuplicateKeysRaiseBeforeAnyBytes) {
      * pre-scan sees them; non-strict stays last-wins (json 2.x). */
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc =
-        yeptris_parse_json("{\"a\":1,\"a\":2,\"b\":{\"k\":1,\"k\":2}}", strlen("{\"a\":1,\"a\":2,\"b\":{\"k\":1,\"k\":2}}"),
-                           &st);
+        yeptris_parse_json("{\"a\":1,\"a\":2,\"b\":{\"k\":1,\"k\":2}}",
+                           strlen("{\"a\":1,\"a\":2,\"b\":{\"k\":1,\"k\":2}}"), &st);
     ASSERT_EQ(st, YEPTRIS_OK);
     YeptrisNode root = yeptris_document_root(doc, 0);
     char* out = nullptr;
@@ -315,9 +315,9 @@ TEST(Marshal, StrictDuplicateKeysRaiseBeforeAnyBytes) {
     /* clean strict input emits normally */
     doc = yeptris_parse_json("{\"a\":1,\"b\":[1,2]}", strlen("{\"a\":1,\"b\":[1,2]}"), &st);
     ASSERT_EQ(st, YEPTRIS_OK);
-    ASSERT_EQ(
-        yeptris_marshal_node_ex(yeptris_document_root(doc, 0), YEPTRIS_MARSHAL_STRICT_DUP_KEYS, &out, &olen),
-        YEPTRIS_OK);
+    ASSERT_EQ(yeptris_marshal_node_ex(yeptris_document_root(doc, 0),
+                                      YEPTRIS_MARSHAL_STRICT_DUP_KEYS, &out, &olen),
+              YEPTRIS_OK);
     ASSERT_NE(out, nullptr);
     EXPECT_EQ(out[0], 0x04);
     EXPECT_EQ(out[1], 0x08);
