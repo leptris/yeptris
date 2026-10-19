@@ -3684,9 +3684,15 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                     continue;
                 }
                 int pc_comment = (pc == '#' && (prev == ' ' || prev == '\t'));
+                /* an opening quote is node CONTENT, not a prop: the walk
+                 * must stop there ('only_props' stays 0) — walking on put
+                 * the line's ' #' inside the quoted span, read the quoted
+                 * key of the nightly's run 39223056891 ("x:\n!t \"a #b\": y")
+                 * as a comment and rejected the keyed pair */
                 if (pc == '&' || pc == '!' || pc == '<' || pc == ',' || pc == '>' ||
                     (pc != '\n' && pc != '\r' && !pc_comment &&
-                     !yep_ct_is((unsigned char)pc, YEP_CT_FLOW_IND) && pc != ':' && pc != ' ')) {
+                     !yep_ct_is((unsigned char)pc, YEP_CT_FLOW_IND) && pc != ':' && pc != ' ' &&
+                     pc != '"' && pc != '\'')) {
                     prev = pc;
                     t++;
                     continue;

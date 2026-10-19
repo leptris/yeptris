@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- **the tagged-quoted-key props-only walk** — the props-only pre-walk
+  under a pending key walked straight through an opening quote (`"` is
+  not a flow indicator), read the quoted key's interior ` #` as a
+  comment and rejected the keyed pair (`x:\n!t "a #b": y`) — so the
+  emitter's own output for the crasher's map failed yeptris's
+  re-parse (the nightly's run 39223056891, crash-7987a601). Quotes
+  now break the walk as content; libyaml accepts the shape. Pinned in
+  `Parse.TaggedQuotedKeyWithSpaceHash`.
+
 ## [0.6.33] - 2026-10-19
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
