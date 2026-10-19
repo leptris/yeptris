@@ -462,8 +462,8 @@ static int yd_anchor_name_colon_divergence(const uint8_t* data, size_t size, con
  * libyaml's dump byte-identical (its reading was never sensitive to
  * the space) while yeptris's dump differs — the divergence is then
  * exactly the indicator-comment law. */
-static int yd_header_glued_comment_divergence(const uint8_t* data, size_t size,
-                                              const char* ydump, const char* ldump) {
+static int yd_header_glued_comment_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                              const char* ldump) {
     if (ydump == NULL || ldump == NULL || strcmp(ydump, ldump) == 0) {
         return 0;
     }
