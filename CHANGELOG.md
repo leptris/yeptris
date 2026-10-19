@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **fuzz_diff: carry the breakless-EOF clip family** — libyaml drops
+  clip chomping's trailing break when the input's last line carries
+  none ("--- >\n fo" is "fo"), but the suite pins the break's
+  presence with no final break in the source (L24T#2 "Trailing line
+  of spaces", "x\n \n"); the suite is the conformance bar, so
+  yeptris keeps it and the family rides a comparator: libyaml
+  re-dumped on the input with '\n' appended must equal yeptris's
+  dump exactly.
 - **feed: the chunk cut scanner counts the flow '?' map** — the
   scanner's flow depth tracked only brackets, but a flow '?'
   opens the explicit-key map the engine stays inside: the scanner

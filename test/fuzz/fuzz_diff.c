@@ -170,6 +170,36 @@ static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char*
     return known;
 }
 
+/* True when the difference is exactly the breakless-EOF clip family:
+ * the suite pins clip chomping's trailing break even when the input's
+ * last line carries none (L24T#2 "Trailing line of spaces", yaml
+ * ending \u2229, expects "x\n \n") and yeptris follows the suite;
+ * libyaml drops it ("x\n "). The transform: append '\n' to a copy of
+ * the input, re-dump libyaml on THAT, and require exact equality with
+ * yeptris's dump of the original -- the divergence is this family only
+ * when the appended break is the entire difference. */
+static int yd_clip_breakless_divergence(const uint8_t* data, size_t size, const char* ydump) {
+    if (ydump == NULL || size == 0 || data[size - 1] == '\n' || data[size - 1] == '\r') {
+        return 0; /* only a breakless final line can diverge this way */
+    }
+    char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    memcpy(sub, data, size);
+    sub[size] = '\n';
+    int ok2 = 0;
+    char* ldump2 = yd_libyaml_dump(sub, size + 1, &ok2);
+    free(sub);
+    if (ldump2 == NULL || !ok2) {
+        free(ldump2);
+        return 0;
+    }
+    int known = strcmp(ydump, ldump2) == 0;
+    free(ldump2);
+    return known;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -179,7 +209,8 @@ static void probe_one(const uint8_t* data, size_t size) {
      * yeptris (see yd_qflow_divergence) */
     int known = v == YD_DIFFER &&
                 (yd_qflow_divergence(ydump, ldump) || yd_bom_content_divergence(ydump, ldump) ||
-                 yd_breaknorm_divergence(data, size, ydump));
+                 yd_breaknorm_divergence(data, size, ydump) ||
+                 yd_clip_breakless_divergence(data, size, ydump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
