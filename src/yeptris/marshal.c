@@ -674,7 +674,7 @@ static YeptrisStatus map_fail(int rc) {
  */
 
 typedef struct {
-    uint64_t p;  /* 0 = empty slot (payload 0 with kind 0 cannot be a key) */
+    uint64_t p; /* 0 = empty slot (payload 0 with kind 0 cannot be a key) */
     uint32_t off, len;
     uint8_t kind, b;
 } dup_slot;
@@ -913,7 +913,6 @@ static int dom_subtree_tagged(const yep_dom* d, uint32_t id) {
     }
     return 0;
 }
-
 
 YEPTRIS_API YeptrisStatus yeptris_marshal_node(YeptrisNode node, char** out, size_t* out_len) {
     return yeptris_marshal_node_ex(node, 0, out, out_len);
