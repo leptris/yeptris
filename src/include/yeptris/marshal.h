@@ -43,6 +43,17 @@ YEPTRIS_API YeptrisStatus yeptris_marshal(const char* data, size_t len, YeptrisS
  * bulk path behind Node#to_ruby (one call, not one per node). */
 YEPTRIS_API YeptrisStatus yeptris_marshal_node(YeptrisNode node, char** out, size_t* out_len);
 
+#define YEPTRIS_MARSHAL_STRICT_DUP_KEYS 1u
+
+/* yeptris_marshal_node with flags. STRICT_DUP_KEYS raises
+ * YEPTRIS_ERROR_PARSE ("duplicate key in object") when any map carries
+ * the same key twice — json 3's default contract; the JSON DOM keeps
+ * both pairs, and the non-strict stream stays last-wins (json 2.x).
+ * Memory: *out is malloc'd, free with yeptris_marshal_free exactly
+ * once; on failure nothing is allocated. */
+YEPTRIS_API YeptrisStatus yeptris_marshal_node_ex(YeptrisNode node, uint32_t flags, char** out,
+                                                  size_t* out_len);
+
 YEPTRIS_API void yeptris_marshal_free(char* out);
 
 #ifdef __cplusplus
