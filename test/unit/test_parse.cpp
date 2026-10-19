@@ -5250,3 +5250,40 @@ TEST(Parse, FlowCollectionBareKeyCarriesNullValue) {
         yeptris_recorder_free(rec);
     }
 }
+
+TEST(Parse, BlockClipAtBreaklessEofKeepsTheBreak) {
+    /* the nightly's run 39098952928 (crash-b4c03647, "--- >\n fo"):
+     * libyaml reads a breakless-EOF clip WITHOUT the trailing break
+     * ("fo"), but the suite pins the break's presence -- L24T#2
+     * ("Trailing line of spaces", yaml ending "\u2229" = no final
+     * break) expects "x\n \n". The suite is the conformance bar, so
+     * yeptris keeps the synthesized break and the family rides
+     * fuzz_diff as a documented libyaml-behind-suite divergence. */
+    const struct {
+        const char* in;
+        const char* key; /* NULL = the root IS the value */
+        const char* want;
+    } cases[] = {
+        {"--- >\n fo", NULL, "fo\n"},
+        {"k: >\n fo", "k", "fo\n"},
+        {"k: |\n fo", "k", "fo\n"},
+        {"foo: |\n  x\n   ", "foo", "x\n \n"}, /* the L24T#2 shape, byte-exact */
+        {"foo: |\n  x\n   \n", "foo", "x\n \n"},
+        {"k: >\n fo\n", "k", "fo\n"},
+        {"k: >\n fo\nz: 1", "k", "fo\n"},
+        {"k: >+\n fo", "k", "fo"}, /* keep: a breakless fragment carries nothing */
+        {"k: |-\n fo", "k", "fo"}, /* strip: nothing */
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.in, strlen(c.in), &st);
+        ASSERT_NE(doc, nullptr) << c.in;
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        if (c.key != NULL) {
+            EXPECT_EQ(map_str(root, c.key), c.want) << c.in;
+        } else {
+            EXPECT_EQ(val(root), c.want) << c.in;
+        }
+        yeptris_document_free(doc);
+    }
+}
