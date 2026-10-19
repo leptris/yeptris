@@ -200,6 +200,74 @@ static int yd_clip_breakless_divergence(const uint8_t* data, size_t size, const 
     return known;
 }
 
+/* True when the difference is the flow-anchor-colon family: inside a
+ * flow collection libyaml reads "&name:" as an anchored empty key
+ * ("[&a: x]" -> {a-anchored empty => x}) while yeptris's designed
+ * lenience keeps "&" as plain content in flow (anchors ride block and
+ * refuse flow; the suite has ZERO flow-&-colon cases, so neither side
+ * is suite-backed). The gate is a mini-scan: the "&name:" shape with
+ * a terminator, found at bracket depth > 0 outside quotes, and no
+ * alias anywhere (aliases would tangle the semantics). */
+static int yd_flow_anchor_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                           const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    int depth = 0;
+    int quote = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\') {
+                i++; /* the escape rides */
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            continue;
+        }
+        if (c == '\'' || c == '"') {
+            quote = c;
+            continue;
+        }
+        if (c == '#' && depth == 0) {
+            break; /* a comment at block level ends the scan */
+        }
+        if (c == '[' || c == '{') {
+            depth++;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            if (depth > 0) {
+                depth--;
+            }
+            continue;
+        }
+        if (c == '*' || c == '@' || c == '`') {
+            return 0; /* aliases/exotics: out of family */
+        }
+        if (c == '&' && depth > 0) {
+            size_t j = i + 1;
+            if (j < size && (data[j] == '<' || data[j] == '!' || data[j] == '&')) {
+                return 0; /* verbatim/shorthand/props chains: out of family */
+            }
+            while (j < size && data[j] != ':' && data[j] != ' ' && data[j] != '\t' &&
+                   data[j] != ',' && data[j] != ']' && data[j] != '}') {
+                j++;
+            }
+            if (j < size && data[j] == ':' && j > i + 1) {
+                /* "&name:" at flow depth: the family. The follower is
+                 * irrelevant -- after an anchor libyaml takes ':' as
+                 * the key separator even glued ("&tag:examle.com",
+                 * the nightly's crash-3483b4cd). */
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -210,7 +278,8 @@ static void probe_one(const uint8_t* data, size_t size) {
     int known = v == YD_DIFFER &&
                 (yd_qflow_divergence(ydump, ldump) || yd_bom_content_divergence(ydump, ldump) ||
                  yd_breaknorm_divergence(data, size, ydump) ||
-                 yd_clip_breakless_divergence(data, size, ydump));
+                 yd_clip_breakless_divergence(data, size, ydump) ||
+                 yd_flow_anchor_colon_divergence(data, size, ydump, ldump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */

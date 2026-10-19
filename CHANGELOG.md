@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 Post-0.6.32 fuzz catches and the tag-props family (each pinned;
 crashers in the regression corpus).
+- **fuzz_diff: carry the flow-anchor-colon family** — inside a flow
+  collection libyaml reads "&name:" as an anchored empty key
+  ("[&a: x]" -> {anchored-empty => x}); yeptris's designed lenience
+  keeps "&" as plain content in flow (anchors ride block and refuse
+  flow). The suite has zero flow-&-colon cases, so neither side is
+  suite-backed; the family rides a depth-tracking mini-scan
+  comparator (quotes, aliases, and prop chains excluded).
 - **fuzz_diff: carry the breakless-EOF clip family** — libyaml drops
   clip chomping's trailing break when the input's last line carries
   none ("--- >\n fo" is "fo"), but the suite pins the break's
