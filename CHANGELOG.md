@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **fuzz_diff: carry the flow-'?' quoted-follower composition** — libyaml
+  makes a KEY token for a flow `?` with any follower (`{?"a": 1}` reads
+  key `a`), while YAML 1.2's `ns-plain-first` admits `?"a"` as a plain
+  scalar (`"` is `ns-plain-safe` in flow); the suite pins the plain
+  reading for plain followers (HM87/652Z). The new comparator spaces
+  the `?` out of the input and requires libyaml's dump to be unchanged,
+  proving the divergence is only the key indicator (the nightly's run
+  39452709881, crash-4490f97c; seed `flow-q-quoted-follower.bin`).
 - **feed: a block-header lookalike key no longer hides its flow from
   the cut scanner** — `| : [` is a plain mapping key whose value opens
   a flow, but `step_scan` read the line as a block-scalar header,

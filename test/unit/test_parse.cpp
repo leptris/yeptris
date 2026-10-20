@@ -4502,6 +4502,33 @@ TEST(Parse, FlowQPlainPerSuite) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, FlowQQuotedFollowerStaysPlain) {
+    /* catch 149 (the nightly's run 39452709881, crash-4490f97c): the
+     * flow-'?' family's QUOTED follower. libyaml's scanner makes a KEY
+     * token for a flow '?' with any follower ("{?\"a\": 1}" -> key a),
+     * while YAML 1.2 ns-plain-first admits it: '"' is ns-plain-safe in
+     * flow, so "?\"a\"" can start a plain scalar. The suite pins the
+     * plain reading for the plain followers (HM87/652Z); this case
+     * follows the same rule, and the diff harness carries the
+     * composition (yd_qflow_adjacent_divergence). */
+    const char* y = "{?\"a\": 1}";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr) << y;
+    YeptrisNode k = nullptr;
+    YeptrisNode v = nullptr;
+    ASSERT_EQ(yeptris_node_map_at(yeptris_document_root(doc, 0), 0, &k, &v), 0);
+    size_t l = 0;
+    const char* sv = yeptris_node_value(k, &l);
+    ASSERT_NE(sv, nullptr);
+    EXPECT_EQ(std::string(sv, l), "?\"a\"");
+    l = 0;
+    sv = yeptris_node_value(v, &l);
+    ASSERT_NE(sv, nullptr);
+    EXPECT_EQ(std::string(sv, l), "1");
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, KeepChompIgnoresBreaklessEofFragment) {
     /* catch 130 (the nightly's run 39050759339): keep-chomping counted
      * the final blank line even though it carries NO break at EOF --
