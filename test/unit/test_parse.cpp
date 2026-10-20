@@ -1228,6 +1228,42 @@ TEST(Parse, EscapeLongKeyRidesTheExplicitForm) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, SingleQuotedLongKeyRidesTheExplicitForm) {
+    /* the nightly's crash-b8a18e43 (fuzz_roundtrip): the single-quoted
+     * render DOUBLES every apostrophe, so a 900-raw key carrying 140
+     * quotes writes ~1042 bytes — past the simple-key law — while the
+     * length estimate counted each apostrophe once. The estimator now
+     * treats '\'' as expandable, and the promotion rides the same
+     * explicit "? key" form as the other over-limit families. */
+    YeptrisDocument doc = yeptris_document_new();
+    ASSERT_NE(doc, nullptr);
+    YeptrisNode root = yeptris_node_new_mapping(doc);
+    ASSERT_EQ(yeptris_document_set_root(doc, root), YEPTRIS_OK);
+    std::string key;
+    for (int i = 0; i < 140; i++) {
+        key += "'";
+    }
+    key += std::string(760, 'a');
+    ASSERT_EQ(yeptris_node_map_add(root, key.data(), key.size(),
+                                   yeptris_node_new_scalar(doc, "1", 1, YEPTRIS_STYLE_PLAIN)),
+              YEPTRIS_OK);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(doc, &l1);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_GE(l1, (size_t)2);
+    EXPECT_EQ(s1[0], '?'); /* the explicit-key form at the head */
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(doc2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(doc2, &l2);
+    EXPECT_TRUE(s2 != NULL && l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    yeptris_document_free(doc2);
+    free(s1);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, ImplicitNullMarkStaysInBounds) {
     /* the nightly's run 38147359781 (fuzz_parse ASan, READ 1 past a
      * 23-byte exact buffer): after the flow close scan the cursor

@@ -33,6 +33,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (crash-5caf49d3: `|-` + `##`). The comparator indents the column-0
   content lines (changing no content byte) and requires libyaml's dump
   of that to equal yeptris's dump of the original.
+- **emitter: a long single-quoted key rides the explicit form** — the
+  simple-key length estimate counted an apostrophe once, but the
+  single-quoted render doubles it, so a 900-byte key carrying 140
+  quotes wrote 1044 bytes and the emission could not re-parse
+  ("simple key exceeds 1024 characters"; fuzz_roundtrip's
+  crash-b8a18e43, the nightly's run 39421661425). The estimator now
+  treats `'` as expandable, promoting the key to the explicit
+  `? key` form like the other over-limit families. Pinned in
+  `Parse.SingleQuotedLongKeyRidesTheExplicitForm`.
 
 ## [0.6.34] - 2026-10-20
 ### Fixed
