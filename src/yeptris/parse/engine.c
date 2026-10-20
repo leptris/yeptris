@@ -1231,8 +1231,12 @@ static yep_view e_resolve_tag(yep_engine* e, yep_view tag) {
     return e_tag_uri_decode(e, e_resolve_tag_raw(e, tag));
 }
 
-/* Parses &anchor / !tag runs at the cursor into *anchor / *tag. */
+/* Parses &anchor / !tag runs at the cursor into *anchor / *tag. A node
+ * carries at most one of each (c-ns-properties): a second property of
+ * the same kind is the suite's 4JVG error. Keeping the last one let a
+ * mutated anchor run read differently from libyaml (catch 156). */
 static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
+    int have_anchor = 0, have_tag = 0;
     for (;;) {
         e_skip_inline_space(e);
         if (e->pos >= e->len) {
@@ -1240,6 +1244,11 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
         }
         unsigned char c = (unsigned char)e->p[e->pos];
         if (c == '&') {
+            if (have_anchor) {
+                e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                return;
+            }
+            have_anchor = 1;
             size_t start = e->pos + 1;
             e->pos = yep_scan_prop_end(e->p, e->len, start);
             anchor->p = e->p + start;
@@ -1264,6 +1273,11 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
                 return;
             }
         } else if (c == '!') {
+            if (have_tag) {
+                e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                return;
+            }
+            have_tag = 1;
             size_t start = e->pos;
             e->pos++;
             if (e->pos < e->len && e->p[e->pos] == '<') {
