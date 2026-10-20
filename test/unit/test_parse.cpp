@@ -4529,6 +4529,35 @@ TEST(Parse, FlowQQuotedFollowerStaysPlain) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, FlowQColonKeyStaysPlain) {
+    /* catch 151 (the nightly's run 39469989528, crash-575cf6ed): a flow
+     * explicit key starting with ':' adjacent to a non-space. 1.2's
+     * ns-plain-first admits ":cic l" as a plain scalar — the suite
+     * pins that reading (HM87 "[:x]" -> "=VAL ::x"; 58MP "{x: :x}" ->
+     * "=VAL ::x") — so the key is the plain scalar, never an empty key
+     * plus a value. libyaml's scanner makes a VALUE token of the
+     * leading ':' instead; the diff harness carries the composition
+     * (yd_qflow_colon_divergence). */
+    const char* y = "{?\n:cic l}";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr) << y;
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_EQ(yeptris_node_map_count(root), 1u);
+    YeptrisNode k = nullptr;
+    YeptrisNode v = nullptr;
+    ASSERT_EQ(yeptris_node_map_at(root, 0, &k, &v), 0);
+    size_t l = 0;
+    const char* sv = yeptris_node_value(k, &l);
+    ASSERT_NE(sv, nullptr);
+    EXPECT_EQ(std::string(sv, l), ":cic l");
+    EXPECT_EQ(yeptris_node_kind(v), YEPTRIS_NODE_SCALAR);
+    l = 99;
+    (void)yeptris_node_value(v, &l);
+    EXPECT_EQ(l, (size_t)0);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, KeepChompIgnoresBreaklessEofFragment) {
     /* catch 130 (the nightly's run 39050759339): keep-chomping counted
      * the final blank line even though it carries NO break at EOF --

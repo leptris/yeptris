@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **fuzz_diff: carry the flow explicit-key colon family** — a flow
+  explicit key starting with `:` adjacent to a non-space
+  (`{?` + newline + `:cic l}`) is a PLAIN scalar per YAML 1.2
+  `ns-plain-first`, which the suite pins (HM87 `[:x]` -> `=VAL ::x`;
+  58MP `{x: :x}` -> `=VAL ::x`). libyaml's scanner makes a VALUE token
+  of the leading `:` (empty key plus the value `cic l`). The new
+  comparator folds libyaml's empty-key/value pair into yeptris's `:X`
+  key line (the nightly's run 39469989528, crash-575cf6ed; seed
+  `flow-q-colon-key.bin`).
 - **feed: a directive line split from its `---` keeps the document's
   start line** — `doc_begin` is a buffer OFFSET, reset at every stepped
   run, so a step cut landing between a `%TAG` line and its `---` made

@@ -164,6 +164,76 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
     return 1;
 }
 
+/* True when the dumps differ ONLY by a flow explicit key that STARTS
+ * with ':' adjacent to a non-space ("{?\n:cic l}", the nightly's run
+ * 39469989528): libyaml's scanner makes a VALUE token of that leading
+ * ':' (an EMPTY key plus the value "cic l"), while YAML 1.2
+ * ns-plain-first admits ":cic l" as a plain scalar — the suite pins
+ * that reading (HM87 "[:x]" -> "=VAL ::x"; 58MP "{x: :x}" ->
+ * "=VAL ::x"). yeptris follows the suite.
+ * The transform folds libyaml's empty-key line + value line into
+ * yeptris's single ":X" key line plus its empty value line. */
+static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                     const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size == 0) {
+        return 0;
+    }
+    int has_q = 0;
+    for (size_t q = 0; q < size; q++) {
+        if (data[q] == '?') {
+            has_q = 1;
+            break;
+        }
+    }
+    if (!has_q) {
+        return 0; /* the family is the explicit-key context only */
+    }
+    const char* lines[512];
+    size_t lens[512];
+    int n = 0;
+    const char* p = ldump;
+    while (*p != '\0' && n < 512) {
+        lines[n] = p;
+        const char* nl = strchr(p, '\n');
+        lens[n] = nl ? (size_t)(nl - p) : strlen(p);
+        n++;
+        p = nl ? nl + 1 : p + strlen(p);
+    }
+    const char* ylines[512];
+    size_t ylens[512];
+    int yn = 0;
+    p = ydump;
+    while (*p != '\0' && yn < 512) {
+        ylines[yn] = p;
+        const char* nl = strchr(p, '\n');
+        ylens[yn] = nl ? (size_t)(nl - p) : strlen(p);
+        yn++;
+        p = nl ? nl + 1 : p + strlen(p);
+    }
+    int j = 0;
+    for (int i = 0; i < n; i++) {
+        if (j >= yn) {
+            return 0;
+        }
+        /* libyaml: empty key line, then the value; yeptris: one ":X"
+         * key line, then its empty value line */
+        if (lens[i] == 7 && strncmp(lines[i], "=VAL : ", 7) == 0 && i + 1 < n && lens[i + 1] >= 8 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && ylens[j] == lens[i + 1] + 1 &&
+            strncmp(ylines[j], "=VAL : :", 8) == 0 &&
+            memcmp(ylines[j] + 8, lines[i + 1] + 7, lens[i + 1] - 7) == 0 && j + 1 < yn &&
+            ylens[j + 1] == 7 && strncmp(ylines[j + 1], "=VAL : ", 7) == 0) {
+            i++;
+            j += 2;
+            continue;
+        }
+        if (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0) {
+            return 0;
+        }
+        j++;
+    }
+    return j == yn;
+}
+
 /* True when the difference is exactly the documented LS/PS break-
  * normalization family. yeptris normalizes LS/PS (U+2028/9) to '\n'
  * BEFORE the parse; libyaml treats them as breaks in block context
@@ -787,6 +857,7 @@ static void probe_one(const uint8_t* data, size_t size) {
     int known =
         v == YD_DIFFER &&
         (yd_qflow_divergence(ydump, ldump) || yd_qflow_adjacent_divergence(data, size, ldump) ||
+         yd_qflow_colon_divergence(data, size, ydump, ldump) ||
          yd_bom_content_divergence(ydump, ldump) || yd_breaknorm_divergence(data, size, ydump) ||
          yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
          yd_clip_breakless_divergence(data, size, ydump) ||
