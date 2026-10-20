@@ -228,6 +228,20 @@ TEST(Stepping, ExplicitEndNeverOrphaned) {
     expect_identical_all_splits("--- a\n...\n");
 }
 
+TEST(Stepping, DeepFlowDepthErrorStreamsOpenEvents) {
+    /* a deep flow that exceeds the depth guard: every split must agree
+     * on the rejected stream. The real regression gate for the
+     * pre-scan's error order is the deep-flow-prescan-depth.bin seed
+     * (the pre-scan used to error before the flow's open events);
+     * this fence covers the depth path across every fixed chunk. */
+    std::string in = "a:\n";
+    for (int i = 0; i < 1002; i++) {
+        in += "[";
+    }
+    in += "\n";
+    expect_identical_all_splits(in);
+}
+
 TEST(Stepping, BlockScalarIsIndented) {
     expect_identical_all_splits("a: |\n  text\n  --- not a marker\n--- b: 1\n");
 }
