@@ -735,6 +735,48 @@ static int yd_header_glued_comment_divergence(const uint8_t* data, size_t size, 
     return known;
 }
 
+/* The flow-'?' adjacency family with a QUOTED follower: libyaml's
+ * scanner makes a KEY token for '?' in flow even without a following
+ * space ("{?\"a\":x}" -> key a), while the 1.2 suite pins the plain
+ * reading (HM87/652Z cover the plain followers; the same
+ * ns-plain-first rule admits a quoted follower, since '"' is
+ * ns-plain-safe in flow). The plain-follower shape rides
+ * yd_qflow_divergence's line rewrite; this composition changes the
+ * dump shape too much for a line rewrite, so the family is proven at
+ * the INPUT level: replace each '?' directly before a quote with a
+ * space and require libyaml's dump to be UNCHANGED. That establishes
+ * the '?' was merely libyaml's key indicator; yeptris's different
+ * dump is the suite's plain reading. (The substitution preserves byte
+ * count, so any position fields stay aligned.) */
+static int yd_qflow_adjacent_divergence(const uint8_t* data, size_t size, const char* ldump) {
+    if (ldump == NULL || size == 0 || size > 8192) {
+        return 0;
+    }
+    char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    int found = 0;
+    for (size_t i = 0; i < size; i++) {
+        if (data[i] == '?' && i + 1 < size && (data[i + 1] == '"' || data[i + 1] == '\'')) {
+            sub[o++] = ' ';
+            found = 1;
+        } else {
+            sub[o++] = (char)data[i];
+        }
+    }
+    int known = 0;
+    if (found) {
+        int ok2 = 0;
+        char* ldump2 = yd_libyaml_dump(sub, o, &ok2);
+        known = (ldump2 != NULL && ok2 && strcmp(ldump, ldump2) == 0);
+        free(ldump2);
+    }
+    free(sub);
+    return known;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -744,9 +786,9 @@ static void probe_one(const uint8_t* data, size_t size) {
      * yeptris (see yd_qflow_divergence) */
     int known =
         v == YD_DIFFER &&
-        (yd_qflow_divergence(ydump, ldump) || yd_bom_content_divergence(ydump, ldump) ||
-         yd_breaknorm_divergence(data, size, ydump) || yd_composed_break_divergence(data, size) ||
-         yd_root_block_content_divergence(data, size) ||
+        (yd_qflow_divergence(ydump, ldump) || yd_qflow_adjacent_divergence(data, size, ldump) ||
+         yd_bom_content_divergence(ydump, ldump) || yd_breaknorm_divergence(data, size, ydump) ||
+         yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
          yd_clip_breakless_divergence(data, size, ydump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
          yd_anchor_name_colon_divergence(data, size, ydump, ldump) ||
