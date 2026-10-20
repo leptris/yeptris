@@ -4125,6 +4125,44 @@ void yep_engine_destroy(yep_engine* e) {
 /* A quote opens a scalar only where a value can begin; anywhere else
  * it is literal plain text (the apostrophe in "don't"). This is exact
  * on valid YAML: a quote at a value position always opens. */
+/* A line-start '|' / '>' is a block-scalar header only when the rest
+ * of the line fits the grammar: optional chomping (+/-) and indent
+ * (1-9) indicators in either order, then spaces/tabs, then an optional
+ * space-led comment, then EOL. "| : [" is a plain mapping key whose
+ * value opens a flow — treating it as a header skipped the '[' and let
+ * a '---' cut land inside the still-open flow (#645: whole buffered
+ * that flow to the depth cap, chunked cut and errored at 2:1).
+ * Returns 1 valid, 0 definitely not a header, -1 truncated (the tail
+ * may still complete a valid header). */
+static int step_bs_header(const char* p, size_t len, size_t i) {
+    size_t k = i + 1;
+    int chomp = 0, indent = 0, space = 0;
+    while (k < len) {
+        char c = p[k];
+        if (c == '+' || c == '-') {
+            if (chomp || space) return 0;
+            chomp = 1;
+            k++;
+            continue;
+        }
+        if (c >= '1' && c <= '9') {
+            if (indent || space) return 0;
+            indent = 1;
+            k++;
+            continue;
+        }
+        if (c == ' ' || c == '\t') {
+            space = 1;
+            k++;
+            continue;
+        }
+        if (c == '\n' || c == '\r') return 1;
+        if (c == '#' && space) return 1; /* a comment needs separation */
+        return 0;
+    }
+    return -1; /* the chunk ended mid-line */
+}
+
 /* Advances quote/flow/comment state over buf[scanned, len) and returns
  * the offset of the LAST safe cut (0 = none). When the final bytes'
  * meaning depends on bytes not yet fed (a quote that may be doubled,
@@ -4410,24 +4448,33 @@ static size_t step_scan(yep_stepstate* st) {
                 (i + 1 >= st->len || p[i + 1] == ' ' || p[i + 1] == '\t' || p[i + 1] == '\n' ||
                  p[i + 1] == '\r' || (p[i + 1] >= '0' && p[i + 1] <= '9') || p[i + 1] == '+' ||
                  p[i + 1] == '-')) {
-                uint32_t ind = 0;
-                size_t k = i;
-                while (k > 0 && p[k - 1] == ' ') {
-                    k--;
-                    ind++;
-                }
-                st->bs_open = 1;
-                st->bs_indent = ind;
-                size_t e = i;
-                while (e < st->len && p[e] != '\n') {
-                    e++;
-                }
-                if (e >= st->len) {
-                    hold = i; /* an incomplete header line */
+                int hdr = step_bs_header(p, st->len, i);
+                if (hdr < 0) {
+                    hold = i; /* the header line may still complete */
                     break;
                 }
-                i = e;
-                continue;
+                if (hdr > 0) {
+                    uint32_t ind = 0;
+                    size_t k = i;
+                    while (k > 0 && p[k - 1] == ' ') {
+                        k--;
+                        ind++;
+                    }
+                    st->bs_open = 1;
+                    st->bs_indent = ind;
+                    size_t e = i;
+                    while (e < st->len && p[e] != '\n') {
+                        e++;
+                    }
+                    if (e >= st->len) {
+                        hold = i; /* an incomplete header line */
+                        break;
+                    }
+                    i = e;
+                    continue;
+                }
+                /* Not a header ("| : [" is a mapping key): fall through
+                 * so the line's flow/quote bytes are counted. */
             }
             if (c == '-') {
                 if (i + 3 >= st->len) {

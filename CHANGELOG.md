@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **feed: a block-header lookalike key no longer hides its flow from
+  the cut scanner** — `| : [` is a plain mapping key whose value opens
+  a flow, but `step_scan` read the line as a block-scalar header,
+  skipped the `[`, and cut at the following `---` while the flow was
+  still open. The whole parse then buffered the flow to the depth cap
+  while the chunked parse errored at 2:1, one event apart (fuzz_feed's
+  identity invariant; #645, `depth-cap-marker-cut-split.bin`). The
+  header is now validated against its grammar — indicators,
+  separation, optional comment, then EOL — before the line is
+  skipped. Pinned in `Stepping.BlockHeaderLookalikeKeyDoesNotHideFlow`
+  (every split).
 - **parse: a flow collection after an empty block value is a KEY, not
   the value** — `a:\n{----}: 1` attached the flow mapping as `a`'s
   value and then failed on its key colon, emitting the wrong tree
