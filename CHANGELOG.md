@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **parse: `%TAG` validates its handle and prefix** — the handle was
+  taken verbatim, so `%TAG !' 2` registered and the whole parse accepted
+  a directive libyaml rejects; and a `#` glued to the prefix was read as
+  a comment, letting `%TAG !m! -#…` through and splitting the
+  whole/chunked verdicts (the nightly's run 39497331520,
+  crash-9052f1ea). The handle must now be `!`, `!!`, or `!word!`
+  (word = alnum/-), a prefix is required, and a `#` inside the prefix
+  token is a BAD_DIRECTIVE (libyaml's whitespace rule). Pinned in
+  `Parse.TagDirectiveHandleAndPrefixValidated`; seeds
+  `bad-tag-directive-split.bin`.
 - **fuzz-nightly: the ASan harnesses ride a 32 MB stack** — ASan's parser
   frames are ~8 KB per nesting level, so a 762-level input overflowed the
   runner's 8 MB soft stack before the 1000-level depth guard could reject
