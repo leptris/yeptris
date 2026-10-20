@@ -847,7 +847,13 @@ static int key_written_over_limit(yep_writer* w, const yep_dnode* kn) {
      * 38200627503") */
     if (q != NULL) {
         for (uint32_t i = 0; i < n; i++) {
-            est += (q[i] < 0x20 || q[i] >= 0x7F || q[i] == '"' || q[i] == '\\') ? 4u : 1u;
+            /* a single-quoted render DOUBLES every apostrophe; without
+             * it the estimate missed a 892-char key carrying 137
+             * quotes (rendered 1031, re-parse rejected the simple
+             * key — the nightly's crash-b8a18e43) */
+            est += (q[i] < 0x20 || q[i] >= 0x7F || q[i] == '"' || q[i] == '\\' || q[i] == '\'')
+                       ? 4u
+                       : 1u;
         }
     }
     if (kn->anchor.len > 0) {
