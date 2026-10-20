@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **parse: a flow collection after an empty block value is a KEY, not
+  the value** — `a:\n{----}: 1` attached the flow mapping as `a`'s
+  value and then failed on its key colon, emitting the wrong tree
+  (`{"a": {"----": null}, "1": null}`; libyaml reads `{"a": null,
+  {"----": null} => 1}`; the nightly's run 39432839624,
+  crash-c0169e98). The flow-at-the-parent-column arm now probes
+  whether the collection is followed by a same-line `:` and closes
+  the pending value empty first. Pinned in
+  `Parse.FlowKeyAfterEmptyValueClosesThePair` (flow-map and flow-seq
+  keys, the anchored-empty-value variant, and the `k:\n[a]`
+  value-form regression).
 - **quoted scalars: an escaped line break keeps the breaks after it** —
   the continuation path consumed the escaped break, then folded the
   remaining run with the plain N-1 rule, so `"a\` + two breaks + `b"`

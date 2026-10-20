@@ -3756,9 +3756,33 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
                 goto empty_value;
             }
         }
+        /* A flow collection at the parent column is normally the pending
+         * value ("k:\n[a]"), but a flow followed by a same-line ':' is a
+         * KEY of the parent map: the pending value is empty and the main
+         * loop must own the line (crash-c0169e98: "a:\n{----}: 1" made
+         * the flow a's value and then errored on its key colon). Probe
+         * with the same pre-scan the block flow-key branch uses. */
+        int flow_value = 0;
+        if ((li.first == '[' || li.first == '{') && li.indent == floor_col) {
+            flow_value = 1;
+            size_t fsave = e->pos;
+            uint32_t fline = e->line;
+            size_t fls = e->line_start;
+            e->pos = li.offset + li.indent;
+            if (e_skip_flow(e) == 0) {
+                e_skip_inline_space(e);
+                if (e_colon_at(e, e->pos) && e->line == fline) {
+                    flow_value = 0;
+                }
+            } else {
+                yep_error_clear(&e->err); /* e_node re-raises the real error */
+            }
+            e->pos = fsave;
+            e->line = fline;
+            e->line_start = fls;
+        }
         if (li.indent > floor_col || e->depth == 0 ||
-            (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first != ':') ||
-            ((li.first == '[' || li.first == '{') && li.indent == floor_col) ||
+            (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first != ':') || flow_value ||
             /* libyaml never validates a block-scalar HEADER's column —
              * only the content must out-indent the parent (e_block_scalar
              * enforces that), so "|" / ">" at the key's own column is the
