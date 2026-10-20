@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **fuzz-nightly: the ASan harnesses ride a 32 MB stack** — ASan's parser
+  frames are ~8 KB per nesting level, so a 762-level input overflowed the
+  runner's 8 MB soft stack before the 1000-level depth guard could reject
+  it (the nightly's run 39490412519, crash-542ee272; Release errors at
+  762:3, the guard contract is unchanged). The harness steps raise the
+  stack; seed `deep-value-chain.bin`.
 - **fuzz_diff: the glued-header-comment carry covers header indicators** —
   `|+#~ c: d` glues `#` to the chomping indicator. libyaml reads the
   header + comment (the spec's separation may be empty) and yields an
