@@ -202,6 +202,25 @@ TEST(Stepping, DirectiveStaysWithItsDocument) {
     expect_identical_all_splits("--- a\n%YAML 1.2\n--- b\n--- c\n");
 }
 
+TEST(Stepping, DirectiveLineAndMarkerAcrossAChunkCut) {
+    /* catch 150 (the nightly's run 39460938869, hand-shrunk 6707 ->
+     * 506 bytes): a %TAG line split from its --- by a step cut made the
+     * DOCUMENT_START fall back to the marker line (whole 85:1 vs
+     * chunked 86:1) — doc_begin is a buffer OFFSET and dies with the
+     * cut, so the directive's stream-absolute LINE must ride the step
+     * state. Every split must agree. */
+    std::string in =
+        "32826658.4e006600'''''''''/'''''''''''''''''''''''''''''''''''''''''''/"
+        "'''''''''''''',99999900000327,99999999990963434096099327,"
+        "99999900000999999990895456343409609932,99999900000327,"
+        "99999999908954634340960993563434096099327,99999900000327,"
+        "99999999908954563434096099389545634340000000000000000000000000000000970\n...\n%TAG !m! -# "
+        "Blb here\n!m!ligight luorescent fluoes&cnt\n...\n%TAG !m! - # b her\n--- "
+        "4563430960993434096099327,999999999095434096099327,"
+        "999634340962932700054563434096099000600005ng\"\n...\n%T \"\n--- ";
+    expect_identical_all_splits(in);
+}
+
 TEST(Stepping, ExplicitEndNeverOrphaned) {
     /* cuts land at --- lines only: the ... end marker keeps its
      * explicit DOCUMENT_END flag */

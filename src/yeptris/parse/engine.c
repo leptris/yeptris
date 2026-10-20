@@ -130,11 +130,18 @@ struct yep_engine {
         yep_view handle, prefix;
     } tagmap[8];
     int tagmap_n;
-    int saw_yaml;     /* %YAML seen for the pending document */
-    size_t doc_begin; /* #179: first directive line of the pending doc
-                       * (SIZE_MAX = none) — libyaml's DOCUMENT_START
-                       * start_mark includes directives */
-    void* step;       /* yep_stepstate: resumable stepping (07) */
+    int saw_yaml;            /* %YAML seen for the pending document */
+    size_t doc_begin;        /* #179: first directive line of the pending doc
+                              * (SIZE_MAX = none) — libyaml's DOCUMENT_START
+                              * start_mark includes directives. An offset into
+                              * THIS run's buffer. */
+    uint32_t doc_begin_line; /* the same directive line as a stream-
+                              * absolute LINE: offsets die at a step cut
+                              * (the tail is memmoved), but a directive
+                              * line split from its --- must still mark
+                              * the DOCUMENT_START (#645's neighbor:
+                              * whole 85:1 vs chunked 86:1) */
+    void* step;              /* yep_stepstate: resumable stepping (07) */
 
     /* Flow single-pair deferral: a sequence entry's events are buffered
      * until we know whether ':' follows ("[a: b]" needs MAP_START before
@@ -4765,6 +4772,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 e->doc_begin = li.offset; /* libyaml: DOCUMENT_START's
                                            * start_mark includes the
                                            * leading directive lines */
+                e->doc_begin_line = e->line;
             }
             e_line_done(e, li.end);
             continue;
@@ -4809,10 +4817,19 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
             }
             e_event_init(&ev, YEP_EV_DOCUMENT_START);
             ev.style = 1; /* explicit marker */
-            e_pos_mark(e, e->doc_begin != (size_t)-1 ? e->doc_begin : li.offset + li.indent,
-                       &ev.line, &ev.col);
+            if (e->doc_begin != (size_t)-1) {
+                e_pos_mark(e, e->doc_begin, &ev.line, &ev.col);
+            } else if (e->doc_begin_line != 0) {
+                /* the directive line was consumed by an EARLIER step
+                 * run: its offset is gone, the absolute line is not */
+                ev.line = e->doc_begin_line;
+                ev.col = 1;
+            } else {
+                e_pos_mark(e, li.offset + li.indent, &ev.line, &ev.col);
+            }
             e_pos_mark(e, li.offset + li.indent + 3, &ev.end_line, &ev.end_col);
             e->doc_begin = (size_t)-1;
+            e->doc_begin_line = 0;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }
@@ -4891,6 +4908,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 e->doc_content = 0;
                 e->saw_yaml = 0;
                 e->doc_begin = (size_t)-1;
+                e->doc_begin_line = 0;
             }
             e_line_done(e, li.end);
             continue;
@@ -4900,12 +4918,16 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
             e_event_init(&ev, YEP_EV_DOCUMENT_START);
             if (e->doc_begin != (size_t)-1) {
                 e_pos_mark(e, e->doc_begin, &ev.line, &ev.col);
+            } else if (e->doc_begin_line != 0) {
+                ev.line = e->doc_begin_line; /* a directive split across runs */
+                ev.col = 1;
             } else {
                 e_pos_mark(e, li.offset + li.indent, &ev.line, &ev.col);
             }
             ev.end_line = ev.line;
             ev.end_col = ev.col;
             e->doc_begin = (size_t)-1;
+            e->doc_begin_line = 0;
             if (emit_now(e, &ev) != 0) {
                 return -2;
             }

@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **feed: a directive line split from its `---` keeps the document's
+  start line** — `doc_begin` is a buffer OFFSET, reset at every stepped
+  run, so a step cut landing between a `%TAG` line and its `---` made
+  the chunked DOCUMENT_START fall back to the marker line (whole 85:1
+  vs chunked 86:1; the nightly's run 39460938869, crash-d29fe7c0,
+  hand-shrunk 6707 -> 506 bytes). The engine also carries the
+  directive's stream-absolute LINE across runs now, and `DOCUMENT_START`
+  uses it when the offset is gone. Pinned in
+  `Stepping.DirectiveLineAndMarkerAcrossAChunkCut` and the
+  `directive-marker-cut-split.bin` seeds.
 - **fuzz_diff: carry the flow-'?' quoted-follower composition** — libyaml
   makes a KEY token for a flow `?` with any follower (`{?"a": 1}` reads
   key `a`), while YAML 1.2's `ns-plain-first` admits `?"a"` as a plain
