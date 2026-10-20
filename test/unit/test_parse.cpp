@@ -3015,6 +3015,31 @@ TEST(Parse, QuotedScalars) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, QuotedEscapedBreakCountsFollowingBreaks) {
+    /* fuzz catch 145 (nightly 39391528633): after an escaped line break,
+     * every following break is one newline. The continuation used to
+     * swallow the escaped break, then fold the rest with the plain N-1
+     * rule, dropping one break (libyaml/libfyaml: 4 breaks after the
+     * escape -> 4 newlines, not 3). */
+    const struct {
+        const char* in;
+        const char* want;
+    } cases[] = {
+        {"\"a\\\r\rb\"\n", "a\nb"},   {"\"a\\\r\r\rb\"\n", "a\n\nb"},
+        {"\"a\\\r \rb\"\n", "a\nb"},  {"\"a\\\r  \r\rb\"\n", "a\n\nb"},
+        {"\"a  \\\rb\"\n", "a  b"},   {"\"a\\\r\n\r\nb\"\n", "a\nb"},
+        {"\"a\\\r\nb\"\n", "ab"},     {"\"a\\\n  b\"\n", "ab"},
+        {"\"a\\\n  \nb\"\n", "a\nb"}, {"\"\r\n o\\\r\r\r\r\r:b\"\n", " o\n\n\n\n:b"},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.in, strlen(c.in), &st);
+        ASSERT_NE(doc, nullptr) << c.in;
+        EXPECT_EQ(val(yeptris_document_root(doc, 0)), c.want) << c.in;
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, PlainMultilineFold) {
     const char* y = "key: this is\n"
                     "  a folded\n"

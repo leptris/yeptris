@@ -268,14 +268,33 @@ static uint32_t finish_double_body(const char* p, uint32_t start, uint32_t end, 
         }
         case '\n':
         case '\r': {
-            /* line continuation: swallow the break and next line's leading spaces */
+            /* Escaped line break: the break itself is removed, but every
+             * break after it (whitespace-only lines included) contributes
+             * one newline, and the next line's leading whitespace is
+             * stripped. Folding the remaining run with the plain N-1 rule
+             * loses one break (libyaml and libfyaml agree on this count). */
             size_t j = i;
             if (p[j] == '\r' && j + 1 < end && p[j + 1] == '\n') {
                 j++;
             }
             j++;
-            while (j < end && (p[j] == ' ' || p[j] == '\t')) {
-                j++;
+            uint32_t extra = 0;
+            for (;;) {
+                while (j < end && (p[j] == ' ' || p[j] == '\t')) {
+                    j++;
+                }
+                if (j < end && (p[j] == '\n' || p[j] == '\r')) {
+                    if (p[j] == '\r' && j + 1 < end && p[j + 1] == '\n') {
+                        j++;
+                    }
+                    j++;
+                    extra++;
+                    continue;
+                }
+                break;
+            }
+            for (uint32_t k = 0; k < extra; k++) {
+                yep_buf_putc(b, '\n');
             }
             i = j;
             break;

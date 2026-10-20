@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+- **quoted scalars: an escaped line break keeps the breaks after it** —
+  the continuation path consumed the escaped break, then folded the
+  remaining run with the plain N-1 rule, so `"a\` + two breaks + `b"`
+  produced one newline too few (`" a\n\n\n:b"` instead of `" a\n\n\n\n:b"`).
+  libyaml and libfyaml agree: the escaped break is removed, but every
+  following break — whitespace-only lines included — is one newline,
+  and spaces before the backslash stay content. Pinned in
+  `Parse.QuotedEscapedBreakCountsFollowingBreaks` (the nightly's run
+  39391528633, crash-3b662f50).
+
 ## [0.6.34] - 2026-10-20
 ### Fixed
 - **JSON floats carry the json gem's byte shape** — the JSON writers
