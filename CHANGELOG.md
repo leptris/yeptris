@@ -17,6 +17,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and spaces before the backslash stay content. Pinned in
   `Parse.QuotedEscapedBreakCountsFollowingBreaks` (the nightly's run
   39391528633, crash-3b662f50).
+- **fuzz_diff: carry the composed content-BOM x break family** — a
+  content U+FEFF riding the encoding mark and LS/PS normalization were
+  each carried alone, but not their composition: libyaml drops the
+  BOM (a line-start BOM is skipped) while yeptris keeps it as content,
+  so the break after it folds to a space in yeptris and is a leading
+  break in libyaml (crash-feee50a2: `fe ff fe ff 00 0a 2d 00`;
+  crash-52fe8bd6: the same plus U+FFF9 and PS PS). The new comparator
+  rebuilds the input (UTF-16 decoded, the leading content BOM dropped,
+  LS/PS -> `\n`) and requires both engines to agree on it.
+- **fuzz_diff: carry the root block scalar's column-0 content** —
+  content at column 0 under a column-0 `|`/`>` header is content
+  (suite W4TN, M7A3, T26H, DWX9, FP8R, DK3J), but libyaml ends the
+  scalar at the first unindented line and reports an empty value
+  (crash-5caf49d3: `|-` + `##`). The comparator indents the column-0
+  content lines (changing no content byte) and requires libyaml's dump
+  of that to equal yeptris's dump of the original.
 
 ## [0.6.34] - 2026-10-20
 ### Fixed
