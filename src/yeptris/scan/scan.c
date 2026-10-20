@@ -214,6 +214,7 @@ static int shape_val_bail(unsigned char c, const char* p, size_t len, size_t at)
     case '[':
     case '{':
     case '*': /* an alias after an anchor is an error shape (SR86) */
+    case '&': /* a second anchor is the suite's 4JVG error (catch 156) */
         return 1;
     case '-':
     case '?':

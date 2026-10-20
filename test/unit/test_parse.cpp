@@ -1941,6 +1941,43 @@ TEST(Parse, PropsThenKeyIndicatorOnLineRejects) {
     }
 }
 
+TEST(Parse, NodeCarriesOneAnchorAndOneTag) {
+    /* catch 156 (the nightly's run 39506629301): "&va2: &node2" kept
+     * only the SECOND anchor, so a value-only property line anchored
+     * the map below it while libyaml (which ends anchor names at ':')
+     * read an empty anchored pair. The suite's 4JVG ("Scalar value
+     * with two anchors", fail: true) makes the second property of a
+     * kind an error; one anchor plus one tag in either order stays
+     * legal, on one line or split across the parent line. */
+    const char* bad[] = {
+        "a: &x &y b\n",
+        "a: &x &y\n",
+        "top5:\n  &va2: &node2 # comment\n  key2: two\n",
+        "a: !t !u b\n",
+        "top2: &node2\n  &v2 val2\n",
+        "&x &y a\n",
+        "!t1 !t2 a\n",
+    };
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_EQ(st, YEPTRIS_ERROR_PARSE) << y;
+    }
+    const char* good[] = {
+        "a: &x b\n",       "a: &x !t b\n", "a: !t &x b\n", "a: &x\n  !t b\n",
+        "a: !t\n  &x b\n", "&x !t a: b\n", "!t &x a: b\n",
+    };
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Feed, PlainContentQuoteIsNeverTracked) {
     /* catch 85 (the nightly's run 38359507422): the scan opened quote
      * state on a quote byte after any indicator char — "A!'- %YAML" is
@@ -2498,7 +2535,11 @@ TEST(Parse, RootPropsEmitOnce) {
      * empty collection re-emitted them inline — "! &a\n! &a {}" —
      * and every round shed a line. The catch-56 law, root side: an
      * empty propertied collection takes the inline empty-form. */
-    const char* y = "! &a\n  ? &e)J  !((( &e\n";
+    /* The original "? &e)J  !((( &e" line carried a second anchor,
+     * which the suite's 4JVG makes an error (catch 156); the surviving
+     * line keeps the tagged/anchored empty key that the root props
+     * must not double-emit. */
+    const char* y = "! &a\n  ? &e)J\n";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
     ASSERT_NE(doc, nullptr);
@@ -3899,11 +3940,13 @@ TEST(Parse, NestedExplicitPairNullsAtOwnLevels) {
 }
 
 TEST(Emit, NestedExplicitPairRoundTripsWithAnchors) {
-    /* catch 88's full minimum: the nested '?' nulls plus the anchored
-     * empty value of the following pair — the dropped anchor left the
-     * trailing alias dangling and the emitted document failed to
-     * re-parse. */
-    const char* y = ":\n  ? ? &? &a : a\n  ?\"&d!se: &base\nU name <: *base\n";
+    /* catch 88's full minimum, minus the second anchor of the original
+     * "? ? &? &a : a" line: adjacent anchors are the suite's 4JVG
+     * error (catch 156); the surviving `&a` is the one this shape
+     * kept. The nested '?' nulls plus the anchored empty value of the
+     * following pair remain — the dropped anchor left the trailing
+     * alias dangling and the emitted document failed to re-parse. */
+    const char* y = ":\n  ? ? &a : a\n  ?\"&d!se: &base\nU name <: *base\n";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
     ASSERT_NE(doc, nullptr);
@@ -3934,7 +3977,7 @@ TEST(Parse, FlowNumberKeyRidesTheGeneralKernel) {
      * scalar. Whole and chunked streams diverged on the same bytes.
      * The fast paths are byte-for-byte JSON now; number/literal keys
      * take the general kernel's colon rules in both modes. */
-    const char* y = "{9:1}\n---\n  ? ? &?  &a :\n";
+    const char* y = "{9:1}\n---\n  ? ? &a :\n";
     size_t len = strlen(y);
     /* the recorder resets at every feed entry — accumulate per feed,
      * the fuzz_feed harness's discipline */

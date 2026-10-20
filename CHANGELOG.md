@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **parse: a node takes one anchor and one tag** — the property scan kept
+  the LAST property, so `&va2: &node2 # comment` (a colon-bearing anchor
+  name per 2SXE, then a second anchor) silently anchored the map below
+  it, while libyaml read an empty anchored pair; the line-shape fast arm
+  likewise read a follower `&` as plain text (`a: &x &y b`). Both are
+  the suite's 4JVG ("Scalar value with two anchors", fail) error now.
+  Unit pin `Parse.NodeCarriesOneAnchorAndOneTag`; seed
+  `double-anchor-props.bin` (the nightly's run 39506629301,
+  crash-896ac2df).
 - **feed: the flow pre-scan defers a depth overflow** — a flow that
   exceeds the depth guard errored in the pre-scan BEFORE the flow's open
   events in the whole parse (2 events), while the chunked feed had
