@@ -4751,6 +4751,69 @@ TEST(Parse, FlowKeyColonAfterTabsDefers) {
     EXPECT_GT(events, 0);
 }
 
+TEST(Parse, FlowKeyAfterEmptyValueClosesThePair) {
+    /* the nightly's crash-c0169e98 (run 39432839624): a block value
+     * with nothing inline ("a:") followed by a flow collection that is
+     * itself a KEY ("{----}: 1"). The flow-at-the-parent-column arm
+     * took the collection as the pending VALUE, then errored on its
+     * key colon and emitted {"a": {----: null}, "1": null}. A flow
+     * followed by a same-line ':' is a key of the PARENT map: the
+     * pending value closes empty first, then the main loop owns the
+     * line. */
+    {
+        const char* y = "a:\n{----}: 1\n";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(yeptris_node_map_count(root), 2u);
+        YeptrisNode k0 = nullptr, v0 = nullptr;
+        ASSERT_EQ(yeptris_node_map_at(root, 0, &k0, &v0), 0);
+        EXPECT_EQ(val(k0), "a");
+        EXPECT_EQ(val(v0), "");
+        YeptrisNode k1 = nullptr, v1 = nullptr;
+        ASSERT_EQ(yeptris_node_map_at(root, 1, &k1, &v1), 0);
+        EXPECT_EQ(yeptris_node_kind(k1), YEPTRIS_NODE_MAPPING);
+        EXPECT_EQ(map_str(k1, "----"), "");
+        EXPECT_EQ(val(v1), "1");
+        yeptris_document_free(doc);
+    }
+    /* the flow-at-the-parent-column VALUE form still rides ("k:\n[a]") */
+    {
+        const char* y = "a:\n[1]\n";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        YeptrisNode v0 = yeptris_node_map_get(root, "a", 1);
+        ASSERT_NE(v0, nullptr);
+        EXPECT_EQ(yeptris_node_kind(v0), YEPTRIS_NODE_SEQUENCE);
+        EXPECT_EQ(val(yeptris_node_seq_at(v0, 0)), "1");
+        yeptris_document_free(doc);
+    }
+    /* the anchored empty value keeps its anchor when the flow key
+     * follows (libyaml's "&x" event on the empty scalar) */
+    {
+        const char* y = "k-:\n--: &x\n{----}:\n ";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(yeptris_node_map_count(root), 3u);
+        YeptrisNode k1 = nullptr, v1 = nullptr;
+        ASSERT_EQ(yeptris_node_map_at(root, 1, &k1, &v1), 0);
+        EXPECT_EQ(val(k1), "--");
+        EXPECT_EQ(val(v1), "");
+        size_t al = 0;
+        const char* a = yeptris_node_anchor(v1, &al);
+        EXPECT_EQ(std::string(a ? a : "", al), "x");
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Emit, FlowAliasTrailingColonUnserializable) {
     /* catch 120 (the nightly's run 39021984786): "a: &n: 1\n? k: *n:\n: v"
      * parsed fine, but the emitter flow-rendered the explicit key and the
