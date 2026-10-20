@@ -287,6 +287,218 @@ static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char*
     return known;
 }
 
+/* True when the divergence is the COMPOSITION of the two documented
+ * families above: a content U+FEFF riding the encoding mark and/or
+ * yeptris's LS/PS -> '\n' normalization. The transforms cannot be
+ * applied to the dumps independently because the BOM changes whether
+ * the breaks after it are leading -- libyaml drops a BOM at a line
+ * start, while yeptris keeps it as content, so its following break
+ * folds to a space (crash-feee50a2). The decisive test: rebuild the
+ * input -- UTF-16 decoded to UTF-8, the leading content BOM dropped,
+ * LS/PS substituted by '\n' -- and require BOTH engines to agree on
+ * it (the nightly's crash-52fe8bd6 and crash-feee50a2). */
+static int yd_composed_break_divergence(const uint8_t* data, size_t size) {
+    int be = -1;
+    if (size >= 4 && size % 2 == 0) {
+        if (data[0] == 0xFE && data[1] == 0xFF) {
+            be = 1;
+        } else if (data[0] == 0xFF && data[1] == 0xFE) {
+            be = 0;
+        }
+    }
+    unsigned char* out = NULL;
+    size_t o = 0;
+    int feature = 0;
+    if (be >= 0) {
+        out = malloc(size * 2 + 1);
+        if (out == NULL) {
+            return 0;
+        }
+        size_t i = 2;
+        if (i + 1 < size) {
+            uint32_t u0 = be ? (uint32_t)((data[i] << 8) | data[i + 1])
+                             : (uint32_t)((data[i + 1] << 8) | data[i]);
+            if (u0 == 0xFEFF) {
+                feature = 1;
+                i += 2; /* libyaml drops it at the line start */
+            }
+        }
+        while (i + 1 < size) {
+            uint32_t u = be ? (uint32_t)((data[i] << 8) | data[i + 1])
+                            : (uint32_t)((data[i + 1] << 8) | data[i]);
+            i += 2;
+            if (u >= 0xD800 && u <= 0xDBFF) {
+                if (i + 1 >= size) {
+                    free(out);
+                    return 0;
+                }
+                uint32_t lo = be ? (uint32_t)((data[i] << 8) | data[i + 1])
+                                 : (uint32_t)((data[i + 1] << 8) | data[i]);
+                if (lo < 0xDC00 || lo > 0xDFFF) {
+                    free(out);
+                    return 0;
+                }
+                u = 0x10000 + ((u - 0xD800) << 10) + (lo - 0xDC00);
+                i += 2;
+            } else if (u >= 0xDC00 && u <= 0xDFFF) {
+                free(out);
+                return 0;
+            }
+            if (u == 0x2028 || u == 0x2029) {
+                u = '\n';
+                feature = 1;
+            }
+            if (u < 0x80) {
+                out[o++] = (unsigned char)u;
+            } else if (u < 0x800) {
+                out[o++] = (unsigned char)(0xC0 | (u >> 6));
+                out[o++] = (unsigned char)(0x80 | (u & 0x3F));
+            } else if (u < 0x10000) {
+                out[o++] = (unsigned char)(0xE0 | (u >> 12));
+                out[o++] = (unsigned char)(0x80 | ((u >> 6) & 0x3F));
+                out[o++] = (unsigned char)(0x80 | (u & 0x3F));
+            } else {
+                out[o++] = (unsigned char)(0xF0 | (u >> 18));
+                out[o++] = (unsigned char)(0x80 | ((u >> 12) & 0x3F));
+                out[o++] = (unsigned char)(0x80 | ((u >> 6) & 0x3F));
+                out[o++] = (unsigned char)(0x80 | (u & 0x3F));
+            }
+        }
+    } else {
+        size_t start = 0;
+        if (size >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) {
+            start = 3; /* the head mark: both engines drop it */
+            if (size >= 6 && data[3] == 0xEF && data[4] == 0xBB && data[5] == 0xBF) {
+                start = 6; /* the column-0 content BOM: libyaml drops it too */
+                feature = 1;
+            }
+        }
+        out = malloc(size + 1);
+        if (out == NULL) {
+            return 0;
+        }
+        for (size_t i = start; i < size;) {
+            if (i + 2 < size && data[i] == 0xE2 && data[i + 1] == 0x80 &&
+                (data[i + 2] == 0xA8 || data[i + 2] == 0xA9)) {
+                out[o++] = '\n';
+                i += 3;
+                feature = 1;
+            } else {
+                out[o++] = data[i++];
+            }
+        }
+    }
+    if (!feature) {
+        free(out);
+        return 0;
+    }
+    char* tdump = NULL;
+    char* tldump = NULL;
+    yd_verdict v = yd_diff_classify((const char*)out, o, &tdump, &tldump);
+    free(tdump);
+    free(tldump);
+    free(out);
+    return v == YD_EQUAL;
+}
+
+/* True when the difference is the libyaml root-block-scalar quirk the
+ * suite overrules: content at column 0 under a column-0 block scalar
+ * header IS content (W4TN, M7A3: "%!PS-Adobe-2.0"; T26H/DWX9; FP8R/
+ * DK3J: "--- >" + "line1"), but libyaml ends the scalar at the first
+ * unindented line and reports an empty value (crash-5caf49d3:
+ * "|-" + "##"). Indent every column-0 content line by one space --
+ * which changes no content byte -- and require libyaml's dump of THAT
+ * to equal yeptris's dump of the original. */
+static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
+    if (size == 0) {
+        return 0;
+    }
+    char* sub = malloc(size * 2 + 2);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    size_t i = 0;
+    int in_block = 0;
+    int changed = 0;
+    while (i < size) {
+        size_t ls = i;
+        while (i < size && data[i] != '\n') {
+            i++;
+        }
+        size_t le = i;
+        int has_nl = i < size;
+        int root_marker = 0;
+        if (le - ls >= 3 && data[ls] == '-' && data[ls + 1] == '-' && data[ls + 2] == '-') {
+            size_t k = ls + 3;
+            while (k < le && (data[k] == ' ' || data[k] == '\t')) {
+                k++;
+            }
+            root_marker = (k == le);
+        }
+        if (le - ls >= 3 && data[ls] == '.' && data[ls + 1] == '.' && data[ls + 2] == '.') {
+            size_t k = ls + 3;
+            while (k < le && (data[k] == ' ' || data[k] == '\t')) {
+                k++;
+            }
+            root_marker = (k == le);
+        }
+        if (in_block && root_marker) {
+            in_block = 0;
+        }
+        int header = 0;
+        if (!in_block) {
+            size_t k = ls;
+            if (le - ls >= 4 && data[ls] == '-' && data[ls + 1] == '-' && data[ls + 2] == '-' &&
+                (data[ls + 3] == ' ' || data[ls + 3] == '\t')) {
+                k = ls + 3;
+                while (k < le && (data[k] == ' ' || data[k] == '\t')) {
+                    k++;
+                }
+            }
+            if (k < le && (data[k] == '|' || data[k] == '>')) {
+                size_t m = k + 1;
+                while (m < le &&
+                       ((data[m] >= '0' && data[m] <= '9') || data[m] == '+' || data[m] == '-')) {
+                    m++;
+                }
+                while (m < le && (data[m] == ' ' || data[m] == '\t')) {
+                    m++;
+                }
+                header = (m == le);
+            }
+        }
+        int indent_line =
+            in_block && !root_marker && le > ls && data[ls] != ' ' && data[ls] != '\t';
+        if (indent_line) {
+            sub[o++] = ' ';
+            changed = 1;
+        }
+        memcpy(sub + o, data + ls, le - ls);
+        o += le - ls;
+        if (has_nl) {
+            sub[o++] = '\n';
+        }
+        if (header) {
+            in_block = 1;
+        }
+        if (has_nl) {
+            i++;
+        }
+    }
+    if (!changed) {
+        free(sub);
+        return 0;
+    }
+    char* tdump = NULL;
+    char* tldump = NULL;
+    yd_verdict v = yd_diff_classify((const char*)sub, o, &tdump, &tldump);
+    free(tdump);
+    free(tldump);
+    free(sub);
+    return v == YD_EQUAL;
+}
+
 /* True when the difference is exactly the breakless-EOF clip family:
  * the suite pins clip chomping's trailing break even when the input's
  * last line carries none (L24T#2 "Trailing line of spaces", yaml
@@ -530,13 +742,15 @@ static void probe_one(const uint8_t* data, size_t size) {
     int split = v == YD_YEPTRIS_ONLY || v == YD_LIBYAML_ONLY;
     /* a documented divergence, not a bug: the suite sides with
      * yeptris (see yd_qflow_divergence) */
-    int known = v == YD_DIFFER &&
-                (yd_qflow_divergence(ydump, ldump) || yd_bom_content_divergence(ydump, ldump) ||
-                 yd_breaknorm_divergence(data, size, ydump) ||
-                 yd_clip_breakless_divergence(data, size, ydump) ||
-                 yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
-                 yd_anchor_name_colon_divergence(data, size, ydump, ldump) ||
-                 yd_header_glued_comment_divergence(data, size, ydump, ldump));
+    int known =
+        v == YD_DIFFER &&
+        (yd_qflow_divergence(ydump, ldump) || yd_bom_content_divergence(ydump, ldump) ||
+         yd_breaknorm_divergence(data, size, ydump) || yd_composed_break_divergence(data, size) ||
+         yd_root_block_content_divergence(data, size) ||
+         yd_clip_breakless_divergence(data, size, ydump) ||
+         yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
+         yd_anchor_name_colon_divergence(data, size, ydump, ldump) ||
+         yd_header_glued_comment_divergence(data, size, ydump, ldump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
