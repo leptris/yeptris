@@ -4140,13 +4140,15 @@ static int step_bs_header(const char* p, size_t len, size_t i) {
     while (k < len) {
         char c = p[k];
         if (c == '+' || c == '-') {
-            if (chomp || space) return 0;
+            if (chomp || space)
+                return 0;
             chomp = 1;
             k++;
             continue;
         }
         if (c >= '1' && c <= '9') {
-            if (indent || space) return 0;
+            if (indent || space)
+                return 0;
             indent = 1;
             k++;
             continue;
@@ -4156,8 +4158,10 @@ static int step_bs_header(const char* p, size_t len, size_t i) {
             k++;
             continue;
         }
-        if (c == '\n' || c == '\r') return 1;
-        if (c == '#' && space) return 1; /* a comment needs separation */
+        if (c == '\n' || c == '\r')
+            return 1;
+        if (c == '#' && space)
+            return 1; /* a comment needs separation */
         return 0;
     }
     return -1; /* the chunk ended mid-line */
