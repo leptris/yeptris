@@ -31,6 +31,11 @@ int yep_d2fixed(double d, uint32_t precision, char* buf);
 /* YAML words for non-finite values (finite input returns 0). */
 int yep_d2s_nonfinite(double d, char* buf);
 
+/* The json-gem float byte shape (grisu2 digits + fpconv emit
+ * windows, vendored in fpconv.c) for JSON-mode canonical scalars
+ * (yeptris#651). 32-byte buffer. Returns the length written. */
+int yep_d2s_json(double d, char* buf);
+
 #ifdef __cplusplus
 }
 #endif
