@@ -173,6 +173,22 @@ TEST(Stepping, FlowSpansMarkerLine) {
     expect_identical_all_splits("a: [1,\n---\n, 2]\n--- b\n");
 }
 
+TEST(Stepping, BlockHeaderLookalikeKeyDoesNotHideFlow) {
+    /* #645: "| : [" is a mapping key whose value opens a flow, not a
+     * block-scalar header. The cut scanner treated the line as a
+     * header, skipped the '[', and then cut at the next --- inside
+     * the still-open flow: the whole parse buffered the flow to the
+     * depth cap while the chunked parse errored at 2:1, one event
+     * apart (fuzz_feed's identity invariant). Every split must agree
+     * on the rejected stream. The header grammar is enforced now:
+     * indicators, separation, comment, then EOL. */
+    std::string in = "| : [\na\n--- ";
+    for (int i = 0; i < 520; i++) {
+        in += "[{\"\"";
+    }
+    expect_identical_all_splits(in);
+}
+
 TEST(Stepping, CommentWithQuotesAndMarkers) {
     expect_identical_all_splits("# don't --- split here\n# 'quoted'\n--- a: 1\n--- b: 2\n");
 }
