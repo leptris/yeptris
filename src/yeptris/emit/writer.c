@@ -377,7 +377,10 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
             tmp[tl] = '\0';
             double d = strtod(tmp, &end);
             if (end != NULL && *end == '\0' && end != tmp) {
-                int wl = yep_d2s_shortest(d, buf);
+                /* JSON floats carry the json-gem byte shape so
+                 * JSON.generate round trips stay byte-identical
+                 * (yeptris#651); YAML keeps the shortest shape. */
+                int wl = w->json ? yep_d2s_json(d, buf) : yep_d2s_shortest(d, buf);
                 wr_put(w, buf, (uint32_t)wl);
                 return;
             }

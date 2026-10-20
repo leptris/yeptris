@@ -10,6 +10,8 @@
 
 #include <yeptris.h>
 
+#include <yeptris/json.h>
+
 namespace {
 
 std::string ser(YeptrisDocument d) {
@@ -296,6 +298,51 @@ TEST(EmitCanonical, FixedPointFByteStability) {
         std::string c1 = canon(y);
         /* parse(c1) must re-canonicalize byte-identically */
         EXPECT_EQ(canon(c1.c_str()), c1) << "input [" << y << "] -> [" << c1 << "]";
+    }
+}
+
+TEST(EmitJson, FloatByteShape) {
+    /* JSON floats carry the json gem's byte shape (fpconv, yeptris#651):
+     * shortest-decimal windows, no zero-padded exponent, ".0" on
+     * integral floats. */
+    struct {
+        const char* in;
+        const char* want;
+    } cases[] = {
+        {"x: 1.0e-7\n", "{\"x\": 0.0000001}\n"},
+        {"x: 1.0e20\n", "{\"x\": 1e+20}\n"},
+        {"x: 1.5e-8\n", "{\"x\": 0.000000015}\n"},
+        {"x: 1.0e-6\n", "{\"x\": 0.000001}\n"},
+        {"x: 0.1\n", "{\"x\": 0.1}\n"},
+        {"x: 100.0\n", "{\"x\": 100.0}\n"},
+        {"x: -0.0\n", "{\"x\": -0.0}\n"},
+        {"x: 3.14159\n", "{\"x\": 3.14159}\n"},
+        {"x: 3.141592653589793\n", "{\"x\": 3.141592653589793}\n"},
+        {"x: 6.8599e+5\n", "{\"x\": 685990.0}\n"},
+        {"x: -851256.3603292034\n", "{\"x\": -851256.3603292034}\n"},
+        {"x: 5e-324\n", "{\"x\": 5e-324}\n"},
+        {"x: 1.0e-320\n", "{\"x\": 1e-320}\n"},
+        {"x: 2.2250738585072014e-308\n", "{\"x\": 2.2250738585072014e-308}\n"},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse(c.in, strlen(c.in), &st);
+        ASSERT_NE(d, nullptr);
+        size_t len = 0;
+        char* out = yeptris_serialize_json(d, &len);
+        yeptris_document_free(d);
+        ASSERT_NE(out, nullptr);
+        EXPECT_EQ(std::string(out, len), c.want) << "input [" << c.in << "]";
+        /* the JSON shape is a fixed point: parse(json) re-emits the bytes */
+        YeptrisDocument d2 = yeptris_parse(out, len, &st);
+        ASSERT_NE(d2, nullptr);
+        size_t len2 = 0;
+        char* out2 = yeptris_serialize_json(d2, &len2);
+        yeptris_document_free(d2);
+        ASSERT_NE(out2, nullptr);
+        EXPECT_EQ(std::string(out2, len2), c.want) << "reparse [" << c.in << "]";
+        free(out);
+        free(out2);
     }
 }
 

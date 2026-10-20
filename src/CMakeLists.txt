@@ -54,6 +54,7 @@ set(YEPTRIS_SOURCES
     yeptris/emit/emit.c
     yeptris/emit/float/print.c
     yeptris/emit/float/dragon.c
+    yeptris/emit/float/fpconv.c
 )
 
 if(YEPTRIS_WITH_CBOR)

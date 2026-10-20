@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **JSON floats carry the json gem's byte shape** — the JSON writers
+  (`yeptris_serialize_json[_ex]`, `serialize_json_compact/pretty`)
+  re-printed `YEPTRIS_TAG_FLOAT` scalars through the shortest
+  printer, emitting the YAML/Psych shape (`1.0e-07`, `1.0e+20`)
+  where the json gem (fpconv, json >= 2.10) writes
+  `0.0000001`/`1e+20` — so every stdlib-generated document with an
+  exponent-range float failed byte comparison (yeptris#651; the gate
+  for lutaml/canon's `format_json` lane). The canonical-scalar JSON
+  route now prints through the vendored fpconv (`yep_d2s_json`,
+  grisu2 digits + fpconv emit windows, Boost license attribution
+  preserved) — grisu2 is not always-shortest, so the clean-room
+  printer cannot be reshaped to match. YAML emission is unchanged
+  (shortest shape, Psych parity). Non-finite JSON spelling
+  (`.inf` vs the gem's `Infinity` under allow_nan) stays a separate
+  family. Pinned in `EmitJson.FloatByteShape` (windows, subnormals,
+  and the byte-stable reparse property).
 - **fuzz_diff: carry the glued-indicator-comment family** — a line
   starting with `>` or `|` IMMEDIATELY followed by `#` (the
   nightly's run 39258457271, crash-d4bb362b): libyaml reads header +
