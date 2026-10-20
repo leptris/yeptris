@@ -735,15 +735,31 @@ static int yd_anchor_name_colon_divergence(const uint8_t* data, size_t size, con
 /* True when the difference is the glued-indicator-comment family:
  * a line starting with a block-scalar indicator IMMEDIATELY followed
  * by '#' (">#' > ':\tg" — the nightly's run 39258457271,
- * crash-d4bb362b). libyaml reads header + comment right after the
- * indicator (the spec's s-separate-in-line may be empty) and yields
- * an empty scalar; yeptris's comment law requires a preceding blank
- * (e_comment_at), so the line is plain CONTENT — a documented
- * lenient divergence (the suite has no glued-indicator test). The
- * gate: the pattern exists, and spacing it out ("> #") leaves
- * libyaml's dump byte-identical (its reading was never sensitive to
- * the space) while yeptris's dump differs — the divergence is then
- * exactly the indicator-comment law. */
+ * crash-d4bb362b), including chomping/indent indicators before the
+ * '#' ("|+#~ c: d" — run 39478141022, crash-89bff209). libyaml reads
+ * header + comment right after the indicator (the spec's
+ * s-separate-in-line may be empty) and yields an empty scalar;
+ * yeptris's comment law requires a preceding blank (e_comment_at), so
+ * the line is plain CONTENT — a documented lenient divergence (the
+ * suite has no glued-indicator test). The gate: the pattern exists,
+ * and spacing it out ("> #", "|+ #") leaves libyaml's dump
+ * byte-identical (its reading was never sensitive to the space) while
+ * yeptris's dump differs — the divergence is then exactly the
+ * indicator-comment law. */
+/* The position of a '#' glued to a block-scalar header indicator,
+ * possibly after chomping/indent indicators ("|#", "|+#~"); 0 = none.
+ * The comment law's emptiness is what differs between the engines. */
+static size_t yd_header_glue(const uint8_t* d, size_t t, size_t end) {
+    if (t >= end || (d[t] != '>' && d[t] != '|')) {
+        return 0;
+    }
+    size_t k = t + 1;
+    while (k < end && ((d[k] >= '0' && d[k] <= '9') || d[k] == '+' || d[k] == '-')) {
+        k++;
+    }
+    return (k < end && d[k] == '#') ? k : 0;
+}
+
 static int yd_header_glued_comment_divergence(const uint8_t* data, size_t size, const char* ydump,
                                               const char* ldump) {
     if (ydump == NULL || ldump == NULL || strcmp(ydump, ldump) == 0) {
@@ -760,7 +776,7 @@ static int yd_header_glued_comment_divergence(const uint8_t* data, size_t size, 
         while (t < line_end && (data[t] == ' ' || data[t] == '\t')) {
             t++;
         }
-        if (t + 1 < line_end && (data[t] == '>' || data[t] == '|') && data[t + 1] == '#') {
+        if (yd_header_glue(data, t, line_end) != 0) {
             found = 1;
             break;
         }
@@ -785,9 +801,9 @@ static int yd_header_glued_comment_divergence(const uint8_t* data, size_t size, 
         while (t < line_end && (data[t] == ' ' || data[t] == '\t')) {
             t++;
         }
-        int glue = t + 1 < line_end && (data[t] == '>' || data[t] == '|') && data[t + 1] == '#';
+        size_t glue = yd_header_glue(data, t, line_end);
         for (size_t i = at; i < line_end; i++) {
-            if (glue && i == t + 1) {
+            if (glue != 0 && i == glue) {
                 sub[o++] = ' ';
             }
             sub[o++] = (char)data[i];
