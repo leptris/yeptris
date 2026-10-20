@@ -4742,8 +4742,22 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                     p0++;
                 }
                 size_t p1 = p0;
-                while (p1 < li.end && e->p[p1] != ' ' && e->p[p1] != '\t' && e->p[p1] != '#') {
+                while (p1 < li.end && e->p[p1] != ' ' && e->p[p1] != '\t') {
                     p1++;
+                }
+                {
+                    /* a '#' inside the prefix token is NOT a comment:
+                     * libyaml wants whitespace before a comment and
+                     * rejects the glued form ("did not find expected
+                     * whitespace or line break while scanning a %TAG
+                     * directive"). Treating it as a comment registered
+                     * a bogus prefix and split the whole/chunked
+                     * verdicts (catch 154). */
+                    const char* hash = (const char*)memchr(e->p + p0, '#', p1 - p0);
+                    if (hash != NULL) {
+                        e_fail(e, YEP_ERR_BAD_DIRECTIVE, (size_t)(hash - e->p));
+                        return -1;
+                    }
                 }
                 {
                     /* libyaml: only blanks and an optional comment may
@@ -4757,6 +4771,36 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                     }
                     if (r < li.end && e->p[r] != '#') {
                         e_fail(e, YEP_ERR_BAD_DIRECTIVE, r);
+                        return -1;
+                    }
+                }
+                {
+                    /* libyaml validates the handle: "!", "!!", or
+                     * "!word!" (word = alnum/-), and a prefix is
+                     * required ("did not find expected whitespace
+                     * while scanning a %TAG directive"). The lenient
+                     * accept registered "!'" and let the whole parse
+                     * succeed where the chunked one rejected
+                     * (catch 154). */
+                    int handle_ok = 0;
+                    size_t hl = h1 - h0;
+                    if (hl == 1 && e->p[h0] == '!') {
+                        handle_ok = 1;
+                    } else if (hl == 2 && e->p[h0] == '!' && e->p[h0 + 1] == '!') {
+                        handle_ok = 1;
+                    } else if (hl >= 3 && e->p[h0] == '!' && e->p[h1 - 1] == '!') {
+                        handle_ok = 1;
+                        for (size_t k = h0 + 1; k + 1 < h1; k++) {
+                            if (!(yep_ct_is((unsigned char)e->p[k], YEP_CT_ALPHA) ||
+                                  yep_ct_is((unsigned char)e->p[k], YEP_CT_DIGIT) ||
+                                  e->p[k] == '-')) {
+                                handle_ok = 0;
+                                break;
+                            }
+                        }
+                    }
+                    if (!handle_ok || p1 == p0) {
+                        e_fail(e, YEP_ERR_BAD_DIRECTIVE, h0);
                         return -1;
                     }
                 }

@@ -593,6 +593,36 @@ TEST(Parse, TagDirectiveAllowsOnlyCommentAfterPrefix) {
     }
 }
 
+TEST(Parse, TagDirectiveHandleAndPrefixValidated) {
+    /* catch 154 (the nightly's run 39497331520, crash-9052f1ea): the
+     * TAG handle was taken verbatim — "!'" registered, so the whole
+     * parse accepted a directive libyaml rejects — and a '#' glued to
+     * the prefix was read as a comment, splitting the whole/chunked
+     * verdicts. libyaml: the handle is "!", "!!", or "!word!" (word =
+     * alnum/-), a prefix is required, and a comment needs a preceding
+     * blank. */
+    const char* bad[] = {"%TAG !' 2\n---\n", "%TAG !m 2\n---\n",    "%TAG !m!-y! !x\n---\n",
+                         "%TAG !m!\n---\n",  "%TAG !m! -#x\n---\n", "%TAG !m! -# x\n---\n"};
+    for (const char* y : bad) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    const char* good[] = {"%TAG ! 2\n---\n", "%TAG !! !x\n---\n", "%TAG !m! -\n---\n",
+                          "%TAG !m! - # c\n---\n"};
+    for (const char* y : good) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+}
+
 TEST(Parse, AnchorNamesRideBlockAndRefuseFlow) {
     /* the anchor-name law, scoped by the suite: names keep the full
      * suite charset at PARSE (W5VH wants "&:@*!$\"<foo>:" to parse;
