@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **feed: the flow pre-scan defers a depth overflow** — a flow that
+  exceeds the depth guard errored in the pre-scan BEFORE the flow's open
+  events in the whole parse (2 events), while the chunked feed had
+  already streamed them (4). The pre-scan now takes the NOT-A-KEY
+  deferral (the unterminated-quote law); the real parse streams the open
+  events and then fails at the same depth. The depth-guard contract is
+  unchanged (nightly run 39502647277, crash-cf503577; seeds
+  `deep-flow-prescan-depth.bin`).
 - **parse: `%TAG` validates its handle and prefix** — the handle was
   taken verbatim, so `%TAG !' 2` registered and the whole parse accepted
   a directive libyaml rejects; and a `#` glued to the prefix was read as

@@ -1485,12 +1485,18 @@ static int e_skip_flow(yep_engine* e) {
         }
         if (c == '[') {
             if (n >= e->max_depth) {
-                return e_fail(e, YEP_ERR_DEPTH, e->pos);
+                /* NOT-A-KEY deferral (the unterminated-quote law
+                 * above): the pre-scan fires before the flow's open
+                 * events, while the chunked feed had already streamed
+                 * them, so the whole stream lost MAP_START/SEQ_START
+                 * (the nightly's run 39502647277). The real parse owns
+                 * the depth error after the events. */
+                return 0;
             }
             stk[n++] = 0;
         } else if (c == '{') {
             if (n >= e->max_depth) {
-                return e_fail(e, YEP_ERR_DEPTH, e->pos);
+                return 0; /* the same deferral */
             }
             stk[n++] = 1;
         } else if (c == ']') {
