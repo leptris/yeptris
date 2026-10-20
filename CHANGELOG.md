@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **fuzz_diff: the glued-header-comment carry covers header indicators** —
+  `|+#~ c: d` glues `#` to the chomping indicator. libyaml reads the
+  header + comment (the spec's separation may be empty) and yields an
+  empty scalar, while yeptris's comment law requires a preceding blank
+  (the line is plain content). The catch-632 comparator now locates the
+  `#` after any chomping/indent indicators and spaces it out before
+  comparing (the nightly's run 39478141022, crash-89bff209; seed
+  `header-indicator-glued-comment.bin`).
 - **fuzz_diff: carry the flow explicit-key colon family** — a flow
   explicit key starting with `:` adjacent to a non-space
   (`{?` + newline + `:cic l}`) is a PLAIN scalar per YAML 1.2
