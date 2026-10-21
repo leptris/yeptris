@@ -5808,3 +5808,124 @@ TEST(Parse, AnchoredExplicitKeyDashPlainSiblingKeepsPair) {
     EXPECT_EQ(evs[7].first, SE);
     yeptris_recorder_free(rec);
 }
+
+TEST(Parse, QuotedLsPsKeepsRawBytes) {
+    /* issue #638: libyaml keeps U+2028/U+2029 raw inside quoted
+     * scalars (the JSON suite's y_string_u+2028_line_sep /
+     * y_string_u+2029_par_sep demand it as content); the pre-parse
+     * normalizer folded them everywhere. The context walk folds NEL
+     * everywhere but skips LS/PS inside quoted regions. */
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    const char* y = "k: \"a\xe2\x80\xa8" "b\"\nj: 'c\xe2\x80\xa9" "d'\n";
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    (void)alen;
+    std::vector<std::string> vals;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type != YEPTRIS_EV_SCALAR) {
+            continue;
+        }
+        vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+    }
+    ASSERT_EQ(vals.size(), 4u);
+    EXPECT_EQ(vals[0], "k");
+    EXPECT_EQ(vals[1], "a\xe2\x80\xa8" "b"); /* the LS rides raw */
+    EXPECT_EQ(vals[2], "j");
+    EXPECT_EQ(vals[3], "c\xe2\x80\xa9" "d"); /* the PS rides raw */
+    yeptris_recorder_free(rec);
+}
+
+TEST(Parse, QuotedNelStillFolds) {
+    /* NEL folds INSIDE quotes too (libyaml's reader folds it
+     * everywhere); the continuation is indented so the pre-existing
+     * flow-scalar floor law accepts it. */
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    const char* y = "k: \"a\xc2\x85" "  b\"\n";
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    (void)alen;
+    std::vector<std::string> vals;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_SCALAR) {
+            vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+        }
+    }
+    ASSERT_EQ(vals.size(), 2u);
+    EXPECT_EQ(vals[1], "a b"); /* one folded break, leading blanks dropped */
+    yeptris_recorder_free(rec);
+}
+
+TEST(Parse, QuotedLsPsChunkIdentity) {
+    /* the issue's chunk constraint: per-feed normalization starts from
+     * a clean state because step_scan only cuts at document markers
+     * outside quotes — pin that a quoted scalar's raw LS survives cuts
+     * on both sides of it */
+    const char* y = "k: \"a\xe2\x80\xa8" "b\"\n---\nj: 'c\xe2\x80\xa9" "d'\n";
+    size_t ylen = strlen(y);
+    /* the recorder's store resets at every feed by contract — drain it
+     * after each call and concatenate */
+    auto collect = [](YeptrisRecorder rec, std::vector<std::string>& vals) {
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        size_t alen = 0;
+        const char* arena = yeptris_recorder_arena(rec, &alen);
+        (void)alen;
+        for (size_t i = 0; i < n; i++) {
+            if (rs[i].type == YEPTRIS_EV_SCALAR) {
+                vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+            }
+        }
+    };
+    auto run = [&collect](const char* buf, size_t len, size_t cut1, size_t cut2) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        std::vector<std::string> vals;
+        YeptrisStatus st;
+        st = yeptris_recorder_feed(rec, buf, cut1, 0);
+        if (st == YEPTRIS_OK) {
+            collect(rec, vals);
+        }
+        if (st == YEPTRIS_OK && cut2 > cut1) {
+            st = yeptris_recorder_feed(rec, buf + cut1, cut2 - cut1, 0);
+            if (st == YEPTRIS_OK) {
+                collect(rec, vals);
+            }
+        }
+        if (st == YEPTRIS_OK && len > cut2) {
+            st = yeptris_recorder_feed(rec, buf + cut2, len - cut2, 0);
+            if (st == YEPTRIS_OK) {
+                collect(rec, vals);
+            }
+        }
+        if (st == YEPTRIS_OK) {
+            st = yeptris_recorder_feed(rec, "", 0, 1);
+            if (st == YEPTRIS_OK) {
+                collect(rec, vals);
+            }
+        }
+        if (st != YEPTRIS_OK) {
+            vals.emplace_back("<error>");
+        }
+        yeptris_recorder_free(rec);
+        return vals;
+    };
+    std::vector<std::string> whole = run(y, ylen, ylen, ylen);
+    ASSERT_EQ(whole.size(), 4u);
+    EXPECT_EQ(whole[1], "a\xe2\x80\xa8" "b");
+    EXPECT_EQ(whole[3], "c\xe2\x80\xa9" "d");
+    /* cut just before the LS, just after it, and inside the second doc */
+    const size_t cuts[][2] = {{6, 9}, {6, 13}, {3, 20}, {9, 21}};
+    for (const auto& c : cuts) {
+        std::vector<std::string> got = run(y, ylen, c[0], c[1]);
+        EXPECT_EQ(got, whole) << "cuts " << c[0] << "," << c[1];
+    }
+}
