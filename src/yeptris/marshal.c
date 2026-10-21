@@ -815,7 +815,17 @@ static int strict_dup_scan(const yep_value_ctx* c) {
             }
             continue;
         }
-        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0, "duplicate key in object");
+        /* name the key like the tape walk's message (json 3 names it
+         * too): the arena bytes are the text for the str-like kinds,
+         * which is every JSON key */
+        if (k.kind == YEP_V_STR || k.kind == YEP_V_TIMESTAMP || k.kind == YEP_V_ALIAS ||
+            k.kind == YEP_V_ANCHOR) {
+            yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
+                          "duplicate key \"%.*s\" in JSON object", (int)k.len,
+                          k.len ? c->arena + k.off : "");
+        } else {
+            yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0, "duplicate key in object");
+        }
         rc = 1;
     }
     for (size_t j = 0; j < depth; j++) {

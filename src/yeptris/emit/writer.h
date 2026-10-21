@@ -35,6 +35,8 @@ typedef struct yep_writer {
     int json_compact;                           /* json-c to_json_string: no padding spaces */
     int json_pretty;                            /* json-c PRETTY: 2-space indent, per-entry lines */
     int pretty_depth;                           /* json_pretty nesting level (indent = 2*depth) */
+    const char* json_indent;                    /* json_pretty indent unit; NULL = 2 spaces */
+    int json_indent_len;                        /* json_pretty unit byte length */
     int best_width;                             /* 13B: 0 = default 80; flow lines wrap after a
                                                  * value past this width */
     int col;                                    /* current output column (wr_* maintains) */
@@ -79,5 +81,7 @@ size_t yep_emit_run(yep_emitter* em, int dry);
  * nesting level, one entry per line. */
 char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len);
 char* yep_serialize_json_pretty(const yeptris_document* doc, size_t* len);
+char* yep_serialize_json_pretty_ex(const yeptris_document* doc, size_t* len, const char* indent,
+                                   size_t indent_len);
 
 #endif /* YEP_EMIT_WRITER_H */

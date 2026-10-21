@@ -139,6 +139,18 @@ static void wr_indent(yep_writer* w, int depth) {
     }
 }
 
+/* json_pretty's per-depth indent: the default two spaces per level,
+ * or depth copies of the caller's unit (json.h pretty entry). */
+static void wr_pretty_indent(yep_writer* w, int depth) {
+    if (w->json_indent == NULL) {
+        wr_indent(w, depth * 2);
+        return;
+    }
+    for (int i = 0; i < depth; i++) {
+        wr_put(w, w->json_indent, (uint32_t)w->json_indent_len);
+    }
+}
+
 static void emit_dq(yep_writer* w, const char* p, uint32_t n) {
     wr_byte(w, '"');
     uint32_t run = 0;
@@ -899,9 +911,9 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
     int flow_indent = w->col;
     if (w->json_pretty && n->count > 0) {
         w->pretty_depth++;
-        flow_indent = w->pretty_depth * 2; /* 2 spaces per level */
         wr_byte(w, '\n');
-        wr_indent(w, flow_indent);
+        wr_pretty_indent(w, w->pretty_depth);
+        flow_indent = w->col;
     }
     uint32_t child = n->first_child;
     uint32_t idx = 0;
@@ -913,7 +925,7 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
              * re-indent to the opening bracket's column */
             if (w->json_pretty) {
                 wr_put(w, ",\n", 2);
-                wr_indent(w, w->pretty_depth * 2);
+                wr_pretty_indent(w, w->pretty_depth);
             } else if (w->json_compact) {
                 wr_byte(w, ',');
             } else if (w->best_width > 0 && w->col > w->best_width) {
@@ -964,7 +976,7 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
     }
     if (w->json_pretty && idx > 0) {
         wr_byte(w, '\n');
-        wr_indent(w, (w->pretty_depth - 1) * 2);
+        wr_pretty_indent(w, w->pretty_depth - 1);
         w->pretty_depth--;
     }
     wr_byte(w, map ? '}' : ']');
