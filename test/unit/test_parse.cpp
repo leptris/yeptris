@@ -3940,6 +3940,50 @@ TEST(Parse, NestedExplicitPairNullsAtOwnLevels) {
     yeptris_recorder_free(rec);
 }
 
+TEST(Parse, TruncatedExplicitPairNullsAtEveryLevel) {
+    /* the nightly's round 24 (crash-bcc0f52c): a pending '?' pair
+     * whose value opened deeper frames lost its null two ways —
+     * e_pair_value_done popped the DEEPER pending (the depth check ran
+     * after the value parse) and the ':'-line completion cleared the
+     * shared flag while the stack still held the outer entry. Each
+     * pending pair's null flushes inside its own map (the libyaml
+     * oracle for both shapes below). */
+    const char* cases[] = {
+        "? a:\n   ? b",
+        "? a:\n        ? 9\n        :",
+    };
+    for (const char* y : cases) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+        ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        ASSERT_NE(rs, nullptr);
+        int map_starts = 0, map_ends = 0, nulls = 0;
+        for (size_t i = 0; i < n; i++) {
+            if (rs[i].type == YEPTRIS_EV_MAPPING_START) {
+                map_starts++;
+            }
+            if (rs[i].type == YEPTRIS_EV_MAPPING_END) {
+                map_ends++;
+            }
+            if (rs[i].type == YEPTRIS_EV_SCALAR && rs[i].value_len == 0) {
+                nulls++;
+            }
+        }
+        EXPECT_EQ(map_starts, 3) << y;
+        EXPECT_EQ(map_ends, 3) << y;
+        /* two nulls per shape: the inner pair's value + the outer
+         * pair's value. (libyaml additionally EMPTIES the inner pair's
+         * key at EOF — its simple-key law — so its stream shows three;
+         * the recorder route keeps the key's bytes, the sem-dump route
+         * matches libyaml — the route-identity ledger carries it.) */
+        EXPECT_EQ(nulls, 2) << y;
+        yeptris_recorder_free(rec);
+    }
+}
+
 TEST(Emit, NestedExplicitPairRoundTripsWithAnchors) {
     /* catch 88's full minimum, minus the second anchor of the original
      * "? ? &? &a : a" line: adjacent anchors are the suite's 4JVG

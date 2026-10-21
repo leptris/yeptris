@@ -555,9 +555,15 @@ static int e_flush_q_value(yep_engine* e) {
  * this pop the stack keeps a stale entry and the outer pair's null
  * flushes inside the wrong map (the nightly's run 38387614146). */
 static int e_pair_value_done(yep_engine* e, yep_ctx ctx, uint16_t key_col) {
+    /* the pair's own level, BEFORE its value parse: the value may open
+     * deeper frames ("? a:\n   ? b<EOF>") and a post-parse depth read
+     * then matches the DEEPER pair's pending slot, popping the wrong
+     * entry and stranding the outer null (the nightly's round 24,
+     * crash-bcc0f52c) */
+    int pre_depth = e->depth;
     int rc = e_parse_value(e, YEP_CTX_AFTER_COLON, key_col);
     if (rc >= 0 && ctx == YEP_CTX_AFTER_Q && e->qmd_n > 0 &&
-        e->depth == e->qmd_stack[e->qmd_n - 1]) {
+        pre_depth == e->qmd_stack[e->qmd_n - 1]) {
         e->qmd_n--; /* the inline value resolved the innermost '?' pending */
     }
     return rc;
@@ -3636,6 +3642,15 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
         while (e->pos < e->len && e->p[e->pos] != ':') {
             e->pos++;
         }
+        if (e->pos >= e->len) {
+            /* EOF without the ':': the explicit-key pair's value never
+             * came ("? b<EOF>") — the pending stays armed and the
+             * stream-end flush completes it at the deepest open map
+             * (the nightly's round 24, crash-bcc0f52c); popping here
+             * resolved a pair that has no value and stranded the OUTER
+             * pending's null in the wrong map */
+            return 0;
+        }
         e->pos++; /* past ':' */
         return e_pair_value_done(e, ctx, key_col);
     }
@@ -5458,10 +5473,14 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 }
             } else {
                 e->q_key_pending = 0;
-                e->q_value_pending = 0;
                 if (e->qmd_n > 0) {
                     e->qmd_n--; /* the ':' line supplied the innermost value */
                 }
+                /* the flag governs the WHOLE stack: deeper pendings
+                 * keep it up so their nulls still flush (the nightly's
+                 * round 24, crash-bcc0f52c — the hard clear stranded
+                 * the outer pair's null) */
+                e->q_value_pending = e->qmd_n > 0;
             }
             e->pos++;
             e->cv_line = e->line; /* the value parses on THIS line's colon */
