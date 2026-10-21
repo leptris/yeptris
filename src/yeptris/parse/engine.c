@@ -2436,7 +2436,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                             return -2;
                         }
                         st[n - 1].pair_open = 1;
-                        st[n - 1].pair_q = q_key;
+                        st[n - 1].pair_q = (uint8_t)q_key;
                         continue;
                     } else {
                         yep_event mk;
@@ -2468,7 +2468,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                         return -2;
                     }
                     st[n - 1].pair_open = 1;
-                    st[n - 1].pair_q = q_key;
+                    st[n - 1].pair_q = (uint8_t)q_key;
                     if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
                         int brc = e_buf_send(e, 0);
                         if (brc != 0) {
