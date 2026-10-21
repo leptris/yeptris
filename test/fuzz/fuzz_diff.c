@@ -731,7 +731,16 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             continue;
         }
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
-            break; /* a comment hides nothing further */
+            /* the comment runs to the LINE BREAK: a '&' inside it is
+             * prose, but an anchor on a later line still gates (the
+             * nightly's round 17, crash-39eb5a17: "&4:" after a
+             * '# comment' line was never scanned and the family's
+             * carry declined the shape) */
+            while (i + 1 < size && data[i + 1] != '\n' && data[i + 1] != '\r') {
+                i++;
+            }
+            prev = '\n';
+            continue;
         }
         if (c == '&') {
             amps++;
@@ -785,9 +794,14 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             continue;
         }
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
-            memcpy(sub + o, data + i, size - i); /* verbatim tail */
-            o += size - i;
-            break;
+            /* verbatim through the comment's line break, then keep
+             * scanning: anchors on later lines still split (the gate
+             * walks the same set) */
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                sub[o++] = (char)data[i++];
+            }
+            prev = '\n';
+            continue;
         }
         if (c == '&') {
             sub[o++] = (char)c;
