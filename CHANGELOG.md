@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - the anchor-charset carry now composes with the breakless-EOF clip carry: `&kk: |` plus a content line at EOF keeps BOTH suite divergences at once (the ':' anchor name per 2SXE and the clip break), and each single carry's transform left the other difference — the carry now also requires the split copy with a break appended to parse with no divergence (the nightly's round 20, catch 166, crash-e5098af3)
 
+- the UTF-16 breaknorm carry gained the plain-FOLD arm: a U+2028/9 unit inside a plain scalar folds to a space per the spec's b-char law (yeptris) while this libyaml keeps it raw — the decode with LS/PS substituted by ' ' must make libyaml agree with yeptris's dump (the nightly's round 21, catch 167's single-PS family; the odd-tail composite is #685)
+
 ## [0.6.35] - 2026-10-21
 ### Fixed
 
