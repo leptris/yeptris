@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Fixed
 
+- **parse: a truncated explicit-key pair completes its null at the right level** — the nightly's round 24 (crash-bcc0f52c, 278 bytes → `? a:\n   ? b<EOF>` / `? a:\n        ? 9\n        :`). Two state bugs in the '?'-pending stack: `e_pair_value_done` popped the DEEPER pair's pending slot (its depth check ran AFTER the value parse, which had opened the deeper frames), and the ':'-line completion cleared the shared `q_value_pending` flag while the stack still held the outer entry — each stranding a null that libyaml emits inside its own map. The pop now keys on the pair's level captured BEFORE the value parse; the ':'-line arm maintains the `pending = stack non-empty` invariant the flush itself uses.
+
+### Fixed
+
 - the anchor-charset carry's quote tracker now follows the word-start law: a mid-word quote is plain CONTENT (`v'`), so the tracker no longer swallows the rest of the input as an open quote — the `&` run after a plain key ending in an apostrophe gates and splits again (the nightly's round 23, crash-c1dc27cf: `v': \n&1: []` composed the ledgered 2SXE colon-name split with an ungated shape)
 
 ### Added
