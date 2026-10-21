@@ -5751,3 +5751,61 @@ TEST(Parse, TaggedQuotedKeyWithSpaceHash) {
     free(s1);
     free(s2);
 }
+
+TEST(Parse, AnchoredExplicitKeyDashPlainSiblingKeepsPair) {
+    /* catch 162 (the nightly's round 16, run 39561032621,
+     * crash-8434d91e): "-\n  ? &e\n  ---v: 1". The pending-key guard
+     * for dash-led plain keys probed the byte after the LINE START
+     * instead of the byte after the DASH — at indent 0 the two
+     * coincide, at indent 2 it read the second indent space and never
+     * fired, so the sibling pair was swallowed as the pending key's
+     * content and the props-pending anchored key never emitted
+     * (libyaml: {&e null: null, "---v": 1}). */
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    const char* y = "-\n  ? &e\n  ---v: 1\n";
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    (void)alen;
+    std::vector<std::pair<uint8_t, std::string>> evs;
+    std::vector<std::string> anchors;
+    for (size_t i = 0; i < n; i++) {
+        std::string v;
+        if (rs[i].type == YEPTRIS_EV_SCALAR) {
+            v.assign(arena + rs[i].value_off, rs[i].value_len);
+        }
+        std::string a;
+        if (rs[i].anchor_len > 0) {
+            a.assign(arena + rs[i].anchor_off, rs[i].anchor_len);
+        }
+        if (rs[i].type != YEPTRIS_EV_SCALAR && rs[i].type != YEPTRIS_EV_MAPPING_START &&
+            rs[i].type != YEPTRIS_EV_MAPPING_END && rs[i].type != YEPTRIS_EV_SEQUENCE_START &&
+            rs[i].type != YEPTRIS_EV_SEQUENCE_END) {
+            continue; /* stream/document framing rides out */
+        }
+        evs.emplace_back(rs[i].type, v);
+        anchors.push_back(a);
+    }
+    const uint8_t S = YEPTRIS_EV_SCALAR, MS = YEPTRIS_EV_MAPPING_START,
+                  ME = YEPTRIS_EV_MAPPING_END, SS = YEPTRIS_EV_SEQUENCE_START,
+                  SE = YEPTRIS_EV_SEQUENCE_END;
+    ASSERT_EQ(evs.size(), 8u); /* stream/doc framing filtered out */
+    EXPECT_EQ(evs[0].first, SS);
+    EXPECT_EQ(evs[1].first, MS); /* the explicit-key map */
+    EXPECT_EQ(evs[2].first, S);
+    EXPECT_EQ(evs[2].second, ""); /* the anchored empty key */
+    EXPECT_EQ(anchors[2], "e");
+    EXPECT_EQ(evs[3].first, S);
+    EXPECT_EQ(evs[3].second, ""); /* its null value */
+    EXPECT_EQ(evs[4].first, S);
+    EXPECT_EQ(evs[4].second, "---v");
+    EXPECT_EQ(evs[5].first, S);
+    EXPECT_EQ(evs[5].second, "1");
+    EXPECT_EQ(evs[6].first, ME);
+    EXPECT_EQ(evs[7].first, SE);
+    yeptris_recorder_free(rec);
+}
