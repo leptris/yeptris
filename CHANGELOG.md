@@ -11,7 +11,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - fixed the anchor-charset carry's comment law: both the gate and the transform stopped scanning at the first `#` comment instead of the line break, so an anchor like `&4:` on a later line never gated and the family declined its own shape (the nightly's round 17, catch 163, crash-39eb5a17)
 - **the break normalizer is now quote-aware (#638)** — LS/PS (U+2028/U+2029) stay raw inside single/double-quoted scalars (libyaml's READ_LINE keeps them as content; the JSON suite's y_string_u+2028_line_sep / y_string_u+2029_par_sep demand it), while NEL keeps folding everywhere and block-context folds are unchanged. The context walk mirrors step_scan's quote/comment/verbatim/flow arms minus the cut machinery, with the engine's value-position law (`k: 'x'` opens, the block plain continuation `a 'b'` does not) and the header-line-indent block-scalar floor
-
 - fixed the explicit-key pending guard for dash-led plain keys probing the byte after the line start instead of the byte after the dash — at indent>0 a sibling like `---v: 1` was swallowed as the pending key's content and a props-pending anchored key (`? &e`) never emitted (the nightly's round 16, catch 162)
 - **resolve: the compat-11 float law requires the dot and a signed
   exponent** — the decimal branch counted ANY exponent as a float, so
