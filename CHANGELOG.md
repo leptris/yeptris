@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.35] - 2026-10-21
 ### Fixed
 
 - **marshal: the strict duplicate-key scan is per-map and its table
