@@ -300,6 +300,11 @@ yep_sview yep_dom_str_put(yep_dom* d, const char* p, uint32_t len);
 char* yep_dom_str_tail(yep_dom* d, uint32_t cap);
 yep_sview yep_dom_str_commit(yep_dom* d, uint32_t written);
 void yep_dom_destroy(yep_dom* d);
+
+/* The document's implicit-typing resolver (its own, or the core-12
+ * default) — the SSOT the mutation and build paths must share. */
+struct yep_resolver;
+const struct yep_resolver* yep_dom_resolver(const yep_dom* d);
 int yep_dom_on_event(void* ctx, const yep_event* ev);
 
 /* Node id accessor for the public API layer. */

@@ -290,9 +290,15 @@ static yep_tag_id compat11(void* ctx, const char* p, uint32_t n) {
             return 1; /* plain 0 */
         }
     }
-    /* decimal int / float with underscores and commas (psych legacy) */
+    /* decimal int / float with underscores and commas (psych legacy).
+     * The float law is psych's scanner (and libyaml's 1.1 resolver): a
+     * DOT is required, and an exponent only counts when SIGNED —
+     * "1e0" and "1.5e2" stay strings (psych tokenize; libyaml's 1.1
+     * float regex agrees), "1.5" / ".5" / "1.5e+2" are floats. The
+     * unqualified-exponent float leaked host strings into number
+     * typing (yeptris-ruby #293's CBOR dump). */
     {
-        int digits = 0, dot = 0, e = 0, ed = 0;
+        int digits = 0, dot = 0, e = 0, ed = 0, esigned = 0;
         for (uint32_t k = i; k < n; k++) {
             char c = p[k];
             if (c >= '0' && c <= '9') {
@@ -311,13 +317,14 @@ static yep_tag_id compat11(void* ctx, const char* p, uint32_t n) {
             } else if ((c == 'e' || c == 'E') && digits && !e) {
                 e = 1;
                 if (k + 1 < n && (p[k + 1] == '-' || p[k + 1] == '+')) {
+                    esigned = 1;
                     k++;
                 }
             } else {
                 return 0;
             }
         }
-        if (digits && (dot || e) && (!e || ed)) {
+        if (digits && dot && (!e || (ed && esigned))) {
             return 2;
         }
         if (digits && !dot && !e) {

@@ -11,6 +11,7 @@
 #include "doc.h"
 #include "dom/dom.h"
 #include "memory/allocator.h"
+#include "resolve/resolver.h"
 
 static yeptris_document* doc_of(YeptrisDocument handle) {
     return (yeptris_document*)handle;
@@ -36,6 +37,21 @@ YEPTRIS_API YeptrisDocument yeptris_document_new(void) {
     doc->dom = dom;
     doc->sys = sys;
     return (YeptrisDocument)doc;
+}
+
+/* An empty document whose plain scalars type through the given
+ * schema's resolver (yeptris_document_new rides the core-12 default).
+ * The CBOR/dump faces create compat-11 documents so a host String the
+ * tree builder kept plain ("1e0" — Psych's dot-required float law)
+ * stays a text string instead of resolving as a float (#293's shape). */
+YEPTRIS_API YeptrisDocument yeptris_document_new_schema(YeptrisSchema schema) {
+    YeptrisDocument doc = yeptris_document_new();
+    if (doc != NULL) {
+        yeptris_document* d = (yeptris_document*)doc;
+        d->dom->resolver =
+            schema == YEPTRIS_SCHEMA_11_COMPAT ? yep_resolver_compat11() : yep_resolver_core12();
+    }
+    return doc;
 }
 
 YEPTRIS_API int yeptris_document_set_root(YeptrisDocument handle, YeptrisNode root) {

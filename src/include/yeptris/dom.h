@@ -9,6 +9,7 @@
 
 #include <yeptris/api.h>
 #include <yeptris/error.h>
+#include <yeptris/resolve.h> /* YeptrisSchema */
 #include <yeptris/types.h>
 
 #ifdef __cplusplus
@@ -98,6 +99,11 @@ YEPTRIS_API size_t yeptris_node_children(YeptrisNode node, YeptrisNode* out, siz
 
 /* An empty document with no input; build nodes and set the root. */
 YEPTRIS_API YeptrisDocument yeptris_document_new(void);
+
+/* The same, with the schema resolver plain scalars type through
+ * (YEPTRIS_SCHEMA_12_CORE is yeptris_document_new's default). Additive
+ * ABI. */
+YEPTRIS_API YeptrisDocument yeptris_document_new_schema(YeptrisSchema schema);
 
 /* Records a detached node as document i's root. */
 YEPTRIS_API int yeptris_document_set_root(YeptrisDocument doc, YeptrisNode root);
