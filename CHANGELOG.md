@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+
+- fixed the explicit-key pending guard for dash-led plain keys probing the byte after the line start instead of the byte after the dash — at indent>0 a sibling like `---v: 1` was swallowed as the pending key's content and a props-pending anchored key (`? &e`) never emitted (the nightly's round 16, catch 162)
 - **resolve: the compat-11 float law requires the dot and a signed
   exponent** — the decimal branch counted ANY exponent as a float, so
   compat-mode `1e0` / `1.5e2` typed as floats while psych's scanner
