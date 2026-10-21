@@ -334,18 +334,26 @@ static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char*
                     return 1;
                 }
                 /* the plain-FOLD reading (the nightly's round 21,
-                 * crash-1ae93822: U+2029 as a UTF-16 unit inside a
-                 * plain scalar): the spec's b-char law folds a single
-                 * break to a SPACE, and yeptris follows it, while this
-                 * libyaml keeps the PS raw mid-plain. The same decode
-                 * with LS/PS substituted by ' ' must make libyaml
-                 * agree with yeptris's original dump. */
+                 * crash-1ae93822: U+2028/9 units inside a plain
+                 * scalar): the spec's b-char law folds breaks — one
+                 * break to a space, a run of n to n-1 newlines — and
+                 * yeptris follows it, while this libyaml keeps LS/PS
+                 * raw mid-plain. The decode with each LS/PS replaced
+                 * by a literal newline re-enters libyaml's OWN fold
+                 * law (1 break folds to space, n to n-1), so its dump
+                 * of the substitution must equal yeptris's original
+                 * for every plain-fold shape (single PS round 21;
+                 * PS PS double-break round 21's composite tail). */
                 if (decodable) {
                     char* sub2 = malloc(size * 2);
                     if (sub2 != NULL) {
                         size_t o2 = 0;
                         int dec2 = 1;
-                        for (size_t i = 2; i + 1 < size && dec2;) {
+                        /* decode from byte 0: the leading U+FEFF unit
+                         * rides as content, so libyaml's own UTF-8-BOM
+                         * strip reproduces yeptris's single encoding-BOM
+                         * strip on both sides of the comparison. */
+                        for (size_t i = 0; i + 1 < size && dec2;) {
                             uint32_t u = be ? (uint32_t)((data[i] << 8) | data[i + 1])
                                             : (uint32_t)((data[i + 1] << 8) | data[i]);
                             i += 2;
@@ -364,7 +372,7 @@ static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char*
                                 break;
                             }
                             if (u == 0x2028 || u == 0x2029) {
-                                sub2[o2++] = ' ';
+                                sub2[o2++] = '\n';
                             } else if (u < 0x80) {
                                 sub2[o2++] = (char)u;
                             } else if (u < 0x800) {
@@ -385,7 +393,14 @@ static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char*
                         if (dec2) {
                             int ok3 = 0;
                             char* ldump3 = yd_libyaml_dump(sub2, o2, &ok3);
-                            known2 = (ldump3 != NULL && ok3 && strcmp(ydump, ldump3) == 0);
+                            /* direct agreement, or the BOM-content twin:
+                             * libyaml additionally strips the content BOM
+                             * that opens sub2's first scalar (its stream +
+                             * document-start BOM law), so the composed
+                             * BOM carry must also hold. */
+                            known2 = (ldump3 != NULL && ok3 &&
+                                      (strcmp(ydump, ldump3) == 0 ||
+                                       yd_bom_content_divergence(ydump, ldump3)));
                             free(ldump3);
                         }
                         free(sub2);

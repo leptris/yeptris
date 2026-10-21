@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - the anchor-charset carry now composes with the breakless-EOF clip carry: `&kk: |` plus a content line at EOF keeps BOTH suite divergences at once (the ':' anchor name per 2SXE and the clip break), and each single carry's transform left the other difference — the carry now also requires the split copy with a break appended to parse with no divergence (the nightly's round 20, catch 166, crash-e5098af3)
 
-- the UTF-16 breaknorm carry gained the plain-FOLD arm: a U+2028/9 unit inside a plain scalar folds to a space per the spec's b-char law (yeptris) while this libyaml keeps it raw — the decode with LS/PS substituted by ' ' must make libyaml agree with yeptris's dump (the nightly's round 21, catch 167's single-PS family; the odd-tail composite is #685)
+- the UTF-16 breaknorm carry's plain-FOLD arm now carries every fold shape: U+2028/9 units inside a plain scalar fold per the spec's b-char law (one break to a space, a run of n to n-1 newlines) while this libyaml keeps them raw — the decode with each LS/PS substituted by a literal newline re-enters libyaml's OWN fold law (1 break folds to space, n to n-1), so one substitution covers the single PS (the nightly's round 21, catch 167) and the PS PS double-break composite of #685; when the input also carries content BOMs, libyaml's extra stream+document-start BOM strip composes with the BOM-content carry on the substituted dump
 
 ## [0.6.35] - 2026-10-21
 ### Fixed
