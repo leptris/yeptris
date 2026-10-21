@@ -4032,48 +4032,369 @@ const yep_stopset yep_norm_break_leads = {
             0x02, 0x00}},
 };
 
+/* The context walk behind the break normalizer (issue #638): the fold
+ * is quote-aware — NEL (C2 85) folds EVERYWHERE (libyaml's READ_LINE
+ * folds it inside quoted scalars too), LS/PS (E2 80 A8/A9) fold
+ * everywhere EXCEPT inside single/double-quoted regions, where libyaml
+ * keeps them raw as content (the JSON suite's y_string_u+2028_line_sep
+ * / y_string_u+2029_par_sep demand it). The arms mirror step_scan's
+ * context tracking minus the cut/hold machinery — complete input, no
+ * truncation points — with two engine-faithful corrections: the value
+ * position survives spaces (`k: 'x'` opens the quote; a block plain
+ * continuation `a 'b'` does not), and the block-scalar floor is the
+ * header LINE's indent (step_scan's walk-back only serves col-0
+ * headers). Verified against libyaml by the NormLsPs pins and the
+ * fuzz-diff LS/PS comparator. */
+static int step_bs_header(const char* p, size_t len, size_t i);
+
+typedef struct yep_norm_ctx {
+    int quote;       /* 0 none, else the opening quote char */
+    int in_comment;
+    int in_verbatim;
+    int in_flow;
+    int tok_start;
+    int word_led;
+    int at_break;
+    int bs_open;
+    int bs_content;
+    uint32_t bs_indent; /* the header line's indent; (uint32_t)-1 = the
+                         * doc-inline root rule (markers only) */
+} yep_norm_ctx;
+
+typedef struct yep_norm_tok {
+    size_t n;     /* bytes consumed */
+    int fold_off; /* -1 verbatim, else the offset inside the token
+                   * whose bytes become one '\n' */
+    int fold_len;
+} yep_norm_tok;
+
+static void norm_break_arms(yep_norm_ctx* c) {
+    c->tok_start = 1;
+    c->word_led = 0;
+    c->at_break = 1;
+}
+
+static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t i) {
+    yep_norm_tok t = {1, -1, 0};
+    unsigned char ch = (unsigned char)p[i];
+    int nel = (ch == 0xC2 && i + 1 < len && (unsigned char)p[i + 1] == 0x85);
+    int lps = (ch == 0xE2 && i + 2 < len && (unsigned char)p[i + 1] == 0x80 &&
+               ((unsigned char)p[i + 2] & 0xFE) == 0xA8);
+
+    if (c->in_comment) {
+        /* the folds end a comment like any line break (step_scan's
+         * law: the post-break '#' must read as a comment) */
+        if (ch == '\n') {
+            c->in_comment = 0;
+            norm_break_arms(c);
+        } else if (ch == '\r' && (i + 1 >= len || p[i + 1] != '\n')) {
+            c->in_comment = 0;
+            norm_break_arms(c);
+        } else if (nel) {
+            t.n = 2;
+            t.fold_off = 0;
+            t.fold_len = 2;
+            c->in_comment = 0;
+            norm_break_arms(c);
+        } else if (lps) {
+            t.n = 3;
+            t.fold_off = 0;
+            t.fold_len = 3;
+            c->in_comment = 0;
+            norm_break_arms(c);
+        }
+        return t;
+    }
+    if (c->quote != 0) {
+        /* NEL folds inside quotes too; LS/PS stay raw content */
+        if (nel) {
+            t.n = 2;
+            t.fold_off = 0;
+            t.fold_len = 2;
+            return t;
+        }
+        if (lps) {
+            t.n = 3;
+            return t;
+        }
+        if (c->quote == '\'') {
+            if (ch == '\'') {
+                if (i + 1 < len && p[i + 1] == '\'') {
+                    t.n = 2; /* '' escaped quote */
+                    return t;
+                }
+                c->quote = 0;
+            }
+            return t;
+        }
+        if (ch == '\\') {
+            /* the escape consumes the next byte — but a multibyte
+             * break under the escape still folds (an escaped break is
+             * a fold continuation, and the blind pass folded it) */
+            if (i + 1 >= len) {
+                return t;
+            }
+            unsigned char nx = (unsigned char)p[i + 1];
+            if (nx == 0xC2 && i + 2 < len && (unsigned char)p[i + 2] == 0x85) {
+                t.n = 3;
+                t.fold_off = 1;
+                t.fold_len = 2;
+                return t;
+            }
+            if (nx == 0xE2 && i + 3 < len && (unsigned char)p[i + 2] == 0x80 &&
+                ((unsigned char)p[i + 3] & 0xFE) == 0xA8) {
+                t.n = 4;
+                t.fold_off = 1;
+                t.fold_len = 3;
+                return t;
+            }
+            t.n = 2;
+            return t;
+        }
+        if (ch == '"') {
+            c->quote = 0;
+        }
+        return t;
+    }
+    if (c->in_verbatim) {
+        if (ch == '>') {
+            c->in_verbatim = 0;
+        }
+        return t;
+    }
+    if (ch == '\n' || (ch == '\r' && (i + 1 >= len || p[i + 1] != '\n'))) {
+        norm_break_arms(c);
+        return t;
+    }
+    if (nel) {
+        t.n = 2;
+        t.fold_off = 0;
+        t.fold_len = 2;
+        norm_break_arms(c);
+        return t;
+    }
+    if (lps) {
+        t.n = 3;
+        t.fold_off = 0;
+        t.fold_len = 3;
+        norm_break_arms(c);
+        return t;
+    }
+    if (ch == '#' &&
+        (i == 0 || c->at_break || p[i - 1] == '\n' || p[i - 1] == '\r' || p[i - 1] == ' ' ||
+         p[i - 1] == '\t')) {
+        c->in_comment = 1;
+        c->at_break = 0;
+        return t;
+    }
+    if (ch == ' ' || ch == '\t') {
+        /* a value position survives spaces in block context ("k: 'x'"
+         * opens; the plain continuation "a 'b'" does not — its word
+         * did not begin with an indicator) */
+        c->tok_start = (c->in_flow > 0) ? 1 : (c->word_led || c->tok_start);
+        return t;
+    }
+
+    int line_start = (i == 0 || c->at_break || p[i - 1] == '\n' || p[i - 1] == '\r');
+
+    /* block scalars: inside the fold no quote opens and every break
+     * keeps its fold; the region ends at a col-0 marker, a %-line
+     * after content, or a dedent to the header line's indent */
+    if (line_start && c->in_flow == 0 && c->bs_open) {
+        size_t k = i;
+        uint32_t ind = 0;
+        while (k < len && p[k] == ' ') {
+            ind++;
+            k++;
+        }
+        if (k >= len) {
+            t.n = len - i;
+            c->at_break = 0;
+            return t; /* a final line without its break */
+        }
+        if (p[k] == '\n' || p[k] == '\r' || p[k] == '#') {
+            size_t e = k;
+            while (e < len && p[e] != '\n') {
+                e++;
+            }
+            t.n = (e < len) ? (e - i + 1) : (len - i);
+            c->at_break = (e < len);
+            return t; /* blank or comment-content line */
+        }
+        int marker =
+            (ind == 0 && k + 2 < len &&
+             ((p[k] == '-' && p[k + 1] == '-' && p[k + 2] == '-') ||
+              (p[k] == '.' && p[k + 1] == '.' && p[k + 2] == '.')) &&
+             (k + 3 >= len || p[k + 3] == ' ' || p[k + 3] == '\t' || p[k + 3] == '\n' ||
+              p[k + 3] == '\r'));
+        if (marker || (p[k] == '%' && ind == 0 && c->bs_content) ||
+            (!marker && c->bs_indent != (uint32_t)-1 && ind <= (uint32_t)c->bs_indent)) {
+            c->bs_open = 0; /* the fold ends: this line processes normally */
+        } else {
+            size_t e = k;
+            while (e < len && p[e] != '\n') {
+                e++;
+            }
+            if (p[k] != '#' && p[k] != '\n' && p[k] != '\r') {
+                c->bs_content = 1;
+            }
+            t.n = (e < len) ? (e - i + 1) : (len - i);
+            c->at_break = (e < len);
+            return t;
+        }
+    }
+
+    /* the header: a '>' / '|' at a value position with a valid
+     * follower opens the fold (the engine's own floor is the parent's
+     * column, which the walk cannot know — the header LINE's indent
+     * bounds it from above and the dedent law agrees wherever the
+     * parse succeeds) */
+    if (line_start && c->in_flow == 0 && !c->bs_open && c->tok_start &&
+        (ch == '>' || ch == '|') &&
+        (i + 1 >= len || p[i + 1] == ' ' || p[i + 1] == '\t' || p[i + 1] == '\n' ||
+         p[i + 1] == '\r' || (p[i + 1] >= '0' && p[i + 1] <= '9') || p[i + 1] == '+' ||
+         p[i + 1] == '-')) {
+        int hdr = step_bs_header(p, len, i);
+        if (hdr > 0) {
+            size_t ls = i;
+            while (ls > 0 && p[ls - 1] != '\n' && p[ls - 1] != '\r') {
+                ls--;
+            }
+            uint32_t ind = 0;
+            size_t k = ls;
+            while (k < len && p[k] == ' ') {
+                ind++;
+                k++;
+            }
+            c->bs_open = 1;
+            c->bs_indent = ind;
+            c->bs_content = 0;
+            size_t e = i;
+            while (e < len && p[e] != '\n') {
+                e++;
+            }
+            t.n = (e < len) ? (e - i + 1) : (len - i);
+            c->at_break = (e < len);
+            return t;
+        }
+        /* not a header ("| : [" is a mapping key): fall through */
+    }
+    /* the doc-inline twin ("--- |"): the node hangs off the document,
+     * so only a later marker ends its fold (col-0 lines are content) */
+    if (line_start && c->in_flow == 0 && !c->bs_open && ch == '-' && i + 2 < len &&
+        p[i + 1] == '-' && p[i + 2] == '-' &&
+        (i + 3 >= len || p[i + 3] == ' ' || p[i + 3] == '\t' || p[i + 3] == '\n' ||
+         p[i + 3] == '\r')) {
+        size_t k = i + 3;
+        while (k < len && (p[k] == ' ' || p[k] == '\t')) {
+            k++;
+        }
+        if (k < len && (p[k] == '>' || p[k] == '|') &&
+            (k + 1 >= len || p[k + 1] == ' ' || p[k + 1] == '\t' || p[k + 1] == '\n' ||
+             p[k + 1] == '\r' || (p[k + 1] >= '0' && p[k + 1] <= '9') || p[k + 1] == '+' ||
+             p[k + 1] == '-') &&
+            step_bs_header(p, len, k) > 0) {
+            c->bs_open = 1;
+            c->bs_indent = (uint32_t)-1;
+            c->bs_content = 0;
+            size_t e = i;
+            while (e < len && p[e] != '\n') {
+                e++;
+            }
+            t.n = (e < len) ? (e - i + 1) : (len - i);
+            c->at_break = (e < len);
+            return t;
+        }
+        t.n = 3; /* the marker rides; the line's tail processes normally */
+        return t;
+    }
+
+    if (c->tok_start) {
+        c->at_break = 0; /* any content byte ends the line-start state */
+        if (ch == '!' && i + 1 < len && p[i + 1] == '<') {
+            c->in_verbatim = 1;
+            t.n = 2;
+            return t;
+        }
+        c->word_led = (ch == '&' || ch == '*' || ch == '!' || ch == '-' || ch == '?' ||
+                       ch == ':' || ch == ',' || ch == '[' || ch == '{' || ch == ']' ||
+                       ch == '}');
+        if (ch == '\'' || ch == '"') {
+            c->quote = ch; /* a quote at a value position IS a quoted token */
+            c->tok_start = 0;
+            return t;
+        }
+        c->tok_start = 0;
+    }
+    if (ch == ',' || ch == ':' || ch == '[' || ch == '{' || ch == ']' || ch == '}') {
+        c->tok_start = 1; /* flow separators: the next byte may begin a
+                           * token with no space ("{\"a\":...") */
+    }
+    if (ch == '[' || ch == '{') {
+        c->in_flow++;
+    } else if (ch == ']' || ch == '}') {
+        if (c->in_flow > 0) {
+            c->in_flow--;
+        }
+    }
+    return t;
+}
+
 char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_t len,
                                   size_t* out_len) {
     const unsigned char* q = (const unsigned char*)p;
     const yep_text_kernels* k = yep_text_active();
     size_t i = 0;
-    int found = 0;
+    int exotic = 0;
     while (i < len) {
         ptrdiff_t hit = k->stopset_find(&yep_norm_break_leads, (const char*)q + i, len - i);
         if (hit < 0) {
             break;
         }
         i += (size_t)hit;
-        if (q[i] == 0xC2 && i + 1 < len && q[i + 1] == 0x85) {
+        exotic = 1; /* any NEL/LS/PS lead byte needs the context walk */
+        break;
+    }
+    if (!exotic) {
+        return NULL;
+    }
+    yep_norm_ctx probe;
+    memset(&probe, 0, sizeof(probe));
+    probe.tok_start = 1;
+    int found = 0;
+    for (size_t j = 0; j < len;) {
+        yep_norm_tok t = norm_step(&probe, p, len, j);
+        if (t.fold_off >= 0) {
             found = 1;
             break;
         }
-        if (q[i] == 0xE2 && i + 2 < len && q[i + 1] == 0x80 &&
-            (q[i + 2] == 0xA8 || q[i + 2] == 0xA9)) {
-            found = 1;
-            break;
-        }
-        i++;
+        j += t.n;
     }
     if (!found) {
-        return NULL;
+        return NULL; /* the exotic bytes all ride inside quoted regions:
+                      * the zero-copy path keeps them raw (the fix) */
     }
     char* out = yep_alloc(sys, len + 1);
     if (out == NULL) {
         return NULL;
     }
+    yep_norm_ctx cp;
+    memset(&cp, 0, sizeof(cp));
+    cp.tok_start = 1;
     size_t o = 0;
     for (size_t j = 0; j < len;) {
-        if (q[j] == 0xC2 && j + 1 < len && q[j + 1] == 0x85) {
-            out[o++] = '\n';
-            j += 2;
-        } else if (q[j] == 0xE2 && j + 2 < len && q[j + 1] == 0x80 &&
-                   (q[j + 2] == 0xA8 || q[j + 2] == 0xA9)) {
-            out[o++] = '\n';
-            j += 3;
+        yep_norm_tok t = norm_step(&cp, p, len, j);
+        if (t.fold_off < 0) {
+            memcpy(out + o, p + j, t.n);
+            o += t.n;
         } else {
-            out[o++] = p[j++];
+            memcpy(out + o, p + j, (size_t)t.fold_off);
+            o += (size_t)t.fold_off;
+            out[o++] = '\n';
+            memcpy(out + o, p + j + t.fold_off + t.fold_len, t.n - (size_t)t.fold_off - (size_t)t.fold_len);
+            o += t.n - (size_t)t.fold_off - (size_t)t.fold_len;
         }
+        j += t.n;
     }
     out[o] = '\0';
     if (out_len != NULL) {
