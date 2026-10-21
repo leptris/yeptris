@@ -4048,7 +4048,7 @@ const yep_stopset yep_norm_break_leads = {
 static int step_bs_header(const char* p, size_t len, size_t i);
 
 typedef struct yep_norm_ctx {
-    int quote;       /* 0 none, else the opening quote char */
+    int quote; /* 0 none, else the opening quote char */
     int in_comment;
     int in_verbatim;
     int in_flow;
@@ -4180,9 +4180,8 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         norm_break_arms(c);
         return t;
     }
-    if (ch == '#' &&
-        (i == 0 || c->at_break || p[i - 1] == '\n' || p[i - 1] == '\r' || p[i - 1] == ' ' ||
-         p[i - 1] == '\t')) {
+    if (ch == '#' && (i == 0 || c->at_break || p[i - 1] == '\n' || p[i - 1] == '\r' ||
+                      p[i - 1] == ' ' || p[i - 1] == '\t')) {
         c->in_comment = 1;
         c->at_break = 0;
         return t;
@@ -4221,12 +4220,11 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             c->at_break = (e < len);
             return t; /* blank or comment-content line */
         }
-        int marker =
-            (ind == 0 && k + 2 < len &&
-             ((p[k] == '-' && p[k + 1] == '-' && p[k + 2] == '-') ||
-              (p[k] == '.' && p[k + 1] == '.' && p[k + 2] == '.')) &&
-             (k + 3 >= len || p[k + 3] == ' ' || p[k + 3] == '\t' || p[k + 3] == '\n' ||
-              p[k + 3] == '\r'));
+        int marker = (ind == 0 && k + 2 < len &&
+                      ((p[k] == '-' && p[k + 1] == '-' && p[k + 2] == '-') ||
+                       (p[k] == '.' && p[k + 1] == '.' && p[k + 2] == '.')) &&
+                      (k + 3 >= len || p[k + 3] == ' ' || p[k + 3] == '\t' || p[k + 3] == '\n' ||
+                       p[k + 3] == '\r'));
         if (marker || (p[k] == '%' && ind == 0 && c->bs_content) ||
             (!marker && c->bs_indent != (uint32_t)-1 && ind <= (uint32_t)c->bs_indent)) {
             c->bs_open = 0; /* the fold ends: this line processes normally */
@@ -4249,8 +4247,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
      * column, which the walk cannot know — the header LINE's indent
      * bounds it from above and the dedent law agrees wherever the
      * parse succeeds) */
-    if (line_start && c->in_flow == 0 && !c->bs_open && c->tok_start &&
-        (ch == '>' || ch == '|') &&
+    if (line_start && c->in_flow == 0 && !c->bs_open && c->tok_start && (ch == '>' || ch == '|') &&
         (i + 1 >= len || p[i + 1] == ' ' || p[i + 1] == '\t' || p[i + 1] == '\n' ||
          p[i + 1] == '\r' || (p[i + 1] >= '0' && p[i + 1] <= '9') || p[i + 1] == '+' ||
          p[i + 1] == '-')) {
@@ -4316,9 +4313,8 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             t.n = 2;
             return t;
         }
-        c->word_led = (ch == '&' || ch == '*' || ch == '!' || ch == '-' || ch == '?' ||
-                       ch == ':' || ch == ',' || ch == '[' || ch == '{' || ch == ']' ||
-                       ch == '}');
+        c->word_led = (ch == '&' || ch == '*' || ch == '!' || ch == '-' || ch == '?' || ch == ':' ||
+                       ch == ',' || ch == '[' || ch == '{' || ch == ']' || ch == '}');
         if (ch == '\'' || ch == '"') {
             c->quote = ch; /* a quote at a value position IS a quoted token */
             c->tok_start = 0;
@@ -4391,7 +4387,8 @@ char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_
             memcpy(out + o, p + j, (size_t)t.fold_off);
             o += (size_t)t.fold_off;
             out[o++] = '\n';
-            memcpy(out + o, p + j + t.fold_off + t.fold_len, t.n - (size_t)t.fold_off - (size_t)t.fold_len);
+            memcpy(out + o, p + j + t.fold_off + t.fold_len,
+                   t.n - (size_t)t.fold_off - (size_t)t.fold_len);
             o += t.n - (size_t)t.fold_off - (size_t)t.fold_len;
         }
         j += t.n;
