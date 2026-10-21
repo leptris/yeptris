@@ -5790,9 +5790,8 @@ TEST(Parse, AnchoredExplicitKeyDashPlainSiblingKeepsPair) {
         evs.emplace_back(rs[i].type, v);
         anchors.push_back(a);
     }
-    const uint8_t S = YEPTRIS_EV_SCALAR, MS = YEPTRIS_EV_MAPPING_START,
-                  ME = YEPTRIS_EV_MAPPING_END, SS = YEPTRIS_EV_SEQUENCE_START,
-                  SE = YEPTRIS_EV_SEQUENCE_END;
+    const uint8_t S = YEPTRIS_EV_SCALAR, MS = YEPTRIS_EV_MAPPING_START, ME = YEPTRIS_EV_MAPPING_END,
+                  SS = YEPTRIS_EV_SEQUENCE_START, SE = YEPTRIS_EV_SEQUENCE_END;
     ASSERT_EQ(evs.size(), 8u); /* stream/doc framing filtered out */
     EXPECT_EQ(evs[0].first, SS);
     EXPECT_EQ(evs[1].first, MS); /* the explicit-key map */
