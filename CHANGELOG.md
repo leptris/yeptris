@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **fuzz_diff: the anchor-charset carry covers every out-of-set byte** —
+  libyaml's anchor name charset is `[0-9A-Za-z_-]` (IS_ALPHA); the suite
+  keeps every ns-anchor-char inside the name (W5VH, 2SXE), so
+  `k: &ab?cd v` anchors `ab?cd` in yeptris while libyaml anchors `ab`
+  and reads `?cd v` as the value (the nightly's run 39520357518,
+  crash-d5237f57; the round-9 colon carry covered only `:`). The carry
+  now splits every quote-free `&` name run at libyaml's truncation
+  point (`&ab?cd` → `&ab ?cd`) and verifies libyaml's dump of the
+  ORIGINAL equals yeptris's dump of the SPLIT — the divergence is then
+  exactly the charset law. Seed `anchor-name-charset-split.bin`.
 - **parse: a wrapped seq-pair key resets the pair's value slot** —
   `[[a]: ]` (a flow sequence entry that is a single-pair map whose key
   is a flow collection and whose value position is empty) dropped the

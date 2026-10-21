@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "diff_core.h"
+#include "sem_dump.h" /* the charset carry re-dumps yeptris on the split input */
 
 /* The corpus basename this input came from (set by the walker), or
  * NULL under libFuzzer — splits must then be ledgered by content. */
@@ -667,21 +668,30 @@ static int yd_flow_anchor_colon_divergence(const uint8_t* data, size_t size, con
     return 0;
 }
 
-/* True when the difference is the anchor-name charset family: the
- * suite keeps ':' (and more) INSIDE anchor names (W5VH
- * "&:@*!$\"<foo>:", 2SXE "&a: key") and yeptris follows, while
- * libyaml stops the name at the colon ("&b:a!b:a!c" anchors 'b' and
- * reads ":a!b:a!c" as the value -- Psych's AST confirms). libyaml is
- * behind the suite; the gate is a depth-0 mini-scan for an '&' whose
- * name (up to the first blank/EOF) contains a ':', outside quotes,
- * no aliases or prop chains. */
-static int yd_anchor_name_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
-                                           const char* ldump) {
+/* libyaml's anchor/alias name charset is [0-9A-Za-z_-] (IS_ALPHA,
+ * scanner.c's scan_anchor); the suite keeps every ns-anchor-char
+ * INSIDE the name (W5VH "&:@*!$\"<foo>:", 2SXE "&a: key", the
+ * nightly's round-10 artifact "&----?x-"), and yeptris follows. When
+ * a name leaves libyaml's set, it truncates there and re-lexes the
+ * remainder as content ("k: &ab?cd v" anchors 'ab' and reads "?cd v"
+ * as the value) — libyaml is behind the suite. Carry: truncate every
+ * quote-free '&' name run at its first out-of-set byte and require
+ * libyaml's dump of the truncation to equal yeptris's dump of the
+ * original — the divergence is then exactly the charset law. */
+static int yd_anchor_byte_in_libyaml_set(unsigned char n) {
+    return (n >= '0' && n <= '9') || (n >= 'A' && n <= 'Z') || (n >= 'a' && n <= 'z') || n == '_' ||
+           n == '-';
+}
+
+static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                             const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
     }
-    int depth = 0;
+    /* gate: some quote-free '&' name run leaves libyaml's set */
+    int gate = 0;
     int quote = 0;
+    char prev = '\n'; /* '#' is a comment only after a blank */
     for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
         if (quote != 0) {
@@ -692,44 +702,104 @@ static int yd_anchor_name_colon_divergence(const uint8_t* data, size_t size, con
             } else if (quote == '"' && c == '"') {
                 quote = 0;
             }
+            prev = (char)c;
             continue;
         }
         if (c == '\'' || c == '"') {
             quote = c;
+            prev = (char)c;
             continue;
         }
-        if (c == '#' && depth == 0) {
-            break;
+        if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
+            break; /* a comment hides nothing further */
         }
-        if (c == '[' || c == '{') {
-            depth++;
-            continue;
+        if (c == '*') {
+            return 0; /* alias resolution spans the truncation: out of family */
         }
-        if (c == ']' || c == '}') {
-            if (depth > 0) {
-                depth--;
-            }
-            continue;
-        }
-        if (c == '*' || c == '@' || c == '`' || c == '<' || c == '!') {
-            return 0; /* aliases/verbatim/shorthand tags: out of family */
-        }
-        if (c == '&' && depth == 0) {
+        if (c == '&' && !gate) {
             size_t j = i + 1;
-            int colon = 0;
             while (j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
                    data[j] != '\r') {
-                if (data[j] == ':') {
-                    colon = 1;
+                if (!yd_anchor_byte_in_libyaml_set(data[j])) {
+                    gate = 1;
+                    break;
                 }
                 j++;
             }
-            if (colon && j > i + 1) {
-                return 1; /* the name rides through ':' at block level */
-            }
         }
+        prev = (char)c;
     }
-    return 0;
+    if (!gate) {
+        return 0;
+    }
+    /* transform: split every quote-free '&' name run at its first
+     * out-of-set byte ("&ab?cd" -> "&ab ?cd") — the reading yeptris
+     * then produces IS libyaml's reading of the original */
+    char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    quote = 0;
+    prev = '\n';
+    for (size_t i = 0; i < size;) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            sub[o++] = (char)c;
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                sub[o++] = (char)data[++i];
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            i++;
+            continue;
+        }
+        if (c == '\'' || c == '"') {
+            quote = c;
+            sub[o++] = (char)c;
+            prev = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
+            memcpy(sub + o, data + i, size - i); /* verbatim tail */
+            o += size - i;
+            break;
+        }
+        if (c == '&') {
+            sub[o++] = (char)c;
+            i++;
+            while (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
+                   data[i] != '\r' && yd_anchor_byte_in_libyaml_set(data[i])) {
+                sub[o++] = (char)data[i++];
+            }
+            if (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
+                data[i] != '\r') {
+                sub[o++] = ' '; /* libyaml's truncation point becomes a token break */
+                while (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
+                       data[i] != '\r') {
+                    sub[o++] = (char)data[i++];
+                }
+            }
+            prev = ' ';
+            continue;
+        }
+        sub[o++] = (char)c;
+        prev = (char)c;
+        i++;
+    }
+    int ok2 = 0;
+    char* ydump2 = yd_sem_dump(sub, o, &ok2);
+    free(sub);
+    if (ydump2 == NULL || !ok2) {
+        free(ydump2);
+        return 0;
+    }
+    int known = strcmp(ldump, ydump2) == 0;
+    free(ydump2);
+    return known;
 }
 
 /* True when the difference is the glued-indicator-comment family:
@@ -878,7 +948,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
          yd_clip_breakless_divergence(data, size, ydump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
-         yd_anchor_name_colon_divergence(data, size, ydump, ldump) ||
+         yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
          yd_header_glued_comment_divergence(data, size, ydump, ldump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
