@@ -2125,6 +2125,8 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
         uint8_t just_closed;
         uint8_t pair_open;
         uint8_t pair_value;
+        uint8_t pair_q; /* the pair opened on an explicit '?': its
+                         * JSON-style ':' separator is still ahead */
         uint8_t pair_wrap;
         uint8_t q_coll;   /* seq: an explicit '?' key collection awaits completion */
         uint8_t key_coll; /* map: the nested collection opened in key position */
@@ -2140,6 +2142,7 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
     st[idx].key_coll = 0;
     st[idx].pair_open = 0;
     st[idx].pair_value = 0;
+    st[idx].pair_q = 0;
     st[idx].pair_wrap = 0;
     st[idx].q_coll = 0;
     st[idx].buf_from = -1;
@@ -2155,6 +2158,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
         uint8_t just_closed; /* a nested collection closed here (key candidate) */
         uint8_t pair_open;   /* seq: a buffered single-pair awaits its MAP_END */
         uint8_t pair_value;  /* seq: the open pair already has its value */
+        uint8_t pair_q;      /* seq: the pair opened on an explicit '?':
+                              * its JSON-style ':' separator is still ahead */
         uint8_t pair_wrap;   /* map frame pushed as a seq single-pair */
         uint8_t q_coll;      /* seq: an explicit '?' key collection awaits completion */
         uint8_t key_coll;    /* map: a nested collection opened in key position */
@@ -2216,6 +2221,21 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 fl.indent <= e->flow_floor) {
                 /* a block-level flow's lines out-indent its parent (9C9N) */
                 return e_fail(e, YEP_ERR_BAD_INDENT, e->pos + fl.indent);
+            }
+        }
+        if (st[n - 1].pair_open && st[n - 1].pair_q && e->pos < e->len && e->p[e->pos] == ':') {
+            /* "#671: the explicit key's entry separator may sit flush
+             * against the value ("[? &a :b]") -- the JSON-style colon
+             * the map frame's pending-key law consumes; an IMPLICIT
+             * key's separator is already spent here, so its value's
+             * leading ':' stays content ("[s: :v]") */
+            size_t n2 = e->pos + 1;
+            if (n2 >= e->len ||
+                !(e->p[n2] == ' ' || e->p[n2] == '\t' || e->p[n2] == '\n' || e->p[n2] == '\r' ||
+                  yep_ct_is((unsigned char)e->p[n2], YEP_CT_FLOW_IND))) {
+                st[n - 1].pair_q = 0;
+                e->pos++;
+                continue;
             }
         }
         if (e->pos < e->len && e->p[e->pos] != ',' && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
@@ -2416,6 +2436,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                             return -2;
                         }
                         st[n - 1].pair_open = 1;
+                        st[n - 1].pair_q = q_key;
                         continue;
                     } else {
                         yep_event mk;
@@ -2447,6 +2468,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                         return -2;
                     }
                     st[n - 1].pair_open = 1;
+                    st[n - 1].pair_q = q_key;
                     if (e->ev_scopes == 0 && e->ev_buf_n > 0) {
                         int brc = e_buf_send(e, 0);
                         if (brc != 0) {
@@ -2527,6 +2549,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 }
                 st[n - 1].pair_open = 0;
                 st[n - 1].pair_value = 0;
+                st[n - 1].pair_q = 0;
             }
             if (st[n - 1].buf_from >= 0) {
                 st[n - 1].buf_from = -1;

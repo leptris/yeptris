@@ -228,21 +228,6 @@ static int yd_qcolon_walk(const char* ldump, const char* ydump2) {
                 continue;
             }
         }
-        /* the VALUE-side twin (the anchor-charset composition's
-         * "[? &a :b]"): the anchored empty key rides unchanged and
-         * yeptris's value keeps the ':' libyaml consumed as the
-         * entry separator (the map frame consumes it — "{? &a :b}"
-         * is EQUAL; the seq pair-wrap's engine slice is filed) */
-        if (lens[i] >= 7 && strncmp(lines[i], "=VAL : ", 7) == 0 &&
-            (lens[i] == 7 || lines[i][lens[i] - 1] == ' ') && i + 1 < n && lens[i + 1] >= 8 &&
-            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && ylens[j] == lens[i] &&
-            memcmp(ylines[j], lines[i], lens[i]) == 0 && j + 1 < yn &&
-            ylens[j + 1] == lens[i + 1] + 1 && strncmp(ylines[j + 1], "=VAL : :", 8) == 0 &&
-            memcmp(ylines[j + 1] + 8, lines[i + 1] + 7, lens[i + 1] - 7) == 0) {
-            i++;
-            j += 2;
-            continue;
-        }
         if (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0) {
             return 0;
         }
@@ -828,10 +813,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         free(ydump2);
         return 0;
     }
-    /* the split can also expose the qflow-colon reading: "? &a:b&"
-     * splits to "? &a :b&" and yeptris's ':b&' key rides the
-     * empty-key twin (libyaml: anchored empty key + value "b&";
-     * the nightly's round 13, catch 160) */
+    /* the split can also expose the qflow-colon reading ("? &a:b&"
+     * splits to "? &a :b&"; catch 160's shape) -- the key-side twin
+     * below reconciles it */
     int known = strcmp(ldump, ydump2) == 0 || yd_qcolon_walk(ldump, ydump2);
     free(ydump2);
     return known;
