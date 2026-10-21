@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - the UTF-16 breaknorm carry gained the plain-FOLD arm: a U+2028/9 unit inside a plain scalar folds to a space per the spec's b-char law (yeptris) while this libyaml keeps it raw — the decode with LS/PS substituted by ' ' must make libyaml agree with yeptris's dump (the nightly's round 21, catch 167's single-PS family; the odd-tail composite is #685)
 
+- **parse: the bare non-specific tag `!` no longer resolves through `%TAG`** — spec 7.3.3 exempts `!` from directives, and the suite pins the event as `<!>` (8MK2/52DL/S4JQ: `! a` → `=VAL <!> :a`); `%TAG ! x:` + `- ! v` had attached the directive prefix to the scalar (the nightly's round 22, crash-d6be3347). The residual libyaml plain-drop is carried by the new non-specific-tag comparator (the nightly's round 22, catch 168)
+
 ## [0.6.35] - 2026-10-21
 ### Fixed
 

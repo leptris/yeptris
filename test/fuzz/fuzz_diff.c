@@ -1075,6 +1075,100 @@ static int yd_qflow_adjacent_divergence(const uint8_t* data, size_t size, const 
     return known;
 }
 
+/* True when the difference is exactly the bare non-specific tag: a
+ * standalone "!" token ("! a", "- ! tag:x:" — the nightly's round 22,
+ * crash-d6be3347). The suite keeps the tag on the event as "<!>"
+ * (8MK2/52DL/S4JQ pin "=VAL <!> :a"; the tag is exempt from %TAG per
+ * 7.3.3, which the resolve exemption now implements) while libyaml
+ * DROPS it on plain scalars. The transform removes the "!" token from
+ * the input and requires libyaml's dump of that to equal yeptris's
+ * dump with the "<!> " markers stripped. */
+static int yd_nonspecific_tag_divergence(const uint8_t* data, size_t size, const char* ydump) {
+    if (ydump == NULL || size == 0) {
+        return 0;
+    }
+    /* gate: a quote-free standalone "!" token (space/tab-delimited) */
+    int gate = 0;
+    int quote = 0;
+    char prev = '\n';
+    size_t bang = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\') {
+                i++;
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            prev = (char)c;
+            continue;
+        }
+        if (c == '\'' || c == '"') {
+            quote = c;
+            prev = (char)c;
+            continue;
+        }
+        if (c == '!' && (prev == '\n' || prev == '\r' || prev == ' ' || prev == '\t') &&
+            i + 1 < size &&
+            (data[i + 1] == ' ' || data[i + 1] == '\t' || data[i + 1] == '\n' ||
+             data[i + 1] == '\r')) {
+            gate = 1;
+            bang = i;
+            break;
+        }
+        prev = (char)c;
+    }
+    if (!gate) {
+        return 0;
+    }
+    /* transform: drop the "!" and one following separator */
+    char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    for (size_t i = 0; i < size;) {
+        if (i == bang) {
+            i++; /* the '!' */
+            if (i < size && (data[i] == ' ' || data[i] == '\t')) {
+                i++; /* one separator */
+            }
+            continue;
+        }
+        sub[o++] = (char)data[i++];
+    }
+    int ok2 = 0;
+    char* ldump2 = yd_libyaml_dump(sub, o, &ok2);
+    free(sub);
+    if (ldump2 == NULL || !ok2) {
+        free(ldump2);
+        return 0;
+    }
+    /* yeptris's dump with the non-specific "<!> " markers stripped */
+    const char* mark = "<!> ";
+    size_t mlen = 4;
+    char* strip = malloc(strlen(ydump) + 1);
+    if (strip == NULL) {
+        free(ldump2);
+        return 0;
+    }
+    size_t so = 0;
+    for (const char* q = ydump; *q;) {
+        if (strncmp(q, mark, mlen) == 0) {
+            q += mlen;
+            continue;
+        }
+        strip[so++] = *q++;
+    }
+    strip[so] = '\0';
+    int known = strcmp(strip, ldump2) == 0;
+    free(strip);
+    free(ldump2);
+    return known;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -1091,7 +1185,8 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_clip_breakless_divergence(data, size, ydump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
          yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
-         yd_header_glued_comment_divergence(data, size, ydump, ldump));
+         yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
+         yd_nonspecific_tag_divergence(data, size, ydump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
