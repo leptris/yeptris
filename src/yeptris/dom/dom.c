@@ -630,7 +630,7 @@ void yep_dom_destroy(yep_dom* d) {
 #include "scan/json.h"
 #include "scan/scan.h"
 
-static const yep_resolver* dom_resolver(const yep_dom* d) {
+const yep_resolver* yep_dom_resolver(const yep_dom* d) {
     return d->resolver != NULL ? d->resolver : yep_resolver_core12();
 }
 
@@ -682,7 +682,7 @@ static int jb_scalar_node(jbuilder* b) {
     yep_dnode* n = &b->d->nodes[id];
     size_t start = b->i;
     size_t i = b->i;
-    const yep_resolver* r = dom_resolver(b->d);
+    const yep_resolver* r = yep_dom_resolver(b->d);
     if (b->p[i] == 't') {
         if (!yep_json_literal(b->p, b->len, &i, "true")) {
             return -2;
@@ -846,7 +846,7 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
     d->map_pending_key[d->depth] = 0;
     d->stack[d->depth++] = root;
 
-    const yep_resolver* r = dom_resolver(d);
+    const yep_resolver* r = yep_dom_resolver(d);
     yep_json_walk w;
     yep_json_tok t;
     yep_json_walk_init(&w, p, len, open, max_depth);
@@ -1126,7 +1126,7 @@ int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t ke
     if (d->depth >= YEP_DOM_MAX_DEPTH) {
         return 0;
     }
-    const yep_resolver* r = dom_resolver(d);
+    const yep_resolver* r = yep_dom_resolver(d);
     uint32_t mid = dom_open_node(d, YEP_DOM_MAPPING, NULL, NULL, 0, 0, 0, 0);
     if (mid == UINT32_MAX) {
         return -1;
@@ -1151,7 +1151,7 @@ int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t ke
  * opened before offering — node-for-node the event path's item. */
 int dom_on_block_item(void* ctx, const yep_block_value* v) {
     yep_dom* d = (yep_dom*)ctx;
-    const yep_resolver* r = dom_resolver(d);
+    const yep_resolver* r = yep_dom_resolver(d);
     uint32_t vid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0);
     if (vid == UINT32_MAX) {
         return -1;
@@ -1178,7 +1178,7 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
             return 0;
         }
     }
-    const yep_resolver* r = dom_resolver(d);
+    const yep_resolver* r = yep_dom_resolver(d);
     uint32_t kid = dom_open_node(d, YEP_DOM_SCALAR, NULL, NULL, 0, YEP_STYLE_PLAIN, 1, 0);
     if (kid == UINT32_MAX) {
         return -1;

@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **resolve: the compat-11 float law requires the dot and a signed
+  exponent** — the decimal branch counted ANY exponent as a float, so
+  compat-mode `1e0` / `1.5e2` typed as floats while psych's scanner
+  (and libyaml's 1.1 float regex) keep them strings: only `1.5`,
+  `.5`, and signed-exponent `1.5e+2` are floats. The leak surfaced as
+  yeptris-ruby#293 (a host String "1e0" CBOR-dumped as float 1.0,
+  360 checksum values per serialbench `large`). Core-12 keeps the
+  spec law (unsigned exponents are floats). C pin
+  `Cbor.SchemaTypingKeepsHostStringsText`; additive
+  `yeptris_document_new_schema` lets the dump faces build
+  compat-typed documents, and mutation typing now rides the
+  document's resolver (`yep_dom_resolver`) instead of a hardcoded
+  core-12.
 - **parse: the seq pair-wrap consumes its explicit key's flush
   separator** (#671) — `[? &a :b,]` read the value as `:b`: the
   JSON-style `{a:b}` law lets the entry separator sit flush against

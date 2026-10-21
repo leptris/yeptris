@@ -54,8 +54,8 @@ uint32_t yep_mut_scalar(yep_dom* d, const char* value, size_t len, uint8_t style
     }
     n->value = yep_dom_str_put(d, v.p ? (const char*)v.p : "", v.len);
     n->style = style;
-    n->tag_id = style == YEP_STYLE_PLAIN ? yep_resolver_core12()->resolve(NULL, v.p, v.len)
-                                         : YEPTRIS_TAG_STR;
+    n->tag_id =
+        style == YEP_STYLE_PLAIN ? yep_dom_resolver(d)->resolve(NULL, v.p, v.len) : YEPTRIS_TAG_STR;
     return id;
 }
 

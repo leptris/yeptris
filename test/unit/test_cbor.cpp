@@ -888,6 +888,46 @@ TEST(CborSeq, MixedItemsIdenticalTrees) {
     }
 }
 
+/* #293: the CBOR dump face builds documents whose plain scalars type
+ * through the document's resolver. Under compat-11 the float law is
+ * psych's scanner — a DOT is required and the exponent must be
+ * signed — so a host String the tree builder kept plain ("1e0",
+ * "1.5e2") stays a text string instead of resolving as a float.
+ * Core-12 (the default) keeps the spec law: an unsigned exponent is
+ * a float. */
+TEST(Cbor, SchemaTypingKeepsHostStringsText) {
+    auto encode_plain = [](YeptrisSchema schema, const char* text, size_t* len) {
+        YeptrisDocument doc = yeptris_document_new_schema(schema);
+        EXPECT_NE(doc, nullptr);
+        YeptrisNode root = yeptris_node_new_scalar(doc, text, strlen(text), YEPTRIS_STYLE_PLAIN);
+        EXPECT_NE(root, nullptr);
+        EXPECT_EQ(yeptris_document_set_root(doc, root), YEPTRIS_OK);
+        auto* buf =
+            static_cast<unsigned char*>(yeptris_cbor_encode(doc, YEPTRIS_CBOR_CANONICAL, len));
+        yeptris_document_free(doc);
+        return buf;
+    };
+    const char* psych_strings[] = {"1e0", "10e9", "1.5e2"};
+    for (const char* t : psych_strings) {
+        size_t cl = 0, fl = 0;
+        unsigned char* core = encode_plain(YEPTRIS_SCHEMA_12_CORE, t, &cl);
+        unsigned char* compat = encode_plain(YEPTRIS_SCHEMA_11_COMPAT, t, &fl);
+        ASSERT_NE(core, nullptr) << t;
+        ASSERT_NE(compat, nullptr) << t;
+        (void)cl; /* core-12's float width is the preferred-width law */
+        EXPECT_EQ(compat[0], (unsigned char)(0x60 + strlen(t))) << t;
+        EXPECT_EQ(memcmp(compat + 1, t, strlen(t)), 0) << t;
+        EXPECT_EQ(core[0] >> 5, 7u) << t << " stays a core-12 float";
+        yeptris_free(core);
+        yeptris_free(compat);
+    }
+    size_t fl = 0;
+    unsigned char* f = encode_plain(YEPTRIS_SCHEMA_11_COMPAT, "1.5e+2", &fl);
+    ASSERT_NE(f, nullptr);
+    EXPECT_EQ(f[0] >> 5, 7u) << "the signed exponent stays a float";
+    yeptris_free(f);
+}
+
 TEST(CborSeq, EmptyAndAbort) {
     SeqSink sink;
     YeptrisStatus st = YEPTRIS_ERROR_ENCODING; /* deliberately dirty */
