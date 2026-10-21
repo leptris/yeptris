@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **fuzz_diff: the anchor-charset split composes with the flow-'?'
+  colon families** — the nightly's round 13 (run 39539425897,
+  crash-f43c05a9) diverged on `? &a:b&` inside a flow sequence: the
+  catch-158 split turns it into `? &a :b&`, and the residual is
+  yeptris's seq pair-wrap keeping the separator `:` in the value
+  (`:b&` vs libyaml's `b&`) — a real engine gap, filed as #671 (the
+  map frame consumes it: `{? &a :b}` is EQUAL). The carry composes:
+  the split's verification now also accepts the qcolon walk's two
+  twins (the `:X`-key form and the new value-side form), and the
+  gate no longer bails on `*` (mid-plain content — the artifact's
+  own first item). Seed `anchor-charset-qflow-pair.bin`.
 - **fuzz_diff: the flow-'?' carry covers the empty key** — libyaml
   makes ANY flow '?' the explicit-key indicator, so `{?:\n}` reads an
   empty key; the suite's ns-plain-first law (HM87 `[?x]`, JR7V

@@ -180,20 +180,9 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
  * "=VAL ::x"). yeptris follows the suite.
  * The transform folds libyaml's empty-key line + value line into
  * yeptris's single ":X" key line plus its empty value line. */
-static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
-                                     const char* ldump) {
-    if (ydump == NULL || ldump == NULL || size == 0) {
+static int yd_qcolon_walk(const char* ldump, const char* ydump2) {
+    if (ldump == NULL || ydump2 == NULL) {
         return 0;
-    }
-    int has_q = 0;
-    for (size_t q = 0; q < size; q++) {
-        if (data[q] == '?') {
-            has_q = 1;
-            break;
-        }
-    }
-    if (!has_q) {
-        return 0; /* the family is the explicit-key context only */
     }
     const char* lines[512];
     size_t lens[512];
@@ -209,7 +198,7 @@ static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const cha
     const char* ylines[512];
     size_t ylens[512];
     int yn = 0;
-    p = ydump;
+    p = ydump2;
     while (*p != '\0' && yn < 512) {
         ylines[yn] = p;
         const char* nl = strchr(p, '\n');
@@ -222,13 +211,34 @@ static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const cha
         if (j >= yn) {
             return 0;
         }
-        /* libyaml: empty key line, then the value; yeptris: one ":X"
-         * key line, then its empty value line */
-        if (lens[i] == 7 && strncmp(lines[i], "=VAL : ", 7) == 0 && i + 1 < n && lens[i + 1] >= 8 &&
-            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && ylens[j] == lens[i + 1] + 1 &&
-            strncmp(ylines[j], "=VAL : :", 8) == 0 &&
-            memcmp(ylines[j] + 8, lines[i + 1] + 7, lens[i + 1] - 7) == 0 && j + 1 < yn &&
-            ylens[j + 1] == 7 && strncmp(ylines[j + 1], "=VAL : ", 7) == 0) {
+        /* libyaml: empty key line (with optional node props — the
+         * anchor-charset composition's "&a"), then the value;
+         * yeptris: one ":X" key line carrying the same props, then
+         * its empty value line */
+        if (lens[i] >= 7 && strncmp(lines[i], "=VAL : ", 7) == 0 &&
+            (lens[i] == 7 || lines[i][lens[i] - 1] == ' ') && i + 1 < n && lens[i + 1] >= 8 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0) {
+            size_t keylen = lens[i] + 1 + (lens[i + 1] - 7); /* props + ':' + X */
+            if (ylens[j] == keylen && memcmp(ylines[j], lines[i], lens[i]) == 0 &&
+                ylines[j][lens[i]] == ':' &&
+                memcmp(ylines[j] + lens[i] + 1, lines[i + 1] + 7, lens[i + 1] - 7) == 0 &&
+                j + 1 < yn && ylens[j + 1] == 7 && strncmp(ylines[j + 1], "=VAL : ", 7) == 0) {
+                i++;
+                j += 2;
+                continue;
+            }
+        }
+        /* the VALUE-side twin (the anchor-charset composition's
+         * "[? &a :b]"): the anchored empty key rides unchanged and
+         * yeptris's value keeps the ':' libyaml consumed as the
+         * entry separator (the map frame consumes it — "{? &a :b}"
+         * is EQUAL; the seq pair-wrap's engine slice is filed) */
+        if (lens[i] >= 7 && strncmp(lines[i], "=VAL : ", 7) == 0 &&
+            (lens[i] == 7 || lines[i][lens[i] - 1] == ' ') && i + 1 < n && lens[i + 1] >= 8 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && ylens[j] == lens[i] &&
+            memcmp(ylines[j], lines[i], lens[i]) == 0 && j + 1 < yn &&
+            ylens[j + 1] == lens[i + 1] + 1 && strncmp(ylines[j + 1], "=VAL : :", 8) == 0 &&
+            memcmp(ylines[j + 1] + 8, lines[i + 1] + 7, lens[i + 1] - 7) == 0) {
             i++;
             j += 2;
             continue;
@@ -239,6 +249,24 @@ static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const cha
         j++;
     }
     return j == yn;
+}
+
+static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                     const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size == 0) {
+        return 0;
+    }
+    int has_q = 0;
+    for (size_t q = 0; q < size; q++) {
+        if (data[q] == '?') {
+            has_q = 1;
+            break;
+        }
+    }
+    if (!has_q) {
+        return 0; /* the family is the explicit-key context only */
+    }
+    return yd_qcolon_walk(ldump, ydump);
 }
 
 /* True when the difference is exactly the documented LS/PS break-
@@ -719,9 +747,6 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
             break; /* a comment hides nothing further */
         }
-        if (c == '*') {
-            return 0; /* alias resolution spans the truncation: out of family */
-        }
         if (c == '&' && !gate) {
             size_t j = i + 1;
             while (j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
@@ -803,7 +828,11 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         free(ydump2);
         return 0;
     }
-    int known = strcmp(ldump, ydump2) == 0;
+    /* the split can also expose the qflow-colon reading: "? &a:b&"
+     * splits to "? &a :b&" and yeptris's ':b&' key rides the
+     * empty-key twin (libyaml: anchored empty key + value "b&";
+     * the nightly's round 13, catch 160) */
+    int known = strcmp(ldump, ydump2) == 0 || yd_qcolon_walk(ldump, ydump2);
     free(ydump2);
     return known;
 }
