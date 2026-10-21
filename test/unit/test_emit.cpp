@@ -692,3 +692,36 @@ TEST(EmitStyle, PlainSafeSwarMatchesReference) {
     EXPECT_EQ(yep_style_plain_safe("#x", 2), 0);
     EXPECT_EQ(yep_style_plain_safe("a#b", 3), 1);
 }
+
+TEST(Emit, RawLsPsValueRidesQuoted) {
+    /* the nightly's round 18 (run 39587656699, crash-1e79b2e3): since
+     * the quote-aware normalizer (#638) a quoted scalar's value can
+     * carry a raw U+2028/U+2029/U+0085 — emitted PLAIN it re-parses as
+     * a line break ("emitted YAML must re-parse" is the roundtrip
+     * invariant). plain_safe now refuses plain for any span holding
+     * one. */
+    const char* y = "k: \"a\xe2\x80\xa8"
+                    "b\"\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(d, nullptr);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(d, &l1);
+    ASSERT_NE(s1, nullptr);
+    EXPECT_TRUE(strstr(s1, "\\L") != NULL ||
+                strstr(s1, "\xe2\x80\xa8") != NULL);                  /* carried escaped or raw */
+    EXPECT_TRUE(strchr(s1, '\'') != NULL || strchr(s1, '"') != NULL); /* quoted */
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument d2 = yeptris_parse(s1, l1, &st2);
+    ASSERT_NE(d2, nullptr); /* emitted YAML must re-parse */
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(d2, &l2);
+    ASSERT_NE(s2, nullptr);
+    ASSERT_EQ(l1, l2); /* and byte-stable */
+    EXPECT_EQ(memcmp(s1, s2, l1), 0);
+    free(s1);
+    free(s2);
+    yeptris_document_free(d2);
+    yeptris_document_free(d);
+}
