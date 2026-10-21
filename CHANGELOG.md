@@ -7,6 +7,10 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Fixed
+
+- the anchor-charset carry's quote tracker now follows the word-start law: a mid-word quote is plain CONTENT (`v'`), so the tracker no longer swallows the rest of the input as an open quote — the `&` run after a plain key ending in an apostrophe gates and splits again (the nightly's round 23, crash-c1dc27cf: `v': \n&1: []` composed the ledgered 2SXE colon-name split with an ungated shape)
+
 ### Added
 
 - **JSON: the pretty lane goes public** — `yeptris_serialize_json_pretty` (json.h) emits `JSON.pretty_generate`'s shape (one entry per line, `": "` after keys, empty collections inline) with a caller-chosen indent unit (NULL/two spaces default); the internal pretty writer (json-c PRETTY, yajl beautify) keeps its exact bytes on the default path (yeptris-ruby#304)
