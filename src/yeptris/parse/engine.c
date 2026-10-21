@@ -1173,6 +1173,14 @@ static yep_view e_resolve_tag_raw(yep_engine* e, yep_view tag) {
         yep_view v = {tag.p + 2, tag.len - 3};
         return v;
     }
+    /* the BARE '!' is the non-specific tag and is exempt from %TAG
+     * directives (spec 7.3.3): it stays '!' here, and the plain-scalar
+     * drop happens at emit_now (the nightly's round 22, crash-d6be3347:
+     * '%TAG ! ...' + '- ! tag:clarkevans.com,2002:' resolved the
+     * non-specific tag through the directive where libyaml drops it) */
+    if (tag.len == 1 && tag.p[0] == '!') {
+        return tag;
+    }
     /* longest matching handle wins */
     int best = -1;
     uint32_t best_len = 0;

@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - the UTF-16 breaknorm carry's plain-FOLD arm now carries every fold shape: U+2028/9 units inside a plain scalar fold per the spec's b-char law (one break to a space, a run of n to n-1 newlines) while this libyaml keeps them raw — the decode with each LS/PS substituted by a literal newline re-enters libyaml's OWN fold law (1 break folds to space, n to n-1), so one substitution covers the single PS (the nightly's round 21, catch 167) and the PS PS double-break composite of #685; when the input also carries content BOMs, libyaml's extra stream+document-start BOM strip composes with the BOM-content carry on the substituted dump
 
+- **parse: the bare non-specific tag `!` no longer resolves through `%TAG`** — spec 7.3.3 exempts `!` from directives, and the suite pins the event as `<!>` (8MK2/52DL/S4JQ: `! a` → `=VAL <!> :a`); `%TAG ! x:` + `- ! v` had attached the directive prefix to the scalar (the nightly's round 22, crash-d6be3347). The residual libyaml plain-drop is carried by the new non-specific-tag comparator (the nightly's round 22, catch 168)
+
 ## [0.6.35] - 2026-10-21
 ### Fixed
 
