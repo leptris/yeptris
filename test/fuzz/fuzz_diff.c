@@ -8,6 +8,10 @@
  * the fuzzer and the human tool can never disagree about the rule.
  */
 
+/* strdup rides sem_dump.h; strict -std=c11 (the LF harness) hides it
+ * without the feature macro (the nightly's round-11 build break) */
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
