@@ -5938,3 +5938,30 @@ TEST(Parse, QuotedLsPsChunkIdentity) {
         EXPECT_EQ(got, whole) << "cuts " << c[0] << "," << c[1];
     }
 }
+
+TEST(Parse, RootBlockScalarColZeroContentIsContent) {
+    /* catch 165 (the nightly's round 19, run 39591797890,
+     * crash-e029a445): "|<CRLF>##" — a col-0 line after a ROOT-level
+     * block header IS content (DK3J pins the suite law: zero-indented
+     * block scalars are real; libyaml's min-1 clamp empties it — the
+     * carried suite-over-libyaml divergence). yeptris keeps it. */
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    const char* y = "|\r\n##";
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    (void)alen;
+    std::vector<std::string> vals;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_SCALAR) {
+            vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+        }
+    }
+    ASSERT_EQ(vals.size(), 1u);
+    EXPECT_EQ(vals[0], "##\n");
+    yeptris_recorder_free(rec);
+}
