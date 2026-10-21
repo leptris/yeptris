@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include <yeptris.h>
 #include <yeptris/marshal.h>
@@ -5299,6 +5300,69 @@ TEST(Parse, FlowColonDirectlyBeforeQuotedValue) {
     EXPECT_EQ(st, YEPTRIS_OK) << "parseable input must marshal";
     yeptris_marshal_free(out);
     yeptris_document_free(doc);
+}
+
+TEST(Parse, ExplicitKeyJsonColonInSeqPair) {
+    /* #671: "[? &a :b,]" — a flow sequence single-pair whose explicit
+     * key is a props-only node. The entry separator ':' may sit flush
+     * against the value (the JSON-style "{a:b}" law); the map frame's
+     * pending-key law consumed it, but the seq pair-wrap read it as
+     * plain content (":b"). The pair wrap now marks the explicit-key
+     * pairs and consumes their separator; an IMPLICIT key's separator
+     * is already spent at the value slot, so "[s: :v]" keeps its
+     * leading-colon plain (the HM87 law; libyaml rejects it — a
+     * documented split, not a carry). */
+    auto scalar_values = [](YeptrisRecorder rec, size_t* n_out) {
+        std::vector<std::string> vals;
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        size_t alen = 0;
+        const char* arena = yeptris_recorder_arena(rec, &alen);
+        (void)alen;
+        for (size_t i = 0; i < n; i++) {
+            if (rs[i].type != YEPTRIS_EV_SCALAR) {
+                continue;
+            }
+            vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+        }
+        *n_out = vals.size();
+        return vals;
+    };
+    {
+        const char* y = "[? &a :b,]";
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+        ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+        size_t n = 0;
+        std::vector<std::string> vals = scalar_values(rec, &n);
+        ASSERT_EQ(n, 2u) << y;
+        EXPECT_EQ(vals[0], "") << y;  /* the anchored empty key */
+        EXPECT_EQ(vals[1], "b") << y; /* the flush separator consumed */
+        yeptris_recorder_free(rec);
+    }
+    {
+        const char* y = "[s: :v]";
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+        ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+        size_t n = 0;
+        std::vector<std::string> vals = scalar_values(rec, &n);
+        ASSERT_EQ(n, 2u) << y;
+        EXPECT_EQ(vals[0], "s") << y;
+        EXPECT_EQ(vals[1], ":v") << y; /* the implicit-key law keeps it */
+        yeptris_recorder_free(rec);
+    }
+    const char* equal[] = {"{a:b}\n", "{? &a :b}\n", "{? a :b}\n", "[? a :b]\n"};
+    for (const char* y : equal) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
 }
 
 TEST(Parse, FlowSeqPairCollectionKeyEmptyValueKeepsNull) {

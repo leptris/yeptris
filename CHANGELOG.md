@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **parse: the seq pair-wrap consumes its explicit key's flush
+  separator** (#671) — `[? &a :b,]` read the value as `:b`: the
+  JSON-style `{a:b}` law lets the entry separator sit flush against
+  the value, and the map frame's pending-key law consumed it, but the
+  seq single-pair wrap read it as plain content. Explicit-key pairs
+  now mark their frame and consume the flush colon; an IMPLICIT key's
+  separator is already spent at the value slot, so `[s: :v]` keeps
+  its leading-colon plain (the HM87 law; libyaml rejects it — a
+  documented split). Unit pin
+  `Parse.ExplicitKeyJsonColonInSeqPair`; found as the catch-160
+  residual (the nightly's run 39539425897, crash-f43c05a9), whose
+  artifact now passes natively.
 - **fuzz_diff: the anchor-charset split composes with the flow-'?'
   colon families** — the nightly's round 13 (run 39539425897,
   crash-f43c05a9) diverged on `? &a:b&` inside a flow sequence: the
