@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **fuzz_diff: the flow-'?' carry covers the empty key** — libyaml
+  makes ANY flow '?' the explicit-key indicator, so `{?:\n}` reads an
+  empty key; the suite's ns-plain-first law (HM87 `[?x]`, JR7V
+  `{key?: value }`) keeps `?` plain, and yeptris reads key `?` with an
+  empty value. The catch-142 carry's key-line twin required a
+  non-empty libyaml key (`=VAL : x`); the twin now also accepts the
+  empty-key form (`=VAL : ` vs `=VAL : ?`) — the nightly's run
+  39534504716, crash-d176f548. Seed `flow-q-empty-key.bin`.
 - **fuzz_diff: the anchor-charset carry covers every out-of-set byte** —
   libyaml's anchor name charset is `[0-9A-Za-z_-]` (IS_ALPHA); the suite
   keeps every ns-anchor-char inside the name (W5VH, 2SXE), so

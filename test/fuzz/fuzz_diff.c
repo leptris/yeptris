@@ -151,8 +151,10 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             continue;
         }
         /* the key-line twin inside a bigger map: yeptris's value
-         * carries the leading '?' libyaml consumed */
-        if (lens[i] >= 8 && strncmp(lines[i], "=VAL : ", 7) == 0 && ylens[j] == lens[i] + 1 &&
+         * carries the leading '?' libyaml consumed — including the
+         * EMPTY key ("{?:\n}" -> libyaml key "", yeptris key "?";
+         * the nightly's run 39534504716) */
+        if (lens[i] >= 7 && strncmp(lines[i], "=VAL : ", 7) == 0 && ylens[j] == lens[i] + 1 &&
             strncmp(ylines[j], "=VAL : ?", 8) == 0 &&
             memcmp(ylines[j] + 8, lines[i] + 7, lens[i] - 7) == 0) {
             j++;
