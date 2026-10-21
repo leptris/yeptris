@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Fixed
 
+- fixed the emitter riding plain over a scalar value that carries a raw LS/PS/NEL — since the quote-aware normalizer (#638) quoted scalars keep those bytes, and a plain containing one re-parses as a line break, breaking the serialize∘parse byte-stability invariant (the nightly's round 18, crash-1e79b2e3). `yep_style_plain_safe` now refuses plain for any span holding a multibyte break, so the value rides quoted (escaped `\L`/`\P`)
+
 - fixed the anchor-charset carry's comment law: both the gate and the transform stopped scanning at the first `#` comment instead of the line break, so an anchor like `&4:` on a later line never gated and the family declined its own shape (the nightly's round 17, catch 163, crash-39eb5a17)
 - **the break normalizer is now quote-aware (#638)** — LS/PS (U+2028/U+2029) stay raw inside single/double-quoted scalars (libyaml's READ_LINE keeps them as content; the JSON suite's y_string_u+2028_line_sep / y_string_u+2029_par_sep demand it), while NEL keeps folding everywhere and block-context folds are unchanged. The context walk mirrors step_scan's quote/comment/verbatim/flow arms minus the cut machinery, with the engine's value-position law (`k: 'x'` opens, the block plain continuation `a 'b'` does not) and the header-line-indent block-scalar floor
 - fixed the explicit-key pending guard for dash-led plain keys probing the byte after the line start instead of the byte after the dash — at indent>0 a sibling like `---v: 1` was swallowed as the pending key's content and a props-pending anchored key (`? &e`) never emitted (the nightly's round 16, catch 162)

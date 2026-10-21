@@ -80,6 +80,14 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
         while (i + 8 <= len) {
             uint64_t w;
             memcpy(&w, p + i, 8);
+            if (w & HIGH) {
+                /* multibyte content: the byte loop owns the rest — a raw
+                 * LS/PS/NEL rides in a scalar value since the quote-aware
+                 * normalizer (#638) and is a line break on re-parse, so
+                 * the value must be quoted, not plain (the nightly's
+                 * round 18, crash-1e79b2e3) */
+                break;
+            }
             uint64_t space = YST_ZDET(w, ' ');
             uint64_t tab = YST_ZDET(w, '\t');
             uint64_t blank = space | tab;
@@ -112,6 +120,13 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
             char c = p[i];
             if (is_break(c) || c == '\t') {
                 return 0;
+            }
+            if ((unsigned char)c == 0xE2 && i + 2 < len && (unsigned char)p[i + 1] == 0x80 &&
+                ((unsigned char)p[i + 2] & 0xFE) == 0xA8) {
+                return 0; /* a raw LS/PS re-parses as a line break */
+            }
+            if ((unsigned char)c == 0xC2 && i + 1 < len && (unsigned char)p[i + 1] == 0x85) {
+                return 0; /* a raw NEL ditto */
             }
             if (c == ':') {
                 if (i + 1 >= len || is_blank(p[i + 1])) {
