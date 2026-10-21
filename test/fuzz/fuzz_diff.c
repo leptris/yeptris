@@ -844,10 +844,27 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         i++;
     }
     int ok2 = 0;
+    /* the split can compose with the breakless-EOF clip (the nightly's
+     * round 20, catch 166: "&kk: |" + content at EOF — yeptris keeps
+     * BOTH the suite's ':' anchor name and the clip break, so each
+     * single carry's transform leaves the other difference on the
+     * table): a second copy with a break appended must parse with NO
+     * divergence at all */
+    char* sub2 = NULL;
+    size_t o2 = o;
+    if (o > 0 && sub[o - 1] != '\n' && sub[o - 1] != '\r') {
+        sub2 = malloc(o + 1);
+        if (sub2 != NULL) {
+            memcpy(sub2, sub, o);
+            sub2[o] = '\n';
+            o2 = o + 1;
+        }
+    }
     char* ydump2 = yd_sem_dump(sub, o, &ok2);
     free(sub);
     if (ydump2 == NULL || !ok2) {
         free(ydump2);
+        free(sub2);
         return 0;
     }
     /* the split can also expose the qflow-colon reading ("? &a:b&"
@@ -855,6 +872,14 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
      * below reconciles it */
     int known = strcmp(ldump, ydump2) == 0 || yd_qcolon_walk(ldump, ydump2);
     free(ydump2);
+    if (!known && sub2 != NULL) {
+        char* td = NULL;
+        char* tl = NULL;
+        known = yd_diff_classify((const char*)sub2, o2, &td, &tl) == YD_EQUAL;
+        free(td);
+        free(tl);
+    }
+    free(sub2);
     return known;
 }
 

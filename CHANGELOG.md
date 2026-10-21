@@ -6,6 +6,11 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+
+- the anchor-charset carry now composes with the breakless-EOF clip carry: `&kk: |` plus a content line at EOF keeps BOTH suite divergences at once (the ':' anchor name per 2SXE and the clip break), and each single carry's transform left the other difference — the carry now also requires the split copy with a break appended to parse with no divergence (the nightly's round 20, catch 166, crash-e5098af3)
+
 ## [0.6.35] - 2026-10-21
 ### Fixed
 
