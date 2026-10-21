@@ -806,6 +806,13 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     size_t amps = 0; /* each '&' run's split adds one byte to the copy */
     int quote = 0;
     char prev = '\n'; /* '#' is a comment only after a blank */
+    /* quotes open only at token starts (the catch-85 word-start law):
+     * a mid-word quote is plain CONTENT ("v'"), and the naive tracker
+     * swallowed the rest of the input — the '&' after it never gated
+     * (the nightly's round 23, crash-c1dc27cf). A quote glued to a
+     * props run ("&a\"x") still opens: props end at indicators. */
+    int word_led = 1;  /* the next quote-ish byte starts a token */
+    int prop_word = 0; /* inside/at the end of a & or ! run */
     for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
         if (quote != 0) {
@@ -816,13 +823,28 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             } else if (quote == '"' && c == '"') {
                 quote = 0;
             }
+            word_led = 0;
+            prop_word = 0;
             prev = (char)c;
             continue;
         }
-        if (c == '\'' || c == '"') {
+        if ((c == '\'' || c == '"') && (word_led || prop_word)) {
             quote = c;
+            word_led = 0;
+            prop_word = 0;
             prev = (char)c;
             continue;
+        }
+        if (c == '&' || c == '!') {
+            prop_word = 1;
+            word_led = 0;
+        } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == '[' ||
+                   c == ']' || c == '{' || c == '}' || c == ':' || c == '-' || c == '?') {
+            word_led = 1;
+            prop_word = 0;
+        } else {
+            word_led = 0;
+            prop_word = 0;
         }
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
             /* the comment runs to the LINE BREAK: a '&' inside it is
@@ -866,6 +888,10 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     size_t o = 0;
     quote = 0;
     prev = '\n';
+    /* the gate's word-start law again: a mid-word quote is plain
+     * content, or the copy rides "inside quotes" past the '&' run */
+    int word_led2 = 1;
+    int prop_word2 = 0;
     for (size_t i = 0; i < size;) {
         unsigned char c = data[i];
         if (quote != 0) {
@@ -877,15 +903,30 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             } else if (quote == '"' && c == '"') {
                 quote = 0;
             }
+            word_led2 = 0;
+            prop_word2 = 0;
             i++;
             continue;
         }
-        if (c == '\'' || c == '"') {
+        if ((c == '\'' || c == '"') && (word_led2 || prop_word2)) {
             quote = c;
             sub[o++] = (char)c;
             prev = (char)c;
+            word_led2 = 0;
+            prop_word2 = 0;
             i++;
             continue;
+        }
+        if (c == '&' || c == '!') {
+            prop_word2 = 1;
+            word_led2 = 0;
+        } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == '[' ||
+                   c == ']' || c == '{' || c == '}' || c == ':' || c == '-' || c == '?') {
+            word_led2 = 1;
+            prop_word2 = 0;
+        } else {
+            word_led2 = 0;
+            prop_word2 = 0;
         }
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
             /* verbatim through the comment's line break, then keep
