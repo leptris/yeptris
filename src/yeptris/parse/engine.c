@@ -3776,10 +3776,8 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
          * may align with the '?' column. Flow nodes and property runs
          * continue the value even at the parent column ("k:\n!!seq\n[a]"). */
         if (ctx == YEP_CTX_AFTER_Q && li.indent == floor_col && li.first == '-' &&
-            li.offset + li.indent + 1 < li.end &&
-            e->p[li.offset + li.indent + 1] != ' ' &&
-            e->p[li.offset + li.indent + 1] != '\t' &&
-            e->p[li.offset + li.indent + 1] != '\n' &&
+            li.offset + li.indent + 1 < li.end && e->p[li.offset + li.indent + 1] != ' ' &&
+            e->p[li.offset + li.indent + 1] != '\t' && e->p[li.offset + li.indent + 1] != '\n' &&
             e->p[li.offset + li.indent + 1] != '\r') {
             /* "-:" and friends: a dash with a non-space follower is a
              * PLAIN key ("-" => null), never the pending key's content
