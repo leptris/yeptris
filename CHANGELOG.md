@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Fixed
 
+- carried the root-block col-0 content family for CRLF/breakless tails: the fuzz comparator's line walk split only at `\n`, so `"|\r\n##"`'s header read as `|\r`, the root-block carry declined its own shape, and the nightly aborted on a divergence the suite adjudicates (DK3J: zero-indented block scalars are content; libyaml's min-1 clamp empties them). The walk now ends lines at CR too and copies the terminator verbatim (the nightly's round 19, catch 165, crash-e029a445)
+
 - **marshal: the strict duplicate-key scan is per-map and its table
   grows** — `yeptris_marshal_node_ex`'s `YEPTRIS_MARSHAL_STRICT_DUP_KEYS`
   pre-scan (0.6.34) kept ONE table cleared on `MAP_OPEN`, so a parent

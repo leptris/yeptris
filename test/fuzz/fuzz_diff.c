@@ -499,6 +499,8 @@ static int yd_composed_break_divergence(const uint8_t* data, size_t size) {
  * "|-" + "##"). Indent every column-0 content line by one space --
  * which changes no content byte -- and require libyaml's dump of THAT
  * to equal yeptris's dump of the original. */
+static int yd_clip_breakless_divergence(const uint8_t* data, size_t size, const char* ydump);
+
 static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
     if (size == 0) {
         return 0;
@@ -513,11 +515,19 @@ static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
     int changed = 0;
     while (i < size) {
         size_t ls = i;
-        while (i < size && data[i] != '\n') {
+        /* a lone \r (or the \r of a CRLF pair) ends the line too — the
+         * header law must see the '|' clean of the terminator (the
+         * nightly's round 19, catch 165: "|\r\n##" read the header as
+         * "|\r" and never entered block mode) */
+        while (i < size && data[i] != '\n' && data[i] != '\r') {
             i++;
         }
         size_t le = i;
         int has_nl = i < size;
+        size_t br = 0;
+        if (has_nl) {
+            br = (data[i] == '\r' && i + 1 < size && data[i + 1] == '\n') ? 2 : 1;
+        }
         int root_marker = 0;
         if (le - ls >= 3 && data[ls] == '-' && data[ls + 1] == '-' && data[ls + 2] == '-') {
             size_t k = ls + 3;
@@ -567,13 +577,14 @@ static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
         memcpy(sub + o, data + ls, le - ls);
         o += le - ls;
         if (has_nl) {
-            sub[o++] = '\n';
+            memcpy(sub + o, data + i, br); /* the terminator verbatim */
+            o += br;
         }
         if (header) {
             in_block = 1;
         }
         if (has_nl) {
-            i++;
+            i += br;
         }
     }
     if (!changed) {
@@ -583,10 +594,17 @@ static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
     char* tdump = NULL;
     char* tldump = NULL;
     yd_verdict v = yd_diff_classify((const char*)sub, o, &tdump, &tldump);
+    int ok = v == YD_EQUAL ||
+             /* the indented copy can still hit the breakless-EOF clip
+              * family on its final line ("|\r\n##" indents to
+              * "|\r\n ##": yeptris "##\n" vs libyaml "##") — that
+              * residual is the documented clip carry, not this family
+              * failing its own transform */
+             (v == YD_DIFFER && yd_clip_breakless_divergence(sub, o, tdump));
     free(tdump);
     free(tldump);
     free(sub);
-    return v == YD_EQUAL;
+    return ok;
 }
 
 /* True when the difference is exactly the breakless-EOF clip family:
