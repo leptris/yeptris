@@ -2238,6 +2238,16 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 continue;
             }
         }
+        if (st[n - 1].kind == 1 && st[n - 1].pending_key == 2 && e->pos < e->len &&
+            e->p[e->pos] == ':') {
+            /* an explicit '?'-key entry's separator may follow on a
+             * LATER line (s-separate spans breaks in flow: "{?{a}\n:
+             * b}" — the nightly's catch 161); the post-node colon law
+             * never sees a colon at the node start */
+            st[n - 1].pending_key = 1;
+            e->pos++;
+            continue;
+        }
         if (e->pos < e->len && e->p[e->pos] != ',' && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
             !(e->p[e->pos] == ':' &&
               ((st[n - 1].kind == 1 && st[n - 1].pending_key == 1) || st[n - 1].just_closed)) &&
