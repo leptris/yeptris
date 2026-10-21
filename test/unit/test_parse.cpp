@@ -5817,7 +5817,9 @@ TEST(Parse, QuotedLsPsKeepsRawBytes) {
      * everywhere but skips LS/PS inside quoted regions. */
     YeptrisRecorder rec = yeptris_recorder_new();
     ASSERT_NE(rec, nullptr);
-    const char* y = "k: \"a\xe2\x80\xa8" "b\"\nj: 'c\xe2\x80\xa9" "d'\n";
+    const char* y = "k: \"a\xe2\x80\xa8"
+                    "b\"\nj: 'c\xe2\x80\xa9"
+                    "d'\n";
     ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
     ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
     size_t n = 0;
@@ -5834,9 +5836,11 @@ TEST(Parse, QuotedLsPsKeepsRawBytes) {
     }
     ASSERT_EQ(vals.size(), 4u);
     EXPECT_EQ(vals[0], "k");
-    EXPECT_EQ(vals[1], "a\xe2\x80\xa8" "b"); /* the LS rides raw */
+    EXPECT_EQ(vals[1], "a\xe2\x80\xa8"
+                       "b"); /* the LS rides raw */
     EXPECT_EQ(vals[2], "j");
-    EXPECT_EQ(vals[3], "c\xe2\x80\xa9" "d"); /* the PS rides raw */
+    EXPECT_EQ(vals[3], "c\xe2\x80\xa9"
+                       "d"); /* the PS rides raw */
     yeptris_recorder_free(rec);
 }
 
@@ -5846,7 +5850,8 @@ TEST(Parse, QuotedNelStillFolds) {
      * flow-scalar floor law accepts it. */
     YeptrisRecorder rec = yeptris_recorder_new();
     ASSERT_NE(rec, nullptr);
-    const char* y = "k: \"a\xc2\x85" "  b\"\n";
+    const char* y = "k: \"a\xc2\x85"
+                    "  b\"\n";
     ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
     ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
     size_t n = 0;
@@ -5870,7 +5875,9 @@ TEST(Parse, QuotedLsPsChunkIdentity) {
      * a clean state because step_scan only cuts at document markers
      * outside quotes — pin that a quoted scalar's raw LS survives cuts
      * on both sides of it */
-    const char* y = "k: \"a\xe2\x80\xa8" "b\"\n---\nj: 'c\xe2\x80\xa9" "d'\n";
+    const char* y = "k: \"a\xe2\x80\xa8"
+                    "b\"\n---\nj: 'c\xe2\x80\xa9"
+                    "d'\n";
     size_t ylen = strlen(y);
     /* the recorder's store resets at every feed by contract — drain it
      * after each call and concatenate */
@@ -5920,8 +5927,10 @@ TEST(Parse, QuotedLsPsChunkIdentity) {
     };
     std::vector<std::string> whole = run(y, ylen, ylen, ylen);
     ASSERT_EQ(whole.size(), 4u);
-    EXPECT_EQ(whole[1], "a\xe2\x80\xa8" "b");
-    EXPECT_EQ(whole[3], "c\xe2\x80\xa9" "d");
+    EXPECT_EQ(whole[1], "a\xe2\x80\xa8"
+                        "b");
+    EXPECT_EQ(whole[3], "c\xe2\x80\xa9"
+                        "d");
     /* cut just before the LS, just after it, and inside the second doc */
     const size_t cuts[][2] = {{6, 9}, {6, 13}, {3, 20}, {9, 21}};
     for (const auto& c : cuts) {
