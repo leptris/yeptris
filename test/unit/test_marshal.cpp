@@ -299,7 +299,8 @@ TEST(Marshal, StrictDuplicateKeysRaiseBeforeAnyBytes) {
     EXPECT_EQ(yeptris_marshal_node_ex(root, YEPTRIS_MARSHAL_STRICT_DUP_KEYS, &out, &olen),
               YEPTRIS_ERROR_PARSE);
     EXPECT_EQ(out, nullptr);
-    EXPECT_STREQ(yeptris_last_error(nullptr, nullptr), "duplicate key in object");
+    /* the message names the key like the tape walk's (json 3 names it too) */
+    EXPECT_STREQ(yeptris_last_error(nullptr, nullptr), "duplicate key \"a\" in JSON object");
     EXPECT_EQ(yeptris_marshal_node_ex(root, YEPTRIS_MARSHAL_STRICT_DUP_KEYS, &out, &olen),
               YEPTRIS_ERROR_PARSE); /* nested dup under "b" raises too */
     EXPECT_EQ(out, nullptr);

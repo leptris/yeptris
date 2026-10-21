@@ -308,6 +308,14 @@ YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len,
     return out;
 }
 
+YEPTRIS_API char* yeptris_serialize_json_pretty(YeptrisDocument handle, size_t* len,
+                                                const char* indent, size_t indent_len) {
+    if (handle == NULL) {
+        return NULL;
+    }
+    return yep_serialize_json_pretty_ex((const yeptris_document*)handle, len, indent, indent_len);
+}
+
 char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
     if (doc == NULL) {
         return NULL;
@@ -364,7 +372,15 @@ char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
 }
 
 char* yep_serialize_json_pretty(const yeptris_document* doc, size_t* len) {
+    return yep_serialize_json_pretty_ex(doc, len, NULL, 2);
+}
+
+char* yep_serialize_json_pretty_ex(const yeptris_document* doc, size_t* len, const char* indent,
+                                   size_t indent_len) {
     if (doc == NULL) {
+        return NULL;
+    }
+    if (yep_doc_dom((yeptris_document*)doc) == NULL) { /* #342 lazy */
         return NULL;
     }
     yep_emitter em;
@@ -386,6 +402,8 @@ char* yep_serialize_json_pretty(const yeptris_document* doc, size_t* len) {
     em.w.json_compact = 0;
     em.w.json_pretty = 1;
     em.w.pretty_depth = 0;
+    em.w.json_indent = indent;
+    em.w.json_indent_len = indent == NULL ? 2 : (int)indent_len;
     em.w.best_width = 0;
     em.w.col = 0;
     em.w.sv_input = doc->dom->input_base;

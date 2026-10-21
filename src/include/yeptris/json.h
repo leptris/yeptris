@@ -38,6 +38,16 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument doc, size_t* len);
  * compact == 0 is byte-identical to yeptris_serialize_json. */
 YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument doc, size_t* len, int compact);
 
+/* The pretty variant: JSON.pretty_generate's shape — one entry per
+ * line, ": " after keys, ",\n" + indent between entries, empty
+ * collections inline. indent/indent_len select the indent unit
+ * (NULL/0 = two spaces; the bytes are written verbatim per depth).
+ * Memory: returns a malloc'd NUL-terminated buffer (caller frees)
+ * with *len (may be NULL) set, or NULL on a NULL document /
+ * allocation failure / zero documents. */
+YEPTRIS_API char* yeptris_serialize_json_pretty(YeptrisDocument doc, size_t* len,
+                                                const char* indent, size_t indent_len);
+
 #ifdef __cplusplus
 }
 #endif

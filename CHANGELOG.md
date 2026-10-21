@@ -7,6 +7,14 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Added
+
+- **JSON: the pretty lane goes public** — `yeptris_serialize_json_pretty` (json.h) emits `JSON.pretty_generate`'s shape (one entry per line, `": "` after keys, empty collections inline) with a caller-chosen indent unit (NULL/two spaces default); the internal pretty writer (json-c PRETTY, yajl beautify) keeps its exact bytes on the default path (yeptris-ruby#304)
+
+### Fixed
+
+- the internal pretty JSON serializer materializes the lazy DOM: json-c's PRETTY (`json_object_to_json_string_ext`) on a never-queried document dereferenced the unmaterialized DOM and crashed (found probing the ruby binding's pretty slice)
+
 ### Fixed
 
 - the anchor-charset carry now composes with the breakless-EOF clip carry: `&kk: |` plus a content line at EOF keeps BOTH suite divergences at once (the ':' anchor name per 2SXE and the clip break), and each single carry's transform left the other difference — the carry now also requires the split copy with a break appended to parse with no divergence (the nightly's round 20, catch 166, crash-e5098af3)

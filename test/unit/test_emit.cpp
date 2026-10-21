@@ -301,6 +301,83 @@ TEST(EmitCanonical, FixedPointFByteStability) {
     }
 }
 
+TEST(EmitJson, Pretty) {
+    /* the pretty shape is JSON.pretty_generate's (yeptris-ruby#304):
+     * one entry per line, ": " after keys, "," + newline + unit
+     * indent between entries, empty collections inline, floats in
+     * the same fpconv shape as the compact lane. */
+    YeptrisStatus st = YEPTRIS_OK;
+    const char* in = "a: 1\nb:\n- 1\n- 2\nc:\n  d: ~\n  e: true\nf: []\ng: {}\n";
+    YeptrisDocument d = yeptris_parse(in, strlen(in), &st);
+    ASSERT_NE(d, nullptr);
+    size_t len = 0;
+    char* out = yeptris_serialize_json_pretty(d, &len, NULL, 0);
+    yeptris_document_free(d);
+    ASSERT_NE(out, nullptr);
+    EXPECT_STREQ(out, "{\n"
+                      "  \"a\": 1,\n"
+                      "  \"b\": [\n"
+                      "    1,\n"
+                      "    2\n"
+                      "  ],\n"
+                      "  \"c\": {\n"
+                      "    \"d\": null,\n"
+                      "    \"e\": true\n"
+                      "  },\n"
+                      "  \"f\": [],\n"
+                      "  \"g\": {}\n"
+                      "}\n");
+    /* the pretty shape is a fixed point: parse(pretty) re-emits it */
+    YeptrisDocument d2 = yeptris_parse(out, len, &st);
+    ASSERT_NE(d2, nullptr);
+    size_t len2 = 0;
+    char* out2 = yeptris_serialize_json_pretty(d2, &len2, NULL, 0);
+    yeptris_document_free(d2);
+    ASSERT_NE(out2, nullptr);
+    EXPECT_EQ(std::string(out2, len2), std::string(out, len));
+    free(out);
+    free(out2);
+}
+
+TEST(EmitJson, PrettyCustomIndent) {
+    /* the indent unit rides verbatim per depth (tab: the
+     * JSON.pretty_generate(obj, indent: "\t") shape) */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse("a:\n- 1\n", 6, &st);
+    ASSERT_NE(d, nullptr);
+    size_t len = 0;
+    char* out = yeptris_serialize_json_pretty(d, &len, "\t", 1);
+    yeptris_document_free(d);
+    ASSERT_NE(out, nullptr);
+    EXPECT_STREQ(out, "{\n"
+                      "\t\"a\": [\n"
+                      "\t\t1\n"
+                      "\t]\n"
+                      "}\n");
+    free(out);
+}
+
+TEST(EmitJson, PrettyLazyDom) {
+    /* the pretty entry materializes the lazy DOM itself: jsonc's
+     * PRETTY on a never-queried document used to deref NULL
+     * (yeptris-ruby#304 probe) */
+    YeptrisStatus st = YEPTRIS_OK;
+    const char* in = "{\"k\": [1, 2]}";
+    YeptrisDocument d = yeptris_parse_json(in, strlen(in), &st);
+    ASSERT_NE(d, nullptr);
+    size_t len = 0;
+    char* out = yeptris_serialize_json_pretty(d, &len, NULL, 0);
+    yeptris_document_free(d);
+    ASSERT_NE(out, nullptr);
+    EXPECT_STREQ(out, "{\n"
+                      "  \"k\": [\n"
+                      "    1,\n"
+                      "    2\n"
+                      "  ]\n"
+                      "}\n");
+    free(out);
+}
+
 TEST(EmitJson, FloatByteShape) {
     /* JSON floats carry the json gem's byte shape (fpconv, yeptris#651):
      * shortest-decimal windows, no zero-padded exponent, ".0" on
