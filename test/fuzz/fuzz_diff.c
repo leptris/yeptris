@@ -333,6 +333,67 @@ static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char*
                 if (known) {
                     return 1;
                 }
+                /* the plain-FOLD reading (the nightly's round 21,
+                 * crash-1ae93822: U+2029 as a UTF-16 unit inside a
+                 * plain scalar): the spec's b-char law folds a single
+                 * break to a SPACE, and yeptris follows it, while this
+                 * libyaml keeps the PS raw mid-plain. The same decode
+                 * with LS/PS substituted by ' ' must make libyaml
+                 * agree with yeptris's original dump. */
+                if (decodable) {
+                    char* sub2 = malloc(size * 2);
+                    if (sub2 != NULL) {
+                        size_t o2 = 0;
+                        int dec2 = 1;
+                        for (size_t i = 2; i + 1 < size && dec2;) {
+                            uint32_t u = be ? (uint32_t)((data[i] << 8) | data[i + 1])
+                                            : (uint32_t)((data[i + 1] << 8) | data[i]);
+                            i += 2;
+                            if (u >= 0xD800 && u <= 0xDBFF && i + 1 < size) {
+                                uint32_t lo = be ? (uint32_t)((data[i] << 8) | data[i + 1])
+                                                 : (uint32_t)((data[i + 1] << 8) | data[i]);
+                                if (lo >= 0xDC00 && lo <= 0xDFFF) {
+                                    u = 0x10000 + ((u - 0xD800) << 10) + (lo - 0xDC00);
+                                    i += 2;
+                                } else {
+                                    dec2 = 0;
+                                    break;
+                                }
+                            } else if (u >= 0xD800 && u <= 0xDFFF) {
+                                dec2 = 0;
+                                break;
+                            }
+                            if (u == 0x2028 || u == 0x2029) {
+                                sub2[o2++] = ' ';
+                            } else if (u < 0x80) {
+                                sub2[o2++] = (char)u;
+                            } else if (u < 0x800) {
+                                sub2[o2++] = (char)(0xC0 | (u >> 6));
+                                sub2[o2++] = (char)(0x80 | (u & 0x3F));
+                            } else if (u < 0x10000) {
+                                sub2[o2++] = (char)(0xE0 | (u >> 12));
+                                sub2[o2++] = (char)(0x80 | ((u >> 6) & 0x3F));
+                                sub2[o2++] = (char)(0x80 | (u & 0x3F));
+                            } else {
+                                sub2[o2++] = (char)(0xF0 | (u >> 18));
+                                sub2[o2++] = (char)(0x80 | ((u >> 12) & 0x3F));
+                                sub2[o2++] = (char)(0x80 | ((u >> 6) & 0x3F));
+                                sub2[o2++] = (char)(0x80 | (u & 0x3F));
+                            }
+                        }
+                        int known2 = 0;
+                        if (dec2) {
+                            int ok3 = 0;
+                            char* ldump3 = yd_libyaml_dump(sub2, o2, &ok3);
+                            known2 = (ldump3 != NULL && ok3 && strcmp(ydump, ldump3) == 0);
+                            free(ldump3);
+                        }
+                        free(sub2);
+                        if (known2) {
+                            return 1;
+                        }
+                    }
+                }
             }
         }
     }
