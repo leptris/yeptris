@@ -5302,6 +5302,52 @@ TEST(Parse, FlowColonDirectlyBeforeQuotedValue) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, ExplicitKeySeparatorOnLaterLine) {
+    /* catch 161 (the nightly's round 14, run 39545175099,
+     * crash-8e502adb): "{?{a}\n:b}" — an explicit '?'-key entry whose
+     * separator follows on a LATER line (s-separate spans breaks in
+     * flow). The post-node colon law never sees a colon at the node
+     * start, so ":b" parsed as a fresh plain entry and the pending
+     * entry lost its value (libyaml: key {a: null}, value "b"). The
+     * loop top now consumes the separator when an explicit-key entry
+     * is pending. */
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    const char* y = "{?{a}\n:b}";
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    (void)alen;
+    std::vector<std::pair<uint8_t, std::string>> evs;
+    for (size_t i = 0; i < n; i++) {
+        std::string v;
+        if (rs[i].type == YEPTRIS_EV_SCALAR) {
+            v.assign(arena + rs[i].value_off, rs[i].value_len);
+        }
+        if (rs[i].type != YEPTRIS_EV_SCALAR && rs[i].type != YEPTRIS_EV_MAPPING_START &&
+            rs[i].type != YEPTRIS_EV_MAPPING_END) {
+            continue; /* stream/document framing rides out */
+        }
+        evs.emplace_back(rs[i].type, v);
+    }
+    const uint8_t S = YEPTRIS_EV_SCALAR, MS = YEPTRIS_EV_MAPPING_START, ME = YEPTRIS_EV_MAPPING_END;
+    ASSERT_EQ(evs.size(), 7u); /* stream/doc ends filtered out */
+    EXPECT_EQ(evs[0].first, MS);
+    EXPECT_EQ(evs[1].first, MS); /* the key collection */
+    EXPECT_EQ(evs[2].first, S);
+    EXPECT_EQ(evs[2].second, "a");
+    EXPECT_EQ(evs[3].first, S); /* its null value */
+    EXPECT_EQ(evs[3].second, "");
+    EXPECT_EQ(evs[4].first, ME);
+    EXPECT_EQ(evs[5].first, S);
+    EXPECT_EQ(evs[5].second, "b"); /* the later-line separator's value */
+    EXPECT_EQ(evs[6].first, ME);
+    yeptris_recorder_free(rec);
+}
+
 TEST(Parse, ExplicitKeyJsonColonInSeqPair) {
     /* #671: "[? &a :b,]" — a flow sequence single-pair whose explicit
      * key is a props-only node. The entry separator ':' may sit flush

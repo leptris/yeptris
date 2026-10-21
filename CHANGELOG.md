@@ -21,6 +21,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   compat-typed documents, and mutation typing now rides the
   document's resolver (`yep_dom_resolver`) instead of a hardcoded
   core-12.
+- **parse: an explicit key's separator may follow on a later flow
+  line** — `{?{a}\n:b}` read `:b` as a fresh plain entry and dropped
+  the pending entry's value (libyaml: key `{a: null}`, value `b`).
+  s-separate spans line breaks in flow, so after a `?`-key the loop
+  top now consumes the separator when one is pending; the post-node
+  colon law never sees a colon at the node start. Unit pin
+  `Parse.ExplicitKeySeparatorOnLaterLine`; the artifact passes
+  natively (the nightly's round 14, run 39545175099,
+  crash-8e502adb).
 - **parse: the seq pair-wrap consumes its explicit key's flush
   separator** (#671) — `[? &a :b,]` read the value as `:b`: the
   JSON-style `{a:b}` law lets the entry separator sit flush against
