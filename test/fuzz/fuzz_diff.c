@@ -709,6 +709,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     }
     /* gate: some quote-free '&' name run leaves libyaml's set */
     int gate = 0;
+    size_t amps = 0; /* each '&' run's split adds one byte to the copy */
     int quote = 0;
     char prev = '\n'; /* '#' is a comment only after a blank */
     for (size_t i = 0; i < size; i++) {
@@ -732,6 +733,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
             break; /* a comment hides nothing further */
         }
+        if (c == '&') {
+            amps++;
+        }
         if (c == '&' && !gate) {
             size_t j = i + 1;
             while (j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
@@ -750,8 +754,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     }
     /* transform: split every quote-free '&' name run at its first
      * out-of-set byte ("&ab?cd" -> "&ab ?cd") — the reading yeptris
-     * then produces IS libyaml's reading of the original */
-    char* sub = malloc(size + 1);
+     * then produces IS libyaml's reading of the original; each run's
+     * split adds one byte (amps counted in the gate walk) */
+    char* sub = malloc(size + amps + 1);
     if (sub == NULL) {
         return 0;
     }
