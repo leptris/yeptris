@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 ### Fixed
+- **parse: a wrapped seq-pair key resets the pair's value slot** —
+  `[[a]: ]` (a flow sequence entry that is a single-pair map whose key
+  is a flow collection and whose value position is empty) dropped the
+  implicit null value: wrapping the buffered item as the pair key set
+  `pair_open` but kept the stale `pair_value` the collection's own open
+  had recorded, so the boundary flush believed the pair complete.
+  libyaml emits the null; the catch-157 artifact (`…]]: , [ c]]`)
+  diverged on exactly that event. The double-colon guard is unchanged
+  (it reads the stale bit before the wrap). Unit pin
+  `Parse.FlowSeqPairCollectionKeyEmptyValueKeepsNull`; seed
+  `flow-seq-pair-empty-value.bin` (the nightly's run 39513390372,
+  crash-ac4b705c).
 - **parse: a node takes one anchor and one tag** — the property scan kept
   the LAST property, so `&va2: &node2 # comment` (a colon-bearing anchor
   name per 2SXE, then a second anchor) silently anchored the map below

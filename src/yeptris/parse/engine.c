@@ -2766,6 +2766,12 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     }
                 }
                 st[n - 1].pair_open = 1;
+                /* the wrapped key's own open marked pair_value=1 ("a
+                 * VALUE collection completes the pending pair"); as a
+                 * KEY it completes nothing — the pair awaits a fresh
+                 * value, else the boundary flush skips the null ("[[a]:
+                 * ]" lost it, the nightly's round 9) */
+                st[n - 1].pair_value = 0;
                 continue; /* value next */
             }
             if (st[n - 1].kind == 0 && n >= 1) {

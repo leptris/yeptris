@@ -5301,6 +5301,54 @@ TEST(Parse, FlowColonDirectlyBeforeQuotedValue) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, FlowSeqPairCollectionKeyEmptyValueKeepsNull) {
+    /* catch 157 (the nightly's round 9, run 39513390372,
+     * crash-ac4b705c): "[[a]: ]" — a seq single-pair whose key is a
+     * flow collection and whose value position is empty. Wrapping the
+     * buffered item as the pair key left the stale pair_value=1 the
+     * collection's own open had recorded, so the boundary flush
+     * believed the pair complete and dropped the implicit null;
+     * libyaml emits it. */
+    const char* y = "[[a]: ]";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    const uint16_t want[] = {
+        YEPTRIS_EV_STREAM_START,  YEPTRIS_EV_DOCUMENT_START, YEPTRIS_EV_SEQUENCE_START,
+        YEPTRIS_EV_MAPPING_START, YEPTRIS_EV_SEQUENCE_START, YEPTRIS_EV_SCALAR,
+        YEPTRIS_EV_SEQUENCE_END,  YEPTRIS_EV_SCALAR,         YEPTRIS_EV_MAPPING_END,
+        YEPTRIS_EV_SEQUENCE_END,  YEPTRIS_EV_DOCUMENT_END,   YEPTRIS_EV_STREAM_END,
+    };
+    ASSERT_EQ(n, sizeof(want) / sizeof(want[0]));
+    for (size_t i = 0; i < n; i++) {
+        EXPECT_EQ(rs[i].type, want[i]) << i;
+    }
+    yeptris_recorder_free(rec);
+    /* the comma-boundary twin and the ?-carrying artifact shape stay
+     * equal to libyaml (whole route); the value-present twins keep
+     * their pairs */
+    const char* equal[] = {"[[a]: , [c]]\n", "[[ ?[a]]: , [c]]\n", "[[a]: v]\n", "[[a]: [b]]\n",
+                           "{[a]: , x: 1}\n"};
+    for (const char* e : equal) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(e, strlen(e), &st);
+        EXPECT_NE(doc, nullptr) << e;
+        if (doc != NULL) {
+            yeptris_document_free(doc);
+        }
+    }
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse("[[a]: : v]\n", 11, &st);
+    EXPECT_EQ(doc, nullptr);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    if (doc != NULL) {
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, BlockKeyIndicatorValueShapeRoundTrips) {
     /* catch 100 (the nightly's run 38653909827): a ':' pair's value
      * position accepted a KEY indicator (": ?" same-line rode
