@@ -331,3 +331,57 @@ TEST(Marshal, StrictDuplicateKeysRaiseBeforeAnyBytes) {
     yeptris_marshal_free(out);
     yeptris_document_free(doc);
 }
+
+TEST(Marshal, StrictDuplicateKeysArePerMap) {
+    /* The strict pre-scan keeps one key table per open map (0.6.34
+     * shared one table, cleared on MAP_OPEN): a parent key matching a
+     * key in an earlier child object was a false duplicate, and a
+     * parent key repeated after a nested object went unseen. */
+    struct Case {
+        const char* doc;
+        YeptrisStatus want;
+    };
+    const Case cases[] = {
+        {"{\"a\":1,\"b\":{\"a\":2},\"c\":3}", YEPTRIS_OK},
+        {"{\"a\":[{\"b\":1}],\"b\":2}", YEPTRIS_OK},
+        {"{\"a\":{\"b\":1,\"b\":2}}", YEPTRIS_ERROR_PARSE},
+        {"{\"p\":1,\"a\":{\"x\":1},\"p\":2}", YEPTRIS_ERROR_PARSE},
+    };
+    for (const Case& tc : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse_json(tc.doc, strlen(tc.doc), &st);
+        ASSERT_EQ(st, YEPTRIS_OK) << tc.doc;
+        char* out = nullptr;
+        size_t olen = 0;
+        EXPECT_EQ(yeptris_marshal_node_ex(yeptris_document_root(doc, 0),
+                                          YEPTRIS_MARSHAL_STRICT_DUP_KEYS, &out, &olen),
+                  tc.want)
+            << tc.doc;
+        yeptris_marshal_free(out);
+        yeptris_document_free(doc);
+    }
+}
+
+TEST(Marshal, StrictDuplicateKeysScanGrowsPastSixteenKeys) {
+    /* The 0.6.34 table was fixed at 16 slots with no growth: a 17th
+     * distinct key probed forever. 64 keys must emit. */
+    std::string doc = "{";
+    for (int i = 0; i < 64; i++) {
+        if (i) {
+            doc += ",";
+        }
+        doc += "\"k" + std::to_string(i) + "\":" + std::to_string(i);
+    }
+    doc += "}";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_json(doc.c_str(), doc.size(), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    char* out = nullptr;
+    size_t olen = 0;
+    EXPECT_EQ(yeptris_marshal_node_ex(yeptris_document_root(d, 0), YEPTRIS_MARSHAL_STRICT_DUP_KEYS,
+                                      &out, &olen),
+              YEPTRIS_OK);
+    ASSERT_NE(out, nullptr);
+    yeptris_marshal_free(out);
+    yeptris_document_free(d);
+}

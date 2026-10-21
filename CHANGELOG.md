@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Fixed
 
+- **marshal: the strict duplicate-key scan is per-map and its table
+  grows** — `yeptris_marshal_node_ex`'s `YEPTRIS_MARSHAL_STRICT_DUP_KEYS`
+  pre-scan (0.6.34) kept ONE table cleared on `MAP_OPEN`, so a parent
+  key matching a key inside a preceding child object raised a false
+  `duplicate key in object` (every lane without a native materializer,
+  i.e. Windows, rejected ordinary schemas such as `{"a":{"b":1},"b":2}`),
+  and a parent duplicate after a nested object went unseen. The table
+  also never grew past its 16 initial slots: a 17th distinct key in one
+  object probed forever. The scan now keeps one table per open
+  container on a frame stack and rehashes at load factor 1/2. C pins
+  `Marshal.StrictDuplicateKeysArePerMap`,
+  `Marshal.StrictDuplicateKeysScanGrowsPastSixteenKeys`.
 - fixed the emitter riding plain over a scalar value that carries a raw LS/PS/NEL — since the quote-aware normalizer (#638) quoted scalars keep those bytes, and a plain containing one re-parses as a line break, breaking the serialize∘parse byte-stability invariant (the nightly's round 18, crash-1e79b2e3). `yep_style_plain_safe` now refuses plain for any span holding a multibyte break, so the value rides quoted (escaped `\L`/`\P`)
 
 - fixed the anchor-charset carry's comment law: both the gate and the transform stopped scanning at the first `#` comment instead of the line break, so an anchor like `&4:` on a later line never gated and the family declined its own shape (the nightly's round 17, catch 163, crash-39eb5a17)

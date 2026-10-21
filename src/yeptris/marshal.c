@@ -668,9 +668,13 @@ static YeptrisStatus map_fail(int rc) {
  * contract.
  *
  * Key identity is the record's typed payload: span kinds compare the
- * arena bytes, the rest compare (kind, b, payload). One growable
- * open-addressing table serves the INNERMOST open map (cleared on
- * close) — duplicates are per-map by definition.
+ * arena bytes, the rest compare (kind, b, payload). Duplicates are
+ * per-map by definition, so the scan keeps ONE open-addressing table
+ * per open container on a frame stack: a key registers in the
+ * innermost frame and frames pop on CLOSE. A single table cleared on
+ * open cannot express this — a parent key equal to a key in an
+ * earlier child object was a false duplicate, and a parent duplicate
+ * after a nested object went unseen.
  */
 
 typedef struct {
@@ -682,7 +686,12 @@ typedef struct {
 typedef struct {
     dup_slot* slots;
     size_t cap; /* power of two */
+    size_t count;
 } dup_set;
+
+typedef struct {
+    dup_set keys;
+} dup_frame;
 
 static uint64_t dup_hash(const dup_slot* k, const char* arena) {
     uint64_t h = 1469598103934665603ull;
@@ -717,61 +726,102 @@ static int dup_eq(const dup_slot* a, const dup_slot* b, const char* arena) {
     return a->len == 0 || memcmp(arena + a->off, arena + b->off, a->len) == 0;
 }
 
-static int dup_set_grow(dup_set* s) {
+static int dup_set_grow(dup_set* s, const char* arena) {
     size_t ncap = s->cap ? s->cap * 2 : 16;
     dup_slot* ns = calloc(ncap, sizeof(*ns));
     if (ns == NULL) {
         return -1;
     }
-    if (s->slots != NULL) {
-        free(s->slots);
+    for (size_t i = 0; i < s->cap; i++) {
+        dup_slot* old = &s->slots[i];
+        if (old->p == 0) {
+            continue;
+        }
+        uint64_t h = dup_hash(old, arena);
+        while (ns[h & (ncap - 1)].p != 0) {
+            h++;
+        }
+        ns[h & (ncap - 1)] = *old;
     }
+    free(s->slots);
     s->slots = ns;
     s->cap = ncap;
     return 0;
 }
 
+/* 1 = duplicate, 0 = inserted, -1 = oom. Load factor stays <= 1/2. */
+static int dup_set_insert(dup_set* s, const dup_slot* k, const char* arena) {
+    if ((s->count + 1) * 2 > s->cap && dup_set_grow(s, arena) != 0) {
+        return -1;
+    }
+    uint64_t h = dup_hash(k, arena);
+    for (;;) {
+        dup_slot* slot = &s->slots[h & (s->cap - 1)];
+        if (slot->p == 0) {
+            *slot = *k;
+            s->count++;
+            return 0;
+        }
+        if (dup_eq(slot, k, arena)) {
+            return 1;
+        }
+        h++;
+    }
+}
+
 /* 1 = duplicate found (TLS error set), 0 = clean, -1 = oom */
 static int strict_dup_scan(const yep_value_ctx* c) {
-    dup_set s = {NULL, 0};
+    dup_frame* frames = NULL;
+    size_t depth = 0, cap = 0;
     int rc = 0;
     const YeptrisValue* vals = c->vals;
     for (size_t i = 0; i < c->n && rc == 0; i++) {
         const YeptrisValue* v = &vals[i];
-        if (v->kind == YEP_V_MAP_OPEN) {
-            if (s.slots != NULL) {
-                memset(s.slots, 0, s.cap * sizeof(*s.slots)); /* innermost map only */
+        if (v->kind == YEP_V_MAP_OPEN || v->kind == YEP_V_SEQ_OPEN) {
+            if (depth == cap) {
+                size_t ncap = cap ? cap * 2 : 16;
+                dup_frame* nf = realloc(frames, ncap * sizeof(*nf));
+                if (nf == NULL) {
+                    rc = -1;
+                    break;
+                }
+                frames = nf;
+                cap = ncap;
+            }
+            frames[depth].keys.slots = NULL;
+            frames[depth].keys.cap = 0;
+            frames[depth].keys.count = 0;
+            depth++;
+            continue;
+        }
+        if (v->kind == YEP_V_CLOSE) {
+            if (depth > 0) {
+                depth--;
+                free(frames[depth].keys.slots);
             }
             continue;
         }
-        if (v->kind == YEP_V_CLOSE || v->is_key != 1) {
+        if (v->is_key != 1 || depth == 0) {
             continue;
         }
         dup_slot k = {v->p, v->off, v->len, v->kind, v->b};
         if (k.p == 0) {
             k.p = 1; /* never aliases the empty-slot sentinel */
         }
-        if (s.cap == 0 && dup_set_grow(&s) != 0) {
-            rc = -1;
-            break;
-        }
-        uint64_t h = dup_hash(&k, c->arena);
-        for (;;) {
-            dup_slot* slot = &s.slots[h & (s.cap - 1)];
-            if (slot->p == 0) {
-                *slot = k;
-                break;
+        int irc = dup_set_insert(&frames[depth - 1].keys, &k, c->arena);
+        if (irc != 1) {
+            if (irc < 0) {
+                rc = -1;
             }
-            if (dup_eq(slot, &k, c->arena)) {
-                yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
-                              "duplicate key in object");
-                rc = 1;
-                break;
-            }
-            h++;
+            continue;
         }
+        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0, "duplicate key in object");
+        rc = 1;
     }
-    free(s.slots);
+    for (size_t j = 0; j < depth; j++) {
+        free(frames[j].keys.slots);
+    }
+    free(frames);
     return rc;
 }
 
