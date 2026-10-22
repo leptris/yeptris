@@ -1275,6 +1275,27 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
                 e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
                 return;
             }
+            /* The flow-follower colon law (the nightly's round 29,
+             * crash-47eb4054): a name ending at a riding colon whose
+             * follower is a FLOW collection un-consumes the colon.
+             * libyaml ACCEPTS "&k2: [1,\n2]" — the anchor names the
+             * implicit-null KEY and the flow is the value — so the
+             * riding law (2SXE) must yield exactly where its result
+             * is observable in the differential; the plain-led twins
+             * keep it (libyaml rejects those: "&a: key: v", W5VH's
+             * value position — suite-VALID, ledgered). The colon
+             * re-lexes as the key indicator and the existing colon
+             * arm builds the anchored null key. */
+            if (e->p[e->pos - 1] == ':') {
+                size_t t = e->pos;
+                while (t < e->len && (e->p[t] == ' ' || e->p[t] == '\t')) {
+                    t++;
+                }
+                if (t < e->len && (e->p[t] == '[' || e->p[t] == '{')) {
+                    anchor->len -= 1;
+                    e->pos -= 1;
+                }
+            }
             if (e->pos < e->len && e->p[e->pos] == '#') {
                 /* the name ends at a blank or flow indicator; a glued
                  * '#' is junk on the name (libyaml: "did not find
