@@ -4138,10 +4138,11 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
          * the whole route kept the PS raw inside the never-closed
          * quote while the chunked route (fresh probe after the cut)
          * folded it — a plain scalar "a " vs "a". */
-        if (c->at_break && i + 2 < len && (ch == '-' || ch == '.') &&
-            p[i + 1] == ch && p[i + 2] == ch &&
-            (i + 3 >= len || p[i + 3] == ' ' || p[i + 3] == '\t' ||
-             p[i + 3] == '\n' || p[i + 3] == '\r')) {
+        int rescue = (c->at_break && i + 2 < len && (ch == '-' || ch == '.') &&
+                      p[i + 1] == ch && p[i + 2] == ch &&
+                      (i + 3 >= len || p[i + 3] == ' ' || p[i + 3] == '\t' ||
+                       p[i + 3] == '\n' || p[i + 3] == '\r'));
+        if (rescue) {
             c->quote = 0;
         } else {
         /* NEL folds inside quotes too; LS/PS stay raw content — but
