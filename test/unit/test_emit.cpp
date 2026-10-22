@@ -770,6 +770,37 @@ TEST(EmitStyle, PlainSafeSwarMatchesReference) {
     EXPECT_EQ(yep_style_plain_safe("a#b", 3), 1);
 }
 
+TEST(Emit, BlockKeepWsLastLineSpellsOneExtraBreak) {
+    /* the nightly's round 32 (crash-90c98918, 26 bytes, shrunk to 10:
+     * "|+\n:\n \t\n\n\n"): the reader swallows the own break of a
+     * whitespace-only last line carrying a TAB — written N reads N-1
+     * — so the keep spelling of such a value needs one extra break,
+     * or pass2 re-parses one break short and demotes to clip. A
+     * spaces-only last line reads 1:1 (crash-6842b2b4). */
+    const char* y = "|+\n:\n \t\n\n\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(d, nullptr) << yeptris_last_error(NULL, NULL);
+    size_t len = 0;
+    char* s1 = yeptris_serialize(d, &len);
+    ASSERT_NE(s1, nullptr);
+    YeptrisDocument d2 = yeptris_parse(s1, len, &st);
+    ASSERT_NE(d2, nullptr) << "emitted YAML must re-parse\n" << std::string(s1, len);
+    size_t len2 = 0;
+    char* s2 = yeptris_serialize(d2, &len2);
+    ASSERT_NE(s2, nullptr);
+    ASSERT_EQ(len2, len) << std::string(s1, len);
+    EXPECT_EQ(memcmp(s1, s2, len), 0);
+    free(s2);
+    yeptris_document_free(d2);
+    free(s1);
+    yeptris_document_free(d);
+
+    /* the spaces-only twin reads 1:1 — no extra break, still stable */
+    const char* sp = "|+\n+;+\n \n\n";
+    EXPECT_EQ(roundtrip(sp), ser(yeptris_parse(sp, strlen(sp), &st)));
+}
+
 TEST(Emit, TrailingColonAnchorOnCollectionIsUnserializable) {
     /* the nightly's round 31 (crash-66a513ea, shrunk to 33 bytes): an
      * anchor whose name ends in ':' spelled directly before a
