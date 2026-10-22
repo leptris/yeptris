@@ -4138,72 +4138,72 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
          * the whole route kept the PS raw inside the never-closed
          * quote while the chunked route (fresh probe after the cut)
          * folded it — a plain scalar "a " vs "a". */
-        int rescue = (c->at_break && i + 2 < len && (ch == '-' || ch == '.') &&
-                      p[i + 1] == ch && p[i + 2] == ch &&
-                      (i + 3 >= len || p[i + 3] == ' ' || p[i + 3] == '\t' ||
-                       p[i + 3] == '\n' || p[i + 3] == '\r'));
+        int rescue = (c->at_break && i + 2 < len && (ch == '-' || ch == '.') && p[i + 1] == ch &&
+                      p[i + 2] == ch &&
+                      (i + 3 >= len || p[i + 3] == ' ' || p[i + 3] == '\t' || p[i + 3] == '\n' ||
+                       p[i + 3] == '\r'));
         if (rescue) {
             c->quote = 0;
         } else {
-        /* NEL folds inside quotes too; LS/PS stay raw content — but
-         * every break still arms the line-start state, or a col-0
-         * marker after a quoted newline is invisible (at_break was
-         * last armed OUTSIDE the quote) */
-        if (nel) {
-            t.n = 2;
-            t.fold_off = 0;
-            t.fold_len = 2;
-            c->at_break = 1;
-            return t;
-        }
-        if (lps) {
-            t.n = 3;
-            c->at_break = 1;
-            return t;
-        }
-        if (ch == '\n' || (ch == '\r' && (i + 1 >= len || p[i + 1] != '\n'))) {
-            c->at_break = 1;
-            return t;
-        }
-        c->at_break = 0;
-        if (c->quote == '\'') {
-            if (ch == '\'') {
-                if (i + 1 < len && p[i + 1] == '\'') {
-                    t.n = 2; /* '' escaped quote */
+            /* NEL folds inside quotes too; LS/PS stay raw content — but
+             * every break still arms the line-start state, or a col-0
+             * marker after a quoted newline is invisible (at_break was
+             * last armed OUTSIDE the quote) */
+            if (nel) {
+                t.n = 2;
+                t.fold_off = 0;
+                t.fold_len = 2;
+                c->at_break = 1;
+                return t;
+            }
+            if (lps) {
+                t.n = 3;
+                c->at_break = 1;
+                return t;
+            }
+            if (ch == '\n' || (ch == '\r' && (i + 1 >= len || p[i + 1] != '\n'))) {
+                c->at_break = 1;
+                return t;
+            }
+            c->at_break = 0;
+            if (c->quote == '\'') {
+                if (ch == '\'') {
+                    if (i + 1 < len && p[i + 1] == '\'') {
+                        t.n = 2; /* '' escaped quote */
+                        return t;
+                    }
+                    c->quote = 0;
+                }
+                return t;
+            }
+            if (ch == '\\') {
+                /* the escape consumes the next byte — but a multibyte
+                 * break under the escape still folds (an escaped break is
+                 * a fold continuation, and the blind pass folded it) */
+                if (i + 1 >= len) {
                     return t;
                 }
+                unsigned char nx = (unsigned char)p[i + 1];
+                if (nx == 0xC2 && i + 2 < len && (unsigned char)p[i + 2] == 0x85) {
+                    t.n = 3;
+                    t.fold_off = 1;
+                    t.fold_len = 2;
+                    return t;
+                }
+                if (nx == 0xE2 && i + 3 < len && (unsigned char)p[i + 2] == 0x80 &&
+                    ((unsigned char)p[i + 3] & 0xFE) == 0xA8) {
+                    t.n = 4;
+                    t.fold_off = 1;
+                    t.fold_len = 3;
+                    return t;
+                }
+                t.n = 2;
+                return t;
+            }
+            if (ch == '"') {
                 c->quote = 0;
             }
             return t;
-        }
-        if (ch == '\\') {
-            /* the escape consumes the next byte — but a multibyte
-             * break under the escape still folds (an escaped break is
-             * a fold continuation, and the blind pass folded it) */
-            if (i + 1 >= len) {
-                return t;
-            }
-            unsigned char nx = (unsigned char)p[i + 1];
-            if (nx == 0xC2 && i + 2 < len && (unsigned char)p[i + 2] == 0x85) {
-                t.n = 3;
-                t.fold_off = 1;
-                t.fold_len = 2;
-                return t;
-            }
-            if (nx == 0xE2 && i + 3 < len && (unsigned char)p[i + 2] == 0x80 &&
-                ((unsigned char)p[i + 3] & 0xFE) == 0xA8) {
-                t.n = 4;
-                t.fold_off = 1;
-                t.fold_len = 3;
-                return t;
-            }
-            t.n = 2;
-            return t;
-        }
-        if (ch == '"') {
-            c->quote = 0;
-        }
-        return t;
         }
     }
     if (c->in_verbatim) {
