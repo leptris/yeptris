@@ -797,7 +797,11 @@ TEST(Emit, TrailingColonAnchorOnCollectionIsUnserializable) {
 
     /* the scalar twin stays spellable and byte-stable */
     const char* sv = "k: &n: v\n";
-    EXPECT_EQ(roundtrip(sv), ser(yeptris_parse(sv, strlen(sv), &st)));
+    YeptrisDocument dsv = yeptris_parse(sv, strlen(sv), &st);
+    ASSERT_NE(dsv, nullptr) << yeptris_last_error(NULL, NULL);
+    std::string want = ser(dsv);
+    yeptris_document_free(dsv);
+    EXPECT_EQ(roundtrip(sv), want);
 }
 
 TEST(Emit, RawLsPsValueRidesQuoted) {
