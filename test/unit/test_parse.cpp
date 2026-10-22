@@ -2294,6 +2294,51 @@ TEST(Parse, AnchoredColonBeforeFlowOpensTheImplicitNullKey) {
     yeptris_document_free(doc4);
 }
 
+TEST(Parse, AnchoredColonBeforeBlockHeaderOpensTheImplicitNullKey) {
+    /* the block-header twin of the flow law (the nightly's round 31,
+     * crash-4cbeede1): "&kk: |" — libyaml ACCEPTS, the anchor names
+     * the implicit-null KEY (truncated at the riding colon) and the
+     * block scalar is the value; before the yield the colon rode onto
+     * the name ("kk:") and the map lost the pair's value event. */
+    const char* y = "&kk: |\n      &tirelue9\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    ASSERT_EQ(yeptris_node_kind(root), YEPTRIS_NODE_MAPPING);
+    ASSERT_EQ(yeptris_node_map_count(root), 1u);
+    YeptrisNode key = nullptr, value = nullptr;
+    ASSERT_EQ(yeptris_node_map_at(root, 0, &key, &value), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_node_kind(key), YEPTRIS_NODE_SCALAR);
+    EXPECT_EQ(val(key), "");
+    size_t alen = 0;
+    const char* aname = yeptris_node_anchor(key, &alen);
+    ASSERT_NE(aname, nullptr);
+    EXPECT_EQ(std::string(aname, alen), "kk");
+    /* the VALUE is the literal block scalar, clip-chomped */
+    ASSERT_EQ(yeptris_node_kind(value), YEPTRIS_NODE_SCALAR);
+    EXPECT_EQ(yeptris_node_style(value), YEPTRIS_STYLE_LITERAL);
+    EXPECT_EQ(val(value), "&tirelue9\n"); /* clip keeps the one break */
+    yeptris_document_free(doc);
+
+    /* the folded-header twin yields the same law */
+    const char* f = "&kf: >\n      val\n";
+    YeptrisDocument doc2 = yeptris_parse(f, strlen(f), &st);
+    ASSERT_NE(doc2, nullptr) << yeptris_last_error(NULL, NULL);
+    YeptrisNode root2 = yeptris_document_root(doc2, 0);
+    ASSERT_EQ(yeptris_node_kind(root2), YEPTRIS_NODE_MAPPING);
+    YeptrisNode k2 = nullptr, v2 = nullptr;
+    ASSERT_EQ(yeptris_node_map_at(root2, 0, &k2, &v2), YEPTRIS_OK);
+    aname = yeptris_node_anchor(k2, &alen);
+    ASSERT_NE(aname, nullptr);
+    EXPECT_EQ(std::string(aname, alen), "kf");
+    EXPECT_EQ(yeptris_node_style(v2), YEPTRIS_STYLE_FOLDED);
+    EXPECT_EQ(val(v2), "val\n");
+    yeptris_document_free(doc2);
+}
+
 TEST(Parse, AnchoredColonRidingSurvivesTheFlowLaw) {
     /* the riding law's own shapes are untouched by the flow-follower
      * un-consume: plain-led followers keep the colon in the name */

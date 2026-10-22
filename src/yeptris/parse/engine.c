@@ -1276,10 +1276,12 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
                 return;
             }
             /* The flow-follower colon law (the nightly's round 29,
-             * crash-47eb4054): a name ending at a riding colon whose
-             * follower is a FLOW collection un-consumes the colon.
-             * libyaml ACCEPTS "&k2: [1,\n2]" — the anchor names the
-             * implicit-null KEY and the flow is the value — so the
+             * crash-47eb4054; the block-header twin is round 31,
+             * crash-4cbeede1): a name ending at a riding colon whose
+             * follower is a FLOW collection or a BLOCK SCALAR HEADER
+             * un-consumes the colon. libyaml ACCEPTS "&k2: [1,\n2]"
+             * and "&kk: |\n  x" — the anchor names the implicit-null
+             * KEY and the collection/scalar is the value — so the
              * riding law (2SXE) must yield exactly where its result
              * is observable in the differential; the plain-led twins
              * keep it (libyaml rejects those: "&a: key: v", W5VH's
@@ -1287,11 +1289,18 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
              * re-lexes as the key indicator and the existing colon
              * arm builds the anchored null key. */
             if (e->p[e->pos - 1] == ':') {
+                /* the follower scan crosses blanks AND breaks: the
+                 * pair separator at line end still opens the value on
+                 * the next line ("&k:\n {\n}" — the nightly's round
+                 * 31, crash-c2232e17 — rode the colon and DROPPED the
+                 * flow map outright) */
                 size_t t = e->pos;
-                while (t < e->len && (e->p[t] == ' ' || e->p[t] == '\t')) {
+                while (t < e->len &&
+                       (e->p[t] == ' ' || e->p[t] == '\t' || e->p[t] == '\n' || e->p[t] == '\r')) {
                     t++;
                 }
-                if (t < e->len && (e->p[t] == '[' || e->p[t] == '{')) {
+                if (t < e->len &&
+                    (e->p[t] == '[' || e->p[t] == '{' || e->p[t] == '|' || e->p[t] == '>')) {
                     anchor->len -= 1;
                     e->pos -= 1;
                 }
