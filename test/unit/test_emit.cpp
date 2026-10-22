@@ -798,7 +798,11 @@ TEST(Emit, BlockKeepWsLastLineSpellsOneExtraBreak) {
 
     /* the spaces-only twin reads 1:1 — no extra break, still stable */
     const char* sp = "|+\n+;+\n \n\n";
-    EXPECT_EQ(roundtrip(sp), ser(yeptris_parse(sp, strlen(sp), &st)));
+    YeptrisDocument dsp = yeptris_parse(sp, strlen(sp), &st);
+    ASSERT_NE(dsp, nullptr) << yeptris_last_error(NULL, NULL);
+    std::string want = ser(dsp);
+    yeptris_document_free(dsp);
+    EXPECT_EQ(roundtrip(sp), want);
 }
 
 TEST(Emit, TrailingColonAnchorOnCollectionIsUnserializable) {
