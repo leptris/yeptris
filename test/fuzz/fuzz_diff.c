@@ -595,6 +595,8 @@ static int yd_composed_break_divergence(const uint8_t* data, size_t size) {
  * which changes no content byte -- and require libyaml's dump of THAT
  * to equal yeptris's dump of the original. */
 static int yd_clip_breakless_divergence(const uint8_t* data, size_t size, const char* ydump);
+static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                  const char* ldump);
 
 static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
     if (size == 0) {
@@ -730,6 +732,60 @@ static int yd_clip_breakless_divergence(const uint8_t* data, size_t size, const 
     int known = strcmp(ydump, ldump2) == 0;
     free(ldump2);
     return known;
+}
+
+/* True when the difference is the LS/PS post-break whitespace
+ * family: libyaml's reader treats a raw LS/PS inside a quoted scalar
+ * as a break for indentation purposes and strips the space run right
+ * after it, while yeptris keeps the bytes (YAML 1.2: LS/PS are not
+ * breaks — the same suite-over-libyaml adjudication as the LS/PS
+ * carries). Transform: drop the spaces directly after every raw
+ * LS/PS; when libyaml's dump of that equals yeptris's original dump,
+ * the divergence is this family (the nightly's round 28,
+ * crash-2fe6db32: "k: \"a<LS> '<PS>d'b\"" lost the space after the
+ * LS). */
+static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                  const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 5) {
+        return 0;
+    }
+    int need = 0;
+    for (size_t i = 0; i + 3 < size; i++) {
+        if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9) &&
+            data[i + 3] == ' ') {
+            need = 1;
+            break;
+        }
+    }
+    if (!need) {
+        return 0;
+    }
+    /* the relation is exact and dump-shaped: libyaml's dump equals
+     * yeptris's with the space runs after every raw LS/PS removed */
+    size_t y = 0;
+    size_t l = 0;
+    while (ydump[y] != '\0') {
+        if ((unsigned char)ydump[y] == 0xE2 && (unsigned char)ydump[y + 1] == 0x80 &&
+            ((unsigned char)ydump[y + 2] == 0xA8 || (unsigned char)ydump[y + 2] == 0xA9)) {
+            if (ldump[l] != ydump[y] || ldump[l + 1] != ydump[y + 1] ||
+                ldump[l + 2] != ydump[y + 2]) {
+                return 0;
+            }
+            y += 3;
+            l += 3;
+            while (ydump[y] == ' ') {
+                y++;
+            }
+            continue;
+        }
+        if (ldump[l] != ydump[y]) {
+            return 0;
+        }
+        y++;
+        l++;
+    }
+    return ldump[l] == '\0';
 }
 
 /* True when the difference is the flow-anchor-colon family: inside a
@@ -1258,6 +1314,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_bom_content_divergence(ydump, ldump) || yd_breaknorm_divergence(data, size, ydump) ||
          yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
          yd_clip_breakless_divergence(data, size, ydump) ||
+         yd_ps_space_divergence(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
          yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
          yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
