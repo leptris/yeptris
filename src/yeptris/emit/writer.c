@@ -663,6 +663,19 @@ static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
     if (n->anchor.len == 0) {
         return;
     }
+    /* A name ending in ':' rides or separates context-dependently
+     * (2SXE): spelled directly before a collection ("&: [[]]", the
+     * nightly's round 31, crash-66a513ea; "k: &: [[1]]" fails its own
+     * re-parse the same way) every spelling re-lexes differently --
+     * the riding/yield law reads the colon as the key indicator at
+     * the follower, so the tree changes or the parse dies. A scalar
+     * node keeps riding raw ("k: &n: v" round-trips byte-stably).
+     * There is no spell for the collection form: fail the serialize. */
+    yep_view chk = wv(w, n->anchor);
+    if (n->kind != 0 && chk.len > 0 && chk.p[chk.len - 1] == ':') {
+        w->unserializable = 1;
+        return;
+    }
     wr_byte(w, '&');
     yep_view adec = wv(w, n->anchor);
     if (w->canonical) {
