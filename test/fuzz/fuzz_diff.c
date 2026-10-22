@@ -228,6 +228,25 @@ static int yd_qcolon_walk(const char* ldump, const char* ydump2) {
                 continue;
             }
         }
+        /* the VALUE-side twin (the nightly's round 26, crash-e43f206c:
+         * "[100, 120, 12.00, 120, a\n \n, ? ,:50 ,1,3- 9]"): after a
+         * '?'-opened pair terminated by ',', libyaml reads the
+         * colon-led next entry as the pair's VALUE token (empty key ->
+         * "50"), yeptris closes the pair empty and keeps ":50" plain
+         * (the same ns-plain-first law, HM87/58MP). libyaml's pair
+         * (key, V) folds onto yeptris's (key, empty, ":V"). */
+        if (i + 2 < n && lens[i] >= 7 && strncmp(lines[i], "=VAL : ", 7) == 0 &&
+            (lens[i] == 7 || lines[i][lens[i] - 1] == ' ') && lens[i + 1] > 7 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && j + 3 < yn && ylens[j] == lens[i] &&
+            memcmp(ylines[j], lines[i], lens[i]) == 0 && ylens[j + 1] == 7 &&
+            strncmp(ylines[j + 1], "=VAL : ", 7) == 0 && ylens[j + 2] == lens[i + 2] &&
+            memcmp(ylines[j + 2], lines[i + 2], lens[i + 2]) == 0 &&
+            ylens[j + 3] == 8 + (lens[i + 1] - 7) && strncmp(ylines[j + 3], "=VAL : :", 8) == 0 &&
+            memcmp(ylines[j + 3] + 8, lines[i + 1] + 7, lens[i + 1] - 7) == 0) {
+            i += 2; /* + the loop's own i++ = the pair's three lines */
+            j += 4;
+            continue;
+        }
         if (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0) {
             return 0;
         }
