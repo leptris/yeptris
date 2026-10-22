@@ -595,8 +595,159 @@ static int yd_composed_break_divergence(const uint8_t* data, size_t size) {
  * which changes no content byte -- and require libyaml's dump of THAT
  * to equal yeptris's dump of the original. */
 static int yd_clip_breakless_divergence(const uint8_t* data, size_t size, const char* ydump);
+/* True when the difference is the anchor-charset family's COLON-PAIR
+ * member (the nightly's round 29, crash-47eb4054: "&k2: {\n}" and
+ * "&k2: [1,\n2]"): the suite keeps ':' in anchor names (2SXE), so
+ * yeptris reads the name run "&k2:" whole and parses an anchored flow
+ * NODE, while libyaml truncates the name at ':' and reads a PAIR
+ * (anchored empty key -> flow value). The existing charset carry's
+ * extended set includes ':' (2SXE), so it never gates this shape.
+ * Transform: split the name from its trailing colon-pair with one
+ * space ("&k2:" -> "&k2 :"); when yeptris's dump of that equals
+ * libyaml's dump of the original AND both engines agree on the split,
+ * the divergence is exactly this family. */
+static int yd_anchor_colon_pair_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                           const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 3) {
+        return 0;
+    }
+    int quote = 0;
+    int word_led = 1;
+    int prop_word = 0;
+    size_t split_at = (size_t)-1; /* the ':' offset to space out */
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                i++;
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            word_led = 0;
+            prop_word = 0;
+            continue;
+        }
+        if ((c == '\'' || c == '"') && (word_led || prop_word)) {
+            quote = c;
+            word_led = 0;
+            prop_word = 0;
+            continue;
+        }
+        if (c == '&' && split_at == (size_t)-1) {
+            /* the name run: prop chars (the yeptris set, ':' included)
+             * up to a blank/break; gate when it ends at a ':' whose
+             * follower is blank/EOL -- the PAIR separator shape */
+            size_t j = i + 1;
+            while (j < size &&
+                   !(data[j] == ' ' || data[j] == '\t' || data[j] == '\n' || data[j] == '\r' ||
+                     data[j] == ',' || data[j] == '#' || data[j] == '[' || data[j] == ']' ||
+                     data[j] == '{' || data[j] == '}')) {
+                j++;
+            }
+            /* the run itself consumes the ':' (the yeptris name set
+             * keeps it): the PAIR shape is a run ENDING in ':' whose
+             * follower is blank/EOL */
+            if (j > i + 1 && j < size && data[j - 1] == ':' &&
+                (j >= size || data[j] == ' ' || data[j] == '\t' || data[j] == '\n' ||
+                 data[j] == '\r')) {
+                split_at = j - 1;
+            }
+            word_led = 0;
+            prop_word = 1;
+            i = j > i ? j - 1 : i;
+            continue;
+        }
+        if (c == '&' || c == '!') {
+            prop_word = 1;
+            word_led = 0;
+        } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == '[' ||
+                   c == ']' || c == '{' || c == '}' || c == ':' || c == '-' || c == '?') {
+            word_led = 1;
+            prop_word = 0;
+        } else {
+            word_led = 0;
+            prop_word = 0;
+        }
+    }
+    if (split_at == (size_t)-1) {
+        return 0;
+    }
+    /* the split alone often still rejects in yeptris: the flow
+     * value's continuation/closer lines sit at the key's column, the
+     * 9C9N floor carry's shape (composed carries compose — catch
+     * 166's law). Indent every non-blank line after the anchor's line
+     * through the flow's first line-start closer by two spaces; the
+     * dump equality below guards the composition (a semantic change
+     * declines the carry). */
+    size_t closer = split_at;
+    for (size_t i = split_at; i < size; i++) {
+        if (data[i] == '\n' && i + 1 < size) {
+            size_t ls = i + 1;
+            size_t ind = 0;
+            while (ls + ind < size && (data[ls + ind] == ' ' || data[ls + ind] == '\t')) {
+                ind++;
+            }
+            if (ls + ind < size && (data[ls + ind] == ']' || data[ls + ind] == '}')) {
+                closer = ls + ind; /* the closer byte */
+                break;
+            }
+        }
+    }
+    size_t bound = closer < size ? closer + 1 : size;
+    char* sub = malloc(size + 3);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    memcpy(sub, data, split_at);
+    o = split_at;
+    sub[o++] = ' ';
+    int at_line_start = 0; /* the anchor's own line: no indent */
+    int in_span = 1;       /* indenting starts after the anchor's break */
+    for (size_t i = split_at; i < bound; i++) {
+        unsigned char c = data[i];
+        if (in_span && c != '\n') {
+            size_t ls = i;
+            int blank_line = 1;
+            for (size_t k = i; k < bound && data[k] != '\n'; k++) {
+                if (data[k] != ' ' && data[k] != '\t') {
+                    blank_line = 0;
+                    break;
+                }
+            }
+            if (!blank_line) {
+                sub[o++] = ' ';
+                sub[o++] = ' ';
+                in_span = 0; /* indent once per line */
+            }
+            (void)ls;
+            (void)at_line_start;
+        }
+        if (c == '\n' && i + 1 < bound) {
+            in_span = 1;
+        }
+        sub[o++] = (char)c;
+    }
+    memcpy(sub + o, data + bound, size - bound);
+    o += size - bound;
+    int ok2 = 0;
+    char* ydump2 = yd_sem_dump(sub, o, &ok2);
+    free(sub);
+    if (ydump2 == NULL || !ok2) {
+        free(ydump2);
+        return 0;
+    }
+    int known = strcmp(ydump2, ldump) == 0;
+    free(ydump2);
+    return known;
+}
+
 static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* ydump,
                                   const char* ldump);
+static int yd_anchor_colon_pair_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                           const char* ldump);
 
 static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
     if (size == 0) {
@@ -1315,6 +1466,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
          yd_clip_breakless_divergence(data, size, ydump) ||
          yd_ps_space_divergence(data, size, ydump, ldump) ||
+         yd_anchor_colon_pair_divergence(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
          yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
          yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
