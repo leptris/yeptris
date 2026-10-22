@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.36] - 2026-10-22
 ### Fixed
 
 - **parse: the break normalizer honors the doc-marker quote rescue in whole-buffer runs** — the nightly's round 25 (crash-27a77050, 219 bytes → 14: `>\n: '\n---\na<U+2029>`). A col-0 `---` rescues an unterminated quote (the parser ends the document there — the post-cut reset's "clean state" law), but the whole route's normalize probe kept classifying post-marker bytes as quoted content, so the trailing PS rode RAW into a plain scalar (`v = "a"+PS`) while the chunked route's fresh post-cut probe folded it (`v = "a"`) — whole-vs-chunked identity broken. The probe now closes an open quote at the marker and arms line-start state on breaks inside the quoted walk; the #638 law itself is untouched (a genuinely quoted LS/PS still stays raw on both routes). Feed corpus + 4,000-input LS/PS/NEL-heavy randomized sweep: zero divergences; full battery 562/562.
