@@ -770,6 +770,36 @@ TEST(EmitStyle, PlainSafeSwarMatchesReference) {
     EXPECT_EQ(yep_style_plain_safe("a#b", 3), 1);
 }
 
+TEST(Emit, TrailingColonAnchorOnCollectionIsUnserializable) {
+    /* the nightly's round 31 (crash-66a513ea, shrunk to 33 bytes): an
+     * anchor whose name ends in ':' spelled directly before a
+     * collection ("&: [[]]") re-lexes as props + the key indicator --
+     * the riding/yield law reads the colon as the separator at the
+     * follower, so every spelling parses to a different tree ("k: &:
+     * [[1]]" fails its own re-parse). There is no spell for the
+     * shape: serialize fails rather than emitting an unstable form.
+     * A scalar node keeps riding raw ("k: &n: v" is byte-stable,
+     * 2SXE). */
+    /* the artifact's own tree (the fused route glues the anchor onto
+     * the following collection; the shrunk form needs the triple
+     * repetition to reach that route) */
+    const char* y = ":\n[]\n{}\n:\n[]\n{}\n:\n[]\n{}\n: &:\n- []";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(d, nullptr) << yeptris_last_error(NULL, NULL);
+    size_t len = 0;
+    EXPECT_EQ(yeptris_serialize(d, &len), nullptr);
+    yeptris_document_free(d);
+
+    /* the unglued twin parses to separate nodes and stays parseable */
+    const char* sep = ": &:\n[]";
+    EXPECT_NE(roundtrip(sep), "(parse-failed)");
+
+    /* the scalar twin stays spellable and byte-stable */
+    const char* sv = "k: &n: v\n";
+    EXPECT_EQ(roundtrip(sv), ser(yeptris_parse(sv, strlen(sv), &st)));
+}
+
 TEST(Emit, RawLsPsValueRidesQuoted) {
     /* the nightly's round 18 (run 39587656699, crash-1e79b2e3): since
      * the quote-aware normalizer (#638) a quoted scalar's value can
