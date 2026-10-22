@@ -2229,6 +2229,135 @@ TEST(Parse, AnchoredKeyCountsItsAnchorName) {
     yeptris_document_free(doc);
 }
 
+TEST(Parse, AnchoredColonBeforeFlowOpensTheImplicitNullKey) {
+    /* the nightly's round 29 (yeptris#700, crash-47eb4054): "&k2:
+     * [1,\n2]" — libyaml ACCEPTS the shape (the anchor names the
+     * implicit-null KEY, the flow is the value), so the riding-colon
+     * law (2SXE) must yield exactly where its result is observable
+     * in the differential: a name ending at a riding colon whose
+     * follower is a flow collection un-consumes the colon. The
+     * plain-led twins keep riding (libyaml rejects those: "&a: key:
+     * v" is 2SXE, "&a: value" / W5VH's value position — suite-VALID,
+     * ledgered). */
+    const char* y = "&k2: [1, 2]";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    ASSERT_EQ(yeptris_node_kind(root), YEPTRIS_NODE_MAPPING);
+    ASSERT_EQ(yeptris_node_map_count(root), 1u);
+    YeptrisNode key = nullptr, value = nullptr;
+    ASSERT_EQ(yeptris_node_map_at(root, 0, &key, &value), YEPTRIS_OK);
+    /* the KEY is the implicit null carrying the anchor, colon-free */
+    EXPECT_EQ(yeptris_node_kind(key), YEPTRIS_NODE_SCALAR);
+    EXPECT_EQ(val(key), "");
+    size_t alen = 0;
+    const char* aname = yeptris_node_anchor(key, &alen);
+    ASSERT_NE(aname, nullptr);
+    EXPECT_EQ(std::string(aname, alen), "k2");
+    /* the VALUE is the flow sequence, unanchored */
+    ASSERT_EQ(yeptris_node_kind(value), YEPTRIS_NODE_SEQUENCE);
+    EXPECT_EQ(yeptris_node_seq_count(value), 2u);
+    EXPECT_EQ(val(yeptris_node_seq_at(value, 0)), "1");
+    EXPECT_EQ(val(yeptris_node_seq_at(value, 1)), "2");
+    yeptris_document_free(doc);
+
+    /* the empty flow mapping twin (an INDENTED close — the col-0
+     * close rides the same floor law as the col-0 continuation) */
+    const char* e = "&k2: {\n  }";
+    YeptrisDocument doc2 = yeptris_parse(e, strlen(e), &st);
+    ASSERT_NE(doc2, nullptr) << yeptris_last_error(NULL, NULL);
+    YeptrisNode root2 = yeptris_document_root(doc2, 0);
+    ASSERT_EQ(yeptris_node_kind(root2), YEPTRIS_NODE_MAPPING);
+    YeptrisNode k2 = nullptr, v2 = nullptr;
+    ASSERT_EQ(yeptris_node_map_at(root2, 0, &k2, &v2), YEPTRIS_OK);
+    aname = yeptris_node_anchor(k2, &alen);
+    ASSERT_NE(aname, nullptr);
+    EXPECT_EQ(std::string(aname, alen), "k2");
+    EXPECT_EQ(yeptris_node_kind(v2), YEPTRIS_NODE_MAPPING);
+    EXPECT_EQ(yeptris_node_map_count(v2), 0u);
+    yeptris_document_free(doc2);
+
+    /* an INDENTED continuation parses (the flow floor holds) */
+    const char* ind = "&k2: [1,\n 2]";
+    YeptrisDocument doc3 = yeptris_parse(ind, strlen(ind), &st);
+    ASSERT_NE(doc3, nullptr) << yeptris_last_error(NULL, NULL);
+    yeptris_document_free(doc3);
+    /* the col-0 continuation rides the ledgered 9C9N floor law —
+     * the anchored twin rejects exactly like its unanchored one */
+    const char* flat = "&k2: [1,\n2]";
+    YeptrisDocument doc4 = yeptris_parse(flat, strlen(flat), &st);
+    EXPECT_EQ(doc4, nullptr);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    yeptris_document_free(doc4);
+}
+
+TEST(Parse, AnchoredColonRidingSurvivesTheFlowLaw) {
+    /* the riding law's own shapes are untouched by the flow-follower
+     * un-consume: plain-led followers keep the colon in the name */
+    struct {
+        const char* y;
+        const char* anchor;
+    } rides[] = {
+        {"&a: key: v", "a:"},   /* 2SXE: the colon rides onto the key */
+        {"&a: value", "a:"},    /* plain-led root scalar */
+        {"a: &b: c", "b:"},     /* W5VH's value position */
+        {"&a::: k: v", "a:::"}, /* a colon RUN rides whole */
+    };
+    for (const auto& r : rides) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(r.y, strlen(r.y), &st);
+        ASSERT_NE(doc, nullptr) << r.y << ": " << yeptris_last_error(NULL, NULL);
+        /* walk to the anchored node: root, its first pair's key or
+         * value — the anchor must carry the FULL riding name */
+        bool found = false;
+        std::string seen;
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        if (yeptris_node_kind(root) == YEPTRIS_NODE_SCALAR) {
+            size_t l = 0;
+            const char* a = yeptris_node_anchor(root, &l);
+            if (a != nullptr) {
+                seen.assign(a, l);
+                found = seen == r.anchor;
+            }
+        } else if (yeptris_node_kind(root) == YEPTRIS_NODE_MAPPING) {
+            for (size_t i = 0; i < yeptris_node_map_count(root) && !found; i++) {
+                YeptrisNode k = nullptr, v = nullptr;
+                if (yeptris_node_map_at(root, i, &k, &v) != YEPTRIS_OK) {
+                    continue;
+                }
+                size_t l = 0;
+                const char* a = yeptris_node_anchor(k, &l);
+                if (a != nullptr) {
+                    seen.assign(a, l);
+                    found = seen == r.anchor;
+                }
+                if (!found && v != nullptr) {
+                    a = yeptris_node_anchor(v, &l);
+                    if (a != nullptr) {
+                        seen.assign(a, l);
+                        found = seen == r.anchor;
+                    }
+                }
+            }
+        }
+        EXPECT_TRUE(found) << r.y << ": anchor '" << r.anchor << "' not found (saw '" << seen
+                           << "')";
+        yeptris_document_free(doc);
+    }
+    /* the double-anchor law rides too: "&va2: &node2" keeps both
+     * anchors on ONE node (the riding colon) and errors */
+    const char* d = "top5:\n  &va2: &node2 # comment\n  key2: two";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(d, strlen(d), &st);
+    EXPECT_EQ(doc, nullptr);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    yeptris_document_free(doc);
+}
+
 TEST(Parse, MidTokenHashIsContentInPropLines) {
     /* the nightly's run 38204470906 ("  ? e\n  ? &e ?#"): the props-
      * line classifier treated a MID-TOKEN '#' as a comment — "&a ?#:"
