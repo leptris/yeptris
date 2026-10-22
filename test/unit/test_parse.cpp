@@ -5983,6 +5983,74 @@ TEST(Parse, QuotedLsPsChunkIdentity) {
     }
 }
 
+TEST(Parse, BlockHeaderQuotePsChunkIdentity) {
+    /* the nightly's round 25 (crash-27a77050): ">\n: '\n---\na<U+2029>"
+     * diverged per chunking — step_scan cut at the --- while the scan
+     * carried the value-position quote (line 2 is root block-scalar
+     * content, but the marker arm never checked quote state), and the
+     * reset made the tail's normalize fold the PS at a root context.
+     * The cut now requires a clean state, so every chunking parses the
+     * same pending buffer in one run; the PS folds at doc 2's plain
+     * (libyaml-parity) and doc 1 keeps the col-0 content per the
+     * catch-165 carry. */
+    const char* y = ">\n: '\n---\na\xe2\x80\xa9";
+    size_t ylen = strlen(y);
+    auto collect = [](YeptrisRecorder rec, std::vector<std::string>& vals) {
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        size_t alen = 0;
+        const char* arena = yeptris_recorder_arena(rec, &alen);
+        (void)alen;
+        for (size_t i = 0; i < n; i++) {
+            if (rs[i].type == YEPTRIS_EV_SCALAR) {
+                vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+            }
+        }
+    };
+    auto run = [&collect](const char* buf, size_t len, size_t cut1, size_t cut2) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        std::vector<std::string> vals;
+        YeptrisStatus st;
+        st = yeptris_recorder_feed(rec, buf, cut1, 0);
+        if (st == YEPTRIS_OK) {
+            collect(rec, vals);
+        }
+        if (st == YEPTRIS_OK && cut2 > cut1) {
+            st = yeptris_recorder_feed(rec, buf + cut1, cut2 - cut1, 0);
+            if (st == YEPTRIS_OK) {
+                collect(rec, vals);
+            }
+        }
+        if (st == YEPTRIS_OK && len > cut2) {
+            st = yeptris_recorder_feed(rec, buf + cut2, len - cut2, 0);
+            if (st == YEPTRIS_OK) {
+                collect(rec, vals);
+            }
+        }
+        if (st == YEPTRIS_OK) {
+            st = yeptris_recorder_feed(rec, "", 0, 1);
+            if (st == YEPTRIS_OK) {
+                collect(rec, vals);
+            }
+        }
+        if (st != YEPTRIS_OK) {
+            vals.emplace_back("<error>");
+        }
+        yeptris_recorder_free(rec);
+        return vals;
+    };
+    std::vector<std::string> whole = run(y, ylen, ylen, ylen);
+    ASSERT_EQ(whole.size(), 2u);
+    EXPECT_EQ(whole[0], ": '\n");
+    EXPECT_EQ(whole[1], "a");
+    /* cuts straddling the marker, the quote-open, and the PS */
+    const size_t cuts[][2] = {{4, 7}, {7, 7}, {7, 11}, {11, 11}};
+    for (const auto& c : cuts) {
+        std::vector<std::string> got = run(y, ylen, c[0], c[1]);
+        EXPECT_EQ(got, whole) << "cuts " << c[0] << "," << c[1];
+    }
+}
+
 TEST(Parse, RootBlockScalarColZeroContentIsContent) {
     /* catch 165 (the nightly's round 19, run 39591797890,
      * crash-e029a445): "|<CRLF>##" — a col-0 line after a ROOT-level
