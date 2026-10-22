@@ -4129,17 +4129,42 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         return t;
     }
     if (c->quote != 0) {
-        /* NEL folds inside quotes too; LS/PS stay raw content */
+        /* A col-0 --- / ... marker RESCUES the quote: the parser ends
+         * the document at the marker (the post-cut reset says "the
+         * tail began at a --- line in a clean state"), so bytes after
+         * it are NOT quoted content. Whole-buffer runs must classify
+         * them the same way or the routes diverge: round 25 of the
+         * nightly (crash-27a77050) fed ">\n: '\n---\na<U+2029>" and
+         * the whole route kept the PS raw inside the never-closed
+         * quote while the chunked route (fresh probe after the cut)
+         * folded it — a plain scalar "a " vs "a". */
+        if (c->at_break && i + 2 < len && (ch == '-' || ch == '.') &&
+            p[i + 1] == ch && p[i + 2] == ch &&
+            (i + 3 >= len || p[i + 3] == ' ' || p[i + 3] == '\t' ||
+             p[i + 3] == '\n' || p[i + 3] == '\r')) {
+            c->quote = 0;
+        } else {
+        /* NEL folds inside quotes too; LS/PS stay raw content — but
+         * every break still arms the line-start state, or a col-0
+         * marker after a quoted newline is invisible (at_break was
+         * last armed OUTSIDE the quote) */
         if (nel) {
             t.n = 2;
             t.fold_off = 0;
             t.fold_len = 2;
+            c->at_break = 1;
             return t;
         }
         if (lps) {
             t.n = 3;
+            c->at_break = 1;
             return t;
         }
+        if (ch == '\n' || (ch == '\r' && (i + 1 >= len || p[i + 1] != '\n'))) {
+            c->at_break = 1;
+            return t;
+        }
+        c->at_break = 0;
         if (c->quote == '\'') {
             if (ch == '\'') {
                 if (i + 1 < len && p[i + 1] == '\'') {
@@ -4178,6 +4203,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             c->quote = 0;
         }
         return t;
+        }
     }
     if (c->in_verbatim) {
         if (ch == '>') {

@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Fixed
 
+- **parse: the break normalizer honors the doc-marker quote rescue in whole-buffer runs** — the nightly's round 25 (crash-27a77050, 219 bytes → 14: `>\n: '\n---\na<U+2029>`). A col-0 `---` rescues an unterminated quote (the parser ends the document there — the post-cut reset's "clean state" law), but the whole route's normalize probe kept classifying post-marker bytes as quoted content, so the trailing PS rode RAW into a plain scalar (`v = "a"+PS`) while the chunked route's fresh post-cut probe folded it (`v = "a"`) — whole-vs-chunked identity broken. The probe now closes an open quote at the marker and arms line-start state on breaks inside the quoted walk; the #638 law itself is untouched (a genuinely quoted LS/PS still stays raw on both routes). Feed corpus + 4,000-input LS/PS/NEL-heavy randomized sweep: zero divergences; full battery 562/562.
+
 - **parse: a truncated explicit-key pair completes its null at the right level** — the nightly's round 24 (crash-bcc0f52c, 278 bytes → `? a:\n   ? b<EOF>` / `? a:\n        ? 9\n        :`). Two state bugs in the '?'-pending stack: `e_pair_value_done` popped the DEEPER pair's pending slot (its depth check ran AFTER the value parse, which had opened the deeper frames), and the ':'-line completion cleared the shared `q_value_pending` flag while the stack still held the outer entry — each stranding a null that libyaml emits inside its own map. The pop now keys on the pair's level captured BEFORE the value parse; the ':'-line arm maintains the `pending = stack non-empty` invariant the flush itself uses.
 
 ### Fixed
