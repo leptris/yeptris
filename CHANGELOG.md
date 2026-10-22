@@ -6,6 +6,11 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+
+- **parse: a directive-looking line never parts from the `---` the cut chooses** — the nightly's round 27 (crash-95bbd95f, 2072 bytes → 21: `i\n"\n...\n%TAG ! "\n--- `). The step scan's quote tracking can close a quoted token where the parser reads content (or vice versa), so a `%`-led line rides an open quote the scan believes in; the marker arm's `saw_directive` guard never arms, and the cut at the following `---` strands the directive — the parsed window then rejects a directive with no document start while the whole route accepts. The marker cut now also requires that the byte before the marker's line is not `%`: the check is byte-level, independent of the quote tracking's verdict. Whole and every split now agree; feed corpus seed `directive-marker-cut.bin`.
+
 ## [0.6.36] - 2026-10-22
 ### Fixed
 
