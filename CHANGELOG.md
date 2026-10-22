@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.37] - 2026-10-22
 ### Fixed
 
 - **parse: an anchor name ending at a riding colon yields to the flow-follower law** — the nightly's round 29 (yeptris#700, crash-47eb4054, 39 bytes → `&k2: [1,\n2]`). The riding-colon law (2SXE) swallowed the colon into the anchor name, so the props-led flow parsed as a ROOT collection carrying the anchor — the map frame and the implicit-null key event vanished entirely, diverging from libyaml, which ACCEPTS the shape (the anchor names the implicit-null KEY; the flow is the value). The anchor scan now un-consumes the colon when its follower is a flow collection: the colon re-lexes as the key indicator, the existing colon arm builds the anchored null key, and the ordinal registers under the true name. The plain-led twins keep riding exactly where libyaml rejects them (2SXE's `&a: key: v`, W5VH's value position, colon runs, the double-anchor law — all pinned); the col-0 flow continuation still rides the ledgered 9C9N floor, so the anchored twin rejects like its unanchored one and the nightly verdict shifts DIFFER → the non-aborting libyaml-only-accept split. Corpus seeds `anchor-colon-flow-*.bin`; unit tests pin both laws.
