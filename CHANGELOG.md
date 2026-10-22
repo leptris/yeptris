@@ -6,6 +6,11 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Fixed
+
+- **parse: an anchor name ending at a riding colon yields to the block-scalar-header and next-line laws** — the nightly's round 31 (crash-4cbeede1, 45 bytes → `keey1: aga |\n     '&tirel\n&kk: |\n      &tirelue9`; crash-c2232e17 → `&k:\n\n {\n}`). The flow-follower yield (0.6.37) missed two twins: a `|`/`>` header after `&kk: ` kept the colon riding onto the anchor name (`kk:`), so the props-led shape parsed as ONE anchored block scalar — the pair frame and the implicit-null key event vanished (the map emitted a dangling half pair); and a follower on a LATER line (`&k:` then a break and ` {`) rode the colon and DROPPED the flow map outright. The follower set now includes the block headers, and the follower scan crosses blanks and breaks: the colon re-lexes as the key indicator, the anchor names the implicit-null KEY, and the collection/scalar on the next line is the value, matching libyaml exactly. The plain-led twins keep riding exactly where the ledger pins them. Unit tests pin the literal and folded trees; corpus seeds `anchor-colon-block-header.bin`, `anchor-colon-nextline-flow.bin`.
+
 ## [0.6.37] - 2026-10-22
 ### Fixed
 
