@@ -4942,7 +4942,26 @@ static size_t step_scan(yep_stepstate* st) {
                                 st->bs_indent = (uint32_t)-1; /* root rule: markers only */
                             }
                         }
-                        if (st->saw_directive == 0 && i > 0 && !st->bs_open) {
+                        /* the line before a marker must not be a
+                         * directive-LOOKING line: the scan's quote
+                         * state can close a quote where the parser
+                         * reads content (or vice versa), so a %-led
+                         * line may ride an open quote the scan
+                         * believes in -- cutting then strands the
+                         * directive from its --- and the window
+                         * rejects it (the nightly's round 27,
+                         * crash-95bbd95f: "i\n\"\n...\n%TAG ! \"\n--- ").
+                         * The check is byte-level, independent of the
+                         * quote tracking's verdict. */
+                        int prev_pct = 0;
+                        if (i > 0) {
+                            size_t ls = i - 1; /* the break before the marker */
+                            while (ls > 0 && p[ls - 1] != '\n' && p[ls - 1] != '\r') {
+                                ls--;
+                            }
+                            prev_pct = p[ls] == '%';
+                        }
+                        if (st->saw_directive == 0 && i > 0 && !st->bs_open && !prev_pct) {
                             last_cut = i; /* interior document boundary */
                         }
                         st->saw_directive = 0; /* this --- owns the directives */
