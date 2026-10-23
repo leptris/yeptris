@@ -6251,3 +6251,41 @@ TEST(Parse, RootBlockScalarColZeroContentIsContent) {
     EXPECT_EQ(vals[0], "##\n");
     yeptris_recorder_free(rec);
 }
+
+TEST(Parse, FlowExplicitKeyNullAfterSeqCollectionEntry) {
+    /* the corpus sweep after #713's carries (crash-8106600e): a plain
+     * collection entry in a flow sequence wrote pair_value=1 with NO
+     * pair open; the LATER '?'-opened pair inherited the stale bit, so
+     * its comma flush skipped the implicit null (libyaml: {20:50 =>
+     * nil}). The write is gated on pair_open. */
+    const char* cases[] = {
+        "[120,[0, 1]\n \n,120,  ? 20:50 ,0]",
+        "[? 20:50 , 0]",
+    };
+    for (const char* y : cases) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+        ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        ASSERT_NE(rs, nullptr);
+        int map_starts = 0, map_ends = 0, nulls = 0;
+        for (size_t i = 0; i < n; i++) {
+            if (rs[i].type == YEPTRIS_EV_MAPPING_START) {
+                map_starts++;
+            }
+            if (rs[i].type == YEPTRIS_EV_MAPPING_END) {
+                map_ends++;
+            }
+            if (rs[i].type == YEPTRIS_EV_SCALAR && rs[i].value_len == 0) {
+                nulls++;
+            }
+        }
+        ASSERT_EQ(map_starts, 1);
+        ASSERT_EQ(map_ends, 1);
+        EXPECT_EQ(nulls, 1); /* the pair's implicit null VALUE: with the
+                              * stale bit it was skipped entirely */
+        yeptris_recorder_free(rec);
+    }
+}

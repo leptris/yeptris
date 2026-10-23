@@ -2368,10 +2368,15 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     st[n - 1].q_coll = 1;
                 }
             }
-            if (!q_key) {
+            if (!q_key && st[n - 1].pair_open) {
                 /* a VALUE collection completes the pending pair; a KEY
                  * collection must not (its pair completes at ':' or the
-                 * boundary with a null value) */
+                 * boundary with a null value). The gate is pair_open:
+                 * in a SEQUENCE a plain collection entry has no pair,
+                 * and the unguarded write planted a stale pair_value=1
+                 * that a LATER '?'-opened pair wrap inherited -- its
+                 * comma flush then skipped the implicit null
+                 * (crash-8106600e, "[... , ? 20:50 , ...]"). */
                 st[n - 1].pair_value = 1;
             }
             unsigned char oc = (unsigned char)e->p[e->pos];
