@@ -1315,8 +1315,9 @@ static int yd_header_glued_comment_divergence(const uint8_t* data, size_t size, 
  * the '?' was merely libyaml's key indicator; yeptris's different
  * dump is the suite's plain reading. (The substitution preserves byte
  * count, so any position fields stay aligned.) */
-static int yd_qflow_adjacent_divergence(const uint8_t* data, size_t size, const char* ldump) {
-    if (ldump == NULL || size == 0 || size > 8192) {
+static int yd_qflow_adjacent_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                        const char* ldump) {
+    if (ldump == NULL || ydump == NULL || size == 0 || size > 8192) {
         return 0;
     }
     char* sub = malloc(size + 1);
@@ -1341,6 +1342,55 @@ static int yd_qflow_adjacent_divergence(const uint8_t* data, size_t size, const 
         free(ldump2);
     }
     free(sub);
+    if (known) {
+        return 1;
+    }
+    /* the SEQ-entry twin (crash-ce698341, "[?\"\\l\"]"): spacing the '?'
+     * BREAKS libyaml in a flow sequence (its pair collapses to a bare
+     * scalar), so the insensitivity check above correctly declines.
+     * Wrap the whole plain span in SINGLE quotes instead: single-
+     * quoted escaping keeps backslashes raw -- exactly yeptris's plain
+     * reading -- and both engines agree on a quoted token. Verify
+     * libyaml(wrap) == yeptris(original). */
+    char* wrap = malloc(size * 2 + 4);
+    if (wrap == NULL) {
+        return 0;
+    }
+    size_t wo = 0;
+    int wrapped = 0;
+    for (size_t i = 0; i < size; i++) {
+        if (data[i] == '?' && i + 1 < size && data[i + 1] == '"') {
+            /* find the closing unescaped quote */
+            size_t j = i + 2;
+            int esc = 0;
+            int quote_in_span = 0;
+            while (j < size && (esc || data[j] != '"')) {
+                if ((char)data[j] == '\'') {
+                    quote_in_span = 1;
+                }
+                esc = (!esc && data[j] == '\\');
+                j++;
+            }
+            if (j < size && !quote_in_span) {
+                wrap[wo++] = '\'';
+                for (size_t k = i; k <= j; k++) {
+                    wrap[wo++] = (char)data[k];
+                }
+                wrap[wo++] = '\'';
+                i = j;
+                wrapped = 1;
+                continue;
+            }
+        }
+        wrap[wo++] = (char)data[i];
+    }
+    if (wrapped) {
+        int ok3 = 0;
+        char* ldump3 = yd_libyaml_dump(wrap, wo, &ok3);
+        known = (ldump3 != NULL && ok3 && strcmp(ydump, ldump3) == 0);
+        free(ldump3);
+    }
+    free(wrap);
     return known;
 }
 
@@ -1447,7 +1497,8 @@ static void probe_one(const uint8_t* data, size_t size) {
      * yeptris (see yd_qflow_divergence) */
     int known =
         v == YD_DIFFER &&
-        (yd_qflow_divergence(ydump, ldump) || yd_qflow_adjacent_divergence(data, size, ldump) ||
+        (yd_qflow_divergence(ydump, ldump) ||
+         yd_qflow_adjacent_divergence(data, size, ydump, ldump) ||
          yd_qflow_colon_divergence(data, size, ydump, ldump) ||
          yd_bom_content_divergence(ydump, ldump) || yd_breaknorm_divergence(data, size, ydump) ||
          yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||

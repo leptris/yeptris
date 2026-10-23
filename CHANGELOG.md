@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **fuzz: the flow-? quoted-follower carry wraps the plain span for the seq-entry twin** — the nightly's round 36 (crash-ce698341, 8 bytes: `[?"\\l"]`). yeptris reads the suite's plain-first law (`?"` adjacent = one plain, HM87/652Z); libyaml makes an explicit pair whose double-quoted key is escape-processed (`\\l` -> `\l`). The catch-149 carry spaces the `?` out and requires libyaml's dump unchanged — correct in a flow MAP, but in a flow SEQUENCE spacing collapses libyaml's pair to a bare scalar, so the insensitivity check correctly declines. The carry's second try wraps the whole plain span in SINGLE quotes instead (single-quoted escaping keeps the backslashes raw — exactly yeptris's plain reading) and verifies libyaml(wrap) == yeptris(original). Seed `flow-q-quote-escape-plain.bin`; corpus 15097 walks clean through the release, libFuzzer, and ASan builds.
+
+### Changed
+
 - **fuzz: the anchor-charset/qflow comparators track flow depth and token starts like the engine** — the corpus sweep's composites (crash-7fe697be 195 B → core `- :"\n- &g:`; crash-283aaadd 291 B → core `/]":\n &4:`; crash-e1d13ebe; crash-2bbb3db7) exposed four walk imprecisions, each swallowing a later `&` or mis-splitting a plain: (1) the qflow walk lacked the `?`-single-pair block arm and the BREAK-led spill twin (a `:` after `? ,` at a line break spills a SECOND implicit pair, not a plain), so an artifact composing both members defeated each walk alone; (2) the anchor-charset transform split `&` runs with EMPTY names — mid-plain content (`--&\t0`) — corrupting the scalar (the split now requires at least one in-set name byte); (3) `:` no longer arms a word start (a quote glued to the separator, `- :"`, is plain-first content per HM87 — the eager open swallowed the rest of the input); (4) the flow indicators arm only at node position or inside open flow (`/]"` is ONE plain — block-plain content absorbs `]`). The full 15090-seed corpus now walks clean through the release, ASan, and libFuzzer builds.
 
 ## [0.6.39] - 2026-10-23
