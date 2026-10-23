@@ -771,12 +771,13 @@ TEST(EmitStyle, PlainSafeSwarMatchesReference) {
 }
 
 TEST(Emit, BlockKeepWsLastLineSpellsOneExtraBreak) {
-    /* the nightly's round 32 (crash-90c98918, 26 bytes, shrunk to 10:
-     * "|+\n:\n \t\n\n\n"): the reader swallows the own break of a
-     * whitespace-only last line carrying a TAB — written N reads N-1
-     * — so the keep spelling of such a value needs one extra break,
-     * or pass2 re-parses one break short and demotes to clip. A
-     * spaces-only last line reads 1:1 (crash-6842b2b4). */
+    /* the nightly's round 32 (crash-90c98918, shrunk to 10 bytes:
+     * "|+\n:\n \t\n\n\n"): HISTORY — the reader used to swallow the
+     * own break of a whitespace-only tab-carrying last line and the
+     * spelling compensated with one extra break (written N+1 read N);
+     * the reader counts its own break now (the round-37 fix), the
+     * compensation is gone, and written N reads N. The pin stays as
+     * the two-pass byte-stability gate on the tab twin. */
     const char* y = "|+\n:\n \t\n\n\n";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument d = yeptris_parse(y, strlen(y), &st);

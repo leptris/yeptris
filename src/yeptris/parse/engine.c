@@ -918,7 +918,27 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
                     saw_content = 1;
                     pending_breaks = 0;
                     trailing_breaks = 0;
-                    e_line_done(e, li.end);
+                    /* the line's OWN break counts toward trailing (the
+                     * content-line arm and the spaces-past-indent arm
+                     * scan it below): consuming it silently made keep
+                     * spell one break short whenever a tab-carrying
+                     * content line ENDED the block ("|+\n\n >\t\n
+                     *   \t \n" — libyaml keeps the final break, the
+                     * nightly's round 37) */
+                    {
+                        size_t at = li.end;
+                        size_t br = yep_scan_break_len(e->p, e->len, at);
+                        if (br > 0) {
+                            trailing_breaks = 1;
+                            e->pos = at + br;
+                            e->line++;
+                            e->line_start = e->pos;
+                            e->li_cache_line = 0;
+                            e->shape_cache_line = 0;
+                        } else {
+                            e->pos = at;
+                        }
+                    }
                     continue;
                 }
             }
