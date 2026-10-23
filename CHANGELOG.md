@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **emit: the keep-chomp spelling of a tab-carrying whitespace-only last line writes one extra break** — the nightly's round 32 (crash-90c98918, 26 bytes → 10: `|+\n:\n \t\n\n\n`). The reader swallows the own break of a whitespace-only more-indented last line that carries a TAB (the tab-indent law shifts the line's content start): written N reads N-1 there, while a spaces-only last line reads 1:1. The emitter spelled the keep value with `trail` breaks either way, so pass1 re-parsed one break short and pass2 demoted the header to clip — a byte instability. The block writer now writes the extra break exactly for the tab case. Unit test pins the tab twin (stable), the spaces twin (stable), and the demotion is gone; corpus seeds `block-keep-tab-last-line.bin`, `block-keep-space-last-line.bin`.
 
+- **parse: the anchor-yield follower scan crosses comments** — the nightly's round 32 (crash-d580b467, 71 bytes → 8: `&: #\n|\nA`). The flow/block-header follower law (0.6.37) stopped its blank/break scan at a `#`: `&kk: #comment` with the block header on a later line kept the colon riding onto the anchor name, and the two routes spelled the pair differently per pass (pass1 `&kk: |` vs pass2 `&kk "": |` — byte instability; the shrunk twin `&:` yields an empty anchor name and now rejects exactly like libyaml). The follower scan treats a comment as blank-equivalent: skip it to its break and keep scanning. Round-33's all-whitespace tab-led keep blocks closed as fixed by 0.6.37's block-scalar law (`#711`).
+
 ## [0.6.37] - 2026-10-22
 ### Fixed
 
