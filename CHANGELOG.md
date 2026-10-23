@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.39] - 2026-10-23
 ### Fixed
 
 - **parse: the anchor-yield follower scan crosses comments** — the nightly's round 32 (crash-d580b467, 71 bytes → 8: `&: #\n|\nA`). The flow/block-header follower law (0.6.37) stopped its blank/break scan at a `#`: `&kk: #comment` with the block header on a later line kept the colon riding onto the anchor name, and the two routes spelled the pair differently per pass (pass1 `&kk: |` vs pass2 `&kk "": |` — byte instability; the shrunk twin `&:` yields an empty anchor name and now rejects exactly like libyaml). The follower scan treats a comment as blank-equivalent: skip it to its break and keep scanning. Round-33's all-whitespace tab-led keep blocks closed as fixed by 0.6.37's block-scalar law (`#711`).
