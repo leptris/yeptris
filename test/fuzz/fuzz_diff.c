@@ -203,8 +203,7 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             j += 4; /* folded; the current closer now aligns */
             spill = 1;
         }
-        if (!spill &&
-            (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0)) {
+        if (!spill && (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0)) {
             free(lines);
             free(lens);
             free(ylines);
