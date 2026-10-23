@@ -357,10 +357,12 @@ static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
         ls--;
     }
     int tab_last = 0;
+    int ws_last = 1;
     for (uint32_t i = ls; i < body; i++) {
         if (p[i] == '\t') {
             tab_last = 1;
         } else if (p[i] != ' ') {
+            ws_last = 0;
             break;
         }
     }
@@ -369,8 +371,12 @@ static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
      * start): "|+\n:\n \t\n\n\n" reads trail=2 where a spaces-only
      * line reads 1:1 (the nightly's round 32, crash-90c98918: pass1
      * "|+\n  :\n   \t\n\n" re-parsed one break short and the second
-     * pass emitted clip). One extra break spells the tab case. */
-    for (uint32_t i = 0; i < trail + (tab_last ? 1 : 0); i++) {
+     * pass emitted clip). One extra break spells the tab case — and
+     * ONLY that case: a CONTENT last line that merely carries a tab
+     * ("|+\n \t:\n..." — the round-33 composite, crash-306b67eb)
+     * reads its own break 1:1, and the extra break made the value
+     * GROW one break per pass. */
+    for (uint32_t i = 0; i < trail + ((tab_last && ws_last) ? 1 : 0); i++) {
         wr_byte(w, '\n');
     }
 }

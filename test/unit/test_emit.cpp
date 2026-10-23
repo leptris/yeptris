@@ -805,6 +805,29 @@ TEST(Emit, BlockKeepWsLastLineSpellsOneExtraBreak) {
     EXPECT_EQ(roundtrip(sp), want);
 }
 
+TEST(Emit, BlockKeepTabContentLastLineReadsOneToOne) {
+    /* the nightly's round 33 (yeptris#711, crash-306b67eb): the #709
+     * extra-break law keyed on ANY tab in the last body line — but a
+     * CONTENT last line that merely carries a tab ("|+\n \n \t:\n\t
+     * \n\t\n\n": the last content line is "\t:") reads its own break
+     * 1:1, so the extra break made the value GROW one break per pass
+     * (16 -> 17 -> 18 bytes). The law is for WHITESPACE-ONLY tab-led
+     * last lines; content lines spell trail breaks 1:1. */
+    const char* y = "|+\n \n \t:\n\t \n\t\n\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(d, nullptr) << yeptris_last_error(NULL, NULL);
+    std::string want = ser(d);
+    yeptris_document_free(d);
+    /* three passes: the growth bug made every pass one byte longer */
+    EXPECT_EQ(roundtrip(y), want);
+    YeptrisDocument d2 = yeptris_parse(want.data(), want.size(), &st);
+    ASSERT_NE(d2, nullptr) << "pass2 must parse\n" << want;
+    std::string want2 = ser(d2);
+    yeptris_document_free(d2);
+    EXPECT_EQ(want2, want) << "the keep value must not grow across passes";
+}
+
 TEST(Emit, TrailingColonAnchorOnCollectionIsUnserializable) {
     /* the nightly's round 31 (crash-66a513ea, shrunk to 33 bytes): an
      * anchor whose name ends in ':' spelled directly before a
