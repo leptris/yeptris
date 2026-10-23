@@ -8,8 +8,8 @@
  * the Ruby binding's differential corpus; memory safety lives here.
  */
 
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #if defined(_MSC_VER)
@@ -72,8 +72,8 @@ static int probe_one(const uint8_t* data, size_t size) {
     char* s2 = yeptris_serialize(doc2, &l2);
     yeptris_document_free(doc2);
     if (s2 != NULL && (l1 != l2 || memcmp(s1, s2, l1) != 0)) {
-        fprintf(stderr, "[ri] l1=%zu l2=%zu\n--- s1:\n%.*s\n--- s2:\n%.*s\n", l1, l2,
-                (int)l1, s1, (int)l2, s2);
+        fprintf(stderr, "[ri] l1=%zu l2=%zu\n--- s1:\n%.*s\n--- s2:\n%.*s\n", l1, l2, (int)l1, s1,
+                (int)l2, s2);
         fflush(stderr);
         __builtin_trap(); /* byte instability */
     }
