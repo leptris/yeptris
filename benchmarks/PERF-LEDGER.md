@@ -2950,3 +2950,36 @@ design, not arm cuts. The ryml scoreboard's under-bar shapes are now
 all explained: anchor structural (frame cycle), flow at route speed,
 scalar straddling with ~5% of ledgered scraps left. Everything else
 holds over 3x on fair rounds.
+
+## #474 first slice: the strict columns walk on json-users/arm64 — the lanes are named
+
+One-route driver (/tmp/bench474.c, 200000 users, 31.5 MB — same
+generator as the bench's gen_json_users), `sample` at 15 s
+(3000-iter run, ~1.12 GB/s strict route local): 91% of samples sit in
+`yep_tape_walk_columns_fused`, 4% `yep_neon_gate_scan`, 4% the tape
+free's madvise. The fused function's hot PCs, disassembled
+(llvm-objdump, arm64):
+
+- **+2468 (0x2e574)** — the per-byte SCALAR classifier: the
+  literal-prefix compare chain (`cmp w11, #102` for 'f', then
+  `ldrb [x10,#4]; cmp #101` for the 'a' of 'false'/'r' of 'true'),
+  then the `:` compare and the `1ULL << c` bitmap idiom
+  (`lsl x10, x10, x13; and x10, x10, x14` against a 3-piece movk
+  immediate). This shape (short keys, "true"/"false" per record,
+  small ints) lives ENTIRELY in this loop; the classification cost is
+  3-4 dependent ALU ops per byte plus the literal chain's serialized
+  compares.
+- **+668 (0x2de6c)** — a SWAR hasvalue scan
+  (`and #0x8080..80 / eor / orr / ands / tst`) — the in-walk span
+  scan (quote/escape find), 8 bytes/iteration scalar-wide.
+
+The x64 reads 1.07x on the same source because the same loop's bt /
+table idioms schedule wider; arm64's narrower dependency chains
+expose the per-byte classifier. The cut direction (next slice): move
+the structural-classification hot path to a NEON 16-byte kernel with
+a classification nibble table (vqtbl4) and a scalar tail — the same
+shape as the #474 fork slice 1a quote-span stream, but feeding the
+STRICT walk; the literal path wants a first-byte dispatch table
+instead of the serialized cmp chain. Declared structural for the
+byte-at-a-time loop itself — no arm micro-cut inside it will close a
+0.61 -> 1.0 gap; the gap is the loop DESIGN on this ISA.
