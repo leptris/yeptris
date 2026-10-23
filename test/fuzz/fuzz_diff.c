@@ -974,7 +974,10 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
      * plain's column ends it (a root-level plain, column 0, swallows
      * every line -- "a\n- b" is ONE scalar, libyaml's indent -1). */
     int plain_open = 0;
-    size_t open_col = 0;
+    int coll_col = -1; /* the enclosing construct's column (the last
+                        * seq dash / explicit-key '?' / mapping key at
+                        * its line start; -1 = document root where
+                        * libyaml's indent is -1 and every line rides) */
     size_t col = 0;
     size_t line_first = (size_t)-1;
     int line_pending = 0;
@@ -993,7 +996,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                 line_first = col;
                 if (line_pending) {
                     line_pending = 0;
-                    if (col > open_col || open_col == 0) {
+                    if ((int)col > coll_col) {
                         node_pos = 0; /* the plain rides on */
                     } else {
                         plain_open = 0; /* the plain's line ended */
@@ -1047,6 +1050,16 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
              * SEPARATED colon re-arms through the blank. */
             word_led = 1;
             prop_word = 0;
+            if ((c == '-' || c == '?') && i + 1 < size && data[i + 1] != ' ' &&
+                data[i + 1] != '\t' && data[i + 1] != '\n' && data[i + 1] != '\r' && !plain_open &&
+                (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
+                /* "-x"/"?x" at a node start: the indicator is PLAIN
+                 * CONTENT (only "- "/"? " are constructs) -- the line's
+                 * plain opens HERE, so a later blank-followed '&' on
+                 * the line stays content (crash-3f2e419b: the
+                 * "-- !!map---!, &----?x- -" key line) */
+                plain_open = 1;
+            }
         } else if (c == '[' || c == '{') {
             /* a flow opener arms only at NODE position; mid-plain it
              * is plain content and the '[/{' lands in the scalar */
@@ -1083,7 +1096,6 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                 } else if (!plain_open && !in_props_name &&
                            (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
                     plain_open = 1;
-                    open_col = line_first;
                 }
             }
             in_props_name = 0;
@@ -1126,9 +1138,22 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
              * position that is mid-plain, the split corrupted the
              * scalar and the carry declined its own family) */
             node_pos = (c == ':' || c == '?' || (c == '-' && only_dash));
+            if (c == '-' && only_dash && i + 2 < size && data[i + 1] == '-' && data[i + 2] == '-') {
+                coll_col = -1; /* the document marker: root context */
+                plain_open = 0;
+            } else if (c == '-' && only_dash &&
+                       (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
+                        data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                coll_col = (int)line_first;
+            } else if (c == '?' && col == line_first &&
+                       (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
+                        data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                coll_col = (int)line_first;
+            }
             if (c == ':' && (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
                              data[i + 1] == '\n' || data[i + 1] == '\r')) {
-                plain_open = 0; /* a key colon ends the riding plain */
+                plain_open = 0;             /* a key colon ends the riding plain */
+                coll_col = (int)line_first; /* the mapping's indent is the key's column */
             }
             if (c != '-') {
                 only_dash = 0;
@@ -1160,7 +1185,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     int saw_prop2 = 0; /* the gate's props-continuation law again */
     /* the gate's plain-continuation law again (issue #718) */
     int plain_open2 = 0;
-    size_t open_col2 = 0;
+    int coll_col2 = -1; /* the gate's enclosing-construct column again */
     size_t col2 = 0;
     size_t line_first2 = (size_t)-1;
     int line_pending2 = 0;
@@ -1178,7 +1203,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                 line_first2 = col2;
                 if (line_pending2) {
                     line_pending2 = 0;
-                    if (col2 > open_col2 || open_col2 == 0) {
+                    if ((int)col2 > coll_col2) {
                         node_pos2 = 0;
                     } else {
                         plain_open2 = 0;
@@ -1229,6 +1254,12 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             /* the gate's ':' law again (crash-7fe697be) */
             word_led2 = 1;
             prop_word2 = 0;
+            if ((c == '-' || c == '?') && i + 1 < size && data[i + 1] != ' ' &&
+                data[i + 1] != '\t' && data[i + 1] != '\n' && data[i + 1] != '\r' && !plain_open2 &&
+                (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
+                /* the gate's "-x"/"?x" content law again (crash-3f2e419b) */
+                plain_open2 = 1;
+            }
         } else if (c == '[' || c == '{') {
             if (node_pos2) {
                 flowd2++;
@@ -1261,7 +1292,6 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                 } else if (!plain_open2 && !in_props_name2 &&
                            (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
                     plain_open2 = 1;
-                    open_col2 = line_first2;
                 }
             }
             in_props_name2 = 0;
@@ -1309,9 +1339,23 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             only_dash2 = 1;
         } else if (c != ' ' && c != '\t') {
             node_pos2 = (c == ':' || c == '?' || (c == '-' && only_dash2));
+            if (c == '-' && only_dash2 && i + 2 < size && data[i + 1] == '-' &&
+                data[i + 2] == '-') {
+                coll_col2 = -1;
+                plain_open2 = 0;
+            } else if (c == '-' && only_dash2 &&
+                       (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
+                        data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                coll_col2 = (int)line_first2;
+            } else if (c == '?' && col2 == line_first2 &&
+                       (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
+                        data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                coll_col2 = (int)line_first2;
+            }
             if (c == ':' && (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
                              data[i + 1] == '\n' || data[i + 1] == '\r')) {
                 plain_open2 = 0;
+                coll_col2 = (int)line_first2;
             }
             if (c != '-') {
                 only_dash2 = 0;
