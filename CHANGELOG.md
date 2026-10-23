@@ -7,7 +7,11 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
-### Fixed
+### Changed
+
+- **fuzz: the qflow walk folds the spilled twin pair** — the nightly's round 45 (crash-89973d9d, 16 bytes -> 6: `[? ,:]`). The `:` after the `,` that closed an explicit-key pair spills a SECOND null:null pair in yeptris — the suite's reading (the r38 spill law) — while libyaml keeps one map. The qflow parallel walk folds the duplicate when the libyaml side has hit a closer and yeptris still holds an exact duplicate of the four-line null:null block; the fold falls through to the closer's own equality so the tail stays aligned. Gates: r45 + every prior round's shape carry; ctest 575/575; snapshot + crash-seed verdict sets identical to the predecessor (three pre-existing lenient-parse flags byte-identical on both sides). Seed `r45-qflow-spill-pair.bin`.
+
+### Fixed### Fixed
 
 - **emit: the anchor-name spell laws reach the line-tail props path** — the round-45 bonus catch (crash-5f467aa0, 285 bytes -> 12: `8,":: &<PS>\n-`, found by a local fuzz session). The reader folds a PS-named anchor onto the FOLLOWING collection, and the collection's props spell through `emit_props_tail` ("`!<t> &a`" after "key:"/"-") — a path that bypassed every anchor-name law and wrote the PS raw. The re-parse's break normalization turns the raw PS into a hard break: pass2 sees `&<break>` and dies. The tail-colon law (#730), the normalize-subject law (#723), and the collection law (round 31) now live in one shared check that every anchor write path routes through. Pin `AnchorNameNormalizeSubjectOnLineTailPropsIsUnserializable`; seeds `roundtrip/r45-props-tail-anchor-core.bin` + the artifact.
 

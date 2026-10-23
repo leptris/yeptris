@@ -187,7 +187,24 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             j++;
             continue;
         }
-        if (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0) {
+        /* the spilled twin pair ("[? ,:]", the nightly's round 45):
+         * the ':' after the ',' that closed an explicit-key pair
+         * spills a SECOND null:null pair in yeptris -- the suite's
+         * reading (the r38 spill law) -- while libyaml keeps one.
+         * When the libyaml walk hits a closer but yeptris still holds
+         * an exact duplicate of the null:null block, fold the
+         * duplicate. */
+        int spill = 0;
+        if (lens[i] > 0 && lines[i][0] == '-' && j + 3 < yn && ylens[j] == 4 &&
+            strncmp(ylines[j], "+MAP", 4) == 0 && ylens[j + 1] == 7 &&
+            strncmp(ylines[j + 1], "=VAL : ", 7) == 0 && ylens[j + 2] == 7 &&
+            strncmp(ylines[j + 2], "=VAL : ", 7) == 0 && ylens[j + 3] == 4 &&
+            strncmp(ylines[j + 3], "-MAP", 4) == 0) {
+            j += 4; /* folded; the current closer now aligns */
+            spill = 1;
+        }
+        if (!spill &&
+            (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0)) {
             free(lines);
             free(lens);
             free(ylines);
