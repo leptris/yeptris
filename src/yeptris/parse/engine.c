@@ -4193,6 +4193,15 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
                        p[i + 3] == '\r'));
         if (rescue) {
             c->quote = 0;
+            /* the marker is an unconditional document boundary (the
+             * parser's own law) and the parser's post-cut reset wipes
+             * the flow state; the walk must too, or a flow opened in
+             * an EARLIER document re-lexes the next document's spaces
+             * as token starts ("1,\"\n--- 2[\"\n--- T \"<LS>" --
+             * whole kept the LS raw inside the phantom quote while
+             * every chunked window folded it; the nightly's round 35,
+             * crash-ef534bdf) */
+            c->in_flow = 0;
         } else {
             /* NEL folds inside quotes too; LS/PS stay raw content — but
              * every break still arms the line-start state, or a col-0
@@ -4327,6 +4336,9 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         if (marker || (p[k] == '%' && ind == 0 && c->bs_content) ||
             (!marker && c->bs_indent != (uint32_t)-1 && ind <= (uint32_t)c->bs_indent)) {
             c->bs_open = 0; /* the fold ends: this line processes normally */
+            if (marker) {
+                c->in_flow = 0; /* markers are unconditional boundaries */
+            }
         } else {
             size_t e = k;
             while (e < len && p[e] != '\n') {
@@ -4377,10 +4389,12 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
     }
     /* the doc-inline twin ("--- |"): the node hangs off the document,
      * so only a later marker ends its fold (col-0 lines are content) */
-    if (line_start && c->in_flow == 0 && !c->bs_open && ch == '-' && i + 2 < len &&
-        p[i + 1] == '-' && p[i + 2] == '-' &&
+    if (!c->bs_open && ch == '-' && i + 2 < len && p[i + 1] == '-' && p[i + 2] == '-' &&
         (i + 3 >= len || p[i + 3] == ' ' || p[i + 3] == '\t' || p[i + 3] == '\n' ||
-         p[i + 3] == '\r')) {
+         p[i + 3] == '\r') && (c->at_break || i == 0)) {
+        c->in_flow = 0; /* the marker bounds the document even when the
+                         * walk still believes a flow is open (the same
+                         * round-35 law as the in-quote rescue) */
         size_t k = i + 3;
         while (k < len && (p[k] == ' ' || p[k] == '\t')) {
             k++;

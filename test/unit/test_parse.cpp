@@ -6289,3 +6289,70 @@ TEST(Parse, FlowExplicitKeyNullAfterSeqCollectionEntry) {
         yeptris_recorder_free(rec);
     }
 }
+
+TEST(Parse, DocMarkerResetsTheNormalizeFlowState) {
+    /* the nightly's round 35 (crash-ef534bdf, 22-byte core): the
+     * normalize walk's in_flow survived the `---` marker — the parser
+     * treats markers as unconditional document boundaries and its
+     * post-cut reset wipes the flow state, so an unclosed `[` from an
+     * EARLIER document made the walk re-lex the NEXT document's
+     * spaces as token starts and open a phantom quote at the mid-plain
+     * quote ("--- T \""), keeping the trailing LS raw. Whole kept the
+     * plain's trailing space; every chunked window (fresh probe per
+     * run) folded it. The walk resets in_flow at every marker. */
+    const char* y = "1,\"\n--- 2[\"\n--- T \"\xe2\x80\xa8";
+    size_t ylen = strlen(y);
+    auto collect = [](YeptrisRecorder rec, std::vector<std::string>& vals) {
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        size_t alen = 0;
+        const char* arena = yeptris_recorder_arena(rec, &alen);
+        (void)alen;
+        for (size_t i = 0; i < n; i++) {
+            if (rs[i].type == YEPTRIS_EV_SCALAR) {
+                vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+            }
+        }
+    };
+    auto run = [&collect](const char* buf, size_t len, size_t cut1, size_t cut2) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        std::vector<std::string> vals;
+        YeptrisStatus st;
+        st = yeptris_recorder_feed(rec, buf, cut1, 0);
+        if (st == YEPTRIS_OK) {
+            collect(rec, vals);
+        }
+        if (st == YEPTRIS_OK && cut2 > cut1) {
+            st = yeptris_recorder_feed(rec, buf + cut1, cut2 - cut1, 0);
+            if (st == YEPTRIS_OK) {
+                collect(rec, vals);
+            }
+        }
+        if (st == YEPTRIS_OK && len > cut2) {
+            st = yeptris_recorder_feed(rec, buf + cut2, len - cut2, 0);
+            if (st == YEPTRIS_OK) {
+                collect(rec, vals);
+            }
+        }
+        if (st == YEPTRIS_OK) {
+            st = yeptris_recorder_feed(rec, "", 0, 1);
+            if (st == YEPTRIS_OK) {
+                collect(rec, vals);
+            }
+        }
+        if (st != YEPTRIS_OK) {
+            vals.emplace_back("<error>");
+        }
+        yeptris_recorder_free(rec);
+        return vals;
+    };
+    std::vector<std::string> whole = run(y, ylen, ylen, ylen);
+    /* doc 3's plain is "T \"" — the trailing space strips at the fold */
+    ASSERT_EQ(whole.size(), 3u);
+    EXPECT_EQ(whole[2], "T \"");
+    const size_t cuts[][2] = {{2, 6}, {2, 12}, {6, 15}, {12, 19}};
+    for (const auto& c : cuts) {
+        std::vector<std::string> got = run(y, ylen, c[0], c[1]);
+        EXPECT_EQ(got, whole) << "cuts " << c[0] << "," << c[1];
+    }
+}
