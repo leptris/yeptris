@@ -4391,7 +4391,8 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
      * so only a later marker ends its fold (col-0 lines are content) */
     if (!c->bs_open && ch == '-' && i + 2 < len && p[i + 1] == '-' && p[i + 2] == '-' &&
         (i + 3 >= len || p[i + 3] == ' ' || p[i + 3] == '\t' || p[i + 3] == '\n' ||
-         p[i + 3] == '\r') && (c->at_break || i == 0)) {
+         p[i + 3] == '\r') &&
+        (c->at_break || i == 0)) {
         c->in_flow = 0; /* the marker bounds the document even when the
                          * walk still believes a flow is open (the same
                          * round-35 law as the in-quote rescue) */
