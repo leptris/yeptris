@@ -966,8 +966,51 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                         * tag-led props run left node_pos 0 and the
                         * gate skipped the anchor entirely, the
                         * nightly's round 40, crash-fe3b5522) */
+    /* the block plain-continuation law (issue #718): once a plain
+     * opens, continuation lines MORE indented than the plain's line
+     * are CONTENT in both engines ("&o:q r\n&g&" -- the '&'-led
+     * second line rides the plain; the blind line-start reset split
+     * it and the carry declined its own family). A line at/below the
+     * plain's column ends it (a root-level plain, column 0, swallows
+     * every line -- "a\n- b" is ONE scalar, libyaml's indent -1). */
+    int plain_open = 0;
+    size_t open_col = 0;
+    size_t col = 0;
+    size_t line_first = (size_t)-1;
+    int line_pending = 0;
+    int in_props_name = 0;
+    int bs_open = 0; /* a |/> block-scalar body: every byte is text */
+    size_t bs_col = 0;
     for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
+        /* column bookkeeping (approximate: 1 byte = 1 column) */
+        if (c == '\n' || c == '\r') {
+            col = 0;
+            line_first = (size_t)-1;
+            line_pending = (plain_open || bs_open) ? 1 : 0;
+        } else {
+            if (line_first == (size_t)-1 && c != ' ' && c != '\t') {
+                line_first = col;
+                if (line_pending) {
+                    line_pending = 0;
+                    if (col > open_col || open_col == 0) {
+                        node_pos = 0; /* the plain rides on */
+                    } else {
+                        plain_open = 0; /* the plain's line ended */
+                        node_pos = 1;
+                    }
+                }
+                if (bs_open) {
+                    if (col <= bs_col) {
+                        bs_open = 0;
+                        node_pos = 1;
+                    } else {
+                        node_pos = 0;
+                    }
+                }
+            }
+            col++;
+        }
         if (quote != 0) {
             if (quote == '\'' && c == '\'') {
                 quote = 0;
@@ -985,13 +1028,15 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             quote = c;
             word_led = 0;
             prop_word = 0;
+            plain_open = 0;
             prev = (char)c;
             continue;
         }
-        if (c == '&' || c == '!') {
+        if ((c == '&' || c == '!') && !plain_open) {
             prop_word = 1;
             word_led = 0;
             saw_prop = 1;
+            in_props_name = 1;
         } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '-' || c == '?') {
             /* blanks keep saw_prop: the props run continues */
             /* ':' does NOT arm a word start: a quote GLUED to the
@@ -1008,6 +1053,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             if (node_pos) {
                 flowd++;
                 word_led = 1;
+                plain_open = 0;
             } else {
                 word_led = 0;
             }
@@ -1029,6 +1075,18 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             word_led = 0;
             prop_word = 0;
             saw_prop = 0;
+            if (flowd == 0 && !bs_open) {
+                if ((c == '|' || c == '>') && node_pos) {
+                    bs_open = 1;
+                    bs_col = line_first;
+                    plain_open = 0;
+                } else if (!plain_open && !in_props_name &&
+                           (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
+                    plain_open = 1;
+                    open_col = line_first;
+                }
+            }
+            in_props_name = 0;
         }
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
             /* the comment runs to the LINE BREAK: a '&' inside it is
@@ -1040,12 +1098,13 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                 i++;
             }
             prev = '\n';
+            plain_open = 0;
             continue;
         }
-        if (c == '&') {
+        if (c == '&' && !plain_open && (node_pos || saw_prop)) {
             amps++;
         }
-        if (c == '&' && !gate && (node_pos || saw_prop)) {
+        if (c == '&' && !gate && !plain_open && (node_pos || saw_prop)) {
             size_t j = i + 1;
             while (j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
                    data[j] != '\r') {
@@ -1057,7 +1116,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             }
         }
         if (c == '\n' || c == '\r') {
-            node_pos = 1;
+            node_pos = (plain_open || bs_open) ? 0 : 1;
             only_dash = 1;
         } else if (c != ' ' && c != '\t') {
             /* ':' = the pair separator; the flow indicators are NOT
@@ -1067,6 +1126,10 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
              * position that is mid-plain, the split corrupted the
              * scalar and the carry declined its own family) */
             node_pos = (c == ':' || c == '?' || (c == '-' && only_dash));
+            if (c == ':' && (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
+                             data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                plain_open = 0; /* a key colon ends the riding plain */
+            }
             if (c != '-') {
                 only_dash = 0;
             }
@@ -1095,8 +1158,44 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     int only_dash2 = 1;
     int flowd2 = 0;    /* the gate's flow-depth law again */
     int saw_prop2 = 0; /* the gate's props-continuation law again */
+    /* the gate's plain-continuation law again (issue #718) */
+    int plain_open2 = 0;
+    size_t open_col2 = 0;
+    size_t col2 = 0;
+    size_t line_first2 = (size_t)-1;
+    int line_pending2 = 0;
+    int in_props_name2 = 0;
+    int bs_open2 = 0;
+    size_t bs_col2 = 0;
     for (size_t i = 0; i < size;) {
         unsigned char c = data[i];
+        if (c == '\n' || c == '\r') {
+            col2 = 0;
+            line_first2 = (size_t)-1;
+            line_pending2 = (plain_open2 || bs_open2) ? 1 : 0;
+        } else {
+            if (line_first2 == (size_t)-1 && c != ' ' && c != '\t') {
+                line_first2 = col2;
+                if (line_pending2) {
+                    line_pending2 = 0;
+                    if (col2 > open_col2 || open_col2 == 0) {
+                        node_pos2 = 0;
+                    } else {
+                        plain_open2 = 0;
+                        node_pos2 = 1;
+                    }
+                }
+                if (bs_open2) {
+                    if (col2 <= bs_col2) {
+                        bs_open2 = 0;
+                        node_pos2 = 1;
+                    } else {
+                        node_pos2 = 0;
+                    }
+                }
+            }
+            col2++;
+        }
         if (quote != 0) {
             sub[o++] = (char)c;
             if (quote == '\'' && c == '\'') {
@@ -1117,13 +1216,15 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             prev = (char)c;
             word_led2 = 0;
             prop_word2 = 0;
+            plain_open2 = 0;
             i++;
             continue;
         }
-        if (c == '&' || c == '!') {
+        if ((c == '&' || c == '!') && !plain_open2) {
             prop_word2 = 1;
             word_led2 = 0;
             saw_prop2 = 1;
+            in_props_name2 = 1;
         } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '-' || c == '?') {
             /* the gate's ':' law again (crash-7fe697be) */
             word_led2 = 1;
@@ -1132,6 +1233,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             if (node_pos2) {
                 flowd2++;
                 word_led2 = 1;
+                plain_open2 = 0;
             } else {
                 word_led2 = 0;
             }
@@ -1151,6 +1253,18 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             word_led2 = 0;
             prop_word2 = 0;
             saw_prop2 = 0;
+            if (flowd2 == 0 && !bs_open2) {
+                if ((c == '|' || c == '>') && node_pos2) {
+                    bs_open2 = 1;
+                    bs_col2 = line_first2;
+                    plain_open2 = 0;
+                } else if (!plain_open2 && !in_props_name2 &&
+                           (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
+                    plain_open2 = 1;
+                    open_col2 = line_first2;
+                }
+            }
+            in_props_name2 = 0;
         }
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
             /* verbatim through the comment's line break, then keep
@@ -1160,9 +1274,10 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                 sub[o++] = (char)data[i++];
             }
             prev = '\n';
+            plain_open2 = 0;
             continue;
         }
-        if (c == '&' && (node_pos2 || saw_prop2)) {
+        if (c == '&' && !plain_open2 && (node_pos2 || saw_prop2)) {
             sub[o++] = (char)c;
             i++;
             size_t name_o = o;
@@ -1186,13 +1301,18 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             }
             node_pos2 = 0;
             prev = ' ';
+            in_props_name2 = 0; /* the props run ended at the split */
             continue;
         }
         if (c == '\n' || c == '\r') {
-            node_pos2 = 1;
+            node_pos2 = (plain_open2 || bs_open2) ? 0 : 1;
             only_dash2 = 1;
         } else if (c != ' ' && c != '\t') {
             node_pos2 = (c == ':' || c == '?' || (c == '-' && only_dash2));
+            if (c == ':' && (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
+                             data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                plain_open2 = 0;
+            }
             if (c != '-') {
                 only_dash2 = 0;
             }
