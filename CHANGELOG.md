@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **fuzz: the qflow walk folds the '?-colon-value' member** — the nightly's round 38 (a 24-byte mutation: `{\n?:2,\n  foo :2,\n ---barM,\n}`). libyaml makes the flow `?` an explicit-key indicator with ANY follower, so `?:2` reads `{empty => 2}`; the suite's plain-first law (HM87/58MP) keeps `?:2` ONE plain key with an empty value — the `:` rides yeptris's plain. The qflow walk's new arm folds libyaml's (empty key, V) onto yeptris's (`?:V` key, empty value). Seed `flow-q-colon-key-value.bin`; the 15100-seed corpus walks clean through the release, libFuzzer, and ASan builds.
+
+### Changed
+
 - **fuzz: the flow-? quoted-follower carry wraps the plain span for the seq-entry twin** — the nightly's round 36 (crash-ce698341, 8 bytes: `[?"\\l"]`). yeptris reads the suite's plain-first law (`?"` adjacent = one plain, HM87/652Z); libyaml makes an explicit pair whose double-quoted key is escape-processed (`\\l` -> `\l`). The catch-149 carry spaces the `?` out and requires libyaml's dump unchanged — correct in a flow MAP, but in a flow SEQUENCE spacing collapses libyaml's pair to a bare scalar, so the insensitivity check correctly declines. The carry's second try wraps the whole plain span in SINGLE quotes instead (single-quoted escaping keeps the backslashes raw — exactly yeptris's plain reading) and verifies libyaml(wrap) == yeptris(original). Seed `flow-q-quote-escape-plain.bin`; corpus 15097 walks clean through the release, libFuzzer, and ASan builds.
 
 ### Changed

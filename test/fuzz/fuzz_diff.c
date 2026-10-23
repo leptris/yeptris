@@ -228,6 +228,23 @@ static int yd_qcolon_walk(const char* ldump, const char* ydump2) {
                 continue;
             }
         }
+        /* the ?-COLON-VALUE twin (the nightly's round 38,
+         * "{\n?:2,\n  foo :2,\n ---barM,\n}"): libyaml makes the
+         * flow '?' an explicit-key indicator with ANY follower, so its
+         * EMPTY key takes the ':2' as the VALUE ({empty => 2}), while
+         * the suite's plain-first law keeps '?:2' ONE plain KEY with
+         * an empty value (HM87/58MP): the ':' rides yeptris's plain,
+         * so libyaml's (empty key, V) folds onto yeptris's ('?:V'
+         * plain key, empty value). */
+        if (i + 1 < n && lens[i] == 7 && strncmp(lines[i], "=VAL : ", 7) == 0 && lens[i + 1] > 7 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && j + 1 < yn &&
+            ylens[j] == 9 + (lens[i + 1] - 7) && strncmp(ylines[j], "=VAL : ?:", 9) == 0 &&
+            memcmp(ylines[j] + 9, lines[i + 1] + 7, lens[i + 1] - 7) == 0 && ylens[j + 1] == 7 &&
+            strncmp(ylines[j + 1], "=VAL : ", 7) == 0) {
+            i++;    /* the loop's own ++ completes the pair's two lines */
+            j += 2; /* yeptris's '?:V' key and its empty value */
+            continue;
+        }
         /* the ?-single-pair twin (yd_qflow_divergence's block shape):
          * one artifact can COMPOSE both family members -- the '? ,'
          * comma spill pairs AND a trailing '?9' plain-vs-pair block
