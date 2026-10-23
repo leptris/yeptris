@@ -1289,15 +1289,29 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
              * re-lexes as the key indicator and the existing colon
              * arm builds the anchored null key. */
             if (e->p[e->pos - 1] == ':') {
-                /* the follower scan crosses blanks AND breaks: the
-                 * pair separator at line end still opens the value on
-                 * the next line ("&k:\n {\n}" — the nightly's round
-                 * 31, crash-c2232e17 — rode the colon and DROPPED the
-                 * flow map outright) */
+                /* the follower scan crosses blanks, breaks AND
+                 * comments: the pair separator at line end still opens
+                 * the value on a later line ("&k:\n {\n}" — the
+                 * nightly's round 31, crash-c2232e17 — rode the colon
+                 * and DROPPED the flow map; "&: #c\n|\nA" — round
+                 * 32's crash-d580b467 — stopped at the comment, rode
+                 * the colon into the anchor name and pass1/pass2
+                 * spelled different trees). A comment is
+                 * blank-equivalent here: skip it to its break and keep
+                 * scanning. */
                 size_t t = e->pos;
-                while (t < e->len &&
-                       (e->p[t] == ' ' || e->p[t] == '\t' || e->p[t] == '\n' || e->p[t] == '\r')) {
-                    t++;
+                for (;;) {
+                    while (t < e->len && (e->p[t] == ' ' || e->p[t] == '\t' || e->p[t] == '\n' ||
+                                          e->p[t] == '\r')) {
+                        t++;
+                    }
+                    if (t < e->len && e->p[t] == '#') {
+                        while (t < e->len && e->p[t] != '\n' && e->p[t] != '\r') {
+                            t++;
+                        }
+                        continue;
+                    }
+                    break;
                 }
                 if (t < e->len &&
                     (e->p[t] == '[' || e->p[t] == '{' || e->p[t] == '|' || e->p[t] == '>')) {
