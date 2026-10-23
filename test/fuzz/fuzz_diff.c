@@ -1138,7 +1138,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
              * position that is mid-plain, the split corrupted the
              * scalar and the carry declined its own family) */
             node_pos = (c == ':' || c == '?' || (c == '-' && only_dash));
-            if (c == '-' && only_dash && i + 2 < size && data[i + 1] == '-' && data[i + 2] == '-') {
+            if (c == '-' && only_dash && i + 2 < size && data[i + 1] == '-' && data[i + 2] == '-' &&
+                (i + 3 >= size || data[i + 3] == ' ' || data[i + 3] == '\t' ||
+                 data[i + 3] == '\n' || data[i + 3] == '\r')) {
                 coll_col = -1; /* the document marker: root context */
                 plain_open = 0;
             } else if (c == '-' && only_dash &&
@@ -1340,7 +1342,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         } else if (c != ' ' && c != '\t') {
             node_pos2 = (c == ':' || c == '?' || (c == '-' && only_dash2));
             if (c == '-' && only_dash2 && i + 2 < size && data[i + 1] == '-' &&
-                data[i + 2] == '-') {
+                data[i + 2] == '-' &&
+                (i + 3 >= size || data[i + 3] == ' ' || data[i + 3] == '\t' ||
+                 data[i + 3] == '\n' || data[i + 3] == '\r')) {
                 coll_col2 = -1;
                 plain_open2 = 0;
             } else if (c == '-' && only_dash2 &&
