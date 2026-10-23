@@ -228,6 +228,49 @@ static int yd_qcolon_walk(const char* ldump, const char* ydump2) {
                 continue;
             }
         }
+        /* the ?-single-pair twin (yd_qflow_divergence's block shape):
+         * one artifact can COMPOSE both family members -- the '? ,'
+         * comma spill pairs AND a trailing '?9' plain-vs-pair block
+         * (yeptris#713, "[10 a , ? ,:50~ , a , ?9]") -- so this walk
+         * must explain the ?-blocks as well; yd_qflow_divergence alone
+         * stops at the spill, this one alone stopped at the block */
+        if (lens[i] == 4 && strncmp(lines[i], "+MAP", 4) == 0 && i + 3 < n && lens[i + 1] >= 8 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && lens[i + 2] == 7 &&
+            strncmp(lines[i + 2], "=VAL : ", 7) == 0 && lens[i + 3] == 4 &&
+            strncmp(lines[i + 3], "-MAP", 4) == 0 && ylens[j] >= 8 &&
+            strncmp(ylines[j], "=VAL : ?", 8) == 0 && ylens[j] == 8 + (lens[i + 1] - 7) &&
+            memcmp(ylines[j] + 8, lines[i + 1] + 7, lens[i + 1] - 7) == 0) {
+            i += 3; /* +MAP, the key, the empty value; -MAP rides the ++ */
+            j++;    /* yeptris's flat '?X' key line */
+            if (j < yn && ylens[j] == 7 && strncmp(ylines[j], "=VAL : ", 7) == 0) {
+                j++; /* the empty value line, when yeptris kept it */
+            }
+            continue;
+        }
+        /* the BREAK-led twin (crash-2bbb3db7, "[920, a, ? ,:\n 5l 8]"):
+         * the ':' after the '? ,' comma rides a line break, so
+         * yeptris's spill is a SECOND implicit pair (+MAP, empty key,
+         * the value, -MAP) instead of the same-line ':V' plain -- a
+         * plain cannot start there (the ':' is followed by a break).
+         * libyaml's one pair folds onto yeptris's closed pair plus
+         * the spilled pair. */
+        if (i + 3 < n && lens[i] == 4 && strncmp(lines[i], "+MAP", 4) == 0 && lens[i + 1] >= 7 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0 &&
+            (lens[i + 1] == 7 || lines[i + 1][lens[i + 1] - 1] == ' ') && lens[i + 2] > 7 &&
+            strncmp(lines[i + 2], "=VAL : ", 7) == 0 && lens[i + 3] == 4 &&
+            strncmp(lines[i + 3], "-MAP", 4) == 0 && j + 7 < yn && ylens[j] == 4 &&
+            strncmp(ylines[j], "+MAP", 4) == 0 && ylens[j + 1] == lens[i + 1] &&
+            memcmp(ylines[j + 1], lines[i + 1], lens[i + 1]) == 0 && ylens[j + 2] == 7 &&
+            strncmp(ylines[j + 2], "=VAL : ", 7) == 0 && ylens[j + 3] == 4 &&
+            strncmp(ylines[j + 3], "-MAP", 4) == 0 && ylens[j + 4] == 4 &&
+            strncmp(ylines[j + 4], "+MAP", 4) == 0 && ylens[j + 5] == 7 &&
+            strncmp(ylines[j + 5], "=VAL : ", 7) == 0 && ylens[j + 6] == lens[i + 2] &&
+            memcmp(ylines[j + 6], lines[i + 2], lens[i + 2]) == 0 && ylens[j + 7] == 4 &&
+            strncmp(ylines[j + 7], "-MAP", 4) == 0) {
+            i += 3; /* the loop's own ++ completes the pair's four lines */
+            j += 8; /* the closed pair (4) plus the spilled pair (4) */
+            continue;
+        }
         /* the VALUE-side twin (the nightly's round 26, crash-e43f206c:
          * "[100, 120, 12.00, 120, a\n \n, ? ,:50 ,1,3- 9]"): after a
          * '?'-opened pair terminated by ',', libyaml reads the
@@ -896,6 +939,11 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
      * props run ("&a\"x") still opens: props end at indicators. */
     int word_led = 1;  /* the next quote-ish byte starts a token */
     int prop_word = 0; /* inside/at the end of a & or ! run */
+    int flowd = 0;     /* flow depth: block-plain content absorbs the
+                        * flow indicators ("/]" is ONE plain -- the
+                        * eager arming opened a phantom quote that
+                        * swallowed the rest of the input,
+                        * crash-283aaadd) */
     for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
         if (quote != 0) {
@@ -921,9 +969,37 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if (c == '&' || c == '!') {
             prop_word = 1;
             word_led = 0;
-        } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == '[' ||
-                   c == ']' || c == '{' || c == '}' || c == ':' || c == '-' || c == '?') {
+        } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '-' || c == '?') {
+            /* ':' does NOT arm a word start: a quote GLUED to the
+             * separator ("- :\"" -> the plain ':\"') is plain-first
+             * CONTENT per the suite (HM87), and the eager open
+             * swallowed the rest of the input so the '&g:' anchor on a
+             * later line never gated (crash-7fe697be). A quote after a
+             * SEPARATED colon re-arms through the blank. */
             word_led = 1;
+            prop_word = 0;
+        } else if (c == '[' || c == '{') {
+            /* a flow opener arms only at NODE position; mid-plain it
+             * is plain content and the '[/{' lands in the scalar */
+            if (node_pos) {
+                flowd++;
+                word_led = 1;
+            } else {
+                word_led = 0;
+            }
+            prop_word = 0;
+        } else if (c == ']' || c == '}') {
+            /* the closer arms only inside OPEN flow; in block it is
+             * mid-plain content (crash-283aaadd: "/]\"") */
+            if (flowd > 0) {
+                flowd--;
+                word_led = 1;
+            } else {
+                word_led = 0;
+            }
+            prop_word = 0;
+        } else if (c == ',') {
+            word_led = (flowd > 0);
             prop_word = 0;
         } else {
             word_led = 0;
@@ -992,6 +1068,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     int prop_word2 = 0;
     int node_pos2 = 1;
     int only_dash2 = 1;
+    int flowd2 = 0; /* the gate's flow-depth law again */
     for (size_t i = 0; i < size;) {
         unsigned char c = data[i];
         if (quote != 0) {
@@ -1020,9 +1097,28 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if (c == '&' || c == '!') {
             prop_word2 = 1;
             word_led2 = 0;
-        } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == '[' ||
-                   c == ']' || c == '{' || c == '}' || c == ':' || c == '-' || c == '?') {
+        } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '-' || c == '?') {
+            /* the gate's ':' law again (crash-7fe697be) */
             word_led2 = 1;
+            prop_word2 = 0;
+        } else if (c == '[' || c == '{') {
+            if (node_pos2) {
+                flowd2++;
+                word_led2 = 1;
+            } else {
+                word_led2 = 0;
+            }
+            prop_word2 = 0;
+        } else if (c == ']' || c == '}') {
+            if (flowd2 > 0) {
+                flowd2--;
+                word_led2 = 1;
+            } else {
+                word_led2 = 0;
+            }
+            prop_word2 = 0;
+        } else if (c == ',') {
+            word_led2 = (flowd2 > 0);
             prop_word2 = 0;
         } else {
             word_led2 = 0;
@@ -1041,11 +1137,18 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if (c == '&' && node_pos2) {
             sub[o++] = (char)c;
             i++;
+            size_t name_o = o;
             while (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
                    data[i] != '\r' && yd_anchor_byte_in_libyaml_set(data[i])) {
                 sub[o++] = (char)data[i++];
             }
-            if (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
+            /* split ONLY a real anchor (at least one in-set name byte
+             * before the out-of-set one): an '&' with an EMPTY name is
+             * mid-plain CONTENT here ("--&\t0\- -:" -- both engines
+             * read the line as one plain key), and the blind split
+             * inserted a space that corrupted the scalar
+             * (crash-e1d13ebe, the corpus sweep after #713's arms) */
+            if (o > name_o && i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
                 data[i] != '\r') {
                 sub[o++] = ' '; /* libyaml's truncation point becomes a token break */
                 while (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
