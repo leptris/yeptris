@@ -929,3 +929,29 @@ TEST(Emit, AnchorNameWithNormalizeSubjectBytesIsUnserializable) {
     yeptris_document_free(dp);
     EXPECT_EQ(roundtrip(plain), want);
 }
+
+TEST(Emit, AnchorNameTailColonBlockStyleIsUnserializable) {
+    /* the nightly's round 44 (crash-07ad9ecc, 8-byte core:
+     * "&:\n! |\n:\n"): the tail-colon law (round 31) exempted
+     * scalars -- "k: &n: v" rides byte-stably INLINE. A BLOCK-style
+     * spell puts the header where the separator should be:
+     * "! &: |" re-lexes as tag + anchor + header with no key
+     * separator -- pass2 reads a different tree (or the compat
+     * reader rejects the form outright). No spell exists: fail the
+     * serialize. The inline rider stays stable. */
+    const char* y = "&:\n! |\n:\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_ex(y, strlen(y), nullptr, &st);
+    ASSERT_NE(d, nullptr) << yeptris_last_error(NULL, NULL);
+    size_t len = 0;
+    EXPECT_EQ(yeptris_serialize(d, &len), nullptr);
+    yeptris_document_free(d);
+
+    /* the inline rider keeps riding */
+    const char* rider = "k: &n: v\n";
+    YeptrisDocument dr = yeptris_parse(rider, strlen(rider), &st);
+    ASSERT_NE(dr, nullptr);
+    std::string want = ser(dr);
+    yeptris_document_free(dr);
+    EXPECT_EQ(roundtrip(rider), want);
+}
