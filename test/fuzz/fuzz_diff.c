@@ -95,13 +95,38 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
     }
-    char out[8192];
+    /* the line arrays are HEAP-SIZED: fixed 512-line caps silently
+     * truncated the walk mid-stream once a dump grew past them (the
+     * nightly's round 43 artifact walks 644/557 lines -- every member
+     * was covered, but the truncated walk hit the cap's misaligned
+     * tail and the carry declined its own family) */
+    size_t n_cap = 1;
+    for (const char* q = ldump; *q != '\0'; q++) {
+        if (*q == '\n') {
+            n_cap++;
+        }
+    }
+    size_t yn_cap = 1;
+    for (const char* q = ydump; *q != '\0'; q++) {
+        if (*q == '\n') {
+            yn_cap++;
+        }
+    }
+    const char** lines = malloc(n_cap * sizeof(*lines));
+    size_t* lens = malloc(n_cap * sizeof(*lens));
+    const char** ylines = malloc(yn_cap * sizeof(*ylines));
+    size_t* ylens = malloc(yn_cap * sizeof(*ylens));
+    if (lines == NULL || lens == NULL || ylines == NULL || ylens == NULL) {
+        free(lines);
+        free(lens);
+        free(ylines);
+        free(ylens);
+        return 0;
+    }
     size_t o = 0;
-    const char* lines[512];
-    size_t lens[512];
     int n = 0;
     const char* p = ldump;
-    while (*p != '\0' && n < 512) {
+    while (*p != '\0') {
         lines[n] = p;
         const char* nl = strchr(p, '\n');
         lens[n] = nl ? (size_t)(nl - p) : strlen(p);
@@ -109,11 +134,9 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
         p = nl ? nl + 1 : p + strlen(p);
     }
     /* the yeptris dump, split into lines for the parallel walk */
-    const char* ylines[512];
-    size_t ylens[512];
     int yn = 0;
     p = ydump;
-    while (*p != '\0' && yn < 512) {
+    while (*p != '\0') {
         ylines[yn] = p;
         const char* nl = strchr(p, '\n');
         ylens[yn] = nl ? (size_t)(nl - p) : strlen(p);
@@ -134,6 +157,10 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
     int j = 0;
     for (int i = 0; i < n; i++) {
         if (j >= yn) {
+            free(lines);
+            free(lens);
+            free(ylines);
+            free(ylens);
             return 0;
         }
         /* the single-pair wrapper block */
@@ -161,14 +188,20 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             continue;
         }
         if (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0) {
+            free(lines);
+            free(lens);
+            free(ylines);
+            free(ylens);
             return 0;
         }
         j++;
     }
-    if (j != yn) {
-        return 0; /* trailing yeptris lines: not the ?-family shape */
-    }
-    return 1;
+    int known = j == yn; /* trailing yeptris lines: not the ?-family shape */
+    free(lines);
+    free(lens);
+    free(ylines);
+    free(ylens);
+    return known;
 }
 
 /* True when the dumps differ ONLY by a flow explicit key that STARTS

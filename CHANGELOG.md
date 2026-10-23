@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Changed
 
+- **fuzz: the qflow parallel walk heap-sizes its line arrays** — the nightly's round 43 (crash-710e5302, 2379 bytes). The flow-`?` mega-soup's dumps walk 644/557 lines, but `yd_qflow_divergence`'s line arrays capped at 512: the walk silently truncated mid-stream, every member it then saw was covered, yet the cap's misaligned tail hit a plain mismatch and the carry declined its own family (every one of the artifact's 28 divergence hunks is the covered single-pair fold). The arrays are now heap-sized to the true line counts, freed at every exit. Gates: r43 + r42 + r41 + #718 + r40 + the #707 soup + crash-3f2e419b all carry; ctest 573/573; snapshot + crash-seed verdict sets identical to the predecessor. Seed `r43-qflow-line-cap.bin`.
+
+### Fixed
+
 - **fuzz: a document marker must END at blank/EOL to be one** — the nightly's round 42 (crash-851decac, 26 bytes: `k: &ab?c ...\n---!, &--&-:`). The coll_col law's marker arm fired on `---!` — a marker GLUED to content (no trailing blank): `---!, ...` is a plain starting with content dashes in BOTH engines, but the walk treated it as a document marker, cleared the open plain, and the `!` re-armed props — the later `&--&-` split mid-key and the carry declined its own family. The marker arm now requires the marker to END at blank/EOL/EOF; a glued `---x` falls through to the content-dash law (the line's plain opens at the dash and everything after stays content). Gates: r42 + r41 + #718 + r40 + the #707 soup + crash-3f2e419b all carry; ctest 573/573; snapshot + crash-seed verdict sets identical to the predecessor. Seed `r42-glued-marker-not-marker.bin`.
 
 ### Fixed
