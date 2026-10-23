@@ -664,56 +664,56 @@ static void wr_anchor_check(yep_writer* w, const yep_view* name) {
     }
 }
 
+/* The anchor-name spell laws, shared by every anchor write path (the
+ * node lead AND the line-tail props: the round-45 bonus catch -- a
+ * PS-named anchor on a SEQ spelled raw through emit_props_tail and
+ * the re-parse died on the normalized break). Returns nonzero when
+ * the serialize must fail. */
+static int anchor_name_unspellable(yep_writer* w, const yep_dnode* n) {
+    yep_view chk = wv(w, n->anchor);
+    if (chk.len == 0) {
+        return 0;
+    }
+    if (chk.p[chk.len - 1] == ':') {
+        /* a SCALAR keeps riding raw only when it spells INLINE
+         * ("k: &n: v" is byte-stable); a BLOCK-style spell puts the
+         * header where the separator should be ("&: |" -- the
+         * nightly's round 44, crash-07ad9ecc) -- there is no spell:
+         * fail the serialize */
+        if (n->kind != 0 || n->style == 4 || n->style == 5) {
+            w->unserializable = 1;
+            return 1;
+        }
+    }
+    /* a NORMALIZE-SUBJECT byte (LS/PS raw, NEL, or a hard break)
+     * re-reads as a folded break: pass2 sees a broken/empty name and
+     * dies. YAML has no quoted anchor names: fail the serialize. */
+    for (size_t ci = 0; ci < chk.len; ci++) {
+        unsigned char cb = (unsigned char)chk.p[ci];
+        if (cb == '\n' || cb == '\r') {
+            w->unserializable = 1;
+            return 1;
+        }
+        if (cb == 0xC2 && ci + 1 < chk.len && (unsigned char)chk.p[ci + 1] == 0x85) {
+            w->unserializable = 1; /* NEL */
+            return 1;
+        }
+        if (cb == 0xE2 && ci + 2 < chk.len && (unsigned char)chk.p[ci + 1] == 0x80 &&
+            ((unsigned char)chk.p[ci + 2] & 0xFE) == 0xA8) {
+            w->unserializable = 1; /* LS/PS */
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
     yep_writer* w = &em->w;
     if (n->anchor.len == 0) {
         return;
     }
-    /* A name ending in ':' rides or separates context-dependently
-     * (2SXE): spelled directly before a collection ("&: [[]]", the
-     * nightly's round 31, crash-66a513ea; "k: &: [[1]]" fails its own
-     * re-parse the same way) every spelling re-lexes differently --
-     * the riding/yield law reads the colon as the key indicator at
-     * the follower, so the tree changes or the parse dies. A scalar
-     * node keeps riding raw ("k: &n: v" round-trips byte-stably).
-     * There is no spell for the collection form: fail the serialize. */
-    yep_view chk = wv(w, n->anchor);
-    if (chk.len > 0 && chk.p[chk.len - 1] == ':') {
-        /* a SCALAR keeps riding raw only when it spells INLINE
-         * ("k: &n: v" is byte-stable); a BLOCK-style spell puts the
-         * header where the separator should be ("&: |" -- the
-         * nightly's round 44, crash-07ad9ecc: pass1 wrote the
-         * anchored literal, the re-parse read a different tree or
-         * died) -- there is no spell: fail the serialize */
-        if (n->kind != 0 || n->style == 4 || n->style == 5) {
-            w->unserializable = 1;
-            return;
-        }
-    }
-    /* A name carrying a NORMALIZE-SUBJECT byte (LS/PS raw, NEL, or a
-     * hard break) re-reads differently: the reader's break
-     * normalization folds the raw bytes to '\n' before the parse, so
-     * pass2 sees an anchor with a broken/empty name and dies ("P,\"\P":
-     * &<PS>" — the nightly's round 39, crash-8df48a71: pass1 spelled
-     * the anchor raw, pass2's re-parse failed). YAML has no quoted
-     * anchor names; there is no spell: fail the serialize. */
-    for (size_t ci = 0; ci < chk.len; ci++) {
-        unsigned char cb = (unsigned char)chk.p[ci];
-        if (cb == '\n' || cb == '\r' || cb == 0xC2 || cb == 0xE2) {
-            if (cb == 0xC2 && ci + 1 < chk.len && (unsigned char)chk.p[ci + 1] == 0x85) {
-                w->unserializable = 1; /* NEL */
-                return;
-            }
-            if (cb == 0xE2 && ci + 2 < chk.len && (unsigned char)chk.p[ci + 1] == 0x80 &&
-                ((unsigned char)chk.p[ci + 2] & 0xFE) == 0xA8) {
-                w->unserializable = 1; /* LS/PS */
-                return;
-            }
-            if (cb == '\n' || cb == '\r') {
-                w->unserializable = 1;
-                return;
-            }
-        }
+    if (anchor_name_unspellable(w, n)) {
+        return;
     }
     wr_byte(w, '&');
     yep_view adec = wv(w, n->anchor);
@@ -884,6 +884,9 @@ static void emit_props_tail(yep_writer* w, const yep_dnode* n) {
         wr_tag_token(w, &tdec2);
     }
     if (n->anchor.len > 0) {
+        if (anchor_name_unspellable(w, n)) {
+            return;
+        }
         wr_byte(w, ' ');
         yep_view adec2 = wv(w, n->anchor);
         wr_anchor_check(w, &adec2);

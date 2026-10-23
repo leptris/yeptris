@@ -930,6 +930,24 @@ TEST(Emit, AnchorNameWithNormalizeSubjectBytesIsUnserializable) {
     EXPECT_EQ(roundtrip(plain), want);
 }
 
+TEST(Emit, AnchorNameNormalizeSubjectOnLineTailPropsIsUnserializable) {
+    /* the round-45 bonus catch (crash-5f467aa0, 12-byte core:
+     * "8,\":: &<PS>\n-"): the reader folds a PS-named anchor onto the
+     * FOLLOWING collection, and the collection's props spell through
+     * the LINE-TAIL path (emit_props_tail) -- which bypassed every
+     * anchor-name law and spelled the PS raw. The re-parse's break
+     * normalization turns it into '&<break>' and dies. The laws now
+     * route through one shared check on every anchor write path. */
+    const char* y = "8,\":: &\xe2\x80\xa9\n-";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_ex(y, strlen(y), nullptr, &st);
+    if (d != nullptr) {
+        size_t len = 0;
+        EXPECT_EQ(yeptris_serialize(d, &len), nullptr);
+        yeptris_document_free(d);
+    }
+}
+
 TEST(Emit, AnchorNameTailColonBlockStyleIsUnserializable) {
     /* the nightly's round 44 (crash-07ad9ecc, 8-byte core:
      * "&:\n! |\n:\n"): the tail-colon law (round 31) exempted

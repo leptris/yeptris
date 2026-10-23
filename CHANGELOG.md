@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Fixed
 
+- **emit: the anchor-name spell laws reach the line-tail props path** — the round-45 bonus catch (crash-5f467aa0, 285 bytes -> 12: `8,":: &<PS>\n-`, found by a local fuzz session). The reader folds a PS-named anchor onto the FOLLOWING collection, and the collection's props spell through `emit_props_tail` ("`!<t> &a`" after "key:"/"-") — a path that bypassed every anchor-name law and wrote the PS raw. The re-parse's break normalization turns the raw PS into a hard break: pass2 sees `&<break>` and dies. The tail-colon law (#730), the normalize-subject law (#723), and the collection law (round 31) now live in one shared check that every anchor write path routes through. Pin `AnchorNameNormalizeSubjectOnLineTailPropsIsUnserializable`; seeds `roundtrip/r45-props-tail-anchor-core.bin` + the artifact.
+
+### Changed### Fixed
+
 - **emit: an anchor name ending in ':' fails the serialize when the scalar spells in block style** — the nightly's round 44 (crash-07ad9ecc, 1928 bytes -> 8: `&:\n! |\n:\n`). The round-31 tail-colon law failed the serialize for COLLECTIONS (every spelling of `&: <collection>` re-lexes differently) but exempted scalars — "`k: &n: v` rides byte-stably". The exemption overreached: it holds only for INLINE spells. A BLOCK-style scalar (the reader folds a tagged literal across the props lines: tag `!`, anchor `:`, value `:\n`) spells `! &: |` — the header sits where the separator should be, and the re-parse reads a different tree (the compat reader rejects the form outright). There is no spell: the serialize fails, which the roundtrip harness treats as a skip. The inline rider stays byte-stable. Pin `AnchorNameTailColonBlockStyleIsUnserializable`; seed `roundtrip/r44-tail-colon-anchor-block-style.bin`.
 
 ### Changed
