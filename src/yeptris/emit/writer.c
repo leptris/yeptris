@@ -678,9 +678,17 @@ static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
      * node keeps riding raw ("k: &n: v" round-trips byte-stably).
      * There is no spell for the collection form: fail the serialize. */
     yep_view chk = wv(w, n->anchor);
-    if (n->kind != 0 && chk.len > 0 && chk.p[chk.len - 1] == ':') {
-        w->unserializable = 1;
-        return;
+    if (chk.len > 0 && chk.p[chk.len - 1] == ':') {
+        /* a SCALAR keeps riding raw only when it spells INLINE
+         * ("k: &n: v" is byte-stable); a BLOCK-style spell puts the
+         * header where the separator should be ("&: |" -- the
+         * nightly's round 44, crash-07ad9ecc: pass1 wrote the
+         * anchored literal, the re-parse read a different tree or
+         * died) -- there is no spell: fail the serialize */
+        if (n->kind != 0 || n->style == 4 || n->style == 5) {
+            w->unserializable = 1;
+            return;
+        }
     }
     /* A name carrying a NORMALIZE-SUBJECT byte (LS/PS raw, NEL, or a
      * hard break) re-reads differently: the reader's break

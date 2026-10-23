@@ -7,6 +7,10 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Fixed
+
+- **emit: an anchor name ending in ':' fails the serialize when the scalar spells in block style** — the nightly's round 44 (crash-07ad9ecc, 1928 bytes -> 8: `&:\n! |\n:\n`). The round-31 tail-colon law failed the serialize for COLLECTIONS (every spelling of `&: <collection>` re-lexes differently) but exempted scalars — "`k: &n: v` rides byte-stably". The exemption overreached: it holds only for INLINE spells. A BLOCK-style scalar (the reader folds a tagged literal across the props lines: tag `!`, anchor `:`, value `:\n`) spells `! &: |` — the header sits where the separator should be, and the re-parse reads a different tree (the compat reader rejects the form outright). There is no spell: the serialize fails, which the roundtrip harness treats as a skip. The inline rider stays byte-stable. Pin `AnchorNameTailColonBlockStyleIsUnserializable`; seed `roundtrip/r44-tail-colon-anchor-block-style.bin`.
+
 ### Changed
 
 - **fuzz: the qflow parallel walk heap-sizes its line arrays** — the nightly's round 43 (crash-710e5302, 2379 bytes). The flow-`?` mega-soup's dumps walk 644/557 lines, but `yd_qflow_divergence`'s line arrays capped at 512: the walk silently truncated mid-stream, every member it then saw was covered, yet the cap's misaligned tail hit a plain mismatch and the carry declined its own family (every one of the artifact's 28 divergence hunks is the covered single-pair fold). The arrays are now heap-sized to the true line counts, freed at every exit. Gates: r43 + r42 + r41 + #718 + r40 + the #707 soup + crash-3f2e419b all carry; ctest 573/573; snapshot + crash-seed verdict sets identical to the predecessor. Seed `r43-qflow-line-cap.bin`.
