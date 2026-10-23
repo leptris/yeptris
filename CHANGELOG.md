@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.38] - 2026-10-23
 ### Fixed
 
 - **emit: a keep block's tab-carrying CONTENT last line spells its trail breaks 1:1** — the nightly's round 33 (yeptris#711, crash-306b67eb, 59 bytes; minimized 15: `|+\n \n \t:\n\t \n\t\n\n`). The #709 extra-break law keyed on ANY tab in the last body line, but the reader swallows the own break only of a WHITESPACE-ONLY tab-led last line — a content line that merely carries a tab ("\t:") reads 1:1, so the extra break made the keep value GROW one break per pass (16 → 17 → 18 bytes across passes). The law now gates on the last line being all-whitespace; the round-32 pin (the ws-only twin) is unchanged. Corpus seed `block-keep-ws-composite-tab-content.bin`; a two-pass stability pin joins the round-32 test.
