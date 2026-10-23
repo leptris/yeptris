@@ -346,37 +346,13 @@ static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
             wr_indent(w, pad);
         }
     }
-    /* The reader swallows the own break of a WHITESPACE-ONLY
-     * more-indented last line ("|+\n:\n \t\n\n\n" reads trail=2), so
-     * the spelling needs one extra break there -- written N reads N-1
-     * (the nightly's round 32, crash-90c98918: pass1
-     * "|+\n  :\n   \t\n\n" re-parsed one break short and the second
-     * pass emitted clip). A regular last line reads 1:1. */
-    uint32_t ls = body;
-    while (ls > 0 && p[ls - 1] != '\n') {
-        ls--;
-    }
-    int tab_last = 0;
-    int ws_last = 1;
-    for (uint32_t i = ls; i < body; i++) {
-        if (p[i] == '\t') {
-            tab_last = 1;
-        } else if (p[i] != ' ') {
-            ws_last = 0;
-            break;
-        }
-    }
-    /* the reader swallows the own break of a whitespace-only last line
-     * that carries a TAB (the tab-indent law shifts the line's content
-     * start): "|+\n:\n \t\n\n\n" reads trail=2 where a spaces-only
-     * line reads 1:1 (the nightly's round 32, crash-90c98918: pass1
-     * "|+\n  :\n   \t\n\n" re-parsed one break short and the second
-     * pass emitted clip). One extra break spells the tab case — and
-     * ONLY that case: a CONTENT last line that merely carries a tab
-     * ("|+\n \t:\n..." — the round-33 composite, crash-306b67eb)
-     * reads its own break 1:1, and the extra break made the value
-     * GROW one break per pass. */
-    for (uint32_t i = 0; i < trail + ((tab_last && ws_last) ? 1 : 0); i++) {
+    /* The keep spelling writes exactly the parsed trailing breaks:
+     * written N reads N. (The round-32 extra break for tab-carrying
+     * ws-only last lines compensated a READER bug -- the tab-content
+     * arm consumed its line's own break without counting it toward
+     * trailing -- and the reader counts it now; the compensation made
+     * every pass GROW one break.) */
+    for (uint32_t i = 0; i < trail; i++) {
         wr_byte(w, '\n');
     }
 }

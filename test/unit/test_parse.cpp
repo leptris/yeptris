@@ -6356,3 +6356,35 @@ TEST(Parse, DocMarkerResetsTheNormalizeFlowState) {
         EXPECT_EQ(got, whole) << "cuts " << c[0] << "," << c[1];
     }
 }
+
+TEST(Parse, BlockKeepTabContentLastLineCountsItsOwnBreak) {
+    /* the nightly's round 37 (the fCsK base64 artifact, 14 bytes): a
+     * tab-carrying whitespace-only content line ("   \t ") that ENDS
+     * the block had its own break consumed silently by the tab-content
+     * arm -- keep spelled one break short (libyaml keeps it). The arm
+     * now scans the break like the content-line arm. The round-32/33
+     * emit compensation (the extra break) is reverted: written N reads
+     * N. */
+    const char* y = "|+\n\n >\t\n   \t \n";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 0), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    (void)alen;
+    std::vector<std::string> vals;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_SCALAR) {
+            vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+        }
+    }
+    ASSERT_EQ(vals.size(), 1u);
+    /* libyaml's exact value: the leading blank, the " >\t" line (its
+     * leading space is content past the col-0 floor... folded at
+     * indent 1), the "   \t " line, and the KEPT final break */
+    EXPECT_EQ(vals[0], "\n>\t\n  \t \n");
+    yeptris_recorder_free(rec);
+}
