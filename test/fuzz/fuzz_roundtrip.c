@@ -8,6 +8,7 @@
  * the Ruby binding's differential corpus; memory safety lives here.
  */
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -63,12 +64,17 @@ static int probe_one(const uint8_t* data, size_t size) {
     YeptrisDocument doc2 = yeptris_parse(s1, l1, &st2);
     if (doc2 == NULL) {
         /* emitted YAML must re-parse: an invariant, not a fuzz choice */
+        fprintf(stderr, "[rp] pass1 (%zu bytes) failed re-parse:\n%.*s\n", l1, (int)l1, s1);
+        fflush(stderr);
         __builtin_trap();
     }
     size_t l2 = 0;
     char* s2 = yeptris_serialize(doc2, &l2);
     yeptris_document_free(doc2);
     if (s2 != NULL && (l1 != l2 || memcmp(s1, s2, l1) != 0)) {
+        fprintf(stderr, "[ri] l1=%zu l2=%zu\n--- s1:\n%.*s\n--- s2:\n%.*s\n", l1, l2,
+                (int)l1, s1, (int)l2, s2);
+        fflush(stderr);
         __builtin_trap(); /* byte instability */
     }
     free(s1);

@@ -682,6 +682,31 @@ static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
         w->unserializable = 1;
         return;
     }
+    /* A name carrying a NORMALIZE-SUBJECT byte (LS/PS raw, NEL, or a
+     * hard break) re-reads differently: the reader's break
+     * normalization folds the raw bytes to '\n' before the parse, so
+     * pass2 sees an anchor with a broken/empty name and dies ("P,\"\P":
+     * &<PS>" — the nightly's round 39, crash-8df48a71: pass1 spelled
+     * the anchor raw, pass2's re-parse failed). YAML has no quoted
+     * anchor names; there is no spell: fail the serialize. */
+    for (size_t ci = 0; ci < chk.len; ci++) {
+        unsigned char cb = (unsigned char)chk.p[ci];
+        if (cb == '\n' || cb == '\r' || cb == 0xC2 || cb == 0xE2) {
+            if (cb == 0xC2 && ci + 1 < chk.len && (unsigned char)chk.p[ci + 1] == 0x85) {
+                w->unserializable = 1; /* NEL */
+                return;
+            }
+            if (cb == 0xE2 && ci + 2 < chk.len && (unsigned char)chk.p[ci + 1] == 0x80 &&
+                ((unsigned char)chk.p[ci + 2] & 0xFE) == 0xA8) {
+                w->unserializable = 1; /* LS/PS */
+                return;
+            }
+            if (cb == '\n' || cb == '\r') {
+                w->unserializable = 1;
+                return;
+            }
+        }
+    }
     wr_byte(w, '&');
     yep_view adec = wv(w, n->anchor);
     if (w->canonical) {

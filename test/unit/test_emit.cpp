@@ -895,3 +895,37 @@ TEST(Emit, RawLsPsValueRidesQuoted) {
     yeptris_document_free(d2);
     yeptris_document_free(d);
 }
+
+TEST(Emit, AnchorNameWithNormalizeSubjectBytesIsUnserializable) {
+    /* the nightly's round 39 (crash-8df48a71, 12-byte core:
+     * "P,\" : & "): an anchor whose NAME carries a raw
+     * LS/PS/NEL (or a hard break) cannot be spelled — the reader's
+     * break normalization folds those bytes to '\n' before the parse,
+     * so pass2 sees an anchor with a broken/empty name and the
+     * re-parse dies (pass1's key side escaped its PS as \P; the anchor
+     * side had no escape). YAML has no quoted anchor names: fail the
+     * serialize (the #708 unspellable law). Plain names keep riding. */
+    const char* y = "P,\"\xe2\x80\xa9: &\xe2\x80\xa9";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(d, nullptr) << yeptris_last_error(NULL, NULL);
+    size_t len = 0;
+    EXPECT_EQ(yeptris_serialize(d, &len), nullptr);
+    yeptris_document_free(d);
+
+    /* the NEL twin */
+    const char* nel = "k: &a\xc2\x85z v\n";
+    YeptrisDocument dn = yeptris_parse(nel, strlen(nel), &st);
+    if (dn != nullptr) {
+        EXPECT_EQ(yeptris_serialize(dn, &len), nullptr);
+        yeptris_document_free(dn);
+    }
+
+    /* a plain name keeps riding */
+    const char* plain = "k: &ok v\nb: *ok\n";
+    YeptrisDocument dp = yeptris_parse(plain, strlen(plain), &st);
+    ASSERT_NE(dp, nullptr);
+    std::string want = ser(dp);
+    yeptris_document_free(dp);
+    EXPECT_EQ(roundtrip(plain), want);
+}
