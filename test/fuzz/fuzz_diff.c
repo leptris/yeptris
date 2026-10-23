@@ -961,6 +961,11 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                         * eager arming opened a phantom quote that
                         * swallowed the rest of the input,
                         * crash-283aaadd) */
+    int saw_prop = 0;  /* a & or ! run: blanks after it keep the NEXT
+                        * prop at node position ("!tag &anch" -- the
+                        * tag-led props run left node_pos 0 and the
+                        * gate skipped the anchor entirely, the
+                        * nightly's round 40, crash-fe3b5522) */
     for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
         if (quote != 0) {
@@ -986,7 +991,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if (c == '&' || c == '!') {
             prop_word = 1;
             word_led = 0;
+            saw_prop = 1;
         } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '-' || c == '?') {
+            /* blanks keep saw_prop: the props run continues */
             /* ':' does NOT arm a word start: a quote GLUED to the
              * separator ("- :\"" -> the plain ':\"') is plain-first
              * CONTENT per the suite (HM87), and the eager open
@@ -1021,6 +1028,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         } else {
             word_led = 0;
             prop_word = 0;
+            saw_prop = 0;
         }
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
             /* the comment runs to the LINE BREAK: a '&' inside it is
@@ -1037,7 +1045,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if (c == '&') {
             amps++;
         }
-        if (c == '&' && !gate && node_pos) {
+        if (c == '&' && !gate && (node_pos || saw_prop)) {
             size_t j = i + 1;
             while (j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
                    data[j] != '\r') {
@@ -1085,7 +1093,8 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     int prop_word2 = 0;
     int node_pos2 = 1;
     int only_dash2 = 1;
-    int flowd2 = 0; /* the gate's flow-depth law again */
+    int flowd2 = 0;    /* the gate's flow-depth law again */
+    int saw_prop2 = 0; /* the gate's props-continuation law again */
     for (size_t i = 0; i < size;) {
         unsigned char c = data[i];
         if (quote != 0) {
@@ -1114,6 +1123,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if (c == '&' || c == '!') {
             prop_word2 = 1;
             word_led2 = 0;
+            saw_prop2 = 1;
         } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '-' || c == '?') {
             /* the gate's ':' law again (crash-7fe697be) */
             word_led2 = 1;
@@ -1140,6 +1150,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         } else {
             word_led2 = 0;
             prop_word2 = 0;
+            saw_prop2 = 0;
         }
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
             /* verbatim through the comment's line break, then keep
@@ -1151,7 +1162,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             prev = '\n';
             continue;
         }
-        if (c == '&' && node_pos2) {
+        if (c == '&' && (node_pos2 || saw_prop2)) {
             sub[o++] = (char)c;
             i++;
             size_t name_o = o;
@@ -1208,6 +1219,27 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         }
     }
     char* ydump2 = yd_sem_dump(sub, o, &ok2);
+    if (ydump2 != NULL && ok2) {
+        /* the PROPS-LED composite (the nightly's round 40,
+         * "!str-f &U:ba:\n- ..."): yeptris's original reading puts
+         * the whole riding name on the FOLLOWING collection (no pair
+         * at all), while libyaml truncates the name at the ':' and
+         * builds the pair -- so neither "libyaml(split) ==
+         * yeptris(original)" nor the qcolon walk can reconcile. But
+         * both engines agree on the SPLIT form, and libyaml is
+         * INVARIANT under it (its own reading truncates at the ':'
+         * anyway) -- exactly the charset-tokenization signature. */
+        int ok3 = 0;
+        char* ldump2 = yd_libyaml_dump(sub, o, &ok3);
+        if (ldump2 != NULL && ok3 && strcmp(ldump, ldump2) == 0 && strcmp(ydump2, ldump2) == 0) {
+            free(ldump2);
+            free(ydump2);
+            free(sub);
+            free(sub2);
+            return 1;
+        }
+        free(ldump2);
+    }
     free(sub);
     if (ydump2 == NULL || !ok2) {
         free(ydump2);

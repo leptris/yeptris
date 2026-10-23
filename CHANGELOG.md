@@ -7,6 +7,10 @@ source of truth; this file, vcpkg.json are synced from it).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Changed
+
+- **fuzz: the anchor-charset carry continues a tag-led props run** — the nightly's round 40 (crash-fe3b5522, 66 bytes: `!str-f &U:ba:\n- 0baJb:0U:ba:\n- 4-ba:J::*...`). The gate and transform walks tracked node position, and a props run RESETS at blanks — so in the tag-led composite `!str-f &U:ba:` the `&` landed at node_pos 0 (the last content byte was the tag's `f`) and both walks skipped it: no carry, straight to the raw divergence. Blanks after a `&`/`!` now KEEP a props-continuation flag (a props run spans its blanks — `!tag &anchor` is one run) until content clears it, and the `&` gates on `node_pos || saw_prop` in both walks. The composite's PROPS-LED form also gained its third verify: when yeptris reads the whole riding name onto the FOLLOWING collection (no pair) while libyaml truncates the name at the `:` (pair built), the carry builds the split (`!str-f &U :ba:`), requires yeptris to parse it, and requires BOTH engines' dumps of the split to agree with libyaml's own dump of the original — libyaml is invariant under the split (its reading truncates at the `:` either way). Seed `round40-anchor-charset-tagprops.bin`.
+
 ### Fixed
 
 - **parse: a flow sequence's plain collection entry no longer plants a stale pair bit** — the corpus sweep after #713's carries (crash-8106600e, 43 bytes: `[1100, 120,20,[000, 1- 9]\n \n, 120,  ? 20:50 ,0,3- 9]`). The flow loop's collection-as-value arm wrote `pair_value = 1` unconditionally — in a SEQUENCE with no open pair that bit is stale, and a LATER `?`-opened pair wrap (`? 20:50 ,`) inherited it: the pair's comma flush then skipped the implicit null VALUE event entirely (yeptris `{20:50}` with no value event vs libyaml `{20:50 => nil}`). The write is now gated on `pair_open`. Unit pin pins both the artifact shape and the minimal twin (`[? 20:50 , 0]`).
