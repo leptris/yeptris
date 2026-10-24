@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.41] - 2026-10-24
 ### Changed
 
 - **fuzz: the anchor-charset walk opens the colon-riding plain** — the nightly's round 51 (crash-098e7549, 23 bytes: `&k:`c {&k:`c {\n  }\n  }\n`). yeptris is suite-correct twice over — the anchor name carries the `:` (2SXE) and the backtick — so `{` opens flow and the trees are nested anchored maps; libyaml truncates the name at `:` (its [0-9A-Za-z_-] set) and its 1.1-lenient plain start swallows the rest as ONE anchored scalar. The charset carry's split (`&k:`c` -> `&k :`c`) verified for the FIRST occurrence — but the walk's position model never opened the plain at the residual (`:` + non-blank, the HM87 riding colon), so the SECOND mid-plain `&` rode as props, the blind split corrupted the scalar's bytes and the carry declined its own family. The gate walk now opens the plain at a block-context `:` + non-blank, and the transform's split arm takes the residual token's first-byte law itself (a `:` with a blank follower — `&kk: |` — stays the key separator, not a plain). Gates: r51 + all prior rounds' artifacts; snapshot + crash-seed verdict sets byte-identical except the new shape; ctest 578/578; parse + roundtrip corpora (~29k inputs) walk clean under ASan. Seed `parse/r51-reserved-anchor-colon-plain.bin`.
