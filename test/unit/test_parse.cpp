@@ -6388,3 +6388,83 @@ TEST(Parse, BlockKeepTabContentLastLineCountsItsOwnBreak) {
     EXPECT_EQ(vals[0], "\n>\t\n  \t \n");
     yeptris_recorder_free(rec);
 }
+
+/* yeptris#741: the '?' empty-key pair in a flow SEQUENCE. The entry
+ * separator after the synthesized null key is libyaml's
+ * ENTRY_MAPPING_KEY -> ENTRY_MAPPING_VALUE transition: the pair stays
+ * OPEN and the following ':' completes THE SAME pair — closing at the
+ * comma spilled the value indicator into a second entry
+ * ("[? ,: x , a]" read as two maps). The CFD4 shapes stay suite-VALID
+ * (the ledgered libyaml deviation): the bare-colon entry keeps its
+ * empty-key pairing. */
+static std::vector<std::string> flow741_scalars(const char* y, int* map_starts) {
+    YeptrisRecorder rec = yeptris_recorder_new();
+    *map_starts = 0;
+    std::vector<std::string> vals;
+    if (yeptris_recorder_feed(rec, y, strlen(y), 0) != YEPTRIS_OK) {
+        yeptris_recorder_free(rec);
+        *map_starts = -1;
+        return vals;
+    }
+    if (yeptris_recorder_feed(rec, "", 0, 1) != YEPTRIS_OK) {
+        yeptris_recorder_free(rec);
+        *map_starts = -1;
+        return vals;
+    }
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    (void)alen;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_MAPPING_START) {
+            (*map_starts)++;
+        }
+        if (rs[i].type == YEPTRIS_EV_SCALAR) {
+            vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+        }
+    }
+    yeptris_recorder_free(rec);
+    return vals;
+}
+
+TEST(Parse, FlowEmptyKeyPairCompletesAcrossTheEntrySeparator) {
+    struct Row {
+        const char* y;
+        int maps;
+        std::vector<std::string> vals;
+    };
+    const Row rows[] = {
+        {"[? ,:]", 1, {"", ""}}, {"[? ,: x]", 1, {"", "x"}}, {"[? ,: x , a]", 1, {"", "x", "a"}},
+        {"[? ,]", 1, {"", ""}},  {"[? x]", 1, {"x", ""}},    {"[? x : v]", 1, {"x", "v"}},
+    };
+    for (const Row& r : rows) {
+        int maps = 0;
+        std::vector<std::string> vals = flow741_scalars(r.y, &maps);
+        ASSERT_EQ(maps, r.maps) << r.y;
+        ASSERT_EQ(vals.size(), r.vals.size()) << r.y;
+        for (size_t i = 0; i < r.vals.size(); i++) {
+            EXPECT_EQ(vals[i], r.vals[i]) << r.y << " scalar " << i;
+        }
+    }
+    /* the entry separator before a NODE is the libyaml
+     * ENTRY_MAPPING_VALUE error ("[?, a]" — did not find expected ','
+     * or ']') */
+    {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        EXPECT_EQ(yeptris_recorder_feed(rec, "[?, a]", 6, 0), YEPTRIS_OK);
+        EXPECT_NE(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+        yeptris_recorder_free(rec);
+    }
+    /* CFD4 (ledgered suite-VALID): the bare-colon entry's empty-key
+     * pairing survives — the suite's tree parses it */
+    {
+        int maps = 0;
+        std::vector<std::string> vals = flow741_scalars("[: another empty key]", &maps);
+        ASSERT_EQ(maps, 1);
+        ASSERT_EQ(vals.size(), 2u);
+        EXPECT_EQ(vals[0], "");
+        EXPECT_EQ(vals[1], "another empty key");
+    }
+}

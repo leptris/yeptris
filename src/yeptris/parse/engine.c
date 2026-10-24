@@ -2206,8 +2206,11 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
         uint8_t pair_q; /* the pair opened on an explicit '?': its
                          * JSON-style ':' separator is still ahead */
         uint8_t pair_wrap;
-        uint8_t q_coll;   /* seq: an explicit '?' key collection awaits completion */
-        uint8_t key_coll; /* map: the nested collection opened in key position */
+        uint8_t q_coll;        /* seq: an explicit '?' key collection awaits completion */
+        uint8_t q_empty_value; /* seq: the '?' empty-key pair — 1: opened,
+                                * 2: its value state (the entry comma was
+                                * consumed inside the pair, yeptris#741) */
+        uint8_t key_coll;      /* map: the nested collection opened in key position */
         int32_t buf_from;
         uint32_t entry_line;
         uint32_t entries;
@@ -2223,6 +2226,7 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
     st[idx].pair_q = 0;
     st[idx].pair_wrap = 0;
     st[idx].q_coll = 0;
+    st[idx].q_empty_value = 0;
     st[idx].buf_from = -1;
     st[idx].entry_line = 0;
     st[idx].entries = 0;
@@ -2230,20 +2234,21 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
 
 static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_id) {
     struct {
-        uint8_t kind;        /* 0 seq, 1 map */
-        uint8_t pending_key; /* map: 1 key seen awaiting ':' value; 2 key emitted w/o ':' */
-        uint8_t sep;         /* a ',' was consumed and no entry followed yet */
-        uint8_t just_closed; /* a nested collection closed here (key candidate) */
-        uint8_t pair_open;   /* seq: a buffered single-pair awaits its MAP_END */
-        uint8_t pair_value;  /* seq: the open pair already has its value */
-        uint8_t pair_q;      /* seq: the pair opened on an explicit '?':
-                              * its JSON-style ':' separator is still ahead */
-        uint8_t pair_wrap;   /* map frame pushed as a seq single-pair */
-        uint8_t q_coll;      /* seq: an explicit '?' key collection awaits completion */
-        uint8_t key_coll;    /* map: a nested collection opened in key position */
-        int32_t buf_from;    /* seq: entry events buffered from this index */
-        uint32_t entry_line; /* seq: line where the buffered entry ended */
-        uint32_t entries;    /* completed entries (for trailing-comma detection) */
+        uint8_t kind;          /* 0 seq, 1 map */
+        uint8_t pending_key;   /* map: 1 key seen awaiting ':' value; 2 key emitted w/o ':' */
+        uint8_t sep;           /* a ',' was consumed and no entry followed yet */
+        uint8_t just_closed;   /* a nested collection closed here (key candidate) */
+        uint8_t pair_open;     /* seq: a buffered single-pair awaits its MAP_END */
+        uint8_t pair_value;    /* seq: the open pair already has its value */
+        uint8_t pair_q;        /* seq: the pair opened on an explicit '?':
+                                * its JSON-style ':' separator is still ahead */
+        uint8_t pair_wrap;     /* map frame pushed as a seq single-pair */
+        uint8_t q_coll;        /* seq: an explicit '?' key collection awaits completion */
+        uint8_t q_empty_value; /* seq: the '?' empty-key pair's state (#741) */
+        uint8_t key_coll;      /* map: a nested collection opened in key position */
+        int32_t buf_from;      /* seq: entry events buffered from this index */
+        uint32_t entry_line;   /* seq: line where the buffered entry ended */
+        uint32_t entries;      /* completed entries (for trailing-comma detection) */
     } st[YEP_MAX_DEPTH];
     int n = 0;
 
@@ -2283,6 +2288,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
         }
         int keyish = (st[n - 1].kind == 1 && st[n - 1].pending_key == 0);
         int q_key = 0;
+        int q_empty_key = 0; /* the '?' synthesized a null key (#741) */
         int rc;
         if (e_flow_ws(e) != 0) {
             return -1;
@@ -2312,6 +2318,10 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 !(e->p[n2] == ' ' || e->p[n2] == '\t' || e->p[n2] == '\n' || e->p[n2] == '\r' ||
                   yep_ct_is((unsigned char)e->p[n2], YEP_CT_FLOW_IND))) {
                 st[n - 1].pair_q = 0;
+                /* yeptris#741: the consumed ':' is the pair's VALUE
+                 * indicator — the '?' empty-key pair's value state ends
+                 * here or the value node trips the entry guard */
+                st[n - 1].q_empty_value = 0;
                 e->pos++;
                 continue;
             }
@@ -2339,6 +2349,15 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
              * in a sequence a ':'-led token is a new plain, so it errors */
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
         }
+        if (st[n - 1].kind == 0 && st[n - 1].q_empty_value == 2 && e->pos < e->len &&
+            e->p[e->pos] != ',' && e->p[e->pos] != ']' && e->p[e->pos] != '}' &&
+            e->p[e->pos] != ':') {
+            /* yeptris#741: a node in the '?' empty-key pair's value
+             * state — ENTRY_MAPPING_VALUE wants VALUE/ENTRY/END only
+             * ("[?, a]" is the libyaml "did not find expected ',' or
+             * ']'" error) */
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
         if (e->pos < e->len && e->p[e->pos] == '?' &&
             (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r' ||
@@ -2362,6 +2381,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 ev.col = e_col(e, e->pos) + 1;
                 rc = 1;
                 q_key = 1;
+                q_empty_key = (st[n - 1].kind == 0);
             } else {
                 rc = e_flow_node(e, &ev, keyish);
                 q_key = 1;
@@ -2575,6 +2595,9 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     if (emit_now(e, &ev) != 0) {
                         return -2;
                     }
+                    if (q_empty_key) {
+                        st[n - 1].q_empty_value = 1;
+                    }
                     continue;
                 }
             }
@@ -2609,6 +2632,18 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
         unsigned char c = (unsigned char)e->p[e->pos];
         if (c == ',') {
             e->pos++;
+            if (st[n - 1].kind == 0 && st[n - 1].pair_open && st[n - 1].pair_q &&
+                !st[n - 1].pair_value && st[n - 1].q_empty_value == 1) {
+                /* yeptris#741: the '?' empty-key pair's first comma is
+                 * the entry separator libyaml's ENTRY_MAPPING_KEY
+                 * consumed to reach its VALUE state — the pair stays
+                 * open and awaits ':' (value), ',' (empty value +
+                 * close), or ']' (empty value + close). Closing here
+                 * spilled the following ': x' into a second entry
+                 * ("[? ,: x , a]" read as two maps). */
+                st[n - 1].q_empty_value = 2;
+                continue;
+            }
             if (st[n - 1].q_coll && st[n - 1].buf_from >= 0) {
                 int32_t bf0 = st[n - 1].buf_from;
                 st[n - 1].buf_from = -1;
@@ -2643,6 +2678,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 st[n - 1].pair_open = 0;
                 st[n - 1].pair_value = 0;
                 st[n - 1].pair_q = 0;
+                st[n - 1].q_empty_value = 0;
             }
             if (st[n - 1].buf_from >= 0) {
                 st[n - 1].buf_from = -1;
@@ -2776,6 +2812,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 }
                 st[n - 1].pair_open = 0;
                 st[n - 1].pair_value = 0;
+                st[n - 1].q_empty_value = 0;
             }
             if (st[n - 1].buf_from >= 0) {
                 st[n - 1].buf_from = -1;
@@ -2874,7 +2911,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                     }
                 }
                 if (was_empty) {
-                    yep_event kv; /* "[ : v" — the empty key */
+                    yep_event kv; /* "[ : v" — the empty key (CFD4,
+                                   * ledgered suite-VALID) */
                     e_event_init(&kv, YEP_EV_SCALAR);
                     kv.implicit = 1;
                     if (emit_now(e, &kv) != 0) {
@@ -2891,13 +2929,52 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 continue; /* value next */
             }
             if (st[n - 1].kind == 0 && n >= 1) {
+                if (st[n - 1].pair_open && st[n - 1].q_empty_value == 2) {
+                    /* yeptris#741: the ':' after the '?' empty-key
+                     * pair's comma completes THE SAME pair (the pair's
+                     * VALUE indicator), not a new entry */
+                    size_t p2 = e->pos; /* the ':' byte is already consumed */
+                    while (p2 < e->len && (e->p[p2] == ' ' || e->p[p2] == '\t')) {
+                        p2++;
+                    }
+                    if (p2 < e->len && (e->p[p2] == ',' || e->p[p2] == ']' || e->p[p2] == '}')) {
+                        /* empty value at the closer: the pair closes
+                         * here; the closer dispatches as the separator */
+                        yep_event nv;
+                        e_event_init(&nv, YEP_EV_SCALAR);
+                        nv.implicit = 1;
+                        nv.style = YEP_STYLE_PLAIN;
+                        if (emit_now(e, &nv) != 0) {
+                            return -2;
+                        }
+                        yep_event mk;
+                        e_event_init(&mk, YEP_EV_MAP_END);
+                        if (emit_now(e, &mk) != 0) {
+                            return -2;
+                        }
+                        st[n - 1].pair_open = 0;
+                        st[n - 1].pair_value = 0;
+                        st[n - 1].pair_q = 0;
+                        st[n - 1].q_empty_value = 0;
+                        st[n - 1].sep = 1;
+                        st[n - 1].just_closed = 0;
+                        e->pos = p2;
+                        continue;
+                    }
+                    st[n - 1].q_empty_value = 0;
+                    e->pos++;
+                    continue;
+                }
                 if (st[n - 1].pair_open) {
                     /* "[s: : v]" — ':' in the open pair's value slot
                      * is not node content (libyaml: "did not find
                      * expected node content") */
                     return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
                 }
-                /* '[ : v' — single-pair mapping with an empty key */
+                /* '[ : v' — single-pair mapping with an empty key
+                 * (CFD4, ledgered suite-VALID: the suite's tree parses
+                 * the bare-colon entry; libyaml's rejection is the
+                 * ledgered deviation) */
                 if (n >= e->max_depth) {
                     return e_fail(e, YEP_ERR_DEPTH, e->pos);
                 }
