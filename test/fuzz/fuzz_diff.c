@@ -841,7 +841,13 @@ static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
                 while (m < le && (data[m] == ' ' || data[m] == '\t')) {
                     m++;
                 }
-                header = (m == le);
+                /* a trailing COMMENT rides the header (glued or after
+                 * blanks -- libyaml's header law, the #650/#662
+                 * families); without this the '| #\n#' soup never
+                 * entered block mode and the col-0 content line lost
+                 * its indent fix (the nightly's round 55,
+                 * crash-5b569810, min "| #\n#") */
+                header = (m == le || data[m] == '#');
             }
         }
         int indent_line =
