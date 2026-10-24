@@ -1275,6 +1275,16 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                              data[i + 1] == '\n' || data[i + 1] == '\r')) {
                 plain_open = 0;             /* a key colon ends the riding plain */
                 coll_col = (int)line_first; /* the mapping's indent is the key's column */
+            } else if (c == ':' && flowd == 0 && !bs_open && i + 1 < size && data[i + 1] != ' ' &&
+                       data[i + 1] != '\t' && data[i + 1] != '\n' && data[i + 1] != '\r') {
+                /* a colon-led plain opens here (the HM87 riding colon:
+                 * "&k :`c ..." -- libyaml truncates the anchor at ':'
+                 * and the residual ':`c {...' IS the plain). Without
+                 * this the walk kept plain_open closed and a later
+                 * mid-plain '&' rode as props -- the split corrupted
+                 * the scalar's bytes and the carry declined its own
+                 * family (the nightly's round 51, crash-098e7549). */
+                plain_open = 1;
             }
             if (c != '-') {
                 only_dash = 0;
@@ -1445,9 +1455,25 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             if (o > name_o && i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
                 data[i] != '\r') {
                 sub[o++] = ' '; /* libyaml's truncation point becomes a token break */
+                /* the residual token is copied blind, so the walk must
+                 * take its first byte's own law here: a colon-riding
+                 * plain ("&k :`c ...") OPENS the plain -- leaving it
+                 * closed made the NEXT mid-plain '&' ride as props,
+                 * the split corrupted the scalar's bytes and the carry
+                 * declined its own family (the nightly's round 51,
+                 * crash-098e7549). A ':' with a blank follower is the
+                 * key separator ("&kk: |"), not a plain. */
+                unsigned char f = data[i];
+                int plain_residual =
+                    flowd2 == 0 && !bs_open2 &&
+                    !(f == ':' && (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
+                                   data[i + 1] == '\n' || data[i + 1] == '\r'));
                 while (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
                        data[i] != '\r') {
                     sub[o++] = (char)data[i++];
+                }
+                if (plain_residual) {
+                    plain_open2 = 1;
                 }
             }
             node_pos2 = 0;
@@ -1479,6 +1505,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                              data[i + 1] == '\n' || data[i + 1] == '\r')) {
                 plain_open2 = 0;
                 coll_col2 = (int)line_first2;
+            } else if (c == ':' && flowd2 == 0 && !bs_open2 && i + 1 < size && data[i + 1] != ' ' &&
+                       data[i + 1] != '\t' && data[i + 1] != '\n' && data[i + 1] != '\r') {
+                plain_open2 = 1; /* the gate's colon-led plain law again */
             }
             if (c != '-') {
                 only_dash2 = 0;
