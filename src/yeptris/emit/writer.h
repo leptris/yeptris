@@ -57,9 +57,13 @@ typedef struct yep_writer {
     size_t cap;
     int grow;
     int oom;
-    int bounded;        /* #352: caller-owned fixed buffer — an oversized write
-                           sets oom and keeps counting (the needed size falls
-                           out of the same pass); wr_grow is never called */
+    int bounded; /* #352: caller-owned fixed buffer — an oversized write
+                    sets oom and keeps counting (the needed size falls
+                    out of the same pass); wr_grow is never called */
+    /* #739 lane 1: writable bytes guaranteed at w->p + w->len. The
+     * grow/flush checks run once per refill instead of once per byte;
+     * 0 at run entry and whenever the guarantee lapses. */
+    size_t reserve;
     int in_flow;        /* scalars inside flow collections: plain must drop
                            ',', '[', ']', '{', '}' — flow terminators */
     int flow_item;      /* the NEXT scalar is a flow-SEQ item: a null must
