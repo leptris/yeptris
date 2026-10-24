@@ -293,8 +293,15 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
         return NULL;
     }
-    size_t need = yep_emit_run(&em, 1);
-    char* out = malloc(need + 1);
+    /* #739: ONE wet pass into a growable buffer — the dry exact-sizing
+     * pass priced ~2x on the json lane (the #352 slice-2 pattern);
+     * the estimate starts at the input size (+64) and doubles on
+     * demand, shrink-to-fit at the end. */
+    size_t est = em.doc->dom->input_len + 64;
+    if (est < 256) {
+        est = 256;
+    }
+    char* out = (char*)malloc(est);
     if (out == NULL) {
         if (em.canon_names.sys != NULL) {
             yep_nametab_free(&em.canon_names);
@@ -302,7 +309,24 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
         return NULL;
     }
     em.w.p = out;
+    em.w.cap = est;
+    em.w.grow = 1;
     size_t wrote = yep_emit_run(&em, 0);
+    em.w.grow = 0;
+    out = em.w.p; /* wr_grow reallocs through w->p — the local is stale */
+    if (em.w.oom || em.w.unserializable) {
+        free(out);
+        if (em.canon_names.sys != NULL) {
+            yep_nametab_free(&em.canon_names);
+        }
+        return NULL;
+    }
+    if (em.w.cap - (wrote + 1) > em.w.cap / 8) {
+        char* tight = (char*)realloc(out, wrote + 1);
+        if (tight != NULL) {
+            out = tight;
+        }
+    }
     if (em.canon_names.sys != NULL) {
         yep_nametab_free(&em.canon_names);
     }

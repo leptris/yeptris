@@ -912,6 +912,9 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key);
  * written). Conservative factor-4 estimate for every expandable
  * byte — overestimating only takes the (always-legal) explicit form. */
 static int key_written_over_limit(yep_writer* w, const yep_dnode* kn) {
+    if (w->json) {
+        return 0; /* JSON has no simple-key law: every key writes (#739) */
+    }
     uint64_t est = 2; /* the quotes */
     yep_view kv_ = wv(w, kn->value);
     const unsigned char* q = (const unsigned char*)kv_.p;
