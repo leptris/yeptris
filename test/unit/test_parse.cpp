@@ -6468,3 +6468,38 @@ TEST(Parse, FlowEmptyKeyPairCompletesAcrossTheEntrySeparator) {
         EXPECT_EQ(vals[1], "another empty key");
     }
 }
+
+TEST(TagResolve, SecondarySurvivesPrimaryRedefinition) {
+    /* the nightly's round 52 (crash-763bb852): after "%TAG ! !p/"
+     * redefines the PRIMARY handle, a '!!'-led tag resolved through
+     * it ("<!p/!i>") — the secondary handle is fixed shorthand
+     * (spec 6.8.2.2): it resolves through its OWN entry or the
+     * tag:yaml.org,2002: default, never the redefined primary
+     * (libyaml: tag:yaml.org,2002:i). */
+    const struct {
+        const char* y;
+        const char* tag; /* the resolved DOM tag; NULL = unchanged */
+    } cases[] = {
+        {"%TAG ! !p/\n---\n!!i", "tag:yaml.org,2002:i"},
+        {"%TAG ! !p/\n---\n!x", "!p/x"},   /* the primary rides */
+        {"%TAG !! e2/\n---\n!!i", "e2/i"}, /* its own override */
+        {"%TAG !! e2/\n---\n!x", "!x"},    /* primary untouched */
+        {"!!i", "tag:yaml.org,2002:i"},    /* no directives */
+    };
+    for (const auto& c : cases) {
+        YeptrisParseOptions opts;
+        memset(&opts, 0, sizeof(opts));
+        opts.schema = YEPTRIS_SCHEMA_11_COMPAT;
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse_ex(c.y, strlen(c.y), &opts, &st);
+        ASSERT_EQ(st, YEPTRIS_OK) << c.y;
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr) << c.y;
+        size_t tl = 0;
+        const char* t = yeptris_node_tag(root, &tl);
+        ASSERT_NE(t, nullptr) << c.y;
+        std::string got(t, tl);
+        EXPECT_EQ(got, c.tag) << c.y;
+        yeptris_document_free(doc);
+    }
+}
