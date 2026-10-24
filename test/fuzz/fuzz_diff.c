@@ -205,7 +205,7 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
          * libyaml keeps only {? => 9}. When libyaml's line matches
          * yeptris's line two ahead and the pair between is an exact
          * null:null, fold the pair. */
-        if (lens[i] >= 7 && strncmp(lines[i], "=VAL : ", 7) == 0 && j + 2 < yn && ylens[j] == 7 &&
+        if (lens[i] > 7 && strncmp(lines[i], "=VAL : ", 7) == 0 && j + 2 < yn && ylens[j] == 7 &&
             strncmp(ylines[j], "=VAL : ", 7) == 0 && ylens[j + 1] == 7 &&
             strncmp(ylines[j + 1], "=VAL : ", 7) == 0 && ylens[j + 2] == lens[i] &&
             memcmp(ylines[j + 2], lines[i], lens[i]) == 0) {
