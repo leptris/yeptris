@@ -199,47 +199,8 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             j++;
             continue;
         }
-        /* the in-map pair spill's value side ("? ,: 9"): the ','
-         * closes the explicit key's null:null pair INSIDE the same
-         * map (the r46 pair spill) and the ':' pair's VALUE follows —
-         * libyaml keeps only {? => 9}. When libyaml's line matches
-         * yeptris's line two ahead and the pair between is an exact
-         * null:null, fold the pair. */
-        if (lens[i] > 7 && strncmp(lines[i], "=VAL : ", 7) == 0 && j + 2 < yn && ylens[j] == 7 &&
-            strncmp(ylines[j], "=VAL : ", 7) == 0 && ylens[j + 1] == 7 &&
-            strncmp(ylines[j + 1], "=VAL : ", 7) == 0 && ylens[j + 2] == lens[i] &&
-            memcmp(ylines[j + 2], lines[i], lens[i]) == 0) {
-            j += 2;
-        }
-        /* the spilled FIRST map ("? ,: .00", the nightly's round 48):
-         * the ',' closes the explicit key's null:null pair into its
-         * own map (the r45 spill) while libyaml keeps ONE map
-         * {? => .00}. When yeptris holds an exact null:null block and
-         * libyaml is at its own +MAP, fold yeptris's leading block;
-         * the equality below verifies libyaml's map against
-         * yeptris's next. */
-        if (lens[i] == 4 && strncmp(lines[i], "+MAP", 4) == 0 && j + 3 < yn && ylens[j] == 4 &&
-            strncmp(ylines[j], "+MAP", 4) == 0 && ylens[j + 1] == 7 &&
-            strncmp(ylines[j + 1], "=VAL : ", 7) == 0 && ylens[j + 2] == 7 &&
-            strncmp(ylines[j + 2], "=VAL : ", 7) == 0 && ylens[j + 3] == 4 &&
-            strncmp(ylines[j + 3], "-MAP", 4) == 0) {
-            j += 4;
-        }
-        /* the spilled twin pair ("[? ,:]", the nightly's round 45):
-         * the ':' after the ',' that closed an explicit-key pair
-         * spills a SECOND null:null pair in yeptris -- the suite's
-         * reading (the r38 spill law) -- while libyaml keeps one.
-         * When the libyaml walk hits a closer but yeptris still holds
-         * an exact duplicate of the null:null block, fold the
-         * duplicate. */
-        if (lens[i] > 0 && lines[i][0] == '-' && j + 3 < yn && ylens[j] == 4 &&
-            strncmp(ylines[j], "+MAP", 4) == 0 && ylens[j + 1] == 7 &&
-            strncmp(ylines[j + 1], "=VAL : ", 7) == 0 && ylens[j + 2] == 7 &&
-            strncmp(ylines[j + 2], "=VAL : ", 7) == 0 && ylens[j + 3] == 4 &&
-            strncmp(ylines[j + 3], "-MAP", 4) == 0) {
-            j += 4; /* folded; the current closer now aligns */
-        } else if (lens[i] == 4 && strncmp(lines[i], "-MAP", 4) == 0 && j + 1 < yn &&
-                   ylens[j] == 7 && strncmp(ylines[j], "=VAL : ", 7) == 0) {
+        if (lens[i] == 4 && strncmp(lines[i], "-MAP", 4) == 0 && j + 1 < yn && ylens[j] == 7 &&
+            strncmp(ylines[j], "=VAL : ", 7) == 0) {
             /* the in-map null-pair spill ("[?[] :b,]", the nightly's
              * round 46; the round-48 soup composes SEVERAL): the ','
              * spills implicit null members inside the SAME map while
@@ -255,24 +216,6 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
                 j += 1; /* the lone key */
             }
             if (!(j < yn && ylens[j] == 4 && strncmp(ylines[j], "-MAP", 4) == 0)) {
-                /* the map-SPLIT composition (the round-48 soup):
-                 * yeptris keeps the spilled pairs inside ONE map
-                 * ({null:.00, null:null, null:9}) while libyaml splits
-                 * them across maps ({null:.00}, {null:9}). When
-                 * libyaml's next map block is a null-key pair whose
-                 * value yeptris holds as its own next pair, transfer
-                 * it: consume yeptris's pair and libyaml's whole
-                 * block. */
-                if (i + 3 < n && lens[i + 1] == 4 && strncmp(lines[i + 1], "+MAP", 4) == 0 &&
-                    lens[i + 2] == 7 && strncmp(lines[i + 2], "=VAL : ", 7) == 0 && j + 2 < yn &&
-                    ylens[j] == 7 && strncmp(ylines[j], "=VAL : ", 7) == 0 &&
-                    ylens[j + 1] == lens[i + 3] &&
-                    memcmp(ylines[j + 1], lines[i + 3], lens[i + 3]) == 0 && ylens[j + 2] == 4 &&
-                    strncmp(ylines[j + 2], "-MAP", 4) == 0) {
-                    i += 3; /* -MAP,+MAP,key,value; the loop ++ takes the closer */
-                    j += 2;
-                    continue;
-                }
                 free(lines);
                 free(lens);
                 free(ylines);

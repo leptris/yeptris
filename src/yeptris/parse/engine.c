@@ -2626,6 +2626,23 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 st[n - 1].pair_open = 1;
             }
             if (st[n - 1].pair_open) {
+                size_t k = e->pos;
+                while (k < e->len &&
+                       (e->p[k] == ' ' || e->p[k] == '\t' || e->p[k] == '\n' || e->p[k] == '\r')) {
+                    k++;
+                }
+                if (!st[n - 1].pair_value && st[n - 1].pair_q && k < e->len && e->p[k] == ':') {
+                    /* the EXPLICIT key's own separator follows the comma
+                     * ("[? ,: x]" is {null: x} -- Psych oracle; the
+                     * nightly's round 50, issue #741): consume the ':'
+                     * and let the value parse as the next regular node --
+                     * its completion marks pair_value and the next , / ]
+                     * closes the SAME pair. The plain close below is for
+                     * pairs whose separator is NOT ahead ("[? x , y]"). */
+                    st[n - 1].pair_q = 0;
+                    e->pos = k + 1;
+                    continue;
+                }
                 if (!st[n - 1].pair_value) {
                     yep_event nv;
                     e_event_init(&nv, YEP_EV_SCALAR);

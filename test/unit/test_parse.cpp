@@ -6388,3 +6388,58 @@ TEST(Parse, BlockKeepTabContentLastLineCountsItsOwnBreak) {
     EXPECT_EQ(vals[0], "\n>\t\n  \t \n");
     yeptris_recorder_free(rec);
 }
+
+TEST(FlowSeqSinglePair, ClosesAtTheComma) {
+    /* issue #741 (the nightly's round 50, crash-f6adbb7e): inside a
+     * FLOW SEQUENCE, an explicit '?'-led single-pair pair whose
+     * separator follows the comma ("[? ,: x , a]") must complete the
+     * SAME pair -- Psych: [{nil => "x"}, "a"]. The comma used to run
+     * the buffered-pair close (implicit null + MAP_END) and the ':'
+     * then opened a SECOND map, gluing the following members into it.
+     * The comma now looks ahead: with pair_q set and a ':' past the
+     * blanks, the close is skipped, the ':' is consumed, and the
+     * value rides the regular node path; the next ',' or ']' closes
+     * the pair. */
+    const struct {
+        const char* y;
+        size_t maps;
+        std::vector<std::string> scalars;
+    } cases[] = {
+        {"[? ,: x , a]", 1, {"", "x", "a"}},
+        {"[? ,:]", 1, {"", ""}},
+        {"[? ,: .00,? ,: 9]", 2, {"", ".00", "", "9"}},
+        {"[?\n,: x]", 1, {"", "x"}},
+        {"[a, ? ,: b]", 1, {"a", "", "b"}},
+        {"[? x , y]", 1, {"x", "", "y"}}, /* the pre-#741 shape must not move */
+        {"[? ,]", 1, {"", ""}},
+    };
+    for (const auto& c : cases) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        ASSERT_EQ(yeptris_recorder_feed(rec, c.y, strlen(c.y), 0), YEPTRIS_OK);
+        ASSERT_EQ(yeptris_recorder_feed(rec, "", 0, 1), YEPTRIS_OK);
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        size_t alen = 0;
+        const char* arena = yeptris_recorder_arena(rec, &alen);
+        (void)alen;
+        size_t ms = 0, me = 0;
+        std::vector<std::string> scalars;
+        for (size_t i = 0; i < n; i++) {
+            if (rs[i].type == YEPTRIS_EV_MAPPING_START) {
+                ms++;
+            } else if (rs[i].type == YEPTRIS_EV_MAPPING_END) {
+                me++;
+            } else if (rs[i].type == YEPTRIS_EV_SCALAR) {
+                scalars.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+            }
+        }
+        EXPECT_EQ(ms, c.maps) << c.y;
+        EXPECT_EQ(me, c.maps) << c.y; /* every map closed */
+        ASSERT_EQ(scalars.size(), c.scalars.size()) << c.y;
+        for (size_t i = 0; i < scalars.size(); i++) {
+            EXPECT_EQ(scalars[i], c.scalars[i]) << c.y << " scalar #" << i;
+        }
+        yeptris_recorder_free(rec);
+    }
+}
