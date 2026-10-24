@@ -44,6 +44,7 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.cap = 0;
     em.w.grow = 0;
     em.w.oom = 0;
+    em.w.bounded = 0;
     em.doc = (const yeptris_document*)handle;
     if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
         return 0;
@@ -97,6 +98,69 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     return wrote;
 }
 
+YEPTRIS_API size_t yeptris_serialize_into_trusted(YeptrisDocument handle,
+                                                  const yeptris_emit_options* opts, char* buf,
+                                                  size_t cap) {
+    if (handle == NULL || buf == NULL || cap == 0) {
+        return 0;
+    }
+    yep_emitter em;
+    em.w.sc_dec = NULL;
+    em.w.sc_i = 0;
+    em.w.cap = 0;
+    em.w.grow = 0;
+    em.w.oom = 0;
+    em.w.bounded = 0;
+    em.doc = (const yeptris_document*)handle;
+    if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
+        return 0;
+    }
+    em.w.p = buf;
+    em.w.last = 0;
+    em.w.force_flow = 0;
+    em.w.in_flow = 0;
+    em.w.flow_item = 0;
+    em.w.unserializable = 0;
+    em.w.canonical = opts_canonical(opts);
+    em.w.explicit_doc_start = opts_doc_marker(opts);
+    em.w.json = 0;
+    em.w.json_compact = 0;
+    em.w.json_pretty = 0;
+    em.w.pretty_depth = 0;
+    em.w.best_width = opts_width(opts);
+    em.w.col = 0;
+    em.w.sv_input = ((const yeptris_document*)handle)->dom->input_base;
+    em.w.sv_arena = ((const yeptris_document*)handle)->dom->str;
+    em.w.sink = NULL;
+    em.w.watermark = 0;
+    em.w.sink_aborted = 0;
+    em.w.flushed = 0;
+    memset(&em.canon_names, 0, sizeof(em.canon_names));
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+        return 0;
+    }
+    /* #352: ONE bounded wet pass — no memo, no dry run (the emit-split
+     * table's 2p/1p column priced the dry pass at ~0.55x). Routes derive
+     * on demand (the streaming route's bytes); an oversized write sets
+     * oom and the pass keeps counting, so the exact size falls out of
+     * the same walk and the retry writes identical bytes. */
+    em.w.cap = cap;
+    em.w.grow = 1;
+    em.w.bounded = 1;
+    size_t wrote = yep_emit_run(&em, 0);
+    em.w.bounded = 0;
+    int fit = !em.w.oom && !em.w.unserializable;
+    size_t ret = fit ? wrote : em.w.len;
+    if (em.canon_names.sys != NULL) {
+        yep_nametab_free(&em.canon_names);
+    }
+    if (!fit) {
+        return ret; /* ret >= cap: buf holds a partial document */
+    }
+    buf[wrote] = '\0';
+    return ret; /* ret < cap: the document is complete */
+}
+
 YEPTRIS_API void yeptris_free(void* p) {
     free(p);
 }
@@ -112,6 +176,7 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.cap = 0;
     em.w.grow = 0;
     em.w.oom = 0;
+    em.w.bounded = 0;
     em.doc = (const yeptris_document*)handle;
     if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
         return NULL;
@@ -199,6 +264,7 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     em.w.cap = 0;
     em.w.grow = 0;
     em.w.oom = 0;
+    em.w.bounded = 0;
     em.doc = (const yeptris_document*)handle;
     if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
         return NULL;
@@ -260,6 +326,7 @@ YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len,
     em.w.cap = 0;
     em.w.grow = 0;
     em.w.oom = 0;
+    em.w.bounded = 0;
     em.doc = (const yeptris_document*)handle;
     if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
         return NULL;
@@ -326,6 +393,7 @@ char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
     em.w.cap = 0;
     em.w.grow = 0;
     em.w.oom = 0;
+    em.w.bounded = 0;
     em.doc = doc;
     em.w.p = NULL;
     em.w.last = 0;
@@ -389,6 +457,7 @@ char* yep_serialize_json_pretty_ex(const yeptris_document* doc, size_t* len, con
     em.w.cap = 0;
     em.w.grow = 0;
     em.w.oom = 0;
+    em.w.bounded = 0;
     em.doc = doc;
     em.w.p = NULL;
     em.w.last = 0;
@@ -459,6 +528,7 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     em.w.cap = 0;
     em.w.grow = 0;
     em.w.oom = 0;
+    em.w.bounded = 0;
     em.doc = (const yeptris_document*)handle;
     if (yep_doc_dom((yeptris_document*)handle) == NULL) { /* #342 lazy */
         return 0;

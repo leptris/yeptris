@@ -7,6 +7,7 @@
 
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include <yeptris.h>
 
@@ -232,6 +233,62 @@ TEST(Emit, SizingIsExact) {
     EXPECT_EQ(buf[need], '\0');
     /* short buffer: nothing written, need returned */
     EXPECT_EQ(yeptris_serialize_into(d, &buf[0], need - 1), need);
+    yeptris_document_free(d);
+}
+
+/* #352: the trusted route is ONE pass — bytes identical to the
+ * allocating serializer, and an undersized cap reports the exact size
+ * the retry needs (the retry writes identical bytes). */
+static void trusted_matches_serialize(const char* y) {
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(y, strlen(y), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t ref_len = 0;
+    char* ref = yeptris_serialize(d, &ref_len);
+    ASSERT_EQ(ref == nullptr, ref_len == 0);
+    std::vector<char> buf(ref_len + 2, 'Z');
+    size_t wrote = yeptris_serialize_into_trusted(d, NULL, &buf[0], ref_len + 1);
+    ASSERT_EQ(wrote, ref_len);
+    EXPECT_EQ(memcmp(&buf[0], ref, ref_len), 0);
+    EXPECT_EQ(buf[ref_len + 1], 'Z');
+    free(ref);
+    yeptris_document_free(d);
+}
+
+TEST(Emit, TrustedMatchesSerialize) {
+    const char* cases[] = {
+        "a: [1, 2, {b: c}]\nlit: |\n  text\n",
+        "a: &x {k: v}\nb: *x\n",
+        "---\na: 1\n---\nb: 2\n",
+        "a: >\n  fold me\n  please\n",
+        "key: h\xc3\xa9llo\n",
+        "",
+    };
+    for (const char* y : cases) {
+        trusted_matches_serialize(y);
+    }
+}
+
+TEST(Emit, TrustedOversizeReportsExactNeedAndRetryMatches) {
+    const char* y = "a: [1, 2, {b: c}]\nlit: |\n  text\nanchor: &x val\nref: *x\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(y, strlen(y), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t ref_len = 0;
+    char* ref = yeptris_serialize(d, &ref_len);
+    ASSERT_NE(ref, nullptr);
+    size_t need = yeptris_serialize_into(d, NULL, 0);
+    EXPECT_EQ(need, ref_len);
+    /* undersized: ret >= cap reports the exact need */
+    std::vector<char> buf(need + 2, 'Z');
+    size_t ret = yeptris_serialize_into_trusted(d, NULL, &buf[0], need);
+    EXPECT_EQ(ret, need);
+    /* the retry writes identical bytes */
+    size_t wrote = yeptris_serialize_into_trusted(d, NULL, &buf[0], ret + 1);
+    EXPECT_EQ(wrote, ref_len);
+    EXPECT_EQ(memcmp(&buf[0], ref, ref_len), 0);
+    EXPECT_EQ(buf[need + 1], 'Z');
+    free(ref);
     yeptris_document_free(d);
 }
 
