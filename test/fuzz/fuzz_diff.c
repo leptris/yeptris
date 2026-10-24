@@ -187,6 +187,18 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             j++;
             continue;
         }
+        /* the VALUE-position colon rider ("[?[] :b]", the nightly's
+         * round 46): after an explicit key's value, libyaml consumes
+         * the leading ':' of a plain-first ":b" as the pair separator
+         * while the suite pins the WHOLE ':b' as the plain (HM87
+         * class) -- libyaml's (value b) folds onto yeptris's
+         * (value :b). */
+        if (lens[i] >= 8 && strncmp(lines[i], "=VAL : ", 7) == 0 && ylens[j] == lens[i] + 1 &&
+            strncmp(ylines[j], "=VAL : :", 8) == 0 &&
+            memcmp(ylines[j] + 8, lines[i] + 7, lens[i] - 7) == 0) {
+            j++;
+            continue;
+        }
         /* the spilled twin pair ("[? ,:]", the nightly's round 45):
          * the ':' after the ',' that closed an explicit-key pair
          * spills a SECOND null:null pair in yeptris -- the suite's
@@ -194,16 +206,34 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
          * When the libyaml walk hits a closer but yeptris still holds
          * an exact duplicate of the null:null block, fold the
          * duplicate. */
-        int spill = 0;
         if (lens[i] > 0 && lines[i][0] == '-' && j + 3 < yn && ylens[j] == 4 &&
             strncmp(ylines[j], "+MAP", 4) == 0 && ylens[j + 1] == 7 &&
             strncmp(ylines[j + 1], "=VAL : ", 7) == 0 && ylens[j + 2] == 7 &&
             strncmp(ylines[j + 2], "=VAL : ", 7) == 0 && ylens[j + 3] == 4 &&
             strncmp(ylines[j + 3], "-MAP", 4) == 0) {
             j += 4; /* folded; the current closer now aligns */
-            spill = 1;
+        } else if (lens[i] == 4 && strncmp(lines[i], "-MAP", 4) == 0 && j + 1 < yn &&
+                   ylens[j] == 7 && strncmp(ylines[j], "=VAL : ", 7) == 0) {
+            /* the in-map null-pair spill ("[?[] :b,]"): the trailing
+             * ',' spills a second implicit member inside the SAME map
+             * (the r45 law at pair granularity); libyaml ends the
+             * map. The spill is a full null:null PAIR or, when the
+             * closer arrives before any value, a lone null KEY line.
+             * Fold it; the closer aligns below. */
+            if (ylens[j + 1] == 7 && strncmp(ylines[j + 1], "=VAL : ", 7) == 0) {
+                j += 2; /* the pair */
+            } else if (ylens[j + 1] == 4 && strncmp(ylines[j + 1], "-MAP", 4) == 0) {
+                j += 1; /* the lone key */
+            } else {
+                free(lines);
+                free(lens);
+                free(ylines);
+                free(ylens);
+                return 0;
+            }
         }
-        if (!spill && (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0)) {
+        /* a fold leaves the closer itself aligned: run the equality */
+        if (lens[i] != ylens[j] || memcmp(lines[i], ylines[j], lens[i]) != 0) {
             free(lines);
             free(lens);
             free(ylines);
@@ -213,11 +243,11 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
         j++;
     }
     int known = j == yn; /* trailing yeptris lines: not the ?-family shape */
-    free(lines);
-    free(lens);
-    free(ylines);
-    free(ylens);
-    return known;
+free(lines);
+free(lens);
+free(ylines);
+free(ylens);
+return known;
 }
 
 /* True when the dumps differ ONLY by a flow explicit key that STARTS
