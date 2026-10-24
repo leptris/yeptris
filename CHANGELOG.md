@@ -6,6 +6,11 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+
+- **fuzz: the raw-NEL line-break carry** — the nightly's round 47 (crash-48e46b87, 16 bytes: `-'{\n"<<o\y\r<NEL>\t\r`). YAML 1.1 (libyaml) counts NEL (U+0085) as a line break — CR+NEL inside a double-quoted scalar normalizes to one `\n` — while YAML 1.2 drops NEL from the break set, so yeptris folds the CR to the flow-fold space. The two readings are the schema difference: the carry walks both dumps with escape-aware lookahead (a real newline renders as the two-char `\n`; the fold space as one ` `) and carries when every difference is exactly that pair, gated on the input containing the raw NEL bytes. Gates: r47 + every prior round's shape carry; ctest 575/575; snapshot + crash-seed verdict sets identical to the predecessor. Seed `r47-nel-break-law.bin`.
+
 ## [0.6.40] - 2026-10-24
 ### Changed
 
