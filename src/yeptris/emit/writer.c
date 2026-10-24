@@ -120,17 +120,21 @@ static void wr_put(yep_writer* w, const char* p, uint32_t n) {
 /* #739 lane 1: refill the writable reservation. The grow and flush
  * checks move from every byte to every refill; the watermark law is
  * unchanged in spirit (append-only output — any crossing is a safe
- * cut, a sink just sees chunks up to one reserve past the mark). */
+ * cut, a sink just sees chunks up to one reserve past the mark).
+ * ONLY the growing routes hold a reservation: the caller-buffer and
+ * trusted-count routes keep cap bookkeeping that is not the writer's
+ * to reason about (several set cap=0), so their writes stay exactly
+ * the old per-call trust. */
 static void wr_reserve(yep_writer* w, size_t need) {
+    if (!w->grow || w->bounded) {
+        w->reserve = 0;
+        return;
+    }
     wr_maybe_flush(w);
     if (w->oom) {
         return;
     }
-    if (w->grow && w->len + need + 1 > w->cap) { /* +1: the terminator */
-        if (w->bounded) {
-            w->oom = 1; /* keep counting: the trusted caller reads the size */
-            return;
-        }
+    if (w->len + need + 1 > w->cap) { /* +1: the terminator */
         wr_grow(w, need);
         if (w->oom) {
             return;
@@ -157,7 +161,9 @@ static void wr_byte(yep_writer* w, char c) {
             return;
         }
     }
-    w->reserve--;
+    if (w->reserve > 0) {
+        w->reserve--; /* grow=0 routes keep it at 0: per-call trust */
+    }
     w->p[w->len++] = c;
 }
 
