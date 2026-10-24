@@ -6,6 +6,11 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+
+- **fuzz: the root-block carry's header law rides a trailing comment** — the nightly's round 55 (crash-5b569810, 59 bytes -> 5: `| #\n#`). In a block scalar every line is literal text, so the `#`-led line is CONTENT (the suite's DK3J law, the #683 carry) — but the carry's header detection required END OF LINE after the indicator/blanks, and the soup's header carries a trailing COMMENT (`| #`), so the walk never entered block mode and the col-0 content line lost its indent fix. The header law now accepts the comment (glued or after blanks — libyaml's own header law, the #650/#662 families); the transform indents the content and libyaml agrees. Gates: r55 + all prior rounds' artifacts carry (r44 = the lenient-parse split; r54 = the open alias-key engine bug); snapshot verdict set byte-identical; ctest 579/579; parse + roundtrip corpora (~29k inputs) walk clean under ASan. Seed `parse/r55-header-comment-root-block.bin`.
+
 ## [0.6.42] - 2026-10-24
 ### Changed
 
