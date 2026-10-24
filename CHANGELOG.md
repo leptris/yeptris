@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.40] - 2026-10-24
 ### Changed
 
 - **fuzz: the qflow walk folds the value-position colon rider and the in-map spill** — the nightly's round 46 (crash-d91c7ad7, 10 bytes: `[?[] :b,]`). Two suite-pinned readings compose: after an explicit key's value, libyaml consumes the leading `:` of a plain-first `:b` as the pair separator while the suite keeps the WHOLE `:b` as the plain (HM87 class) — libyaml's (value `b`) folds onto yeptris's (value `:b`); and the trailing `,` spills a second implicit member inside the SAME map (the r45 law at pair granularity) — a full null:null pair or, when the closer arrives before any value, a lone null KEY line. The spill fold falls through to the closer's own equality (the r45 alignment lesson); the bypass form that skipped it was the first cut's bug. Gates: r46 + every prior round's shape carry; ctest 575/575; snapshot + crash-seed verdict sets identical to the predecessor. Seed `r46-explicit-key-colon-plain.bin`.
