@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.6.42] - 2026-10-24
 ### Changed
 
+- **emit: the writer's grow/flush checks run per refill, not per byte** — the #739 lane-1 writer cut (issue #739; the slice-one profile's wr_byte lane, 18%). A `reserve` on the writer guarantees writable bytes at `p + len`; `wr_byte`/`wr_put` take the grow/flush path once per refill instead of once per byte, and the watermark law is unchanged in spirit (append-only output — a sink just sees chunks up to one reserve past the mark). The fused member write keeps the reservation honest. One-route serialize (json-users DOM, 48.4 MB output): 211 -> 280 MB/s (+33%). Gates: ctest 579/579; 15,113 parse seeds + 14,332 roundtrip seeds (byte-stability) walk clean; pin leaks clean.
+
 - **fuzz: the flow-'?' carry keeps the indicator when spacing it out** — the nightly's round 53 (crash-52c8d1ef, 40 bytes -> 7: `{?"\n":}`). The adjacent carry's transform DROPPED the `?` (`{?"a":x}` -> `{ "a":x}`) — libyaml-neutral only while the pair's value is non-empty; with an EMPTY value the drop turned the explicit key into a bare member and libyaml errored ("did not find expected node content"), so the carry declined its own family. The transform now inserts a space AFTER the `?` — `?`+blank is the same explicit-key token to libyaml, so its dump stays unchanged for the same-line shapes too, and the empty-value form (`{? "\n":}`) parses to the identical stream. Gates: r53 + all prior rounds' artifacts carry; snapshot verdict set byte-identical (405 inputs); ctest 579/579; parse + roundtrip corpora (~29k inputs) walk clean under ASan. Seed `parse/r53-qfold-quoted-key.bin`.
 
 ## [0.6.41] - 2026-10-24

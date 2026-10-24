@@ -66,6 +66,8 @@ static void wr_col_update(yep_writer* w, const char* p, uint32_t n) {
     w->col += (int)n;
 }
 
+static void wr_reserve(yep_writer* w, size_t need);
+
 static void wr_grow(yep_writer* w, size_t need) {
     if (w->oom || w->p == NULL) {
         w->oom = w->p == NULL;
@@ -98,20 +100,43 @@ static void wr_put(yep_writer* w, const char* p, uint32_t n) {
      * (len + n == cap) put that NUL one byte past the buffer — the
      * first byte of the next heap block's header (the #182 flake:
      * corrupt deterministic, detected later, timing-varying) */
-    if (w->grow && w->len + n + 1 > w->cap) {
-        if (w->bounded) {
-            w->oom = 1; /* keep counting: the trusted caller reads the size */
-        } else {
-            wr_grow(w, n);
+    if (w->reserve < (size_t)n) {
+        wr_reserve(w, n);
+        if (w->oom) {
+            w->len += n; /* keep counting: the caller fails on oom */
+            return;
         }
     }
-    if (w->oom) {
-        w->len += n; /* keep counting: the caller fails on oom */
-        return;
+    if ((size_t)n <= w->reserve) {
+        w->reserve -= n;
+    } else {
+        w->reserve = 0; /* grow=0 trusts the count: the write rides past
+                         * the bookkeeping exactly as before */
     }
     memcpy(w->p + w->len, p, n);
     w->len += n;
+}
+
+/* #739 lane 1: refill the writable reservation. The grow and flush
+ * checks move from every byte to every refill; the watermark law is
+ * unchanged in spirit (append-only output — any crossing is a safe
+ * cut, a sink just sees chunks up to one reserve past the mark). */
+static void wr_reserve(yep_writer* w, size_t need) {
     wr_maybe_flush(w);
+    if (w->oom) {
+        return;
+    }
+    if (w->grow && w->len + need + 1 > w->cap) { /* +1: the terminator */
+        if (w->bounded) {
+            w->oom = 1; /* keep counting: the trusted caller reads the size */
+            return;
+        }
+        wr_grow(w, need);
+        if (w->oom) {
+            return;
+        }
+    }
+    w->reserve = w->cap - w->len - 1;
 }
 
 static void wr_byte(yep_writer* w, char c) {
@@ -125,20 +150,15 @@ static void wr_byte(yep_writer* w, char c) {
         w->len++;
         return;
     }
-    if (w->grow && w->len + 2 > w->cap) { /* +1 write, +1 terminator */
-        if (w->bounded) {
-            w->oom = 1; /* keep counting: the trusted caller reads the size */
-        } else {
-            wr_grow(w, 1);
+    if (w->reserve == 0) {
+        wr_reserve(w, 1);
+        if (w->oom) {
+            w->len++;
+            return;
         }
     }
-    if (w->oom) {
-        w->len++;
-        return;
-    }
-    w->p[w->len] = c;
-    w->len++;
-    wr_maybe_flush(w);
+    w->reserve--;
+    w->p[w->len++] = c;
 }
 
 static void wr_indent(yep_writer* w, int depth) {
@@ -1101,6 +1121,9 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
                     if (w->oom) {
                         w->len += total; /* keep counting: the caller fails on oom */
                     } else {
+                        /* the fused write bypasses wr_put/wr_byte: keep
+                         * the reservation honest (the #739 lane-1 law) */
+                        w->reserve = (size_t)total <= w->reserve ? w->reserve - (size_t)total : 0;
                         char* q = w->p + w->len;
                         if (nl) {
                             *q++ = '\n';
@@ -1360,6 +1383,7 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
     const yep_dom* d = em->doc->dom;
     w->dry = dry;
     w->len = 0;
+    w->reserve = 0;
     w->last = 0;
     w->force_flow = 0;
     w->flushed = 0;
