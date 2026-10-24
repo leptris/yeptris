@@ -422,6 +422,55 @@ static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const cha
  * dump of THAT equals yeptris's dump of the original, the divergence
  * is exactly this family. The full quote-aware normalization slice
  * (the front end cannot see quote state) is a filed follow-up. */
+/* True when the difference is the raw-NEL line-break law (the
+ * nightly's round 47, crash-48e46b87: CR+NEL inside a double-quoted
+ * scalar): YAML 1.1 (libyaml) counts NEL (U+0085) as a line break --
+ * CR+NEL normalizes to one '\n' -- while YAML 1.2 drops NEL from the
+ * break set, so yeptris folds the CR to the flow-fold space. The two
+ * readings are the schema difference: equal-length dumps whose every
+ * differing byte is exactly ' ' vs '\n'. */
+static int yd_nel_break_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                   const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    int has_nel = 0;
+    for (size_t i = 0; i + 1 < size; i++) {
+        if (data[i] == 0xC2 && data[i + 1] == 0x85) {
+            has_nel = 1;
+            break;
+        }
+    }
+    if (!has_nel) {
+        return 0;
+    }
+    /* the dumps ESCAPE: a real newline renders as the two chars "\n"
+     * while yeptris's fold space renders as one ' ' -- align with
+     * lookahead on the escaped form */
+    int diffs = 0;
+    for (const char* a = ydump; *a;) {
+        if (*a == *ldump) {
+            a++;
+            ldump++;
+            continue;
+        }
+        if (a[0] == ' ' && ldump[0] == '\\' && ldump[1] == 'n') {
+            a += 1;
+            ldump += 2;
+            diffs++;
+            continue;
+        }
+        if (a[0] == '\\' && a[1] == 'n' && ldump[0] == ' ') {
+            a += 2;
+            ldump += 1;
+            diffs++;
+            continue;
+        }
+        return 0;
+    }
+    return diffs > 0;
+}
+
 static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL) {
         return 0;
@@ -1797,6 +1846,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_qflow_adjacent_divergence(data, size, ydump, ldump) ||
          yd_qflow_colon_divergence(data, size, ydump, ldump) ||
          yd_bom_content_divergence(ydump, ldump) || yd_breaknorm_divergence(data, size, ydump) ||
+         yd_nel_break_divergence(data, size, ydump, ldump) ||
          yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
          yd_clip_breakless_divergence(data, size, ydump) ||
          yd_ps_space_divergence(data, size, ydump, ldump) ||
