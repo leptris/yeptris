@@ -243,11 +243,11 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
         j++;
     }
     int known = j == yn; /* trailing yeptris lines: not the ?-family shape */
-free(lines);
-free(lens);
-free(ylines);
-free(ylens);
-return known;
+    free(lines);
+    free(lens);
+    free(ylines);
+    free(ylens);
+    return known;
 }
 
 /* True when the dumps differ ONLY by a flow explicit key that STARTS
