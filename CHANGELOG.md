@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.41] - 2026-10-24
 ### Changed
 
 - **fuzz: the qflow walk's value-side pair fold requires a non-empty line** — the nightly's round 49 (crash-27edc507, 10 bytes: `{\n?(\n,\n?\n}`). The key-position `?-`plain rider (`?(` -> libyaml's explicit key `(`, the suite's plain-first law) was ALREADY covered by the key-line twin arm — but the r48 value-side pair fold misfired in front of it: when libyaml's OWN line is an EMPTY value, the arm's "yeptris two ahead matches libyaml's line" condition matched an empty yeptris line too, folding yeptris's REAL pairs and desynchronizing the walk. The arm now requires libyaml's line to carry content (`lens[i] > 7`) — the spill fold only makes sense in front of one. Gates: r49 + every prior round's shape carry; ctest 575/575; snapshot + crash-seed verdict sets identical to the predecessor. Seed `r49-explicit-key-qmark-plain.bin`.
