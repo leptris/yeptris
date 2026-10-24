@@ -1207,10 +1207,18 @@ static yep_view e_resolve_tag_raw(yep_engine* e, yep_view tag) {
     if (tag.len == 1 && tag.p[0] == '!') {
         return tag;
     }
-    /* longest matching handle wins */
+    /* longest matching handle wins; a redefined PRIMARY ('%TAG ! ...')
+     * cannot capture a '!!'-led tag — the secondary handle resolves
+     * through its own entry or the fixed tag:yaml.org,2002: default
+     * (spec 6.8.2.2; libyaml: "%TAG ! !p/" + "!!i" is
+     * tag:yaml.org,2002:i, the nightly's round 52, crash-763bb852) */
+    int secondary = tag.len >= 2 && tag.p[0] == '!' && tag.p[1] == '!';
     int best = -1;
     uint32_t best_len = 0;
     for (int i = 0; i < e->tagmap_n; i++) {
+        if (secondary && e->tagmap[i].handle.len == 1) {
+            continue;
+        }
         if (tag.len >= e->tagmap[i].handle.len && e->tagmap[i].handle.len > best_len &&
             memcmp(tag.p, e->tagmap[i].handle.p, e->tagmap[i].handle.len) == 0) {
             best = i;
