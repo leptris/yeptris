@@ -126,11 +126,17 @@ static void wr_put(yep_writer* w, const char* p, uint32_t n) {
  * to reason about (several set cap=0), so their writes stay exactly
  * the old per-call trust. */
 static void wr_reserve(yep_writer* w, size_t need) {
+    /* the FLUSH runs for every route: the fixed-window streaming route
+     * (grow=0) has no reservation, so this refill path is its ONLY
+     * flush point -- skipping it let len ride to cap and the next
+     * write landed past the window (ASan: heap-buffer-overflow WRITE
+     * of size 2 exactly 0 bytes after the 128K region; ubuntu's
+     * allocator freed-corrupted, macOS's slack absorbed it). */
+    wr_maybe_flush(w);
     if (!w->grow || w->bounded) {
         w->reserve = 0;
         return;
     }
-    wr_maybe_flush(w);
     if (w->oom) {
         return;
     }
