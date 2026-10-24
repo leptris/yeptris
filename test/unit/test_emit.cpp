@@ -249,7 +249,9 @@ static void trusted_matches_serialize(const char* y) {
     std::vector<char> buf(ref_len + 2, 'Z');
     size_t wrote = yeptris_serialize_into_trusted(d, NULL, &buf[0], ref_len + 1);
     ASSERT_EQ(wrote, ref_len);
-    EXPECT_EQ(memcmp(&buf[0], ref, ref_len), 0);
+    if (ref != nullptr) {
+        EXPECT_EQ(memcmp(&buf[0], ref, ref_len), 0);
+    }
     EXPECT_EQ(buf[ref_len + 1], 'Z');
     free(ref);
     yeptris_document_free(d);
@@ -257,12 +259,8 @@ static void trusted_matches_serialize(const char* y) {
 
 TEST(Emit, TrustedMatchesSerialize) {
     const char* cases[] = {
-        "a: [1, 2, {b: c}]\nlit: |\n  text\n",
-        "a: &x {k: v}\nb: *x\n",
-        "---\na: 1\n---\nb: 2\n",
-        "a: >\n  fold me\n  please\n",
-        "key: h\xc3\xa9llo\n",
-        "",
+        "a: [1, 2, {b: c}]\nlit: |\n  text\n", "a: &x {k: v}\nb: *x\n", "---\na: 1\n---\nb: 2\n",
+        "a: >\n  fold me\n  please\n",         "key: h\xc3\xa9llo\n",   "",
     };
     for (const char* y : cases) {
         trusted_matches_serialize(y);
