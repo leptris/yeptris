@@ -55,6 +55,19 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument doc, const yeptris_emit_o
  * returned. Returns 0 on a NULL document. */
 YEPTRIS_API size_t yeptris_serialize_into(YeptrisDocument doc, char* buf, size_t cap);
 
+/* Trusted-cap emission (#352): ONE write pass into the caller's
+ * fixed buffer — no sizing pass, no per-call allocation. Returns the
+ * byte count written when ret < cap (the document is complete and
+ * NUL-terminated at buf[ret]); when ret >= cap the output did not
+ * fit — buf holds a partial document and ret is the exact total the
+ * document needs (re-call with cap >= ret + 1; the retry writes
+ * identical bytes). opts == NULL selects the fidelity mode. Returns 0
+ * on a NULL document or buffer (use yeptris_serialize_into for the
+ * measure-only form). */
+YEPTRIS_API size_t yeptris_serialize_into_trusted(YeptrisDocument doc,
+                                                  const yeptris_emit_options* opts, char* buf,
+                                                  size_t cap);
+
 /* Streaming emission (13C): bytes are delivered in chunks to sink as
  * the walk proceeds — memory bounded by the largest scalar, never the
  * document. Returns the total byte count, or 0 on a NULL argument or

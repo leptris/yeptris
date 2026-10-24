@@ -99,7 +99,11 @@ static void wr_put(yep_writer* w, const char* p, uint32_t n) {
      * first byte of the next heap block's header (the #182 flake:
      * corrupt deterministic, detected later, timing-varying) */
     if (w->grow && w->len + n + 1 > w->cap) {
-        wr_grow(w, n);
+        if (w->bounded) {
+            w->oom = 1; /* keep counting: the trusted caller reads the size */
+        } else {
+            wr_grow(w, n);
+        }
     }
     if (w->oom) {
         w->len += n; /* keep counting: the caller fails on oom */
@@ -122,7 +126,11 @@ static void wr_byte(yep_writer* w, char c) {
         return;
     }
     if (w->grow && w->len + 2 > w->cap) { /* +1 write, +1 terminator */
-        wr_grow(w, 1);
+        if (w->bounded) {
+            w->oom = 1; /* keep counting: the trusted caller reads the size */
+        } else {
+            wr_grow(w, 1);
+        }
     }
     if (w->oom) {
         w->len++;
@@ -1081,7 +1089,11 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
                     w->len += total;
                 } else {
                     if (w->grow && w->len + total + 1 > w->cap) {
-                        wr_grow(w, total);
+                        if (w->bounded) {
+                            w->oom = 1; /* keep counting: the trusted caller reads the size */
+                        } else {
+                            wr_grow(w, total);
+                        }
                     }
                     if (w->oom) {
                         w->len += total; /* keep counting: the caller fails on oom */

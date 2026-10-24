@@ -2983,3 +2983,31 @@ STRICT walk; the literal path wants a first-byte dispatch table
 instead of the serialized cmp chain. Declared structural for the
 byte-at-a-time loop itself — no arm micro-cut inside it will close a
 0.61 -> 1.0 gap; the gap is the loop DESIGN on this ISA.
+
+## 2026-10-24 — `yeptris_serialize_into_trusted`: the 2p/1p verdict applied to the fixed-buffer lane (WIN, ships 0.6.39)
+
+The emit-split table's 2p/1p column (0.55-0.59x everywhere) priced
+`serialize_into`'s dry exact-sizing pass at ~45% of every call. The
+trusted route removes the pass instead of optimizing it: ONE bounded
+wet walk into the caller's fixed buffer — no memo, no sizing pass,
+zero per-call allocation. Routes derive on demand (the streaming
+route's bytes); an oversized write sets the writer's oom and the walk
+KEEPS COUNTING, so the exact size falls out of the same pass and the
+retry (cap >= ret+1) writes identical bytes — decisions read only
+col/last/len state, never stored bytes, so the counting pass is
+decision-identical to the storing one. Return contract is
+range-disambiguated: ret < cap = complete (NUL-terminated); ret >=
+cap = partial, ret is the needed size.
+
+Measured (M1 Max, medium.yaml 200 KB, 500 rounds): into (two-pass)
+1.066 ms -> trusted 0.602 ms (**1.77x**), matching the allocating
+serialize (0.608 ms) with no allocation. `serialize_into` itself is
+UNTOUCHED (its "nothing written on a short buffer" contract stands;
+the dry pass remains its exact-sizing mechanism). The emit-split
+table's into-buffer lane is expected to jump to ~1.0 of serialize on
+the next Benchmark run — that column now reads as the trusted route's
+adoption, not a regression of the dry lane.
+
+Traps: the writer's fields initialize per entry — a new yep_writer
+field MUST be zeroed at every em.w init site or stack garbage arms it
+(the first round's Mutate/BulkBuild/Limits failures were bounded=garbage).
