@@ -1693,6 +1693,15 @@ static int yd_qflow_adjacent_divergence(const uint8_t* data, size_t size, const 
     int found = 0;
     for (size_t i = 0; i < size; i++) {
         if (data[i] == '?' && i + 1 < size && (data[i + 1] == '"' || data[i + 1] == '\'')) {
+            /* KEEP the '?' and space it out ('{?"a":x}' -> '{? "a":x}'):
+             * libyaml reads the flow '?' as the explicit-key indicator
+             * either way, so its dump is unchanged -- the old DROP form
+             * stayed neutral only while the pair's value was non-empty;
+             * with an EMPTY value the drop turned the explicit key into
+             * a bare member and libyaml errored ("did not find expected
+             * node content") -- the nightly's round 53, crash-52c8d1ef,
+             * '{?"\n":}'. */
+            sub[o++] = '?';
             sub[o++] = ' ';
             found = 1;
         } else {
