@@ -331,20 +331,33 @@ static void emit_dq_json(yep_writer* w, const char* p, uint32_t n) {
         NULL, "\\f", "\\r", NULL, NULL, NULL, NULL, NULL, NULL,  NULL,  NULL,
         NULL, NULL,  NULL,  NULL, NULL, NULL, NULL, NULL, NULL,  NULL,
     };
+    static const char hd[] = "0123456789abcdef";
+    /* run-batched (the #352 emit_dq shape): clean spans ride one
+     * wr_put each — per-byte wr_byte calls were 14% of the json
+     * write lane's leaf samples (yeptris#739) */
+    uint32_t run = 0;
     for (uint32_t i = 0; i < n; i++) {
         unsigned char c = (unsigned char)p[i];
+        if (c >= 0x20 && c != '"' && c != '\\') {
+            run++;
+            continue;
+        }
+        if (run) {
+            wr_put(w, p + i - run, run);
+            run = 0;
+        }
         if (c < 32 && named[c] != NULL) {
             wr_put(w, named[c], 2);
         } else if (c == '"' || c == '\\') {
             wr_byte(w, '\\');
             wr_byte(w, (char)c);
-        } else if (c < 0x20) {
-            static const char hd[] = "0123456789abcdef";
+        } else {
             char hex[6] = {'\\', 'u', '0', '0', hd[(c >> 4) & 0xf], hd[c & 0xf]};
             wr_put(w, hex, 6);
-        } else {
-            wr_byte(w, (char)c);
         }
+    }
+    if (run) {
+        wr_put(w, p + n - run, run);
     }
     wr_byte(w, '"');
 }
