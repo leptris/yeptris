@@ -1186,8 +1186,14 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                  * CONTENT (only "- "/"? " are constructs) -- the line's
                  * plain opens HERE, so a later blank-followed '&' on
                  * the line stays content (crash-3f2e419b: the
-                 * "-- !!map---!, &----?x- -" key line) */
+                 * "-- !!map---!, &----?x- -" key line). node_pos drops
+                 * with it: the law left it at the line-start 1 and a
+                 * later '[' re-armed flow mid-plain -- the '&'-after-
+                 * comma then split a PLAIN's bytes and the dumps
+                 * diverged by one space (the nightly's round 57,
+                 * crash-bc242984, "-- [!!, &----?x- -") */
                 plain_open = 1;
+                node_pos = 0;
             }
         } else if (c == '[' || c == '{') {
             /* a flow opener arms only at NODE position; mid-plain it
@@ -1271,7 +1277,12 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
              * "-- !!map---!, &----?x- -" — the ',' marked a node
              * position that is mid-plain, the split corrupted the
              * scalar and the carry declined its own family) */
-            node_pos = (c == ':' || c == '?' || (c == '-' && only_dash));
+            /* the plain law wins: a '-'/'?'-led CONTENT line (the -x
+             * law just opened the plain) is not node position -- the
+             * dash clause re-raised node_pos AFTER the -x arm cleared
+             * it and a mid-plain '[' re-armed flow (the nightly's
+             * round 57, crash-bc242984) */
+            node_pos = !plain_open && (c == ':' || c == '?' || (c == '-' && only_dash));
             if (c == '-' && only_dash && i + 2 < size && data[i + 1] == '-' && data[i + 2] == '-' &&
                 (i + 3 >= size || data[i + 3] == ' ' || data[i + 3] == '\t' ||
                  data[i + 3] == '\n' || data[i + 3] == '\r')) {
@@ -1403,8 +1414,10 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             if ((c == '-' || c == '?') && i + 1 < size && data[i + 1] != ' ' &&
                 data[i + 1] != '\t' && data[i + 1] != '\n' && data[i + 1] != '\r' && !plain_open2 &&
                 (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
-                /* the gate's "-x"/"?x" content law again (crash-3f2e419b) */
+                /* the gate's "-x"/"?x" content law again (crash-3f2e419b;
+                 * node_pos drops with it -- the round-57 finding) */
                 plain_open2 = 1;
+                node_pos2 = 0;
             }
         } else if (c == '[' || c == '{') {
             if (node_pos2) {
@@ -1502,7 +1515,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             node_pos2 = (plain_open2 || bs_open2) ? 0 : 1;
             only_dash2 = 1;
         } else if (c != ' ' && c != '\t') {
-            node_pos2 = (c == ':' || c == '?' || (c == '-' && only_dash2));
+            node_pos2 = !plain_open2 && (c == ':' || c == '?' || (c == '-' && only_dash2));
             if (c == '-' && only_dash2 && i + 2 < size && data[i + 1] == '-' &&
                 data[i + 2] == '-' &&
                 (i + 3 >= size || data[i + 3] == ' ' || data[i + 3] == '\t' ||
