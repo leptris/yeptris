@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.44] - 2026-10-25
 ### Changed
 
 - **perf(#739): the json write lane — one-pass serialize, run-batched + SWAR-scanned strings, and the json tree walker** — the serialize lane ran the emitter twice (dry exact-sizing + wet write; the #352 slice-2 shape), wrote every string byte through per-byte calls, and walked the yaml dispatcher's ~15 decision layers per node. Now: ONE wet pass into a growable buffer, run-batched + SWAR escape-scans (8 bytes/round), and a dedicated `emit_json_value` walker (one dispatch per node). Measured on the canonical medium fixture: serialize 16 MB/s -> 221 MB/s (14.2x), the generation leg 66 -> 783 ips (11.9x), byte-identical output (fixed-point harness + shape parity + full battery + conformance).
