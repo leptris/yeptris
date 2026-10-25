@@ -87,6 +87,52 @@ static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const 
     free(ydump2);
     free(ldump2);
     free(sub);
+    if (known) {
+        return 1;
+    }
+    /* the INDENT twin (the nightly's round 63, crash-c0850abf's
+     * sibling: "a:\na:\n<BOM> a:\na:\n<BOM>.b:\n\n" — BOMs as MAP
+     * KEYS): libyaml strips a line-start BOM but still counts it for
+     * indentation, so "<BOM>.b:" lands INDENTED (a nested map) while
+     * yeptris's BOM-as-content keeps the key at column 0. The removal
+     * probe above loses the nesting; the replacement probe rides it —
+     * each line-start BOM becomes ONE space, and both engines' dumps
+     * of that must equal libyaml's original. */
+    unsigned char* sub2 = malloc(size + 1);
+    if (sub2 == NULL) {
+        return 0;
+    }
+    o = 0;
+    line_start = 1;
+    for (size_t i = 0; i < size;) {
+        if (line_start && i + 2 < size && data[i] == 0xEF && data[i + 1] == 0xBB &&
+            data[i + 2] == 0xBF) {
+            i += 3;
+            sub2[o++] = ' ';
+            continue;
+        }
+        sub2[o++] = data[i];
+        if (data[i] == '\n') {
+            line_start = 1;
+        } else if (data[i] == '\r') {
+            if (i + 1 < size && data[i + 1] == '\n') {
+                sub2[o++] = data[++i];
+            }
+            line_start = 1;
+        } else {
+            line_start = 0;
+        }
+        i++;
+    }
+    yok2 = 0;
+    ydump2 = yd_sem_dump((const char*)sub2, o, &yok2);
+    lok2 = 0;
+    ldump2 = yd_libyaml_dump((const char*)sub2, o, &lok2);
+    known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
+             strcmp(ldump2, ldump) == 0);
+    free(ydump2);
+    free(ldump2);
+    free(sub2);
     return known;
 }
 
