@@ -385,6 +385,83 @@ static int yd_qcolon_walk(const char* ldump, const char* ydump2) {
     return j == yn;
 }
 
+/* True when the difference is the flow-'?' + direct-colon family
+ * (the nightly's round 58, crash-40e24e7f: "{\r?:\":b\"}" — the CR is
+ * not load-bearing, the one-line {?:"b"} fires identically):
+ * libyaml's scanner makes '?' a KEY token even glued to its follower,
+ * and the ':' immediately after then reads as the VALUE indicator of
+ * an implicit-empty key, so {?:"b"} parses as {~: b}; yeptris's pinned
+ * plain reading (HM87/652Z) keeps '?' as plain content, so the whole
+ * token is the KEY and the value is empty. The probe rewrites "?:"
+ * into the quoted-empty-key form both engines read identically
+ * (libyaml REJECTS the bare "{ :X}" empty implicit key; yeptris reads
+ * the ':' as plain content there, so ':' alone cannot carry the
+ * rewrite) and requires both engines' dumps of it to equal libyaml's
+ * original. */
+static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                              const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 5 || size > 8192) {
+        return 0;
+    }
+    size_t qc = (size_t)-1;
+    int depth = 0;
+    int quote = 0;
+    for (size_t i = 0; i + 2 < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\') {
+                i++;
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            continue;
+        }
+        if (c == '\'') {
+            quote = '\'';
+            continue;
+        }
+        if (c == '"') {
+            quote = '"';
+            continue;
+        }
+        if (c == '[' || c == '{') {
+            depth++;
+        } else if (c == ']' || c == '}') {
+            depth--;
+        } else if (c == '?' && depth > 0 && data[i + 1] == ':' &&
+                   (data[i + 2] == '"' || data[i + 2] == '\'')) {
+            qc = i;
+            break;
+        }
+    }
+    if (qc == (size_t)-1) {
+        return 0;
+    }
+    char* sub = malloc(size + 2);
+    if (sub == NULL) {
+        return 0;
+    }
+    memcpy(sub, data, qc);
+    sub[qc] = '"';
+    sub[qc + 1] = '"';
+    sub[qc + 2] = data[qc + 1]; /* the ':' */
+    sub[qc + 3] = ' ';
+    memcpy(sub + qc + 4, data + qc + 2, size - qc - 2);
+    size_t subn = size + 2;
+    int yok2 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, subn, &yok2);
+    int lok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, subn, &lok2);
+    int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
+                 strcmp(ldump2, ldump) == 0);
+    free(ydump2);
+    free(ldump2);
+    free(sub);
+    return known;
+}
+
 static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
                                      const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0) {
@@ -1958,6 +2035,7 @@ static void probe_one(const uint8_t* data, size_t size) {
         (yd_qflow_divergence(ydump, ldump) ||
          yd_qflow_adjacent_divergence(data, size, ydump, ldump) ||
          yd_qflow_colon_divergence(data, size, ydump, ldump) ||
+         yd_qflow_question_colon_divergence(data, size, ydump, ldump) ||
          yd_bom_content_divergence(ydump, ldump) || yd_breaknorm_divergence(data, size, ydump) ||
          yd_nel_break_divergence(data, size, ydump, ldump) ||
          yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
