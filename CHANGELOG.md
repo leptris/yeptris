@@ -6,6 +6,10 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+### Changed
+
+- **fuzz: the plain-LS/PS fold law rides the comparator** — the nightly's round 56 (crash-ecd39c56, 28 bytes: `k: Y#<LS> 'c<PT>d'b"\nj: '<PS>d'`). In PLAIN scalars the engines break differently: yeptris (YAML 1.2, b-as-line-feed) folds an LS/PS break exactly like a newline (one break -> a fold space), while libyaml's READ_LINE joins an LS/PS break RAW into the content (its fold law only folds breaks that start with `\n`), so the blanks that followed it vanish (`scanner.c` READ_LINE: `LS|PS -> LS|PS`). The quoted sibling was already carried (`yd_ps_space_divergence`); this is the plain sibling — libyaml's dump must equal yeptris's with every fold-space that faces a raw LS/PS triple consumed as that triple. The r56 shape also needed BOTH lines because the old whole-input substitution broke the quoted PS (kept raw by both engines). Companion fix in the same comparator: `yd_qflow_adjacent_divergence`'s space-the-`?` transform allocated `size + 1` but writes two bytes per `?`+quote hit — two hits overflowed the buffer (ASan write, local corpus `|\r\r#?????'#??'#`); sized to the real bound now, and the header-glue transform's per-line growth likewise. Gates: r56 min + all prior rounds' min cores carry (r44 = the lenient-parse split); roundtrip corpus 14332 clean and the 15k parse corpus walks clean under ASan+libFuzzer with the rebuilt harness (the earlier "clean" walk had ridden a stale binary). Seed `parse/r56-plain-lsps-fold.bin`.
 ## [0.6.44] - 2026-10-25
 ### Changed
 
