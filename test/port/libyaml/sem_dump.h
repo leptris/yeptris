@@ -20,7 +20,11 @@ static int yd_sem_event(void* ctx, const yep_event* ev) {
     char** out = (char**)ctx;
     yd_event y;
     memset(&y, 0, sizeof(y));
-    char abuf[256], tbuf[512];
+    /* the harness input cap is 8192, so a props buffer sized to it
+     * never truncates: a tag past the old 512 was DROPPED here while
+     * the libyaml side truncated its copy — a manufactured divergence
+     * (the nightly's round 59, crash-dc4d99f4) */
+    char abuf[2048], tbuf[8192];
     const char* a = NULL;
     const char* t = NULL;
     if (ev->anchor.len > 0 && ev->anchor.len < sizeof(abuf)) {

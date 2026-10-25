@@ -87,7 +87,7 @@ static void yd_escape_append(const char* v, size_t n, char* out, size_t cap, siz
 /* Renders one event line into out (cap bytes); returns line length. */
 static size_t yd_line(const yd_event* ev, char* out, size_t cap) {
     size_t len = 0;
-    char props[512];
+    char props[8192];
     size_t pl = 0;
     props[0] = '\0';
     if (ev->anchor != NULL) {
@@ -131,7 +131,11 @@ static size_t yd_line(const yd_event* ev, char* out, size_t cap) {
         if (w < cap) {
             out[w++] = '\n';
         }
-        len = w;
+        /* snprintf's return is the WOULD-BE length: clamp to what the
+         * buffer actually holds or the callers memcpy past it (the
+         * nightly's round 59 follow-up: a 4.3KB props line vs the
+         * 4096-byte line buffer) */
+        len = w < cap ? w : cap - 1;
         break;
     }
     }
