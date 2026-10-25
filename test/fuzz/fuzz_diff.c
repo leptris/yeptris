@@ -457,6 +457,133 @@ static int yd_qcolon_walk(const char* ldump, const char* ydump2) {
  * the ':' as plain content there, so ':' alone cannot carry the
  * rewrite) and requires both engines' dumps of it to equal libyaml's
  * original. */
+/* True when the difference is an ANCHOR whose follower glues to its
+ * name (the nightly's round 62, crash-45b843db: "- &-:x+"): libyaml's
+ * anchor charset is [0-9A-Za-z_-] and it ACCEPTS a ':' (or any
+ * non-blank) right after the name, so &- anchors '-' and the plain
+ * ":x+" follows; yeptris's props scan requires a separator after the
+ * name and its plain-first guard bails the WHOLE token to plain
+ * ("&-:x+"). The probe spaces the follower out ("&- :x+"): both
+ * engines then read anchor '-' + plain ":x+", so both engines' dumps
+ * of the spacing must equal libyaml's original. Block context only —
+ * the flow-'&'-colon composite rides yd_flow_anchor_colon_divergence. */
+static int yd_anchor_glued_follower_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                               const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 4 || size > 8192) {
+        return 0;
+    }
+    size_t amp = (size_t)-1;
+    size_t name_end = 0;
+    size_t split_at = 0;
+    int depth = 0;
+    int quote = 0;
+    int node_pos = 1; /* line start / after a blank or '- ' */
+    int line_only_dash = 1;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\') {
+                i++;
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            node_pos = 0;
+            continue;
+        }
+        if ((c == '\'' || c == '"') && !(i > 0 && ((data[i - 1] >= 'a' && data[i - 1] <= 'z') ||
+                                                   (data[i - 1] >= 'A' && data[i - 1] <= 'Z') ||
+                                                   (data[i - 1] >= '0' && data[i - 1] <= '9') ||
+                                                   data[i - 1] == '_' || data[i - 1] == '-'))) {
+            /* quotes open only at token starts: a mid-word quote is
+             * plain CONTENT (the catch-85 word-start law) — "k-':"
+             * kept the tracker inside a phantom quote and the '&' on
+             * the next line never gated */
+            quote = (c == '\'') ? '\'' : '"';
+            node_pos = 0;
+            continue;
+        }
+        if (c == '#' && !node_pos) {
+            /* a comment swallows the rest of the line */
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                i++;
+            }
+            if (i < size) {
+                i--;
+            }
+            continue;
+        }
+        if (c == '\n' || c == '\r') {
+            if (c == '\r' && i + 1 < size && data[i + 1] == '\n') {
+                i++;
+            }
+            node_pos = 1;
+            line_only_dash = 1;
+            depth = 0;
+            continue;
+        }
+        if (c == ' ' || c == '\t') {
+            continue;
+        }
+        if (c == '-' && node_pos) {
+            line_only_dash = 0;
+            node_pos = 1; /* '- ' keeps node position */
+            continue;
+        }
+        if (c == '[' || c == '{') {
+            depth++;
+            node_pos = 1;
+            line_only_dash = 0;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            depth--;
+            node_pos = 0;
+            continue;
+        }
+        if (c == '&' && depth == 0 && node_pos) {
+            size_t j = i + 1;
+            while (j < size &&
+                   ((data[j] >= 'a' && data[j] <= 'z') || (data[j] >= 'A' && data[j] <= 'Z') ||
+                    (data[j] >= '0' && data[j] <= '9') || data[j] == '_' || data[j] == '-')) {
+                j++;
+            }
+            if (j > i + 1 && j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
+                data[j] != '\r' && data[j] != ',' && data[j] != '[' && data[j] != ']' &&
+                data[j] != '{' && data[j] != '}' && data[j] != '#') {
+                amp = i;
+                name_end = j;
+                split_at = j;
+                break;
+            }
+        }
+        node_pos = 0;
+        line_only_dash = 0;
+    }
+    if (amp == (size_t)-1) {
+        return 0;
+    }
+    (void)line_only_dash;
+    char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    memcpy(sub, data, split_at);
+    sub[split_at] = ' ';
+    memcpy(sub + split_at + 1, data + split_at, size - split_at);
+    int yok2 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, size + 1, &yok2);
+    int lok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, size + 1, &lok2);
+    int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
+                 strcmp(ldump2, ldump) == 0);
+    free(ydump2);
+    free(ldump2);
+    free(sub);
+    return known;
+}
+
 static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
                                               const char* ldump) {
     if (ydump == NULL || ldump == NULL || size < 5 || size > 8192) {
@@ -2104,6 +2231,7 @@ static void probe_one(const uint8_t* data, size_t size) {
                                    yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
                                    yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
                                    yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
+                                   yd_anchor_glued_follower_divergence(data, size, ydump, ldump) ||
                                    yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
                                    yd_nonspecific_tag_divergence(data, size, ydump));
 #ifdef YEP_FUZZ_STANDALONE
