@@ -973,6 +973,56 @@ static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* 
     return ldump[l] == '\0';
 }
 
+/* True when the difference is the plain-LS/PS fold law (the nightly's
+ * round 56, crash-ecd39c56: "k: Y#<LS> 'c<PT>d'b\"\nj: '<PS>d'"). In
+ * PLAIN scalars the two engines break differently: yeptris (YAML 1.2,
+ * b-as-line-feed) folds an LS/PS break exactly like a newline — one
+ * break to a space, following blanks folded away — while libyaml's
+ * READ_LINE joins an LS/PS break RAW into the content (its fold law
+ * only folds leading breaks that start with '\n'), so the blanks that
+ * followed it are gone. The quoted sibling (both keep the raw code
+ * point, yeptris keeps the blanks) is yd_ps_space_divergence; this is
+ * the plain sibling, and its relation is exact and dump-shaped:
+ * libyaml's dump equals yeptris's with every fold-space that faces a
+ * raw LS/PS byte consumed as that triple. */
+static int yd_plain_lsps_fold_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                         const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    int has = 0;
+    for (size_t i = 0; i + 2 < size; i++) {
+        if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            has = 1;
+            break;
+        }
+    }
+    if (!has) {
+        return 0;
+    }
+    int diffs = 0;
+    size_t y = 0;
+    size_t l = 0;
+    while (ydump[y] != '\0') {
+        if (ldump[l] == ydump[y]) {
+            y++;
+            l++;
+            continue;
+        }
+        if (ydump[y] == ' ' && (unsigned char)ldump[l] == 0xE2 &&
+            (unsigned char)ldump[l + 1] == 0x80 &&
+            ((unsigned char)ldump[l + 2] == 0xA8 || (unsigned char)ldump[l + 2] == 0xA9)) {
+            y += 1;
+            l += 3;
+            diffs++;
+            continue;
+        }
+        return 0;
+    }
+    return diffs > 0 && ldump[l] == '\0';
+}
+
 /* True when the difference is the flow-anchor-colon family: inside a
  * flow collection libyaml reads "&name:" as an anchored empty key
  * ("[&a: x]" -> {a-anchored empty => x}) while yeptris's designed
@@ -1661,7 +1711,8 @@ static int yd_header_glued_comment_divergence(const uint8_t* data, size_t size, 
     if (!found) {
         return 0;
     }
-    char* sub = malloc(size + 1);
+    /* one extra byte per spaced line, up to one per input line */
+    char* sub = malloc(size * 2 + 1);
     if (sub == NULL) {
         return 0;
     }
@@ -1715,7 +1766,10 @@ static int yd_qflow_adjacent_divergence(const uint8_t* data, size_t size, const 
     if (ldump == NULL || ydump == NULL || size == 0 || size > 8192) {
         return 0;
     }
-    char* sub = malloc(size + 1);
+    /* each hit emits '?'+' ' while consuming two input bytes, so the
+     * copy can reach size + size/2 ("|\r\r#?????'#??'#" two hits
+     * overflowed the old size+1 buffer — ASan write, local corpus) */
+    char* sub = malloc(size * 2 + 1);
     if (sub == NULL) {
         return 0;
     }
@@ -1909,6 +1963,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
          yd_clip_breakless_divergence(data, size, ydump) ||
          yd_ps_space_divergence(data, size, ydump, ldump) ||
+         yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
          yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
          yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
