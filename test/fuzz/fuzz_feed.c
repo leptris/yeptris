@@ -194,6 +194,18 @@ static void probe_one(const uint8_t* data, size_t size) {
          * record so the input can be minimized */
         fprintf(stderr, "fuzz_feed: divergence (whole st=%d n=%zu / chunked st=%d n=%zu)\n",
                 whole.status, whole.n, chunked.status, chunked.n);
+        for (size_t i = 0; i < whole.n; i++) {
+            const ev_snap* w = &whole.recs[i];
+            fprintf(stderr, "  W[%zu] t=%u s=%u f=%u tag=%u %u:%u v=%.*s\n", i, w->type, w->style,
+                    w->flags, w->tag_id, w->line, w->col, (int)w->vlen,
+                    blob_at(&whole, w->val_off, w->vlen));
+        }
+        for (size_t i = 0; i < chunked.n; i++) {
+            const ev_snap* c = &chunked.recs[i];
+            fprintf(stderr, "  C[%zu] t=%u s=%u f=%u tag=%u %u:%u v=%.*s\n", i, c->type, c->style,
+                    c->flags, c->tag_id, c->line, c->col, (int)c->vlen,
+                    blob_at(&chunked, c->val_off, c->vlen));
+        }
         if (first_bad < whole.n && first_bad < chunked.n) {
             const ev_snap* w = &whole.recs[first_bad];
             const ev_snap* c = &chunked.recs[first_bad];
