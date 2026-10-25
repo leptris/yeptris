@@ -2084,8 +2084,17 @@ static int yd_qflow_adjacent_divergence(const uint8_t* data, size_t size, const 
     }
     size_t o = 0;
     int found = 0;
+    /* only a '?' at a flow-NODE position is the explicit-key
+     * indicator: a '?"' pair mid-token is the VALUE's plain content
+     * (the nightly's round 64, crash-45b843db's sibling:
+     * "{?\"a\":/*com?\"a\":/*comment*!!\"}" — spacing the value's
+     * '?"' changed libyaml's bytes and the insensitivity check
+     * declined its own family) */
+    int depth = 0;
+    int node_pos = 1;
     for (size_t i = 0; i < size; i++) {
-        if (data[i] == '?' && i + 1 < size && (data[i + 1] == '"' || data[i + 1] == '\'')) {
+        if (node_pos && data[i] == '?' && i + 1 < size &&
+            (data[i + 1] == '"' || data[i + 1] == '\'')) {
             /* KEEP the '?' and space it out ('{?"a":x}' -> '{? "a":x}'):
              * libyaml reads the flow '?' as the explicit-key indicator
              * either way, so its dump is unchanged -- the old DROP form
@@ -2097,8 +2106,20 @@ static int yd_qflow_adjacent_divergence(const uint8_t* data, size_t size, const 
             sub[o++] = '?';
             sub[o++] = ' ';
             found = 1;
+            node_pos = 0;
         } else {
             sub[o++] = (char)data[i];
+            if (data[i] == '{' || data[i] == '[') {
+                depth++;
+                node_pos = 1;
+            } else if (data[i] == '}' || data[i] == ']') {
+                depth--;
+                node_pos = 0;
+            } else if (data[i] == ',') {
+                node_pos = depth > 0;
+            } else if (data[i] != ' ' && data[i] != '\t') {
+                node_pos = 0;
+            }
         }
     }
     int known = 0;
