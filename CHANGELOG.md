@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.43] - 2026-10-25
 ### Changed
 
 - **fuzz: the anchor-charset family rides alias names too** — the nightly's round 54 (crash-17654f5b, 31 bytes -> 26: `&a: \nfkey: &a vf\no:\n  *a:\n`). The 2SXE law gives ALIAS names the colon-riding charset exactly like anchors — `*a:` names `a:` in yeptris while libyaml truncates at the `:` and reads the key separator — but the charset carry split only `&` runs: the `*` fell to the walks' word arm (a phantom plain opened, the split never fired, amps under-counted). `*` now joins the props-run class in both walks and the gate/transform split alias runs; the verify is unchanged (libyaml invariant under the split AND both engines agree on it — the composition's `&a: ` empty-key hoisting rides along). Gates: r54 + all prior rounds' artifacts carry (r44 = the lenient-parse split; r56 = the open plain-LS/PS family); snapshot verdict set byte-identical; ctest 579/579; parse + roundtrip corpora (~29k inputs) walk clean under ASan. Seed `parse/r54-alias-colon-charset.bin`.
