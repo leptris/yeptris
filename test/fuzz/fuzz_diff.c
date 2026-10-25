@@ -1160,7 +1160,11 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             prev = (char)c;
             continue;
         }
-        if ((c == '&' || c == '!') && !plain_open) {
+        if ((c == '&' || c == '!' || c == '*') && !plain_open) {
+            /* '*' is a props run like '&': the round-54 alias-name
+             * composition splits '*a:' at the ':' exactly like the
+             * anchor twin; leaving it to the word arm opened a phantom
+             * plain and the split never fired */
             prop_word = 1;
             word_led = 0;
             saw_prop = 1;
@@ -1238,10 +1242,15 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             plain_open = 0;
             continue;
         }
-        if (c == '&' && !plain_open && (node_pos || saw_prop)) {
+        if ((c == '&' || c == '*') && !plain_open && (node_pos || saw_prop)) {
+            /* '*' joins the family (the nightly's round 54,
+             * crash-17654f5b: the ALIAS name rides libyaml's charset
+             * law exactly like an anchor's -- "*a:" names "a:" in
+             * yeptris (2SXE) while libyaml truncates at ':' and reads
+             * the key separator; the split reconciles both) */
             amps++;
         }
-        if (c == '&' && !gate && !plain_open && (node_pos || saw_prop)) {
+        if ((c == '&' || c == '*') && !gate && !plain_open && (node_pos || saw_prop)) {
             size_t j = i + 1;
             while (j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
                    data[j] != '\r') {
@@ -1382,11 +1391,11 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             i++;
             continue;
         }
-        if ((c == '&' || c == '!') && !plain_open2) {
+        if ((c == '&' || c == '!' || c == '*') && !plain_open2) {
             prop_word2 = 1;
             word_led2 = 0;
             saw_prop2 = 1;
-            in_props_name2 = 1;
+            in_props_name2 = 1; /* the gate's '*' props-run law again */
         } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '-' || c == '?') {
             /* the gate's ':' law again (crash-7fe697be) */
             word_led2 = 1;
@@ -1444,7 +1453,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             plain_open2 = 0;
             continue;
         }
-        if (c == '&' && !plain_open2 && (node_pos2 || saw_prop2)) {
+        if ((c == '&' || c == '*') && !plain_open2 && (node_pos2 || saw_prop2)) {
+            /* the '*' twin of the '&' split (the round-54 alias-name
+             * composition -- see the gate walk) */
             sub[o++] = (char)c;
             i++;
             size_t name_o = o;
