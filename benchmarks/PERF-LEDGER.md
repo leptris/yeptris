@@ -3008,6 +3008,46 @@ table's into-buffer lane is expected to jump to ~1.0 of serialize on
 the next Benchmark run — that column now reads as the trusted route's
 adoption, not a regression of the dry lane.
 
+
+## 2026-10-25 — sc_route lane 2: the dq-forced scan is hot but emit-side reordering is dead — the fix is a parse-time fact bit (MEASURED, deferred)
+
+Profile (`sample`, json-users serialize at 283 MB/s dev): `sc_route` ≈
+18% of serialize; the dominant member is `sc_dq_forced` (the
+NEL/LS/PS/BOM/noncharacter byte scan) ≈ 13 points, `yep_style_plain_safe`
+(SIMD) only ≈ 4, the `memchr('\n')` multiline check ≈ 1. The scan runs
+on EVERY derive and twice on sub-`YEP_SC_MEMO_MIN` scalars (dry + wet).
+
+Attempted (reverted): run plain-safe FIRST in `sc_route` and treat a
+pass as proof the exotic scan is negative. plain_safe rejects NEL/LS/PS
+(they are breaks), so its `saw_ef` flag (new `_ex` twins reporting 0xEF
+leads) names the only surviving members — a pass with the flag clear
+provably skips `sc_dq_forced`. Two measurements killed it:
+
+- Unconditional reorder: json-users 283 -> ~210 MB/s. The corpus
+  renders its sequences FLOW, so `w->in_flow` is the common case; the
+  plain-safe pass ran before the flow scan only to be redone after it.
+- Block-context-only reorder (flow path untouched): neutral within
+  noise (interleaved A/B, medians 257 base vs 230 var on a throttled
+  machine). The corpus's scalars are mostly QUOTED-style (JSON
+  strings, `sty_in != 1`), and the reorder only ever touched the
+  plain-style arm — the 13 points live on the quoted arm, where
+  `sc_dq_forced` runs first in both orders.
+
+Conclusion: the scan's cost sits on scalars the emitter cannot prove
+anything about from bytes alone. The fix that reaches the 13 points is
+the parse-time exotic-byte fact bit (record `0xC2 0x85 / 0xE2 0x80
+[A8|A9] / 0xEF ...` presence in the dnode at parse — the parse already
+classifies every byte — and let `sc_route` trust it), i.e. the #352
+fact-bit pattern applied to the dq-forced set. Deferred as #739 lane 2
+proper: dnode fact plumbing, not an emit-side reorder.
+
+Traps: this corpus is the WRONG referee for emit reorderings — its
+scalars are quoted-style and its collections flow-rendered. A
+block-YAML corpus with plain-heavy scalars must ride the next attempt's
+measurement. And the machine throttles: interleaved A/B on freshly
+built binaries only, never cross-time comparisons (an earlier 282 vs
+"regression" reading was pure thermal drift).
+
 Traps: the writer's fields initialize per entry — a new yep_writer
 field MUST be zeroed at every em.w init site or stack garbage arms it
 (the first round's Mutate/BulkBuild/Limits failures were bounded=garbage).
