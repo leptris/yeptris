@@ -31,6 +31,65 @@ static const char* probe_id = NULL;
  * stripped, content BOMs ride (the catch-121 law). The suite is
  * silent on the shape. The transform strips one leading EF BB BF
  * from yeptris's first scalar and compares. */
+/* True when the difference is a UTF-8 BOM at a LINE START (the
+ * nightly's round 60, crash-0f393f90: "\r!= \n<BOM>\ra\r\nt\r%\r\r!"):
+ * libyaml strips a BOM that opens any line (its encoding-mark law is
+ * not stream-position-bound), yeptris keeps it as CONTENT — and the
+ * plain's fold then differs too (yeptris's BOM becomes first-class
+ * content with a fold space after it; libyaml's leading break folds
+ * away entirely), so the dump-level strip of yd_bom_content_divergence
+ * cannot reach it. The probe removes every line-start BOM from the
+ * input: the removal is pure to libyaml (it already stripped them)
+ * and yeptris reads the BOM-less input exactly as libyaml's original —
+ * both engines' dumps of the removal must equal libyaml's original. */
+static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                        const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 6 || size > 8192) {
+        return 0;
+    }
+    int feature = 0;
+    unsigned char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    int line_start = 1;
+    for (size_t i = 0; i < size;) {
+        if (line_start && i + 2 < size && data[i] == 0xEF && data[i + 1] == 0xBB &&
+            data[i + 2] == 0xBF) {
+            i += 3;
+            feature = 1;
+            continue;
+        }
+        sub[o++] = data[i];
+        if (data[i] == '\n') {
+            line_start = 1;
+        } else if (data[i] == '\r') {
+            if (i + 1 < size && data[i + 1] == '\n') {
+                sub[o++] = data[++i];
+            }
+            line_start = 1;
+        } else {
+            line_start = 0;
+        }
+        i++;
+    }
+    if (!feature) {
+        free(sub);
+        return 0;
+    }
+    int yok2 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, o, &yok2);
+    int lok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, o, &lok2);
+    int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
+                 strcmp(ldump2, ldump) == 0);
+    free(ydump2);
+    free(ldump2);
+    free(sub);
+    return known;
+}
+
 static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
@@ -2030,22 +2089,23 @@ static void probe_one(const uint8_t* data, size_t size) {
     int split = v == YD_YEPTRIS_ONLY || v == YD_LIBYAML_ONLY;
     /* a documented divergence, not a bug: the suite sides with
      * yeptris (see yd_qflow_divergence) */
-    int known =
-        v == YD_DIFFER &&
-        (yd_qflow_divergence(ydump, ldump) ||
-         yd_qflow_adjacent_divergence(data, size, ydump, ldump) ||
-         yd_qflow_colon_divergence(data, size, ydump, ldump) ||
-         yd_qflow_question_colon_divergence(data, size, ydump, ldump) ||
-         yd_bom_content_divergence(ydump, ldump) || yd_breaknorm_divergence(data, size, ydump) ||
-         yd_nel_break_divergence(data, size, ydump, ldump) ||
-         yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
-         yd_clip_breakless_divergence(data, size, ydump) ||
-         yd_ps_space_divergence(data, size, ydump, ldump) ||
-         yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
-         yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
-         yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
-         yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
-         yd_nonspecific_tag_divergence(data, size, ydump));
+    int known = v == YD_DIFFER && (yd_qflow_divergence(ydump, ldump) ||
+                                   yd_qflow_adjacent_divergence(data, size, ydump, ldump) ||
+                                   yd_qflow_colon_divergence(data, size, ydump, ldump) ||
+                                   yd_qflow_question_colon_divergence(data, size, ydump, ldump) ||
+                                   yd_bom_content_divergence(ydump, ldump) ||
+                                   yd_bom_line_start_divergence(data, size, ydump, ldump) ||
+                                   yd_breaknorm_divergence(data, size, ydump) ||
+                                   yd_nel_break_divergence(data, size, ydump, ldump) ||
+                                   yd_composed_break_divergence(data, size) ||
+                                   yd_root_block_content_divergence(data, size) ||
+                                   yd_clip_breakless_divergence(data, size, ydump) ||
+                                   yd_ps_space_divergence(data, size, ydump, ldump) ||
+                                   yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
+                                   yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
+                                   yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
+                                   yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
+                                   yd_nonspecific_tag_divergence(data, size, ydump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
