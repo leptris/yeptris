@@ -139,7 +139,11 @@ static size_t yd_line(const yd_event* ev, char* out, size_t cap) {
         break;
     }
     }
-    return len;
+    /* snprintf's return is the WOULD-BE length, and EVERY branch rides it
+     * (+MAP/+SEQ props lines too — the nightly's round 61, a 4971-char
+     * mapping tag): clamp to what the buffer actually holds or the
+     * callers memcpy past it. */
+    return len < cap ? len : cap - 1;
 }
 
 #endif /* YD_EVENT_DUMP_H */
