@@ -13,7 +13,7 @@
 static int ly_line(const yaml_event_t* ev, char* out, size_t cap) {
     yd_event y;
     memset(&y, 0, sizeof(y));
-    char abuf[256], tbuf[512], vbuf[4096];
+    char abuf[2048], tbuf[8192], vbuf[8192];
     const char *a = NULL, *t = NULL;
     switch (ev->type) {
     case YAML_STREAM_START_EVENT:
