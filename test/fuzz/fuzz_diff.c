@@ -1370,6 +1370,38 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
     size_t y = 0;
     size_t l = 0;
     while (ydump[y] != '\0') {
+        unsigned char lb0 = (unsigned char)ldump[l];
+        unsigned char lb1 = (unsigned char)ldump[l + 1];
+        unsigned char lb2 = (unsigned char)ldump[l + 2];
+        int l_raw_ps = lb0 == 0xE2 && lb1 == 0x80 && (lb2 == 0xA8 || lb2 == 0xA9);
+        /* the quoted blank-strip member (round 73): around a raw LS/PS
+         * that BOTH engines keep, libyaml drops the blank runs on both
+         * sides while yeptris keeps them (spelling a tab as its \t
+         * escape). Consume yeptris's leading blank/escape run, require
+         * the triple in BOTH dumps, then the trailing blank run — the
+         * post-run triple check makes the arm decline (fall through to
+         * the plain law) when the space faces the triple instead
+         * (round 56's shape). */
+        int y_qblank = ydump[y] == ' ' || (ydump[y] == '\\' && ydump[y + 1] == 't');
+        if (y_qblank && l_raw_ps) {
+            size_t y2 = y;
+            while (ydump[y2] == ' ' || (ydump[y2] == '\\' && ydump[y2 + 1] == 't')) {
+                y2 += (ydump[y2] == '\\') ? 2 : 1;
+            }
+            int y_raw_ps = (unsigned char)ydump[y2] == 0xE2 &&
+                           (unsigned char)ydump[y2 + 1] == 0x80 &&
+                           ((unsigned char)ydump[y2 + 2] == 0xA8 ||
+                            (unsigned char)ydump[y2 + 2] == 0xA9);
+            if (y_raw_ps) {
+                y = y2 + 3;
+                l += 3;
+                while (ydump[y] == ' ') {
+                    y++;
+                }
+                diffs++;
+                continue;
+            }
+        }
         if ((unsigned char)ydump[y] == 0xE2 && (unsigned char)ydump[y + 1] == 0x80 &&
             ((unsigned char)ydump[y + 2] == 0xA8 || (unsigned char)ydump[y + 2] == 0xA9)) {
             /* the quoted law (round 55): the triple rides raw in both
@@ -1406,11 +1438,7 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
          * spells it \n — while libyaml's READ_LINE joins the PS raw as
          * content. (The dump escapes a real LF as \n; a literal
          * backslash-n would ride as \\n, so the pair is unambiguous.) */
-        unsigned char lb0 = (unsigned char)ldump[l];
-        unsigned char lb1 = (unsigned char)ldump[l + 1];
-        unsigned char lb2 = (unsigned char)ldump[l + 2];
         int y_esc_lf = ydump[y] == '\\' && ydump[y + 1] == 'n';
-        int l_raw_ps = lb0 == 0xE2 && lb1 == 0x80 && (lb2 == 0xA8 || lb2 == 0xA9);
         if (y_esc_lf && l_raw_ps) {
             y += 2;
             l += 3;
