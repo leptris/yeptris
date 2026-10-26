@@ -1570,7 +1570,11 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             prev = (char)c;
             continue;
         }
-        if ((c == '\'' || c == '"') && (word_led || prop_word)) {
+        if ((c == '\'' || c == '"') && (word_led || prop_word) && !plain_open) {
+            /* !plain_open: a blank inside an open plain does not start
+             * a new token ("&gboo :- 4f\";\ \"P&g..." -- the eager
+             * open went phantom, swallowed the NEXT line's '&' and the
+             * split never fired there; the nightly's round 68) */
             quote = c;
             word_led = 0;
             prop_word = 0;
@@ -1810,7 +1814,8 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             i++;
             continue;
         }
-        if ((c == '\'' || c == '"') && (word_led2 || prop_word2)) {
+        if ((c == '\'' || c == '"') && (word_led2 || prop_word2) && !plain_open2) {
+            /* the gate's mid-plain law again (the nightly's round 68) */
             quote = c;
             sub[o++] = (char)c;
             prev = (char)c;
