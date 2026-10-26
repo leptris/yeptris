@@ -1370,10 +1370,19 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
     size_t y = 0;
     size_t l = 0;
     while (ydump[y] != '\0') {
+        /* lb1/lb2 read only under the short-circuit: the \n arm walks
+         * l FASTER than y, so ldump can terminate first — an
+         * unconditional [l + 2] rode past the terminator (the ASan
+         * catch on the r69 seed, the round-73 PR's gate) */
         unsigned char lb0 = (unsigned char)ldump[l];
-        unsigned char lb1 = (unsigned char)ldump[l + 1];
-        unsigned char lb2 = (unsigned char)ldump[l + 2];
-        int l_raw_ps = lb0 == 0xE2 && lb1 == 0x80 && (lb2 == 0xA8 || lb2 == 0xA9);
+        int l_raw_ps = 0;
+        if (lb0 == 0xE2) {
+            unsigned char lb1 = (unsigned char)ldump[l + 1];
+            if (lb1 == 0x80) {
+                unsigned char lb2 = (unsigned char)ldump[l + 2];
+                l_raw_ps = lb2 == 0xA8 || lb2 == 0xA9;
+            }
+        }
         /* the quoted blank-strip member (round 73): around a raw LS/PS
          * that BOTH engines keep, libyaml drops the blank runs on both
          * sides while yeptris keeps them (spelling a tab as its \t
