@@ -1401,6 +1401,20 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
             diffs++;
             continue;
         }
+        if (ydump[y] == '\\' && ydump[y + 1] == 'n' &&
+            (unsigned char)ldump[l] == 0xE2 && (unsigned char)ldump[l + 1] == 0x80 &&
+            ((unsigned char)ldump[l + 2] == 0xA8 || (unsigned char)ldump[l + 2] == 0xA9)) {
+            /* the blank-line member (round 72): yeptris's break law
+             * makes the PS a BLANK line and the fold a hard break —
+             * the dump spells it \n — while libyaml's READ_LINE joins
+             * the PS raw as content. (The dump escapes a real LF as
+             * \n; a literal backslash-n would ride as \\n, so the
+             * pair is unambiguous.) */
+            y += 2;
+            l += 3;
+            diffs++;
+            continue;
+        }
         return 0;
     }
     return diffs > 0 && ldump[l] == '\0';
