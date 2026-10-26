@@ -3009,6 +3009,38 @@ the next Benchmark run — that column now reads as the trusted route's
 adoption, not a regression of the dry lane.
 
 
+## 2026-10-26 — sc_route lane 2 LANDED: the parse-time exotic-byte fact bit (+11-14% serialize)
+
+The dnode's last free bitfield bit carries `no_exotic` ("verified clean
+of the dq-forced set"), set at EVERY value assignment through
+`dom_set_value` (the JSON-class arms set it by construction — the
+walker rejected control bytes; numbers/literals are ASCII). The
+predicate moved to the scan SSOT (`yep_scan_dq_forced`) so the emit
+check and the parse fact cannot drift; `sc_route` consults the bit and
+skips the rescan, and the block-key memo site at writer.c keeps the
+explicit fallback (`kn->no_exotic || !scan`). Mutation-built scalars
+default the bit to 0 (unknown = scan) — no behavior change off the
+parse path.
+
+Interleaved A/B on freshly built binaries (the throttle discipline;
+round 2's var leg was thermal — its PARSE lanes collapsed 60% too, so
+it is discarded):
+
+| lane | base (2 rounds) | var (2 rounds) | delta |
+|---|---|---|---|
+| json-users serialize | 212.6 / 204.8 | 236.8 / 227.9 | **+11%** |
+| scalar-heavy serialize | 619.1 / 618.1 | 701.4 / 705.5 | **+14%** |
+| block-heavy serialize | 299.3 / 288.6 | 300.7 / 304.3 | +3% |
+| parse lanes (all shapes) | — | — | neutral |
+
+The remaining sc_dq_forced cost on json-users sits in the
+mutation-built and unknown-bit paths (the build entries and the
+yep_dom_str_commit arms that bypass dom_set_value set the bit by
+construction, but the host-tree conversion's tag/anchor twins do not
+carry scalars). Byte-identical outputs: 579/579 ctest, the conformance
+suite, and the parse/roundtrip/feed corpus walks all green on the
+fact-bit binary.
+
 ## 2026-10-25 — sc_route lane 2: the dq-forced scan is hot but emit-side reordering is dead — the fix is a parse-time fact bit (MEASURED, deferred)
 
 Profile (`sample`, json-users serialize at 283 MB/s dev): `sc_route` ≈
