@@ -154,7 +154,23 @@ int yep_scan_prop_char(unsigned char c) {
 }
 
 size_t yep_scan_prop_end(const char* p, size_t len, size_t pos) {
-    while (pos < len && yep_scan_prop_char((unsigned char)p[pos])) {
+    while (pos < len) {
+        unsigned char c = (unsigned char)p[pos];
+        if (!yep_scan_prop_char(c)) {
+            break;
+        }
+        /* NEL/LS/PS end the name (libyaml's IS_BLANKZ anchor law: the
+         * suite's ns-anchor-char excludes breaks): the byte-level
+         * table cannot classify a multibyte break, and the name run
+         * then swallowed it — the r69/r70 nightly divergence class
+         * ("&k:":(<PS>..."), shape-dependent clip downstream */
+        if (c == 0xC2 && pos + 1 < len && (unsigned char)p[pos + 1] == 0x85) {
+            break;
+        }
+        if (c == 0xE2 && pos + 2 < len && (unsigned char)p[pos + 1] == 0x80 &&
+            ((unsigned char)p[pos + 2] & 0xFE) == 0xA8) {
+            break;
+        }
         pos++;
     }
     return pos;

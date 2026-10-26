@@ -647,7 +647,7 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
     int depth = 0;
     int quote = 0;
     size_t hits = 0;
-    for (size_t i = 0; i + 1 < size; i++) {
+    for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
         if (quote != 0) {
             if (quote == '\'' && c == '\'') {
@@ -671,14 +671,14 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
             depth++;
         } else if (c == ']' || c == '}') {
             depth--;
-        } else if (c == '?' && depth > 0 && data[i + 1] == ':') {
+        } else if (c == '?' && depth > 0) {
             hits++;
         }
     }
     if (hits == 0) {
         return 0;
     }
-    char* sub = malloc(size * 2 + 1); /* every hit adds two bytes */
+    char* sub = malloc(size * 2 + 1); /* every hit adds at most one byte */
     if (sub == NULL) {
         return 0;
     }
@@ -716,14 +716,27 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
         } else if (c == ']' || c == '}') {
             depth--;
         } else if (c == '?' && depth > 0 && i + 1 < size && data[i + 1] == ':') {
-            /* "?:" -> """ : " — the empty-string key form both
-             * engines read identically (libyaml rejects the bare
-             * "{ :X}" empty implicit key outright) */
+            /* "?:" -> the empty-string key form (r58/r67): libyaml's
+             * KEY token reads the glued ':' as the pair separator of
+             * an EMPTY key, so '"' '"' ':' ' ' spells that reading
+             * for both engines */
             sub[subn++] = '"';
             sub[subn++] = '"';
-            sub[subn++] = ':'; /* data[i + 1] */
+            sub[subn++] = ':';
             sub[subn++] = ' ';
             i += 2;
+            continue;
+        } else if (c == '?' && depth > 0) {
+            /* a BARE '?' ("?M-b%rM", the nightly's r71): libyaml's
+             * glued reading makes the follower the KEY with an empty
+             * value while yeptris reads one plain. The libyaml-
+             * preserving spell drops the '?' — a bare plain in a flow
+             * mapping IS that pair for both engines ("{M-b%rM}" reads
+             * (M-b%rM -> empty) on both sides; the ':'-closed form
+             * "M-b%rM:" dies on libyaml's ":," node-content law). The
+             * byte-strict verify against libyaml's ORIGINAL dump
+             * arbitrates. */
+            i++;
             continue;
         }
         sub[subn++] = (char)c;
@@ -1341,11 +1354,14 @@ static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* 
  * the plain sibling, and its relation is exact and dump-shaped:
  * libyaml's dump equals yeptris's with every fold-space that faces a
  * raw LS/PS byte consumed as that triple. */
-/* The plain-LS/PS fold law's dump comparison (rounds 56/66): yeptris
- * (YAML 1.2) folds an LS/PS break in a plain scalar into ONE space
- * while libyaml's READ_LINE joins it RAW, so the dumps are byte-equal
- * EXCEPT yeptris's fold-space where libyaml carries the raw triple.
- * Requires at least one such triple and full alignment elsewhere. */
+/* The LS/PS rendering laws' dump comparison (rounds 56/66/70), both
+ * exact and dump-shaped. PLAIN: yeptris (YAML 1.2) folds an LS/PS
+ * break into ONE space while libyaml's READ_LINE joins it RAW —
+ * yeptris's fold-space is libyaml's raw triple. QUOTED: both keep the
+ * raw code point but libyaml drops the blank run that follows it —
+ * yeptris's triple plus spaces is libyaml's bare triple. Any mix of
+ * the two rides one walk; at least one such site, full alignment
+ * elsewhere. */
 static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
@@ -1354,6 +1370,22 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
     size_t y = 0;
     size_t l = 0;
     while (ydump[y] != '\0') {
+        if ((unsigned char)ydump[y] == 0xE2 && (unsigned char)ydump[y + 1] == 0x80 &&
+            ((unsigned char)ydump[y + 2] == 0xA8 || (unsigned char)ydump[y + 2] == 0xA9)) {
+            /* the quoted law (round 55): the triple rides raw in both
+             * dumps; libyaml dropped the blanks that followed it */
+            if (ldump[l] != ydump[y] || ldump[l + 1] != ydump[y + 1] ||
+                ldump[l + 2] != ydump[y + 2]) {
+                return 0;
+            }
+            y += 3;
+            l += 3;
+            while (ydump[y] == ' ') {
+                y++;
+            }
+            diffs++;
+            continue;
+        }
         if (ldump[l] == ydump[y]) {
             y++;
             l++;
@@ -1362,6 +1394,8 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
         if (ydump[y] == ' ' && (unsigned char)ldump[l] == 0xE2 &&
             (unsigned char)ldump[l + 1] == 0x80 &&
             ((unsigned char)ldump[l + 2] == 0xA8 || (unsigned char)ldump[l + 2] == 0xA9)) {
+            /* the plain law (round 56): yeptris's fold-space is
+             * libyaml's raw triple */
             y += 1;
             l += 3;
             diffs++;

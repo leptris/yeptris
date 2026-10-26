@@ -953,26 +953,27 @@ TEST(Emit, RawLsPsValueRidesQuoted) {
 
 TEST(Emit, AnchorNameWithNormalizeSubjectBytesIsUnserializable) {
     /* the nightly's round 39 (crash-8df48a71, 12-byte core:
-     * "P,\" : & "): an anchor whose NAME carries a raw
-     * LS/PS/NEL (or a hard break) cannot be spelled — the reader's
-     * break normalization folds those bytes to '\n' before the parse,
-     * so pass2 sees an anchor with a broken/empty name and the
-     * re-parse dies (pass1's key side escaped its PS as \P; the anchor
-     * side had no escape). YAML has no quoted anchor names: fail the
-     * serialize (the #708 unspellable law). Plain names keep riding. */
+     * "P,\" : & ") pinned parse-OK + serialize-fails for an anchor
+     * whose NAME carried a raw LS/PS. The r69/r70 scan law (libyaml's
+     * IS_BLANKZ) ends the name AT the break instead: "&<PS>" is an
+     * EMPTY anchor name and the parse rejects it (libyaml: "did not
+     * find expected alphabetic or numeric character"); the NEL twin
+     * rides the same law plus the ledgered NEL-break family. A plain
+     * name keeps riding. */
     const char* y = "P,\"\xe2\x80\xa9: &\xe2\x80\xa9";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument d = yeptris_parse(y, strlen(y), &st);
-    ASSERT_NE(d, nullptr) << yeptris_last_error(NULL, NULL);
-    size_t len = 0;
-    EXPECT_EQ(yeptris_serialize(d, &len), nullptr);
-    yeptris_document_free(d);
+    EXPECT_EQ(d, nullptr);
+    if (d != nullptr) {
+        yeptris_document_free(d);
+    }
 
-    /* the NEL twin */
+    /* the NEL twin: the name ends at the NEL and the residual value
+     * line errors (the ledgered NEL-break gray zone) */
     const char* nel = "k: &a\xc2\x85z v\n";
     YeptrisDocument dn = yeptris_parse(nel, strlen(nel), &st);
+    EXPECT_EQ(dn, nullptr);
     if (dn != nullptr) {
-        EXPECT_EQ(yeptris_serialize(dn, &len), nullptr);
         yeptris_document_free(dn);
     }
 
