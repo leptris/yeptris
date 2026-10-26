@@ -9,6 +9,8 @@
 
 #include "dom.h"
 
+#include "../scan/scan.h" /* the dq-forced SSOT (the fact bit) */
+
 #include <yeptris/resolve.h> /* the tag-id SSOT (the strict literal arm) */
 
 /* The bounded-parse caps: each node consumes at least one input byte
@@ -140,6 +142,16 @@ static yep_sview dom_str_in(yep_dom* d, const yep_view* v, int borrowed) {
  * given metadata; tag/anchor views encode through dom_str_in (tags and
  * event-path anchors copy to the arena; input-backed views borrow).
  * tag_id stays 0 — the caller resolves (scalars) or leaves 0. */
+/* Value assign + the emit-side fact bit (issue #352 lane 2): the bit
+ * is "verified clean" of the dq-forced byte set — the serializer's
+ * sc_route then skips its per-derive rescan. The scan is the SSOT
+ * predicate (yep_scan_dq_forced); every value assignment routes
+ * through here so no path can leave a dirty scalar marked clean. */
+static void dom_set_value(yep_dom* d, uint32_t id, const yep_view* v, int borrowed) {
+    d->nodes[id].value = dom_str_in(d, v, borrowed);
+    d->nodes[id].no_exotic = !yep_scan_dq_forced(v->p, v->len);
+}
+
 uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_view* anchor,
                        int anchor_borrowed, uint8_t style, uint8_t implicit, uint8_t flow) {
     if (!dom_grow_nodes(d, 1)) {
@@ -421,7 +433,7 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
         if (id == UINT32_MAX) {
             return -1;
         }
-        d->nodes[id].value = dom_str_in(d, &ev->value, ev->borrowed);
+        dom_set_value(d, id, &ev->value, ev->borrowed);
         if (ev->anchor_id != 0 && dom_anchor_set(d, ev->anchor_id, id) != 0) {
             return -1;
         }
@@ -437,7 +449,7 @@ int yep_dom_on_event(void* ctx, const yep_event* ev) {
         if (id == UINT32_MAX) {
             return -1;
         }
-        d->nodes[id].value = dom_str_in(d, &ev->value, ev->borrowed);
+        dom_set_value(d, id, &ev->value, ev->borrowed);
         d->nodes[id].target = target;
         return dom_place(d, id);
     }
@@ -902,9 +914,11 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
                 d->nodes[sid].value =
                     yep_dom_str_commit(d, yep_finish_double_into(p, (uint32_t)(t.at + 1),
                                                                  (uint32_t)(t.end - 1), dst, span));
+                d->nodes[sid].no_exotic = 1; /* JSON-class strings: the
+                    walker rejected every control byte */
             } else {
                 yep_view v = {p + t.at + 1, (uint32_t)(t.end - t.at - 2)};
-                d->nodes[sid].value = dom_str_in(d, &v, 1);
+                dom_set_value(d, sid, &v, 1);
             }
             if (dom_place(d, sid) != 0) {
                 goto fail;
@@ -918,6 +932,8 @@ int dom_on_flow_build(void* ctx, const char* p, size_t open, size_t len, uint32_
             }
             yep_view v = {p + t.at, (uint32_t)(t.end - t.at)};
             d->nodes[sid].value = dom_str_in(d, &v, 1);
+            d->nodes[sid].no_exotic = 1; /* the walker validated the
+                span as a JSON number or literal */
             if (t.cls == '#') {
                 d->nodes[sid].tag_id = yep_resolve_number(r, t.is_float);
             } else if (d->flow_strict) {
@@ -1087,13 +1103,15 @@ int dom_from_tape(yep_dom* d, const yeptris_json_tape* t) {
                     }
                     d->nodes[id].value = yep_dom_str_commit(
                         d, yep_finish_double_into(src, off, off + len, dst, len));
+                    d->nodes[id].no_exotic = 1; /* JSON-class: escapes
+                        only, the walker's law */
                 } else {
                     yep_view v = {src + off, len};
-                    d->nodes[id].value = dom_str_in(d, &v, 1);
+                    dom_set_value(d, id, &v, 1);
                 }
             } else {
                 yep_view v = {src + off, len};
-                d->nodes[id].value = dom_str_in(d, &v, 1);
+                dom_set_value(d, id, &v, 1);
             }
             d->nodes[id].tag_id = tag;
             if (dom_place(d, id) != 0) {
@@ -1141,7 +1159,7 @@ int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t ke
         d->depth--;
         return -1;
     }
-    d->nodes[kid].value = dom_str_in(d, key, 1);
+    dom_set_value(d, kid, key, 1);
     d->nodes[kid].tag_id = r->resolve(NULL, key->p, key->len);
     return dom_place(d, kid) == 0 ? 1 : -1;
 }
@@ -1156,7 +1174,7 @@ int dom_on_block_item(void* ctx, const yep_block_value* v) {
     if (vid == UINT32_MAX) {
         return -1;
     }
-    d->nodes[vid].value = dom_str_in(d, &v->value, v->borrowed);
+    dom_set_value(d, vid, &v->value, v->borrowed);
     d->nodes[vid].tag_id = r->resolve(NULL, v->value.p, v->value.len);
     return dom_place(d, vid) == 0 ? 1 : -1;
 }
@@ -1183,7 +1201,7 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
     if (kid == UINT32_MAX) {
         return -1;
     }
-    d->nodes[kid].value = dom_str_in(d, key, 1);
+    dom_set_value(d, kid, key, 1);
     d->nodes[kid].tag_id = r->resolve(NULL, key->p, key->len);
     if (dom_place(d, kid) != 0) {
         return -1;
@@ -1193,7 +1211,7 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
         if (vid == UINT32_MAX) {
             return -1;
         }
-        d->nodes[vid].value = dom_str_in(d, &v->value, 1); /* borrowed — the
+        dom_set_value(d, vid, &v->value, 1); /* borrowed — the
             event path stamps it too now (73); the gates compare decoded
             views, not arena placement */
         d->nodes[vid].target = target;
@@ -1205,7 +1223,7 @@ int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, 
     if (vid == UINT32_MAX) {
         return -1;
     }
-    d->nodes[vid].value = dom_str_in(d, &v->value, v->borrowed);
+    dom_set_value(d, vid, &v->value, v->borrowed);
     d->nodes[vid].tag_id = r->resolve(NULL, v->value.p, v->value.len);
     if (anchored && v->anchor_id != 0 && dom_anchor_set(d, v->anchor_id, vid) != 0) {
         return -1;
@@ -1224,7 +1242,7 @@ int dom_on_scalar(void* ctx, const yep_view* value, const yep_view* tag, const y
     if (id == UINT32_MAX) {
         return -1;
     }
-    d->nodes[id].value = dom_str_in(d, value, borrowed);
+    dom_set_value(d, id, value, borrowed);
     d->nodes[id].tag_id = tag_id;
     if (anchor_id != 0 && dom_anchor_set(d, anchor_id, id) != 0) {
         return -1;

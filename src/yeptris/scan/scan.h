@@ -98,6 +98,12 @@ int yep_scan_prop_char(unsigned char c);
 /* First offset at/after pos that cannot continue an anchor/alias name. */
 size_t yep_scan_prop_end(const char* p, size_t len, size_t pos);
 
+/* The dq-forced byte set (issue #352 lane 2): NEL, LS/PS, the BOM,
+ * and the noncharacters — the bytes whose only stable spelling is
+ * the double-quoted escape. One home for the emitter's route check
+ * AND the DOM's parse-time fact bit, so the two cannot drift. */
+int yep_scan_dq_forced(const char* p, uint32_t len);
+
 /* Tag-shorthand suffix byte: libyaml's URI set (";/?:@&=+$,_.!~*'()%"
  * plus alphanumerics; flow indicators and ',' terminate instead).
  * Stray non-set bytes stay visible as the props follower, which

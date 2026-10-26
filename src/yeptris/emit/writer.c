@@ -486,31 +486,12 @@ enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL, Y
  * The block map's explicit-key promotion consults the same predicate:
  * a key whose content demotes to DQ re-parses as a QUOTED key and must
  * ride simple, or round two's render differs (the nightly's round 118). */
-static int sc_dq_forced(const char* p, uint32_t len) {
-    for (uint32_t k = 0; k + 1 < len; k++) {
-        if ((unsigned char)p[k] == 0xc2 && (unsigned char)p[k + 1] == 0x85) {
-            return 1;
-        }
-        /* LS/PS are breaks like NEL: only their escapes are stable */
-        if ((unsigned char)p[k] == 0xe2 && k + 2 < len && (unsigned char)p[k + 1] == 0x80 &&
-            ((unsigned char)p[k + 2] == 0xa8 || (unsigned char)p[k + 2] == 0xa9)) {
-            return 1;
-        }
-        if ((unsigned char)p[k] == 0xef && k + 2 < len && (unsigned char)p[k + 1] == 0xbb &&
-            (unsigned char)p[k + 2] == 0xbf) {
-            return 1;
-        }
-        if ((unsigned char)p[k] == 0xef && k + 2 < len && (unsigned char)p[k + 1] == 0xbf &&
-            ((unsigned char)p[k + 2] == 0xbe || (unsigned char)p[k + 2] == 0xbf)) {
-            return 1; /* noncharacter: only its escape re-parses */
-        }
-    }
-    return 0;
-}
-
 static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in,
-                        int has_tag) {
-    if (sc_dq_forced(p, len)) {
+                        int has_tag, int no_exotic) {
+    /* the parse-time fact bit (#352 lane 2): a dnode verified clean of
+     * the dq-forced set skips the rescan — 0 (mutation-built or JSON
+     * classes) keeps the scan */
+    if (!no_exotic && yep_scan_dq_forced(p, len)) {
         return YEP_SC_DQ;
     }
     if (w->in_flow && len > 0) {
@@ -641,14 +622,14 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
      * memoized long scalars, in visit order either way. */
     if (w->sc_dec != NULL && len >= YEP_SC_MEMO_MIN) {
         if (w->dry) {
-            route = sc_route(w, p, len, as_key, n->style, n->tag.len > 0);
+            route = sc_route(w, p, len, as_key, n->style, n->tag.len > 0, n->no_exotic);
             w->sc_dec[w->sc_i] = route;
         } else {
             route = w->sc_dec[w->sc_i];
         }
         w->sc_i++;
     } else {
-        route = sc_route(w, p, len, as_key, n->style, n->tag.len > 0);
+        route = sc_route(w, p, len, as_key, n->style, n->tag.len > 0, n->no_exotic);
     }
     switch (route) {
     case YEP_SC_NOTHING:
@@ -1190,7 +1171,7 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
          * anyway (the nightly's run 38177622733, ":\n! |-\n r\n:") */
         if (!complex_key && kn->style >= 4 && kn->style <= 5 && kn->value.len > 0 &&
             kn->tag.len > 0 && memchr(wv(w, kn->value).p, '\n', wv(w, kn->value).len) == NULL &&
-            !sc_dq_forced(wv(w, kn->value).p, wv(w, kn->value).len)) {
+            (kn->no_exotic || !yep_scan_dq_forced(wv(w, kn->value).p, wv(w, kn->value).len))) {
             /* a TAGGED SINGLE-LINE literal/folded key keeps the block
              * form in sc_route (the #290 law), so the value separator
              * would glue onto the block's CONTENT line (colons are

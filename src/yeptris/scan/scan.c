@@ -153,6 +153,28 @@ int yep_scan_prop_char(unsigned char c) {
     return !yep_ct_any(c, YEP_CT_BLANK | YEP_CT_LBREAK | YEP_CT_FLOW_IND) && c != ',' && c != '#';
 }
 
+int yep_scan_dq_forced(const char* p, uint32_t len) {
+    for (uint32_t k = 0; k + 1 < len; k++) {
+        if ((unsigned char)p[k] == 0xc2 && (unsigned char)p[k + 1] == 0x85) {
+            return 1;
+        }
+        /* LS/PS are breaks like NEL: only their escapes are stable */
+        if ((unsigned char)p[k] == 0xe2 && k + 2 < len && (unsigned char)p[k + 1] == 0x80 &&
+            ((unsigned char)p[k + 2] == 0xa8 || (unsigned char)p[k + 2] == 0xa9)) {
+            return 1;
+        }
+        if ((unsigned char)p[k] == 0xef && k + 2 < len && (unsigned char)p[k + 1] == 0xbb &&
+            (unsigned char)p[k + 2] == 0xbf) {
+            return 1;
+        }
+        if ((unsigned char)p[k] == 0xef && k + 2 < len && (unsigned char)p[k + 1] == 0xbf &&
+            ((unsigned char)p[k + 2] == 0xbe || (unsigned char)p[k + 2] == 0xbf)) {
+            return 1; /* noncharacter: only its escape re-parses */
+        }
+    }
+    return 0;
+}
+
 size_t yep_scan_prop_end(const char* p, size_t len, size_t pos) {
     while (pos < len) {
         unsigned char c = (unsigned char)p[pos];
