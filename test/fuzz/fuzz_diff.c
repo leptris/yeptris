@@ -1402,7 +1402,8 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
             continue;
         }
         if (ydump[y] == '\\' && ydump[y + 1] == 'n' &&
-            (unsigned char)ldump[l] == 0xE2 && (unsigned char)ldump[l + 1] == 0x80 &&
+            (unsigned char)ldump[l] == 0xE2 &&
+            (unsigned char)ldump[l + 1] == 0x80 &&
             ((unsigned char)ldump[l + 2] == 0xA8 || (unsigned char)ldump[l + 2] == 0xA9)) {
             /* the blank-line member (round 72): yeptris's break law
              * makes the PS a BLANK line and the fold a hard break —
