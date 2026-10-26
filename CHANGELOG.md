@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **fuzz: the anchor-split composite can leave the plain-LS/PS fold law on the table** — the nightly's round 66 (crash-601c1e24, 20 bytes: `&k:j:(<PS> UT\r|\r\n.V|`). The ':' split of `yd_anchor_name_charset_divergence` reconciled the anchor reading (yeptris names `k:`, libyaml truncates at `:`), but the PS inside the residual plain then folded in yeptris only — the props-led composite leg's strict `strcmp` declined its own family and the raw DIFFER aborted the seed walk. The leg's engine-agreement check now also accepts the r56 fold-walk signature (dumps byte-equal except yeptris's fold-space where libyaml carries the raw LS/PS triple, at least one triple, full alignment elsewhere); libyaml's byte-invariance under the split stays strict. `yd_plain_lsps_fold_divergence` now calls the same extracted walk. Gates: r66 + all prior rounds' min cores carry (r44 = the lenient-parse split); parse + roundtrip + feed corpora walk clean under ASan+libFuzzer on rebuilt harnesses. Seed `parse/r66-lsps-anchor-split.bin`.
+
 - `e_flow_floor_ok` (the JSON fast path's 9C9N flow-floor gate) now derives line starts with the scan break SSOT — `\n` and lone `\r`, not `\n` alone. A flow whose last content break was a lone CR escaped the closer-line indent check, so whole parses (span ≥ 24 → fast path) accepted what windowed parses (general kernel) rejected with `inconsistent indentation` — a chunked-feed identity break (issue #771, nightly r65). The fused-sink branch's single-line test likewise treats any `\r` as multi-line now.
 
 ## [0.6.45] - 2026-10-26

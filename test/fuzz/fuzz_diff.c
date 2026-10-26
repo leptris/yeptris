@@ -1294,20 +1294,13 @@ static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* 
  * the plain sibling, and its relation is exact and dump-shaped:
  * libyaml's dump equals yeptris's with every fold-space that faces a
  * raw LS/PS byte consumed as that triple. */
-static int yd_plain_lsps_fold_divergence(const uint8_t* data, size_t size, const char* ydump,
-                                         const char* ldump) {
+/* The plain-LS/PS fold law's dump comparison (rounds 56/66): yeptris
+ * (YAML 1.2) folds an LS/PS break in a plain scalar into ONE space
+ * while libyaml's READ_LINE joins it RAW, so the dumps are byte-equal
+ * EXCEPT yeptris's fold-space where libyaml carries the raw triple.
+ * Requires at least one such triple and full alignment elsewhere. */
+static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
-        return 0;
-    }
-    int has = 0;
-    for (size_t i = 0; i + 2 < size; i++) {
-        if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
-            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
-            has = 1;
-            break;
-        }
-    }
-    if (!has) {
         return 0;
     }
     int diffs = 0;
@@ -1330,6 +1323,25 @@ static int yd_plain_lsps_fold_divergence(const uint8_t* data, size_t size, const
         return 0;
     }
     return diffs > 0 && ldump[l] == '\0';
+}
+
+static int yd_plain_lsps_fold_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                         const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    int has = 0;
+    for (size_t i = 0; i + 2 < size; i++) {
+        if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            has = 1;
+            break;
+        }
+    }
+    if (!has) {
+        return 0;
+    }
+    return yd_dump_eq_mod_lsps_fold(ydump, ldump);
 }
 
 /* True when the difference is the flow-anchor-colon family: inside a
@@ -1936,7 +1948,16 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
          * anyway) -- exactly the charset-tokenization signature. */
         int ok3 = 0;
         char* ldump2 = yd_libyaml_dump(sub, o, &ok3);
-        if (ldump2 != NULL && ok3 && strcmp(ldump, ldump2) == 0 && strcmp(ydump2, ldump2) == 0) {
+        if (ldump2 != NULL && ok3 && strcmp(ldump, ldump2) == 0 &&
+            (strcmp(ydump2, ldump2) == 0 ||
+             /* the split can ALSO leave the plain-LS/PS fold law on
+              * the table (round 66: "&k:j:(<PS> UT\r|\r\n.V|" -- the
+              * ':' split reconciles the anchor reading, and the PS
+              * inside the residual plain then folds in yeptris only);
+              * libyaml is byte-invariant under the split either way,
+              * so the composite signature is the charset law AND the
+              * fold law, both documented */
+             yd_dump_eq_mod_lsps_fold(ydump2, ldump2))) {
             free(ldump2);
             free(ydump2);
             free(sub);
