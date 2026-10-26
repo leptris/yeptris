@@ -1895,7 +1895,12 @@ static int e_flow_key_after(const char* p, size_t len, size_t close) {
 static int e_flow_floor_ok(const char* p, size_t open, size_t close, uint16_t floor) {
     size_t j = open;
     while (j < close) {
-        if (p[j] == '\n') {
+        /* the break rule is the scan's: \n, or a \r the next byte does
+         * not join into CRLF — a \n-only walk let a CR-broken content
+         * line escape the indent check (issue #771: the whole parse
+         * took the fast path past a floor violation the windowed
+         * parse's general kernel rejected) */
+        if (p[j] == '\n' || (p[j] == '\r' && (j + 1 >= close || p[j + 1] != '\n'))) {
             size_t k = j + 1;
             uint32_t ind = 0;
             while (k < close && p[k] == ' ') {
@@ -1908,12 +1913,17 @@ static int e_flow_floor_ok(const char* p, size_t open, size_t close, uint16_t fl
         }
         j++;
     }
-    if (close < (size_t)-1 && close > open) {
-        size_t ls = close;
-        uint32_t ind = 0;
-        while (ls > 0 && p[ls - 1] != '\n') {
-            ls--;
+    if (close > open) {
+        size_t from = open;
+        uint32_t ln = 0;
+        size_t ls = open;
+        yep_scan_advance_line(p, &from, close, &ln, &ls);
+        /* advance_line cannot peek past its `to`: a lone \r at
+         * close - 1 ends the closer's line AT close */
+        if (p[close - 1] == '\r' && p[close] != '\n') {
+            ls = close;
         }
+        uint32_t ind = 0;
         while (ls < close && p[ls] == ' ') {
             ind++;
             ls++;
@@ -1950,7 +1960,8 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
             return 0; /* not JSON-class: the general kernel */
         }
         if (rc == 1) {
-            int single = (memchr(p + open_pos, '\n', bclose - open_pos) == NULL);
+            int single = (memchr(p + open_pos, '\n', bclose - open_pos) == NULL) &&
+                         (memchr(p + open_pos, '\r', bclose - open_pos) == NULL);
             if (e_flow_key_after(p, len, bclose) ||
                 (e->flow_enforce && !single &&
                  !e_flow_floor_ok(p, open_pos, bclose, e->flow_floor))) {

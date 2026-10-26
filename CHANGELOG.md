@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- `e_flow_floor_ok` (the JSON fast path's 9C9N flow-floor gate) now derives line starts with the scan break SSOT — `\n` and lone `\r`, not `\n` alone. A flow whose last content break was a lone CR escaped the closer-line indent check, so whole parses (span ≥ 24 → fast path) accepted what windowed parses (general kernel) rejected with `inconsistent indentation` — a chunked-feed identity break (issue #771, nightly r65). The fused-sink branch's single-line test likewise treats any `\r` as multi-line now.
+
 ## [0.6.45] - 2026-10-26
 ### Changed
 
