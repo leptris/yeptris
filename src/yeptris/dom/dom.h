@@ -60,16 +60,16 @@ typedef struct yep_sview {
  * fields left the record — they live in the DOM's lazily-built side
  * tables (parse pays nothing; dom.c owns them). */
 typedef struct yep_dnode {
-    uint8_t kind : 2;     /* yep_dom_kind (0-3) */
-    uint8_t style : 3;    /* yep_scalar_style (0-5) */
-    uint8_t flow : 1;     /* collection opened in flow style */
+    uint8_t kind : 2;      /* yep_dom_kind (0-3) */
+    uint8_t style : 3;     /* yep_scalar_style (0-5) */
+    uint8_t flow : 1;      /* collection opened in flow style */
     uint8_t implicit : 1;  /* scalar written without quotes/tag */
     uint8_t no_exotic : 1; /* value verified clean of the dq-forced
                             * byte set (#352 lane 2): the serializer's
                             * sc_route skips its rescan. Set at every
                             * value assignment; 0 = unknown = scan. */
-    uint8_t tag_id;       /* resolved tag (resolve/resolver.h) */
-    uint32_t first_child; /* child link (mappings: key,value,key,value…) */
+    uint8_t tag_id;        /* resolved tag (resolve/resolver.h) */
+    uint32_t first_child;  /* child link (mappings: key,value,key,value…) */
     uint32_t last_child;
     uint32_t next_sibling;
     uint32_t count;  /* children (mappings: 2 × pairs) */
