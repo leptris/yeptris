@@ -1397,10 +1397,15 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
             while (ydump[y2] == ' ' || (ydump[y2] == '\\' && ydump[y2 + 1] == 't')) {
                 y2 += (ydump[y2] == '\\') ? 2 : 1;
             }
-            int y_raw_ps = (unsigned char)ydump[y2] == 0xE2 &&
-                           (unsigned char)ydump[y2 + 1] == 0x80 &&
-                           ((unsigned char)ydump[y2 + 2] == 0xA8 ||
-                            (unsigned char)ydump[y2 + 2] == 0xA9);
+            unsigned char yb0 = (unsigned char)ydump[y2];
+            int y_raw_ps = 0;
+            if (yb0 == 0xE2) {
+                unsigned char yb1 = (unsigned char)ydump[y2 + 1];
+                if (yb1 == 0x80) {
+                    unsigned char yb2 = (unsigned char)ydump[y2 + 2];
+                    y_raw_ps = yb2 == 0xA8 || yb2 == 0xA9;
+                }
+            }
             if (y_raw_ps) {
                 y = y2 + 3;
                 l += 3;
