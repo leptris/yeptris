@@ -6,7 +6,7 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.45] - 2026-10-26
 ### Changed
 
 - **fuzz: the flow-'?' transform only spaces node-position hits** — the nightly's round 64 (crash-45b843db's sibling, 30 bytes: `{?\"a\":/*com?\"a\":/*comment*!!\"}` — the explicit-key `?\"a\"` at map entry PLUS a second `?\"a\"` mid-plain in the value). `yd_qflow_adjacent_divergence`'s transform spaced EVERY `?`-before-quote; spacing the value's own `?\"` changed libyaml's bytes and the insensitivity check declined its own family. The transform now tracks flow node position (after `{`/`[`/`,` with only blanks between) and spaces only indicator hits — the value's mid-token `?\"` rides untouched. Gates: r64 + all prior rounds' min cores carry (r44 = the lenient-parse split); parse + roundtrip corpora walk clean under ASan+libFuzzer on rebuilt harnesses. Seed `parse/r64-qflow-nodepos.bin`.
