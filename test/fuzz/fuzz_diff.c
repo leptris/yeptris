@@ -1406,10 +1406,11 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
          * spells it \n — while libyaml's READ_LINE joins the PS raw as
          * content. (The dump escapes a real LF as \n; a literal
          * backslash-n would ride as \\n, so the pair is unambiguous.) */
+        unsigned char lb0 = (unsigned char)ldump[l];
+        unsigned char lb1 = (unsigned char)ldump[l + 1];
+        unsigned char lb2 = (unsigned char)ldump[l + 2];
         int y_esc_lf = ydump[y] == '\\' && ydump[y + 1] == 'n';
-        int l_raw_ps = (unsigned char)ldump[l] == 0xE2 &&
-                       (unsigned char)ldump[l + 1] == 0x80 &&
-                       ((unsigned char)ldump[l + 2] == 0xA8 || (unsigned char)ldump[l + 2] == 0xA9);
+        int l_raw_ps = lb0 == 0xE2 && lb1 == 0x80 && (lb2 == 0xA8 || lb2 == 0xA9);
         if (y_esc_lf && l_raw_ps) {
             y += 2;
             l += 3;
