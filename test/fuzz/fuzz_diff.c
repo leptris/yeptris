@@ -635,10 +635,19 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
     if (ydump == NULL || ldump == NULL || size < 5 || size > 8192) {
         return 0;
     }
-    size_t qc = (size_t)-1;
+    /* the rewrite covers EVERY glued "?:" at flow depth, whatever the
+     * follower (the nightly's round 67: "{\n?:-b%rM,\n?:M,\n?:}\n" --
+     * three explicit-key pairs with PLAIN followers; the r58 form only
+     * rewrote the first quoted one, so libyaml's invariant reading of
+     * the remaining pairs kept yeptris's plain keys on the table and
+     * the verify declined its own family). The byte-strict verify
+     * against libyaml's ORIGINAL dump arbitrates the widened gate: a
+     * mid-plain '?' ("[a?:b]") changes libyaml's own reading under the
+     * rewrite and declines. */
     int depth = 0;
     int quote = 0;
-    for (size_t i = 0; i + 2 < size; i++) {
+    size_t hits = 0;
+    for (size_t i = 0; i + 1 < size; i++) {
         unsigned char c = data[i];
         if (quote != 0) {
             if (quote == '\'' && c == '\'') {
@@ -662,26 +671,64 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
             depth++;
         } else if (c == ']' || c == '}') {
             depth--;
-        } else if (c == '?' && depth > 0 && data[i + 1] == ':' &&
-                   (data[i + 2] == '"' || data[i + 2] == '\'')) {
-            qc = i;
-            break;
+        } else if (c == '?' && depth > 0 && data[i + 1] == ':') {
+            hits++;
         }
     }
-    if (qc == (size_t)-1) {
+    if (hits == 0) {
         return 0;
     }
-    char* sub = malloc(size + 2);
+    char* sub = malloc(size * 2 + 1); /* every hit adds two bytes */
     if (sub == NULL) {
         return 0;
     }
-    memcpy(sub, data, qc);
-    sub[qc] = '"';
-    sub[qc + 1] = '"';
-    sub[qc + 2] = data[qc + 1]; /* the ':' */
-    sub[qc + 3] = ' ';
-    memcpy(sub + qc + 4, data + qc + 2, size - qc - 2);
-    size_t subn = size + 2;
+    size_t subn = 0;
+    depth = 0;
+    quote = 0;
+    for (size_t i = 0; i < size;) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            sub[subn++] = (char)c;
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                sub[subn++] = (char)data[++i];
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            i++;
+            continue;
+        }
+        if (c == '\'') {
+            quote = '\'';
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '"') {
+            quote = '"';
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '[' || c == '{') {
+            depth++;
+        } else if (c == ']' || c == '}') {
+            depth--;
+        } else if (c == '?' && depth > 0 && i + 1 < size && data[i + 1] == ':') {
+            /* "?:" -> """ : " — the empty-string key form both
+             * engines read identically (libyaml rejects the bare
+             * "{ :X}" empty implicit key outright) */
+            sub[subn++] = '"';
+            sub[subn++] = '"';
+            sub[subn++] = ':'; /* data[i + 1] */
+            sub[subn++] = ' ';
+            i += 2;
+            continue;
+        }
+        sub[subn++] = (char)c;
+        i++;
+    }
     int yok2 = 0;
     char* ydump2 = yd_sem_dump((const char*)sub, subn, &yok2);
     int lok2 = 0;
