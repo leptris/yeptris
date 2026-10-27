@@ -1,0 +1,11 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : &a a
+=VAL : &b b
+=ALI *b
+=ALI *a
+-MAP
+-DOC
+-STR

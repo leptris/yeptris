@@ -1,0 +1,11 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : one
+=VAL : 2
+=VAL : three
+=VAL : 4
+-MAP
+-DOC
+-STR

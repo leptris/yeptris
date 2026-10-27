@@ -1,0 +1,13 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : gif_file
+=VAL | <tag:yaml.org,2002:binary> R0lGODlhDAAMAIQAAP//9/X17unp5WZmZgAAAOfn515eXvPz7Y6OjuDg4J+fn5\nOTk6enp56enmlpaWNjY6Ojo4SEhP/++f/++f/++f/++f/++f/++f/++f/++f/+\n+f/++f/++f/++f/++f/++SH+Dk1hZGUgd2l0aCBHSU1QACwAAAAADAAMAAAFLC\nAgjoEwnuNAFOhpEMTRiggcz4BNJHrv/zCFcLiwMWYNG84BwwEeECcgggoBADs=\n
+=VAL : explicit_string
+=VAL : <tag:yaml.org,2002:str> 0.5
+=VAL : python_tag
+=VAL ' <tag:yaml.org,2002:python/complex> 1.0+2.0j
+-MAP
+-DOC
+-STR

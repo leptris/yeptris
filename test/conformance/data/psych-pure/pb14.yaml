@@ -1,0 +1,12 @@
+---
+- name: Seq tab after - (psych-pure parse-block.tml)
+  yaml: |
+    -	a
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       =VAL :a
+      -SEQ
+     -DOC
+    -STR

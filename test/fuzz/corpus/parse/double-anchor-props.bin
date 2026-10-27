@@ -1,0 +1,4 @@
+a: &x &y b
+top5:
+  &va2: &node2 # comment
+  key2: two

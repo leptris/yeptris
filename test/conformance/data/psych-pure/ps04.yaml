@@ -1,0 +1,12 @@
+---
+- name: Comment before node (psych-pure parse-scalar.tml)
+  yaml: |
+    # comment
+    
+    foo
+  tree: |
+    +STR
+     +DOC
+      =VAL :foo
+     -DOC
+    -STR

@@ -1,0 +1,9 @@
+# suite-ok
++STR
++DOC
++SEQ
+=VAL | explicit indent and chomp
+=VAL | chomp and explicit indent
+-SEQ
+-DOC
+-STR

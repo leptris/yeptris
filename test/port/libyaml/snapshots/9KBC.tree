@@ -1,0 +1,5 @@
+# suite-error
++STR
++DOC ---
+=VAL : key1
+!ERROR

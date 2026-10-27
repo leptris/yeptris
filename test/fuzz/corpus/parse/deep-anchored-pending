@@ -1,0 +1,11 @@
+---
+top4:
+  
+4 key4: four
+top5:
+  &node5
+  key5: five
+top6: &val3
+  six
+top7:
+  &val7 seven

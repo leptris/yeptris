@@ -1,0 +1,17 @@
+---
+- name: Block mapping in block mapping (psych-pure parse-block.tml)
+  yaml: |
+    foo:
+      bar: 42
+  tree: |
+    +STR
+     +DOC
+      +MAP
+       =VAL :foo
+       +MAP
+        =VAL :bar
+        =VAL :42
+       -MAP
+      -MAP
+     -DOC
+    -STR

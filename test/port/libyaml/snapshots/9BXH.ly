@@ -1,0 +1,3 @@
+---
+- {"single line": ! '', a: b}
+- {"multi line": ! '', a: b}

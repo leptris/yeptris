@@ -1,0 +1,11 @@
+# suite-ok
++STR
++DOC ---
++MAP
+=VAL : a
+=VAL : &anchor 
+=VAL : b
+=ALI *anchor
+-MAP
+-DOC
+-STR

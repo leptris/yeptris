@@ -1,0 +1,11 @@
+# suite-ok
++STR
++DOC
++MAP
++SEQ []
+=VAL : flow
+-SEQ
+=VAL : block
+-MAP
+-DOC
+-STR

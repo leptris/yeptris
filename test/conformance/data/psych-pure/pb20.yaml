@@ -1,0 +1,17 @@
+---
+- name: Anchor on map and tag on key; not top (psych-pure parse-block.tml)
+  yaml: |
+    foo: &a1
+      !t1 a: b
+  tree: |
+    +STR
+     +DOC
+      +MAP
+       =VAL :foo
+       +MAP &a1
+        =VAL <!t1> :a
+        =VAL :b
+       -MAP
+      -MAP
+     -DOC
+    -STR

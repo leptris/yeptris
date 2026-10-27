@@ -1,0 +1,15 @@
+---
+- name: Anchors on seq and elements (psych-pure parse-props.tml)
+  yaml: |
+    &a1
+    - &a2 foo
+    - &a3 bar
+  tree: |
+    +STR
+     +DOC
+      +SEQ &a1
+       =VAL &a2 :foo
+       =VAL &a3 :bar
+      -SEQ
+     -DOC
+    -STR

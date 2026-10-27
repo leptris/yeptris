@@ -1,0 +1,4 @@
+single: 'it''s here'
+dquote: "line one\n  line two"
+empty:
+later: x

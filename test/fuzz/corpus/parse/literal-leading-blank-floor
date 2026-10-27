@@ -1,0 +1,19 @@
+foar: 2
+    
+text: |
+  a
+    
+  b
+
+ 
+text: |
+    
+  b
+
+t: |
+  a
+  
+bar: 2
+    
+ext: |
+  a

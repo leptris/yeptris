@@ -1,0 +1,22 @@
+---
+- name: Two flow nodes with header and footer (psych-pure parse-stream.tml)
+  yaml: |
+    --- [foo, bar]
+    ...
+    --- {foo: bar}
+    ...
+  tree: |
+    +STR
+     +DOC ---
+      +SEQ []
+       =VAL :foo
+       =VAL :bar
+      -SEQ
+     -DOC ...
+     +DOC ---
+      +MAP {}
+       =VAL :foo
+       =VAL :bar
+      -MAP
+     -DOC ...
+    -STR
