@@ -56,6 +56,18 @@ YEPTRIS_API YeptrisStatus yeptris_marshal_node_ex(YeptrisNode node, uint32_t fla
 
 YEPTRIS_API void yeptris_marshal_free(char* out);
 
+/* yeptris-ruby#322: the dump face's marshal reader — Ruby
+ * Marshal.dump bytes IN, JSON text OUT, one C call (no per-scalar
+ * crossings, no object reconstruction). Handles the JSON-relevant
+ * subset (nil/bool/int/string/float/array/hash + symbols/links/ivars);
+ * anything else — objects, structs, user marshal, bignums beyond i64,
+ * non-finite floats, cycles — returns YEPTRIS_ERROR_UNSUPPORTED and
+ * the binding falls back to its per-node walk. *out is malloc'd, free
+ * with yeptris_marshal_free exactly once; on failure nothing is
+ * allocated. compact selects the no-space separators. */
+YEPTRIS_API YeptrisStatus yeptris_json_from_marshal(const char* m, size_t m_len, int compact,
+                                                    char** out, size_t* out_len);
+
 #ifdef __cplusplus
 }
 #endif

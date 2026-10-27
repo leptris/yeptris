@@ -1384,6 +1384,560 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
     emit_scalar(w, n, parent_col, as_key);
 }
 
+/* ============================================================
+ * yeptris-ruby#322: the marshal READER — Ruby Marshal.dump bytes
+ * to JSON text in one C call (no per-scalar crossings, no object
+ * reconstruction). The format facts mirror marshal.c's emission
+ * contract (empirically pinned against Ruby 3.4): w_long small form
+ * x==0 -> 0x00, |x| <= 122 -> sign*(|x|+5), size form tag +-k with
+ * LE payload (2^8k - m for negatives); strings carry 'I' ivar
+ * wrappers; arrays/hashes/strings/floats register for '@' links.
+ * A JSON dump duplicates linked re-references (cycled or shared
+ * subtrees re-walk from the registered position, depth-guarded).
+ * The JSON-irrelevant constructs ('o' objects, 'S' structs, 'u'
+ * user marshal, 'l' bignums beyond i64, non-finite floats) return
+ * UNSUPPORTED — the binding falls back to its per-node walk.
+ * ============================================================ */
+
+#include <inttypes.h>
+
+typedef struct {
+    const char* p;
+    size_t len;
+    size_t at;
+} mj_stream;
+
+typedef struct {
+    uint32_t kind; /* 1 seq, 2 map */
+    uint32_t items;
+} mj_frame;
+
+typedef struct {
+    yep_writer* w;
+    mj_stream s;
+    mj_frame* frames;
+    int depth;
+    int compact;
+    /* the symbol table: ';' links resolve to these names */
+    struct {
+        const char* p;
+        uint32_t len;
+    }* syms;
+    size_t syms_n, syms_cap;
+    /* the object table: '@' links re-walk from these positions */
+    struct {
+        size_t pos;
+        uint32_t chain_pos;
+    }* objs;
+    size_t objs_n, objs_cap;
+    uint32_t* chain; /* the active positions (cycle guard) */
+    size_t chain_n, chain_cap;
+    int failed; /* 0 ok, YEPTRIS_ERROR_UNSUPPORTED */
+} mj_ctx;
+
+static int mj_fail(mj_ctx* c) {
+    c->failed = YEPTRIS_ERROR_UNSUPPORTED;
+    return -1;
+}
+
+static int mj_byte(mj_ctx* c, unsigned char* out) {
+    if (c->s.at >= c->s.len)
+        return mj_fail(c);
+    *out = (unsigned char)c->s.p[c->s.at++];
+    return 0;
+}
+
+/* the w_long inverse — mirrors m_w_long's encode exactly:
+ *   0x00 -> 0; 1..4 -> positive size form k=b; 5..127 -> small +(
+ *   b-5); 129..250 -> small -(251-b); 251..255 -> negative size form
+ *   k=256-b (payload = LE(2^(8k) - m)); 128/248..250 unreachable (the
+ *   writer takes the small form first). */
+static int mj_long(mj_ctx* c, int64_t* out) {
+    unsigned char b;
+    if (mj_byte(c, &b) != 0)
+        return -1;
+    if (b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (b <= 4) { /* positive size form, k = b */
+        int64_t v = 0;
+        for (int i = 0; i < (int)b; i++) {
+            unsigned char d;
+            if (mj_byte(c, &d) != 0)
+                return -1;
+            v |= (int64_t)d << (8 * i);
+        }
+        *out = v;
+        return 0;
+    }
+    if (b <= 127) {
+        *out = (int64_t)b - 5;
+        return 0;
+    }
+    if (b >= 129 && b <= 250) {
+        *out = (int64_t)b - 251;
+        return 0;
+    }
+    { /* 251..255: negative size form */
+        int bytes = 256 - (int)b;
+        int64_t v = 0;
+        for (int i = 0; i < bytes; i++) {
+            unsigned char d;
+            if (mj_byte(c, &d) != 0)
+                return -1;
+            v |= (int64_t)d << (8 * i);
+        }
+        *out = v - ((int64_t)1 << (8 * bytes));
+        return 0;
+    }
+}
+
+static const char* mj_sym_name(mj_ctx* c, int64_t idx, uint32_t* len_out) {
+    if (idx < 0 || (size_t)idx >= c->syms_n) {
+        mj_fail(c);
+        return NULL;
+    }
+    *len_out = c->syms[idx].len;
+    return c->syms[idx].p;
+}
+
+static int mj_ivar_skip(mj_ctx* c);
+static int mj_link_key(mj_ctx* c, int64_t idx);
+
+static int mj_value(mj_ctx* c);
+
+static int mj_string_body(mj_ctx* c, int64_t len) {
+    if (len < 0 || (uint64_t)len > (uint64_t)(c->s.len - c->s.at))
+        return mj_fail(c);
+    emit_dq_json(c->w, c->s.p + c->s.at, (uint32_t)len);
+    c->s.at += (size_t)len;
+    return 0;
+}
+
+/* a symbol: ':' + long(len) + bytes — registers in the table; the
+ * name is emitted as a JSON string when emit is set */
+static int mj_symbol(mj_ctx* c, int emit) {
+    int64_t len;
+    if (mj_long(c, &len) != 0)
+        return -1;
+    if (len < 0 || (uint64_t)len > (uint64_t)(c->s.len - c->s.at))
+        return mj_fail(c);
+    const char* name = c->s.p + c->s.at;
+    uint32_t nlen = (uint32_t)len;
+    c->s.at += (size_t)len;
+    if (c->syms_n == c->syms_cap) {
+        c->syms_cap = c->syms_cap ? c->syms_cap * 2 : 16;
+        c->syms = (void*)realloc(c->syms, c->syms_cap * sizeof(*c->syms));
+        if (!c->syms)
+            return mj_fail(c);
+    }
+    c->syms[c->syms_n].p = name;
+    c->syms[c->syms_n].len = nlen;
+    c->syms_n++;
+    if (emit) {
+        emit_dq_json(c->w, name, nlen);
+    }
+    return 0;
+}
+
+/* an ivar wrapper 'I': the value then long(count) then count pairs of
+ * (symbol, value) — read-and-discard (encodings and such) */
+static int mj_ivar_skip(mj_ctx* c);
+
+static int mj_discard_value(mj_ctx* c) {
+    unsigned char t;
+    if (mj_byte(c, &t) != 0)
+        return -1;
+    switch (t) {
+    case '0':
+    case 'T':
+    case 'F':
+        return 0;
+    case 'i': {
+        int64_t v;
+        return mj_long(c, &v);
+    }
+    case '"': {
+        int64_t len;
+        if (mj_long(c, &len) != 0)
+            return -1;
+        if (len < 0 || (uint64_t)len > (uint64_t)(c->s.len - c->s.at))
+            return mj_fail(c);
+        c->s.at += (size_t)len;
+        return 0;
+    }
+    case ':':
+        return mj_symbol(c, 0);
+    case ';': {
+        int64_t idx;
+        if (mj_long(c, &idx) != 0)
+            return -1;
+        return mj_sym_name(c, idx, &(uint32_t){0}) ? 0 : -1;
+    }
+    case 'I':
+        return mj_ivar_skip(c);
+    default:
+        return mj_fail(c); /* ivars on JSON trees carry symbol/E
+                              pairs only in practice */
+    }
+}
+
+/* the count + (symbol, value) pairs that follow an 'I' wrapper's
+ * wrapped value */
+static int mj_ivar_pairs(mj_ctx* c) {
+    int64_t count;
+    if (mj_long(c, &count) != 0)
+        return -1;
+    for (int64_t i = 0; i < count; i++) {
+        if (mj_discard_value(c) != 0)
+            return -1; /* the name symbol */
+        if (mj_discard_value(c) != 0)
+            return -1; /* the ivar value */
+    }
+    return 0;
+}
+
+/* a standalone 'I' wrapper: the wrapped value, then the pairs */
+static int mj_ivar_skip(mj_ctx* c) {
+    if (mj_discard_value(c) != 0)
+        return -1; /* the wrapped value */
+    return mj_ivar_pairs(c);
+}
+
+static int mj_value(mj_ctx* c) {
+    unsigned char t;
+    size_t tpos = c->s.at;
+    if (mj_byte(c, &t) != 0)
+        return -1;
+    /* arrays, hashes, strings and floats register for '@' links (the
+     * marshal.c emission contract, 0-based stream order); integers,
+     * bignums, symbols and immediates never register */
+    if (t == '[' || t == '{' || t == '"' || t == 'f') {
+        if (c->objs_n == c->objs_cap) {
+            c->objs_cap = c->objs_cap ? c->objs_cap * 2 : 16;
+            c->objs = (void*)realloc(c->objs, c->objs_cap * sizeof(*c->objs));
+            if (!c->objs)
+                return mj_fail(c);
+        }
+        c->objs[c->objs_n].pos = tpos;
+        c->objs[c->objs_n].chain_pos = 0;
+        c->objs_n++;
+    }
+    switch (t) {
+    case '0':
+        wr_put(c->w, "null", 4);
+        return 0;
+    case 'T':
+        wr_put(c->w, "true", 4);
+        return 0;
+    case 'F':
+        wr_put(c->w, "false", 5);
+        return 0;
+    case 'i': {
+        int64_t v;
+        if (mj_long(c, &v) != 0)
+            return -1;
+        char buf[24];
+        int n = snprintf(buf, sizeof buf, "%lld", (long long)v);
+        wr_put(c->w, buf, (uint32_t)n);
+        return 0;
+    }
+    case '"': {
+        int64_t len;
+        if (mj_long(c, &len) != 0)
+            return -1;
+        int rc = mj_string_body(c, len);
+        if (rc != 0)
+            return -1;
+        /* the 'I' wrapper follows when the string carries ivars: the
+         * value is already parsed — pairs only */
+        if (c->s.at < c->s.len && c->s.p[c->s.at] == 'I') {
+            c->s.at++;
+            if (mj_ivar_pairs(c) != 0)
+                return -1;
+        }
+        return 0;
+    }
+    case 'I': {
+        /* the wrapped value IS the payload: re-dispatch into it, then
+         * the ivar pairs ride */
+        if (mj_value(c) != 0)
+            return -1;
+        return mj_ivar_pairs(c);
+    }
+    case 'l': {
+        /* the bignum: sign byte + w_long(limb count) + LE 16-bit
+         * limbs; the i64-representable range emits, wider falls back */
+        unsigned char sign;
+        if (mj_byte(c, &sign) != 0)
+            return -1;
+        if (sign != 0x2b && sign != 0x2d)
+            return mj_fail(c); /* + / - */
+        int64_t words;
+        if (mj_long(c, &words) != 0)
+            return -1;
+        if (words < 0 || words > 4)
+            return mj_fail(c);
+        int64_t v = 0;
+        for (int64_t i = 0; i < words; i++) {
+            for (int b = 0; b < 2; b++) {
+                unsigned char d;
+                if (mj_byte(c, &d) != 0)
+                    return -1;
+                v |= (int64_t)d << (16 * i + 8 * b);
+            }
+        }
+        if (sign == 0x2d) {
+            v = -v;
+        }
+        char buf[24];
+        int n = snprintf(buf, sizeof buf, "%lld", (long long)v);
+        wr_put(c->w, buf, (uint32_t)n);
+        return 0;
+    }
+    case 'f': {
+        int64_t len;
+        if (mj_long(c, &len) != 0)
+            return -1;
+        if (len < 0 || (uint64_t)len > (uint64_t)(c->s.len - c->s.at))
+            return mj_fail(c);
+        char tmp[64];
+        uint32_t tl = (uint32_t)len < sizeof tmp - 1 ? (uint32_t)len : (uint32_t)sizeof tmp - 1;
+        memcpy(tmp, c->s.p + c->s.at, tl);
+        tmp[tl] = '\0';
+        c->s.at += (size_t)len;
+        if (strcmp(tmp, "inf") == 0 || strcmp(tmp, "-inf") == 0 || strcmp(tmp, "nan") == 0) {
+            return mj_fail(c); /* JSON has no inf/nan spelling */
+        }
+        double d = strtod(tmp, NULL);
+        char buf[40];
+        int wl = yep_d2s_json(d, buf);
+        wr_put(c->w, buf, (uint32_t)wl);
+        return 0;
+    }
+    case '[':
+    case '{': {
+        int64_t count;
+        if (mj_long(c, &count) != 0)
+            return -1;
+        if (count < 0)
+            return mj_fail(c);
+        if (c->depth >= 512)
+            return mj_fail(c);
+        c->depth++;
+        wr_byte(c->w, t == '[' ? '[' : '{');
+        for (int64_t i = 0; i < count; i++) {
+            if (i > 0) {
+                wr_put(c->w, c->compact ? "," : ", ", c->compact ? 1 : 2);
+            }
+            if (t == '{') {
+                /* the key: a string or a symbol — JSON keys are strings */
+                unsigned char kt;
+                if (mj_byte(c, &kt) != 0)
+                    return -1;
+                if (kt == 'I') {
+                    /* an ivar-wrapped key: the inner value emits, then
+                     * the pairs (the 'I' is consumed) */
+                    if (mj_value(c) != 0)
+                        return -1;
+                    if (mj_ivar_pairs(c) != 0)
+                        return -1;
+                } else if (kt == '@') {
+                    /* a linked key: re-emit the target (#322's corpus
+                     * links the users' repeated key strings) */
+                    int64_t idx;
+                    if (mj_long(c, &idx) != 0)
+                        return -1;
+                    if (mj_link_key(c, idx) != 0)
+                        return -1;
+                } else if (kt == '"') {
+                    int64_t len;
+                    if (mj_long(c, &len) != 0)
+                        return -1;
+                    int rc = mj_string_body(c, len);
+                    if (rc != 0)
+                        return -1;
+                    if (c->s.at < c->s.len && c->s.p[c->s.at] == 'I') {
+                        c->s.at++;
+                        if (mj_ivar_pairs(c) != 0)
+                            return -1;
+                    }
+                } else if (kt == ':') {
+                    if (mj_symbol(c, 1) != 0)
+                        return -1;
+                } else if (kt == ';') {
+                    int64_t idx;
+                    if (mj_long(c, &idx) != 0)
+                        return -1;
+                    uint32_t nlen;
+                    const char* nm = mj_sym_name(c, idx, &nlen);
+                    if (!nm)
+                        return -1;
+                    emit_dq_json(c->w, nm, nlen);
+                } else {
+                    return mj_fail(c);
+                }
+                wr_put(c->w, c->compact ? ":" : ": ", c->compact ? 1 : 2);
+                if (mj_value(c) != 0)
+                    return -1;
+            } else {
+                if (mj_value(c) != 0)
+                    return -1;
+            }
+        }
+        c->depth--;
+        wr_byte(c->w, t == '[' ? ']' : '}');
+        return 0;
+    }
+    case ';': {
+        int64_t idx;
+        if (mj_long(c, &idx) != 0)
+            return -1;
+        uint32_t nlen;
+        const char* nm = mj_sym_name(c, idx, &nlen);
+        if (!nm)
+            return -1;
+        emit_dq_json(c->w, nm, nlen);
+        return 0;
+    }
+    case ':': {
+        /* a bare symbol VALUE: emitted as its name string */
+        if (mj_symbol(c, 1) != 0)
+            return -1;
+        return 0;
+    }
+    case '@': {
+        /* an object link: re-walk from the registered position */
+        int64_t idx;
+        if (mj_long(c, &idx) != 0)
+            return -1;
+        if (idx < 0 || (size_t)idx >= c->objs_n)
+            return mj_fail(c);
+        size_t save = c->s.at;
+        c->s.at = c->objs[idx].pos;
+        /* cycle guard: the link target is in the active chain */
+        for (size_t k = 0; k < c->chain_n; k++) {
+            if (c->chain[k] == c->objs[idx].pos) {
+                c->s.at = save;
+                return mj_fail(c);
+            }
+        }
+        if (c->chain_n == c->chain_cap) {
+            c->chain_cap = c->chain_cap ? c->chain_cap * 2 : 16;
+            c->chain = (uint32_t*)realloc(c->chain, c->chain_cap * sizeof(*c->chain));
+            if (!c->chain) {
+                c->s.at = save;
+                return mj_fail(c);
+            }
+        }
+        c->chain[c->chain_n++] = c->objs[idx].pos;
+        int rc = mj_value(c);
+        c->chain_n--;
+        c->s.at = save;
+        if (rc != 0)
+            return -1;
+        return 0;
+    }
+    default:
+        return mj_fail(c);
+    }
+}
+
+/* an '@' object link in KEY position: the link's target re-emitted as
+ * the key string (Ruby links repeated key objects — the users' "id"
+ * keys, yeptris-ruby#322's corpus). The link consumes no stream
+ * bytes; the key walk resumes at the caller's cursor. */
+static int mj_link_key(mj_ctx* c, int64_t idx) {
+    if (idx < 0 || (size_t)idx >= c->objs_n)
+        return mj_fail(c);
+    size_t save = c->s.at;
+    for (size_t k = 0; k < c->chain_n; k++) {
+        if (c->chain[k] == c->objs[idx].pos) {
+            c->s.at = save;
+            return mj_fail(c);
+        }
+    }
+    c->s.at = c->objs[idx].pos;
+    if (c->chain_n == c->chain_cap) {
+        c->chain_cap = c->chain_cap ? c->chain_cap * 2 : 16;
+        c->chain = (uint32_t*)realloc(c->chain, c->chain_cap * sizeof(*c->chain));
+        if (!c->chain) {
+            c->s.at = save;
+            return mj_fail(c);
+        }
+    }
+    c->chain[c->chain_n++] = c->objs[idx].pos;
+    int rc = mj_value(c);
+    c->chain_n--;
+    c->s.at = save;
+    return rc;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_json_from_marshal(const char* m, size_t m_len, int compact,
+                                                    char** out, size_t* out_len) {
+    if (out == NULL || out_len == NULL)
+        return YEPTRIS_ERROR_ARG;
+    *out = NULL;
+    *out_len = 0;
+    if (m == NULL || m_len < 2 || (unsigned char)m[0] != 0x04 || (unsigned char)m[1] != 0x08) {
+        return YEPTRIS_ERROR_UNSUPPORTED;
+    }
+    yep_emitter em;
+    memset(&em, 0, sizeof(em));
+    em.doc = NULL;
+    yep_writer* w = &em.w;
+    w->sc_dec = NULL;
+    w->sc_i = 0;
+    w->json = 1;
+    w->json_compact = compact ? 1 : 0;
+    w->json_pretty = 0;
+    w->canonical = 0;
+    w->explicit_doc_start = 0;
+    w->best_width = 0;
+    w->sv_input = NULL;
+    w->sv_arena = NULL;
+    w->sink = NULL;
+    w->force_flow = 0;
+    w->in_flow = 0;
+    w->flow_item = 0;
+    w->unserializable = 0;
+
+    mj_ctx c;
+    memset(&c, 0, sizeof(c));
+    c.w = w;
+    c.s.p = m;
+    c.s.len = m_len;
+    c.s.at = 2; /* the 4.8 header */
+    c.compact = compact ? 1 : 0;
+
+    /* one wet pass into a growable buffer (the #352 slice-2 shape) */
+    size_t est = m_len * 2 + 64;
+    char* buf = (char*)malloc(est);
+    if (!buf)
+        return YEPTRIS_ERROR_MEMORY;
+    w->p = buf;
+    w->cap = est;
+    w->grow = 1;
+
+    mj_value(&c);
+
+    int failed = c.failed;
+    size_t wrote = w->len;
+    buf = w->p;
+    free(c.syms);
+    free(c.objs);
+    free(c.chain);
+    if (failed || w->oom) {
+        free(buf);
+        return failed ? (YeptrisStatus)failed : YEPTRIS_ERROR_MEMORY;
+    }
+    buf[wrote] = '\0';
+    *out = buf;
+    *out_len = wrote;
+    return YEPTRIS_OK;
+}
+
 size_t yep_emit_run(yep_emitter* em, int dry) {
     yep_writer* w = &em->w;
     const yep_dom* d = em->doc->dom;
