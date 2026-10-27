@@ -1,0 +1,25 @@
+foar: 2
+    
+text: |
+  a
+    
+  b
+
+  c
+ 
+  d
+
+bar: 2
+    
+ext: | 
+  d
+
+bar: 2
+    
+ext: | c* 
+  d
+
+bar: 2
+    
+ext: |
+  a

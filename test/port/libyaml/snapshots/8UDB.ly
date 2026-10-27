@@ -1,0 +1,1 @@
+["double quoted", 'single quoted', plain text, [nested], {single: pair}]

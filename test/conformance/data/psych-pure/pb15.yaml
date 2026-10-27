@@ -1,0 +1,14 @@
+---
+- name: Block seq in seq in seq (psych-pure parse-block.tml)
+  yaml: |
+    -  - x
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       +SEQ
+        =VAL :x
+       -SEQ
+      -SEQ
+     -DOC
+    -STR

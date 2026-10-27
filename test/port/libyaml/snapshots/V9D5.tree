@@ -1,0 +1,21 @@
+# suite-ok
++STR
++DOC
++SEQ
++MAP
+=VAL : sun
+=VAL : yellow
+-MAP
++MAP
++MAP
+=VAL : earth
+=VAL : blue
+-MAP
++MAP
+=VAL : moon
+=VAL : white
+-MAP
+-MAP
+-SEQ
+-DOC
+-STR

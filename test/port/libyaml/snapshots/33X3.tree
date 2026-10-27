@@ -1,0 +1,10 @@
+# suite-ok
++STR
++DOC ---
++SEQ
+=VAL : <tag:yaml.org,2002:int> 1
+=VAL : <tag:yaml.org,2002:int> -2
+=VAL : <tag:yaml.org,2002:int> 33
+-SEQ
+-DOC
+-STR

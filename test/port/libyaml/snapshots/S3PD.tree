@@ -1,0 +1,7 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : plain key
+=VAL : in-line value
+!ERROR

@@ -1,0 +1,12 @@
+---
+- name: Tag and Anchor (psych-pure parse-props.tml)
+  yaml: |
+    - !t1 &a1 foo
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       =VAL &a1 <!t1> :foo
+      -SEQ
+     -DOC
+    -STR

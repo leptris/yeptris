@@ -1,0 +1,13 @@
+---
+- name: Key with : (psych-pure parse-flow.tml)
+  yaml: |
+    {http://example.com: url}
+  tree: |
+    +STR
+     +DOC
+      +MAP {}
+       =VAL :http://example.com
+       =VAL :url
+      -MAP
+     -DOC
+    -STR

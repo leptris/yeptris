@@ -1,0 +1,26 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : base
++MAP &base
+=VAL : name
+=VAL : Everyone has same name
+-MAP
+=VAL : foo
++MAP &foo
+=VAL : <<
+=ALI *base
+=VAL : age
+=VAL : 10
+-MAP
+=VAL : bar
++MAP &bar
+=VAL : <<
+=ALI *base
+=VAL : age
+=VAL : 20
+-MAP
+-MAP
+-DOC
+-STR

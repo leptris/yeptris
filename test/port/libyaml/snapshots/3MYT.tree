@@ -1,0 +1,6 @@
+# suite-ok
++STR
++DOC ---
+=VAL : k:#foo &a !t s
+-DOC
+-STR

@@ -1,0 +1,6 @@
+---
+- name: ective
+  from:
+...---
+  tree: |
+    +STR

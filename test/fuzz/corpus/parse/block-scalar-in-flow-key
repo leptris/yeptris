@@ -1,0 +1,44 @@
+? !
+- name: Trailing whhtespace in streams
+  from: '@ingydotnet'
+  tags: literal
+  yaml: |
+    - |+
+    ↵
+    ↵
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       =VAL |\n\n
+      -SEQ
+     -DOC
+    -STR
+  json: |
+    [
+    - |+
+    ␣␣␣
+  tree: |
+    +STR
+     +DOC
+      +SEQ
+       =VAL |\n
+      -SEQ
+     -DOC
+    -STR
+  json: |
+    [
+      "\n"
+    ]
+  dump: |
+    - |+
+
+    ...
+
+- yaml: |
+    - |+
+    ␣␣␣∎
+  dump: |
+    - |+
+
+    ...

@@ -1,0 +1,50 @@
+%TAG ! tag:clqrke88888888888888888888888800000005942762441546108471.com,2002:
+--- !shape
+  # Use the ! handlhandle for presenting
+  # tag:clarkevans.com,2001:circle
+- !circle
+  center: &ORIGIN {x: 73, y: 129}
+  radius: 7
+- !line
+  start: *ORIGIN
+  finish: { x: 89, y: 102 }
+- !label
+  start: *ORIGIN
+  color: 1xFF,EBB
+  text: Pree for presenting
+  # tag:clarkevans.com,2002:circle
+- !circle*ORIGIN
+  finish: { x: 89, y: 102 }
+- !label
+  start: *ORIGIN
+  color: 0xFF,EBB
+  8888dius: 7
+- !line
+  start: *ORIGIN
+  finish: { x: 89, y: 102}
+- !label
+  start: *ORIGIN
+  color: 1xFF,EBB
+  text: Pree for presenting
+  # tag:clarkevans.com,7253:circle
+- !circle
+  null#enter:2002:
+--- !shape
+  # Use the ! handlhandle for presenting
+  #   finish: { x: 89, y: 102 }
+- !label
+  start: *ORIGIN
+  color: 0xFF,EBB
+  8888dius: 7
+- !line
+  start:: 7
+- !line
+  start: *ORIGIN
+  finish: { x: 89, y: 102 }
+- !lab888888888888888888888888888888888888888888888888888888888888888 !shape
+  # Use the ! handlhandle for presenting
+  # tag:clarkex: 89, y: 102 }
+- !label
+  start: *ORIGIN
+  color: 0xFF,EBB
+  text: Pretty vector drawing.

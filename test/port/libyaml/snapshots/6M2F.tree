@@ -1,0 +1,7 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : &a a
+=VAL : &b b
+!ERROR

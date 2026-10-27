@@ -1,0 +1,332 @@
+---
+Time: 2001-11-23 15:C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+User: ed
+Time: 2001-11-23 15:C01:42 -5
+Use: 2001-11-23 15:02:31 -5
+User: ed
+Warning:
+Warning:
+  A slightly different error
+  message.
+---
+Date: 223 15:03:17 -5
+User: ed
+Fatal:
+  U*--
+Time: 2001-11-23 15:C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+UGser: ed
+Warngni:
+  A slightly different erro  A slightly different error
+  message.
+---
+Date: 2001-11-23 15:03:17 5
+-User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15::01 A slightlyifferent error
+  message.
+---
+Date: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15::01C24 -5
+User: ed
+Warning:
+  T-
+Date: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  Unknown variable "bar"
+Stack:
+  - file: Topals.Cspy
+    line: 23
+    code: |
+      x = MoreObject(  - file: TopClass.py
+    line: 98
+    code: |
+     :C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+User: ed
+Warning:
+Warning:
+  A slightly different error
+  message.
+---
+Date: 223 15:03:17 -5
+User: ed
+Fime: 2001-11-23 15:02:31 -5
+User: ed
+Time: 2001-11-23 15:C01:42 -5
+Use: 2001-11-23 15:02:31 -5
+User: ed
+Warning:
+Warning:
+  A slightly different error
+  message.
+---
+Date: 223 15:03:17 -5
+User: ed
+Fatal:
+  U*--
+Time: 2001-11-23 15:C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+UGser: ed
+Warngni:
+  A slightly different erro  A slightly different error
+  message.
+---
+Date: 2001-11-23 15:03:17 5
+-User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15::01 A slightlyifferent error
+  message.
+---
+Date: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15::01C24 -5
+User: ed
+Warning:
+  T-
+Date: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  Unknown variable "bar"
+Stack:
+  - file: Topals.Cspy
+    line: 23
+    code: |
+      x = MoreObject(  - file: TopClass.py
+    line: 98
+    code: |
+     :C01:42 -5
+User: ed
+Warning:
+  This is an error mk: {
+essage
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+User: ed
+Warning:
+Warning:
+  A slightly different error
+  message.
+---
+Date: 223 15:03:1tly different error
+  message.
+---
+Date: 223 15:03:17 -5
+User: ed
+Fatal:
+  U*--
+Time: 2001-11-23 15:C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+UGser: ed
+Warngni:
+  A slightly different erro  A slightly different error
+  message.
+---
+Date: 2001-11-23 15:03:17 5
+-User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15::01 A slightlyifferent error
+  message.
+---
+Date: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15::01C24 -5
+User: ed
+Warning:
+  T-
+Date: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  Unknown variable::01 A slightlyifferent e7 -5
+User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15:C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+User: ed
+Warngni:
+  A slightly different erro  A slightly different error
+  message.
+---
+Date: 5563-11-23 15:03:17 5
+-Uer: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+User: ed
+Warning:
+Warning:
+  A slightly different error
+  message.
+---
+Date: 223 15:03:17 -5
+User: ed
+Fatal:
+  U*--
+Time: 2001-1 ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+User: ed
+Time: 2001-11-23 15:C01:42 -5
+Use: 2001-11-23 15:02:31 -5
+User: ed
+Warning:
+Warning:
+  A slightly different error
+  message.
+---
+Date: 223 15:0k3:17 -5
+User: ed
+Fatal:
+  U*--
+Time: 2001-11-23 15:C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+UGser: ed
+Warngni:
+  A slightly different erro  A slightly different error
+  message.
+---
+Date: 2001-11-23 15:03:17 5
+-User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15::01 A slightlyifferent error
+  message.
+---
+Date: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  U---
+Time: 2001-11-93 15::01C24 -5
+User: ed
+Warning:
+  T-
+Date: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  Unknown variable "bar"
+Stack:
+  - file: Topals.Cspy
+    line: 23
+    code: |
+      x = MoreObject(  - file: TopClass.py
+    line: 98
+    code: |
+     :C01:42 -5
+User: ed
+Warning:
+  This is a--
+Date: 201-23 15:C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+UGser: ed
+Warngni:
+  A slightly different erro  A slightly different error
+  message.
+---
+Date: 2001-11-23 15:03:17 5
+-User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15::01 A slightlyiffer
+Time: 2001-11-23 15:02:31 -5
+UGser: ed
+Warngni:
+  A slightly different ee: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15::01C24 -5
+User: ed
+Warning:
+  T-
+Date: 2001-11-23 15:03:17 -5
+User: ed
+Fatal:
+  Unknown variable "bar"
+Stack:
+  - file: Topals.Cspy
+    line: 23
+    code: |
+      x = MoreObject(  - file: TopClass.py
+    line: 98
+    code: |
+     :C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2001-11-23 15:02:31 -5
+User: ed
+Warning:
+Warning:
+  A slightly different error
+  message.
+---
+Date: 223 15:03:17 -5
+User: ed
+Fatal:
+  U---
+Time: 2001-11-23 15:C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the 

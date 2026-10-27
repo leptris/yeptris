@@ -1,0 +1,17 @@
+{
+  "name": "yeptris",
+  "version": "0.6.47",
+  "description": "Ultra-fast YAML 1.2 parser, emitter and streamer in C",
+  "homepage": "https://github.com/leptris/yeptris",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    }
+  ]
+}

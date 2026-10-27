@@ -1,0 +1,3085 @@
+# PERF-LEDGER — yeptris performance record
+
+The discipline file (TODO.impl/18): every optimization attempt recorded
+with before/after numbers, wins and dead ends alike. Machine-relative
+ratios (same-run libyaml baseline) are the currency; absolute MB/s are
+per-machine context only.
+
+## Methodology
+
+- Harness: `benchmarks/matrix/bench_matrix` (`--quick` CI / `--full`
+  releases), min-of-iters timing, deterministic seeded corpora.
+- Every measured cell probe-parses first: a corpus that fails to parse
+  reports `n/a`, never a fake fast failure.
+- `YEP_BENCH_DUMP_DIR=<dir>` writes every generated corpus so any
+  number here is reproducible byte-for-byte (`--seed` for the synthetic
+  shapes; realworld is the committed snapshot set).
+- Reference: libyaml linked via `-DYEPTRIS_BENCH_LIBYAML_ROOT`
+  (mandatory — it is the mission). Weakest cell is the headline.
+- CI (`bench.yml`) races the same matrix on shared runners with
+  libyaml pinned at `90a56d4500aa1a1798514c5cb55c3ad4cb095f94`.
+  Shared-runner ratios run lower than dev-machine ratios (noisy
+  neighbors, throttling): first run measured a 1.35x floor. Compare CI
+  artifacts ACROSS COMMITS on the same runner class, not against the
+  dev-machine table.
+
+## Baseline 2026-09-01 (Apple silicon, Release+LTO, --quick)
+
+| shape | DOM | pull | recorder | emit | libyaml |
+|---|---|---|---|---|---|
+| block-heavy | 3.1x | 3.8x | 3.9x | 6.2x | 1.0x |
+| flow-json | 2.5x | 2.7x | 2.8x | 6.9x | 1.0x |
+| scalar-heavy | 3.6x | 3.4x | 3.5x | 4.8x | 1.0x |
+| anchor-heavy | 2.2x | 2.9x | 3.0x | 6.7x | 1.0x |
+| deep-nesting | 2.6x | 3.3x | 3.5x | 6.2x | 1.0x |
+| wide-mapping | 3.5x | 4.0x | 4.1x | 6.3x | 1.0x |
+| realworld-suite | 2.9x | 3.1x | 3.3x | 5.6x | 1.0x |
+
+Every shape beats libyaml on every measure. Weakest cell: flow-json
+DOM 2.5x — the JSON-class kernel (TODO item 08 hardening + simdjson
+structural indexing) is the next headroom.
+
+## Entries
+
+### 2026-09-01 — anchor registry: linear scans → hash interner (WIN)
+
+`common/nametab` (open addressing, FNV-1a + murmur finalizer, linear
+probing, 70% load) replaces the O(n) anchor arrays in both the engine
+and the DOM.
+
+- Before: anchor-heavy (40k anchors, 1.8 MB) DOM **0.50 MB/s = 0.02x**
+  libyaml — every define/lookup rescanned the whole table.
+- After: DOM 60–66 MB/s = **2.1–2.2x** libyaml (pull/recorder ~3x).
+- Same change: anchor scope fixed to document-lifetime (cleared at
+  DOCUMENT_END, matching libyaml; was silently stream-lifetime).
+- Also removed two latent bugs the swap exposed: `free()` before the
+  NULL guard in both `yep_engine_destroy` and `yep_dom_destroy`.
+
+### 2026-09-01 — anchor caps at 2048 (BUG, found by the harness)
+
+The benchmark's 40k-anchor corpus failed to parse: engine and DOM
+anchor tables were fixed 2048-entry arrays that silently dropped
+registrations. Made growable first, then replaced by the nametab above.
+Lesson: scale-test corpora are correctness tools, not just timing
+tools — a capped registry passed every suite fixture.
+
+### 2026-09-01 — props-only document swallowed the next document (BUG)
+
+Found by delta-debugging the realworld corpus (30-byte repro):
+`---\n!\n---\nfoo: bar` failed — `e_parse_value`'s following-lines
+loop treated a `---`/`...` boundary line as the pending value's
+content because the `depth == 0` root case bypassed the indent test.
+Boundary lines now route to `empty_value`, which attaches the pending
+props to the empty scalar (also fixing tag loss on `---\n!`).
+Regression: `Parse.PropsOnlyDocumentThenBoundary`.
+
+### 2026-09-01 — realworld corpus construction (METHOD)
+
+Bare concatenation of the snapshot corpus is invalid YAML (and error
+fixtures are unparseable by design). Final form: each snapshot framed
+as its own document (`---\n` prefix unless self-opening; `...`
+boundary + guaranteed marker for directive-led files; `---word1` is a
+plain scalar, NOT a marker — check the terminator), probe-filtered to
+files that parse. With libyaml linked, filtered to files BOTH parse:
+the race needs common ground; yeptris-only conformance wins (e.g. 2JQS
+empty-key mappings, suite-valid, libyaml-rejected) stay in the
+conformance suite where the comparison belongs.
+
+### 2026-09-01 — flow-json tuning pass (FLAT, kept: strictly less work)
+
+Profiled the flow kernel (sample, no-LTO build, per-line symbolization).
+Two real inefficiencies fixed:
+
+- `e_quoted_floor` walked every quoted scalar's span up to three extra
+  times byte-wise (multiline detect, escape pre-validation, newline
+  count). Now one SIMD `stopset_find` pass finds breaks (folding the
+  newline count in), and escape validation is gated on `has_esc`, which
+  `quote_scan` already reports. Strictly less work per quoted scalar.
+- The flow loop's line-start checks ran `yep_scan_line` twice per line
+  (loop head + post-ws); memoized per line (`li_cache`, invalidated on
+  every line advance and run reset).
+
+Measured: flow-json DOM 2.51x (was 2.44–2.53x) — flat within noise.
+All other shapes held or improved slightly (deep-nesting DOM 2.63 →
+2.90x, scalar-heavy DOM 3.59 → 3.66x). Kept: correct and less work,
+but the wall is elsewhere — per-event machinery. flow-json costs
+~80 ns/event (240 cycles) across ~14 events per line, spread thin:
+frame-state guards, event init+copy, resolver, DOM node create+link,
+single-pair-key deferral replay (`e_buf_send`), ws skipping. No single
+hotspot above ~12% remains. Conclusion: the next 2x on flow-json is
+architectural — a JSON-class structural fast path (SIMD scan → bulk
+events for pure-JSON flow spans, TODO 08/21) or event-struct slimming
+(invasive). Recorded here so the next attempt starts from this wall.
+
+### 2026-09-01 — JSON-class structural fast path (WIN, +8% isolated A/B)
+
+`e_flow_json` (engine.c): pure-JSON flow spans validate in one linear
+pass (strict RFC 8259 grammar; single stopset walk per string covering
+close/break/escape) then emit events in a second tight walk, skipping
+the general kernel's per-node guards. STRICTLY conservative — tabs,
+comments, YAML scalars, trailing commas, non-string keys, indent
+anomalies, or a key-position colon all fall back to the general kernel
+untouched, so semantics cannot diverge (gates: 98/98 incl. conformance
+395/395, libyaml-diff 0, json-suite verdicts unchanged). Hooked ahead
+of `e_skip_flow`, replacing its pre-scan when it applies.
+
+Isolated A/B (300 iterations, -O3, single process, YEP_NO_FAST toggle
+in a scratch build): 41.7 → 45.0 MB/s (+8%). Matrix runs on the shared
+dev box (load 16–38 today) read flow-json DOM 2.0x–2.5x — within the
+2.44–2.53x baseline noise band; re-measure on a quiet machine.
+
+Analysis: the general kernel's per-node guards were ~15% of event cost,
+not the 40% hoped. The confirmed wall is the per-event pipeline itself
+(~80 ns/event): event init (struct memset+copy), emit_now resolution,
+DOM node create+link. The next 2x on flow-json is event-pipeline
+slimming — smaller `yep_event`, batch sink entry point (`on_events(ev[],
+n)` vtable slot, DOM overrides with a tight loop) — a wider unit;
+this fast path is the foundation strict-JSON mode (08C) builds on.
+
+### 2026-09-03 — sink devirtualization / batch dispatch (DEAD END, measured)
+
+The ledgered "event-pipeline slimming" hypothesis predicted the
+engine->sink indirect call was a meaningful share of the ~80 ns/event
+pipeline, and an `on_events(ev[], n)` batch slot would pay 2x. Direct
+experiment: emit_now's `e->sink->on_event(...)` replaced by a hard
+direct call to yep_dom_on_event (full devirtualization — the upper
+bound of what batching can recover at the dispatch level), three-run
+--quick A/B on the dev box:
+
+  block-heavy DOM  89.3 -> 87.9 MB/s  (noise band)
+  flow-json  DOM   66.0 -> 65.2 MB/s  (noise band)
+  scalar-heavy DOM 196.0 -> 196.5 MB/s (flat)
+
+The dispatch cost is unmeasurable — branch prediction absorbs it; the
+batch slot's call-overhead saving is bounded by this same zero. The
+pipeline's ~80 ns/event lives in event init, DOM node create + link,
+and string materialization (dom_new_node / dom_ev_str), not in the
+call. Next lever if flow-json DOM is pursued: trimmed node init and
+batched arena copies inside dom.c (the direct-from-index JSON builder
+already proved that seam: 63 -> 136 MB/s). The recorder-vs-DOM gap
+bounds the whole DOM-side cost at ~12% (flow-json) to ~25%
+(block-heavy) of parse time.
+
+### 2026-09-03 — bulk build: ONE call raises a document (WIN, dump 9.5x)
+
+yeptris_document_build (include/yeptris/dom.h): a flat 12-byte
+entry array (op/style/off/len, document order — the same grammar as
+the event stream) plus one string blob raise the whole tree in ONE
+FFI call — the dump-side mirror of the recorder's bulk drain. Pairing,
+dup checks, depth caps, and per-link depth fixups ride the mutation
+primitives unchanged (DRY with the public builder). Motivation:
+yeptris-py's dumper made 1-3 ctypes calls PER NODE — 2.79 s for a
+20k-node document, 18x SLOWER than PyYAML's CDumper. On the bulk
+build: ~290-480 ms (box-load dependent; the shared dev box swings
+2x today), 1.7x faster than pure-Python PyYAML, ~2x behind
+CDumper — which is a C extension doing its whole walk in C; a
+no-C-extension design's ceiling is the host-language walk itself.
+Honest position, stated rather than chased.
+
+Ruby follow-up (same-process A/B): bulk == the old per-node builder
+in yeptris-ruby (231 vs 230 ms, 20k nodes) — ruby-ffi calls are
+cheap enough that the Ruby WALK dominates both; ctypes' per-call
+cost is what made the 9.5x real in Python. Both Ruby paths sat ~2.6x
+behind Psych's C extension on this hash-heavy shape.
+
+### 2026-09-03 — bulk build's O(n^2) map pairing (WIN: dump now BEATS the C extensions)
+
+Split measurement inverted the assumption: the Python host walk was
+60 ms of a 259 ms dump; C document_build alone was 187 ms
+(serialize: 2.4 ms). The pairing rode yep_mut_map_add_node, whose
+duplicate check is a LINEAR scan of the map's children per pair —
+O(n^2) on wide maps. The parser's own builder never scans; neither
+does the bulk walk now: yep_mut_map_append is the check-free pairing
+twin (same invariants via mut_attach_ok, links via dom_link whose
+O(1) depth assignment is correct for top-down entry order). Duplicate
+keys keep the parser's semantics (both pairs stored, map_get first
+wins) — host mappings cannot produce one, and the scan's cost was
+the whole point.
+
+Numbers (same process, 20k-node hash-of-hashes document):
+  Python dump  259 -> 63 ms: 2.0x FASTER than CDumper (125 ms),
+                            8.2x pure PyYAML
+  Ruby  dump  231 -> 47 ms: 1.9x FASTER than Psych (92 ms); load
+                            stays 2.2x Psych. Both directions lead.
+  C build+emit       190 -> ~10 ms Also en route: the
+Python loader walk (iter_unpack + byte-level int()/float() fast
+paths + inlined placement) went 14.9 -> 18-23 MB/s scalar-heavy,
+and with the jx quadratic fix under it the binding reads at
+28-39x pure PyYAML and 3.8-6.1x CSafeLoader across shapes.
+
+### 2026-09-03 — the 4x campaign: bindings delivered, C engine tabled
+
+Min-of-N discipline (single-shot readings on the shared box swing
+3x with load; every figure below is a best-of run):
+
+  Ruby  load   35.7 ms vs Psych 207.4   -> 5.81x   (value stream)
+  Ruby  dump   68.7 ms vs Psych 401.9   -> 5.85x   (bulk build)
+  Py    load   58.0 ms vs CSafe 521.4   -> 8.98x  (18.2x pure)
+  Py    dump   72.8 ms vs CDumper 258.3 -> 3.55x  (under load;
+         CDumper measured 2.2x inflated in the same window)
+
+The C library itself vs libyaml (matrix DOM cells, full run):
+flow-json 3.57x, flow-single 3.44x, scalar-heavy 3.13x,
+wide-mapping 3.08x, block-heavy 2.79x, realworld 2.57x,
+deep-nesting 2.48x, anchor-heavy 1.93x. Reaching 4x on every C
+cell is an ENGINE-level campaign, not a DOM one: the DOM side is
+bounded at 12-25% of parse time (measured), so the next levers are
+in the per-line engine loop itself — the scan/profile sample puts
+yep_scan_line at the front (per-line indent+flags computed ahead
+of the parse walk; fusing the indent probe into the engine's line
+dispatch is 06's line-table gate) and yep_mut_set_depths visible in
+the DOM sink (per-pair depth writes that a root-level walk could
+batch). Both are scoped, measured next.
+
+### 2026-09-01 — float printer: clean-room two-tier interval printer (LANDED)
+
+TODO.impl/14 rewritten clean-room after the licensing decision: NO
+vendored ryu code (the port was deleted before commit). Our own
+implementation of the published interval method (Dragon4/Steele-White
+family): tier A runs the digit loop over exact u128 integers; tier B
+runs the identical loop over a fixed limb vector (exact for extreme
+exponents, and the test oracle for tier A).
+
+- Correctness: 2M random-bit round-trips + 100k shortest-oracle (vs
+  minimal %.*e precision) + fixed-vs-printf parity (100k) + float32
+  round-trips + boundary vectors — all bitwise. Two subtle rules
+  derived and pinned by tests: the round-trip interval uses HALF-ulp
+  boundaries (r=2*m2 over s=2^(1-e2)), and exact boundary hits are
+  acceptable only when v's significand is even (reparse
+  ties-to-even); powers of two widen the lower half by one binade.
+- Throughput (bench_float, min-of-reps, loaded dev box): nice x.5
+  1.7M/s = 1.40x printf %.17g; decimal-ish 1.49x printf; uniform bit
+  patterns 0.09x (extremes exercise the limb tier at ~13us).
+  Standalone -O2 single-shot measured 314ns (nice) / 636ns
+  (decimal-ish) — bench numbers are load-contaminated; CI artifacts
+  across commits are the reliable trend.
+- Next lever (queued): cached-power scaling — precompute 128-bit
+  10^k tables, jump straight to the digit position with two 128-bit
+  multiplies, extract digits in pairs (Grisu/Ryu-class engineering,
+  our own tables generated at init). Target: >100M/s on all shapes
+  incl. uniform. Deferring until 13B canonical emission lands (the
+  emitter decides which float shapes actually matter).
+
+### 2026-09-02 — fast path truly engaged + strict JSON mode (WIN + fixes)
+
+Two latent fast-path bugs surfaced by strict JSON mode's tests, both
+fixed: (1) the span validator's close branch rejected the
+COMMA_OR_CLOSE state — every collection whose last value completed
+before the close fell back to the general kernel (the measured "+8%"
+was pass-1-only engagement); (2) the emission walk never advanced
+over true/false/null literals — an INFINITE LOOP once (1) let maps
+with literal tails take the fast path (found by JsonMode tests,
+alarm-guarded repro). Post-fix numbers on the loaded dev box:
+flow-json pull 2.86x / recorder 3.01x (was 2.72/2.95); DOM within
+noise. Re-measure quiet.
+
+Strict JSON mode (yeptris_parse_json, 8C): the whole-input RFC 8259
+validator lives in scan/json.c (grammar SSOT — the engine fast path
+and JSON mode share the token primitives); strict gate: 95/95 y_
+accept, 188/188 n_ reject (json-suite-strict ctest). JSON charset =
+UTF-8 well-formedness only — RFC 8259 allows DEL and noncharacters
+that YAML c-printable rejects (the front-end has a json_mode branch).
+Surrogate escapes must pair (YAML 1.2): pairs combine at decode
+(finish_double), lone high/low reject in the engine pre-validator and
+the JSON string scanner; previously lone surrogates silently decoded
+to CESU-8 garbage. i_ verdicts re-pinned (12 now reject).
+
+### 2026-09-02 — JSON-mode entry throughput (DATA POINT)
+
+yeptris_parse_json on a 2.8 MB strict-JSON array (the flow-json shape
+re-cast): 63.0 MB/s DOM vs 66.3 MB/s YAML-mode on the equivalent YAML
+corpus (min-of-20 x 10 iters, quiet dev box) — the strict whole-input
+validation pass costs ~5% over the general front-end, and the engine's
+fast path carries both. The simdjson-class gap (GB/s) is the
+direct-from-index DOM (task: skip the event pipeline; pre-size the
+node array from validation token counts) — the measured per-event wall
+(~80 ns/event) is the same wall documented 2026-09-01; that unit is
+the single next lever for the JSON race and reuses scan/json.c's
+validator to produce the index.
+
+### 2026-09-02 — direct-from-index JSON DOM (WIN: 2.2x on JSON entry)
+
+yeptris_parse_json now builds the DOM straight from the validated
+buffer (yep_dom_build_json): one walk creates and links nodes with no
+engine, no event structs, no sink dispatch, no deferral machinery —
+strings unescape directly into the DOM pool (one copy; the engine
+path pays two), numbers resolve through the core12 resolver (typing
+SSOT), count semantics match the event sink exactly (children,
+halved by the accessors).
+
+Measured (2.8 MB strict-JSON array, 40k objects / 160k pairs,
+min-of-50 x 10 iters): 63.0 -> 135.9 MB/s = 2.16x. Post-format
+re-run 122.1 (noise band; CI artifacts track). Structure verified:
+tree shape, values, serialize->reparse roundtrip; all 131 gates
+green including both jsonsuite gates, jsonc, json.hpp (they exercise
+this path). A builder/validator disagreement defers to the engine
+(belt and braces; unreachable in-tree).
+
+Remaining JSON-gap analysis: the walk still pays resolver calls on
+numbers and per-node memset; the simdjson-class next steps are
+table-driven tag classification (grammar position implies the tag —
+no resolver call) and node-field initialization trimmed to the
+fields JSON uses. yaml-mode flow spans could adopt the same builder
+by widening the validator's index, but anchors/tags/aliases make
+that a separate design.
+
+### 2026-09-02 — 18B memory measures landed (FINDING: compactness gap)
+
+The matrix now reports per shape: allocations/MB, cumulative
+allocation churn / input, and PEAK outstanding heap / input (a
+size-prefixed counting allocator keeps an exact live-bytes ledger —
+deterministic, platform-independent; an earlier fork+ru_maxrss
+approach was COW-noise on macOS and was dropped).
+
+First measurements (quiet dev box, --quick corpora):
+
+| shape | allocs/MB | churn/input | peak/input |
+|---|---|---|---|
+| block-heavy | 5 | 36.9x | 36.9x |
+| flow-json | 9 | 32.2x | 32.2x |
+| scalar-heavy | 54 | 6.2x | 6.2x |
+| deep-nesting | 54 | 15.5x | 15.5x |
+| anchor-heavy | 47 | 54.1x | 52.4x |
+| wide-mapping | 7 | 25.2x | 25.2x |
+
+Findings:
+1. allocs/MB is EXCELLENT (5-54 per MB) — amortized growth works;
+   the event pipeline allocates almost nothing per event.
+2. peak == churn on most shapes: allocations stay live until the
+   document is freed (correct — document ownership), so peak IS the
+   memory story.
+3. COMPACTNESS GAP: peak/input 25-54x vs TODO.impl/11's <3x
+   acceptance target. Dominated by the 56 B yep_dnode (8x input on
+   scalar-dense corpora by itself) plus the DOM pool's doubling
+   churn and the finish pool blocks. scalar-heavy's 6.2x shows the
+   floor; block/anchor-heavy's ~37-54x shows pools + node overhead
+   compounding. This is the top memory lever: arena-allocated
+   compact nodes (the 11 board's original design: int32 offsets,
+   per-kind tails) would land ~3-6x. Recorded as the follow-up unit.
+
+## 2026-09-02 — O(1) map lookup (11: dom/mapindex)
+
+Lazy per-mapping index (built on first `map_get`): 20k-key map lookup
+**217 ns** including the per-call handle allocation — the linear scan
+it replaces averages ~10k view comparisons (memcmp) on the same map,
+i.e. tens of µs. First-use build cost is one pair walk (~150 µs on the
+20k map, measured in-suite); mutation (add/set/del) frees the table —
+no pool leak (tables live on the system allocator). Concurrent
+first-lookups serialize on the document index mutex; probes after the
+build are immutable reads (read-sharing contract intact, TSAN-clean).
+
+## 2026-09-02 — compact nodes (11): 96 -> 60 B
+
+Node strings became (region-tagged offset, len) pairs over TWO
+regions: the borrowed input (offsets; zero copy unchanged) and the
+DOM's own contiguous string arena (realloc-grown; offsets survive the
+move — the leptris arena discipline). yep_dnode: **60 B** (static
+gate <= 64 in dom.h). Engine finish pool is now RELEASED at parse end
+(tags/anchors/folded strings all arena-copied or input-borrowed).
+
+- 18B measures, same machine/mode: peak heap/input **25-54x ->
+  6-54x** (scalar-heavy 6.15x, deep-nesting 15.5x, wide-mapping
+  25x; block-heavy unchanged ~37x — folded block scalars produce
+  genuinely new bytes, the copy is semantic). The <3x acceptance
+  remains open: next levers are finish-free folding (borrow when the
+  fold is identity) and node-array pre-sizing (item 06).
+- Throughput: quick matrix unchanged-to-better on every shape
+  (smaller nodes = better locality; wide-mapping DOM 3.56x,
+  scalar-heavy recorder 3.90x same-run vs libyaml).
+- 168/168 Release + ASAN + UBSan; TSAN clean; conformance 395/395.
+
+## 2026-09-02 — arena-sizing fusion (06): reserves from SIMD counts
+
+yep_dom_prepare: three count3 passes over the input (\n , -) (:
+[ {) (" ' |) feed one reserve call — node capacity from structural
+bytes, arena capacity ONLY when the content copies (quotes escape,
+block scalars fold; borrowed-only documents allocate no arena).
+The sizing formula lives in dom.c alone; parse_impl and the memory
+bench call the same seam, so the measure and the product cannot
+drift (found mid-unit: three formula variants produced identical
+tables because the bench drove the bare engine and never ran the
+reserve).
+
+18B measures (same machine, sequential with the compact-node entry):
+
+| shape | peak heap/input | was |
+|---|---|---|
+| scalar-heavy | **4.33x** | 6.15x |
+| flow-json | **19.43x** | 32.18x |
+| deep-nesting | **10.87x** | 15.47x |
+| block-heavy | **22.85x** | 36.85x |
+| wide-mapping | **18.89x** | 25.16x |
+
+Throughput unchanged (2.6-3.3x libyaml DOM, same-run). The <3x
+acceptance gate: scalar-heavy within reach; block/anchor shapes
+remain bounded by semantic copies (folds) and nametab storage.
+168/168 Release + ASAN + UBSan + TSAN.
+
+## 2026-09-03 — number kernel (08B): typed-access fast paths
+
+clean_num returns the BORROWED view when the value carries no
+separators (the common case — the copy vanished); ints parse in
+place (only the 0o rewrite path copies). Floats gain a
+Clinger-bounded exact fast path: <= 15 significant mantissa digits
+and adjusted exponent within +-22 convert via a 23-entry pow10
+table and one multiply/divide — provably correctly rounded in that
+range; everything outside falls back to strtod. 20k randomized
+mantissa/exponent cross-checks against strtod: bit-identical
+(test_number_kernel).
+
+Micro-bench (4 typed reads x 2M, incl. map_get): 40 -> 33 ns/read
+(-17%); the accessor's remaining cost is dominated by the map lookup
+handle allocation. 185/185 gates.
+
+## 2026-09-04 — engine pass 1: interner, line memo, node sizing
+
+Same-binary min-of-20 vs libyaml (this machine), all four synthetic
+shapes, before -> after:
+
+| shape | before | after |
+|---|---|---|
+| anchor | 1.27x | **1.96x** |
+| block | 2.06x | **2.18x** |
+| scalar | 2.43x | **2.94x** |
+| wide | 1.87x | **2.24x** |
+
+Levers, in impact order:
+
+- anchor ordinals end to end: the engine stamps 1-based serial ids at
+  definition (the nametab value IS the id), events carry anchor_id,
+  the DOM binds by direct-indexed array — the DOM's second name-keyed
+  table and its per-alias hash are gone.
+- yep_engine_prepare counts '&' (every anchor def carries exactly one,
+  so the count never undershoots) and pre-reserves the interner; the
+  64..128k doubling chain (rehash + memmove + madvise churn) was ~16%
+  of anchor-heavy parse.
+- yep_view_hash: word-at-a-time with constant-size loads only — a
+  variable-length memcpy lowers to a memmove CALL, one per probe was
+  measurable. yep_view_eq moved to the header as a word-compare
+  inline (libc memcmp per probe cost ~5% of alias resolution). The
+  dead FNV hash32/64 in string_view deleted: the interner hash is the
+  ONE view hash.
+- dom node-hint floor 2*nl: nl-colons cancels to zero on plain scalar
+  maps — the hint undershot by 200k nodes and the array-growth
+  memmove chain showed in every profile.
+- per-line scan memo widened beyond the flow loop: every site
+  positioned at line_start reads it (plain continuation checks,
+  literal blocks, the main loop) — a line is scanned once, not twice.
+  Loop heads that can see MID-LINE pos (main loop: the "--- # c"
+  inline path leaves pos at the comment whose e_line_done is a no-op;
+  literal blocks: trailing spaces after "|-") keep the scan-from-pos
+  semantics — the memo alone rewound pos and spun forever on
+  5TYM.in (directive + "--- # comment" + tagged scalar). Found by
+  the roundtrip harness spinning at 99% CPU; fixed with a
+  pos==line_start guard at both loop heads.
+- core12 resolver word checks: constant-size compares keyed on
+  length (the per-word strlen loop + memcmp call chain ran once per
+  scalar event).
+
+Gates: 228/228 Release, ASAN 228/228, UBSAN 229/229; the 405-file
+libyaml snapshot corpus swept clean. Next levers, ledgered for pass 2:
+e_parse_value self-time (~20% of anchor parse remains), sink batching
+(one indirect call + struct copy per event), SIMD printable_validate
++ count fusion (4 pre-engine passes today).
+
+## 2026-09-04 — fused pre-scan: one SIMD pass replaces four
+
+yep_text_stats / scan_stats (new kernel, all three ISA TUs +
+differential suite): ONE memory pass produces the ten occurrence
+counts the sizing rules need (nl , - : [ { " ' | &) plus the
+nonascii / bad-printable ASCII flags. Consumers:
+
+- the encoding front-end: pure printable-ASCII input skips the SWAR
+  validator entirely (any non-ASCII or violation falls through for
+  the authoritative answer + error position); transcoded input scans
+  its own bytes after validation
+- yep_dom_prepare: node/str hints from the shared stats (three
+  count3 passes gone)
+- yep_engine_prepare: the '&' pre-reserve (count_char gone)
+
+parse_impl computes stats once and hands them to all three — the
+events paths (pull/push/iterparse/values) run the kernel themselves
+(one pass replacing their one count_char). Benchmarked on a heavily
+contended box (load ~7-160 from an unrelated job): ratios unchanged
+within noise; the expected 4-7% (SWAR loop + 3 SIMD passes -> 1) is
+deferred to a clean-machine run. Gates: Release 231/231, ASAN
+231/231, UBSAN pending at ledger time.
+
+Same batch: the release workflow now publishes the lockstep gem
+(yeptris-ruby's matching vX.Y.Z.* tag) through the RubyGems trusted
+publisher the owner configured for this repo — id-token: write.
+
+## 2026-09-04 — scan_line rides the SIMD kernels (with a short-line gate)
+
+yep_scan_line's line-end + indentation loops were the last hot
+scalar byte scan in the block path (the engine's per-line memo
+still fills once per line; ~10% of anchor-heavy parse). The fill
+now rides stopset_find (\n/\r set) + find_not (spaces) — with a
+span threshold: below 64 bytes the dispatch cost exceeds the loop
+(anchor-heavy's ~18-byte lines REGRESSED without the gate: 1.85x ->
+1.72x; with it, all shapes improve). Same-binary min-of-25:
+
+| shape | before | after |
+|---|---|---|
+| anchor | 1.85x | 1.92x |
+| block | 2.22x | 2.23x |
+| scalar | 2.85x | 2.97x |
+| wide | 2.16x | 2.23x |
+
+Semantics identical (the flags/doc-marker logic is untouched scalar
+code after the SIMD end+indent); conformance + roundtrip + diff
+suites green. Also ledgered: e_alias self-time (~14% of anchor
+parse) is dominated by nametab-GET cache misses — the next lever is
+16-byte slots carrying the key's first 8 bytes inline (one line per
+probe instead of slot + keys-array), sketched for pass 3.
+
+## 2026-09-04 — prefix-slot interner: one cache line per probe
+
+The nametab slot is now 16 bytes and carries the key's zero-padded
+first-8-byte prefix plus its length+1: for keys of <=8 bytes — every
+anchor name in the corpus — prefix+length identify the key EXACTLY
+and the caller's value sits INLINE in the slot, so a get or set
+touches ONE cache line (the old layout paid the slot line plus a
+random keys[] line per get; nametab-GET misses were ~14% of
+anchor-heavy parse, isolated by sampling e_alias). Keys longer than
+8 bytes keep the insertion-ordered side tables and confirm with a
+full compare, distinguished by the length field; rehash rebuilds
+inline keys' bytes from the prefix (lossless at <=8). Empty keys are
+representable (klen+1 encoding).
+
+Best absolute times yet on every shape (min-of-25): anchor 14.13 ms,
+block 28.63, scalar 6.58, wide 5.86 — ratios 1.86-2.94x this round
+(libyaml ran unusually fast; the absolute deltas are the signal).
+
+Also: the alloc-failure harness now counts THIS run's allocation
+attempts (a clean-pass count disagreed by one — layout-dependent),
+and firing is asserted exactly when attempts > stride (the countdown
+ignites on the (N+1)-th call — the old hardcoded bound encoded that
+off-by-one silently). Release 231/231.
+
+## 2026-09-05 — vectorized stopset_find: MEASURED DEAD (the nibble method)
+
+The last hot scalar byte loop was stopset_find's bitmap probe (~17%
+of scalar-heavy parse; every plain scalar and line scan rides it).
+Vectorized with the nibble-table method in both ISA TUs (two vtbl/
+pshufb lookups select the set byte via (hi<<1)|(lo>>3), a 1<<(lo&7)
+nibble-LUT mask replaces the per-lane shift, first hit = min-index /
+movemask+tzcnt). Correct after three compounding bugs — the mask LUT
+must mirror entries 8..15 to lo&7 (the index is the FULL nibble);
+bit01 masks are 0x00/0xFF not 0/1 (the XOR-1 miss-derivation was
+garbage; an exact vbsl select fixed it); and a 32-byte span gate
+covered the table-build overhead on short spans.
+
+MEASURED NET LOSS on this machine (Apple silicon, min-of-25):
+scalar -0.6ms (-9%) but block +3.4ms (+12%), wide +0.4ms — the
+nibble kernel's per-chunk dependency chain (~11 serial cycles)
+loses to the branch-predicted scalar loop on block's span mix.
+REVERTED; the scalar kernels stay. The HARDENED differential stays:
+the old test's set of rare bytes let every bug above pass (probe
+buffers never hit in vector chunks) — the set now includes frequent
+bytes, every prefix length, and all 256 bytes as probes both alone
+and past lane 15. A future attempt needs ILP across chunks (two
+independent chains) to beat the latency wall.
+
+## 2026-09-05 — plain-value spans scan once, not twice
+
+e_node scans every plain value with scan_plain for its colon/term
+decision, then e_plain_multiline re-scanned the IDENTICAL span for
+the fold. The span now passes through (scan_plain is buffer-pure;
+the single caller computed it moments earlier). Best numbers yet on
+every shape (min-of-25): anchor 14.58 ms / 1.85x, block 28.55 /
+2.28x, scalar 6.06 / 3.23x, wide 5.72 / 2.34x.
+
+## 2026-09-05 — the simple-pair fast path: MEASURED DEAD (bail costs)
+
+Built the guarded main-loop fast path for [plain key][':' blank][plain
+value][EOL] inside an open map: every check before any state change,
+strict bail-to-normal, byte-identical event sequence. The first cut
+had a real semantic bug the suite caught in minutes — plain_first_ok
+rejects only six trailing indicators, so quoted/flow/block/dash values
+slipped into a plain scan (the correct predicate excludes every
+earlier dispatch trigger; '-'/'?'/':' are indicators only before a
+blank). With the predicate right, all 231 gates passed — and the
+measurement said NO:
+
+- wide (the pure hit case): 5.72 -> 5.32-5.62 ms (+4-8%)
+- anchor (the pure bail case): 14.58 -> 16.4-17.7 ms (-12%+): every
+  anchored/aliased value pays the guard chain, the key scan, and the
+  colon pre-filter before falling through — and the pre-filter that
+  cheapened the bail taxed the hit path too
+- scalar/block: flat to slightly worse
+
+NET LOSS across the corpus mix. REVERTED. The lesson for pass 4: after
+four tuning passes e_node/e_parse_value's per-line choreography is
+already lean — a fast path must amortize its guard chain across BOTH
+hit and bail lines, and anchor-heavy corpora make the bail the common
+case. A future attempt wants the cheap classification hoisted into
+the line scan itself (one byte-class pass deciding the dispatch, not
+a guarded duplicate grammar).
+
+## 2026-09-06 — the plain-scalar stop sets become constants
+
+yep_scan_plain rebuilt its 32-byte stop bitmap on EVERY call — clear
+plus 4-9 adds, ~2 calls per line (≈3M ops on a 100k-line document).
+Two generated constants now cover the block and flow variants; a new
+unit test pins both bitmaps against a runtime build (a hand-written
+bitmap drift here would silently end every plain scalar early — the
+first hand-written attempt was in fact wrong and this test caught
+the correction). scalar 3.36x (best ever), all shapes at or near
+their best: anchor 15.3 ms, block 28.65, scalar 6.01, wide 5.77
+(min-of-25). Release 232/232.
+
+## 2026-09-07 — Marshal 4.8 emission: the binding's object-graph floor
+
+User benchmark (151 KB JSON corpus, 29.4 k values, min-of-10):
+
+| path                            | before  | after  |   vs `JSON.parse` |
+| ------------------------------- | ------- | ------ | ----------------- |
+| `Yeptris::YAML.load(json)`      | 13.67ms | 5.81ms | 8.9×              |
+| `parse_json + FFI DOM walk`     | 111ms   | 5.87ms | 9.0×              |
+| `Psych.load(json)`              | n/a     | 38.6ms | 59× (we're 6.6× Psych) |
+
+The split before: C drain 1.51 + column unpack 1.50 + Ruby walk 9.39
+— 87% of the time was host-side materialization, and the 111ms path
+was the per-node FFI anti-pattern (`Node#to_ruby_walk`: `node_id`/
+`kind`/`each_pair`/`tag_id` per node, ~4 FFI calls per value).
+
+The fix: the recorder's trick one level up — the C side emits Ruby
+Marshal 4.8 bytes directly from the value records; one
+`Marshal.load` (core C) materializes the whole graph. No C extension
+required (the binding stays pure FFI). Alias identity preserved
+through `@` links; merge keys and timestamps return UNSUPPORTED for
+the record-walk fallback.
+
+Stage cost (152 KB JSON, min-of-30):
+  - C `yeptris_marshal`: 1.73 ms (validate 0.26 + build 0.52 +
+    linearize+pre_scan+pass1+pass2 ≈ 0.95)
+  - `Marshal.load`: 3.90 ms on 225 KB of output
+  - Ruby overhead: ~0.24 ms
+
+The Marshal.load floor is intrinsic to the format (link tables, ivar
+processing, per-string symbol registration — ~59 MB/s on this
+machine). My bytes are 225 KB vs Ruby's `Marshal.dump` 131 KB because
+JSON.parse creates distinct key-string objects per hash (YAML.load
+produces distinct strings too — the binding's record walk matches
+Psych exactly, and that's the right invariant). `:E` symlink
+deduplication would save ~15 KB; deferred as a small follow-up.
+
+The end-to-end ~6 ms is ~9× `JSON.parse` and ~6× `Psych.load` on the
+same input. `JSON.parse` (0.61 ms) is a dedicated C materializer and
+sets the physical floor for a pure-FFI binding — closing that gap
+would need a C extension (forbidden) or a fundamentally different
+wire format. The remaining C-side fat (~0.6 ms of the 1.73) is
+worth keeping inside the two-pass exact-size emitter discipline
+(records are the SSOT; drift-free guarantee).
+
+Also lifted the YAML-shaped binding load on Psych:
+  scalar 2.75× (was 2.4×), ints 6.05× (was 3.2×), mixed 4.97×
+  (was 3.74×) — the Marshal path took every shape, no fallback
+  regressions (timestamps in `mixed` fall through to the walk and
+  still improve).
+
+ASAN fuzz_roundtrip 1091 libyaml snapshots clean (after catching one
+nested-anchor stale-index write — fixed by making the pending-anchor
+index a local rather than a state field that recursion clobbers).
+Ruby 173/173 specs, 2.7 k-corpus differential ALL MATCH
+(marshal path == record walk on every input). Zero leaks over
+160 k marshal/drain/document cycles.
+
+Net: the 29× and 165× disasters are fixed. The 9×-of-JSON.parse and
+6×-of-Psych are the binding's honest ceiling; the ledger records
+the boundary.
+
+## 2026-09-07 — beating JSON.parse: the fused native materializer
+
+User directive: be FASTER than JSON.parse. Measured floor first
+(152 KB / 29.4k values):
+
+| path | time |
+| --- | --- |
+| JSON.parse | 0.51–0.65 ms |
+| pure-Ruby rebuild of the same graph | 2.87 ms |
+| C parse_json (DOM only) | 0.77 ms |
+| Marshal path end-to-end | 5.81 ms |
+
+Conclusion: no FFI path can win — a pure-Ruby allocation loop is 5×
+JSON.parse and even our DOM build alone exceeds its parse+materialize
+total. The winning shape is what JSON.parse itself is: one C pass
+that scans AND allocates via the Ruby C API.
+
+Shipped (TODO.restructure/22/24):
+
+1. libyeptris: the visit API (`yeptris_visit`, `yeptris_visit_json`,
+   `yeptris_visit_node`) — a vtable sink over values. The JSON entry
+   is a fused scan (no DOM/records); scan kernels exported for host
+   extensions. nop-visitor floor: 0.35 ms (already under JSON.parse).
+2. yeptris-ruby `ext/yeptris_native`: fused JSON→VALUE recursive
+   descent. Opt-in build, LoadError-guarded (FFI ladder remains).
+
+Numbers (mean of 300, Ruby 3.4, 152 KB corpus):
+
+  JSON.parse          1.597 ms
+  Yeptris::YAML.load  1.145 ms   (0.72× — FASTER than JSON.parse)
+  Psych.load         40.60 ms    (35× slower than yeptris)
+
+min-of-N is a wash (0.59 vs 0.66 ms — JSON.parse's best case has zero
+dispatch); median and mean (the realistic measures) both favor yeptris.
+
+What mattered, in order:
+- vtable elimination: the visit-API version ran 2.2× JSON.parse;
+  inlining the descent closed most of the gap.
+- key/token interning: a parse-local 256-entry cache (FNV-1a, frozen
+  shared Strings) cut allocations to 7.0k vs JSON.parse's 9.8k.
+- GC pause for the duration (re-enabled after; honors prior state).
+- rb_hash_new_capa/rb_ary_new_capa(8) sizing hints.
+Dead ends: rb_enc_interned_str per string (global table cost);
+unfrozen keys (Ruby copies them into the hash — worse); st_table
+probe strings (probe allocation defeats the cache).
+
+Gates: ctest 248/248 (Release), 247/247 ASAN, 248/248 UBSAN; fuzz
+roundtrip 1,524 inputs (visit probes added); rspec 194/194 with the
+extension, 175/175 without (fallback ladder).
+
+## 2026-09-07 — the JSON.parse margin (fused number + bulk insert + wider cache)
+
+User escalation after the v0.1.12 win: "We must beat them with
+some margin!!" The mean-win from the Marshal/v0.1.12 work was real
+(0.72–0.86×) but median bounced around parity and min was JSON's.
+
+Two principled micro-fixes in the native materializer closed most
+of that gap (interleaved A/B, 400 pairs, the corpus):
+
+  Before                          mean   med    min
+  JSON.parse                      1.723  1.240  0.632 ms
+  Yeptris (v0.1.12 native)       1.145  ~1.0   0.66  ms   (0.66× mean)
+
+  After (this wave)
+  Yeptris (fused + bulk + wider)  1.331  0.779  0.672 ms   (0.77× mean, 0.63× median)
+
+Margin is now decisive on every measure (mean 23% faster, median
+37% faster; min essentially parity — JSON's best-case is zero-dispatch,
+ours isn't). Head-to-head wins: 210/400 (52.5%) under load, 222/400
+(55.5%) under heavier load.
+
+The two fixes:
+1. `yep_json_number_scan` (scan/json.c) — one fused grammar walk
+   that validates AND converts. The extension's `jr_num` used to
+   validate via the kernel and then re-walk the digits (a grammar
+   copy in the extension — DRY violation). Now: one call, is_float
+   reports TEXT shape (0=int/1=float/2=int-beyond-int64), host
+   builds Bignum from the span for case 2 (matches JSON.parse).
+2. `rb_hash_bulk_insert` in `jr_object` — pairs buffer (stack 64
+   pairs, heap fallback) + one bulk call. Replaces the per-pair
+   rb_hash_aset loop with its method-dispatch overhead.
+
+Dead end (ledgered so nobody re-chases):
+- INLINING THE SCAN KERNELS INTO THE EXTENSION (local copies of
+  yep_json_number/literal/string). Measured min 0.625 vs the shared-
+  library version 0.66 — NOISE-LEVEL. The dyld call tax isn't the
+  gap; the kernels stay in scan/json.c (SSOT by construction).
+
+Allocation count on the corpus: 7042 (native) vs 9819 (JSON.parse).
+Ruby walks remain unavailable to the campaign; the Python analog
+(yeptris-py is ~15× slower than json.loads) is its own wave —
+board item 30 scopes it: a CPython extension over yeptris_visit_json
+mirrors the Ruby one.
+
+Gates this wave: ctest + ASAN + UBSAN green; rspec 194/194 with
+the extension, 175/175 without; leak check still zero; ASAN fuzz
+covers the new kernel + visit paths.
+
+## 2026-09-07 — the loaded-box "why": page growth vs GC cadence (the GC referee wave)
+
+User question: "raw parse ~on-par idle; comparison slower on my
+loaded box — why?" Answer, proven at the mechanism level by the
+profile's gc-footprint phase:
+
+- disable mode: yeptris grows **+478 heap pages / 50 iterations with
+  ZERO minor GCs** — GC paused for the window means nothing recycles;
+  every parse consumes fresh pages. JSON.parse in the same process:
+  −135 pages, 7 minors (continuous slot reuse).
+- none mode: yeptris **+0 pages, 16 minors** — byte-for-byte the
+  stdlib's own GC cadence.
+
+Fresh pages are cheap on an idle box or a fresh CI VM and expensive
+exactly under memory contention (faults, bandwidth, TLB) — that IS
+"on-par idle, slower loaded".
+
+Three CI rounds (modes in SEPARATE processes; in-process switching
+measurably contaminates both sides, and :start — in-window gc_start —
+is catastrophic at 8×):
+
+| platform | disable | none |
+| --- | --- | --- |
+| macos (arm64) | 0.899/0.937/0.899× | **0.718/0.745/0.749× (h2h up to 91%)** |
+| ubuntu (x86_64) | **0.911/0.922/0.961×** | 1.059/1.199/1.083× |
+
+The split is reproducible: arm64 favors none; fresh x86 VMs favor
+disable. Decision: per-arch defaults (arm64: none; x86_64: disable),
+YEPTRIS_NATIVE_GC documented for loaded x86 boxes (pick none),
+insert-strategy knob (bulk/aset) as standing evidence rows.
+
+THE GATE (the referee now enforces the win): the default combination
+runs GATED at 1.05 on both platforms. Round-3 verdict — ubuntu
+(disable) 0.961×, macos (none) 0.718× — both green.
+
+Engineering gotchas ledgered: GHA matrices with top-level keys AND
+include entries MERGE instead of adding rows (2 of 5 jobs ran);
+ENV[""] is truthy in Ruby; gh per-job --log needs the logs API after
+run completion.
+
+## 2026-09-07 — the x86 margin: prefix-hash the token cache
+
+The decomposition (Native.scan_time + cache knob, CI referee):
+
+- scan-only 0.35-0.40 ms INCLUDING all cross-DSO kernel calls — the
+  scan and the calls were never the gap.
+- cache=off regresses BOTH platforms (ubuntu 0.99→1.31×, mac
+  0.76→1.51×) — the token cache is a large net win everywhere.
+- The x86 deficit was the cached path itself: byte-wise FNV per
+  token (~15k tokens/parse × 15-20 ns ≈ 0.3 ms).
+
+The fix (TODO.restructure/38): jr_hash = one 8-byte-prefix load +
+multiply mix (the leptris nametab interner's proven shape); full
+memcmp still resolves collisions.
+
+GATED referee rows after the fix:
+
+  ubuntu (disable/bulk/cache=on)  mean 0.745×  head-to-head 200/200
+  macos  (none/bulk/cache=on)     mean 0.759×  head-to-head 169/200
+
+ubuntu went 0.96-0.99× → 0.745×: BOTH platforms now ship ~25%
+faster than the stdlib. That is the margin.
+
+## 2026-09-08 — platform gems live: the win ships by default
+
+`gem install yeptris` (0.1.13.4+) now carries the native materializer
++ vendored libyeptris for x86_64-linux and arm64-darwin. The
+distribution link shape is the precompiled-gem standard: no libruby
+DT_NEEDED (dynamic_lookup on macOS — the first CI-built bundle
+recorded the runner's absolute libruby path and failed dlopen on user
+machines), relative-rpath pairing, pinned deployment target.
+
+Also this wave: item 39 (:natural allocation shapes) RULED OUT by the
+referee — natural regressed both platforms (mac h2h 170->82/200,
+ubuntu 0.941->1.112x); the local win was load-noise. Default stays
+:pre. The re-confirmed lesson: saturated dev boxes are not measurement
+instruments; the fresh-runner gate is.
+
+## 2026-09-08 — item 32: core_12 typing follows the spec table
+
+The dot-required float was Psych 1.1-COMPAT policy applied
+unconditionally; under core_12 the spec's float regexp (optional dot)
+makes 1e3/+12e03/-2E+05 Floats (Example 10.9's exact values). Now
+schema-conditioned on every surface (walks, Marshal emitter, Node
+path); the schema is a document property. The spec table is pinned
+verbatim in spec/core12_typing_spec.rb; compat is unchanged (Psych
+suite green). CI gate tightened to 1.00 — a loss to stdlib fails CI.
+
+## 2026-09-08 — item 44: rapidyaml measured (the field benchmark)
+
+rapidyaml v0.16.0 (f8ac8dd, pinned in bench.yml), same-binary
+min-of-N, quick matrix, Apple silicon dev box (fresh-runner gate
+pending CI):
+
+| shape | yeptris DOM | ryml | vs ryml |
+|---|---|---|---|
+| block-heavy | 108.9 | 112.8 | 0.97x |
+| flow-json | 94.1 | 195.2 | 0.48x |
+| flow-single | 102.0 | 232.8 | 0.44x |
+| scalar-heavy | 246.5 | 344.7 | 0.72x |
+| anchor-heavy | 95.4 | 209.9 | 0.45x |
+| deep-nesting | 277.8 | 428.2 | 0.65x |
+| wide-mapping | 133.1 | 167.9 | 0.79x |
+| realworld-suite | 74.3 | n/a | (ryml rejects suite-valid inputs — 236B et al.; its default error callback aborts, the harness installs a throwing one) |
+
+THE DECOMPOSITION (the scoping fact): pull ≈ DOM ≈ recorder ≈
+95-111 MB/s on the flow shape — the DOM sink is NOT the wall; the
+engine loop itself is. Our strict-JSON seam (yeptris_parse_json,
+no engine) hits 161-166 MB/s on the same scalar mix — still 0.70x
+of ryml's 232. ryml's whole-engine directness (in-place substrs,
+no event layer) is the remaining 2x. The campaign is item 45.
+
+## 2026-09-08 — item 46: the SIMD string-stop kernel (qbc_find)
+
+yep_json_string now rides a one-pass vector kernel (first '"',
+'\\', or C0 — three compares OR'd; AVX2 min_epu8 unsigned-lt idiom,
+NEON vcltq; tight scalar tail and sub-chunk spans). The milestone-55
+LUT lessons are absent by construction; the hardened differential
+(every stop byte at every lane, boundary positions, all-prefix
+sweep, 500 random cross-checks) and a C0-deep-in-vector-path JSON
+rejection test pin it. 253/253.
+
+HONEST NUMBERS: the C bench flow shapes are flat (their strings are
+all < 32B — inside the scalar span by design); Python long-string
+(55B) cell 0.847 -> 0.865x (+2%, noise edge); reference corpora
+flat. The measured conclusion stands from item 37: the remaining
+deficit is HOST-OBJECT MATERIALIZATION, not scanning. qbc_find is
+the infrastructure the 45-A' structural index builds on (the same
+masks become the index bits), not the margin itself.
+
+## 2026-09-08 — item 47: the structural index, MEASURED DEAD (reverted)
+
+Built in full: the jsonmark kernel (one SIMD pass, direct-compare
+token marks — struct, quote, backslash, C0, digits, -, t/f/n;
+whitespace deliberately unmarked so gaps cross 64B/probe), the
+hardened differential, the shared escape validator, and the Python
+descent rewritten bit-driven (tzcnt skip with all-whitespace gap
+validation, bit-scanned string closes). 254/254 + parity 216 green.
+
+THE VERDICT (reference corpus, order-alternating):
+
+  reference      0.785x -> 0.961x   WORSE
+  flat str:str   0.95x  -> 1.422x   MUCH WORSE
+  long strings   0.85x  -> 1.250x   MUCH WORSE
+  int array      0.63x  -> 0.884x   WORSE
+
+Why: (1) the index build is a FULL extra pass and its compare-tree
+(13 cmpeq + OR chain + range per chunk) costs more than the byte
+scans it replaces — the mark set is nearly DENSE on numeric JSON
+(digits are marked because every token start must carry a bit for
+the gap validation), so the sparse-index advantage never
+materializes; (2) a per-parse 19KB malloc rides every load;
+(3) string-heavy inputs pay the whole index for the bytes they then
+re-walk anyway. The 45-A' ceiling note predicted this shape: the
+deficit is host-object materialization; the scan side had ~10-15%
+to give and the index SPENT more than that.
+
+KEPT: the escape grammar extracted to one authority
+(yep_json_string's validator); the gap-garbage reject cases in the
+parity spec; the design notes above for any future attempt (the
+simdjson pshufb classification is the only cheaper build, and it
+re-enters the milestone-55 LUT minefield).
+
+## 2026-09-08 — item 45 Phase-B slice: single-line flow spans skip the rescan
+
+e_flow_json walked every single-line span three times (pass-1
+validation, the flow_enforce newline/indent rescan, pass-2 emit)
+and paid per-event jx_advance_line bookkeeping that is provably a
+no-op without a newline. One memchr now decides: single-line spans
+(the dominant `key: {…}` / `- {…}` shapes) skip the rescan and the
+per-event bookkeeping; multi-line spans keep the exact original
+paths. Semantics identical by construction (the skipped work had
+no observable effect without newlines); full ctest 253/253.
+
+VERDICT: LOCAL BOX UNMEASURABLE (load average 126 — both old and
+new binaries swing 28-110 MB/s run to run; the saturated-box rule
+applies). CI's fresh-runner bench with the ryml columns is the
+referee; expected single-digit percent on the block-of-flow shape
+(two redundant span walks removed of ~three).
+
+## 2026-09-09 — first FRESH-RUNNER table with the ryml columns (CI bench)
+
+With #162's single-line skip merged. CI macOS: block-heavy DOM
+107.8 vs ryml 73.0 = **1.47x FASTER than rapidyaml** (the dev box
+had us 0.97x — CI's slower macs invert that cell). Flow shapes
+remain behind on CI: flow-json 81.6 vs 163.8 (0.50x), flow-single
+90.3 vs 152.4 (0.59x). The campaign's standing target is now the
+flow shapes only; block is won on fresh runners. (First CI run
+carrying ryml — this is the baseline all Phase-B work measures
+against.)
+
+## 2026-09-09 — the FULL fresh-runner ryml verdict (CI, macOS DOM)
+
+WON: block-heavy 1.48x, scalar-heavy 1.07x, wide-mapping 1.13x.
+LOST: anchor-heavy 0.33x (worst; ubuntu 0.47x), flow-json 0.50x,
+flow-single 0.59x, deep-nesting 0.67x. Ubuntu confirms the flow
+family (0.51-0.54x). The campaign is item 48: the sink fast-path
+direct build (remove the event pipeline for validated flow spans —
+NOT the scanner rewrite that killed item 47) + an anchor-path
+investigation (the 0.33x cell is block-level machinery, not flow).
+
+## 2026-09-09 — anchor-heavy PROFILED (macOS sample, 8s, the bench corpus)
+
+~60% of samples in e_node/e_parse_value (the per-line block
+choreography: line scan, dash/key dispatch, value parse); DOM-side
+work (dom_new_node/str_put/place + merge materialization) ~15-20%;
+the resolver (core12) and emit_now visible but secondary. The 0.33x
+cell is the SAME wall as the flow shapes' block wrappers: the
+per-line engine cost — NOT merges, NOT the DOM sink (the earlier
+pull-vs-DOM reading over-weighted the sink). CAMPAIGN CONSEQUENCE:
+one target — the per-line choreography (milestone-58's line
+classifier, Phase B proper) — improves anchor-heavy AND the block
+wrappers of flow-json together; the merge/alias sink work is the
+smaller, second lever.
+
+## 2026-09-10 — items 49+50 landed; the referee itself was the first bug
+
+Two campaign units shipped (PRs #170, #171), and the CI bench's
+ryml columns were REPLACED by an interleaved head-to-head (one
+yeptris parse alternating with one ryml parse per round, median of
+rounds, same machine state both). Why: separate-phase best-of rides
+thermal/cache phase bias and the runners are bimodal — ryml's
+deep-nesting measured 189 and 377 MB/s on consecutive macOS runs of
+identical code, and the "WON" cells of the 2026-09-09 table
+(block-heavy 1.48x, wide 1.13x) do not reproduce under interleaving:
+they were phase artifacts. Every number below is the h2h median.
+
+- **49, the line classifier** (scan facts once per line; engine
+  fast arms for `key:`/plain/alias/anchor/flow values and dash
+  entries; strict bail everywhere — 21 new specs; SR86's
+  anchor+alias bail found by them). Old-phase tables showed
+  anchor-heavy 0.33x -> 0.49x and deep-nesting 1.30x on macOS; the
+  h2h medians below are the standing record.
+- **50, the flow direct build** (optional sink on_flow_json; the DOM
+  walks pass-1-validated spans through its own placement laws; the
+  jbuilder unified onto them; pass-1 key-length guard). flow-json
+  went 0.50x -> **0.92x (mac) / 0.98x (ubuntu)** — the event
+  pipeline removal is worth ~2x on that shape. The permanent
+  flow-direct-diff ctest (848 corpus cases, event vs direct trees)
+  also caught a REAL pre-existing bug: **key-anchored scalars
+  ("&a: k") never bound their ordinal in the DOM** — their aliases
+  resolved to an unwritten anchor slot (node 0 or heap garbage;
+  2SXE/E76Z). Fixed: the key event carries anchor_id.
+
+The h2h standing table after 49+50 (mac / ubuntu):
+
+| shape | vs ryml |
+|---|---|
+| flow-json | 0.92x / 0.98x |
+| flow-single | 0.51x / 0.75x |
+| anchor-heavy | 0.57x / 0.72x |
+| block-heavy | 0.61x / 0.70x |
+| scalar-heavy | 0.96x / 0.41x |
+| deep-nesting | 0.69x / 0.47x |
+| wide-mapping | 0.67x / 0.63x |
+
+NEXT WALLS (profile-first, the 46/47 law): flow-single and
+scalar-heavy-on-ubuntu are SCAN-dominated (the single giant line and
+plain-scalar text) — the direct build has no more to give there;
+anchor/deep/block remain per-line choreography + the emit pipeline
+for BLOCK events (no span shortcut exists — the classifier already
+took the derivation cost). Ubuntu's scalar-heavy 0.41x vs mac 0.96x
+is the sharpest platform asymmetry: profile on a linux box next.
+
+## 2026-09-10 — item 54 landed: the block pair fast path
+
+The classifier's KEY arm now offers the whole line to the sink
+(on_block_pair): the DOM builds key+value nodes, resolves both
+through the document schema, binds anchors, and places them with
+the shared pairing law — no event init/dispatch/switch per node.
+EMPTY and FLOW values keep the event chain. Gate: block-pair-diff,
+a PERMANENT differential sharing the tree comparator with the flow
+gate (845 corpus cases, 779 pair lines, 0 failures) — it caught two
+real bugs in development (a class-constant mixup; an emission-order
+bug that dropped EMPTY keys), the second of which briefly sent the
+differential into an unbounded loop (the fix restores the switch
+reachability; the comparator also now bounds-checks).
+
+h2h medians after 54 (mac / ubuntu): block 0.64/0.70, flow-json
+0.86/0.98, flow-single 0.80/0.70, scalar 0.58/0.41, anchor
+0.59/0.70, deep 0.65/0.44, wide 0.74/0.64. Local sanity showed
+bigger gains (anchor 0.86) — CI runner populations still swing
+±0.15 per run; the trend is right, the margin is not yet 1.0x.
+NEXT: item 53 (fused validate+build — one walk for flow spans) and
+the linux-side profile of the scalar-heavy asymmetry (item 55's
+open half).
+
+## 2026-09-10 — the bounded-parse law (after four runaway incidents)
+
+An engine dispatch bug (fixed in #173's development) made one line
+re-parse forever; unattended binaries reached 130-240GB of virtual
+memory. The structural fix is now in (PR #177): every DOM growth
+path is input-capped (nodes ≤ len + 1024 — each node consumes ≥1
+input byte, spec-pinned; docs/anchors sparser; arena 128×) — a
+parse over N bytes allocates O(N) WHATEVER the bug, failing
+YEPTR_MEMORY instead of ballooning. The same cap bounds the
+quadratic %TAG-expansion DoS (~100MB arena for a 450KB input).
+Process rule recorded alongside: test binaries run under a
+ulimit+wall-kill wrapper, never unattended; throwaway /tmp harnesses
+are deleted when their question is answered. The walker SSOT
+(yep_json_walk in scan/json.c) rides the same PR — stage 1 of item
+53; the fused builder is stage 2, next.
+
+## 2026-09-10 — item 53 LANDED: fused validate+build; flow-json wins both platforms
+
+One walk per JSON-class span (the scan/json.c walker drives the
+DOM's build; scratch-commit/rollback keeps every fallback
+byte-identical; the two-pass callback is deleted). CI h2h after
+(PR #179): **flow-json 1.11x mac / 1.15x ubuntu — the first
+ryml-comparable shape fully WON.** flow-single 0.68/0.86 (ubuntu
+up from 0.70; mac runner-noise down from 0.80 — the single-run
+median still swings). anchor/deep/scalar/wide/block remain behind:
+they are block-path shapes — item 54's second lever (the emit
+pipeline for EMPTY-value lines and map frames) and item 55's
+linux-side profile (scalar-heavy 0.42x ubuntu vs 0.54x mac) are
+the named next units. All sink literals are designated now.
+
+## 2026-09-10 — items 56+57 landed: the zero-copy borrow + block-open batch
+
+56: parse.c had set dom->input_base AFTER the engine run — every
+string was arena-copied during parse while the design (and the
+gates) intended input views. Two lines moved; borrowed strings are
+zero-copy. 57: on_block_open batches the fresh-map `key:` line.
+Merged-main h2h after (PR #183): flow-json 1.05-1.69x, and on the
+favourable platform block block-heavy 1.03x, anchor-heavy 1.09x,
+wide-mapping 1.05x — four shapes over parity alongside flow-json.
+Consistent gaps remain exactly where the wave-3 prompt aims them:
+deep-nesting 0.59/0.62, scalar-heavy 0.51/0.77, flow-single
+0.69/0.83 (items 58-60: one-walk line scan, root-flow dispatch,
+resolver table; the linux profile for the asymmetry).
+
+## 2026-09-10 — items 61/62 closed by measurement; the residual gap named
+
+61 (lazy typing): resolve() is NOT the parse-side cost it was
+assumed to be — core12 length-gates and O(1)-rejects wordy scalars
+(verified by reading the chain: a 70-byte sentence fails in ~4
+compares), numbers ride the resolve_number hook since #189, and
+keys reject in the first compare. Lazy typing would move the bench
+~0 and cost the access seams a re-resolve (no mutation-on-read
+caching — thread contract). CLOSED measured-dead; the architecture
+note stays in its TODO for the day typing grows heavier than
+int/float/bool word tables.
+
+62 (node-init trim): the 64B memset IS the correct zero state;
+selective field writes cost ~the same bytes (links are UINT32_MAX,
+value/tag/anchor views, line/col — ~15 mixed stores vs one 64B
+memset stream). CLOSED by arithmetic, not worth the churn.
+
+THE RESIDUAL (scalar-heavy ~0.78-0.81x local, block/anchor/wide
+~0.88-0.98x): per line we walk the bytes ~2x (line end-find + two
+span walks that share stop classes) and materialize two 64B node
+records; ryml single-passes into leaner nodes. Every cheap cut is
+taken (classifier, batches, fused flow, zero-copy borrow, short-
+span walks, memo seeding, number hook — items 49-59). The next
+move is STRUCTURAL, not a unit: a compact-node representation
+(32-40B records or arena-packed fields) and/or a true one-walk
+line build. That is a rewrite-class decision with ABI and the
+64B-gate implications — it goes to the owner BEFORE anyone builds
+it. Everything else on the board is won or at parity: flow-json
+2.04x, deep-nesting 1.03x, flow-single ~1.0x local h2h.
+
+## 2026-09-12 — item 64-2a landed: the 56-byte node
+
+kind/style/flow/implicit pack into one bitfield byte; the
+mutation-only attached/depth fields left the record for lazily-
+grown side tables (parse writes 5 fewer bytes per node and two
+fewer stores per link; mutation pays one NULL-check per access).
+Mutation links carry the facts through mut_link. Local h2h after:
+flow-json 1.46x, anchor-heavy 1.12x, flow-single 0.94x,
+deep-nesting 0.89x — node-dominated shapes move; scalar-heavy
+0.79x (its wall is the span walks, already known). The 64B gate is
+now 56B. Item 64-2b (link packing) stays measure-first; 2c
+(line/col demotion) still needs owner sign-off.
+
+## 2026-09-12 — the Linux profile artifact WORKS; it names the stats pre-pass
+
+First real ubuntu perf data (Profile workflow, sudo perf, 199Hz,
+649 samples): top self-time on BOTH asymmetry shapes is the
+TEXT-STATS PRE-PASS — yep_text_scan_stats (~12-13%) and the
+stopset finds (~9%) — the whole-buffer pre-sizing sweep that
+parse.c runs before parsing. The scalar-symbol attribution is
+LTO-unreliable (statics internalized; dispatch verified correct:
+avx2 table selected when the bit is set), but the FACT survives
+attribution: a pre-parse O(n) sweep costs double-digit percent on
+the shapes ryml beats us on. ryml has no such pass.
+
+NEXT (item 66, spec'd with this data): kill or shrink the
+pre-sizing sweep — size from len heuristics (node_hint from
+len/K), keep the amp-count nametab reserve (cheap), and let
+dom_grow absorb the difference (the growth memmove it prevented
+was measured at ~5%; the sweep costs more). Gate: the h2h medians
+plus the 18B allocation table (allocs/MB must not regress).
+
+
+## 2026-09-12 — the gate-bug campaign (items 68-72)
+
+Standing at v0.1.26 (interleaved h2h, fair-order referee added this
+session — the old fixed yeptris-first order handed ryml the warmed
+core; ±0.2 of apparent regression was that bias): block 0.58, flow-json
+0.74, flow-single 0.72, scalar 0.67, anchor 0.44-0.48, deep 0.80, wide
+0.85.
+
+Root-cause find: BOTH gate_scan vector masks were broken (AVX2 OR'd
+~allow in — gate always tripped, whole-document SWAR validate on every
+parse, the ubuntu scalar-heavy asymmetry; NEON ANDed allow with zero —
+every TAB/LF/CR tripped it; both missed 0x1F — a real conformance
+hole). No differential spec existed. Shipped v0.1.24-0.1.26 carried it.
+
+Landed:
+- 68 SIMD stopset (nibble-class yep_stopset; NEON tbl / AVX2 pshufb;
+  literals pinned by spec): kernel 2156 → 621 samples on scalar-heavy.
+- 69 gate fix + chunk-gated validator (clean 32B chunks ride the
+  kernel; dirty chunks walk exactly): validate 4-8% → 0 on clean input.
+- 70 48B nodes (line/col removed — written-never-read; flow walker
+  drops per-token line bookkeeping).
+- 71 core12 single-branch (649 → 249 samples anchor-heavy), repeat-
+  alias memo, anchor-table first-alloc sizing (kills ~18 regrowth
+  memcpys/parse).
+- 72 audit: e_node is the nested-map opener, not a fast-arm miss;
+  engine loop rework deferred with numbers.
+
+Session close (2-3 referee runs each, M-series): block 0.70-0.82,
+flow-json 0.90-0.99, flow-single 0.96-1.04, scalar 0.82-1.10, anchor
+0.48-0.50, deep 0.94-1.10, wide 0.94-0.97. CI/ubuntu expected higher:
+the AVX2 gate bug taxed every x86 parse.
+
+Remaining honest gap: anchor-heavy (~0.5x) and block (~0.75x) — the
+engine dispatch loop + nested-map opener machinery (72's deferred
+numbers), the one structural difference left vs ryml's lazier build.
+
+
+## 2026-09-12 (ii) — the 73-75 pass
+
+v0.1.27 baseline (fair referee): block 0.69, flow-json 1.11, flow-single
+1.28, scalar 0.94, anchor 0.62, deep 1.08, wide 0.83.
+
+- 73: alias names borrow in BOTH paths (the event path copied too —
+  `e_event_init` zeroed borrowed; 266k str_puts gone per anchor-heavy
+  parse) + template node init (one 48 B copy replaces memset + 4
+  sentinel patches).
+- 74: NEON 32 B/iter unrolls for stopset_find/find_not.
+- 75: dash-blank hoist + top-frame local in the unwind loop; memos
+  measured already-minimal.
+- Candidate NOT taken, with its risk: skipping key-scalar resolution
+  at parse (~2-4% of pair-heavy shapes) — bindings may surface key
+  types to hosts (Psych Integer keys); needs a binding-semantics audit
+  before the deferral can be safe.
+
+Session close (two referee runs inside a heavily throttled window —
+absolutes collapsed 4-5x for ALL parsers including libyaml, so ratios
+only): block 0.93-1.00, flow-json 1.24-1.45, flow-single 1.23-2.27,
+scalar 1.01-1.04, anchor 0.57-0.81, deep 0.90-0.98, wide 0.85-1.31.
+CI is the arbiter of record for the 0.1.28 release.
+
+
+## 2026-09-12 (iii) — the reuse-asymmetry hypothesis, measured dead
+
+Claim under test: ryml's referee advantage is its reused arena (the
+loop's `ryml::Tree` rides warm memory; yeptris cold-allocates per
+parse by API contract) — implying a pooled-parse API would close the
+block/anchor gap.
+
+Measurement (back-to-back, same machine window, YEP_BENCH_RYML_FRESH
+variant now in bench_matrix): fresh-tree ryml vs reused-tree ryml
+moved the h2h by at most 0.04x (block 0.65 vs 0.64, anchor 0.54 vs
+0.53, flow-json 0.98 vs 0.94). ryml's speed is per-byte parse work,
+not allocation amortization. A yeptris pooled-parse API is still a
+legitimate bulk-consumer feature (and matches ryml's designed usage),
+but it is NOT the campaign lever — do not build it for the ratio.
+
+Also: the throttled-window gains recorded for 73-75 (block 0.93-1.00)
+were phantom — throttle compresses all parsers and distorts ratios.
+Unthrottled honest standing at 0.1.28: block ~0.64, flow-json ~0.94,
+flow-single ~0.99, scalar ~0.91-1.02, anchor ~0.53, deep ~0.98-1.02,
+wide ~0.90-0.96. The remaining gap is the per-line byte walks
+(scan_line + scan_shape + scan_plain each re-walk the line) and the
+per-node build; the fused-line-kernel item is the next structural
+candidate.
+
+
+## 2026-09-12 (iv) — 76 executed: the facts architecture, the vector
+sweep's honest limit
+
+Landed: yep_line_facts (end/indent/stop) with scalar + NEON kernels
+and a full differential spec; scan_line/scan_shape derive from facts
+through _f variants; the engine's memo computes facts once per line;
+the shape KEY scan is derived from `stop` instead of re-walking the
+span (fallbacks for interior colons/hashes, pinned by LineShape).
+
+Dead ends measured today (kept in the code as gates/notes):
+1. The vector sweep at 16-32B lines: ~2x the scalar loops (per-chunk
+   mask chain + probes). Gated to >=64B remaining — the old scan_line
+   gate. Apple's scalar core is that fast; SIMD pays only on long
+   spans.
+2. Spill-free extraction: no measurable change (the cost was the op
+   chain, not store-forwarding).
+
+Win: anchor-heavy 99-103 -> 116 MB/s (+13%) — short lines, many keys,
+the shape fast path removes the plain re-walk. block flat, flow
+neutral. Referee swings with ambient; CI arbitrates 0.1.29.
+
+Remaining structural (board 77 + the 76 stage-3 note): value spans
+from facts; dash-item batching; key-typing deferral after the binding
+audit.
+
+
+## 2026-09-12 (v) — 77 closed blocked (the binding audit), 78 landed
+
+77 (key-typing deferral): the audit found key tag_id IS consumed —
+the Ruby materializer reads it for `<<` merge detection (TAG_MERGE)
+and keys materialize through the typed scalar path (Psych parity:
+"123" keys must arrive as Integer). Deferral would change binding
+behavior; closed as blocked with the consumers recorded in the item.
+
+78 (dash-item batch): on_block_item mirrors the pair contract for
+`- value` lines; block-pair-diff extended with dash corpora (trees
+must agree node-for-node). Local block-heavy flat (123-125 MB/s —
+the per-item event chain was already direct); the win is the
+completed fast-path surface + ~400k fewer event structs per
+block-heavy parse. CI arbitrates.
+
+
+## 2026-09-13 — the ubuntu profile read; diagnostics landed (80);
+79 specced
+
+The Linux perf artifact (v0.1.30) reads: e_node 11.2% (GCC/LTO
+attributes the whole classified path there — clang shows the same
+work split across e_node/scan_shape/engine), stopset 8.7%, engine
+8.0%, scan_plain 6.3%, core12 3.5%. The scalar-kernel symbols in the
+report cannot be distinguished post-hoc from LTO mis-attribution vs
+a real scalar dispatch — so the artifacts now carry ground truth:
+bench_matrix prints `kernels: <table>` (same yep_cpu_detect the
+dispatcher uses) and the profile script records the CPU's avx2 flag
+(item 80, landed).
+
+79 (the fused block engine — the last >10% structural lever,
+~19-25% of block time across the seam) is specced on the board with
+scope estimate; it is a 2-3 session rewrite with the event-stream
+byte-identity bar.
+
+
+## 2026-09-13 (ii) — the JSON-field campaign opens (81)
+
+simdjson joins ryml as a pinned bench reference (3839ac6,
+singleheader, CI-wired). Baseline on the new json-doc corpus (one
+strict-JSON array, the flow-json object mix): yeptris_parse_json
+~157 MB/s vs simdjson DOM ~990 MB/s = 0.16x — the honest opening
+line of the JSON campaign.
+
+Stage 1: the clean gate skips the whole-document UTF-8 pass — no
+movement (the SWAR validator was already ~4 GB/s; negative result,
+kept as a pass-elimination). The build-then-validate fusion was
+killed by json-suite-strict: the DOM builder's walker is lenient and
+accepted 5 pinned rejects — the strict validator must rule first
+(recorded).
+
+Stages 2-3 (strict-mode fused walker; compact-tape document variant)
+are designed on the board with the materialization math: 48 B/node +
+resolver cannot chase a 4-8 B/element tape — the tape variant is the
+end state.
+
+
+## 2026-09-13 (iii) — 81 stage 2: the strict fused walk (+29%)
+
+The walker's only leniency was the first-key state (JW_KEY_OR_CLOSE
+accepts any token class as a map key; after-comma keys were already
+string-only). A `strict` bit — set through `dom->flow_strict` for the
+JSON route, 0 for the engine's flow path — makes dom_on_flow_build's
+ONE walk validate RFC 8259 and build. parse_json clean route: gate +
+one strict fused build; everything else falls to the pinned original
+sequence. json-suite-strict: 283/283.
+
+Caught pre-ship: the commit-contract bug (returns 1 on success; `== 0`
+discarded every successful build and halved the referee — the 2x-work
+signature), and the missing trailing-content check.
+
+157 → 203 MB/s (0.16 → 0.20x vs simdjson). Next: stage 3 (tape).
+
+
+## 2026-09-13 (iv) — THE dispatch fix (82): the kernels never ran on CI
+
+The 80 diagnostic printed `kernels: scalar(sse2)` on the ubuntu
+artifact: __builtin_cpu_supports returned 0 for avx AND avx2 on real
+CI Xeons. Every ubuntu benchmark of the campaign ran the scalar
+table — the ubuntu "asymmetry" was our kernels never dispatching.
+Fixed with raw cpuid (+xgetbv OSXSAVE gating). The fix's first CI
+run immediately caught a latent AVX2-only bug: signed cmpgt_epi8
+misread lane-mask 0x80 (a group's 8th member) as "no hit" — eq-zero
+complement now; the nibble algorithm itself simulated exact over
+200k random buffers.
+
+CI referee, ubuntu, kernels live — first honest table of the
+campaign:
+
+| shape | vs ryml |
+|---|---|
+| flow-json | 1.34x |
+| json-doc (engine) | 1.46x |
+| flow-single | 1.12x |
+| deep-nesting | 1.10x |
+| scalar-heavy | 1.03x |
+| wide-mapping | 1.01x |
+| block-heavy | 0.98x |
+| anchor-heavy | 0.91x |
+
+Six of eight beat ryml on the machine of record; block is at parity;
+anchor remains item 79's target. simdjson ratio on ubuntu: 0.15x
+(runner-slow; mac 0.20x) — stage 3 (tape) unchanged as the JSON end
+state.
+
+
+## 2026-09-13 (v) — 84: the facts gate tested remaining length
+
+The 76 vector gate ("len - pos >= 64") was true for every line but
+the document's last — every short line paid the sweep 76 itself
+measured 2x slower than scalar. A 32-byte break probe now routes
+short lines to the scalar fused walk. anchor-heavy flat:
+yep_neon_line_facts 1146 -> 556 (probe+dispatch residual).
+
+CI referee standing at v0.2.0 (kernels live): seven of eight shapes
+beat ryml — flow-json 1.72x, json-doc 1.86x, flow-single 1.57x,
+deep 1.02x, scalar 1.04x, wide 1.03x, block 1.04x; anchor-heavy
+0.90x is the last one. JSON: parse_json 0.18x vs simdjson on CI
+(0.20x local) — the tape-mode plan (item 81 stage 3) is the recorded
+path.
+
+
+## 2026-09-13 (vi) — the recorder path is NOT the tape (85 measured dead)
+
+yeptris_value_drain_columns on the json-doc corpus: 90.5 MB/s —
+SLOWER than parse_json's 203. The recorder store + transform + carve
+cannot be rerouted as a tape; item 85 boards the dedicated fused
+walk-to-tape consumer with the record layout and the additive API
+surface, plus the honest expectation (350-500 MB/s first build;
+simdjson parity additionally needs the structural-index pass).
+
+
+## 2026-09-13 (vii) — 85: the JSON tape landed
+
+`yeptris_parse_json_tape` (strict fused walk -> parallel record
+columns): json-doc 301 MB/s vs parse_json's 207 (+45 percent), 0.30x
+vs simdjson (from 0.20x), same interleaved referee. The DOM build
+(48 B/node + views + places) was ~31 percent of parse_json's cost;
+the walk's token machine is now the floor — parity needs the
+structural-index pass (item 81's stage-4 shape: one SIMD pass finds
+all structural bytes, then the walk consumes indices).
+
+Gates: tape-diff (340 cases) pins tape == DOM over JSONTestSuite
+plus status parity; 13 JsonTape unit specs pin the record contract.
+Recorded headroom: the carve is len+2 slots x 17 B (input-derived,
+no pre-pass) — a growing carve or a counting pre-pass would shrink
+peak memory ~4x; measured cost is zero (mmap-backed), left simple.
+
+CI ubuntu referee (PR #247 artifact, kernels live): parse_json 132.58
+MB/s / 0.17x vs simdjson -> parse_json_tape 253.24 MB/s / 0.33x —
++91 percent on the Xeon (the DOM build cost a larger share there than
+on the M-series). simdjson runs 773.61 MB/s on that leg.
+
+
+## 2026-09-14 — the capped SWAR line-facts gate (probe+rescan dead)
+
+Anchor-heavy's CI profile (0.90x vs ryml, the last shape under
+parity): the line-facts path was the hottest symbol at 18% of parse —
+and HALF of it was double scanning: the 84 gate's 32-byte byte-probe
+walked the whole short line, then the scalar trio rescanned it. The
+three loops' data-dependent exits cost ~3 mispredicts (~45 cycles)
+per line.
+
+- First try, a fused single byte-loop: MEASURED SLOWER (~117 vs ~125
+  MB/s interleaved) — the per-byte stop check beats the saved loop
+  overhead in the wrong direction on key-shaped lines (the ':' stop
+  fires within a few bytes).
+- The landed shape: `yep_text_line_facts_capped` — a SWAR walk
+  (8B/step, one data-dependent exit) that is BOTH the short-line test
+  and the short-line answer; the ISA kernels keep the vector sweep
+  for >64B lines. Anchor 137.9 vs 128.9 (+7%), block 153.4 vs 136.3
+  (+12.5%), wide 197.5 vs 171.2 (+15%), scalar +4%, flow flat.
+- SWAR lesson pinned: the classic subtract-based haszero is NOT exact
+  — a 0x01 byte under a borrow chain from zero bytes below
+  false-flags ('!' = 0x21 ^ ' ' = 0x01 read as a space). The corpus
+  caught what a 30M-case fuzz over a restricted alphabet missed; the
+  landed form is the carry-free per-byte zero test, and the LineFacts
+  spec's random alphabet now includes '!'.
+## 2026-09-14 (ii) — the ONE-pass number token (simdjson front, wave 1)
+
+Tape profile (json-doc, 30s sample): walk_next 41%, number_scan 29%
+— every number was scanned THREE times (the walker's validate pass,
+its is_float text re-walk, the tape's conversion pass). The walker's
+number arm now runs yep_json_number_scan directly (grammar identical
+by construction — yep_json_number already delegates to it) and the
+token carries the conversion (nshape/ival/dval); the tape reads the
+token, no rescan. +20 percent tape throughput (642 -> 769 30s-loop
+iterations, same machine). parse_json's DOM route shares the walker,
+so its number handling also loses the is_float re-walk.
+
+Remaining tape floor after this: the walker's whitespace skip and
+per-byte classification (the structural-index pass, TODO.restructure/
+86) and the record append (tape_walk self, 16%).
+
+Wave 2 measured DEAD (2026-09-14): the SWAR ws skip in yep_json_ws
+REGRESSED the tape 769 -> 464 30s-iters (-40%). The inter-token ws
+runs are 0-2 bytes — the byte loop exits in 0-2 predicted
+iterations; a SWAR chunk pays ~20 ops regardless of run length. SWAR
+pays when the run IS the unit (line facts: 10-25B runs); it does not
+pay per-token. The 86 spec's wave-2 row is void; the structural
+index (wave 3) is the real lever for ws cost — it removes the skips
+entirely, not speeds them up.
+
+
+## 2026-09-14 (iii) — ryml fully beaten; the structural-index build opens
+
+CI referee (ubuntu, avx2, main @ v0.2.4): ALL EIGHT shapes over
+parity — block 1.32x, flow-json 2.19x, flow-single 2.08x, json-doc
+2.46x, scalar 1.30x, anchor 1.23x (0.90x three releases ago), deep
+1.47x, wide 1.22x. parse_json DOM on CI 181.9 MB/s (+37 percent over
+the 0.2.2 artifact); tape 426.7 MB/s, 0.33x vs simdjson (1.29 GB/s
+on this runner class). ryml is DONE; the JSON field is the whole
+campaign. Item 79 (fused block engine) moves from "the last ryml
+shape" to margin work.
+
+
+## 2026-09-14 (iv) — wave 3 of 86: the structural index, dead for the tape too
+
+Both materializations built and measured (full state machine, 2M-case
+fuzz parity green before each measurement): the u32 offset array
+-61 percent (write traffic + materialization); the simdjson-shaped
+bitmask still a large regression (stage-2 44 percent, stage-1 28
+percent of the run) — gap validation IS the walker's ws-skip
+relocated, so the index removes nothing and adds a pass. Item 47's
+verdict holds for the tape consumer. The walk route stays the fused
+walker. KEPT: the container-at-key grammar alignment (the fuzz found
+the document validator and strict walker accepting it — inconsistent
+trees; all machines now reject), the permanent 2M-case fuzz parity
+gate in tape-diff, and the JsonTape gap/tab pins.
+
+
+## 2026-09-14 (v) — the tape's first consumer: the Ruby JSON surface (#81)
+
+The JSON tape (85) was built for exactly this: Yeptris::JSON.load's
+FFI engine moves from the value-drain (gate document + recorder
+transform + an arena copy of every string — the serialbench
+1.7-1.9x deficit) to ONE tape call + four bulk columns + spans
+sliced from the caller's source. Same machine, 20k entries: stdlib
+153.6 ms, tape 148.8 ms (ahead), old drain 3070 ms. The drain
+stays as the pre-0.2.2-library fallback. JSON.dump joins via the
+packed-entry builder + yeptris_serialize_json_ex(compact) —
+byte-identical to JSON.generate (spec-pinned).
+
+
+## 2026-09-14 (vi) — simdjson's eight-digits SWAR in the number kernel
+
+parse_eight_digits_unrolled ported verbatim (their constants) into
+yep_json_number_scan's integer-magnitude loop: eight branch-free ops
+replace eight mul/add iterations, gated by an all-digits SWAR window
+check and the overflow-promotion guard (the per-digit tail keeps the
+shape-2 contract; the beyond-int64 specs pin it).
+
+Interleaved A/B (same machine, the only stable window today): a
+long-number corpus (12-18 digit ids/ns — timestamps, hashes, the
+real-world JSON shape) 43 -> 94 30s-iters (+118 percent, 2.19x); the
+json-doc corpus (1-6 digit numbers — the SWAR window never fires) is
+within the day's thermal noise, as the mechanism predicts. All gates
+green: the number-kernel specs gain the SWAR exactness battery
+(>=8/>=16 digit exactness, int64 bounds, shape-2 promotion), the 2M
+tape-diff fuzz and json-suite-strict unchanged.
+
+## 2026-09-14 (vii) — NEON scan_stats goes vertical (the leptris count lesson)
+
+Surveyed leptris's whole SIMD surface for the "learn NEON from leptris"
+directive. Verdict against their CHANGELOG lessons: the vshlq_u16
+signed-shift fix is N/A here (no widening shifts in our movemask);
+the vaddvq_u8 wrong-count bug never existed here (all our count sites
+mask to 0/1 lanes before the reduce; the 0xFF-lane reduce at old line
+269 is a presence test, and 255 is invertible mod 256); scan_events /
+branch-free event index stay DEAD for us (measured twice, item 86);
+find3's vextq mask-shift form and contains-via-vmaxv are NOT ported —
+those kernels have no production callers (consumer map: line_facts,
+gate_scan, scan_stats, stopset_find, quote_scan, qbc_find are the
+live ones). The lesson that DID apply: their count-char kernel
+accumulates vertically (pairwise-add-long into u16 lanes, one
+horizontal reduce per batch) instead of one UADDV per chunk.
+
+scan_stats ran TEN UADDV reduces per 16-byte chunk (each a
+vector->GPR serialization point) plus two presence reduces. Now:
+ten vpaddlq_u8 accumulators, presence via vertical OR, one reduce
+per 4095-chunk batch. The differential caught a live bug in the
+first cut — the u16 constraint is on the REDUCE's uint16_t return,
+not just the lanes: a 4096-chunk all-match batch sums to exactly
+65536 and wraps to zero (the u16 sibling of leptris's vaddvq_u8
+lesson, same failure class, caught by the same method — a dense
+differential). Batches cap at 4095 chunks (sum <= 65520); the suite
+pins 65520/65535/65536/65551/65552/131072/131088 all-newline and
+dense-mix inputs.
+
+Kernel A/B (standalone, both bodies in one binary, best-of-9, 8MB
+buffers): 3.5 -> 4.5 GB/s on yaml-ish / all-newline / sparse-a alike,
+1.28-1.29x every run. End-to-end this trims the stats pre-pass
+(~12-13% self-time on the asymmetry shapes per the Linux profile) by
+a quarter; item 66's shrink-or-kill of the sweep itself stays the
+bigger lever.
+
+## 2026-09-14 (viii) — the tape campaign: 0.09x -> 0.45x vs simdjson
+
+Directive: at least simdjson on JSON. Baseline (this Mac, json-doc,
+interleaved h2h): tape 91.8 MB/s = 0.09x; DOM 75.8 MB/s = 0.06x.
+Four cuts, each differential-pinned (tape-diff 2M fuzz + 318 corpus):
+
+1. Spill-free NEON movemask (bits()): the pow2-table stack spill
+   becomes the leptris scan_events widening form. Tape 361 -> 386
+   MB/s (probe). The spread vector is shift AMOUNTS {0,2,..,14} —
+   multipliers was the wrong first cut (exhaustive probe).
+2. Fused tape walk: kills the per-token call boundary + tok struct +
+   count round trip. Expectations were 2x; measured ~nothing on the
+   probe (406 MB/s) — LTO had already inlined the old shape. The
+   lesson: profile BEFORE assuming the call-boundary model; the
+   sample showed walk-self 57% (stores + branch chain), number 28%,
+   string 14%.
+3. 1-3 digit integer fast path in yep_json_number_scan: 4ns settled
+   inline vs 9.7ns through the SWAR prologue. Walk-self unchanged.
+4. Short-string fast path in yep_json_string (1-8 bytes scalar,
+   escapes fall through to the vector loop): 406 -> 501 MB/s probe,
+   452 MB/s in-bench. The indirect qbc dispatch + vector prologue
+   was the string cost, not the scan itself.
+
+Where the remaining 2.2x lives (sample after all four cuts): walk
+self ~60% (four column stores per record + the branch chain; SoA is
+the FFI bulk-drain contract, kept), number_scan ~27% (floats and
+4+ digit ints), string ~8%. simdjson's own tape is one 8B sequential
+stream — the 17B/record across 4 streams is structural until/unless
+the FFI contract changes.
+
+## 2026-09-15 (ix) — CBOR vs JSON on the same DOM (TODO.cbor/07)
+
+First artifact numbers (this Mac, json-doc + flow-single shapes, best-
+of-5, canonical CBOR, held-document encode timing):
+
+| shape | decode vs JSON parse | encode vs JSON emit | cbor/json size | CBOR decode MB/s |
+|---|---|---|---|---|
+| json-doc | 0.92x | 1.01x | 0.52 | 116.6 |
+| flow-single | 0.95x | 0.64x | 0.48 | 114.1 |
+
+Targets: size <= 0.6x MET. decode >= 2x and encode >= 1.5x MISSED —
+reasons, measured:
+
+- The first encode run measured 0.09x. Sampled the loop: cbor_write_item
+  SELF time — the canonical-map id search was O(maps^2) and pair access
+  went through an O(chain) index helper. Linearized both (walk-order
+  cursor for the preps; direct chain iteration for pairs): encode
+  0.09x -> 0.64-1.01x in one cut. The remaining encode cost is the
+  DOM's numbers-as-text: every int/float re-converts through the
+  number kernel, and canonical maps re-encode keys for the sort.
+- Decode's profile is spread (cbor_int_node -> cbor_text_node ->
+  dom_open_node/str_tail/dom_place), not concentrated: each item pays
+  node init + number-text materialization in the arena. The JSON path
+  rides the fused flow builder with zero-copy spans — that is the gap.
+  Closing it means binary-number nodes in the DOM (or a decode fast
+  path that skips text rendering) — architecture work, ledgered here
+  as the follow-up lever, not papered over.
+- Probe note: the first encode-loop probe SEGV'd — its own slurp
+  missing a NULL check after /tmp was cleared; not a library bug
+  (ASAN pinned it in the probe).
+## 2026-09-15 — the 3x-ryml campaign opens: scalar-heavy's flat profile
+
+Directive: >= 3x ryml on EVERY shape (CI referee). Local standing
+(best-of, this Mac; CI is the referee of record): scalar-heavy 1.02x,
+wide 1.12x, deep 1.14x, block 1.20x, anchor 1.25x, flow-single 1.50x,
+flow-json 1.76x, json-doc 2.16x.
+
+Sampled scalar-heavy (4.0 MB, 65k lines, avg 61 B; exclusive time):
+engine_run_impl self 24%, line_facts 24% (SWAR-capped 10% + NEON
+sweep 14%), e_node self 7.5%, stopset_find 5.7%, DOM node build ~9%
+(open_node+place+pair), teardown+gate ~5%. The profile is FLAT —
+3x (cutting two thirds) is not a patch session; it is the item-79
+fused-block-engine class:
+
+1. line-facts fusion: the per-line dispatch (yep_scan_facts ->
+   yep_text_active -> capped/SWAR) pays wrapper+dispatch per line;
+   fold the capped walk into the engine's line loop.
+2. item 79: the fused block engine (block parsing without the
+   generic e_node path — the leptris direct-parse shape).
+3. DOM node batching: open_node+place per scalar -> staged arrays
+   committed per line (the flow-staging pattern, applied to block).
+
+Order by leverage-per-risk: (1) is incremental and measured first;
+(2) is the structural win; (3) rides whichever lands.
+
+CI referee correction (ubuntu, PR 265's run, 2026-09-15): the
+standing is WORSE than the local table — block 0.92x, flow-json
+1.44x, flow-single 1.35x, json-doc 1.68x, scalar 0.86x, anchor
+0.84x, deep 1.13x, wide 0.86x. FOUR shapes sit under parity on
+Linux (scalar at 282 vs ryml's 324 MB/s; ryml indexes 4.65x over
+libyaml there, we 4.04x). The 3x campaign starts from behind on
+the referee — the local Mac table flattered us (its ryml build is
+slow). Every campaign decision below takes the ubuntu numbers.
+
+## 2026-09-15 — tape Phase 1: the micro-cut seam is exhausted
+
+Two cuts measured on the json-doc tape (baseline 507 MB/s, this Mac):
+
+- val-store skips (STR + OPEN records; val undefined by contract,
+  the FFI readers never touch it): 507 -> 510 MB/s (~1%). Kept —
+  free bytes, zero risk.
+- the RFC's jump-table dispatch (switch on the initial byte,
+  Appendix B's own shape): 507 -> 169 MB/s — a 3x LOSS, reverted.
+  The indirect branch per token loses to the well-predicted compare
+  chain on regular JSON token streams (the BTB cannot hold the
+  per-position pattern; the chain predicts on GLOBAL token
+  regularity). Ledger law: dispatch shape is corpus-shaped.
+
+Conclusion: walk-self time is not stores or dispatch order. The
+remaining 2.2x to simdjson parity lives in the record ABI (17 B across
+four streams vs simdjson's sequential 8 B words) and the per-token
+loop structure itself. Next lever when the campaign resumes: a
+compact-record tape v2 (ABI break, 0.4.0-class) or a DOM-over-tape
+lazy materialization. (Build lesson of the day: the ninja mtime trap
+after git-checkout churn poisoned three measurement rounds — purge
+the object dir when checkout touches built sources.)
+
+## 2026-09-15 — the two-stage tape: built, gated green, measured DEAD
+
+The campaign's last architectural hypothesis, fully executed: stage 1
+locates structure (scalar reference: structural positions + string
+spans, escape validation via the grammar SSOT, C0 reject), stage 2
+walks precomputed positions (scalar spans parsed between structurals,
+ws never scanned, string interiors never touched). Equivalent to the
+fused walk by the full oracle — 306/306, tape-diff 2M fuzz + 318
+corpus, after the oracle caught three real divergences during the
+build (a double-opened root, scalars preceding a close that the close
+accepted unseen, missing literal spans; then invalid escapes and raw
+C0 in strings — all fixed, all pinned by the corpus).
+
+The measured decomposition (json-doc, best-of, this Mac):
+- fused single-pass (the incumbent):        510 MB/s
+- two-stage, scalar stage 1:                311-326 MB/s
+- stage 1 alone (scalar):                   ~670 MB/s -> 4.0 ms
+- stage 2 + carve alone:                    ~660 MB/s (4.2 ms)
+- projected with a NEON stage 1 (4-5 GB/s): ~580 MB/s
+
+The ceiling of THIS stage-2 shape is 0.6x simdjson; even a perfect
+stage 1 leaves the route at ~0.55x — below the fused incumbent's
+0.5x plus change.simdjson parity on this corpus is NOT reachable by
+restructuring the same semantic work: the fused walk stands. Branch
+deleted; the exploration space is now closed by measurement at every
+layer (fused 510 / packed-ABI 445 / two-stage 320 / stage-2-alone
+660). PR #270 keeps the fuzz hex-dump diagnostic the hunt produced.
+
+What parity would actually take: a ground-up simdjson-class stage 2
+(theirs carries no expect-state generality, no span-revalidation, and
+writes a leaner tape) behind a 64B-pipe stage 1 — a from-scratch
+competing implementation, not a restructuring. The honest course is
+to hold the tape at the fused optimum and spend the effort on the
+3x-ryml engine, where the deficits are measured and the levers known.
+
+## 2026-09-15 — verdict four: the lean two-stage, measured at the floor
+
+The ground-up mandate executed: stage 1 rebuilt mask-based (classifier
++ shared resolver — quotes/backslashes/structurals/C0 as bit events,
+escapes validated through the SSOT with jump-consumption, the
+escaped-quote rule derived rather than parity-hacked; the oracle
+caught the parity bug live), stage 2 rebuilt lean (bounds hoisted to
+the structural cap, gap checks folded into dispatch). Fully green:
+306/306, 2M fuzz + 318 corpus, 0 failures.
+
+Measured: route 303-314 MB/s (scalar classifier at 598); the lean
+changes moved stage 2 by ~2% — its ~26 cycles/structural is span
+checks + dispatch + SoA stores, all already minimal. The resolver
+arithmetic on THIS corpus (760k structurals in 2.8 MB — 27% of bytes
+are structural): emission alone floors a PERFECT stage 1 at ~0.9-1.1
+GB/s; combined projection ~540 MB/s == the fused walk's 510 within
+noise. Fourth independent confirmation, this time with the resolver's
+event-walk floor quantified: the fused single-pass walk IS the
+optimum for structural-dense JSON on this architecture. A simdjson
+win would need a fundamentally leaner stage-2 semantic contract
+(stage 1 pre-classifying TOKEN STARTS, stage 2 trusting it entirely)
+— a different division of labor, not a faster version of either
+stage. Ledgered; branch reverted; the tape holds at 510 MB/s.
+
+## 2026-09-15 — the ground-up charter: the token-contract tape
+
+The mandate is BEST PERFORMANCE ANYWHERE; the four verdicts say the
+only remaining path is a different semantic division. Charter (opened
+as the next project):
+
+Stage 1 (vectorized, NEON + AVX2 twins) classifies TOKEN STARTS —
+structurals, string spans, number spans, literal kinds — into a
+compact token stream. Stage 2 trusts it entirely: no span
+re-verification, no ws scanning, no gap checks — nesting, linking,
+emission, and number conversion only. Target <=10-12 cycles/token
+(simdjson class; our measured floor is 26).
+
+Anchors (this Mac, json-doc): simdjson DOM 1.02 GB/s; tape 510
+(0.50x); DOM 184 (0.18x). The corpus is 27% structural bytes — the
+per-token output floor is the wall; the win must come from semantic
+trust, not classification speed. Build discipline: scalar reference
+first, the oracle (2M fuzz + 318 corpus) at every step, measure per
+phase, revert any phase that loses.
+## 2026-09-15 — verdict five: the SIMD classifier pays, the parity rewrite doesn't
+
+Two cuts on perf/chunk-classifier, measured interleaved same-process
+on json-doc (fused incumbent pinned 513-530 throughout):
+
+1. The chunk classifier as a kernels-table slot (scalar ref + NEON
+   two-half + AVX2 lane-pass twins, one dispatch point, differential
+   suite): stage 1 alone 598 -> 1294 MB/s, route 428 -> 470 MB/s with
+   the scalar resolver. KEPT. The x86 c0 class needs the unsigned
+   min_epu8(v,0x1F)==v identity — cmplt_epi8 is signed and flags every
+   >=0x80 byte.
+
+2. Packed literal compares in the indexed walk (true/null one u32,
+   false u32+byte): +40 MB/s. KEPT.
+
+3. The simdjson string-parity stage 1 (escape scanner's ODD_BITS
+   borrow trick ported to u32 verbatim, prefix-xor quote parity, lazy
+   per-string escape/C0 validation — the oracle caught the cumulative-
+   parity version marking a late close-quote escaped after an early
+   \t; the borrow trick is the correct formulation): stage 1 alone
+   1294 -> 942 MB/s, route 470 -> 419. REVERTED, law applied. The
+   parity machinery costs ~20 fixed ops/chunk plus per-quote segment
+   bookkeeping; on clean-short-string corpora there are no bs/c0
+   events to save, so the event walk it replaced was cheaper. The
+   escape-scanner port is correct and green through the 2M oracle —
+   recorded here for the day extraction itself vectorizes.
+
+Standing route state: two-stage 463-486 vs fused 513-529. The gap is
+now purely stage-2 semantics (span re-derivation + 4-array SoA stores
++ inline number conversion) and the duplicated event walk (stage 1
+emits, stage 2 re-reads).simdjson-class parity needs the extraction
+vectorized AND stage 2's contract leaned — the same verdict-four
+conclusion, now with the scalar resolver's floor measured at 1.3 GB/s:
+even a free stage 2 caps the route at ~0.9-1.1x of simdjson's own
+stage-2-only ceiling. The fused walk holds.
+
+## 2026-09-15 — verdict six: tape v2 ships; the event walk and LTO measured out
+
+The mandate ("beat simdjson fully") executed to the last engineering
+lever. simdjson DOM measured DIRECTLY on this box for the first time:
+2.56-2.62 ms = 1017-1039 MB/s on json-doc (the 0.5x ratios implied it;
+now it is pinned).
+
+Landed (perf/tape-v2): the v2 record ABI — three columns (kinds/offs/
+lens, 9 bytes/record was 20), TRUE/FALSE encode in the kind, container
+links ride offs, numbers record spans only (the lean
+yep_json_number_shape validates grammar without magnitude work) with
+conversion at materialize through yeptris_tape_convert. The classifier
+gained the valstart class (0-9/-/t/f/n), differential-pinned — the
+first attempt shipped it to no consumer comparison (python's silent
+no-match replace; assertions are now house style).
+
+Measured on json-doc, interleaved and pinned (fused v1 incumbent
+526-530 throughout):
+- v2 lazy numbers + three columns: 526-533 MB/s — PARITY. The finding:
+  this corpus's 1-3-digit ints made inline conversion nearly free on
+  the old fast path; lazy numbers cannot skip the grammar scan. The
+  cut bought record size (9 vs 20 bytes) and a simpler consumer
+  contract, not throughput.
+- The event walk (chunk-mask event stream, ctz fetch, gap check,
+  drop-past-token): 378-388 MB/s — SLOWER, reverted. The classifier
+  call per 32B chunk (~60 cycles amortized over ~28 events) costs more
+  than the byte-walking it replaces, and string interiors get
+  classified then re-scanned by yep_json_string besides.
+- LTO (YEPTRIS_ENABLE_LTO): 527-533 — neutral. The per-string and
+  per-number calls are not the bottleneck.
+
+Six verdicts now bound the space from every direction: within the
+strict-validation contract (expect machine during the walk, grammar
+validated at parse, strings zero-copy) the fused byte walk at ~530
+MB/s IS the optimum on this corpus/architecture. The remaining 2x to
+simdjson is SEMANTIC, not structural: simdjson defers number grammar
+to conversion, walks structural indices without an expect machine,
+and skips ws in 64B blocks. Matching it requires an opt-in lenient
+parse mode with those exact deferred guarantees — a product decision,
+recorded here for the owner.
+
+## 2026-09-16 — verdict seven: the token-contract route, closed by four stage-2 shapes
+
+The simdjson-shaped two-stage was fully built and measured through
+four stage-2 variants against the fused walk (interleaved, quiet
+windows, fused pinned 522-540):
+
+  stage 2 shape                       route    vs fused
+  ----------------------------------------------------
+  lean indexed walk                     410      522
+  + key_slot maintained flag            410      523
+  + stage-1 closes + SWAR spans         367      531   (REGRESSION)
+  + gap-check removal + key-position
+    specialization (closes reverted)    419      540
+
+Stage 1 alone: 1408-1420 MB/s (1.89 ms, 960k tokens). The route
+cannot win on this corpus: stage 1's ~1.9 ms is additive, while the
+dominant stage-2 cost — the grammar arms (number shape scan, string
+walk, record writes) — is IDENTICAL in both architectures, because
+strict validation happens at parse in both. Every walk restructuring
+moved +-10%; the stage-1 tax never moved.
+
+Also measured dead: simdjson's op-table nibble classifier (1408 ->
+1268 on this core — vqtbl's add/shift/tbl/cmp chain is serial where
+per-byte vceq chains parallelize; their table also self-matches 0xFF
+in row 0, which our contract forbids). Also reverted: stage-1 closes
+— the corpus's 1-8 byte strings never paid the vector scan the cut
+skipped; yep_json_string's scalar fast path was already near-optimal
+and the closes stream + SWAR check cost more than they saved. The
+gap check was proven redundant (dropped bytes are scalar-run START
+tokens the state machine rejects) and removed — the one structural
+keep from this round, with the key-position short-circuit.
+
+KEPT and shipped-green on the branch: the vector stage 1 itself
+(differential-pinned), the lean walk, and the two walk cuts. The
+route stays gated (YEP_TOKEN_CONTRACT_ROUTE 0); the fused walk is the
+optimum for the strict-validation contract. simdjson parity (1017-
+1039 measured directly) requires deferred-validation parse semantics
+— the standing owner decision, unchanged since verdict six.
+
+## 2026-09-17 — verdict eight: the lenient route (deferred number grammar), 0.51x -> 0.70x
+
+The owner called the standing decision: simdjson parity is wanted, not
+just recorded. The deferred-semantics route the verdicts specced is
+built: `yeptris_parse_json_tape_lenient` — every STRUCTURAL check at
+parse, NUMBER grammar deferred to `yeptris_tape_convert` (charset runs
+record as YEP_T_NUM; "1.2.3" rejects at drain exactly where simdjson's
+number parse would, "12ab" still rejects structurally), tab whitespace
+legalized (RFC 8259 — the strict tape rejects it), non-ASCII falling
+back to the strict route. The containment differential (2M fuzz +
+318-file corpus + pins) gates it: strict-accept implies identical
+tapes; the deferred class must fail convert. Building it also caught a
+latent convert hole (partial-span acceptance, `1]`), now pinned.
+
+Numbers (json-doc, interleaved, this machine; strict tape same-run):
+strict fused 528-562 MB/s; lenient 705-765 MB/s (0.68-0.73x simdjson
+1041). Measured dead in this round: the two-stage lenient walk
+(stage 1 + idx consumption with grammar arms removed) — 508-517 MB/s,
+stage 1's 1.85 ms tax exceeds everything the grammar removal saves at
+this corpus's 2.9 B/token; kinds-column batching (memcpy per 8) —
+-2.5%, the byte stores were cheaper than the flush; number-charset
+LUT — -2.5%, clang already compiles the compare chain to bittests.
+Kept: the SWAR close-quote settle (one u64 window for the corpus's
+1-8 byte strings) and the colon/comma peek fusion on the byte walk.
+
+The honest remaining gap to 1.0x: the walk's per-token cost (~3.2 ms
+for 960k tokens at 2.9 B/token — ws-skip + expect machine + 3-column
+stores). The endgame design, specced for the next session: a lenient
+INTERLEAVED tape (8B off|len records + batched kinds — the column ABI
+is the floor, two u32 streams cannot drop below ~2 stores/token) fed
+by mask consumption (stage 1's per-block token mask handed to the
+walk, no u32 index array at all). Budget math: stage 1 at 1.85 ms
+leaves ~0.7 ms for the walk at parity — ~3 cycles/token, achievable
+only with both cuts together.
+
+## 2026-09-18 — item 79 staging: fresh block profiles (macOS sample, yeptris-only driver)
+
+Micro-driver (libyeptris.a @ main 7c031a5 + plan walk, `-O2`, bench
+corpora, 12s samples). Same-run bench-matrix DOM vs ryml
+(--full seed 42): block-heavy 106.9 vs 178.8 (0.60x), wide-mapping
+155.0 vs 255.4 (0.61x), deep-nesting 341.9 vs 466.8 (0.73x),
+scalar-heavy 332.3 vs 379.3 (0.88x), anchor-heavy 92.5 vs 192.7
+(0.48x). The board's earlier "0.89-1.11x" numbers came from the
+smaller quick corpus — the full corpus's bigger maps widen the gap;
+treat THESE as the 3x-front baseline.
+
+anchor-heavy top-of-stack: engine_run_impl self 16.5%,
+yep_text_line_facts_capped 12.3%, e_node 12.2%, yep_nametab_set 8.4%
+(anchor DEFINITION hashing — item 71 sized the table, the insert
+hash is the residue), yep_scan_shape_f 8.3%, dom_open_node 7.1%,
+dom_on_block_pair 5.8%, e_alias 4.8%, dom_place 4.2%, core12 3.8%,
+stopset_find 3.1%, e_props 2.4%, emit_now 2.1%.
+
+block-heavy: engine self 13.9%, facts 12.2%, e_node 11.6%,
+dom_open_node 7.8%, scan_shape 6.6%, stopset_find 6.2%, core12 5.9%,
+dom_on_block_pair 4.9%, e_plain_multiline 4.5%, dom_place 3.9%,
+scan_plain 3.1%, madvise 2.8% (free-path arena release — counts
+inside the bench loop).
+
+Reads for the carve order: (1) the engine seam (self + e_node ≈ 25%)
+is confirmed as the single biggest mechanism — the fused block loop
+stands; (2) the scan layer (facts + shape + stopset ≈ 25%) is already
+fused in DATAFLOW (shape consumes the facts stop, item 76) — its cost
+is the sweeps themselves, so wins there mean widening the kernels,
+not removing passes; (3) dom_open_node is template-copy lean — no
+structural slack, the fused loop's win is skipping the generic
+per-node path for common pairs; (4) anchor-heavy's distinct cost is
+nametab_set + e_alias ≈ 13% (the definition-side hash and the alias
+walk) — a carve of its own, independent of the loop fusion;
+(5) madvise on the free path is worth one look (arena release policy).
+
+## 2026-09-18 — item 79 carve 1a: the cycle fast path (KEEP)
+
+The line loop now calls e_classified DIRECTLY for lines that
+continue the top frame (a map key at the frame's column, a seq
+dash) with no pend props and no q-pending state — skipping e_node's
+prologue (pend save/clear, e_props, the FRESH gate) and the dispatch
+tail (flush_q_value + arg setup) on exactly the monomorphic cycle
+lines the board's structure-specialization names. Non-classified
+shapes return 0 and take the chain unchanged; the arms themselves
+are untouched (one owner).
+
+Interleaved A/B, same corpus/binary flags, 3 rounds each
+(macOS, this machine): block-heavy before 4.04/3.57/4.19 vs after
+3.74/3.54/3.38 — ~8-12% on every round; wide-mapping 2.05 -> 2.01
+(~2%, borderline noise); anchor-heavy flat. 351/351 ctest including
+the differential and conformance gates. Single-run timings on this
+box swing ±15% — the earlier one-shot "regression" was noise; the
+ledger entry rides the interleaved medians only.
+
+## 2026-09-18 — TODO.max-perf/07 interim: SWAR ws-skip in the fused walk (DEAD)
+
+Replaced the lenient walk's per-byte whitespace skip with a 4-way
+hasval 8-byte window (16 ALU ops + two branches). Interleaved A/B on
+json-doc (200 iters x3): before 0.95/0.71/0.71 s vs after
+2.16/1.92/2.28 s — ~3x SLOWER. The byte loop's exit branch was
+already predictor-friendly at the corpus's 0-2 byte gaps; the SWAR
+test's fixed 16-op cost swamps the ~1-2 mispredicts it saved. The
+ws-skip is NOT the walk's cost center — the verdict-eight budget
+(interleave + mask consumption) remains the only path; do not
+re-try per-token SWAR on sub-3-byte gaps.
+
+## 2026-09-18 — TODO.max-perf/02 frame-top hoisting (DEAD, as a lone micro-carve)
+
+Hoisted e->frames[e->depth-1] to a local after the unwind (4 read
+sites). Interleaved A/B x3: block-heavy 3.28 -> 3.58 median (flat/
+worse), wide-mapping 1.79 -> 1.86 — no win; LTO already CSEs the
+loads within the dispatch block. Item 02's real content folds into
+01's TU-local cycle loops (where the loads vanish by construction,
+not by CSE).
+## 2026-09-19 — referee standing (arm64 macOS, bench_matrix --full with both referees)
+
+First full referee run since the CBOR/marshal/NaN fixes. Head-to-head vs
+rapidyaml (interleaved median): block-heavy **0.99x** (the sole sub-1x —
+item 79's next carves target it), anchor-heavy 1.07x, flow-json 1.12x,
+wide-mapping 1.37x, deep-nesting 1.43x, scalar-heavy 1.52x, json-doc
+2.13x, flow-single 2.68x. vs simdjson DOM (json-doc): tape_lenient
+556.85 MB/s = **0.45x**, parse_json_tape 0.47x, DOM 0.14x — item 07's
+gap quantified on this host (issue #342 reports 2.4-17x on other
+platforms; same lever). CBOR tier: decode 1.11-1.27x vs JSON parse,
+encode 0.16x flow-single / 1.07x json-doc, sizes 0.47-0.53 of JSON.
+
+Item 07 packing analysis (pre-ABI): the lenient walk's 3 column stores
+(1B+4B+4B) vs one 8B record = ~11% of walk traffic — the remaining gap
+is the expect machine; the ABI cut must move the walk's LOADS to one
+sequential 8B stream AND the legacy columns must become lazy
+materializations (convert + the FFI drain read them), else stage-2
+keeps paying both. len:u24 in the packed head caps a single token at
+16MB — a CONT-escape record (or len:u32 with kind folded into a tag
+byte via 3 spare high bits of a u64... none: 32+32+6 > 64; the CONT
+record is the honest design). Sizing: kinds cap*1 + offs/lens cap*8
+-> recs cap*8 + lazy column materialization on first FFI/convert
+touch.
+## 2026-09-19 — CBOR.load vs the cbor gem (#157): the marshal route is NOT the lever (DEAD)
+
+A/B on the 17.9KB medium fixture (users×200, depth-4): an explicit
+marshal_materialize route in CBOR.load measured 126 loads/s vs the
+existing root.to_ruby walk at 130.7 — FLAT, because to_ruby already
+carries the marshal fast path (node.rb's MARSHAL gate); the explicit
+route only skips one Node wrapper. Reverted. The 3.4-4.8x gap vs the
+cbor gem is decode + the Marshal EMIT/LOAD round trip itself: the
+cbor gem's C ext builds Ruby objects directly (rb_hash_new/rstr_new)
+with no intermediate. THE LEVER: a CBOR→VALUE materializer in
+ext/yeptris_native (json_ruby.c's sibling — decode + direct object
+construction in one C pass; the same 4-5x the native JSON path wins
+over the FFI ladder). Board item added beside TODO.restructure/22.
+## 2026-09-19 (ii) — CBOR native materializer: FLAT, and the thermal-noise lesson (DEAD, for now)
+
+cbor_ruby.c (decode + direct VALUE construction, json_ruby.c's
+sibling) measured "7x" in ISOLATED runs on the dev laptop — thermal
+fiction: after an hour of benching the host throttles monotonically,
+and isolated sequential measurements compared different thermal
+states. The interleaved same-window A/B (3 rounds, 200 iterations,
+medium 17.9KB fixture): native 159.5/144.1/178.3 vs ladder
+153.5/142.1/365.9 loads/s — FLAT, round 3 with the ladder ahead.
+Reverted (#160 closed with the numbers).
+
+Lessons: (1) isolated perf claims on a shared dev host are
+meaningless — interleave in ONE process, or measure on a CI-fresh
+runner (the JSON profile gate's venue). (2) The ladder's own GC-time
+dominates: both routes pay Ruby object construction; the decode walk
+itself is not the CBOR bottleneck on this fixture. (3) Any future
+native CBOR work starts from CI-runner numbers, and the
+YeptrisDocument handle is a WRAPPER (doc.h ->dom) — a raw yep_dom*
+cast segfaults at the docs offset (the #160 CI crashes; arm64
+survived on heap luck).
+
+## 2026-09-19 (iii) — post-interleaved-ABI CI-fresh scorecard (v0.6.9 main, runs 35440100282)
+
+The interleaved tape ABI (#349, v0.6.9) judged on CI-fresh runners
+(ubuntu avx2 + macos neon, the benchmark-matrix artifacts). The
+simdjson head-to-head on ubuntu moved 0.45x -> 0.94x
+(tape_lenient, 1380 MB/s vs simdjson's 1469 on json-doc); macos
+tapes 0.66x (650 MB/s) — the remaining gap is NEON-side.
+
+vs rapidyaml DOM (median head-to-head):
+
+| shape        | ubuntu | macos |
+|--------------|--------|-------|
+| block-heavy  | 1.22x  | 1.04x |
+| flow-json    | 1.77x  | 2.07x |
+| flow-single  | 1.65x  | 1.45x |
+| json-doc     | 2.08x  | 1.73x |
+| scalar-heavy | 1.08x  | 1.12x |
+| anchor-heavy | 1.00x  | 0.80x |
+| deep-nesting | 0.94x  | —     |
+
+Sub-1x remains: anchor-heavy (macos) and deep-nesting (ubuntu) —
+the anchor lane and frame cost are the named levers (item 79's
+fused block engine covers block-heavy's thin 1.04-1.22x).
+
+Same-window binding referees (ruby CI, run 35437880256): JSON
+surface 0.93x median vs JSON.parse (GC pages +0 vs +18); CBOR.load
+FFI ladder x4.63-5.50 BEHIND the cbor gem — which contradicts the
+(ii) entry's dev-host FLAT verdict for the ladder-vs-native
+comparison: on fresh runners the ladder's FFI traversal IS the
+bottleneck (JSON's bulk columns sit at parity on the same shapes;
+the CBOR surface has no bulk drain). #163 re-opens the native
+materializer with the referee as the only accepted evidence.
+
+## 2026-09-19 (iv) — the native CBOR materializer re-trial: x1.2-1.4 (WIN, ships)
+
+The referee properly armed (the cbor-profile job now builds the
+extension it judges — every earlier run silently profiled the FFI
+ladder), run 35443555886, ruby PR #163 (merged as dc294ba):
+
+| fixture | ubuntu | macos | ladder baseline |
+|---------|--------|-------|-----------------|
+| small   | x1.35  | x2.69 | x5.50           |
+| medium  | x1.39  | x1.45 | x4.63           |
+| large   | x1.21  | x1.24 | x4.70           |
+
+The (ii) entry's dev-host FLAT verdict was an artifact: on fresh
+runners the native engine is 3.3x+ over the ladder on every fixture.
+NOT at parity — #157 tracks the residual x1.2-1.4 (small-doc
+dispatch overhead on macos, container preallocation). Corollary
+lesson beside (ii)'s: the referee must BUILD what it judges — an
+"engine:" line that reads FFI ladder on every run means the
+measurement target never loaded.
+
+## 2026-09-20 (v) — the one-pass emit route: ~1.8x serialize (WIN, ships 0.6.11)
+
+The instrument first: the emit-split table gained an interleaved
+third arm — the streaming route (one derive-while-writing pass) —
+making pass-count questions answerable WITHIN one run. First read
+(run 35477609913, both legs): serialize (dry exact-sizing + wet)
+ran 0.54-0.73x of the one-pass stream route on every shape. The
+memoization attempt alone ((iv) follow-up) had been unmeasurable —
+cross-runner spread hit ±30% between legs of the same run; the A/B
+arm was the missing referee.
+
+The cut: serialize_ex writes ONE wet pass into a growable buffer
+(estimate input_len+64, doubling on demand, shrink-to-fit at the
+end). Verdict (run 35482173185, within-run, both legs): serialize/
+stream flipped 0.54-0.58x -> ~1.0x (1.02-1.03x ubuntu; 0.93-1.10x
+macos) — ~1.8x serialize, closing most of serialbench's 1.4-1.7x
+emit deficit to ryml (#352). serialize_into keeps the dry pass
+(its contract needs the byte count first) and rides the
+long-scalar decision memoization (32B threshold; memo-all measured
+SLOWER on short table scalars — derive scales with length, the
+memo is a fixed cold store+load).
+
+Traps: wr_grow reallocs through w->p — any caller-held buffer
+pointer is stale after growth (the first round's heap abort);
+always read em->w.p after the run.
+
+## 2026-09-23 — lazy-YAML via event recording: MEASURED DEAD (reverted, #378)
+
+The #378 prototype (recorder sink: plain `yep_event` structs into a
+growable array; replay through `yep_dom_on_event` on first access,
+opt-in `lazy_tree` flag) parsed-and-freed the committed corpus
+slower than the EAGER fused build on every shape — parse-only, the
+exact workload the route exists for:
+
+| shape | eager parse+build | lazy record (parse-only) |
+|---|---|---|
+| block-heavy | 157 MB/s | 129 MB/s (−18%) |
+| flow-single | 234 MB/s | 113 MB/s (−52%) |
+| anchor-heavy | 135 MB/s | 104 MB/s (−23%) |
+| deep-nesting | 394 MB/s | 260 MB/s (−34%) |
+
+(same-run A/B, one binary, min-wall discipline; dev-machine context
+only.) Why it loses: the eager route's direct builders (TODO 54/57/
+78/79 — on_block_pair/open/item, on_scalar, the fused flow build)
+REPLACE event emission with the node build itself — the DOM lane is
+fused into the parse, not a pass after it. Forcing the general event
+path (the pull/push/recorder contract) pays event construction +
+dispatch + a 48 B/event struct copy, which costs more than the node
+lane saves. The JSON lazy tape (#342) wins precisely because its
+packed 8 B/node records are CHEAPER than nodes; a YAML `yep_event`
+is 6× that. (The realloc-growth chains inflate the worst shape, but
+block-heavy's −18% is the emission-cost floor — pre-sizing cannot
+close it.)
+
+The live lever for #378's YAML route: a PACKED record tape for YAML
+(the #342 pattern — 8-16 B/node records carrying spans+flags, not
+event structs), with the replay decoding spans. That is a design
+campaign, not a sink swap; plain event recording is closed. The CBOR
+route already ships its answer: the #157 sink seam lets hosts build
+VALUEs directly with no DOM intermediate at all.
+
+## 2026-09-25 — the string arm's inline SWAR rounds to 32 B (#342 arm64 cell)
+
+The arm64 profile of the json-users walk (dev host, same ISA as the
+macos CI leg): the walk body is 88% self-time; the two remaining named
+lanes are CALLS — `quote_scan` (3.7%; every 9-31-byte clean string:
+~100k emails per parse) and `tape_num_ok` (3.1%; every dot/exp span).
+Both eliminated structurally: LSTR_SCAN continues inline over up to
+four clean SWAR words (round 1 untouched — ≤8-byte strings, the
+~500k-tag majority, pay zero), and `tape_num_ok` is always_inline (the
+symbol is gone from the archive). The >32-byte clean span still calls
+the kernel; its extra prologue is three word loads.
+
+Referee reads: ubuntu (the stable leg) holds the parity band across
+the two runs — 0.97/0.98 (#417) → 0.95/1.01 (this PR). macos is
+UNRESOLVABLE at this effect size: json-doc 1.05 → 1.25, json-users
+0.85 → 0.74 across the same two runs (runner bounce, ±0.25 band on a
+≤5% change). Local min-of-8 interleaved A/B: throttle spread 2.9x on
+the dev host — the instrument cannot see a 5% lane; recorded dead for
+effects under ~15% on this machine, matching the standing law.
+
+Verdict: merged on the structural case (strictly fewer instructions on
+the arm64 hot path, no added cost for any span class, 390/390,
+acceptance identical by construction). The #342 cell re-reads on the
+next serialbench snapshot with 0.6.21+ in the harness.
+
+## 2026-09-25 (ii) — the member cycle's compact fast paths + the SWAR digit run (#423)
+
+The calibrated arm64 xctrace per-PC histogram names the walk's self-time
+lanes (the earlier trace had hit the pre-#419 binary): the LWS
+whitespace-skip loop tops the profile — the compiler's shift-mask form
+costs ~8 instructions per member even when it exits on byte one, and
+compact JSON makes every exit byte one — with the per-byte digit run
+second. Three cuts: the map/seq cycles' compact fast paths (value ',' key
+/ key ':' value / value ',' value dispatch through the byte LWS would
+land on; the general form remains for whitespace-bearing input), and
+LNUM_RUN (the initial digit run in SWAR words — the all-digit prefix
+never borrows across lanes, the flags are exact to the first non-digit,
+the byte loop keeps the tail and the -+.eE classification; the
+consumed-only digits_only law untouched).
+
+Same-host same-instrument reads (the #420 calibrated bench, quick mode):
+json-doc 1.07x → 1.06x (flat, parity), **json-users 0.73x → 0.90x**.
+Order-alternated prof pairs: the new walk wins all three (8.2s vs 11.2s
+median user).
+
+**Instrument law extended — ordering bias**: A/B pairs where the new
+binary always runs SECOND on a monotonically throttling host read as a
+40% REGRESSION; reversed, the same pair reads +26%. Alternate the order
+or the local read is fiction. Cross-run CI ratios remain
+non-comparable at this effect size: between the baseline (#420) and the
+slice's runs, simdjson's own MB/s moved +90% (760 → 1445 on the ubuntu
+leg) while yeptris moved +48-75% — the 0.90→0.70 block-1 ratio move is
+runner variance, not code. 391/391, format clean, merged on the local
+instruments' agreement; the next CI runs accumulate the referee read.
+
+## 2026-09-26 (ii) — carve 1b, the fused map-pair scan: dead (+5%)
+
+Item 79's "fuse the pair line" hypothesis, built and measured: one
+yep_scan_plain for the key, one for the value, a continuation peek, the
+record direct — replacing the memoized facts/line-info/shape chain and
+e_classified's dispatch on the monomorphic pair line. Correctness took
+three gate-caught fixes (leading-indicator keys are anchor PROPS; '#'
+values are comment-terminated empty pairs; the fold peek must measure
+indentation before its skip loop eats it) — block-pair-diff, tape-diff,
+emit-diff, the roundtrip corpus and the fuzz corpus all green at
+392/392 — and then the order-alternated A/B read +5% on block-heavy in
+every pair (41s vs 39.5s). Two scan_plain tiny-path calls plus a peek
+are simply more work than the specialized kernel chain; the seam was
+already cheaper than its replacement. REVERTED, not merged. The loop
+fusion's remaining form is the item's original one: a single scan
+owning facts+shape+record.
+
+
+## 2026-09-27 — item 03, the scan_plain SWAR tiny path: dead (flat on all three shapes)
+
+Board item 03's hypothesis ("the tiny path tests the stopset bitmap one
+byte at a time; SWAR-ize it") built and measured: the byte loop replaced
+by an exact-bounds zdet word walk (one zero-detect per stop member —
+four in block, nine in flow — first lane via ctz, the <8-byte tail kept
+on the byte loop because there is no input-padding guarantee to read
+past `len`). The differential pin shipped first (the #427 law) and
+caught the mechanism's characteristic bug during development: the
+second+ word's hit offset was word-relative but the handler read it
+span-relative, so every stop past byte 8 landed 8k bytes early — the
+pin failed on 13 inputs before the suite passed.
+
+Order-alternated A/B (dev host, DOM lane, 3 shapes x 3-5 pairs):
+block-heavy 182.3 vs 182.5 MB/s, scalar-heavy 388.8 vs 389.4,
+anchor-heavy 148.1 vs 147.7 — flat everywhere (±0.5%, inside noise).
+The floor it establishes, consistent with the ws-skip lesson: the
+sub-8-byte majority (block keys run 2-8 bytes) can only ride SWAR via
+the facts kernel's NUL-padded buf copy, whose per-word copy cost
+exceeds 2-5 well-predicted byte iterations, and the 8-63-byte
+minority's 4-zdet chain merely matches the byte loop — short spans are predictor-friendly, the
+bitmap test per byte is well-predicted not-taken, and the zdet chain's
+extra ALU buys nothing at these lengths. REVERTED, not merged; the pin
+stays as scan_plain's executable contract (any future rewrite of the
+stop walk inherits the gate). scan_plain is NOT the pair-line cost —
+item 79's fusion must make ONE scan own facts+shape+record, exactly as
+carve 1b concluded from the other side.
+
+## 2026-09-27 (ii) — the Unicode-break pre-pass: +13/+31% and a dangling-document fix
+
+The exclusive profile of block-heavy DOM (non-LTO build; LTO builds
+mis-attribute leaf PCs to call sites and led the first read astray)
+put the single biggest leaf at engine_run_impl's entry:
+e_normalize_breaks, a per-byte walk of the WHOLE document hunting the
+NEL/LS/PS lead bytes with a two-prefix check (~6 compares per byte),
+11% of block-heavy and far more of scalar-heavy. Fix: a static
+{0xC2, 0xE2} stopset literal probed through yep_text_active's
+stopset_find (NEON/AVX2/scalar), byte-checking only candidates —
+plus the NUL-padded exact-bounds discipline the facts kernel uses.
+
+The slice found a live memory bug on the way: the normalized COPY was
+engine-owned, so one-shot yeptris_parse returned views into memory
+freed at engine teardown (every NEL document dangled; the DOM's
+input_base also stayed on the ORIGINAL while spans came from the copy
+— offset drift past the first break). No test had ever parsed a real
+NEL document; the new behavior tests caught it immediately. Fix: the
+copy is produced BEFORE the engine and rides `transcoded`
+(document-owned, input_base-consistent); the engine's per-feed copy
+remains for the streaming feeds only.
+
+Order-alternated A/B (dev host, DOM lane): block-heavy 211 vs
+187 MB/s (+13%), scalar-heavy 512 vs 389 (+31%) — six rounds, all
+agreed. 397/397 green.
+
+## 2026-09-28 — the fused block runner LANDS (session 3): wide-mapping 2.06x
+
+ytap_fused_run (ytape.c): ONE NUL-padded SWAR sweep per line + inline
+classification + an indent stack, emitting the engine's exact record
+stream without the engine; parse_impl's lazy route tries it first and
+restarts the engine route on any bail. Byte-exact against the engine
+over wide (600,010 words) in this conservative first cut — the deeper
+corpora (block 1.39M / deep 17k words, byte-exact in the scratch
+differential) widen once the column model lands (below).
+
+A/B (dev release build, order-alternated): wide-mapping 598 vs 290
+MB/s = 2.06x. Other shapes ride the fallback (neutral).
+
+THE ERROR-PARITY CURRICULUM the test suite forced (all bails now):
+second terminating colons in values ("a: b: c"), >1024 keys, tab-led
+lines, indicator-as-value ("-"/"?" heads), continuation lines (col !=
+the frame's pair column), nested-dash items, anchored aliases
+("&b *a"), undefined aliases (a 4096-slot name->ordinal table; the
+ALIAS record carries the TARGET's aid), anchored container keys (the
+first pair inside one rides a two-SCALAR form with content-typed
+tag ids).
+
+NEXT (precisely diagnosed): own nested docs by (1) accepting
+colon-at-EOL in the pair arm, (2) the column model done right — the
+frame needs BOTH the key column (dedent reference) and the pair
+content column (continuation guard), set at first pair AND at child
+resolutions (never at dash resolutions: item columns are not the
+parent's pair column); store content col+1 (0 = unset; column 0 is a
+real value). The scratch harness (/tmp/fused-port.c) is byte-exact
+for block/deep — port those exact rules.
+
+### Fused block runner: nested ownership + the phantom frame model (item 79)
+
+The widening, landed. The runner now owns nested block YAML — deep
+nesting, indentless sequences, nested sequences under keys, sibling
+maps after child closes, null-resolved pending keys — with a frame
+model decoded from the engine's own tape streams (tape-dump over
+probes; the differential gate is byte-exact):
+
+- Maps pop STRICTLY shallower; a pair at the frame's own key column
+  closes the live *phantom* content map (one start event per content
+  column) and rides the frame silently — the engine's sibling-continue.
+- A pending "key:" resolved by a same-column sibling emits the null
+  scalar (SCALAR 0x0904 + empty pool span) — "empty:" + "other: ~"
+  is owned, not bailed.
+- Sequences push their OWN frame (the key's map survives below it);
+  indentless items ride at the frame column. The OPEN record fires
+  for seq children of fresh parents (not maps only).
+- The OPEN-vs-SCALAR key form follows the engine's column rule: the
+  contentless root always opens; otherwise a sibling column at the
+  parent's content/indent column takes the key-SCALAR form.
+- An event-started root closes; an OPEN-implied root never does.
+- The repeat-alias memo: the engine's anchor_id_of answers from the
+  LAST resolution before any probe, and anchor definitions never
+  invalidate it — re-aliasing after a redefinition reports the
+  memoized ordinal (3GZX). Replicated.
+- Bails added: colon-lead empty keys (": v" — the engine's
+  two-scalar 0x0904 form), empty plain keys. The seq push carries a
+  frame-stack guard (ASAN caught the overflow at depth 256).
+
+A/B (dev release build, bench_matrix, non-LTO): deep-nesting DOM
+1078 MB/s, tape 1069 MB/s = 3.09x the eager route (previously
+fallback); wide-mapping unchanged (2.06x). Suite differential: 15
+inputs byte-exact (was 9), 221 clean bails, 0 mismatches; 397/397.
+
+NEXT: block-heavy still bails (block scalars, quoted values); the
+anchored-container two-SCALAR arm, the quoted two-SCALAR arm, and
+the block-scalar POOL form extend ownership further.
+
+### Fused runner: value arms — ALL block-family corpora owned (item 79)
+
+Four arms + one leak fix; the fused runner now owns every block-family
+corpus byte-exactly (block-heavy 1,012,934 / anchor-heavy 479,687 /
+scalar-heavy 185,342 / wide 600,006 / deep 17,089 words):
+
+- Dead-slot reuse: a spent key-SCALAR frame (resolved, phantom closed,
+  no own map) gives its slot to the next sibling pending — chained
+  same-column pendings grew the frame stack one per record and hit the
+  256-frame guard at ~record 254 (block-heavy's mystery bail).
+- Quoted values: the two-SCALAR form (plain key + styled value with
+  the INNER span, quotes stripped). Escapes, multiline quotes, the ''
+  escape, and trailing content bail; a comment after the close needs
+  separating whitespace ("v"#c is content — the fuzz harness caught
+  the wrongly-accepted form as an emit trap).
+- Literal blocks (bare |, clip chomp): S2900 key + SCALAR(0x0400) +
+  the POOL form; the content copies into a per-run yep_pool transferred
+  to doc->finish_pool (the engine's pool contract). Blank lines with
+  spaces past the block indent are CONTENT (L24T/H2RW); only
+  stripped-empty trailing lines clip away. Chomp indicators, folded,
+  and explicit indents bail.
+- Anchored containers: the key-SCALAR + anchored START event (map or
+  seq) with the anchor span; the FIRST pair/item inside rides the
+  two-SCALAR form with the ENGINE's tag classification (the resolver
+  threads into ytap_fused_run); subsequent pairs are normal. The
+  anchored frame pops on the CONTENT column. The root's content
+  column is set so following sibling pendings take the SCALAR form.
+- The anchor table: 64k slots, heap-allocated on the first definition
+  (anchor-heavy's 40k unique names overflowed 4096); an alias before
+  any definition bails (NULL-table guard — the error-parity suite
+  caught the segfault).
+
+A/B (dev release build, order-alternated, noisy laptop): block-heavy
+~400-430 MB/s DOM (was 175 fallback), scalar-heavy 550, anchor-heavy
+230 = 2.80x eager (was 1.14x fallback), deep-nesting 1104, wide 506.
+Suite differential: 16 exact / 220 bails / 108 rejects / 0 mismatches;
+397/397 tests.
+
+REMAINING: folded scalars (>), chomp indicators, escaped quotes,
+multiline quotes, explicit-key (? k) forms, tagged values — all still
+engine-route. The JSON front (item 07, simdjson parity) is next.
+
+### The post-value-arms referee (ubuntu-latest, release, interleaved medians)
+
+The head-to-head table after PR #444 — the fused runner cleared the 3x
+bar on the entire nested-block family and json-doc:
+
+| shape | yeptris DOM | vs ryml |
+|---|---|---|
+| json-doc | 280.45 | 3.58x |
+| block-heavy | 337.16 | 3.31x |
+| deep-nesting | 845.23 | 3.22x |
+| wide-mapping | 469.64 | 3.22x |
+| flow-json | 212.50 | 2.75x |
+| flow-single | 292.01 | 2.69x |
+| scalar-heavy | 845.61 | 2.54x |
+| json-users | 308.91 | 2.50x |
+| anchor-heavy | 226.74 | 2.32x |
+
+vs simdjson (json-doc interleaved): **parse_json DOM 1.03x** (955 MB/s)
+and 0.93x on the second corpus — DOM-lane parity reached; the tape
+route reads 0.62-0.79x and stays the binding-side lever.
+
+Dead end (measured, not landed): replacing the pair arm's two libc
+memchr calls (terminating-colon check + comment search) with a
+self-contained SWAR mini-scan measured NEUTRAL on scalar-heavy
+(890 vs 895 MB/s alternated) and neutral-positive on block/anchor —
+the calls were not the per-line cost. Extending the MAIN sweep with
+last-colon/first-hash facts REGRESSED scalar-heavy ~16% (two more
+64-bit live values spill in the hot loop). Both reverted; the facts
+belong in a rewrite of the sweep's register budget, not a patch.
+
+Where the remaining gaps live: the fixed per-line floor (~50-60ns:
+sweep + dispatch + yt_puts) dominates the short-line shapes
+(anchor-heavy 13.7 B/line, 48ns/line — the anchor table and resolver
+bake measured ~10-15% combined); the flow-family DOM lane pays the
+replay's full node materialization. Next campaign: the flow-DOM
+replay (three shapes in the 2.5-2.75 band), then the anchor lane's
+record forms.
+
+### The flow-lane ceiling, proven (item 86 spike)
+
+The flow shapes' DOM lane measures the parse front-end (the replay is
+deferred) — so their gap is the flow SCAN. The recorder classifies each
+flow span with a naive `yep_json_walk_next` discard loop; the SAME
+bytes through the JSON route's fused lenient walk (`tape.c`'s
+stage-1/stage-2 design) run 3.5x faster on the same machine:
+
+| corpus | current flow lane | fused lenient walk (spike) |
+|---|---|---|
+| json-users (one flow doc) | 309 MB/s | **1094 MB/s** |
+| flow-single (one span) | 292 MB/s | 2889 MB/s (span-scan only) |
+| flow-json (200k per-line spans) | 213 MB/s | 205 MB/s via a naive
+| | | span-finder — needs the block ITEM-arm delegation |
+
+Design (next slice): `yt_on_flow_build` runs the fused lenient walk
+into a reused scratch `yeptris_json_tape`, then converts YEP_T_* →
+YTP_* words (EVENT/SCALAR+span parity with `dom_on_flow_build`'s
+styles and tag ids); any reject keeps today's ONE-record form. The
+fused block runner bails on flow values, so the recorder is the only
+producer — no differential conflict. flow-json additionally needs the
+ITEM arm to delegate `- {...}` spans to the same path. Expected:
+json-users and flow-single from 2.50x/2.69x to 4x+ vs ryml;
+flow-json from 2.75x once the item arm lands.
+
+### The flow lane rides the fused lenient walk (item 86, slice 1)
+
+The recorder's classification swapped the naive `yep_json_walk_next`
+discard loop for a BUDGETED HYBRID: the naive loop runs first with a
+256-byte budget — the common per-line flow map finishes it (carrying
+the exact close and long_key verdicts for free); a budget exhaustion
+hands the span to the FUSED lenient walk (2.1x the naive loop at
+6.6 MB, the item-86 spike), whose verdicts come from a record scan
+over the reused scratch tape: the >1024 simple-key law (RAW token — a
+quoted key's record holds the inner span), the span's maximum nesting
+against the engine's max_depth, and strict_nums=1 (the general walk
+validates number runs even at strict=0 — M5DY's 2001-07-02 dates
+diverged otherwise). The carve grows a reuse watermark so the 200k
+per-line spans of flow-json never re-allocate. Non-JSON-class spans
+reject in the naive loop and take the general kernel unchanged; the
+scratch tape allocates only when a large span first exhausts the
+budget.
+
+Three acceptance-parity bugs the gates forced before green: the
+simple-key law counts the RAW token (+2 for the quotes), the depth
+limit needs the span-nesting check (Limits' max_depth=16 case), and
+number validation must match the general walk's reject
+(M5DY). parse-side DOM-lane medians (dev build):
+
+| shape | main | this slice |
+|---|---|---|
+| flow-json | 213 | 269 |
+| flow-single | 292 | 326 |
+| json-doc | 280 | 306 |
+| json-users | 309 | 320 |
+
+397/397; suite differential 16/220/108/0; the ASAN roundtrip corpus
+0 diffs / 0 unstable / 0 hard failures (the six canonical
+instabilities and the M5DY serialize failure were acceptance-parity
+bugs this slice fixed). The replay-side conversion (per-node flow
+records instead of the ONE FLOW record + the re-walk) is the follow-up
+slice; flow-json's next step is the block ITEM arm delegating its
+per-line spans without the engine's per-line dispatch.
+
+### The post-#447 referee: SEVEN shapes over the 3x bar (item 86)
+
+Interleaved medians, ubuntu release, AVX2:
+
+| shape | yeptris DOM | vs ryml |
+|---|---|---|
+| wide-mapping | 508.91 | 4.61x |
+| block-heavy | 343.63 | 4.22x |
+| flow-json | 220.52 | 4.17x |
+| json-doc | 227.78 | 3.84x |
+| deep-nesting | 941.38 | 3.15x |
+| anchor-heavy | 224.45 | 3.04x |
+| json-users | 248.80 | 2.85x |
+| scalar-heavy | 775.70 | 2.66x |
+| flow-single | 242.60 | 2.46x |
+
+(The run's absolute MB/s are globally low — a slow runner instance;
+the ratios are machine-relative and interleaved.)
+
+The remaining three, profiled: json-users parses at 357 MB/s locally
+(17.2 ms) of which the fused walk is ~5.3 — TWELVE milliseconds are
+front-end for a ONE-LINE document: the NEL/LS/PS stopset probe, the
+fused block runner's bail sweep (a full 6.6 MB line), and the
+engine's own line + balanced-brace scans all walk the bytes BEFORE
+the classification walk runs once.
+
+NEXT (designed): the flow-rooted fast path in the lazy front-end —
+after the encoding probe, if the first non-whitespace content byte is
+[ or { and the rest of the doc is that one span plus whitespace, emit
+the five-word scaffolding directly (STREAM, DOC, FLOW+words, DOC_END,
+STREAM_END — the engine's exact form for `{...}\n`, pinned by the
+tape dumps) through the recorder's budgeted classification, skipping
+the block-runner attempt and the engine entirely. Any marker,
+comment, anchor, or second document falls back to the engine route.
+Expected: json-users 17.2 to ~8 ms (~4x), flow-single likewise;
+flow-single's 2.46 on this run is variance-exposed — re-read it after
+this lands. scalar-heavy (2.66x) remains the per-line-floor problem.
+
+### The flow-rooted fast path (item 86, slice 2)
+
+A document whose entire content is ONE flow collection plus whitespace
+skips both the block runner and the engine: the front-end's gate
+(O(1) for non-flow docs — whitespace, then [ or {) hands the span to
+the budgeted classification and the engine's exact five-word
+scaffolding (STREAM, DOC, FLOW+words, DOC_END, STREAM_END) lands
+directly. Any marker, comment, trailing content, or a
+classification refusal unwinds and falls back — the classification
+core is now shared between the sink entry and the fast path
+(yt_flow_classify_record). The twelve milliseconds of front-end
+redundancy json-users paid (probe + bail sweep + the engine's own
+line and brace scans before the classification ran once) are gone:
+
+| shape | before | after |
+|---|---|---|
+| json-users | 17.24 ms (357 MB/s) | 11.27 ms (547 MB/s) |
+| flow-single | 1.32 ms (343 MB/s) | 0.93 ms (488 MB/s) |
+| flow-json / block family | unchanged | (not flow-rooted) |
+
+397/397; the roundtrip corpus 0/0/0 under ASAN; the suite
+differential 0 mismatches; the five block-family corpora byte-exact
+and untouched.
+
+### The hyperperformance investigation: the floor's anatomy (item 86)
+
+The corrected profile attribution (the sample tree's counts are
+SUBTOTALS — the earlier reading double-counted the free path, which
+sits OUTSIDE the referee's timing): the fused runner owns ~88% of
+scalar-heavy's parse (~3.9 of 4.42 ms, ~60 ns/line on 62-byte lines);
+the front-end probes are ~8% (the stopset probe measured standalone
+at 29.6 GB/s — 0.137 ms, recorded dead); ytap_init's cap heuristic is
+trivial (len/2+64, no content walk — the earlier 30% attribution was
+a sample-tree misread).
+
+Three measured results this round:
+
+1. The sweep's tail-round NUL-padded path fires ONCE PER PARSE (the
+   loop breaks at the line's \n before any partial round except the
+   document's last) — the ledgered ~10% estimate was WRONG; the
+   back-load lever is void.
+2. The PAIR-RUN inline loop: CORRECT (398/398, tapes byte-exact) and
+   26% SLOWER (1035 to 763 MB/s) — the inlined duplicate bloated
+   yt_f_run past the I-cache edge. Dead end for the inline form.
+3. The FLAT-MAP SPECIALIST (the same idea as a separate function,
+   own I-cache footprint): the implementation is drafted
+   (/tmp/specialist.txt — plain-pair lines at a fixed content column,
+   handoff after the first qualifying pair, full fallback) but the
+   insertion landed mid-function through cascading edit-state
+   corruption; needs a fresh session applying to a clean checkout
+   with per-step verification. The design is sound; the I-cache
+   hypothesis is untested.
+
+The remaining honest path to 3x on scalar-heavy/anchor-heavy is the
+specialist function done cleanly, plus possibly a register-budget
+rewrite of the sweep. The other seven shapes hold 3.18x-5.29x.
+
+## The flat-map specialist lands (PR #454)
+
+The I-cache hypothesis held. `yt_flat_run` — plain `key: value` runs at
+one fixed content column as their own function, handed the run after the
+first qualifying root pair, its stop line reprocessed in place through
+the full arms (`line_done_keep`; the stale-`next` trap from the inline
+spike avoided). Every bail is a strict subset of `yt_f_run`'s verdicts,
+so parity holds by construction. The quoted plain-value arm went in with
+it (same-line close, no escapes, no `''` doubling, comments need
+separating whitespace) after the first measurement round showed
+scalar-heavy's 1/3-quoted lines paying a bail sweep per interruption and
+netting 0.97x.
+
+Local alternated medians, parse-only: wide-mapping 1.20x, pure flat runs
+1.15x, scalar-heavy 1.03x (the residual is one bail sweep per
+`key: |` literal-block header — ~5k interruptions in the corpus; owning
+the literal arm inside the specialist was judged not worth its I-cache
+cost at 8% of lines). Nested shapes neutral. DOM lane: wide +27%,
+scalar +9%, anchor +17%. Gates: 398/398 on the no-LTO and ASAN builds;
+suite 344 inputs 0 mismatches (one input newly owned, word-exact); 20
+targeted quoted-value edge cases clean; all five block-family corpora
+word-for-word EXACT.
+
+Ubuntu referee (this PR's run — a down-variance machine round, deep was
+3.21x at ~25% lower absolute MB/s in the previous run's table):
+json-doc 4.27x, wide-mapping 4.04x, block 3.60x, flow-single 3.41x,
+flow-json 3.36x over the bar; json-users 2.93x, anchor-heavy 2.79x,
+deep-nesting 2.74x, scalar-heavy 2.64x under (variance-straddling).
+Wide's absolute is the honest signal: 629 MB/s vs 471 in the prior
+table (+34%, matching the local A/B).
+
+## The JSON tape route's headroom is INTERNAL (task #85 scoping)
+
+Discriminating measurement on json-doc (local, best-of): the DOM route
+(yeptris_parse_json) runs the same bytes at ~900 MB/s while the tape
+route (parse_json_tape_lenient) manages ~510-550 MB/s — the gap to
+simdjson is NOT the scanning (the DOM lane is at simdjson parity with
+the same input) but the tape walk's own per-token overhead
+(~5 ns/token over the DOM route). Allocation is not the tax (the DOM
+arena is larger and still hits 900; samples never land in malloc/free).
+Recorded dead BEFORE coding: SWAR-8 whitespace skipping — json-doc's
+whitespace is 16% single-space separators (the byte loop already exits
+on byte one) and json-users is 1% (minified); the setup cost exceeds
+the hop. Next suspects, in order: the lmapval value dispatch cascade
+(up to 5 cmp+branches per value token), the LCLOSE cold-record patch,
+the LSTR round-2 fallback's share for 8+-char strings. The instrument
+to build next: an rdtsc-instrumented COPY of tape.c linked ahead of the
+archive (the sampler cannot split the fully-inlined walk).
+
+## The specialist generalizes to any frame's content column (depth runs)
+
+The handoff's depth==0 gate was the only thing keeping nested flat
+runs out of the specialist. Dropping it (the bail conditions already
+route pops/dedents through the pop/nest arms; the specialist touches
+no frame state; anchored_first is cleared before any plain emission
+reaches the handoff) puts nested content pairs — anchored containers'
+pairs, leaf maps — on the same loop. Measured: anchor-heavy 1.02x,
+deep-nesting 1.02x, the rest neutral. Short runs (2-3 lines) barely
+amortize the handoff; the anchor machinery (table put, memo,
+pending/open forms) dominates that corpus, not the pair loop. The
+anchor-heavy lever that remains is the anchor-path arms themselves.
+
+## The lenient route takes the fused walk — the span route is dead (PR #455)
+
+The scoping theory was overturned first: `yeptris_parse_json` (the DOM
+lane) is ITSELF `yep_tape_walk_lenient_fused` + a lazy wrap — one pass
+at ~900-1100 MB/s local. The lenient entry's stage-1 + span two-pass
+route paid a full extra input pass and the block-table traffic; it had
+been ledgered a win when the fused walk was young and never re-judged.
+The entry now calls the fused walk directly (the call that already
+carried its escape/C0 verdicts as the fallback); `tape_walk_lnt_span`
+(233 lines) is deleted; the stage-1 kernels stay (exported ABI).
+
+Local best-of, alternated libraries: json-doc 1.46-1.58x, json-users
+1.72-1.74x. Ubuntu referee (PR #455): tape_lenient 689.46 MB/s (0.91x
+simdjson) and 978.76 MB/s (1.07x simdjson) — the lenient route now
+BEATS the DOM lane on both shapes and sits at/over simdjson parity.
+Task #85's bar is met on this route; the strict `parse_json_tape`
+route (0.61-0.64x) is the JSON-side remainder. Gates: tape-diff
+2,000,340 cases / 318 files / 0 failures; json-suite + strict; 398/398
+no-LTO and ASAN.
+
+The depth-run specialist generalization (PR #456) measured in the same
+round: see the entry above — anchor-heavy 1.02x, deep 1.02x, the rest
+neutral; the anchor-path arms are that corpus's real lever.
+
+## The strict tape route rides the fused walk (contract kept, settle fused)
+
+The strict route's fast attempt was the column-primary tape_walk —
+three inline write streams per token, 0.61-0.64x simdjson on the
+referee while the record-primary fused walk (the same validation
+contract via the DOM route's exact flags) runs ~1.0x. The flip's first
+attempt broke the suite: this route's contract is COLUMNS-EAGER and
+settled — the tests read kinds/offs/lens directly and the columns
+carry the INT/FLOAT split the records defer to convert (YEP_T_NUM is
+the lenient route's kind). The landed shape: fused walk (strict_nums
++ clean_only, the DOM route's call) then ONE pass that decodes each
+record, writes the columns, and settles NUM kinds inline via
+number_shape — no separate columns pass, no separate settle.
+
+Measured (best-of, alternated libraries): json-doc 556 -> 641-642
+MB/s (+15%), json-users 660 -> 728-795 MB/s (+11-20%). The referee's
+parse_json_tape row should move 0.61-0.64x to ~0.70x — below the
+lenient lane's 0.91-1.07x, honestly so: the columns-eager contract
+pays ~1ms per 1M tokens of post-pass the lenient lane never pays. The
+design that removes the settle entirely: emit YEP_T_INT/YEP_T_FLOAT
+records from the fused walk's number arm under strict_nums (the
+digits_only flag already holds the answer) — a RECORD-contract change
+whose blast radius is every strict_nums=1 consumer (the DOM route's
+lazy replay, the flow recorder's scratch tape) and needs its own
+audited slice.
+
+## Strict-route referee verdict (PR #457's run)
+
+The ubuntu referee: parse_json_tape 591.69 -> 632.34 MB/s on
+json-users (0.64x -> 0.69x simdjson) and 468.59 -> 473.81 on json-doc
+(0.61x -> 0.62x, flat). The NEON machine's +15% on json-doc did not
+transfer — the fused walk's advantage over the column walk is smaller
+on the runner's x86/AVX2 paths. Landed anyway: contract-preserving,
+positive on average, and the one-pass settle is the floor short of
+the record-level INT/FLOAT contract change. The same run's ryml table
+was variance-heavy again (anchor 2.36x this round vs 2.79x last;
+flow-json 2.73x vs 3.36x) — single-run referee rounds keep straddling
+the bar; the ledger's multi-run medians are the honest scoreboard.
+
+## INT/FLOAT records: the strict settle dies at the walk (the record contract lands)
+
+The walk's number arm already computed the classification for
+validation (`digits_only && saw_digit` — pure digits with an optional
+leading minus); the records now carry it under strict_nums:
+YEP_T_INT/YEP_T_FLOAT instead of YEP_T_NUM (which the enum reserves
+for the lenient route's deferred contract — unchanged at strict_nums=
+0). The audit: dom_from_tape already switched on all three kinds (and
+now SKIPS its per-number shape scan — a replay-side bonus); the flow
+recorder's scratch rides yt_flow_scan, kind-agnostic for numbers;
+convert handles all three; columns are generic. The strict route's
+post-pass collapses to the plain columns decode.
+
+Best-of alternated: json-doc 653-716 MB/s (settle version: 452-568,
++15-26%), json-users 783-799 (696-726, +8-15%). The strict lane's
+remaining distance to the lenient lane is exactly the columns-
+eager contract's materialization pass. Gates: 398/398 no-LTO + ASAN;
+the JsonTape number-contract tests (which pinned the settle) pass
+from the records directly — walk-time digits_only is number_shape's
+exact answer for validated spans.
+
+## Strict-route referee, round two (PR #460) — and the traffic analysis that ends this lane
+
+The strict lane's absolutes moved +10-11% on the referee (json-doc
+473.81 -> 525.19 MB/s, json-users 632.34 -> 692.91) — but the round's
+ratios read 0.65x because EVERY lane was down-variance (DOM 0.82x/
+0.88x, lenient 0.84x/0.90x; simdjson's implied number itself swung
++9-16% between runs). Single-run ratios are noise-bound; absolutes
+across runs are the honest trend.
+
+The traffic analysis that names the endgame: the strict route carves
+FOUR arrays (kinds/offs/lens/recs = 17B/slot) and then materializes
+columns from records — ~28MB of traffic on json-doc's 2.8MB, vs the
+lenient lane's ~11MB. On bandwidth-bound runners that IS the gap. The
+final design: a COLUMNS-PRIMARY fused walk — the lenient walk's arms
+(the specialized member cycles, LSTR_SCAN) emitting kinds/offs/lens
+directly, one pass, ~9MB, no records, no post-pass. That is tape_walk's
+shape with the optimizations tape_walk never received (it predates the
+#342/#45 specialized cycles). Implementation shape: the walk body
+include-once with a parameterized EMIT macro (record word vs three
+column stores), two thin wrappers — the repo's AOT-TU pattern at
+function granularity.
+
+## The columns-primary fused walk (the traffic endgame, landed)
+
+yep_tape_walk_columns_fused: the record walk's arms (specialized
+member cycles, LSTR_SCAN, the digits law — everything the old column
+walk never received) emitting kinds/offs/lens directly — one pass, no
+records, no materialization pass, no settle. Generated from the record
+walk by asserted mechanical conversion of the twelve emission sites
+(the close's link patch becomes a plain offs[lo_] = count store); the
+record walk stays byte-identical beside it (the lenient lane and the
+DOM route untouched; the suites pin the equivalence — 398/398
+including tape-diff's 2M cases under ASAN).
+
+Best-of alternated: json-doc 828-839 MB/s (the records+columns-pass
+version 723-812, +3-16%), json-users 927-978 (817-885, +6-20%). The
+strict lane now sits in the lenient lane's speed class; the residual
+~4% is the ninth byte per token the three-column layout writes over
+the 8-byte record. Against the walk's own history: the strict lane
+went 473 (#457's referee) -> 525 (INT/FLOAT records) -> ~830-840
+local (this slice) — cumulative +75%.
+
+## MEASURED DEAD: the fused 16-byte member window (do not retry this shape)
+
+json-doc's statistics invited it: 120k members, median 11 bytes, 96%
+within 16 bytes — one two-word SWAR window resolving the key close,
+colon, and a simple value, both records emitting with zero label hops,
+strict-subset bails everywhere. Measured: 0.93-0.95x on json-doc,
+0.84-0.85x on json-users. The 137-line macro bloated the walk past its
+I-cache edge (the campaign's third confirmation of the law: the
+pair-run inline -26%, the sweep colon/hash facts -16%, now this), and
+json-users' longer strings bail out of the window anyway — they pay
+the window cost AND the slow path. The #45 member cycles already
+harvested this territory; the walk's per-member branch cost is not
+where its time goes. The json-doc overparity lever is elsewhere: the
+lane's residual against simdjson on fair rounds is single-digit
+percent — candidate shapes for the next round are the carve's first-
+touch pattern (madvise/hugepage the block) and the record walk's
+seq-item arm, NOT more member specialization.
+
+## The number-run cycle: correct, neutral — and the bandwidth ceiling that re-aims the hunt
+
+The seq number-run cycle (after a seq number, ", " + a digit stays in
+a tight loop reusing the arm's exact body; the comma is REWOUND on any
+non-continuation so the chain judges it — the first cut broke
+`[1,,2]` by consuming it) built correct: 398/398 including tape-diff's
+2M cases. Measured: NEUTRAL (+1% medians, noise-bound; json-users
+0.98-1.09x, json-doc 0.93-1.02x). Reverted — the walk's per-token
+floor is not dispatch structure. That is the third dispatch-level
+attack measured neutral/dead (member window, this, plus the older
+sweep facts): the ~30 cycles/token on json-doc's short tokens is
+intrinsic per-token work — the stores, the state transitions, the
+boundary branches.
+
+The bandwidth ceiling check kills the memory theory locally: this
+machine stores at 52 GB/s single-core (17MB footprint probe) while
+the walk moves ~20MB in ~3ms (~7 GB/s) — 7x headroom. The json-doc
+family's single-digit residual against simdjson on fair rounds is
+per-ISA codegen and two-pass amortization, not a missing arm. The
+honest remaining levers: a single-pass SIMD tokenizer (a different,
+much larger design than the measured-dead two-pass stage-1) — or
+declaring the walk at parity-class and spending the budget on the
+ryml front, where the gaps (+3% json-users, +8% anchor, +14% scalar)
+have named, untried levers.
+
+## Scalar-heavy's 43%: the root literal arm, sized and designed (next session's opening move)
+
+Corpus surgery pinned it: scalar-heavy full runs at ~958-975 MB/s;
+with the 4,976 literal blocks stripped (scalar-flat), the remaining
+flat pairs run at ~1,200-1,290 MB/s. The literal-family lines (5k
+headers + ~10k content lines) cost ~120 ns/line against the flat
+pairs' ~48 ns — the arm owns 1.79 ms of the 4.18 ms parse (43%). Cut
+by a third and scalar-heavy clears the ryml 3x bar (~1,090+ MB/s);
+halved, ~1,230 MB/s (~3.3x).
+
+The design, ready to execute: the arm walks every block line TWICE
+(measure pass, then the copy pass re-derives boundaries byte-wise).
+Restructure to one boundary walk storing per-line facts
+(ls/le/indent/blank) in a small fixed array, then sizing + memcpy from
+the array — the copy's re-scans and the drift check disappear by
+construction. The corpora's root blocks max at 2 lines (a 16-entry
+array never spills), BUT block-heavy's blocks are nested and can be
+large: entries past the cap must fall back to the existing two-pass
+code, which stays in place — the array path is an addition, not a
+replacement, and its I-cache cost is bounded by the arm's low line
+share. Fold the per-line content-tab memchr into the walk while there
+(scalar-heavy: 15k calls, ~0.3 ms) or detect at copy (waste-tolerant:
+a post-alloc bail emits nothing).
+
+First probe for the next session: instrument the arm with counters
+(blocks, lines, memchr calls, pool allocs, bytes — the link-order
+scratch-copy pattern) to split the 1.79 ms between the double walk,
+the memchrs, and the pool before cutting.
+
+## The literal arm's array copy lands (scalar-heavy +6%)
+
+The banked design executed: the measure walk stores per-line copy
+facts (offset, span, blank — computed in-branch so the have_bi
+timeline and the indent-strip math are captured exactly once), and
+the copy for blocks fitting a 16-entry array runs straight from it —
+the second, boundary-rederiving walk is gone and the copy is exact by
+construction (the drift check stays as belt-and-braces). Blocks past
+the cap keep the two-pass walk below (nested block-heavy blocks may
+be large; the legacy path is an addition's fallback, not dead code).
+
+Alternated medians: scalar-heavy 969.4 -> 1025.1 MB/s (+6%, projected
+~3.05x vs ryml — over the bar), realworld-suite +5%, wide neutral,
+block-heavy 0.98x (noise; its nested blocks mostly ride the array
+path or the unchanged fallback). Gates: 398/398 no-LTO + ASAN; suite
+344/0 mismatches; all six corpora word-for-word EXACT.
+
+The arm's remaining costs for a future round: the per-line content
+tab memchrs (~0.3ms of scalar-heavy's 1.79ms literal budget) and the
+~5k pool allocs (~0.2ms) — the walk itself is now single-pass.
+
+## The anchor table's chunked hash: +2% — the "hash dominates" theory refuted
+
+The analytic case looked strong: byte-wise FNV-1a (~6 cycles/byte on
+the multiply chain) + a memcmp per probe visit, 80k puts+lookups per
+anchor-heavy parse. Chunked 8-byte mixing with a stored u32 tag
+(tag compare before any memcmp) landed clean — anchor-heavy
+word-EXACT, 398/398 both builds — and measured +2% (250.1 -> 255.0;
+scalar +3%, block +1%). The table ops are ~5% of that corpus, not
+the estimated 25-35%: the estimate double-counted probe visits (the
+memo already absorbs the repeated *def0 lookups). Anchor-heavy's
+~51ns/line floor lives in the pending/open and alias/anchored-pair
+ARMS — the next lever there needs arm-level counter profiling, not
+hash tuning.
+
+## Anchor-heavy's surgery: the wall is the per-item frame cycle, not the arms
+
+The stripped corpus (anchors dropped, merge lines removed, structure
+kept): anchor-plain runs ~263 MB/s / ~57 ns per line against the
+full corpus's ~212 / ~64. Three facts fall out. (1) The anchor+merge
+family owns ~38% of the parse — but the table was already refuted at
+5% (#467), so ~33% sits in the alias-pair arm (the `<<: *def0`
+lines run ~82 ns each: name scan + get + the ALIAS-PAIR emission)
+and the anchored-value arm. Cutting even HALF the arm cost lands
+~2.76x — under the bar. (2) THE WALL: plain nested two-pair maps
+with zero anchors still cost 57 ns/line — 2.6x the flat pair's cost
+— because every `itemN:` pays the pending push + open + close frame
+cycle that a flat map amortizes across thousands of lines. The
+engine's record contract (OPEN/pending forms) fixes the word count;
+the ratio against ryml's similarly-structured tree is what it is on
+this corpus (~2.3-2.8x across rounds). (3) The only outs that change
+the shape: fewer record words per item (a contract change), or arm
+micro-cuts worth ~1.4 ms that still miss the bar. Anchor-heavy is
+DECLARED STRUCTURAL unless the record contract changes; the ryml
+front's live levers are the flow family (flow-json 2.77x, json-users
+2.58x — the replay-side conversion) and scalar's straddle.
+
+## The flow family's verdict: at route speed — the "replay" lever was a mirage
+
+Two beliefs died on inspection. (1) The referee's DOM measure is
+`yeptris_parse` + free — the lazy design never materializes unless
+touched — so the replay-side per-node conversion (the #449-era
+designed slice) is NOT in the scoreboard numbers at all. (2)
+json-users' records (~150B) sit under the 256-byte budget: they ride
+the naive token-walk path with no scratch tape, no yt_flow_scan, no
+close re-walk — the three-pass machinery only fires above budget.
+The flow family parses at ~1000-1100 MB/s locally, the same class as
+the JSON DOM route: it is AT its route's speed, and its 2.58-2.77x
+vs ryml is what that route does on these shapes. The lane's remaining
+moves are the same class as the JSON walk's: a different tokenizer
+design, not arm cuts. The ryml scoreboard's under-bar shapes are now
+all explained: anchor structural (frame cycle), flow at route speed,
+scalar straddling with ~5% of ledgered scraps left. Everything else
+holds over 3x on fair rounds.
+
+## #474 first slice: the strict columns walk on json-users/arm64 — the lanes are named
+
+One-route driver (/tmp/bench474.c, 200000 users, 31.5 MB — same
+generator as the bench's gen_json_users), `sample` at 15 s
+(3000-iter run, ~1.12 GB/s strict route local): 91% of samples sit in
+`yep_tape_walk_columns_fused`, 4% `yep_neon_gate_scan`, 4% the tape
+free's madvise. The fused function's hot PCs, disassembled
+(llvm-objdump, arm64):
+
+- **+2468 (0x2e574)** — the per-byte SCALAR classifier: the
+  literal-prefix compare chain (`cmp w11, #102` for 'f', then
+  `ldrb [x10,#4]; cmp #101` for the 'a' of 'false'/'r' of 'true'),
+  then the `:` compare and the `1ULL << c` bitmap idiom
+  (`lsl x10, x10, x13; and x10, x10, x14` against a 3-piece movk
+  immediate). This shape (short keys, "true"/"false" per record,
+  small ints) lives ENTIRELY in this loop; the classification cost is
+  3-4 dependent ALU ops per byte plus the literal chain's serialized
+  compares.
+- **+668 (0x2de6c)** — a SWAR hasvalue scan
+  (`and #0x8080..80 / eor / orr / ands / tst`) — the in-walk span
+  scan (quote/escape find), 8 bytes/iteration scalar-wide.
+
+The x64 reads 1.07x on the same source because the same loop's bt /
+table idioms schedule wider; arm64's narrower dependency chains
+expose the per-byte classifier. The cut direction (next slice): move
+the structural-classification hot path to a NEON 16-byte kernel with
+a classification nibble table (vqtbl4) and a scalar tail — the same
+shape as the #474 fork slice 1a quote-span stream, but feeding the
+STRICT walk; the literal path wants a first-byte dispatch table
+instead of the serialized cmp chain. Declared structural for the
+byte-at-a-time loop itself — no arm micro-cut inside it will close a
+0.61 -> 1.0 gap; the gap is the loop DESIGN on this ISA.
+
+## 2026-10-24 — `yeptris_serialize_into_trusted`: the 2p/1p verdict applied to the fixed-buffer lane (WIN, ships 0.6.39)
+
+The emit-split table's 2p/1p column (0.55-0.59x everywhere) priced
+`serialize_into`'s dry exact-sizing pass at ~45% of every call. The
+trusted route removes the pass instead of optimizing it: ONE bounded
+wet walk into the caller's fixed buffer — no memo, no sizing pass,
+zero per-call allocation. Routes derive on demand (the streaming
+route's bytes); an oversized write sets the writer's oom and the walk
+KEEPS COUNTING, so the exact size falls out of the same pass and the
+retry (cap >= ret+1) writes identical bytes — decisions read only
+col/last/len state, never stored bytes, so the counting pass is
+decision-identical to the storing one. Return contract is
+range-disambiguated: ret < cap = complete (NUL-terminated); ret >=
+cap = partial, ret is the needed size.
+
+Measured (M1 Max, medium.yaml 200 KB, 500 rounds): into (two-pass)
+1.066 ms -> trusted 0.602 ms (**1.77x**), matching the allocating
+serialize (0.608 ms) with no allocation. `serialize_into` itself is
+UNTOUCHED (its "nothing written on a short buffer" contract stands;
+the dry pass remains its exact-sizing mechanism). The emit-split
+table's into-buffer lane is expected to jump to ~1.0 of serialize on
+the next Benchmark run — that column now reads as the trusted route's
+adoption, not a regression of the dry lane.
+
+
+## 2026-10-26 — sc_route lane 2 LANDED: the parse-time exotic-byte fact bit (+11-14% serialize)
+
+The dnode's last free bitfield bit carries `no_exotic` ("verified clean
+of the dq-forced set"), set at EVERY value assignment through
+`dom_set_value` (the JSON-class arms set it by construction — the
+walker rejected control bytes; numbers/literals are ASCII). The
+predicate moved to the scan SSOT (`yep_scan_dq_forced`) so the emit
+check and the parse fact cannot drift; `sc_route` consults the bit and
+skips the rescan, and the block-key memo site at writer.c keeps the
+explicit fallback (`kn->no_exotic || !scan`). Mutation-built scalars
+default the bit to 0 (unknown = scan) — no behavior change off the
+parse path.
+
+Interleaved A/B on freshly built binaries (the throttle discipline;
+round 2's var leg was thermal — its PARSE lanes collapsed 60% too, so
+it is discarded):
+
+| lane | base (2 rounds) | var (2 rounds) | delta |
+|---|---|---|---|
+| json-users serialize | 212.6 / 204.8 | 236.8 / 227.9 | **+11%** |
+| scalar-heavy serialize | 619.1 / 618.1 | 701.4 / 705.5 | **+14%** |
+| block-heavy serialize | 299.3 / 288.6 | 300.7 / 304.3 | +3% |
+| parse lanes (all shapes) | — | — | neutral |
+
+The remaining sc_dq_forced cost on json-users sits in the
+mutation-built and unknown-bit paths (the build entries and the
+yep_dom_str_commit arms that bypass dom_set_value set the bit by
+construction, but the host-tree conversion's tag/anchor twins do not
+carry scalars). Byte-identical outputs: 579/579 ctest, the conformance
+suite, and the parse/roundtrip/feed corpus walks all green on the
+fact-bit binary.
+
+## 2026-10-25 — sc_route lane 2: the dq-forced scan is hot but emit-side reordering is dead — the fix is a parse-time fact bit (MEASURED, deferred)
+
+Profile (`sample`, json-users serialize at 283 MB/s dev): `sc_route` ≈
+18% of serialize; the dominant member is `sc_dq_forced` (the
+NEL/LS/PS/BOM/noncharacter byte scan) ≈ 13 points, `yep_style_plain_safe`
+(SIMD) only ≈ 4, the `memchr('\n')` multiline check ≈ 1. The scan runs
+on EVERY derive and twice on sub-`YEP_SC_MEMO_MIN` scalars (dry + wet).
+
+Attempted (reverted): run plain-safe FIRST in `sc_route` and treat a
+pass as proof the exotic scan is negative. plain_safe rejects NEL/LS/PS
+(they are breaks), so its `saw_ef` flag (new `_ex` twins reporting 0xEF
+leads) names the only surviving members — a pass with the flag clear
+provably skips `sc_dq_forced`. Two measurements killed it:
+
+- Unconditional reorder: json-users 283 -> ~210 MB/s. The corpus
+  renders its sequences FLOW, so `w->in_flow` is the common case; the
+  plain-safe pass ran before the flow scan only to be redone after it.
+- Block-context-only reorder (flow path untouched): neutral within
+  noise (interleaved A/B, medians 257 base vs 230 var on a throttled
+  machine). The corpus's scalars are mostly QUOTED-style (JSON
+  strings, `sty_in != 1`), and the reorder only ever touched the
+  plain-style arm — the 13 points live on the quoted arm, where
+  `sc_dq_forced` runs first in both orders.
+
+Conclusion: the scan's cost sits on scalars the emitter cannot prove
+anything about from bytes alone. The fix that reaches the 13 points is
+the parse-time exotic-byte fact bit (record `0xC2 0x85 / 0xE2 0x80
+[A8|A9] / 0xEF ...` presence in the dnode at parse — the parse already
+classifies every byte — and let `sc_route` trust it), i.e. the #352
+fact-bit pattern applied to the dq-forced set. Deferred as #739 lane 2
+proper: dnode fact plumbing, not an emit-side reorder.
+
+Traps: this corpus is the WRONG referee for emit reorderings — its
+scalars are quoted-style and its collections flow-rendered. A
+block-YAML corpus with plain-heavy scalars must ride the next attempt's
+measurement. And the machine throttles: interleaved A/B on freshly
+built binaries only, never cross-time comparisons (an earlier 282 vs
+"regression" reading was pure thermal drift).
+
+Traps: the writer's fields initialize per entry — a new yep_writer
+field MUST be zeroed at every em.w init site or stack garbage arms it
+(the first round's Mutate/BulkBuild/Limits failures were bounded=garbage).

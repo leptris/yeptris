@@ -1,0 +1,356 @@
+/* test_stepping.cpp — resumable stepping (TODO.impl/07).
+ *
+ * The contract: for ANY input and ANY chunk split, the stepped event
+ * stream is record-for-record identical to the whole-buffer one —
+ * kinds, flags, line:col (stream-absolute), and value bytes. Cuts
+ * happen only at --- boundaries that are safe: outside quoted
+ * scalars, flow, comments, and never between a % directive and its
+ * document. Ambiguity delays a cut (buffering), never mis-splits. */
+
+#include <gtest/gtest.h>
+
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include <yeptris/events.h>
+
+namespace {
+
+struct Snap {
+    uint8_t type, style, flags, tag_id;
+    uint32_t line, col;
+    std::string val, anchor, tag;
+};
+
+struct Stream {
+    std::vector<Snap> recs;
+    YeptrisStatus status = YEPTRIS_OK;
+};
+
+Snap snap_one(const YeptrisEventRecord* r, const char* arena) {
+    Snap s;
+    s.type = r->type;
+    s.style = r->style;
+    s.flags = r->flags;
+    s.tag_id = r->tag_id;
+    s.line = r->line;
+    s.col = r->col;
+    s.val.assign(arena + r->value_off, r->value_len);
+    s.anchor.assign(arena + r->anchor_off, r->anchor_len);
+    s.tag.assign(arena + r->tag_off, r->tag_len);
+    return s;
+}
+
+Stream whole(const std::string& in) {
+    Stream st;
+    YeptrisRecorder rec = yeptris_recorder_new();
+    if (rec == nullptr) {
+        st.status = YEPTRIS_ERROR_MEMORY;
+        return st;
+    }
+    st.status = yeptris_recorder_feed(rec, in.data(), in.size(), 1);
+    size_t n = 0, alen = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    for (size_t i = 0; i < n; i++) {
+        st.recs.push_back(snap_one(&rs[i], arena));
+    }
+    yeptris_recorder_free(rec);
+    return st;
+}
+
+/* feed in fixed-size chunks; drain per feed (the pinned contract) */
+Stream stepped_fixed(const std::string& in, size_t chunk) {
+    Stream st;
+    YeptrisRecorder rec = yeptris_recorder_new();
+    if (rec == nullptr) {
+        st.status = YEPTRIS_ERROR_MEMORY;
+        return st;
+    }
+    for (size_t i = 0; i < in.size(); i += chunk) {
+        size_t take = in.size() - i < chunk ? in.size() - i : chunk;
+        st.status = yeptris_recorder_feed(rec, in.data() + i, take, 0);
+        size_t n = 0, alen = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        const char* arena = yeptris_recorder_arena(rec, &alen);
+        for (size_t k = 0; k < n; k++) {
+            st.recs.push_back(snap_one(&rs[k], arena));
+        }
+        if (st.status != YEPTRIS_OK) {
+            yeptris_recorder_free(rec);
+            return st;
+        }
+    }
+    st.status = yeptris_recorder_feed(rec, "", 0, 1);
+    size_t n = 0, alen = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    for (size_t k = 0; k < n; k++) {
+        st.recs.push_back(snap_one(&rs[k], arena));
+    }
+    yeptris_recorder_free(rec);
+    return st;
+}
+
+void expect_identical(const std::string& in, size_t chunk) {
+    Stream w = whole(in);
+    Stream c = stepped_fixed(in, chunk);
+    ASSERT_EQ(w.status, c.status);
+    ASSERT_EQ(w.recs.size(), c.recs.size()) << "chunk=" << chunk;
+    for (size_t i = 0; i < w.recs.size(); i++) {
+        EXPECT_EQ(w.recs[i].type, c.recs[i].type) << "record " << i << " chunk=" << chunk;
+        EXPECT_EQ(w.recs[i].style, c.recs[i].style) << "record " << i;
+        EXPECT_EQ(w.recs[i].flags, c.recs[i].flags) << "record " << i;
+        EXPECT_EQ(w.recs[i].tag_id, c.recs[i].tag_id) << "record " << i;
+        EXPECT_EQ(w.recs[i].line, c.recs[i].line) << "record " << i;
+        EXPECT_EQ(w.recs[i].col, c.recs[i].col) << "record " << i;
+        EXPECT_EQ(w.recs[i].val, c.recs[i].val) << "record " << i;
+        EXPECT_EQ(w.recs[i].anchor, c.recs[i].anchor) << "record " << i;
+        EXPECT_EQ(w.recs[i].tag, c.recs[i].tag) << "record " << i;
+    }
+}
+
+/* every split point and every small fixed chunk size */
+void expect_identical_all_splits(const std::string& in) {
+    for (size_t chunk = 1; chunk <= in.size() + 1; chunk++) {
+        expect_identical(in, chunk);
+    }
+}
+
+} // namespace
+
+TEST(Stepping, MultiDocumentByteByByte) {
+    expect_identical_all_splits("--- a\n--- b\n--- c\n");
+}
+
+TEST(Stepping, DocumentsClosedIncrementally) {
+    /* by the time the chunk holding the second --- is fed, doc1's
+     * records are already drained — the streaming property */
+    const std::string in = "--- a: 1\n--- b: 2\n--- c: 3\n";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    /* doc1's closing --- has not arrived: nothing to drain */
+    ASSERT_EQ(yeptris_recorder_feed(rec, in.data(), 9, 0), YEPTRIS_OK);
+    size_t n = 0;
+    (void)yeptris_recorder_records(rec, &n);
+    EXPECT_EQ(n, 0u);
+    /* the chunk holding doc2's --- closes doc1: its 7 events drain
+     * (STREAM_START, DOC_START, MAP_START, a, 1, MAP_END, DOC_END) */
+    ASSERT_EQ(yeptris_recorder_feed(rec, in.data() + 9, 9, 0), YEPTRIS_OK);
+    n = 0;
+    (void)yeptris_recorder_records(rec, &n);
+    EXPECT_EQ(n, 7u);
+    /* final flush: docs 2 and 3 plus STREAM_END (13 events) */
+    ASSERT_EQ(yeptris_recorder_feed(rec, in.data() + 18, in.size() - 18, 1), YEPTRIS_OK);
+    n = 0;
+    (void)yeptris_recorder_records(rec, &n);
+    EXPECT_EQ(n, 13u);
+    yeptris_recorder_free(rec);
+}
+
+TEST(Stepping, QuotedScalarSpansMarkerLine) {
+    /* the --- inside the single-quoted scalar is content, not a
+     * boundary: no cut may land inside the quote */
+    expect_identical_all_splits("msg: 'keep\n---\ninside'\nafter: 1\n--- doc2\n");
+}
+
+TEST(Stepping, DoubleQuotedEscapeSplitAcrossChunks) {
+    expect_identical_all_splits("a: \"x\\\\\"\n--- b\n");
+}
+
+TEST(Stepping, PlainApostropheThenMultilineQuote) {
+    /* don't must not open a quote; msg's quote must open and span
+     * the marker line — the classic false-cut hazard */
+    expect_identical_all_splits("note: don't do\nmsg: 'keep\n---\ninside'\n--- d2\n");
+}
+
+TEST(Stepping, DoubledQuoteEscape) {
+    expect_identical_all_splits("a: 'it''s\n--- fine\nok'\n--- d2: 1\n");
+}
+
+TEST(Stepping, FlowSpansMarkerLine) {
+    expect_identical_all_splits("a: [1,\n---\n, 2]\n--- b\n");
+}
+
+TEST(Stepping, BlockHeaderLookalikeKeyDoesNotHideFlow) {
+    /* #645: "| : [" is a mapping key whose value opens a flow, not a
+     * block-scalar header. The cut scanner treated the line as a
+     * header, skipped the '[', and then cut at the next --- inside
+     * the still-open flow: the whole parse buffered the flow to the
+     * depth cap while the chunked parse errored at 2:1, one event
+     * apart (fuzz_feed's identity invariant). Every split must agree
+     * on the rejected stream. The header grammar is enforced now:
+     * indicators, separation, comment, then EOL. */
+    std::string in = "| : [\na\n--- ";
+    for (int i = 0; i < 520; i++) {
+        in += "[{\"\"";
+    }
+    expect_identical_all_splits(in);
+}
+
+TEST(Stepping, CommentWithQuotesAndMarkers) {
+    expect_identical_all_splits("# don't --- split here\n# 'quoted'\n--- a: 1\n--- b: 2\n");
+}
+
+TEST(Stepping, ColumnZeroComment) {
+    expect_identical_all_splits("# first\n--- a\n# inner 'quote\n--- b\n");
+}
+
+TEST(Stepping, DirectiveStaysWithItsDocument) {
+    expect_identical_all_splits("%YAML 1.2\n--- text\n--- more\n");
+    expect_identical_all_splits("--- a\n%YAML 1.2\n--- b\n--- c\n");
+}
+
+TEST(Stepping, DirectiveLineAndMarkerAcrossAChunkCut) {
+    /* catch 150 (the nightly's run 39460938869, hand-shrunk 6707 ->
+     * 506 bytes): a %TAG line split from its --- by a step cut made the
+     * DOCUMENT_START fall back to the marker line (whole 85:1 vs
+     * chunked 86:1) — doc_begin is a buffer OFFSET and dies with the
+     * cut, so the directive's stream-absolute LINE must ride the step
+     * state. Every split must agree. */
+    std::string in =
+        "32826658.4e006600'''''''''/'''''''''''''''''''''''''''''''''''''''''''/"
+        "'''''''''''''',99999900000327,99999999990963434096099327,"
+        "99999900000999999990895456343409609932,99999900000327,"
+        "99999999908954634340960993563434096099327,99999900000327,"
+        "99999999908954563434096099389545634340000000000000000000000000000000970\n...\n%TAG !m! -# "
+        "Blb here\n!m!ligight luorescent fluoes&cnt\n...\n%TAG !m! - # b her\n--- "
+        "4563430960993434096099327,999999999095434096099327,"
+        "999634340962932700054563434096099000600005ng\"\n...\n%T \"\n--- ";
+    expect_identical_all_splits(in);
+}
+
+TEST(Stepping, ExplicitEndNeverOrphaned) {
+    /* cuts land at --- lines only: the ... end marker keeps its
+     * explicit DOCUMENT_END flag */
+    expect_identical_all_splits("--- a\n...\n--- b\n");
+    expect_identical_all_splits("--- a\n...\n");
+}
+
+TEST(Stepping, DeepFlowDepthErrorStreamsOpenEvents) {
+    /* a deep flow that exceeds the depth guard: every split must agree
+     * on the rejected stream. The real regression gate for the
+     * pre-scan's error order is the deep-flow-prescan-depth.bin seed
+     * (the pre-scan used to error before the flow's open events);
+     * this fence covers the depth path across every fixed chunk. */
+    std::string in = "a:\n";
+    for (int i = 0; i < 1002; i++) {
+        in += "[";
+    }
+    in += "\n";
+    expect_identical_all_splits(in);
+}
+
+TEST(Stepping, BlockScalarIsIndented) {
+    expect_identical_all_splits("a: |\n  text\n  --- not a marker\n--- b: 1\n");
+}
+
+TEST(Stepping, SequenceDashesAreNotMarkers) {
+    expect_identical_all_splits("- a\n- b\n- ---\n--- d\n");
+}
+
+TEST(Stepping, LinesAreStreamAbsolute) {
+    /* doc2's events must carry whole-buffer line numbers */
+    Stream w = whole("a: 1\n# c\n\n--- b: 2\n");
+    ASSERT_EQ(w.status, YEPTRIS_OK);
+    ASSERT_EQ(w.recs.size(), 14u); /* two documents, one stream */
+    EXPECT_EQ(w.recs[3].line, 1u); /* key a */
+    EXPECT_EQ(w.recs[3].val, "a");
+    EXPECT_EQ(w.recs[9].line, 4u); /* key b: whole-buffer line */
+    EXPECT_EQ(w.recs[9].val, "b");
+    Stream c = stepped_fixed("a: 1\n# c\n\n--- b: 2\n", 3);
+    ASSERT_EQ(c.status, YEPTRIS_OK);
+    ASSERT_EQ(c.recs.size(), w.recs.size());
+    for (size_t i = 0; i < w.recs.size(); i++) {
+        EXPECT_EQ(c.recs[i].line, w.recs[i].line) << "record " << i;
+        EXPECT_EQ(c.recs[i].val, w.recs[i].val) << "record " << i;
+    }
+}
+
+TEST(Stepping, TinyFlowCutMatchesWhole) {
+    /* the nightly's run 38173499680 ("[]\n---\nl sequences:\n- - ",
+     * minimized from a 284-byte artifact): the cut's <24-byte doc
+     * rode the general flow kernel while the whole parse fused the
+     * same span (e_flow_json's >=24-byte gate) — and the fused
+     * pass-2 emitted the opener one column RIGHT of the general
+     * kernel's. The fused marks now mirror the general kernel
+     * exactly; every split must agree. */
+    const std::string in = "[]\n---\nl sequences:\n- - ";
+    expect_identical(in, 24); /* one non-final chunk, then final: the crasher's split */
+    expect_identical(in, 6);
+    expect_identical(in, 3);
+    Stream w = whole(in);
+    ASSERT_EQ(w.recs.size(), 16u);
+    ASSERT_EQ(w.recs[2].type, YEPTRIS_EV_SEQUENCE_START);
+    EXPECT_EQ(w.recs[2].col, 1u); /* the indicator's column, not one past it */
+}
+
+TEST(Stepping, FusedOpenColIsTheIndicatorColumn) {
+    /* the fused kernel's opener marks, pinned directly: a >=24-byte
+     * flow rides the fused walk in the WHOLE parse; its SEQ_START col
+     * must equal the tiny-span general kernel's (the indicator's
+     * 1-based column), not one past it. */
+    Stream w = whole("[1,1,1,1,1,1,1,1,1,1,1,1]\n---\nk: v\n");
+    ASSERT_GE(w.recs.size(), 3u);
+    ASSERT_EQ(w.recs[2].type, YEPTRIS_EV_SEQUENCE_START);
+    EXPECT_EQ(w.recs[2].col, 1u);
+    expect_identical("[1,1,1,1,1,1,1,1,1,1,1,1]\n---\nk: v\n", 27);
+}
+
+TEST(Stepping, TruncatedMarkerAtChunkEdge) {
+    /* every prefix length of a marker line is fed as a non-final
+     * chunk; none of them may cut or error */
+    const std::string in = "a: 1\n--- b\n";
+    for (size_t split = 4; split < in.size(); split++) {
+        Stream st;
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        EXPECT_EQ(yeptris_recorder_feed(rec, in.data(), split, 0), YEPTRIS_OK) << "split=" << split;
+        EXPECT_EQ(yeptris_recorder_feed(rec, in.data() + split, in.size() - split, 1), YEPTRIS_OK)
+            << "split=" << split;
+        yeptris_recorder_free(rec);
+    }
+}
+
+TEST(Stepping, ErrorIsTerminal) {
+    const char* bad = "a: [1, 2\n"; /* unterminated flow */
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    EXPECT_EQ(yeptris_recorder_feed(rec, bad, strlen(bad), 1), YEPTRIS_ERROR_PARSE);
+    EXPECT_EQ(yeptris_recorder_feed(rec, "]", 1, 0), YEPTRIS_ERROR_ARG);
+    yeptris_recorder_free(rec);
+}
+
+TEST(Stepping, ErrorInsideCompleteDocumentMidStream) {
+    /* doc1 is invalid; the error surfaces on the pre-final feed that
+     * completes it — matching the whole-buffer verdict */
+    const char* in = "a: [1, 2\n--- b: 1\n";
+    Stream w = whole(in);
+    EXPECT_EQ(w.status, YEPTRIS_ERROR_PARSE);
+    Stream c = stepped_fixed(in, 8);
+    EXPECT_EQ(c.status, YEPTRIS_ERROR_PARSE);
+}
+
+TEST(Stepping, EmptyAndFinalOnlyFeeds) {
+    expect_identical_all_splits("");
+    expect_identical_all_splits("---\n");
+    expect_identical_all_splits("--- null\n");
+}
+
+TEST(Stepping, FlowQMapMarkerCutStaysInside) {
+    /* the nightly's run 39091724384 (crash-c2894d7e, 18-byte shrink
+     * "&a[? b '[a']?\r---\n"): the chunk cut scanner counted only
+     * bracket flow depth, but the flow '?' opens the explicit-key
+     * MAP the engine stays inside — the scanner believed the flow
+     * closed at ']' and cut at the '---', so the engine's non-final
+     * run ended in a lone '-' at the edge and its error-path record
+     * (empty + pending tag) diverged from the whole parse's ('---'
+     * scalar). The scanner now counts the flow '?' like the engine's
+     * map; over-counting only suppresses cuts (the safe direction). */
+    const std::string in = "&a[? b '[a']?\r---\n";
+    expect_identical(in, 14); /* the crasher's exact split */
+    expect_identical(in, 13);
+    expect_identical(in, 17);
+    expect_identical(in, 1);
+}

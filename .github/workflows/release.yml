@@ -1,0 +1,150 @@
+name: Release
+
+# TODO.impl/20: releases are the automated workflow's job, never a
+# manual tag. Phase 1 (workflow_dispatch with next_version) bumps the
+# version (CMakeLists project VERSION is the SSOT; vcpkg.json +
+# CHANGELOG sync) and opens the release PR. Phase 2 fires when that
+# PR merges: tag + GitHub Release. The exact version number always
+# comes from the dispatching human.
+
+on:
+  workflow_dispatch:
+    inputs:
+      next_version:
+        description: "Exact version to release (e.g. 0.2.0); omit when republishing"
+        required: false
+        type: string
+      republish_version:
+        description: "Re-publish an already-tagged version (GitHub Release + native asset); skips the cut"
+        required: false
+        type: string
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cut:
+    if: github.event_name == 'workflow_dispatch' && inputs.next_version != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate version shape
+        run: |
+          echo "${{ inputs.next_version }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "not X.Y.Z"; exit 1; }
+
+      - name: "Changelog gate: [Unreleased] must exist"
+        run: |
+          # the bump renames this header; without it the rename no-ops
+          # and the release ships undocumented (ten did — item 17)
+          grep -q '^## \[Unreleased\]' CHANGELOG.md || {
+            echo "CHANGELOG.md has no '## [Unreleased]' section." >&2
+            echo "Add one before releasing, or this release ships undocumented." >&2
+            exit 1
+          }
+
+      - name: "Bump version (CMakeLists project VERSION is the SSOT)"
+        run: |
+          V="${{ inputs.next_version }}"
+          sed -i "s/    VERSION [0-9]*\.[0-9]*\.[0-9]*/    VERSION $V/" CMakeLists.txt
+          sed -i "s/\"version\": \"[0-9.]*\"/\"version\": \"$V\"/" vcpkg.json
+          sed -i "s/\"version\": \"[0-9.]*\"/\"version\": \"$V\"/" ports/yeptris/vcpkg.json
+          TODAY=$(date +%Y-%m-%d)
+          if [ -f CHANGELOG.md ]; then
+            sed -i "0,/^## \[Unreleased\]/s//## \[$V\] - $TODAY/" CHANGELOG.md
+          fi
+
+      - name: Create release PR
+        run: |
+          V="${{ inputs.next_version }}"
+          git config user.name "release-workflow"
+          git config user.email "release@yeptris.invalid"
+          git checkout -b "release/v$V"
+          git add CMakeLists.txt vcpkg.json ports/yeptris/vcpkg.json CHANGELOG.md 2>/dev/null || git add CMakeLists.txt vcpkg.json ports/yeptris/vcpkg.json
+          git commit -m "release: v$V"
+          git push origin "release/v$V"
+          gh pr create --title "release: v$V" --body "Automated release branch for v$V. On merge, the workflow tags and publishes the GitHub Release." --base main
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  publish:
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.republish_version != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Tag and publish the GitHub Release
+        run: |
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
+          echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "bad version: $V"; exit 1; }
+          if git ls-remote --exit-code --tags origin "v$V" >/dev/null; then
+            echo "tag v$V exists (republish mode): skipping tag/create"
+            gh release view "v$V" >/dev/null 2>&1 || gh release create "v$V" --title "v$V" --generate-notes
+            SKIP_TAG=1
+          else
+            git config user.name "release-workflow"
+            git config user.email "release@yeptris.invalid"
+            git tag "v$V"
+            git push origin "v$V"
+            gh release create "v$V" --title "v$V" --generate-notes
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # TODO.restructure/28: prebuilt native materializer for this
+      # runner's platform, attached to the release. The recipe lives
+      # in a versioned script (scripts/build-native-asset.sh) — kept
+      # out of the workflow, reviewed like any other code.
+      - name: Install build tooling
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq cmake ninja-build >/dev/null
+      - name: Build and attach the native asset
+        run: |
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
+          scripts/build-native-asset.sh "$V" https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/native-asset"
+          gh release upload "v$V" "$RUNNER_TEMP/native-asset"/yeptris-native-*.tar.gz --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # The lockstep gem tag: a CHECK, not a publish. The binding's
+      # own train (leptris/yeptris-ruby release.yml) builds and
+      # publishes every gem variant — the pure-ruby source gem
+      # included (its build-ruby leg). The engine repo's
+      # trusted-publisher entry is retired by design: one gem, one
+      # owning repo. This step reports which binding tag corresponds
+      # to this C release so the release notes carry it; nothing
+      # pushes.
+      - name: Report the lockstep gem tag
+        run: |
+          V="${{ inputs.republish_version }}"
+          if [ -z "$V" ]; then
+            V="${{ github.event.pull_request.head.ref }}"
+            V="${V#release/v}"
+          fi
+          git clone --quiet --depth 1 https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/yeptris-ruby"
+          cd "$RUNNER_TEMP/yeptris-ruby"
+          BEST="$(git -c protocol.version=2 fetch --tags --quiet 2>/dev/null; git tag | grep -E "^v${V//./\.}\.[0-9]+$" | sort -V | tail -1 || true)"
+          if [ -n "$BEST" ]; then
+            echo "lockstep gem tag: $BEST (published by leptris/yeptris-ruby's train)"
+            echo "lockstep_tag=$BEST" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::no lockstep gem tag v${V}.* yet — cut the binding release after this one"
+          fi
+        id: gemtag

@@ -1,0 +1,9 @@
+# suite-error
++STR
++DOC ---
++MAP
+=VAL : quoted
+=VAL " a b c
+-MAP
+-DOC
+-STR

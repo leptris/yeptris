@@ -1,0 +1,144 @@
+name: Fuzz Nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "total fuzz budget in minutes (split across harnesses)"
+        required: false
+        default: "60"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-nightly
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: libFuzzer+ASan+UBSan (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+
+      - name: Fetch corpora
+        run: scripts/fetch-corpora.sh
+
+      - name: Fetch libyaml (pinned 90a56d4, for the differential)
+        run: |
+          git clone --depth 1 https://github.com/yaml/libyaml deps/libyaml || true
+          git -C deps/libyaml fetch --depth 1 origin 90a56d4500aa1a1798514c5cb55c3ad4cb095f94
+          git -C deps/libyaml checkout 90a56d4500aa1a1798514c5cb55c3ad4cb095f94
+          cmake -B deps/libyaml/build -S deps/libyaml \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+            -DYAML_BUILD_SHARED_LIBS=OFF -DYAML_STATIC_LIB_NAME=yaml
+          cmake --build deps/libyaml/build
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DYEPTRIS_ENABLE_FUZZING=ON \
+            -DYEPTRIS_LIBYAML_ROOT=$GITHUB_WORKSPACE/deps/libyaml
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Seed corpus
+        run: |
+          mkdir -p corpus
+          python3 scripts/gen-fuzz-corpus.py corpus
+          cp test/port/libyaml/snapshots/*.in corpus/ 2>/dev/null || true
+          cp test/fuzz/corpus/parse/* corpus/ 2>/dev/null || true
+          find test/conformance/data/yaml-test-suite -name '*.yaml' -exec cp {} corpus/ \; 2>/dev/null || true
+          find test/conformance/data/json-test-suite/test_parsing -name '*.json' -exec cp {} corpus/ \; 2>/dev/null || true
+
+      - name: Fuzz budget
+        run: |
+          MINS="${{ github.event.inputs.minutes || '60' }}"
+          SECS=$((MINS * 60))
+          SIXTH=$((SECS / 6))
+          echo "YEP_FUZZ_SECS=$SIXTH" >> "$GITHUB_ENV"
+
+      # ASan-instrumented parser frames are ~8 KB per nesting level, so the
+      # 1000-level depth guard needs more than the runner's 8 MB soft
+      # stack: a 762-level input overflowed before the guard fired (run
+      # 39490412519). Every harness rides a 32 MB stack.
+      - name: fuzz_parse
+        run: ulimit -s 32768 || true; ./build/test/fuzz_parse_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
+
+      - name: fuzz_roundtrip
+        run: ulimit -s 32768 || true; ./build/test/fuzz_roundtrip_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
+
+      - name: fuzz_feed
+        run: ulimit -s 32768 || true; ./build/test/fuzz_feed_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
+
+      - name: fuzz_transcode
+        run: ulimit -s 32768 || true; ./build/test/fuzz_transcode_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
+
+      # semantic differential: both libraries accept, streams differ
+      - name: fuzz_diff
+        run: ulimit -s 32768 || true; ./build/test/fuzz_diff_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
+
+      - name: CBOR seeds
+        run: python3 scripts/gen-cbor-seeds.py
+
+      - name: fuzz_cbor
+        run: ulimit -s 32768 || true; ./build/test/fuzz_cbor_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 test/fuzz/corpus/cbor
+
+      - name: Retain crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers
+          path: |
+            crash-*
+            leak-*
+            timeout-*
+          if-no-files-found: ignore
+
+  valgrind:
+    name: Valgrind memcheck (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build valgrind
+
+      - name: Fetch conformance corpora
+        run: scripts/fetch-corpora.sh
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DBUILD_TESTING=ON -DYEPTRIS_BUILD_CLI=ON \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Unit tests under valgrind
+        run: |
+          valgrind --error-exitcode=99 --leak-check=full \
+            --errors-for-leak-kinds=definite,indirect \
+            --suppressions=.github/valgrind.supp \
+            ./build/test/test_unit --gtest_filter='-Float.DoubleRoundtripRandom:Float.ShortestIsShortest:MapIndex.LargeMapHitsAndMisses:MapIndex.ConcurrentFirstLookupsBuildOnce:Limits.*'
+
+      - name: Conformance under valgrind
+        # test_conformance's default corpus dir is relative to the
+        # build dir; from the repo root it must be passed explicitly
+        # (else it bails with no-cases, exit 2, before any allocation)
+        run: valgrind --error-exitcode=99 --leak-check=full ./build/test_conformance test/conformance/data/yaml-test-suite/src

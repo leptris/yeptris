@@ -1,0 +1,28 @@
+# Build directories (leptris convention: build-<purpose>)
+build*/
+build*/
+
+# Generated
+compile_commands.json
+# fetched corpora live here; psych-pure fixtures are checked in
+test/conformance/data/*
+!test/conformance/data/psych-pure/
+
+# Artifacts
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exe
+
+# OS / editor
+.DS_Store
+*~
+__pycache__/
+conformance-failures.txt
+
+# Fetched benchmark dependencies (bench.yml pins; local referee builds)
+deps/

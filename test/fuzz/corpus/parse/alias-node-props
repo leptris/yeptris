@@ -1,0 +1,5 @@
+base: &base
+    n)ame: Everyone has same o
+    <<: *base &bar
+    <<: *base
+    age: 20

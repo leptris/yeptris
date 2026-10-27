@@ -1,0 +1,80 @@
+name: C Library & CLI Test Suite
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-library:
+    name: Test C Library on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-latest (MSVC): the portability sentinel — the C11
+        # guards name MSVC (_Static_assert spelling, _M_X64 arch); this
+        # leg surfaces what actually breaks before any win wheel rides it
+        # BOTH arches per OS: linux amd64+arm64, macOS arm64
+        # (macos-latest) + amd64 (macos-15-intel), Windows amd64+arm64
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest,
+             windows-11-arm]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+
+      - name: Configure
+        shell: bash
+        run: |
+          GEN="-G Ninja"
+          if [ "$RUNNER_OS" = "Windows" ]; then GEN=""; fi
+          cmake -B build -S . $GEN \
+            -DBUILD_TESTING=ON \
+            -DYEPTRIS_BUILD_CLI=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DYEPTRIS_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        shell: bash
+        run: |
+          CFG=""
+          if [ "$RUNNER_OS" = "Windows" ]; then CFG="--config Release"; fi
+          cmake --build build $CFG
+
+      - name: Fetch conformance corpora
+        shell: bash
+        run: scripts/fetch-corpora.sh
+
+      - name: Run tests
+        shell: bash
+        run: |
+          CFG=""
+          if [ "$RUNNER_OS" = "Windows" ]; then CFG="-C Release"; fi
+          ctest --test-dir build --output-on-failure $CFG
+
+      - name: CLI smoke
+        shell: bash
+        run: |
+          BIN="./build/cli/yeptris"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="./build/bin/Release/yeptris"; fi
+          "$BIN" version
