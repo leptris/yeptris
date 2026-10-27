@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- No code changes: the 0.6.48 cut exists as the C-side lockstep anchor for yeptris-ruby 0.6.48.0's engine vendoring (the 0.6.47 registry-law and plain-marker fixes carry forward unchanged).
+
 ## [0.6.47] - 2026-10-27
 
 ### Fixed
