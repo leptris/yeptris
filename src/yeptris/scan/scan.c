@@ -20,6 +20,22 @@ size_t yep_scan_break_len(const char* p, size_t len, size_t pos) {
     if (p[pos] == '\r') {
         return (pos + 1 < len && p[pos + 1] == '\n') ? 2 : 1;
     }
+    /* NEL/LS/PS are breaks like LF/CR (libyaml's IS_BREAK): the byte
+     * scanners ride them as content otherwise, and a plain value
+     * folds across the break INTO a following document marker (the
+     * nightly's r74: "&k:\":(<PS>---" read as one scalar, libyaml
+     * two events) */
+    return yep_scan_mb_break_len(p, len, pos);
+}
+
+size_t yep_scan_mb_break_len(const char* p, size_t len, size_t pos) {
+    if (pos + 1 < len && (unsigned char)p[pos] == 0xC2 && (unsigned char)p[pos + 1] == 0x85) {
+        return 2; /* NEL */
+    }
+    if (pos + 2 < len && (unsigned char)p[pos] == 0xE2 && (unsigned char)p[pos + 1] == 0x80 &&
+        ((unsigned char)p[pos + 2] & 0xFE) == 0xA8) {
+        return 3; /* LS / PS */
+    }
     return 0;
 }
 
@@ -38,6 +54,13 @@ void yep_scan_advance_line(const char* p, size_t* from, size_t to, uint32_t* lin
              * (the nightly's run 38549939326) */
             (*line)++;
             *line_start = i + 1;
+        } else {
+            size_t mb = yep_scan_mb_break_len(p, to, i);
+            if (mb > 0) {
+                (*line)++;
+                i += mb - 1;
+                *line_start = i + 1;
+            }
         }
     }
     *from = to;
@@ -463,6 +486,21 @@ yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow) {
             hit = k->stopset_find(stop, p + i, len - i);
         }
         size_t at = (hit < 0) ? len : i + (size_t)hit;
+        /* a multibyte break inside the piece ends it like an EOL: the
+         * byte stopset cannot see NEL/LS/PS, and the continuation
+         * would ride across the break into the next line's tokens */
+        if (at > i) {
+            const char* lead = (const char*)memchr(p + i, 0xC2, at - i);
+            const char* lead2 = (const char*)memchr(p + i, 0xE2, at - i);
+            const char* first =
+                (lead && lead2) ? (lead < lead2 ? lead : lead2) : (lead ? lead : lead2);
+            if (first != NULL && yep_scan_mb_break_len(p, len, (size_t)(first - p)) > 0) {
+                at = (size_t)(first - p);
+                i = at;
+                s.term = YEP_TERM_EOL;
+                break;
+            }
+        }
         unsigned char c = (at < len) ? (unsigned char)p[at] : 0;
 
         if (at == len) {

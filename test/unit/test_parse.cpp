@@ -6428,6 +6428,53 @@ static std::vector<std::string> flow741_scalars(const char* y, int* map_starts) 
     return vals;
 }
 
+/* #782 (the nightly's r74): a plain value rides a multibyte break
+ * (NEL/LS/PS) INTO a following "---" line — the marker must end the
+ * document, like libyaml: two documents, and no scalar containing
+ * the marker. The anchor reading differs from libyaml's ("k:":(" vs
+ * "k" — the r70 split the comparator reconciles); the STRUCTURE is
+ * the pin here. */
+TEST(Parse, PlainEndsAtDocumentMarkerAfterMultibyteBreak) {
+    struct Row {
+        const char* y;
+        size_t len;
+    };
+    const unsigned char ps[] = "&k:\":(\xe2\x80\xa9---";
+    const unsigned char ls[] = "&k:\":(\xe2\x80\xa8---";
+    const unsigned char nel[] = "&k:\":(\xc2\x85---";
+    const Row rows[] = {
+        {(const char*)ps, sizeof(ps) - 1},
+        {(const char*)ls, sizeof(ls) - 1},
+        {(const char*)nel, sizeof(nel) - 1},
+        {"x\n---\ny", 7},
+    };
+    for (const Row& r : rows) {
+        YeptrisRecorder rec = yeptris_recorder_new();
+        ASSERT_NE(rec, nullptr);
+        ASSERT_EQ(yeptris_recorder_feed(rec, r.y, r.len, 1), YEPTRIS_OK) << r.y;
+        size_t n = 0;
+        const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+        size_t alen = 0;
+        const char* arena = yeptris_recorder_arena(rec, &alen);
+        int docs = 0;
+        std::vector<std::string> vals;
+        for (size_t i = 0; i < n; i++) {
+            if (rs[i].type == YEPTRIS_EV_DOCUMENT_START) {
+                docs++;
+            }
+            if (rs[i].type == YEPTRIS_EV_SCALAR) {
+                vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+            }
+        }
+        yeptris_recorder_free(rec);
+        ASSERT_EQ(docs, 2) << r.y;
+        for (const std::string& v : vals) {
+            EXPECT_EQ(v.find("---"), std::string::npos)
+                << r.y << ": the marker rode the plain: " << v;
+        }
+    }
+}
+
 TEST(Parse, FlowEmptyKeyPairCompletesAcrossTheEntrySeparator) {
     struct Row {
         const char* y;
