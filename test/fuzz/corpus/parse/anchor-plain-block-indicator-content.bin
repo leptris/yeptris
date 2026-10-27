@@ -1,0 +1,27 @@
+---
+topnt eop2: &node2 # comment
+$ key2: two
+top3:
+  &k3 key3* t---e
+top4:
+  &4: four
+top5:
+  &node5
+ke  5y: five
+top6x:
+/ ]"#: &val6
+(1: &n
+ont eop2: &node2 #nt
+$ key2: two
+top3:
+  &k3 key3* t---e
+top4:
+  &4: four
+top5:
+  &node5
+ke  5y: five
+top6x:
+/ ]"#: &val6
+  six
+top7:
+  &avl7 sevfn

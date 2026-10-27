@@ -1,0 +1,2 @@
+block: >
+  scalar

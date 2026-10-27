@@ -1,0 +1,13 @@
+# suite-ok
++STR
++DOC ---
++MAP &mapping
++SEQ [] &key
+=VAL : &item a
+=VAL : b
+=VAL : c
+-SEQ
+=VAL : value
+-MAP
+-DOC
+-STR

@@ -1,0 +1,13 @@
+---
+- name: Double quoted key no space after : (psych-pure parse-flow.tml)
+  yaml: |
+    {"http"://example.com}
+  tree: |
+    +STR
+     +DOC
+      +MAP {}
+       =VAL "http
+       =VAL ://example.com
+      -MAP
+     -DOC
+    -STR

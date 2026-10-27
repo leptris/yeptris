@@ -1,0 +1,6 @@
+# suite-ok
++STR
++DOC ---
+=VAL : scalar %YAML 1.2
+-DOC
+-STR

@@ -1,0 +1,17 @@
+---
+- name: Two scalar nodes with header and footer (psych-pure parse-stream.tml)
+  yaml: |
+    --- foo
+      bar
+    ...
+    --- baz
+    ...
+  tree: |
+    +STR
+     +DOC ---
+      =VAL :foo bar
+     -DOC ...
+     +DOC ---
+      =VAL :baz
+     -DOC ...
+    -STR

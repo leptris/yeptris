@@ -1,0 +1,11 @@
+---
+- name: Empty flow mapping (psych-pure parse-flow.tml)
+  yaml: |
+    {}
+  tree: |
+    +STR
+     +DOC
+      +MAP {}
+      -MAP
+     -DOC
+    -STR

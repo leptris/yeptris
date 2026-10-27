@@ -1,0 +1,7 @@
+---
+- name: Empty stream (psych-pure parse-stream.tml)
+  yaml: |
+    
+  tree: |
+    +STR
+    -STR

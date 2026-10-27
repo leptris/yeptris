@@ -1,0 +1,9 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL ' foo: bar\\
+=VAL : baz'
+-MAP
+-DOC
+-STR

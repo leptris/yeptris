@@ -1,0 +1,7 @@
+# suite-error
++STR
++DOC
++SEQ []
+=VAL : 23
+-SEQ
+!ERROR

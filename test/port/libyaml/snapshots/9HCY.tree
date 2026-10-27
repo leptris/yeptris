@@ -1,0 +1,9 @@
+# suite-error
++STR
++DOC
+=VAL " <!foo> bar
+-DOC
++DOC ---
+=VAL " <tag:example.com,2000:app/foo> bar
+-DOC
+-STR

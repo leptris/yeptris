@@ -1,0 +1,18 @@
+# suite-ok
++STR
++DOC
++MAP
+=VAL : Mapping
+=VAL : Document
+-MAP
+-DOC
++DOC ---
+=VAL : 
+-DOC ...
++DOC ---
++MAP
+=VAL : matches %
+=VAL : 20
+-MAP
+-DOC
+-STR

@@ -1,0 +1,27 @@
+# the root rule keeps EVERY checkout byte-identical on every platform
+# (Windows autocrlf corrupted the corpus files into CRLF and three
+# conformance legs diverged on it)
+* text=auto eol=lf
+
+# Sources and text: LF in the repository and the working tree.
+*.c   text eol=lf
+*.h   text eol=lf
+*.cpp text eol=lf
+*.sh  text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.md  text eol=lf
+*.adoc text eol=lf
+
+# Windows scripts keep CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binaries.
+*.png binary
+*.pdf binary
+*.gz  binary
+
+# Fuzz corpus entries are arbitrary input bytes (CR/NEL/multibyte
+# shapes) — keep every checkout byte-exact.
+test/fuzz/corpus/** binary

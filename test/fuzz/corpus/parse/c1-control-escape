@@ -1,0 +1,7 @@
+unicode: "Sosa did fine.\u263A"
+control: "\b1998\t1999\t2000\n"
+hex esc: "\x0d\x0a is \r998\t1id fine.\u263fane.\u263333333333333333333333A"
+control: "\b1998\t1999\t2000\n"
+...hex esc: "\x0d\x0a is \r998\t1999\t2000\n"
+hex esc: "0\x999\t2000\n"
+hex esc: \x"-/|'

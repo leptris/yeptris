@@ -1,0 +1,157 @@
+k-:
+--: cx+
+!!map-------------------------________---------/--------------fo: |-
+ 	bar
+o: |-
+ 	bar
+foo: |-
+ 	b+
+!!map-----------+---------------t=ee---------:
+--: &x+
+!!map--------------------____F%Fa------________-----------------------------Az-____F-----!map-----------+------------_____-___--------------fo: |-
+ 	bar[0: |-
+ 	bar
+foo: |-
+ 	b+
+!!map------&------------------------------Az-____F-----!&-----------____F%Fa------________----t=ee-------------________-----------------------________---------/--------------fo: |-
+ 	bar
+o: |-
+ 	bar
+foo: |-
+ 	b+
+!!map-----------+---------------t=ee---------:
+--: &x+
+!!map--------------!map-----------+----t=ee-------------________-----------------------________---------/--------------fo: |-
+ 	bar
+o: |-
+ 	bar
+foo: |-
+ 	b+
+!!map------o: |-
+ 	b+
+!!map------&--------------------------base: &base
+    name: Ever=one has sameTRmeTRUE name
+
+Ffoo: &fooe
+    namee: Everyone has sameTRUE name
+
+foo: &fooe
+    name: Everyone has sameTRUE name
+
+foo: &foo
+    <<: *base
+    age: 10
+
+bar: &bar
+    <<: *base
+    abase: &base
+    name: Everyone has sam
+    <e: 10
+
+bar: &bar
+    <<: *base
+    a: &bar
+    <<: *base
+    abase: &base
+    name: Everyone has sam
+    <<: *base
+    age: 10
+
+bar: &bar
+    <<: *base
+    abase: &base
+    name: Everyone has same name
+
+foo: &foo
+    ase: &base
+    name: Everyone has sam
+    <<: *base
+    age: 10
+
+bar: &baEveryone has sameTRUE name
+
+foo: &fooe
+    name: Everyone has sameTRUE name
+
+foo: &foo
+    <<: *base
+    age: 10
+
+bar: &bar
+    <<: *base
+    abase: &base
+    name: Everyone has sam
+    <<: *base
+    age: 10
+
+bar: &bar
+    <<: *base
+    a: &bar
+    <<: *base
+    abase: &base
+    name: Everyone has sam
+    <<: *base
+    age: 10
+
+bar: &bar
+    <<: *base
+    abase: &base
+    name: Everyone has same name
+
+foo: &foo
+    ase: &base
+    name: Everyone has sam
+    <<: *base
+    age: 10
+
+bar: &bar
+    <<: *base
+    abase: &base
+    name: Everyone has sar
+    <<: *base
+    abase: &base
+    name: Everyone has same name
+
+foo: &foo
+    <<: *base
+    age: 10
+
+bar: &bar
+  ge: 20
+--: &x+
+!!map---------______-----------------------------Az-____F%Fa______-____F%Fa________---------------)-------------/--------------fo: |-
+ 	bar
+o: |-
+  TAG
+foo: |-
+ 	bar
+o: |-
+ 	bar
+___c___________________________------&-----------____F%Fa------________-----------------------------________---------/--------------fo: |-
+ 	bar
+o: |-
+ 	bar
+foo: |-
+ 	b+
+!!map-----------+---------------t=ee---------:
+--: &x+
+!!map---------______-----------------------------Az-____F%Fa______-____F%Fa________---------------)-----7-------/--------------fo: |-
+ 	bar
+o: |-
+  TAG
+foo: |-
+ 	bar
+o: |-
+ 	bar
+_____________________________________________------&-----------____F%Fa------________-------------------------: |-
+ 	bar
+foo: |-
+ 	bir
+o: |-
+ 	bar
+_____________________________________________------&-----------____F%Fa------________-----------------------------Az-____F-----!map-----------+------------_____-___--------------fo: |-
+ 	bar[0: |-
+ 	bar
+foo: |-
+ 	b+
+!!map------&-----------------_____-------/------------- 

@@ -1,0 +1,11 @@
+---
+- name: Empty sequence (psych-pure parse-flow.tml)
+  yaml: |
+    []
+  tree: |
+    +STR
+     +DOC
+      +SEQ []
+      -SEQ
+     -DOC
+    -STR

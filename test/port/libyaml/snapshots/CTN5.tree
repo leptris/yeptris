@@ -1,0 +1,8 @@
+# suite-error
++STR
++DOC ---
++SEQ []
+=VAL : a
+=VAL : b
+=VAL : c
+!ERROR

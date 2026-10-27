@@ -1,0 +1,9 @@
+# suite-error
++STR
++DOC
++MAP
+=VAL : block
+=VAL > scalar\n
+-MAP
+-DOC
+-STR

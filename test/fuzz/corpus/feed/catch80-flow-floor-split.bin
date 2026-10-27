@@ -1,0 +1,23 @@
+k: {
+
+} 
+---
+nested sequences:
+{}
+uen1es:
+- - - []
+- - --  []
+ke:
+-  []
+key2: {}
+uen1es:2: {}
+uen1es:
+- - - s:
+-  {}:
+-  u
+- - - []
+- - --  []
+key2: {}
+uen1es:
+-  :
+-  uen {}

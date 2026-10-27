@@ -1,0 +1,11 @@
+# suite-error
++STR
++DOC
++SEQ
++SEQ []
+=VAL : foo
+=VAL : foo
+-SEQ
+-SEQ
+-DOC
+-STR

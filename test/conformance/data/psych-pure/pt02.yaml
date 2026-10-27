@@ -1,0 +1,9 @@
+---
+- name: Empty stream with comments (psych-pure parse-stream.tml)
+  yaml: |
+    # comment
+    
+    # blank line above
+  tree: |
+    +STR
+    -STR

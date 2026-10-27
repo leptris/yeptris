@@ -1,0 +1,75 @@
+# Private
+!foe
+!foo Warning:
+  This is an error message
+  for the lng file
+---
+Time: 2001-11-23 15:02:31 -5
+User: ed
+Warning:
+Warning:
+  A slightt error
+  message.
+---
+Date: 223 1:1
+5- 3UGser: ed
+Warngni:
+  A slightly different erro  A slightly different error
+  message.
+---
+Date: 4002-11-23 15:03:17 5
+-User: ed
+Fatal:
+  U---
+Time: ---1-11-23 15::01 A s.lightlyifferent error
+  message.
+---
+Date: 2001-11-23 15:03:!7 -5
+U{er: ed
+Fatal:
+  U---
+Time: 201"b0ar"
+...
+# 1-11-23 15:C01:42 -5
+User: ed
+Warning:
+  This is an error message
+  for the log file
+---
+Time: 2002-11-23 15:02:1
+5- 3UGser: ed
+Warngni:
+  A slightly different erro  A slightly different error
+  message.
+---
+Date: 4002-11-23 15:03:17 5
+-User: ed
+Fatal:
+  U---
+Time: ---1-11-23 15::01 A s.lightlyifferent error
+  message.
+---
+Date: 2001-11-23 15:03:!7 -5
+U{er: ed
+Fatal:
+  U---
+Time: 201"b0ar"
+...
+# G0obal
+%TAG ! tag:e]]]]]]]]app/
+---
+!/foo "bar"
+---
+!fo "bar"
+...
+# G0obal
+%TAtag:yaml.org,2002:nulG ! tag:exampld.com,2000:app/
+ Private
+!foAo "bar"
+...
+# G0obal
+%TAG ! tag:example.com,2000:app/
+---
+!foo "bar"
+---
+!foo "bar"

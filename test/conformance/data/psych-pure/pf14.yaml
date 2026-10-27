@@ -1,0 +1,13 @@
+---
+- name: Flow mapping explicit key (psych-pure parse-flow.tml)
+  yaml: |
+    {? foo: bar}
+  tree: |
+    +STR
+     +DOC
+      +MAP {}
+       =VAL :foo
+       =VAL :bar
+      -MAP
+     -DOC
+    -STR
