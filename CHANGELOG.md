@@ -6,6 +6,14 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **#782: plain scalars end at NEL/LS/PS before a document marker** — the nightly's round 74 (`crash-39b14958`, 12 bytes: `&k:":(PS---`): a plain value rode the multibyte break straight through it and absorbed a following `---` line as content, where libyaml ends the document at the marker. `yep_scan_break_len` and `yep_scan_plain` honor the multibyte breaks (the law `yep_scan_prop_end` already applied to anchor names); `yep_scan_advance_line` counts them so line attribution keeps pace. The PS/LS/NEL twins and the plain byte-break shape are pinned by a unit test.
+
+- **#322: the marshal reader's object registry matches Ruby's slot law** — the `@` links index a 0-based registry fed in stream order (`[`, `{`, `"`, `f`, `l` and anything `I`-wrapped register once per construct; the root included; bignums hold a slot though no link ever targets one). The pre-fix model shifted every link the moment a document repeated a key — the users-style rows (every field key an `@` link after row 1) now round-trip byte-identically to `JSON.generate`; ivar pairs parse-and-discard, the bignum payload decodes as 16-bit LE limbs, and the memo memmove hands back the writer reservation it consumed.
+
 ## [0.6.46] - 2026-10-27
 
 ### Fixed
