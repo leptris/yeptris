@@ -1430,7 +1430,7 @@ typedef struct {
         uint32_t chain_pos;
     }* objs;
     size_t objs_n, objs_cap;
-    uint32_t* chain; /* the active positions (cycle guard) */
+    size_t* chain; /* the active positions (cycle guard) */
     size_t chain_n, chain_cap;
     int failed; /* 0 ok, YEPTRIS_ERROR_UNSUPPORTED */
 } mj_ctx;
