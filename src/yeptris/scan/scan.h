@@ -147,6 +147,9 @@ int yep_scan_is_key_start(unsigned char c);
 /* Consumed length of the line break at pos (0 if none): \n -> 1,
  * \r\n -> 2, lone \r -> 1. */
 size_t yep_scan_break_len(const char* p, size_t len, size_t pos);
+/* NEL/LS/PS length at pos (2/3), 0 otherwise — the multibyte half of
+ * yep_scan_break_len's law, callable when only the UTF-8 breaks matter */
+size_t yep_scan_mb_break_len(const char* p, size_t len, size_t pos);
 
 /* Line/col bookkeeping across a scanned gap: advances *line and
  * *line_start over the bytes in [*from, to) (only the unscanned region
