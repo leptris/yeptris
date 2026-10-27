@@ -45,6 +45,7 @@ add_executable(test_unit
     unit/test_limits.cpp
     unit/test_yaml_compat.cpp
     unit/test_marshal.cpp
+    unit/test_marshal_json.cpp
     unit/test_visit.cpp
     unit/test_json_number_scan.cpp
     unit/test_line_shape.cpp
