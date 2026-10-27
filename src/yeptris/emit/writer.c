@@ -1825,7 +1825,7 @@ static int mj_value(mj_ctx* c) {
         }
         if (c->chain_n == c->chain_cap) {
             c->chain_cap = c->chain_cap ? c->chain_cap * 2 : 16;
-            c->chain = (uint32_t*)realloc(c->chain, c->chain_cap * sizeof(*c->chain));
+            c->chain = (size_t*)realloc(c->chain, c->chain_cap * sizeof(*c->chain));
             if (!c->chain) {
                 c->s.at = save;
                 return mj_fail(c);
@@ -1861,7 +1861,7 @@ static int mj_link_key(mj_ctx* c, int64_t idx) {
     c->s.at = c->objs[idx].pos;
     if (c->chain_n == c->chain_cap) {
         c->chain_cap = c->chain_cap ? c->chain_cap * 2 : 16;
-        c->chain = (uint32_t*)realloc(c->chain, c->chain_cap * sizeof(*c->chain));
+        c->chain = (size_t*)realloc(c->chain, c->chain_cap * sizeof(*c->chain));
         if (!c->chain) {
             c->s.at = save;
             return mj_fail(c);
