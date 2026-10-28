@@ -4618,7 +4618,6 @@ char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_
         yep_norm_tok t = norm_step(&cp, p, len, j);
         if (t.fold_off < 0) {
             if (kept_raw != NULL && *kept_raw == 0) {
-                const unsigned char* tq = (const unsigned char*)p + j;
                 for (size_t m = 0; m + 1 < t.n; m++) {
                     if (yep_scan_mb_break_len(p + j + m, t.n - m, 0) > 0) {
                         *kept_raw = 1;
