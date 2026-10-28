@@ -47,10 +47,9 @@ TEST(Tape, LongSimpleKeyVerdictRidesTheWalk) {
         return ok;
     };
     auto tape_rejects = [](const std::string& json, yeptris_json_tape* tape) {
-        int no = yeptris_parse_json_tape_lenient(json.data(), json.size(), tape) ==
-                 YEPTRIS_ERROR_PARSE;
+        int rc = yeptris_parse_json_tape_lenient(json.data(), json.size(), tape);
         yeptris_tape_free(tape);
-        return no;
+        return rc;
     };
     YeptrisStatus st = YEPTRIS_OK;
     { /* under the limit: every route accepts */
@@ -63,10 +62,10 @@ TEST(Tape, LongSimpleKeyVerdictRidesTheWalk) {
     }
     { /* over the limit: the DOM route defers to the engine's clean
        * error — and the lenient tape entry keeps its round-108
-       * marshal-parity reject (the walk-set verdict drives both) */
+       * marshal-parity reject (the walk verdict drives both) */
         std::string k(1100, 'a');
         std::string json = "{\"k\":\"v\",\"" + k + "\":1}";
-        EXPECT_TRUE(tape_rejects(json, &t));
+        EXPECT_EQ(tape_rejects(json, &t), YEPTRIS_ERROR_PARSE);
         /* the DOM route's own fallback builder has always accepted the
          * long key (strict JSON has no limit) — the walk-set verdict
          * must not change that split */
@@ -85,7 +84,7 @@ TEST(Tape, LongSimpleKeyVerdictRidesTheWalk) {
     { /* nested maps: the law covers every depth's key slots */
         std::string k(1100, 'n');
         std::string json = "{\"outer\":{\"" + k + "\":1}}";
-        EXPECT_TRUE(tape_rejects(json, &t));
+        EXPECT_EQ(tape_rejects(json, &t), YEPTRIS_ERROR_PARSE);
     }
 }
 
