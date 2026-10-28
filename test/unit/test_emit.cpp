@@ -303,6 +303,45 @@ TEST(Emit, ByteStableAcrossRoundtrips) {
     }
 }
 
+TEST(Emit, KeyLawLengthBoundaryStaysByteStable) {
+    /* the simple-key law's factor-4 estimate skips the byte walk for
+     * prop-less keys up to 255 raw bytes (2 + 4*255 = 1022 is under
+     * the law): the boundary lengths must serialize byte-stably — 255
+     * rides the early-out, 256 still walks, and a >1024 WRITTEN key
+     * (quotes double) must take the explicit "? " form (the catch-147
+     * family) */
+    for (uint32_t n : {254u, 255u, 256u}) {
+        std::string y = "k: " + std::string(n, 'x') + "\n";
+        std::string s1 = roundtrip(y.c_str());
+        std::string s2 = roundtrip(s1.c_str());
+        EXPECT_EQ(s1, s2) << "unstable at len " << n;
+    }
+    {
+        /* a >1024 WRITTEN key cannot arrive through parse (the simple
+         * key law rejects it on the way IN) — build one through the
+         * node API: the emission must take the explicit "? " form
+         * (the catch-147 family), and that form re-parses */
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_document_new();
+        ASSERT_NE(doc, nullptr);
+        YeptrisNode root = yeptris_node_new_mapping(doc);
+        ASSERT_EQ(yeptris_document_set_root(doc, root), YEPTRIS_OK);
+        std::string key(1030, 'q');
+        ASSERT_EQ(yeptris_node_map_add(root, key.data(), (uint32_t)key.size(),
+                                       yeptris_node_new_scalar(doc, "v", 1, YEPTRIS_STYLE_PLAIN)),
+                  YEPTRIS_OK);
+        size_t len = 0;
+        char* out = yeptris_serialize(doc, &len);
+        yeptris_document_free(doc);
+        ASSERT_NE(out, nullptr);
+        std::string s1(out, len);
+        free(out);
+        EXPECT_NE(s1.find("? "), std::string::npos) << "the >1024 key must ride the explicit form";
+        std::string s2 = roundtrip(s1.c_str());
+        EXPECT_EQ(s1, s2) << "unstable at the quoted-law length";
+    }
+}
+
 /* ---- canonical mode (13B) ------------------------------------------- */
 
 static std::string canon(const char* y) {

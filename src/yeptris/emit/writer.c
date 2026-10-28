@@ -528,9 +528,18 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
             }
         }
     }
-    if ((sty_in == 1) && len > 0 &&
-        (as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len))) {
-        return YEP_SC_PLAIN; /* plain-safe implies no breaks: memchr skipped */
+    /* the plain verdict is computed AT MOST ONCE: the case-1 arm below
+     * re-tests the same bytes when the head check already ran — the
+     * #742 profile's second call site (every plain-UNSAFE scalar paid
+     * the walk twice) */
+    int plain_ok = 0;
+    int plain_checked = 0;
+    if ((sty_in == 1) && len > 0) {
+        plain_ok = as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len);
+        plain_checked = 1;
+        if (plain_ok) {
+            return YEP_SC_PLAIN; /* plain-safe implies no breaks: memchr skipped */
+        }
     }
     int multiline = (len > 0 && memchr(p, '\n', len) != NULL);
     int blockable = 0;
@@ -584,7 +593,11 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
         if (len == 0) {
             return as_key ? YEP_SC_DQ : YEP_SC_NOTHING;
         }
-        if (as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len)) {
+        if (!plain_checked) {
+            plain_ok = as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len);
+            plain_checked = 1;
+        }
+        if (plain_ok) {
             return YEP_SC_PLAIN;
         }
         if (!multiline) {
@@ -941,8 +954,16 @@ static int key_written_over_limit(yep_writer* w, const yep_dnode* kn) {
     if (w->json) {
         return 0; /* JSON has no simple-key law: every key writes (#739) */
     }
-    uint64_t est = 2; /* the quotes */
     yep_view kv_ = wv(w, kn->value);
+    if (kn->anchor.len == 0 && kn->tag.len == 0 && kv_.len <= 255) {
+        /* the exact bound: even at the factor-4 expansion the walk
+         * budgets per byte, 255 raw bytes top out at est = 2 + 1020 —
+         * under the law. Table-shaped documents pay the two field
+         * checks instead of the byte walk (the #742 profile's 22%
+         * lane) */
+        return 0;
+    }
+    uint64_t est = 2; /* the quotes */
     const unsigned char* q = (const unsigned char*)kv_.p;
     uint32_t n = kv_.len;
     /* NO early return on an empty value: the tag arm below must run —
