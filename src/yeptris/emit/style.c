@@ -75,6 +75,49 @@ int yep_style_plain_safe(const char* p, uint32_t len) {
         const uint64_t HIGH = 0x8080808080808080ull;
 #define YST_ZDET(w, ch)                                                                            \
     ((((w) ^ (uint64_t)(ch) * ONES) - ONES) & ~((w) ^ (uint64_t)(ch) * ONES) & HIGH)
+        /* the all-boring accept (#742): a span of pure [0-9A-Za-z_]
+         * makes EVERY rule in this function vacuous — no indicators
+         * (the head switch), no blanks at the ends, no BOM, no
+         * ': '/' #' adjacency, no breaks, and no ---/... marker — so
+         * one range test per word accepts without the six-mask walk.
+         * Anything else falls through to the exact scan below. */
+        {
+            uint32_t bi = 0;
+            int boring = 1;
+            while (bi + 8 <= len) {
+                uint64_t bw;
+                memcpy(&bw, p + bi, 8);
+                if (bw & HIGH) {
+                    boring = 0;
+                    break;
+                }
+                /* per-lane unsigned range checks via borrow bits: alpha
+                 * is (t - 'a') and ('z' - t) both borrow-free with
+                 * t = w|0x20 (A-Z fold); digits bound 0x30..0x39 */
+                uint64_t t = bw | (ONES * 0x20);
+                uint64_t bad = ((t - ONES * 0x61) | (ONES * 0x7A - t)) & HIGH; /* alpha */
+                bad |= ((bw - ONES * 0x30) | (ONES * 0x39 - bw)) & HIGH;       /* digit */
+                bad &= ~YST_ZDET(bw, '_'); /* the one extra boring byte */
+                if (bad != 0) {
+                    boring = 0;
+                    break;
+                }
+                bi += 8;
+            }
+            if (boring) {
+                for (; bi < len; bi++) {
+                    char c = p[bi];
+                    int a = (c | 0x20);
+                    if (!((c >= '0' && c <= '9') || (a >= 'a' && a <= 'z') || c == '_')) {
+                        boring = 0;
+                        break;
+                    }
+                }
+                if (boring) {
+                    return 1;
+                }
+            }
+        }
         uint32_t i = 0;
         int prev_blank7 = 0;
         while (i + 8 <= len) {
