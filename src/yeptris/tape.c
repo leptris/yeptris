@@ -74,6 +74,8 @@ static YeptrisStatus tape_carve(yeptris_json_tape* t, size_t len) {
     t->int_min = 0;
     t->_rec_primary = 0;
     t->_cols_ready = 0;
+    t->_long_key_known = 0;
+    t->_long_key = 0;
     return YEPTRIS_OK;
 }
 
@@ -695,6 +697,9 @@ static TAPE_NUM_OK_INLINE int tape_num_ok(const char* p, size_t len) {
  * a long simple key, so the fast parse defers to the engine's clean
  * error — the nightly's run 38143486175). */
 int yep_tape_long_simple_key(const yeptris_json_tape* s) {
+    if (s->_long_key_known) {
+        return s->_long_key; /* settled during the lenient walk */
+    }
     struct {
         uint8_t map;
         uint8_t key_next;
@@ -758,6 +763,8 @@ YeptrisStatus yep_tape_walk_lenient_fused(const char* p, size_t len, size_t open
         t->_srclen >= len + 2) {
         t->_cols_ready = 0;
         t->_rec_primary = 1;
+        t->_long_key_known = 0;
+        t->_long_key = 0;
     } else if (tape_carve(t, len) != YEPTRIS_OK) {
         return YEPTRIS_ERROR_MEMORY;
     }
@@ -997,7 +1004,18 @@ lmap: /* a member MUST follow (after ','): JW_KEY — a closer rejects */
         goto lreject;
     }
 lmapkey: { LSTR_SCAN(lmapcolon); }
-lmapcolon:
+lmapcolon: { /* the key verdict rides the walk: the just-emitted record IS the
+              * key — a >1024-byte candidate pays the char-budget check once
+              * instead of a post-parse full-tape re-walk (#739) */
+    uint64_t kr_ = recs[count - 1];
+    uint32_t kl_ = (uint32_t)(kr_ >> 8) & 0xFFFFFFu;
+    if (kl_ + 2u > 1024u && !t->_long_key_known) {
+        t->_long_key_known = 1;
+        t->_long_key =
+            (unsigned char)(yep_simple_key_chars(p + (size_t)(uint32_t)(kr_ >> 32), kl_) + 2 >
+                            1024);
+    }
+}
     if (i < len && p[i] == ':') {
         i++;
         /* compact fast path: the value byte follows the colon with no
