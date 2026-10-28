@@ -74,6 +74,11 @@ typedef struct yeptris_json_tape {
                                outlive the tape — same contract as the spans) */
     size_t _srclen;
     void* _block; /* the carved allocation base */
+    /* the >1024 simple-key verdict, settled DURING the lenient walk
+     * (one compare per map key) — the post-scan re-walk of the whole
+     * tape cost 16% of json-users parse (#739 profile, 2026-10-28) */
+    unsigned char _long_key_known;
+    unsigned char _long_key;
 } yeptris_json_tape;
 
 /* Parses strict JSON into the tape. Accepts scalar roots (a single

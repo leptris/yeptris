@@ -33,6 +33,55 @@ struct TapeGuard {
     }
 };
 
+TEST(Tape, LongSimpleKeyVerdictRidesTheWalk) {
+    /* the >1024 simple-key verdict settles DURING the lenient walk (one
+     * compare per map key); the post-scan re-walk of the whole tape cost
+     * 16% of the json-users parse lane (#739 profile, 2026-10-28). The
+     * walk's verdict must equal the law on both sides of the boundary:
+     * the budget counts the RAW content + two quotes, characters not
+     * bytes (the round-108 law the scan still owns for candidates). */
+    yeptris_json_tape t{};
+    auto tape_ok = [](const std::string& json, yeptris_json_tape* tape) {
+        return yeptris_parse_json_tape_lenient(json.data(), json.size(), tape) == YEPTRIS_OK &&
+               (yeptris_tape_free(tape), true);
+    };
+    auto tape_rejects = [](const std::string& json, yeptris_json_tape* tape) {
+        yeptris_tape_free(tape);
+        memset(tape, 0, sizeof(*tape));
+        return yeptris_parse_json_tape_lenient(json.data(), json.size(), tape) ==
+               YEPTRIS_ERROR_PARSE;
+    };
+    YeptrisStatus st = YEPTRIS_OK;
+    { /* under the limit: every route accepts */
+        std::string k(100, 'a');
+        std::string json = "{\"k\":\"" + k + "\"}";
+        EXPECT_TRUE(tape_ok(json, &t));
+        EXPECT_NE(yeptris_parse_json(json.data(), json.size(), &st), nullptr);
+    }
+    { /* over the limit: the DOM route defers to the engine's clean
+       * error — and the lenient tape entry keeps its round-108
+       * marshal-parity reject (the walk-set verdict drives both) */
+        std::string k(1100, 'a');
+        std::string json = "{\"k\":\"v\",\"" + k + "\":1}";
+        EXPECT_TRUE(tape_rejects(json, &t));
+        /* the DOM route's own fallback builder has always accepted the
+         * long key (strict JSON has no limit) — the walk-set verdict
+         * must not change that split */
+        EXPECT_NE(yeptris_parse_json(json.data(), json.size(), &st), nullptr);
+    }
+    { /* a long VALUE never trips the law: keys only */
+        std::string v(1100, 'v');
+        std::string json = "{\"k\":\"" + v + "\"}";
+        EXPECT_TRUE(tape_ok(json, &t));
+        EXPECT_NE(yeptris_parse_json(json.data(), json.size(), &st), nullptr);
+    }
+    { /* nested maps: the law covers every depth's key slots */
+        std::string k(1100, 'n');
+        std::string json = "{\"outer\":{\"" + k + "\":1}}";
+        EXPECT_TRUE(tape_rejects(json, &t));
+    }
+}
+
 TEST(JsonTape, SeqRecordsSpansAndLinks) {
     TapeGuard tp;
     ASSERT_EQ(tp.parse("[1, \"a\", true, null, 2.5]"), YEPTRIS_OK);
