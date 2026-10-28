@@ -2603,6 +2603,109 @@ static int yd_anchor_absorb_divergence(const char* ydump, const char* ldump) {
     return *y == *l; /* both exhausted together */
 }
 
+/* The anchor-keymap splice law (the nightly's round 76, issue #798's
+ * structural remainder): for "&I: 999..." (colon-SPACE) the 1.2
+ * grammar keeps the colon in the ANCHOR NAME and reads one scalar,
+ * while libyaml's 1.1 set truncates the name at ':' and the ':' plus
+ * blank becomes the KEY SEPARATOR of an empty-key mapping anchored
+ * "I". The merged bytes differ by exactly that grammar colon (it is
+ * content in the riding name, a separator token on the other side):
+ *
+ *   yep:  =VAL : &I: 999…            (one scalar)
+ *   lib:  +MAP / =VAL : &I / =VAL : 999… / -MAP
+ *
+ * Law: event counts differ by 3 per splice; at each splice the riding
+ * line's anchor is the libyaml key anchor PLUS ':', the riding value
+ * equals the mapping's value, the key's own value is empty, and
+ * everything else (including the +MAP/-MAP pair) aligns. */
+static int yd_anchor_keymap_splice(const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    size_t yi = 0;
+    size_t li = 0;
+    size_t ylen = strlen(ydump);
+    size_t llen = strlen(ldump);
+    int splices = 0;
+    while (yi < ylen && li < llen) {
+        const char* ye = strchr(ydump + yi, '\n');
+        const char* le = strchr(ldump + li, '\n');
+        size_t yl = ye ? (size_t)(ye - (ydump + yi)) : ylen - yi;
+        size_t ll = le ? (size_t)(le - (ldump + li)) : llen - li;
+        if (yl == ll && strncmp(ydump + yi, ldump + li, yl) == 0) {
+            yi += yl + 1;
+            li += ll + 1;
+            continue;
+        }
+        /* splice attempt: yep's ONE scalar vs lib's 4-event map block */
+        if (strncmp(ydump + yi, "=VAL : &", 8) != 0) {
+            return 0;
+        }
+        const char* ya = ydump + yi + 8; /* after "=VAL : &" */
+        const char* ysp = memchr(ya, ' ', yl - 8);
+        if (ysp == NULL) {
+            return 0;
+        }
+        size_t yan = (size_t)(ysp - ya);
+        if (yan < 2 || ya[yan - 1] != ':') {
+            return 0; /* the riding name must end with the grammar ':' */
+        }
+        const char* yv = ysp + 1;
+        size_t yvn = yl - 8 - yan - 1;
+        /* lib's 4 lines */
+        const char* l1 = ldump + li;
+        if (ll != 4 || strncmp(l1, "+MAP", 4) != 0) {
+            return 0;
+        }
+        li += ll + 1;
+        const char* le2 = strchr(ldump + li, '\n');
+        if (le2 == NULL) {
+            return 0;
+        }
+        size_t ll2 = (size_t)(le2 - (ldump + li));
+        if (ll2 < 10 || strncmp(ldump + li, "=VAL : &", 8) != 0) {
+            return 0;
+        }
+        const char* la = ldump + li + 8;
+        size_t lan = ll2 - 8;
+        if (lan > 0 && la[lan - 1] == ' ') {
+            lan--; /* the empty key's trailing value blank */
+        }
+        li += ll2 + 1;
+        const char* le3 = strchr(ldump + li, '\n');
+        if (le3 == NULL) {
+            return 0;
+        }
+        size_t ll3 = (size_t)(le3 - (ldump + li));
+        if (ll3 < 7 || strncmp(ldump + li, "=VAL : ", 7) != 0) {
+            return 0;
+        }
+        const char* lv = ldump + li + 7;
+        size_t lvn = ll3 - 7;
+        li += ll3 + 1;
+        const char* le4 = strchr(ldump + li, '\n');
+        size_t ll4 = le4 ? (size_t)(le4 - (ldump + li)) : llen - li;
+        if (ll4 != 4 || strncmp(ldump + li, "-MAP", 4) != 0) {
+            return 0;
+        }
+        li += ll4 + 1;
+        /* the law: the riding name is the key anchor plus the grammar
+         * ':'; the riding value IS the mapping's value */
+        if (yan != lan + 1 || strncmp(ya, la, lan) != 0) {
+            return 0;
+        }
+        if (yvn != lvn || strncmp(yv, lv, yvn) != 0) {
+            return 0;
+        }
+        splices++;
+        if (splices > 8) {
+            return 0;
+        }
+        yi += yl + 1;
+    }
+    return yi >= ylen && li >= llen;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -2610,25 +2713,26 @@ static void probe_one(const uint8_t* data, size_t size) {
     int split = v == YD_YEPTRIS_ONLY || v == YD_LIBYAML_ONLY;
     /* a documented divergence, not a bug: the suite sides with
      * yeptris (see yd_qflow_divergence) */
-    int known = v == YD_DIFFER && (yd_qflow_divergence(ydump, ldump) ||
-                                   yd_qflow_adjacent_divergence(data, size, ydump, ldump) ||
-                                   yd_qflow_colon_divergence(data, size, ydump, ldump) ||
-                                   yd_qflow_question_colon_divergence(data, size, ydump, ldump) ||
-                                   yd_bom_content_divergence(ydump, ldump) ||
-                                   yd_bom_line_start_divergence(data, size, ydump, ldump) ||
-                                   yd_breaknorm_divergence(data, size, ydump) ||
-                                   yd_nel_break_divergence(data, size, ydump, ldump) ||
-                                   yd_composed_break_divergence(data, size) ||
-                                   yd_root_block_content_divergence(data, size) ||
-                                   yd_clip_breakless_divergence(data, size, ydump) ||
-                                   yd_ps_space_divergence(data, size, ydump, ldump) ||
-                                   yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
-                                   yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
-                                   yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
-                                   yd_anchor_absorb_divergence(ydump, ldump) ||
-                                   yd_anchor_glued_follower_divergence(data, size, ydump, ldump) ||
-                                   yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
-                                   yd_nonspecific_tag_divergence(data, size, ydump));
+    int known =
+        v == YD_DIFFER &&
+        (yd_qflow_divergence(ydump, ldump) ||
+         yd_qflow_adjacent_divergence(data, size, ydump, ldump) ||
+         yd_qflow_colon_divergence(data, size, ydump, ldump) ||
+         yd_qflow_question_colon_divergence(data, size, ydump, ldump) ||
+         yd_bom_content_divergence(ydump, ldump) ||
+         yd_bom_line_start_divergence(data, size, ydump, ldump) ||
+         yd_breaknorm_divergence(data, size, ydump) ||
+         yd_nel_break_divergence(data, size, ydump, ldump) ||
+         yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
+         yd_clip_breakless_divergence(data, size, ydump) ||
+         yd_ps_space_divergence(data, size, ydump, ldump) ||
+         yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
+         yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
+         yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
+         yd_anchor_absorb_divergence(ydump, ldump) || yd_anchor_keymap_splice(ydump, ldump) ||
+         yd_anchor_glued_follower_divergence(data, size, ydump, ldump) ||
+         yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
+         yd_nonspecific_tag_divergence(data, size, ydump));
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
