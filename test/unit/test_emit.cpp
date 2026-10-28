@@ -321,7 +321,6 @@ TEST(Emit, KeyLawLengthBoundaryStaysByteStable) {
          * key law rejects it on the way IN) — build one through the
          * node API: the emission must take the explicit "? " form
          * (the catch-147 family), and that form re-parses */
-        YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_document_new();
         ASSERT_NE(doc, nullptr);
         YeptrisNode root = yeptris_node_new_mapping(doc);
