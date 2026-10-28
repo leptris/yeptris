@@ -54,6 +54,7 @@ add_executable(test_unit
     unit/test_ytape.cpp
     unit/test_plan.cpp
     unit/test_cbor.cpp
+    unit/test_cbor_marshal.cpp
 )
 target_compile_definitions(test_unit PRIVATE
     TEST_YTAPE_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/conformance/data")

@@ -25,6 +25,7 @@
  * - aliases (YAML input) are UNSUPPORTED: the CBOR model has none
  */
 #include "cbor.h"
+#include "encode_priv.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -40,7 +41,7 @@
 
 /* ---- heads: minimal argument encoding (RFC 8949 s3) ----------------- */
 
-static size_t cbor_arg_bytes(uint64_t arg) {
+size_t yep_cbor_arg_bytes(uint64_t arg) {
     if (arg < 24)
         return 1;
     if (arg <= 0xFFull)
@@ -52,10 +53,10 @@ static size_t cbor_arg_bytes(uint64_t arg) {
     return 9;
 }
 
-static void cbor_put_head(uint8_t* out, size_t* pos, uint8_t mt, uint64_t arg) {
+void yep_cbor_put_head(uint8_t* out, size_t* pos, uint8_t mt, uint64_t arg) {
     /* payload bytes -> additional info: 1->24, 2->25, 4->26, 8->27 */
     static const uint8_t ai_of[9] = {0, 24, 25, 25, 26, 26, 26, 26, 27};
-    size_t n = cbor_arg_bytes(arg) - 1;
+    size_t n = yep_cbor_arg_bytes(arg) - 1;
     out[(*pos)++] = (uint8_t)((mt << 5) | (n == 0 ? (uint8_t)arg : ai_of[n]));
     for (size_t k = 0; k < n; k++) { /* network byte order */
         out[(*pos)++] = (uint8_t)(arg >> (8 * (n - 1 - k)));
@@ -143,7 +144,7 @@ static uint16_t cbor_d2h(double d) {
     return (uint16_t)(sign | m10);
 }
 
-static uint8_t cbor_float_width(double d) {
+uint8_t yep_cbor_float_width(double d) {
     if (d != d) {
         return 2; /* NaN: the canonical f9 7e00 (s4.2.2) */
     }
@@ -157,7 +158,7 @@ static uint8_t cbor_float_width(double d) {
     return 8;
 }
 
-static void cbor_put_float(uint8_t* out, size_t* pos, double d, uint8_t width) {
+void yep_cbor_put_float(uint8_t* out, size_t* pos, double d, uint8_t width) {
     out[(*pos)++] = (uint8_t)((7 << 5) | (width == 2 ? 25 : width == 4 ? 26 : 27));
     uint64_t bits = 0;
     if (width == 2) {
@@ -221,7 +222,7 @@ static int cbor_scalar_number(const yep_view* v, cbor_num* out) {
     }
     out->mt = 7;
     out->dval = dv;
-    out->fwidth = cbor_float_width(dv);
+    out->fwidth = yep_cbor_float_width(dv);
     return 1;
 }
 
@@ -247,17 +248,17 @@ static int cbor_bool_value(const yep_view* v) {
 /* The diagnostic round-trip (the 01 ledger): decode renders
  * undefined/simple(N) as text; encode recognizes them back. The words
  * are reserved — a literal "undefined" string encodes as the simple. */
-static int cbor_simple_of(const yep_view* v) {
-    if (v->len == 9 && memcmp(v->p, "undefined", 9) == 0) {
+int yep_cbor_simple_of(const char* p, size_t len) {
+    if (len == 9 && memcmp(p, "undefined", 9) == 0) {
         return 23;
     }
-    if (v->len > 9 && memcmp(v->p, "simple(", 7) == 0 && v->p[v->len - 1] == ')') {
+    if (len > 9 && memcmp(p, "simple(", 7) == 0 && p[len - 1] == ')') {
         uint64_t val = 0;
-        for (size_t i = 7; i + 1 < v->len; i++) {
-            if (v->p[i] < '0' || v->p[i] > '9') {
+        for (size_t i = 7; i + 1 < len; i++) {
+            if (p[i] < '0' || p[i] > '9') {
                 return -1;
             }
-            val = val * 10 + (uint64_t)(v->p[i] - '0');
+            val = val * 10 + (uint64_t)(p[i] - '0');
             if (val > 255) {
                 return -1;
             }
@@ -337,7 +338,7 @@ static uint8_t* cbor_encode_key(const yep_dom* d, const yep_dnode* key, size_t* 
         goto bad;
     }
     for (int t = 0; t < ntags; t++) {
-        cbor_put_head(buf, &pos, 6, tags[t]);
+        yep_cbor_put_head(buf, &pos, 6, tags[t]);
     }
     if (key->tag_id == YEPTRIS_TAG_INT || key->tag_id == YEPTRIS_TAG_FLOAT) {
         cbor_num num;
@@ -345,13 +346,13 @@ static uint8_t* cbor_encode_key(const yep_dom* d, const yep_dnode* key, size_t* 
             goto bad;
         }
         if (num.mt != 7) {
-            cbor_put_head(buf, &pos, num.mt, num.uval);
+            yep_cbor_put_head(buf, &pos, num.mt, num.uval);
         } else {
-            cbor_put_float(buf, &pos, num.dval, num.fwidth);
+            yep_cbor_put_float(buf, &pos, num.dval, num.fwidth);
         }
     } else { /* strings and diagnostics: a simple, else a text item */
         if (key->tag.len == 0) {
-            int sv = cbor_simple_of(&v);
+            int sv = yep_cbor_simple_of(v.p, v.len);
             if (sv >= 0) {
                 if (sv < 24) {
                     buf[pos++] = (uint8_t)(0xE0 | (uint8_t)sv);
@@ -363,7 +364,7 @@ static uint8_t* cbor_encode_key(const yep_dom* d, const yep_dnode* key, size_t* 
                 return buf;
             }
         }
-        cbor_put_head(
+        yep_cbor_put_head(
             buf, &pos,
             v.len == 0 || yep_utf8_validate((const unsigned char*)v.p, v.len, NULL) ? 3 : 2, v.len);
         if (v.len > 0) {
@@ -498,7 +499,7 @@ static size_t cbor_size_scalar(cenc* e, const yep_dnode* n) {
         return 0;
     }
     for (int t = 0; t < ntags; t++) {
-        sz += cbor_arg_bytes(tags[t]);
+        sz += yep_cbor_arg_bytes(tags[t]);
     }
     yep_view v = yep_dom_view(d, n->value);
     switch (n->tag_id) {
@@ -510,19 +511,19 @@ static size_t cbor_size_scalar(cenc* e, const yep_dnode* n) {
             e->status = YEPTRIS_ERROR_UNSUPPORTED;
             return 0;
         }
-        return sz + (num.mt == 7 ? (size_t)(1 + num.fwidth) : cbor_arg_bytes(num.uval));
+        return sz + (num.mt == 7 ? (size_t)(1 + num.fwidth) : yep_cbor_arg_bytes(num.uval));
     }
     case YEPTRIS_TAG_BOOL:
     case YEPTRIS_TAG_NULL:
         return sz + 1;
     default: /* str: a recognized diagnostic, else a text item */
         if (n->tag.len == 0) {
-            int sv = cbor_simple_of(&v);
+            int sv = yep_cbor_simple_of(v.p, v.len);
             if (sv >= 0) {
                 return sz + ((uint32_t)sv < 24 ? 1 : 2);
             }
         }
-        return sz + cbor_arg_bytes(v.len) + v.len;
+        return sz + yep_cbor_arg_bytes(v.len) + v.len;
     }
 }
 
@@ -541,7 +542,7 @@ static size_t cbor_size_item(cenc* e, uint32_t id) {
         return 0;
     }
     for (int t = 0; t < ntags; t++) {
-        sz += cbor_arg_bytes(tags[t]);
+        sz += yep_cbor_arg_bytes(tags[t]);
     }
     if (n->kind == YEP_DOM_ALIAS) {
         e->failed = 1;
@@ -549,7 +550,7 @@ static size_t cbor_size_item(cenc* e, uint32_t id) {
         return 0;
     }
     if (n->kind == YEP_DOM_SEQUENCE) {
-        sz += cbor_arg_bytes(n->count);
+        sz += yep_cbor_arg_bytes(n->count);
         uint32_t c = n->first_child;
         for (uint32_t k = 0; k < n->count && !e->failed; k++) {
             sz += cbor_size_item(e, c);
@@ -559,7 +560,7 @@ static size_t cbor_size_item(cenc* e, uint32_t id) {
     }
     /* mapping */
     uint32_t pairs = n->count / 2;
-    sz += cbor_arg_bytes(pairs);
+    sz += yep_cbor_arg_bytes(pairs);
     /* hold the INDEX, not the pointer: sizing a child recurses into
      * nested maps whose preps REALLOC e->maps (#152 — a held cmap*
      * dangled and the next pair read walked freed memory; n>=11 of
@@ -610,9 +611,9 @@ static void cbor_write_scalar(cenc* e, const yep_dnode* n, uint8_t* out, size_t*
             return; /* pass 1 already failed on this; unreachable */
         }
         if (num.mt == 7) {
-            cbor_put_float(out, pos, num.dval, num.fwidth);
+            yep_cbor_put_float(out, pos, num.dval, num.fwidth);
         } else {
-            cbor_put_head(out, pos, num.mt, num.uval);
+            yep_cbor_put_head(out, pos, num.mt, num.uval);
         }
         return;
     }
@@ -624,7 +625,7 @@ static void cbor_write_scalar(cenc* e, const yep_dnode* n, uint8_t* out, size_t*
         return;
     default:
         if (n->tag.len == 0) {
-            int sv = cbor_simple_of(&v);
+            int sv = yep_cbor_simple_of(v.p, v.len);
             if (sv >= 0) {
                 if (sv < 24) {
                     out[(*pos)++] = (uint8_t)(0xE0 | (uint8_t)sv);
@@ -638,7 +639,7 @@ static void cbor_write_scalar(cenc* e, const yep_dnode* n, uint8_t* out, size_t*
         /* invalid UTF-8 can only have been a byte string (the 01
          * ledger: both decode to tag-str scalars) — emit mt2 so the
          * roundtrip re-decodes to the same bytes */
-        cbor_put_head(
+        yep_cbor_put_head(
             out, pos,
             v.len == 0 || yep_utf8_validate((const unsigned char*)v.p, v.len, NULL) ? 3 : 2, v.len);
         if (v.len > 0) { /* memcpy(_, NULL, 0) is UB (gcc UBSan) */
@@ -655,14 +656,14 @@ static void cbor_write_item(cenc* e, uint32_t id, uint8_t* out, size_t* pos) {
     uint64_t tags[16];
     int ntags = cbor_tag_chain(d, n, tags, 16);
     for (int t = 0; t < ntags; t++) {
-        cbor_put_head(out, pos, 6, tags[t]);
+        yep_cbor_put_head(out, pos, 6, tags[t]);
     }
     if (n->kind == YEP_DOM_SCALAR) {
         cbor_write_scalar(e, n, out, pos);
         return;
     }
     if (n->kind == YEP_DOM_SEQUENCE) {
-        cbor_put_head(out, pos, 4, n->count);
+        yep_cbor_put_head(out, pos, 4, n->count);
         uint32_t c = n->first_child;
         for (uint32_t k = 0; k < n->count; k++) {
             cbor_write_item(e, c, out, pos);
@@ -671,7 +672,7 @@ static void cbor_write_item(cenc* e, uint32_t id, uint8_t* out, size_t* pos) {
         return;
     }
     uint32_t pairs = n->count / 2;
-    cbor_put_head(out, pos, 5, pairs);
+    yep_cbor_put_head(out, pos, 5, pairs);
     cmap* cm = NULL;
     if (e->canonical && e->next_map < e->nmaps) {
         cm = &e->maps[e->next_map++]; /* walk order == build order */
