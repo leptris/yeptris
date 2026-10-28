@@ -478,6 +478,61 @@ TEST(EmitJson, FloatByteShape) {
     }
 }
 
+TEST(EmitJson, WalkerShapes) {
+    /* the #739 JSON walker (emit_json_flow) takes the non-pretty lane:
+     * the same bytes the generic emit_node -> emit_flow path wrote */
+    struct {
+        const char* in;
+        const char* want;
+        const char* want_compact;
+    } cases[] = {
+        {"{a: 1, b: [1, 2, {c: d}]}\n", "{\"a\": 1, \"b\": [1, 2, {\"c\": \"d\"}]}\n",
+         "{\"a\":1,\"b\":[1,2,{\"c\":\"d\"}]}\n"},
+        {"- ~\n- true\n- 1.5\n- \"x\\ny\"\n", "[null, true, 1.5, \"x\\ny\"]\n",
+         "[null,true,1.5,\"x\\ny\"]\n"},
+        {"a: []\nb: {}\nc: [ [], {} ]\n", "{\"a\": [], \"b\": {}, \"c\": [[], {}]}\n",
+         "{\"a\":[],\"b\":{},\"c\":[[],{}]}\n"},
+        {"a:\n  b:\n    - k: v\n", "{\"a\": {\"b\": [{\"k\": \"v\"}]}}\n",
+         "{\"a\":{\"b\":[{\"k\":\"v\"}]}}\n"},
+        {"a: \"h\\u00e9llo\"\n", "{\"a\": \"h\xc3\xa9llo\"}\n", "{\"a\":\"h\xc3\xa9llo\"}\n"},
+        {"\"\": v\n? [1]\n: k\n", "{\"\": \"v\", ? [1] : \"k\"}\n", "{\"\":\"v\",? [1] : \"k\"}\n"},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse(c.in, strlen(c.in), &st);
+        ASSERT_NE(d, nullptr);
+        size_t len = 0;
+        char* out = yeptris_serialize_json(d, &len);
+        ASSERT_NE(out, nullptr);
+        EXPECT_EQ(std::string(out, len), c.want) << "input [" << c.in << "]";
+        free(out);
+        size_t clen = 0;
+        char* cout = yeptris_serialize_json_ex(d, &clen, 1);
+        ASSERT_NE(cout, nullptr);
+        EXPECT_EQ(std::string(cout, clen), c.want_compact) << "compact [" << c.in << "]";
+        free(cout);
+        yeptris_document_free(d);
+    }
+}
+
+TEST(EmitJson, UnserializableCompactStaysNull) {
+    /* the unserializable law is entry-wide: a flow-hostile anchor name
+     * has no JSON spelling — serialize_json has always failed; the
+     * compact/EX entries (two-pass, unchecked) handed back the
+     * unspellable bytes instead. Both routes fail now. */
+    const char* in = "{k: &a?b v}\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(in, strlen(in), &st);
+    ASSERT_NE(d, nullptr);
+    size_t len = 7;
+    EXPECT_EQ(yeptris_serialize_json(d, &len), nullptr);
+    len = 7;
+    EXPECT_EQ(yeptris_serialize_json_ex(d, &len, 1), nullptr);
+    len = 7;
+    EXPECT_EQ(yeptris_serialize_json_ex(d, &len, 0), nullptr);
+    yeptris_document_free(d);
+}
+
 TEST(EmitCanonical, OptionsVersioning) {
     yeptris_emit_options opts = {4, 1, 0, 0}; /* too small: canonical+explicit unread */
     YeptrisStatus st = YEPTRIS_OK;
