@@ -94,6 +94,30 @@ YEPTRIS_API size_t yeptris_cbor_encode_into(YeptrisDocument doc, uint32_t opts, 
  * byte count. */
 YEPTRIS_API void* yeptris_cbor_encode(YeptrisDocument doc, uint32_t opts, size_t* len);
 
+/* The binding's dump face (yeptris-ruby#322): Ruby Marshal 4.8 bytes
+ * IN, ONE CBOR data item OUT, one C call — the CBOR twin of
+ * yeptris_json_from_marshal (marshal.h), walked in C with no Document
+ * and no per-node host crossings. opts: YEPTRIS_CBOR_CANONICAL sorts
+ * each map's pairs by encoded-key bytes; 0 keeps insertion order.
+ *
+ * Covers the host subset the per-node route spells: nil/bool/int/
+ * float/string/array/hash, symbols (as ":name" text), 'I' wrappers,
+ * shared-object links (duplicated bytes), bignums up to four 16-bit
+ * words (inside int64 as integers, past either end as preferred
+ * floats), and the per-node route's map-key spellings (strings,
+ * symbols, integers, floats, booleans). Anything else — objects,
+ * structs, user marshal, invalid-UTF-8 strings, non-finite float text,
+ * wider bignums, nil/array/hash map keys, cycles — returns
+ * YEPTRIS_ERROR_UNSUPPORTED and the binding keeps its per-node walk.
+ *
+ * The bytes are byte-identical to yeptris_cbor_encode over the
+ * document the per-node walk builds (pinned by test_cbor_marshal.cpp).
+ * *out is malloc'd, free with yeptris_marshal_free (or free) exactly
+ * once; on failure nothing is allocated. Trailing bytes after the
+ * root are UNSUPPORTED (the stream is exactly one value). */
+YEPTRIS_API YeptrisStatus yeptris_cbor_from_marshal(const char* m, size_t m_len, uint32_t opts,
+                                                    char** out, size_t* out_len);
+
 #ifdef __cplusplus
 }
 #endif
