@@ -119,14 +119,36 @@ static int cbor_arg(yep_cdec* c, uint8_t ai, uint64_t* val) {
 }
 
 static uint32_t cbor_u64dec(uint64_t v, char* buf) {
+    /* two digits per divide: the per-digit %10//10 loop was the decode
+     * lane's hottest formatter (the #742 profile) — one /100 plus a
+     * table load halves the divides; the reverse pass shrinks to the
+     * pair loop */
+    static const char PAIRS[] = "00010203040506070809"
+                                "10111213141516171819"
+                                "20212223242526272829"
+                                "30313233343536373839"
+                                "40414243444546474849"
+                                "50515253545556575859"
+                                "60616263646566676869"
+                                "70717273747576777879"
+                                "80818283848586878889"
+                                "90919293949596979899";
     char tmp[20];
     uint32_t n = 0;
-    do {
-        tmp[n++] = (char)('0' + (v % 10));
-        v /= 10;
-    } while (v != 0);
+    while (v >= 100) {
+        uint32_t r = (uint32_t)(v % 100u);
+        v /= 100u;
+        tmp[n++] = PAIRS[r * 2u + 1u];
+        tmp[n++] = PAIRS[r * 2u];
+    }
+    if (v >= 10u) {
+        tmp[n++] = PAIRS[v * 2u + 1u];
+        tmp[n++] = PAIRS[v * 2u];
+    } else {
+        tmp[n++] = (char)('0' + (int)v);
+    }
     for (uint32_t k = 0; k < n; k++) {
-        buf[k] = tmp[n - 1 - k];
+        buf[k] = tmp[n - 1u - k];
     }
     return n;
 }
@@ -727,13 +749,41 @@ static int dom_sink_close(void* dp, int is_map) {
 
 static int dom_sink_int(void* dp, int negative, uint64_t mag, int is_key, const char* tag,
                         uint32_t tag_len) {
-    char buf[24];
+    /* the int path formats straight into the arena (the #742
+     * profile's 26% lane): no stack buffer, no second copy through
+     * the text sink — tail, format in place, commit */
+    (void)is_key;
+    yep_dom* d = dp;
+    yep_view tag_v;
+    const yep_view* tagp = NULL;
+    if (tag != NULL) {
+        char* tdst = yep_dom_str_tail(d, tag_len);
+        if (tdst == NULL) {
+            return 0;
+        }
+        memcpy(tdst, tag, tag_len);
+        yep_sview piece = yep_dom_str_commit(d, tag_len);
+        tag_v.p = d->str + (piece.off & YEP_SV_OFF);
+        tag_v.len = tag_len;
+        tagp = &tag_v;
+    }
+    uint32_t id = dom_open_node(d, YEP_DOM_SCALAR, tagp, NULL, 0, YEP_STYLE_PLAIN, 1, 0);
+    if (id == UINT32_MAX) {
+        return 0;
+    }
+    yep_dnode* node = &d->nodes[id];
+    char* dst = yep_dom_str_tail(d, 21); /* '-' plus twenty digits */
+    if (dst == NULL) {
+        return 0;
+    }
     uint32_t n = 0;
     if (negative) {
-        buf[n++] = '-';
+        dst[n++] = '-';
     }
-    n += cbor_u64dec(mag, buf + n);
-    return dom_sink_text(dp, buf, n, YEPTRIS_TAG_INT, is_key, tag, tag_len);
+    n += cbor_u64dec(mag, dst + n);
+    node->value = yep_dom_str_commit(d, n);
+    node->tag_id = YEPTRIS_TAG_INT;
+    return dom_place(d, id) == 0;
 }
 
 static int dom_sink_float(void* dp, double dv, int is_key, const char* tag, uint32_t tag_len) {
