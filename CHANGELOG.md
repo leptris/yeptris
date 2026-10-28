@@ -6,11 +6,11 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.6.48] - 2026-10-27
+## [Unreleased]
 
 ### Fixed
 
-- No code changes: the 0.6.48 cut exists as the C-side lockstep anchor for yeptris-ruby 0.6.48.0's engine vendoring (the 0.6.47 registry-law and plain-marker fixes carry forward unchanged).
+- **fuzz: documents still carrying raw NEL/LS/PS parse on the engine route** — the nightly's round 75 (crash-2b7a62e9, 32 bytes: `k: --:"a<LS> 'c<PS>d'b"` + line 2) tripped fuzz_roundtrip's parseable-must-marshal invariant. A mid-plain quote fools the quote-aware break normalizer (#638): the PS survives raw inside what it believes is a quoted region, and the packed-tape fused runner (#378) — whose plain walk predates the round-74 multibyte break cut — rode it into the value, so `yeptris_parse_ex` accepted what libyaml rejects ("while scanning a simple key") and what the engine's own generic route rejects. `yep_engine_normalize_breaks` now reports whether raw sequences survived, and `parse_impl` hands those documents to the engine route (which owns the cut); legal riders (a raw LS inside a quoted scalar, the r55 join-raw law) keep parsing. Pinned by `KeptRawUnicodeBreaksRideTheEngineRoute`. Gates: r75 + all prior rounds' min cores carry; parse + roundtrip + feed corpora walk clean under ASan+libFuzzer on rebuilt harnesses; ctest 587/587; 0 leaks. Seed `parse/r75-tape-raw-ps.bin`.
 
 ## [0.6.47] - 2026-10-27
 

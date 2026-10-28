@@ -3581,6 +3581,38 @@ TEST(Parse, UnicodeBreaksNormalizeLookalikesStay) {
         yeptris_document_free(doc);
     }
 }
+TEST(Parse, KeptRawUnicodeBreaksRideTheEngineRoute) {
+    /* A mid-plain quote fools the quote-aware break normalizer: the
+     * PS survives raw inside what it believes is a quoted region, and
+     * the packed-tape fused runner (whose plain walk predates the
+     * multibyte break cut) rode it into the value — parse_ex accepted
+     * what libyaml rejects ("while scanning a simple key"; the
+     * nightly's crash-2b7a62e9). A document still carrying raw
+     * sequences parses on the engine route: same verdicts. */
+    const char* reject = "k: --:\"a 'c\xE2\x80\xA9"
+                         "d'b\"\n"
+                         "j: '\xE2\x80\xA9"
+                         "d'\n";
+    {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(reject, strlen(reject), &st);
+        ASSERT_EQ(doc, nullptr) << "libyaml rejects this shape";
+        EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    }
+    { /* the legal rider: a raw LS inside what the normalizer tracks as
+       * a quoted run keeps parsing (the engine's carried fold law) */
+        const char* y = "k: --:\"a\xE2\x80\xA8"
+                        " 'c d'b\"\n"
+                        "j: 'x'\n";
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(map_str(root, "k"), "--:\"a 'c d'b\"");
+        yeptris_document_free(doc);
+    }
+}
 TEST(Parse, AnchorsAndAliases) {
     const char* y = "base: &b\n"
                     "  x: 1\n"

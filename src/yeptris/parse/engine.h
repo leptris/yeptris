@@ -76,8 +76,13 @@ const yep_error* yep_engine_error(const yep_engine* e);
  * the stopset kernel). One-shot parse runs this BEFORE the engine so
  * the copy owns the document's transcoded slot; the engine's per-feed
  * copy (norm_buf) stays for the streaming feeds. */
+/* kept_raw (nullable) reports whether raw NEL/LS/PS SURVIVED the
+ * quote-aware walk (they ride inside quoted regions). The packed-tape
+ * fused runner predates the multibyte break cut — a document still
+ * carrying raw sequences parses on the engine route instead (the
+ * nightly's r75). */
 char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_t len,
-                                  size_t* out_len);
+                                  size_t* out_len, int* kept_raw);
 
 #ifdef __cplusplus
 }
