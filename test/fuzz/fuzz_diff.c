@@ -2668,8 +2668,13 @@ static int yd_anchor_keymap_splice(const char* ydump, const char* ldump) {
         }
         const char* la = ldump + li + 8;
         size_t lan = ll2 - 8;
-        if (lan > 0 && la[lan - 1] == ' ') {
-            lan--; /* the empty key's trailing value blank */
+        const char* lvk = NULL;
+        size_t lvkn = 0;
+        const char* ksp = memchr(la, ' ', lan);
+        if (ksp != NULL) {
+            lvk = ksp + 1;
+            lvkn = lan - (size_t)(ksp - la) - 1;
+            lan = (size_t)(ksp - la);
         }
         li += ll2 + 1;
         const char* le3 = strchr(ldump + li, '\n');
@@ -2689,12 +2694,31 @@ static int yd_anchor_keymap_splice(const char* ydump, const char* ldump) {
             return 0;
         }
         li += ll4 + 1;
-        /* the law: the riding name is the key anchor plus the grammar
-         * ':'; the riding value IS the mapping's value */
-        if (yan != lan + 1 || strncmp(ya, la, lan) != 0) {
+        /* the law: the riding name is the libyaml key's bytes (its
+         * anchor AND its content) plus the grammar ':' — the 1.1 set
+         * cut the name at its first ':', the residual bytes were the
+         * key's plain, and the ':' before the break was the separator
+         * (round 77, "&k:\":<PS> U\<CR> U\": key anchor "k", key
+         * content ":\"", separator ':'+break). The riding value is
+         * the mapping's value, at most one LEADING fold blank richer
+         * — the break that carried the separator folds inside the
+         * riding plain (round 76's empty-key form is the special
+         * case: zero key content, zero fold blank). */
+        if (yan < lan + 1 || strncmp(ya, la, lan) != 0) {
             return 0;
         }
-        if (yvn != lvn || strncmp(yv, lv, yvn) != 0) {
+        size_t keyvn = yan - lan - 1;
+        if (ya[yan - 1] != ':') {
+            return 0;
+        }
+        if (keyvn > 0 && strncmp(ya + lan, lvk, keyvn) != 0) {
+            return 0;
+        }
+        int vok = yvn == lvn && strncmp(yv, lv, yvn) == 0;
+        if (!vok && yvn == lvn + 1 && yv[0] == ' ' && strncmp(yv + 1, lv, lvn) == 0) {
+            vok = 1;
+        }
+        if (!vok) {
             return 0;
         }
         splices++;
