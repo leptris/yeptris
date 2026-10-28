@@ -2441,6 +2441,168 @@ static int yd_nonspecific_tag_divergence(const uint8_t* data, size_t size, const
     return known;
 }
 
+/* The anchor-absorption split-point law (the nightly's round 76,
+ * crash-48bc37f4): the 1.2 anchor grammar rides to the first blank
+ * while libyaml's 1.1 set stops at ':' — the SAME token bytes read
+ * with the anchor/value boundary at different points. The riding
+ * engine consumes the boundary blank as its props separator; libyaml
+ * keeps it as value content, so the merged bytes match only modulo
+ * that one blank. Carrying this needs no transform: the charset
+ * split's libyaml-invariance leg correctly declines when a +1-byte
+ * shift moves some OTHER column-sensitive reading downstream (the
+ * 8KB giant-int soup), and the reconciliation is the boundary law
+ * itself. Verified structurally: equal event counts, every
+ * difference a plain-scalar pair whose merged bytes are equal
+ * modulo the boundary blank, everything else byte-identical. */
+static void yd_absorb_split_props(const char* line, const char** anchor, size_t* alen,
+                                  const char** value, size_t* vlen, int* plain) {
+    *anchor = NULL;
+    *alen = 0;
+    *value = NULL;
+    *vlen = 0;
+    *plain = 0;
+    if (strncmp(line, "=VAL : ", 7) != 0) {
+        return;
+    }
+    *plain = 1;
+    const char* p = line + 7;
+    if (*p != '&') {
+        return; /* no anchor: the law has nothing to reconcile */
+    }
+    p++;
+    const char* sp = strchr(p, ' ');
+    if (sp == NULL) {
+        *anchor = p;
+        *alen = strlen(p);
+        return;
+    }
+    *anchor = p;
+    *alen = (size_t)(sp - p);
+    *value = sp + 1;
+    *vlen = strlen(sp + 1);
+}
+
+static int yd_anchor_absorb_divergence(const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    const char* y = ydump;
+    const char* l = ldump;
+    int diffs = 0;
+    while (*y != '\0' && *l != '\0') {
+        const char* ye = strchr(y, '\n');
+        const char* le = strchr(l, '\n');
+        size_t yl = ye ? (size_t)(ye - y) : strlen(y);
+        size_t ll = le ? (size_t)(le - l) : strlen(l);
+        if (yl != ll || strncmp(y, l, yl) != 0) {
+            /* a differing pair: both plain scalar events, both
+             * anchored, merged bytes equal modulo the boundary blank */
+            char yb[4096];
+            char lb[4096];
+            if (yl >= sizeof(yb) || ll >= sizeof(lb)) {
+                return 0;
+            }
+            memcpy(yb, y, yl);
+            yb[yl] = '\0';
+            memcpy(lb, l, ll);
+            lb[ll] = '\0';
+            const char* ya;
+            const char* yv;
+            size_t yan;
+            size_t yvn;
+            int yp;
+            const char* la;
+            const char* lv;
+            size_t lan;
+            size_t lvn;
+            int lp;
+            yd_absorb_split_props(yb, &ya, &yan, &yv, &yvn, &yp);
+            yd_absorb_split_props(lb, &la, &lan, &lv, &lvn, &lp);
+            if (!yp || !lp || ya == NULL || la == NULL) {
+                return 0;
+            }
+            int merged = 0;
+            if (yan == lan && strncmp(ya, la, yan) == 0) {
+                merged = yvn == lvn && strncmp(yv, lv, yvn) == 0;
+            }
+            if (!merged) {
+                size_t mA = yan + yvn;
+                size_t mB = lan + lvn;
+                if (mA + 1 != mB && mB + 1 != mA) {
+                    return 0; /* not a one-blank difference */
+                }
+                const char* ba;
+                const char* bv;
+                size_t ban;
+                size_t bvn;
+                const char* sa;
+                const char* sv;
+                size_t san;
+                size_t svn;
+                if (mA + 1 == mB) {
+                    ba = la;
+                    ban = lan;
+                    bv = lv;
+                    bvn = lvn;
+                    sa = ya;
+                    san = yan;
+                    sv = yv;
+                    svn = yvn;
+                } else {
+                    ba = ya;
+                    ban = yan;
+                    bv = yv;
+                    bvn = yvn;
+                    sa = la;
+                    san = lan;
+                    sv = lv;
+                    svn = lvn;
+                }
+                /* the merged (anchor+value) strings differ by exactly
+                 * one blank, and it sits at the RIDING side's anchor
+                 * boundary: the separator blank the riding engine
+                 * consumed is content on the other side. The dump line
+                 * keeps a separator blank of its own between the
+                 * anchor and the value, so the merged strings must be
+                 * materialized before the comparison. */
+                size_t ms = san + svn;
+                size_t mb = ban + bvn;
+                if (san == 0 || ms + 1 != mb) {
+                    return 0;
+                }
+                char* msb = malloc(ms + 1);
+                char* mbb = malloc(mb + 1);
+                if (msb == NULL || mbb == NULL) {
+                    free(msb);
+                    free(mbb);
+                    return 0;
+                }
+                memcpy(msb, sa, san);
+                memcpy(msb + san, sv, svn);
+                msb[ms] = '\0';
+                memcpy(mbb, ba, ban);
+                memcpy(mbb + ban, bv, bvn);
+                mbb[mb] = '\0';
+                int ok_m = memcmp(mbb, msb, san) == 0 && mbb[san] == ' ' &&
+                           memcmp(mbb + san + 1, msb + san, ms - san) == 0;
+                free(msb);
+                free(mbb);
+                if (!ok_m) {
+                    return 0;
+                }
+                merged = 1;
+            }
+            diffs++;
+            if (diffs > 8) {
+                return 0; /* a flood is some other family */
+            }
+        }
+        y = ye ? ye + 1 : y + yl;
+        l = le ? le + 1 : l + ll;
+    }
+    return *y == *l; /* both exhausted together */
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -2463,6 +2625,7 @@ static void probe_one(const uint8_t* data, size_t size) {
                                    yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
                                    yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
                                    yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
+                                   yd_anchor_absorb_divergence(ydump, ldump) ||
                                    yd_anchor_glued_follower_divergence(data, size, ydump, ldump) ||
                                    yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
                                    yd_nonspecific_tag_divergence(data, size, ydump));
