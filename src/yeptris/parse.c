@@ -244,6 +244,9 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
     unsigned char* transcoded = NULL;
     size_t transcoded_len = 0;
     yep_encoding enc = YEP_ENC_UNKNOWN;
+    int norm_kept_raw = 0; /* raw NEL/LS/PS survived the quote-aware
+                            * walk: the engine route owns the document
+                            * (the tape runner predates the cut) */
 
     if (json_mode) {
         /* JSON mode validated grammar and UTF-8 well-formedness at the
@@ -307,7 +310,7 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
      * U+0085 raw inside strings, only the YAML reader normalizes. */
     {
         size_t nlen = 0;
-        char* norm = yep_engine_normalize_breaks(sys, data, data_len, &nlen);
+        char* norm = yep_engine_normalize_breaks(sys, data, data_len, &nlen, &norm_kept_raw);
         if (norm != NULL) {
             yep_free(sys, transcoded);
             transcoded = (unsigned char*)norm;
@@ -410,12 +413,12 @@ engine_enter:
                           .on_block_item = dom_on_block_item};
     }
     int rc = 0;
-    if (have_tape && ytap_flow_rooted(&yt) == 0) {
+    if (have_tape && !norm_kept_raw && ytap_flow_rooted(&yt) == 0) {
         /* a pure flow-rooted document: the classification ran once and
          * the scaffolding landed — neither runner nor engine runs */
         yep_engine_destroy(eng);
         eng = NULL;
-    } else if (have_tape &&
+    } else if (have_tape && !norm_kept_raw &&
                ytap_fused_run(&yt, (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
                                        ? yep_resolver_compat11()
                                        : yep_resolver_core12()) == 0) {

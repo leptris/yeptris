@@ -4192,7 +4192,7 @@ yep_engine* yep_engine_create(const yep_allocator* sys) {
  * nightly's run 38524928004: "\0\n---\r<U+2028>" whole-parsed as an
  * empty stream while the chunked cut skipped the copy). */
 static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len, size_t* out_len) {
-    char* out = yep_engine_normalize_breaks(e->sys, p, len, out_len);
+    char* out = yep_engine_normalize_breaks(e->sys, p, len, out_len, NULL);
     if (out == NULL) {
         return p;
     }
@@ -4567,7 +4567,10 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
 }
 
 char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_t len,
-                                  size_t* out_len) {
+                                  size_t* out_len, int* kept_raw) {
+    if (kept_raw != NULL) {
+        *kept_raw = 0;
+    }
     const unsigned char* q = (const unsigned char*)p;
     const yep_text_kernels* k = yep_text_active();
     size_t i = 0;
@@ -4597,6 +4600,9 @@ char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_
         j += t.n;
     }
     if (!found) {
+        if (kept_raw != NULL) {
+            *kept_raw = 1; /* every exotic byte rides raw */
+        }
         return NULL; /* the exotic bytes all ride inside quoted regions:
                       * the zero-copy path keeps them raw (the fix) */
     }
@@ -4611,6 +4617,15 @@ char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_
     for (size_t j = 0; j < len;) {
         yep_norm_tok t = norm_step(&cp, p, len, j);
         if (t.fold_off < 0) {
+            if (kept_raw != NULL && *kept_raw == 0) {
+                const unsigned char* tq = (const unsigned char*)p + j;
+                for (size_t m = 0; m + 1 < t.n; m++) {
+                    if (yep_scan_mb_break_len(p + j + m, t.n - m, 0) > 0) {
+                        *kept_raw = 1;
+                        break;
+                    }
+                }
+            }
             memcpy(out + o, p + j, t.n);
             o += t.n;
         } else {
