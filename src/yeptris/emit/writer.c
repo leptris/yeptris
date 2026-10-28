@@ -1385,6 +1385,98 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
 }
 
 /* ============================================================
+ * yeptris#739 slice 3: JSON's own tree walk. In JSON mode every
+ * collection is flow, the separators are fixed, and the YAML
+ * machinery (props lines, style analysis, explicit-key law,
+ * pretty depth) never fires — yet the generic emit_node ->
+ * emit_flow path re-tests all of it per node and looks every
+ * child up twice. This walk emits the same bytes with one
+ * dispatch per node and two per map pair. Pretty output keeps
+ * the generic path: its depth/indent bookkeeping is the point
+ * there.
+ * ============================================================ */
+static void emit_json_node(yep_emitter* em, uint32_t id);
+
+static void emit_json_flow(yep_emitter* em, uint32_t id) {
+    yep_writer* w = &em->w;
+    int saved_flow = w->in_flow;
+    w->in_flow = 1;
+    const yep_dom* d = em->doc->dom;
+    const yep_dnode* n = yep_dom_node(d, id);
+    if (n->tag.len > 0) {
+        emit_tag(w, n);
+    }
+    if (n->anchor.len > 0) {
+        emit_anchor_ex(em, n);
+    }
+    int map = (n->kind == 2);
+    wr_byte(w, map ? '{' : '[');
+    uint32_t child = n->first_child;
+    uint32_t idx = 0;
+    while (child != UINT32_MAX) {
+        const yep_dnode* cn = yep_dom_node(d, child);
+        if (idx > 0) {
+            if (w->json_compact) {
+                wr_byte(w, ',');
+            } else {
+                wr_put(w, ", ", 2);
+            }
+        }
+        if (map) {
+            /* the one generic-path rule JSON keeps: a non-scalar key
+             * (or one carrying props) rides the explicit "? key : "
+             * form — same bytes emit_flow writes */
+            if (cn->anchor.len > 0 || cn->tag.len > 0 || cn->kind != 0) {
+                wr_put(w, "? ", 2);
+                emit_json_node(em, child);
+                wr_put(w, " : ", 3);
+            } else {
+                emit_json_node(em, child);
+                if (w->json_compact) {
+                    wr_byte(w, ':');
+                } else {
+                    wr_put(w, ": ", 2);
+                }
+            }
+            uint32_t val = cn->next_sibling;
+            emit_json_node(em, val);
+            const yep_dnode* vn = yep_dom_node(d, val);
+            child = vn != NULL ? vn->next_sibling : UINT32_MAX;
+        } else {
+            emit_json_node(em, child);
+            child = cn->next_sibling;
+        }
+        idx++;
+    }
+    wr_byte(w, map ? '}' : ']');
+    w->in_flow = saved_flow;
+}
+
+static void emit_json_node(yep_emitter* em, uint32_t id) {
+    yep_writer* w = &em->w;
+    const yep_dom* d = em->doc->dom;
+    const yep_dnode* n = yep_dom_node(d, id);
+    if (n == NULL) {
+        return;
+    }
+    if (n->kind == 3) { /* alias */
+        emit_alias_ex(em, n);
+        return;
+    }
+    if (n->kind == 1 || n->kind == 2) {
+        emit_json_flow(em, id);
+        return;
+    }
+    if (n->tag.len > 0) {
+        emit_tag(w, n);
+    }
+    if (n->anchor.len > 0) {
+        emit_anchor_ex(em, n);
+    }
+    emit_canonical_scalar(w, n);
+}
+
+/* ============================================================
  * yeptris-ruby#322: the marshal READER — Ruby Marshal.dump bytes
  * to JSON text in one C call (no per-scalar crossings, no object
  * reconstruction). The format facts mirror marshal.c's emission
@@ -1975,7 +2067,11 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
         /* JSON has no multi-document streams and no document marker */
         if (d->dcount == 1) {
             const yep_dnode* root = yep_dom_node(d, d->docs[0]);
-            emit_node(em, d->docs[0], -2, 0);
+            if (w->json_pretty) {
+                emit_node(em, d->docs[0], -2, 0);
+            } else {
+                emit_json_node(em, d->docs[0]);
+            }
             if (root != NULL && root->kind != 0 && w->last != '\n') {
                 wr_byte(w, '\n');
             }

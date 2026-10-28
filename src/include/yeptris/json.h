@@ -31,11 +31,13 @@ YEPTRIS_API YeptrisDocument yeptris_parse_json(const char* data, size_t len, Yep
  * collections, JSON escapes, shortest floats, null/true/false words).
  * Returns a malloc'd NUL-terminated buffer (caller frees) with *len
  * (may be NULL) set, or NULL on a NULL document / allocation
- * failure / zero documents. */
+ * failure / zero documents / a document with no JSON spelling
+ * (unserializable). */
 YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument doc, size_t* len);
 
 /* The compact variant: no padding spaces (JSON.generate's shape);
- * compact == 0 is byte-identical to yeptris_serialize_json. */
+ * compact == 0 is byte-identical to yeptris_serialize_json. Same
+ * NULL contract, the unserializable law included. */
 YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument doc, size_t* len, int compact);
 
 /* The pretty variant: JSON.pretty_generate's shape — one entry per
