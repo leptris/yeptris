@@ -2201,55 +2201,61 @@ YEPTRIS_API YeptrisStatus yeptris_parse_json_tape(const char* source, size_t len
         return YEPTRIS_ERROR_ARG;
     }
 
-    int gated = len > 0 && yep_text_active()->gate_scan(source, len);
-    if (!gated) {
-        size_t off = 0;
-        while (off < len && (source[off] == ' ' || source[off] == '\t' || source[off] == '\n' ||
-                             source[off] == '\r')) {
-            off++;
+    /* #474: the entry's full-input gate_scan pre-pass moves to the
+     * reject path (the #342/#81 law on parse_json, now here): the
+     * columns-primary fused walk runs clean_only — tabs and non-ASCII
+     * bytes REJECT inline — so on accepted documents the NEON gate
+     * scan (the profile's 5% lane) never runs. A walk reject re-gates:
+     * the record walk and the encoding-owed decision read `gated` only
+     * when actually taken, and every error precedence below is
+     * unchanged (the validating sequence consumes the same bit). */
+    int gated;
+    size_t off = 0;
+    while (off < len && (source[off] == ' ' || source[off] == '\t' || source[off] == '\n' ||
+                         source[off] == '\r')) {
+        off++;
+    }
+    int container = off < len && (source[off] == '[' || source[off] == '{');
+    if (container) {
+        /* the columns-primary fused walk: one pass, columns eager
+         * by construction, strict numbers classified at walk time */
+        if (yep_tape_walk_columns_fused(source, len, off, tape, 1, 1) == YEPTRIS_OK) {
+            return YEPTRIS_OK;
         }
-        if (off < len && (source[off] == '[' || source[off] == '{')) {
-            /* the token-contract route: stage 1 (vector indexes) + the
-             * lean walk. Measured BEHIND the fused walk on json-doc
-             * (417-426 vs 526-533: stage 1 at 1408 MB/s + a walk whose
-             * arms carry the same grammar cost) — gated OFF until the
-             * sized cuts land (the op-table classifier trick, the
-             * specialized map/seq loops, stage-1 string closes). The
-             * fused walk is the shipped route; the law. */
+    }
+    gated = len > 0 && yep_text_active()->gate_scan(source, len);
+    if (container && !gated) {
+        /* the token-contract route: stage 1 (vector indexes) + the
+         * lean walk. Measured BEHIND the fused walk on json-doc
+         * (417-426 vs 526-533: stage 1 at 1408 MB/s + a walk whose
+         * arms carry the same grammar cost) — gated OFF until the
+         * sized cuts land (the op-table classifier trick, the
+         * specialized map/seq loops, stage-1 string closes). The
+         * fused walk is the shipped route; the law. */
 #if YEP_TOKEN_CONTRACT_ROUTE
-            uint32_t* idx = (uint32_t*)malloc((len + 2) * sizeof(uint32_t));
-            if (idx == NULL) {
-                return YEPTRIS_ERROR_MEMORY;
-            }
-            size_t nidx = 0;
-            unsigned sflags = 0;
-            if (yep_text_active()->json_stage1(source, len, idx, &nidx, &sflags)) {
-                YeptrisStatus st = tape_walk_idx(source, len, off, idx, nidx, tape);
-                free(idx);
-                if (st != YEPTRIS_ERROR_PARSE) {
-                    return st; /* OK or MEMORY; a reject falls through */
-                }
-            } else {
-                free(idx);
-            }
-#endif
-            /* the record-primary fused walk first — the DOM route's
-             * exact call and flags (strict numbers at record time,
-             * clean-only gates; a reject frees the tape internally, so
-             * the column attempt below carves fresh). This route's
-             * contract is COLUMNS-EAGER (the suite reads kinds/offs/
-             * lens directly), so the records materialize here — the
-             * fused scan plus one sequential decode pass, still ahead
-             * of the column walk's inline three-stream writes. */
-            /* the columns-primary fused walk: one pass, columns eager
-             * by construction, strict numbers classified at walk time */
-            if (yep_tape_walk_columns_fused(source, len, off, tape, 1, 1) == YEPTRIS_OK) {
-                return YEPTRIS_OK;
-            }
-            YeptrisStatus st = tape_walk(source, len, off, tape, 1);
+        uint32_t* idx = (uint32_t*)malloc((len + 2) * sizeof(uint32_t));
+        if (idx == NULL) {
+            return YEPTRIS_ERROR_MEMORY;
+        }
+        size_t nidx = 0;
+        unsigned sflags = 0;
+        if (yep_text_active()->json_stage1(source, len, idx, &nidx, &sflags)) {
+            YeptrisStatus st = tape_walk_idx(source, len, off, idx, nidx, tape);
+            free(idx);
             if (st != YEPTRIS_ERROR_PARSE) {
                 return st; /* OK or MEMORY; a reject falls through */
             }
+        } else {
+            free(idx);
+        }
+#endif
+        /* the record walk — the DOM route's exact call and flags
+         * (strict numbers at record time). Non-ASCII documents stay
+         * out of it: the gate above keeps today's routing, where the
+         * validated lenient walk below owns them. */
+        YeptrisStatus st = tape_walk(source, len, off, tape, 1);
+        if (st != YEPTRIS_ERROR_PARSE) {
+            return st; /* OK or MEMORY; a reject falls through */
         }
     }
 
