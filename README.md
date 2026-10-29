@@ -72,5 +72,12 @@ release publishes ALL FOUR runtimes at the lockstep version — ruby
 publishing pipeline), and ts (`yeptris-wasm` on npm via the emcc
 build). A cut that lands the C tag alone is incomplete.
 
+Version shapes follow each registry's law: rubygems and PyPI take the
+four-component `{c-semver}.{binding-patch}` (`0.6.50.0`); crates.io
+and npm enforce strict three-component semver, so rs and ts carry the
+EXACT C semver (`0.6.50`) — the maximum lockstep their registries
+accept. A binding-only fix on ruby/py bumps the fourth component
+(`0.6.50.1`); on rs/ts it rides the next engine patch release.
+
 Architecture: `PLAN.md`. FFI contract: `docs/FFI.md`. ABI pins:
 `docs/ABI.md`. Board: `TODO.md` (+ `TODO.impl/`, `TODO.restructure/`).
