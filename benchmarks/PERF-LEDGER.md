@@ -2951,6 +2951,21 @@ all explained: anchor structural (frame cycle), flow at route speed,
 scalar straddling with ~5% of ledgered scraps left. Everything else
 holds over 3x on fair rounds.
 
+## #474 dead end: the first-byte dispatch LUT in the fused value arms — measured DEAD (2026-10-29)
+
+The ledger's "+2468 lane" named the serialized compare chain ('"' /
+the `1ULL << c` digit bitmap / 't'/'f'/'n' / '{' / '[') as a cut
+candidate. The dispatch-table rewrite (a 256-entry class LUT + a
+switch per value arm, both lmapval and lseqval) landed and measured:
+json-doc 0.996x, generated-users (300k rows, true/false per record)
+0.975x — NEUTRAL to negative. The compiler was already emitting a
+jump table from the compare chain; the lane's cost is the classifier
+WORK the disassembly pointed at (the dependent loads/stores of the
+walk state), not the chain shape. Reverted, never pushed. The
+structural verdict stands unchanged: only the block-mask member-cycle
+restructure (handing the state machine its next interesting lane
+across several tokens) moves this lane.
+
 ## #474 first slice: the strict columns walk on json-users/arm64 — the lanes are named
 
 One-route driver (/tmp/bench474.c, 200000 users, 31.5 MB — same
