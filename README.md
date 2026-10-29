@@ -61,10 +61,16 @@ shipped or dead — is recorded in `benchmarks/PERF-LEDGER.md`.
 | --- | --- |
 | `yeptris-ruby` | Psych-compatible FFI gem (no C extension) |
 | `yeptris-py` | PyYAML-compatible ctypes package |
+| `yeptris-rs` | Rust binding (crates.io; links `libyeptris`) |
+| `yeptris-ts` | TypeScript/WASM binding (npm; emcc build of the engine) |
 
-Bindings version in lockstep (`{c-semver}.{binding-patch}`); C
-releases tag from this repo's workflow, which also publishes the
-gem through the RubyGems trusted publisher.
+**A release is not a release until every runtime ships.** Every C
+release publishes ALL FOUR runtimes at the lockstep version — ruby
+(`{c-semver}.0` via the RubyGems trusted-publisher train), py
+(`{c-semver}.0` via the PyPI trusted publisher on the tag push), rs
+(the `yeptris` crate on crates.io via the release-plz trusted-
+publishing pipeline), and ts (`yeptris-wasm` on npm via the emcc
+build). A cut that lands the C tag alone is incomplete.
 
 Architecture: `PLAN.md`. FFI contract: `docs/FFI.md`. ABI pins:
 `docs/ABI.md`. Board: `TODO.md` (+ `TODO.impl/`, `TODO.restructure/`).
