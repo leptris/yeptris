@@ -640,10 +640,13 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
      * three explicit-key pairs with PLAIN followers; the r58 form only
      * rewrote the first quoted one, so libyaml's invariant reading of
      * the remaining pairs kept yeptris's plain keys on the table and
-     * the verify declined its own family). The byte-strict verify
-     * against libyaml's ORIGINAL dump arbitrates the widened gate: a
-     * mid-plain '?' ("[a?:b]") changes libyaml's own reading under the
-     * rewrite and declines. */
+     * the verify declined its own family). Round 85 adds the bare '?'
+     * AT a line/boundary end composing with the glued pairs: dropping
+     * it (the r71 spell) leaves a lone ',' entry that neither engine
+     * accepts, so the boundary form spells '"":' instead. The
+     * byte-strict verify against libyaml's ORIGINAL dump arbitrates
+     * the widened gate: a mid-plain '?' ("[a?:b]") changes libyaml's
+     * own reading under the rewrite and declines. */
     int depth = 0;
     int quote = 0;
     size_t hits = 0;
@@ -727,15 +730,31 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
             i += 2;
             continue;
         } else if (c == '?' && depth > 0) {
-            /* a BARE '?' ("?M-b%rM", the nightly's r71): libyaml's
-             * glued reading makes the follower the KEY with an empty
-             * value while yeptris reads one plain. The libyaml-
-             * preserving spell drops the '?' — a bare plain in a flow
-             * mapping IS that pair for both engines ("{M-b%rM}" reads
-             * (M-b%rM -> empty) on both sides; the ':'-closed form
-             * "M-b%rM:" dies on libyaml's ":," node-content law). The
-             * byte-strict verify against libyaml's ORIGINAL dump
-             * arbitrates. */
+            /* a BARE '?' with a GLUED follower ("?M-b%rM", the nightly's
+             * r71): libyaml's glued reading makes the follower the KEY
+             * with an empty value while yeptris reads one plain. The
+             * libyaml-preserving spell drops the '?' — a bare plain in a
+             * flow mapping IS that pair for both engines ("{M-b%rM}"
+             * reads (M-b%rM -> empty) on both sides; the ':'-closed form
+             * "M-b%rM:" dies on libyaml's ":," node-content law). */
+            if (i + 1 < size && data[i + 1] != ' ' && data[i + 1] != '\t' && data[i + 1] != '\n' &&
+                data[i + 1] != '\r' && data[i + 1] != ',' && data[i + 1] != ']' &&
+                data[i + 1] != '}') {
+                i++;
+                continue;
+            }
+            /* a BARE '?' at a line/boundary end (r85, crash-2bdccbe:
+             * "?,\n" composing with glued "?:" pairs): both engines
+             * already read the explicit empty-key pair — but DROPPING
+             * the '?' leaves a lone ',' whose entry neither engine
+             * accepts, so the composition verify dies before the glued
+             * pairs are even read. Spell the pair instead: '""' ':' is
+             * the same pair in the style-blind dumps (the KEY event's
+             * style never rides the YD event), and both engines accept
+             * '""' at a value position. */
+            sub[subn++] = '"';
+            sub[subn++] = '"';
+            sub[subn++] = ':';
             i++;
             continue;
         }
