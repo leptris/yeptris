@@ -1,6 +1,14 @@
 # test/ — Google Test binaries. One binary per suite directory as they grow
 # (unit, conformance, port, flow, fuzz, concurrency — TODO.impl/01/16/17/19).
 
+# Tests are validation, not payload: build them without interprocedural
+# optimization even when the libraries keep it. Under musl + GCC 15
+# (ruby:3.4-alpine as of 2026-10) the LTO final-link repartition collides
+# with Alpine's fortified always_inline vsnprintf — the lto-wrapper dies
+# mid-ltrans and the whole platform-gem release build fails with it. LTO
+# buys nothing for a test binary.
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION FALSE)
+
 
 find_package(GTest CONFIG QUIET)
 if(NOT GTest_FOUND)
