@@ -162,6 +162,12 @@ static int yep_colon_terminates(const char* p, size_t len, size_t colon, int flo
     if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
         return 1;
     }
+    /* a raw NEL/LS/PS is a break like LF (libyaml's IS_BLANKZ): the
+     * value-position separator arm the #833 dig pinned — the LF twin
+     * terminated while the PS spelling kept the colon in the plain */
+    if (yep_scan_mb_break_len(p, len, next) > 0) {
+        return 1;
+    }
     if (flow && yep_ct_is(c, YEP_CT_FLOW_IND)) {
         return 1;
     }
