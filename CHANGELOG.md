@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **#742: the bench matrix's CBOR tier tracks the decode-only SAX face** — a new `decode-only SAX MB/s (#742)` column rides the CBOR-vs-JSOn table: the same canonical corpus decoded through `yeptris_cbor_decode_sax` into a counting sink (nothing built — the scanner's own speed, the like-for-like answer to tinycbor's get_next loop), interleaved best-of beside the DOM decode row. Local quick run: 223-233 MB/s SAX vs 80-88 MB/s DOM decode on the tier's shapes (~2.7x, and past the tinycbor row's class) — the CI matrix now referees the decode-only campaign per platform.
+
 ### Fixed
 
 - **fuzz: the charset-split fold walk carries the raw-PS-as-content rendering (the nightly's round 86)** — crash-ef7ccbc5 (31 bytes: `&k:j:(<PS>\r\rT |U\n%- |V|r\n\n - 21\n`) is the anchor-charset split composing with the plain-LS/PS fold family at a NEW rendering: in the split residual libyaml keeps the PS raw AS CONTENT before the same escaped-fold newlines yeptris prints (`(<triple>\n\n` vs `(\n\n`), so the triple is ADDITIVE to the rendering — round 72's arm assumed it REPLACES one yeptris escape. The fold walk now consumes the additive triple alone when the renders then align byte-for-byte (and round 72's replacement form when they don't), scoped by a raw-triple scan on the split copy plus the walk's existing libyaml-invariance and full-tail-consumption legs. Engine untouched: the suite stays the conformance bar; the charset truncation and fold laws are the documented divergences. Seed `parse/anchor-charset-ps-crcr-additive.bin`. Gates: the crash carries, the 405-snapshot corpus + the r66/r85 family shapes + the prior catch seeds all replay clean under ASan (pure file-arg replay — the `-runs=0` dir walk started mutating on a single-file corpus), clang-format clean.
