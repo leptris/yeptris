@@ -1159,6 +1159,7 @@ int main(int argc, char** argv) {
     const char* out_dir = "bench-out";
     int full = 0;
     const char* one_shape = NULL; /* --shape NAME: DOM loop only (profiling) */
+    const char* one_emit = NULL;  /* --emit-shape NAME: serialize loop only (profiling) */
     unsigned long seed = 0xC0FFEE;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--full") == 0) {
@@ -1169,6 +1170,8 @@ int main(int argc, char** argv) {
             seed = (unsigned long)strtoul(argv[++i], NULL, 0);
         } else if (strcmp(argv[i], "--shape") == 0 && i + 1 < argc) {
             one_shape = argv[++i];
+        } else if (strcmp(argv[i], "--emit-shape") == 0 && i + 1 < argc) {
+            one_emit = argv[++i];
         } else {
             out_dir = argv[i];
         }
@@ -1256,6 +1259,21 @@ int main(int argc, char** argv) {
 #endif
         printf("kernels: %s\n", impl);
         g_kernels_line = std::string("kernels: ") + impl + "\n";
+    }
+
+    /* --emit-shape NAME: the serialize loop on the one corpus (~30s,
+     * sample target — the #352 emit kernel, one hot path per run) */
+    if (one_emit != NULL) {
+        for (const Corpus& c : corpora) {
+            if (c.name != one_emit) {
+                continue;
+            }
+            Result r = bench_emit(c, 400);
+            printf("%s: emit %.2f MB/s (%.2f ms)\n", c.name.c_str(), r.mb_s, r.ms);
+            return 0;
+        }
+        fprintf(stderr, "unknown shape: %s\n", one_emit);
+        return 2;
     }
 
     /* --shape NAME: DOM parse loop on the one corpus, ~30s (sample

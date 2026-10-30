@@ -3149,3 +3149,43 @@ The remaining #474 lever stays as the ledger named it: the multi-
 member block-mask restructure (vector ACROSS members, handing the
 state machine its next lane) + the +2468 classifier lane — a design
 change, not a probe swap.
+
+## 2026-10-30 — block-heavy emit profile: the plain-safety walk is the remaining #352 lever
+
+Sample (macOS M1, `bench_matrix --emit-shape block-heavy`, 400-iter serialize
+loop, 10s attach): top-of-stack = **yep_style_plain_safe ~35%** (1005/2801),
+emit_node 26%, memmove 11%, emit_scalar 9%. The block kernel is byte-copy
+bound only in the tail; the style chooser dominates.
+
+Where the walk runs (both routes verified in the sample's call graph):
+
+1. **The flat-map specialist** (emit_block_map's fused member write):
+   `yep_style_plain_key_safe(key) && yep_style_plain_safe(value)` per member
+   PER PASS (no memo by design — the sc_dec stream must stay aligned). This
+   is the direct emit_node->plain_safe edge (~480 samples).
+2. **sc_route** for short scalars (below YEP_SC_MEMO_MIN): derives plain-safety
+   in BOTH the dry and wet passes (~175 samples via sc_route).
+
+What the existing parse-time fact covers: `no_exotic` (#352 lane 2) skips
+only the `yep_scan_dq_forced` rescan in sc_route — NEL/LS/PS/BOM/nonchars,
+NOT the plain-safety adjacency rules (indicators, ": ", " #", blanks).
+
+THE NEXT SLICE (lane 3, designed here): a parse-time `plain_ok` fact bit.
+- The dnode bitfield byte is FULL (kind:2 style:3 flow:1 implicit:1
+  no_exotic:1) but the struct has 2 spare pad bytes — a second fact byte
+  is FREE at 48B/node.
+- The fact must be context-free: set when the value is BOTH value-plain-safe
+  AND key-plain-safe (min of the two verdicts), single-line, and no_exotic
+  (kills the BOM/break corners the adjacency rules share). One FUSED walk in
+  dom_set_value computes both verdicts in one pass over the bytes.
+- Emit consults it in the specialist (skip both walks) and in sc_route's
+  case-1 arms (plain_ok = fact, no walk). Long scalars keep the memo; short
+  scalars stop paying dry+wet.
+- Net: parse pays +1 fused scan per scalar; emit drops 2 scans per member on
+  map-shaped corpora (the 35% frame) — expected ~1.2-1.4x on the block emit
+  kernel, which is the 1.44x-vs-ryml gap on the serialbench table.
+- Gates: emit byte-parity across the full snapshot corpus + the 621-test
+  suite + the roundtrip fuzz families (the fact must be CONSERVATIVE: any
+  doubt = 0 = walk). The route-identity law applies — a specialist that
+  silently stops taking members would HIDE behind byte parity; count the
+  specialist entries A/B (the ledger's law #3 above).
