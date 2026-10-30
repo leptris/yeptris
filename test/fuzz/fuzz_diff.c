@@ -1722,9 +1722,15 @@ static int yd_charset_split_lf_composed_agrees(const char* sub, size_t o, const 
     char* ld3 = yd_libyaml_dump(lf, lo, &lok);
     /* libyaml's ORIGINAL reading keeps the raw PS bytes inside the
      * scalar where the LF-substituted copy renders the fold as a
-     * blank — the existing fold relation spans exactly that */
+     * blank — the existing fold relation spans exactly that. The r93
+     * composition ("&k:<PS> U\\:\":<PS>"): the PS rides as a BREAK in
+     * libyaml's reading (a separator, never value content), so the
+     * LF-substituted dump EQUALS the original's exactly and the fold
+     * walk finds no diffs — the fully-invariant case is the same
+     * carry (the divergence is the anchor-charset tokenization plus
+     * the PS-as-break normalization, both documented). */
     int ok = yd3 != NULL && yok && ld3 != NULL && lok && strcmp(yd3, ld3) == 0 &&
-             yd_dump_eq_mod_lsps_fold(ld3, ldump);
+             (strcmp(ld3, ldump) == 0 || yd_dump_eq_mod_lsps_fold(ld3, ldump));
     free(yd3);
     free(ld3);
     free(lf);
