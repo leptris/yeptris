@@ -1470,9 +1470,21 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
          * the PS a BLANK line and the fold a hard break — the dump
          * spells it \n — while libyaml's READ_LINE joins the PS raw as
          * content. (The dump escapes a real LF as \n; a literal
-         * backslash-n would ride as \\n, so the pair is unambiguous.) */
+         * backslash-n would ride as \\n, so the pair is unambiguous.)
+         * The r86 member (crash-ef7ccbc5, "&k:j:(<PS>\r\rT |U...", the
+         * anchor-split residual): libyaml keeps the triple raw AS
+         * CONTENT before the SAME escaped-fold rendering yeptris
+         * prints — the triple is ADDITIVE to the run (consume it
+         * alone when the renders then align), while round 72's shape
+         * REPLACES one yeptris escape (consume both). The caller's
+         * raw-triple check scopes both to the fold family. */
         int y_esc_lf = ydump[y] == '\\' && ydump[y + 1] == 'n';
         if (y_esc_lf && l_raw_ps) {
+            if (ldump[l + 3] == ydump[y]) {
+                l += 3;
+                diffs++;
+                continue;
+            }
             y += 2;
             l += 3;
             diffs++;
@@ -2111,16 +2123,31 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
          * anyway) -- exactly the charset-tokenization signature. */
         int ok3 = 0;
         char* ldump2 = yd_libyaml_dump(sub, o, &ok3);
+        /* the fold-walk leg requires a raw LS/PS triple in the split
+         * copy — its arms are the PS/LS family's dump relations (the
+         * r86 member included); without the scan the space-eating arm
+         * would scope to every charset split */
+        int sub_has_triple = 0;
+        for (size_t t = 0; t + 2 < o; t++) {
+            if ((unsigned char)sub[t] == 0xE2 && (unsigned char)sub[t + 1] == 0x80 &&
+                ((unsigned char)sub[t + 2] == 0xA8 || (unsigned char)sub[t + 2] == 0xA9)) {
+                sub_has_triple = 1;
+                break;
+            }
+        }
         if (ldump2 != NULL && ok3 && strcmp(ldump, ldump2) == 0 &&
             (strcmp(ydump2, ldump2) == 0 ||
              /* the split can ALSO leave the plain-LS/PS fold law on
               * the table (round 66: "&k:j:(<PS> UT\r|\r\n.V|" -- the
               * ':' split reconciles the anchor reading, and the PS
-              * inside the residual plain then folds in yeptris only);
-              * libyaml is byte-invariant under the split either way,
-              * so the composite signature is the charset law AND the
-              * fold law, both documented */
-             yd_dump_eq_mod_lsps_fold(ydump2, ldump2))) {
+              * inside the residual plain then folds in yeptris only;
+              * round 86 composes the same triple with CR CR so BOTH
+              * engines render the fold as escaped newlines and the
+              * difference is the one separating blank); libyaml is
+              * byte-invariant under the split either way, so the
+              * composite signature is the charset law AND the fold
+              * law, both documented */
+             (sub_has_triple && yd_dump_eq_mod_lsps_fold(ydump2, ldump2)))) {
             free(ldump2);
             free(ydump2);
             free(sub);
