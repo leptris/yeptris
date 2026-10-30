@@ -72,6 +72,16 @@ void yep_val_put(yep_value_ctx* c, const YeptrisValue* v) {
 void yep_val_slot(yep_value_ctx* c, YeptrisValue* v) {
     if (c->depth > 0 && c->depth <= YEP_V_MAX_DEPTH) {
         int di = c->depth - 1;
+        if (c->is_seq[di]) {
+            /* a sequence entry never takes a key slot — the toggle
+             * flagged every ODD-position entry is_key=1, and the
+             * marshal strict-dup scan then false-flagged arrays with a
+             * repeated value at two odd positions ("[\"a\",\"b\",\"a\"]"
+             * = "duplicate key in object"; yeptris-ruby#333, the
+             * yeptris#680 class resurfacing through the value
+             * stream's own parity) */
+            return;
+        }
         if (c->key_pend[di] == 0) {
             v->is_key = 1;
             c->key_pend[di] = 1;
@@ -169,6 +179,7 @@ static int transform(yep_value_ctx* c, const yep_rec_store* store) {
             yep_val_put(c, &v);
             if (c->depth < YEP_V_MAX_DEPTH) {
                 c->key_pend[c->depth] = 0;
+                c->is_seq[c->depth] = 1;
             }
             c->depth++;
             continue;
@@ -179,6 +190,7 @@ static int transform(yep_value_ctx* c, const yep_rec_store* store) {
             yep_val_put(c, &v);
             if (c->depth < YEP_V_MAX_DEPTH) {
                 c->key_pend[c->depth] = 0;
+                c->is_seq[c->depth] = 0;
             }
             c->depth++;
             continue;
@@ -285,6 +297,7 @@ static int lin_node(yep_value_ctx* c, const yep_dom* d, uint32_t id) {
     yep_val_put(c, &v);
     if (c->depth < YEP_V_MAX_DEPTH) {
         c->key_pend[c->depth] = 0;
+        c->is_seq[c->depth] = (n->kind == YEP_DOM_SEQUENCE);
     }
     c->depth++;
     if (lin_children(c, d, n) != 0) {

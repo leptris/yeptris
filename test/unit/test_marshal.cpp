@@ -283,6 +283,45 @@ TEST(MarshalNode, ExplicitTagsBail) {
     yeptris_document_free(doc);
 }
 
+TEST(Marshal, StrictDuplicateKeysSequenceEntriesNeverFlag) {
+    /* yeptris-ruby#333: the value stream's slot rule toggled the key
+     * parity for SEQUENCE entries too, so every odd-position array
+     * element carried is_key=1 and the strict-dup scan false-flagged
+     * arrays with a repeated value at two odd positions — a plain
+     * ["a","b","a"] answered "duplicate key in object" on valid JSON
+     * (the yeptris#680 class, through the marshal route's value
+     * stream). A sequence entry never takes a key slot; TRUE map
+     * duplicates keep raising. */
+    struct Row {
+        const char* y;
+        YeptrisStatus want;
+    };
+    const Row rows[] = {
+        {R"(["a", "b", "a"])", YEPTRIS_OK},
+        {R"({"k": ["x", "y", "x"]})", YEPTRIS_OK},
+        {R"([[1, 2, 1], [1, 2, 1]])", YEPTRIS_OK},
+        {R"([{"m": 1}, {"m": 2}])", YEPTRIS_OK},      /* same key, different maps */
+        {R"({"a": 1, "a": 2})", YEPTRIS_ERROR_PARSE}, /* true dup still raises */
+        {R"({"n": {"z": 1}, "m": {"z": 2}})", YEPTRIS_OK},
+    };
+    for (const Row& r : rows) {
+        size_t n = strlen(r.y);
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse_json(r.y, n, &st);
+        ASSERT_EQ(st, YEPTRIS_OK) << r.y;
+        char* out = nullptr;
+        size_t olen = 0;
+        EXPECT_EQ(yeptris_marshal_node_ex(yeptris_document_root(doc, 0),
+                                          YEPTRIS_MARSHAL_STRICT_DUP_KEYS, &out, &olen),
+                  r.want)
+            << r.y;
+        if (out != nullptr) {
+            yeptris_marshal_free(out);
+        }
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Marshal, StrictDuplicateKeysRaiseBeforeAnyBytes) {
     /* yeptris-ruby#278: the JSON fallback's strict route must raise on
      * duplicate keys exactly like the native materializer's rb_hash_aref
