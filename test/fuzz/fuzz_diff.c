@@ -1421,13 +1421,20 @@ static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* 
  * yeptris's triple plus spaces is libyaml's bare triple. Any mix of
  * the two rides one walk; at least one such site, full alignment
  * elsewhere. */
-static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
-    if (ydump == NULL || ldump == NULL) {
-        return 0;
-    }
-    int diffs = 0;
-    size_t y = 0;
-    size_t l = 0;
+/* The r86/r72 relation walk, depth-capped backtracking form. The
+ * additive arm (the triple rides as content before yeptris's own
+ * rendering) and the replacement arm (the triple replaces one
+ * yeptris escape) are BOTH legal renderings of the same break run —
+ * libyaml drops the fold-leading LF and keeps LS/PS raw (READ_LINE)
+ * while yeptris normalizes every break and folds n-1 — and which one
+ * aligns depends on where the run sits in the fold. The linear walk
+ * picked greedily and the r90 core ("&I:V\n<PS>\n+": libyaml renders
+ * the run <PS>\n, yeptris \n\n) starved on the additive arm's dead
+ * continuation — one escape stranded. Try the additive continuation
+ * first (the tighter scope) and backtrack to the replacement when it
+ * dies; diffs rides so the winning path's count gates the end. */
+static int yd_fold_walk(const char* ydump, size_t y, const char* ldump, size_t l, int depth,
+                        int diffs) {
     while (ydump[y] != '\0') {
         /* lb1/lb2 read only under the short-circuit: the \n arm walks
          * l FASTER than y, so ldump can terminate first — an
@@ -1520,10 +1527,9 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
          * raw-triple check scopes both to the fold family. */
         int y_esc_lf = ydump[y] == '\\' && ydump[y + 1] == 'n';
         if (y_esc_lf && l_raw_ps) {
-            if (ldump[l + 3] == ydump[y]) {
-                l += 3;
-                diffs++;
-                continue;
+            if (depth < 8 && ldump[l + 3] == ydump[y] &&
+                yd_fold_walk(ydump, y, ldump, l + 3, depth + 1, diffs + 1)) {
+                return 1;
             }
             y += 2;
             l += 3;
@@ -1533,6 +1539,13 @@ static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
         return 0;
     }
     return diffs > 0 && ldump[l] == '\0';
+}
+
+static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    return yd_fold_walk(ydump, 0, ldump, 0, 0, 0);
 }
 
 static int yd_plain_lsps_fold_divergence(const uint8_t* data, size_t size, const char* ydump,
