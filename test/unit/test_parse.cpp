@@ -6507,6 +6507,100 @@ TEST(Parse, PlainEndsAtDocumentMarkerAfterMultibyteBreak) {
     }
 }
 
+/* #818 (the nightly's r87/r88): a value-position anchor whose props gap
+ * crosses a raw NEL/LS/PS fed the break to the PLAIN reader — with a
+ * colon-quote key ("kek:\":") the whole value plain-read ("&a ? ..."
+ * as content) while the LF twin anchored the map. The following-lines
+ * loop did not model a break byte at its head as a line end; it now
+ * consumes it exactly like the BLANK branch consumes an LF-ended empty
+ * line, and e_at_eol counts the raw breaks like libyaml's IS_BREAK.
+ * The raw-break document must reproduce its LF twin EVENT FOR EVENT
+ * (positions included); the comparator's charset split still reconciles
+ * the anchor-NAME divergence (yeptris keeps ":" in names). */
+static std::vector<std::string> v818_events(const std::string& y) {
+    std::vector<std::string> out;
+    YeptrisRecorder rec = yeptris_recorder_new();
+    if (rec == nullptr) {
+        return out;
+    }
+    if (yeptris_recorder_feed(rec, y.data(), y.size(), 1) != YEPTRIS_OK) {
+        out.emplace_back("<feed-error>");
+        yeptris_recorder_free(rec);
+        return out;
+    }
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    (void)alen;
+    for (size_t i = 0; i < n; i++) {
+        const YeptrisEventRecord* r = &rs[i];
+        std::string s = std::to_string((int)r->type) + "/" + std::to_string(r->style) + "/" +
+                        std::to_string(r->flags) + "/&";
+        s.append(arena + r->anchor_off, r->anchor_len);
+        s += "/=";
+        s.append(arena + r->value_off, r->value_len);
+        s += "/" + std::to_string(r->line) + ":" + std::to_string(r->col) + "-" +
+             std::to_string(r->end_line) + ":" + std::to_string(r->end_col);
+        out.push_back(std::move(s));
+    }
+    yeptris_recorder_free(rec);
+    return out;
+}
+
+TEST(Parse, ValuePropsGapCrossesARawMultibyteBreak) {
+    const std::string ps = "\xe2\x80\xa9";
+    const std::string nel = "\xc2\x85";
+    const std::string lf = "\n";
+    struct Row {
+        std::string raw;
+        std::string lf;
+    };
+    /* the r74 marker twins, the r87 staircase row and its artifact, the
+     * r88 two-continuation minimal — each paired with its LF twin */
+    const Row twins[] = {
+        {"&k:\":(" + ps + "---", "&k:\":(" + lf + "---"},
+        {"kek:\": &a" + ps + " ? &--02:in~", "kek:\": &a" + lf + " ? &--02:in~"},
+        {"ke&&k:\": &---" + ps + " ? &--02:in~", "ke&&k:\": &---" + lf + " ? &--02:in~"},
+        {"&k:\": " + ps + " U\\" + ps + " U", "&k:\": " + lf + " U\\" + lf + " U"},
+    };
+    for (const Row& r : twins) {
+        std::vector<std::string> raw = v818_events(r.raw);
+        std::vector<std::string> unix = v818_events(r.lf);
+        ASSERT_FALSE(raw.empty()) << r.raw;
+        ASSERT_EQ(raw.size(), unix.size()) << r.raw;
+        for (size_t i = 0; i < raw.size(); i++) {
+            EXPECT_EQ(raw[i], unix[i]) << r.raw << " event " << i;
+        }
+    }
+    /* the staircase row's structure: the value-position anchor OPENS A
+     * MAP (two mapping starts — the outer pair and the anchored value) */
+    {
+        std::vector<std::string> ev = v818_events("kek:\": &a" + ps + " ? &--02:in~");
+        int maps = 0;
+        bool anchored_map = false;
+        for (const std::string& s : ev) {
+            if (s.rfind(std::to_string((int)YEPTRIS_EV_MAPPING_START) + "/", 0) == 0) {
+                maps++;
+                if (s.find("/&a/") != std::string::npos) {
+                    anchored_map = true;
+                }
+            }
+        }
+        EXPECT_EQ(maps, 2) << "the value anchor did not open a map";
+        EXPECT_TRUE(anchored_map);
+    }
+    /* NEL takes the same route (the break front-end is shared) */
+    {
+        std::vector<std::string> raw = v818_events("&k:\":(" + nel + "---");
+        std::vector<std::string> unix = v818_events("&k:\":(" + lf + "---");
+        ASSERT_EQ(raw.size(), unix.size());
+        for (size_t i = 0; i < raw.size(); i++) {
+            EXPECT_EQ(raw[i], unix[i]) << "NEL event " << i;
+        }
+    }
+}
+
 TEST(Parse, FlowEmptyKeyPairCompletesAcrossTheEntrySeparator) {
     struct Row {
         const char* y;

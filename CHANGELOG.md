@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **engine: the value-position props gap crosses a raw NEL/LS/PS like a line break (#818, the nightly's r87/r88)** — with a colon-quote key (`kek:": &a<PS> ? &--02:in~`) the value plain-read instead of anchoring: `e_props` returned at the anchor name, the gap's break byte was fed to the plain reader, and `&a ? ...` became one scalar where libyaml opens the anchored map. Two line-model gaps: `e_at_eol` knew only `\n`/`\r`/comment (libyaml: NEL/LS/PS are IS_BREAK), and `e_parse_value`'s following-lines loop did not treat a break byte at its head as a line end, so the props-only line re-entered `e_node` on the break (a depth-guard loop) unless the break was pre-consumed — which then made a `---` marker the scalar's VALUE. The loop head now consumes the raw break exactly as its BLANK branch consumes an LF-ended empty line. Pinned by `Parse.ValuePropsGapCrossesARawMultibyteBreak`: the r74 marker twins, the r87 staircase row and its artifact, and the r88 two-continuation minimal each reproduce their LF twin's event stream byte-for-byte (positions included), and the staircase value anchor opens a map. The anchor-NAME charset divergence (yeptris keeps `:` in names, libyaml stops at it) is unchanged and stays carried by the comparator's charset split.
+
 ## [0.6.51] - 2026-10-30
 
 ### Fixed
