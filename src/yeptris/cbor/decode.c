@@ -1032,3 +1032,25 @@ YEPTRIS_API YeptrisDocument yeptris_cbor_decode(const void* buf, size_t len, uin
     }
     return (YeptrisDocument)doc;
 }
+
+YEPTRIS_API YeptrisStatus yeptris_cbor_decode_sax(const void* buf, size_t len, uint32_t opts,
+                                                  const yeptris_cbor_sax* sax, size_t* consumed,
+                                                  YeptrisStatus* status) {
+    if ((buf == NULL && len != 0) || sax == NULL || (opts & ~YEPTRIS_CBOR_STRICT) != 0 ||
+        sax->text == NULL || sax->int_val == NULL || sax->float_val == NULL ||
+        sax->str_val == NULL || sax->bytes_val == NULL || sax->open == NULL || sax->close == NULL) {
+        if (status != NULL) {
+            *status = YEPTRIS_ERROR_ARG;
+        }
+        return YEPTRIS_ERROR_ARG;
+    }
+    /* yeptris_cbor_sax IS yep_cbor_sink (sink.h aliases the public
+     * face): the decoder drives the caller's vtable directly. */
+    YeptrisStatus st = (YeptrisStatus)yep_cbor_decode_gen((const unsigned char*)buf, len,
+                                                          (opts & YEPTRIS_CBOR_STRICT) != 0,
+                                                          consumed, (const yep_cbor_sink*)sax);
+    if (status != NULL) {
+        *status = st;
+    }
+    return st;
+}

@@ -53,6 +53,55 @@ extern "C" {
 YEPTRIS_API YeptrisDocument yeptris_cbor_decode(const void* buf, size_t len, uint32_t opts,
                                                 YeptrisStatus* status);
 
+/* The SAX decode face (#742): yeptris_cbor_decode's grammar driving
+ * consumer callbacks — items land as they parse, no document, no
+ * nodes. Measured (perf ledger 2026-10-29): the scan-only route reads
+ * ~2.1x the DOM entry on the same corpus (DOM construction is over
+ * half the decode lane), so validation, counting, and streaming
+ * transforms belong here. Items arrive in encoding order; map items
+ * set is_key on the key half. Strings with borrowed=1 point INTO buf —
+ * keep it valid while you hold them; borrowed=0 is decoder scratch.
+ * tag ("N N N", outermost first; NULL when none) and tag_len are
+ * callback-call-local. open's cap is the expected item count (maps
+ * count pairs*2; UINT64_MAX = indefinite); close fires for both the
+ * definite-complete and the break path, after the last child. The
+ * rendered text forms match the DOM ledger exactly (numbers-as-text,
+ * false/true/null/undefined, simple(N)).
+ *
+ * Every callback returns 0 on sink failure — the decode then reports
+ * YEPTRIS_ERROR_MEMORY — and may raise through host languages; the
+ * decoder owns no host state across them except the indefinite buffer,
+ * which its own exit paths free. All seven callbacks and sax itself
+ * must be non-NULL (YEPTRIS_ERROR_ARG otherwise): the loop dispatches
+ * unconditionally.
+ *
+ * consumed == NULL: trailing bytes after the one data item fail
+ * YEPTRIS_ERROR_PARSE. consumed != NULL: on success it receives the
+ * byte count of the items decoded — walk a CBOR Sequence (RFC 8742)
+ * by advancing buf by it. On failure *status (may be NULL) carries the
+ * code and yeptris_last_error() the message with the byte offset.
+ *
+ * Memory: none — the decoder allocates only its indefinite-chunk
+ * scratch and frees it on every exit. */
+typedef struct yeptris_cbor_sax {
+    void* ctx;
+    int (*text)(void* ctx, const char* s, uint32_t n, uint8_t tag_id, int is_key, const char* tag,
+                uint32_t tag_len);
+    int (*int_val)(void* ctx, int negative, uint64_t mag, int is_key, const char* tag,
+                   uint32_t tag_len);
+    int (*float_val)(void* ctx, double dv, int is_key, const char* tag, uint32_t tag_len);
+    int (*str_val)(void* ctx, const unsigned char* p, uint32_t n, int borrowed, int is_key,
+                   const char* tag, uint32_t tag_len);
+    int (*bytes_val)(void* ctx, const unsigned char* p, uint32_t n, int borrowed, int is_key,
+                     const char* tag, uint32_t tag_len);
+    int (*open)(void* ctx, int is_map, uint64_t cap, const char* tag, uint32_t tag_len);
+    int (*close)(void* ctx, int is_map);
+} yeptris_cbor_sax;
+
+YEPTRIS_API YeptrisStatus yeptris_cbor_decode_sax(const void* buf, size_t len, uint32_t opts,
+                                                  const yeptris_cbor_sax* sax, size_t* consumed,
+                                                  YeptrisStatus* status);
+
 /* CBOR Sequences (RFC 8742): top-level data items, concatenated —
  * no framing bytes. Iterates the buffer, one document per item; the
  * callback OWNS each item (free it with yeptris_document_free) and

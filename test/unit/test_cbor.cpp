@@ -1041,4 +1041,234 @@ TEST(CborSeq, EncodeSequence) {
     }
 }
 
+// ---- SAX face (#742): the decode-only entry --------------------------
+
+struct SaxLog {
+    int text_n = 0, int_n = 0, float_n = 0, str_n = 0, bytes_n = 0, open_n = 0, close_n = 0;
+    int fail_at = -1; // the callback ordinal that returns 0 (sink failure)
+    int calls = 0;
+    std::vector<std::string> log;
+
+    void ev(std::string s) {
+        if (fail_at == calls++) {
+            s = "FAIL";
+        }
+        log.push_back(std::move(s));
+    }
+};
+
+extern "C" {
+static int sax_text(void* ctx, const char* s, uint32_t n, uint8_t, int is_key, const char* tag,
+                    uint32_t tag_len) {
+    SaxLog* l = (SaxLog*)ctx;
+    l->text_n++;
+    l->ev("text(" + std::string(s, n) + (is_key ? ",key" : "") + ")" +
+          (tag ? "tag" + std::string(tag, tag_len) : ""));
+    return l->fail_at != l->calls - 1;
+}
+static int sax_int(void* ctx, int negative, uint64_t mag, int is_key, const char* tag,
+                   uint32_t tag_len) {
+    SaxLog* l = (SaxLog*)ctx;
+    l->int_n++;
+    l->ev((negative ? "-" : "") + std::to_string(mag) + (is_key ? ",key" : "") +
+          (tag ? "tag" + std::string(tag, tag_len) : ""));
+    return l->fail_at != l->calls - 1;
+}
+static int sax_float(void* ctx, double dv, int, const char*, uint32_t) {
+    SaxLog* l = (SaxLog*)ctx;
+    l->float_n++;
+    l->ev("f" + std::to_string(dv));
+    return l->fail_at != l->calls - 1;
+}
+static int sax_str(void* ctx, const unsigned char* p, uint32_t n, int borrowed, int is_key,
+                   const char*, uint32_t) {
+    SaxLog* l = (SaxLog*)ctx;
+    l->str_n++;
+    l->ev("s(" + std::string((const char*)p, n) + (borrowed ? ",borrow" : ",copy") +
+          (is_key ? ",key" : "") + ")");
+    return l->fail_at != l->calls - 1;
+}
+static int sax_bytes(void* ctx, const unsigned char* p, uint32_t n, int borrowed, int, const char*,
+                     uint32_t) {
+    SaxLog* l = (SaxLog*)ctx;
+    l->bytes_n++;
+    l->ev("b(" + std::string((const char*)p, n) + (borrowed ? ",borrow" : ",copy") + ")");
+    return l->fail_at != l->calls - 1;
+}
+static int sax_open(void* ctx, int is_map, uint64_t cap, const char* tag, uint32_t tag_len) {
+    SaxLog* l = (SaxLog*)ctx;
+    l->open_n++;
+    std::string caps = cap == UINT64_MAX ? "indef" : std::to_string(cap);
+    l->ev(std::string(is_map ? "map" : "arr") + "<" + caps + ">" +
+          (tag ? "tag" + std::string(tag, tag_len) : ""));
+    return l->fail_at != l->calls - 1;
+}
+static int sax_close(void* ctx, int is_map) {
+    SaxLog* l = (SaxLog*)ctx;
+    l->close_n++;
+    l->ev(is_map ? "/map" : "/arr");
+    return l->fail_at != l->calls - 1;
+}
+} // extern "C"
+
+static yeptris_cbor_sax sax_of(SaxLog* l) {
+    yeptris_cbor_sax s;
+    s.ctx = l;
+    s.text = sax_text;
+    s.int_val = sax_int;
+    s.float_val = sax_float;
+    s.str_val = sax_str;
+    s.bytes_val = sax_bytes;
+    s.open = sax_open;
+    s.close = sax_close;
+    return s;
+}
+
+TEST(CborSax, MixedMapCarriesEveryCallbackShape) {
+    // {"a": 1, "b": 2.5, "c": "x", "d": h'01', "e": true}
+    auto bytes = hx("a56161016162fb400400000000000061636178616441016165f5");
+    SaxLog l;
+    yeptris_cbor_sax s = sax_of(&l);
+    size_t consumed = 0;
+    YeptrisStatus st = YEPTRIS_OK;
+    ASSERT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, &s, &consumed, &st),
+              YEPTRIS_OK);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    EXPECT_EQ(consumed, bytes.size());
+    EXPECT_EQ(l.open_n, 1);
+    EXPECT_EQ(l.close_n, 1);
+    EXPECT_EQ(l.int_n, 1);
+    EXPECT_EQ(l.float_n, 1);
+    EXPECT_EQ(l.str_n, 6); // five keys + "x"
+    EXPECT_EQ(l.bytes_n, 1);
+    EXPECT_EQ(l.text_n, 1); // true renders as text
+    ASSERT_EQ(l.log.size(), 12u);
+    EXPECT_EQ(l.log[0], "map<10>"); // 5 pairs * 2
+    EXPECT_EQ(l.log[1], "s(a,borrow,key)");
+    EXPECT_EQ(l.log[2], "1");
+    EXPECT_EQ(l.log[3], "s(b,borrow,key)");
+    EXPECT_EQ(l.log[4], "f2.500000");
+    EXPECT_EQ(l.log[11], "/map");
+}
+
+TEST(CborSax, TagChainAndNestedContainers) {
+    // [[1, 2], 3(tag 1)]
+    auto bytes = hx("82820102c103");
+    SaxLog l;
+    yeptris_cbor_sax s = sax_of(&l);
+    YeptrisStatus st = YEPTRIS_OK;
+    ASSERT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, &s, nullptr, &st), YEPTRIS_OK);
+    ASSERT_EQ(l.log.size(), 7u);
+    EXPECT_EQ(l.log[0], "arr<2>");
+    EXPECT_EQ(l.log[1], "arr<2>");
+    EXPECT_EQ(l.log[2], "1");
+    EXPECT_EQ(l.log[3], "2");
+    EXPECT_EQ(l.log[4], "/arr");
+    EXPECT_EQ(l.log[5], "3tag1"); // the tag chain rides the scalar callback
+    EXPECT_EQ(l.log[6], "/arr");
+}
+
+TEST(CborSax, IndefiniteStringConcatenatesIntoOneCallback) {
+    // (_ "st" "rea" "m") -> one str callback, borrowed=0 (decoder scratch)
+    auto bytes = hx("7f62737463726561616dff");
+    SaxLog l;
+    yeptris_cbor_sax s = sax_of(&l);
+    YeptrisStatus st = YEPTRIS_OK;
+    ASSERT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, &s, nullptr, &st), YEPTRIS_OK);
+    ASSERT_EQ(l.log.size(), 1u);
+    EXPECT_EQ(l.log[0], "s(stream,copy)");
+}
+
+TEST(CborSax, IndefiniteContainerCapIsMax) {
+    auto bytes = hx("9f0102ff");
+    SaxLog l;
+    yeptris_cbor_sax s = sax_of(&l);
+    YeptrisStatus st = YEPTRIS_OK;
+    ASSERT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, &s, nullptr, &st), YEPTRIS_OK);
+    ASSERT_EQ(l.log.size(), 4u);
+    EXPECT_EQ(l.log[0], "arr<indef>");
+    EXPECT_EQ(l.log[3], "/arr");
+}
+
+TEST(CborSax, ConsumedWalksAnRfc8742Sequence) {
+    // 01 02 — two items; consumed==NULL rejects trailing bytes
+    auto bytes = hx("0102");
+    SaxLog l;
+    yeptris_cbor_sax s = sax_of(&l);
+    YeptrisStatus st = YEPTRIS_OK;
+    EXPECT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, &s, nullptr, &st),
+              YEPTRIS_ERROR_PARSE);
+    size_t consumed = 0;
+    l = SaxLog(); // the trailing-bytes attempt above still delivered item 01
+    ASSERT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, &s, &consumed, &st),
+              YEPTRIS_OK);
+    EXPECT_EQ(consumed, 1u);
+    EXPECT_EQ(l.int_n, 1);
+    // advance: the second item
+    ASSERT_EQ(yeptris_cbor_decode_sax(bytes.data() + consumed, bytes.size() - consumed, 0, &s,
+                                      &consumed, &st),
+              YEPTRIS_OK);
+    EXPECT_EQ(consumed, 1u);
+    EXPECT_EQ(l.int_n, 2);
+}
+
+TEST(CborSax, EmptyBufferIsTruncatedNotOk) {
+    SaxLog l;
+    yeptris_cbor_sax s = sax_of(&l);
+    YeptrisStatus st = YEPTRIS_OK;
+    EXPECT_EQ(yeptris_cbor_decode_sax(nullptr, 0, 0, &s, nullptr, &st), YEPTRIS_ERROR_PARSE);
+    EXPECT_TRUE(l.log.empty());
+}
+
+TEST(CborSax, SinkFailureReportsMemory) {
+    SaxLog l;
+    yeptris_cbor_sax s = sax_of(&l);
+    auto bytes = hx("01");
+    YeptrisStatus st = YEPTRIS_OK;
+    l.fail_at = 0; // the scalar callback refuses
+    EXPECT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, &s, nullptr, &st),
+              YEPTRIS_ERROR_MEMORY);
+    // a container open refusing takes the same exit
+    l = SaxLog();
+    l.fail_at = 0;
+    auto arr = hx("820102");
+    EXPECT_EQ(yeptris_cbor_decode_sax(arr.data(), arr.size(), 0, &s, nullptr, &st),
+              YEPTRIS_ERROR_MEMORY);
+}
+
+TEST(CborSax, ArgContract) {
+    auto bytes = hx("01");
+    SaxLog l;
+    yeptris_cbor_sax s = sax_of(&l);
+    YeptrisStatus st = YEPTRIS_OK;
+    EXPECT_EQ(yeptris_cbor_decode_sax(nullptr, 3, 0, &s, nullptr, &st), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, nullptr, nullptr, &st),
+              YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0xF0, &s, nullptr, &st),
+              YEPTRIS_ERROR_ARG);
+    // every callback is required — the loop dispatches unconditionally
+    for (int slot = 0; slot < 7; slot++) {
+        yeptris_cbor_sax broken = s;
+        void* nullp = nullptr;
+        memcpy((char*)&broken + sizeof(void*) * (slot + 1), &nullp, sizeof(void*));
+        EXPECT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, &broken, nullptr, &st),
+                  YEPTRIS_ERROR_ARG);
+    }
+    EXPECT_EQ(st, YEPTRIS_ERROR_ARG);
+}
+
+TEST(CborSax, StrictFlagRidesOpts) {
+    // non-minimal argument: lenient ok, strict rejects (YEPTRIS_CBOR_STRICT)
+    auto bytes = hx("1801");
+    SaxLog l;
+    yeptris_cbor_sax s = sax_of(&l);
+    YeptrisStatus st = YEPTRIS_OK;
+    ASSERT_EQ(yeptris_cbor_decode_sax(bytes.data(), bytes.size(), 0, &s, nullptr, &st), YEPTRIS_OK);
+    SaxLog l2;
+    yeptris_cbor_sax s2 = sax_of(&l2);
+    EXPECT_EQ(
+        yeptris_cbor_decode_sax(bytes.data(), bytes.size(), YEPTRIS_CBOR_STRICT, &s2, nullptr, &st),
+        YEPTRIS_ERROR_PARSE);
+}
+
 } // namespace
