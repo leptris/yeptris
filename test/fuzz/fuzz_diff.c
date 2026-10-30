@@ -286,6 +286,25 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             }
             continue;
         }
+        /* the r92 empty-key twin ("[?::J]", the nightly's round 92,
+         * crash-cb23301ec): after the explicit-'?' key opens EMPTY,
+         * libyaml consumes the ':' separator AND the plain value's
+         * leading ':' and renders {empty: J} — while the suite's law
+         * (the HM87 class: "[?x]" is the scalar "?x") keeps the whole
+         * '?::J' as ONE plain. The wrapper folds onto yeptris's flat
+         * line spelled with the '?::' prefix: libyaml's key line is
+         * exactly empty and its value line is the '?'+'::'-stripped
+         * tail. */
+        if (lens[i] == 4 && strncmp(lines[i], "+MAP", 4) == 0 && i + 3 < n && lens[i + 1] == 7 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && lens[i + 2] >= 7 &&
+            strncmp(lines[i + 2], "=VAL : ", 7) == 0 && lens[i + 3] == 4 &&
+            strncmp(lines[i + 3], "-MAP", 4) == 0 && ylens[j] == 10 + (lens[i + 2] - 7) &&
+            strncmp(ylines[j], "=VAL : ?::", 10) == 0 &&
+            memcmp(ylines[j] + 10, lines[i + 2] + 7, lens[i + 2] - 7) == 0) {
+            i += 3;
+            j++;
+            continue;
+        }
         /* the key-line twin inside a bigger map: yeptris's value
          * carries the leading '?' libyaml consumed — including the
          * EMPTY key ("{?:\n}" -> libyaml key "", yeptris key "?";
