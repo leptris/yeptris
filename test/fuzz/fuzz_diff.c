@@ -44,7 +44,11 @@ static const char* probe_id = NULL;
  * both engines' dumps of the removal must equal libyaml's original. */
 static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const char* ydump,
                                         const char* ldump) {
-    if (ydump == NULL || ldump == NULL || size < 6 || size > 8192) {
+    /* the 3-byte BOM + one follower byte is a legal member (the
+     * nightly's r90 minimizer: "\n<BOM>-" -- libyaml drops the
+     * line-start BOM and reads '-' as a seq entry, yeptris keeps the
+     * BOM as plain content) */
+    if (ydump == NULL || ldump == NULL || size < 4 || size > 8192) {
         return 0;
     }
     int feature = 0;
