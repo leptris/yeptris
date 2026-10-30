@@ -907,11 +907,46 @@ struct CborTier {
     double enc_ratio;
     double size_ratio; /* cbor bytes / json bytes */
     double dec_mb, enc_mb;
+    double sax_mb; /* the decode-only face (#742): items land in a counting sink, no DOM */
     size_t json_len, cbor_len;
 };
 
+/* the counting sink behind the decode-only row: nothing is built, so
+ * the number is the scanner's own speed (the like-for-like answer to
+ * tinycbor's get_next loop) */
+struct CborCountSink {
+    size_t n;
+};
+extern "C" {
+static int cbor_count_text(void* ctx, const char*, uint32_t, uint8_t, int, const char*, uint32_t) {
+    ((CborCountSink*)ctx)->n++;
+    return 1;
+}
+static int cbor_count_int(void* ctx, int, uint64_t, int, const char*, uint32_t) {
+    ((CborCountSink*)ctx)->n++;
+    return 1;
+}
+static int cbor_count_float(void* ctx, double, int, const char*, uint32_t) {
+    ((CborCountSink*)ctx)->n++;
+    return 1;
+}
+static int cbor_count_str(void* ctx, const unsigned char*, uint32_t, int, int, const char*,
+                          uint32_t) {
+    ((CborCountSink*)ctx)->n++;
+    return 1;
+}
+static int cbor_count_open(void* ctx, int, uint64_t, const char*, uint32_t) {
+    ((CborCountSink*)ctx)->n++;
+    return 1;
+}
+static int cbor_count_close(void* ctx, int) {
+    ((CborCountSink*)ctx)->n++;
+    return 1;
+}
+}
+
 CborTier cbor_vs_json(const Corpus& c, int rounds) {
-    CborTier t = {0, 0, 0, 0, 0, 0, 0};
+    CborTier t = {0, 0, 0, 0, 0, 0, 0, 0};
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument seed = yeptris_parse_json(c.data.data(), c.data.size(), &st);
     if (seed == NULL || st != YEPTRIS_OK) {
@@ -933,7 +968,7 @@ CborTier cbor_vs_json(const Corpus& c, int rounds) {
         free(cbor);
         return t;
     }
-    double best_jp = 1e9, best_cd = 1e9, best_je = 1e9, best_ce = 1e9;
+    double best_jp = 1e9, best_cd = 1e9, best_je = 1e9, best_ce = 1e9, best_sax = 1e9;
     double mb_c = (double)clen / (1024.0 * 1024.0);
     for (int i = 0; i < rounds; i++) {
         auto a0 = clk::now();
@@ -951,6 +986,32 @@ CborTier cbor_vs_json(const Corpus& c, int rounds) {
         double cd = ms_of(b0, b1);
         if (cd < best_cd)
             best_cd = cd;
+
+        CborCountSink cs{0};
+        yeptris_cbor_sax sax;
+        sax.ctx = &cs;
+        sax.text = cbor_count_text;
+        sax.int_val = cbor_count_int;
+        sax.float_val = cbor_count_float;
+        sax.str_val = cbor_count_str;
+        sax.bytes_val = cbor_count_str;
+        sax.open = cbor_count_open;
+        sax.close = cbor_count_close;
+        auto s0 = clk::now();
+        size_t used = 0;
+        const unsigned char* sp = cbor;
+        size_t left = clen;
+        while (left > 0) {
+            if (yeptris_cbor_decode_sax(sp, left, 0, &sax, &used, &st) != YEPTRIS_OK) {
+                break;
+            }
+            sp += used;
+            left -= used;
+        }
+        auto s1 = clk::now();
+        double sx = ms_of(s0, s1);
+        if (sx < best_sax)
+            best_sax = sx;
 
         size_t jlen = 0;
         auto e0 = clk::now();
@@ -979,6 +1040,7 @@ CborTier cbor_vs_json(const Corpus& c, int rounds) {
     t.size_ratio = (double)clen / (double)c.data.size();
     t.dec_mb = best_cd < 1e9 ? mb_c * 1000.0 / best_cd : 0;
     t.enc_mb = best_ce < 1e9 ? mb_c * 1000.0 / best_ce : 0;
+    t.sax_mb = best_sax < 1e9 ? mb_c * 1000.0 / best_sax : 0;
     t.json_len = c.data.size();
     t.cbor_len = clen;
     return t;
@@ -1295,8 +1357,8 @@ int main(int argc, char** argv) {
     /* The JSON-field referee (TODO.restructure/81; the tape leg is 85). */
     printf("\n# CBOR vs JSON on the same DOM (TODO.cbor/07, canonical, best-of)\n\n"
            "| shape | decode vs JSON parse | encode vs JSON emit | cbor/json size | CBOR decode "
-           "MB/s |\n"
-           "|---|---|---|---|---|\n");
+           "MB/s | decode-only SAX MB/s (#742) |\n"
+           "|---|---|---|---|---|---|\n");
     for (const Corpus& c : corpora) {
         if (c.name != "json-doc" && c.name != "flow-single" && c.name != "scalar-heavy") {
             continue; /* the tier rides JSON-class shapes */
@@ -1305,8 +1367,8 @@ int main(int argc, char** argv) {
         if (t.cbor_len == 0) {
             continue;
         }
-        printf("| %s | %.2fx | %.2fx | %.2f | %.1f |\n", c.name.c_str(), t.dec_ratio, t.enc_ratio,
-               t.size_ratio, t.dec_mb);
+        printf("| %s | %.2fx | %.2fx | %.2f | %.1f | %.1f |\n", c.name.c_str(), t.dec_ratio,
+               t.enc_ratio, t.size_ratio, t.dec_mb, t.sax_mb);
     }
     printf("\n# head-to-head vs simdjson DOM (JSON shapes, interleaved, median of rounds)\n\n"
            "| route | MB/s | vs simdjson |\n|---|---|---|\n");
