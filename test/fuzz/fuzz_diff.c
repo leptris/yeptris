@@ -630,6 +630,14 @@ static int yd_anchor_glued_follower_divergence(const uint8_t* data, size_t size,
     return known;
 }
 
+/* A byte that may follow a flow plain's leading '-': ns-plain-safe in
+ * flow (the strict-1.2 rule yeptris enforces; libyaml accepts a bare
+ * dash value regardless). */
+static int yd_qc_dash_plain_safe(unsigned char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' ||
+           c == '-' || c == '.' || c == '/' || c == ' ' || c == '\t';
+}
+
 static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
                                               const char* ldump) {
     if (ydump == NULL || ldump == NULL || size < 5 || size > 8192) {
@@ -728,6 +736,34 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
             sub[subn++] = ':';
             sub[subn++] = ' ';
             i += 2;
+            /* a dash-led value the strict flow plain rejects (the
+             * nightly's r89, crash-f3268315: "?:-," -- '-' needs a
+             * ns-plain-safe follower in flow, so yeptris errors on
+             * the '"" : -' spell while libyaml reads the bare-dash
+             * value): quote the value run instead -- the style-blind
+             * dump reads the same scalar. The run scan declines on a
+             * quote or escape (the byte-strict verify would refuse
+             * the rewrite anyway). */
+            if (i < size && data[i] == '-' &&
+                (i + 1 >= size || !yd_qc_dash_plain_safe(data[i + 1]))) {
+                size_t vs = i;
+                int okrun = 1;
+                while (vs < size && data[vs] != ',' && data[vs] != '}' && data[vs] != ']' &&
+                       data[vs] != '\n' && data[vs] != '\r') {
+                    if (data[vs] == '"' || data[vs] == '\\') {
+                        okrun = 0;
+                        break;
+                    }
+                    vs++;
+                }
+                if (okrun) {
+                    sub[subn++] = '"';
+                    while (i < vs) {
+                        sub[subn++] = (char)data[i++];
+                    }
+                    sub[subn++] = '"';
+                }
+            }
             continue;
         } else if (c == '?' && depth > 0) {
             /* a BARE '?' with a GLUED follower ("?M-b%rM", the nightly's
