@@ -142,14 +142,16 @@ static yep_sview dom_str_in(yep_dom* d, const yep_view* v, int borrowed) {
  * given metadata; tag/anchor views encode through dom_str_in (tags and
  * event-path anchors copy to the arena; input-backed views borrow).
  * tag_id stays 0 — the caller resolves (scalars) or leaves 0. */
-/* Value assign + the emit-side fact bit (issue #352 lane 2): the bit
- * is "verified clean" of the dq-forced byte set — the serializer's
- * sc_route then skips its per-derive rescan. The scan is the SSOT
- * predicate (yep_scan_dq_forced); every value assignment routes
+/* Value assign + the emit-side fact bits (issues #352 lanes 2-3):
+ * no_exotic is "verified clean" of the dq-forced byte set (sc_route
+ * skips its rescan); plain_ok is the full plain-safety verdict (the
+ * emitter skips its walk — the block kernel's 35% frame). Both facts
+ * ride the scan/'s SSOT predicates; every value assignment routes
  * through here so no path can leave a dirty scalar marked clean. */
 static void dom_set_value(yep_dom* d, uint32_t id, const yep_view* v, int borrowed) {
     d->nodes[id].value = dom_str_in(d, v, borrowed);
     d->nodes[id].no_exotic = !yep_scan_dq_forced(v->p, v->len);
+    d->nodes[id].plain_ok = (uint8_t)yep_scan_plain_safe(v->p, v->len);
 }
 
 uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_view* anchor,

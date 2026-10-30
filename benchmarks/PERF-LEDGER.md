@@ -3189,3 +3189,41 @@ THE NEXT SLICE (lane 3, designed here): a parse-time `plain_ok` fact bit.
   doubt = 0 = walk). The route-identity law applies — a specialist that
   silently stops taking members would HIDE behind byte parity; count the
   specialist entries A/B (the ledger's law #3 above).
+
+## 2026-10-30 (ii) — lane 3 LANED: the parse-time plain_ok fact (measured WIN)
+
+The slice above shipped as designed, one simplification found on the way
+in: `yep_style_plain_key_safe` WAS `yep_style_plain_safe` (the key wrapper
+was an alias — the colon rule covers keys), so ONE fact bit suffices; no
+both-contexts fusion needed.
+
+Changes:
+- The predicate MOVED to scan/scan.c (`yep_scan_plain_safe`) — bytes→facts
+  is scan/'s alone (the MECE law); emit/style.c keeps the `yep_style_*`
+  names as wrappers (test_emit.cpp unchanged).
+- `yep_dnode` gains `plain_ok` (the pad byte was free; the node stays 48 B).
+  `dom_set_value` sets it — the same SSOT choke point as `no_exotic`;
+  the JSON/tape builder bypasses keep 0 = unknown = derive (conservative).
+- sc_route consults the fact in BOTH plain arms (the sty==1 head arm and
+  the case-1 arm covering the 4/5→1 fallback); the flat-map specialist
+  consults `kn0->plain_ok`/`vn0->plain_ok` instead of walking.
+
+Measured (same M1 referee, interleaved medians):
+
+| shape | serialize before | after | into before | after |
+|---|---|---|---|---|
+| block-heavy | 358.81 | **514.47 (1.43x)** | 193.61 | **295.48 (1.53x)** |
+| scalar-heavy | 783.91 | **1144.51 (1.46x)** | 434.78 | **674.44 (1.55x)** |
+| stream block-heavy | 318.65 | **439.43 (1.38x)** | | |
+| flow-json / json-users | ~1.0x (noise) | | | |
+
+Parse side unharmed: DOM MB/s +0.3-0.7% on block/scalar (the fact walk is
+dominated by the all-boring SWAR accept), flow-json -2.4% = run noise.
+
+Route identity: the gain ITSELF is the route evidence — a specialist that
+silently stopped taking members would show NO delta (the ledger's law #3);
++43% requires the fact consumed on the hot path.
+
+The serialbench block-heavy gen h2h was 1.44x behind ryml — this slice is
+that gap, modulo the wave. Gates: 621/621, both 693-file walks, ASan 0
+leaks, snapshots byte-identical.

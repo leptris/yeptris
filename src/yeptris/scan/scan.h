@@ -104,6 +104,15 @@ size_t yep_scan_prop_end(const char* p, size_t len, size_t pos);
  * AND the DOM's parse-time fact bit, so the two cannot drift. */
 int yep_scan_dq_forced(const char* p, uint32_t len);
 
+/* The plain-safety truth table (issue #352 lane 3): 1 when the span
+ * re-parses as a plain scalar in BLOCK context (value or key — the
+ * key wrapper is the same predicate; the colon rule covers keys).
+ * The bytes→facts home: the emitter's style chooser AND the DOM's
+ * parse-time fact bit read this one walk, so the verdicts cannot
+ * drift. Multibyte-aware (raw NEL/LS/PS reject; a leading U+FEFF
+ * rejects; mid-token BOMs ride). */
+int yep_scan_plain_safe(const char* p, uint32_t len);
+
 /* Tag-shorthand suffix byte: libyaml's URI set (";/?:@&=+$,_.!~*'()%"
  * plus alphanumerics; flow indicators and ',' terminate instead).
  * Stray non-set bytes stay visible as the props follower, which

@@ -487,10 +487,11 @@ enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL, Y
  * a key whose content demotes to DQ re-parses as a QUOTED key and must
  * ride simple, or round two's render differs (the nightly's round 118). */
 static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in,
-                        int has_tag, int no_exotic) {
-    /* the parse-time fact bit (#352 lane 2): a dnode verified clean of
-     * the dq-forced set skips the rescan — 0 (mutation-built or JSON
-     * classes) keeps the scan */
+                        int has_tag, int no_exotic, int plain_fact) {
+    /* the parse-time fact bits (#352 lanes 2-3): a dnode verified clean
+     * of the dq-forced set skips that rescan, and a verified plain-safe
+     * span skips the safety walk — 0 (mutation-built or JSON classes)
+     * keeps the derive */
     if (!no_exotic && yep_scan_dq_forced(p, len)) {
         return YEP_SC_DQ;
     }
@@ -535,7 +536,10 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
     int plain_ok = 0;
     int plain_checked = 0;
     if ((sty_in == 1) && len > 0) {
-        plain_ok = as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len);
+        plain_ok = plain_fact;
+        if (!plain_ok) {
+            plain_ok = as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len);
+        }
         plain_checked = 1;
         if (plain_ok) {
             return YEP_SC_PLAIN; /* plain-safe implies no breaks: memchr skipped */
@@ -594,7 +598,10 @@ static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, 
             return as_key ? YEP_SC_DQ : YEP_SC_NOTHING;
         }
         if (!plain_checked) {
-            plain_ok = as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len);
+            plain_ok = plain_fact;
+            if (!plain_ok) {
+                plain_ok = as_key ? yep_style_plain_key_safe(p, len) : yep_style_plain_safe(p, len);
+            }
             plain_checked = 1;
         }
         if (plain_ok) {
@@ -635,14 +642,15 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
      * memoized long scalars, in visit order either way. */
     if (w->sc_dec != NULL && len >= YEP_SC_MEMO_MIN) {
         if (w->dry) {
-            route = sc_route(w, p, len, as_key, n->style, n->tag.len > 0, n->no_exotic);
+            route =
+                sc_route(w, p, len, as_key, n->style, n->tag.len > 0, n->no_exotic, n->plain_ok);
             w->sc_dec[w->sc_i] = route;
         } else {
             route = w->sc_dec[w->sc_i];
         }
         w->sc_i++;
     } else {
-        route = sc_route(w, p, len, as_key, n->style, n->tag.len > 0, n->no_exotic);
+        route = sc_route(w, p, len, as_key, n->style, n->tag.len > 0, n->no_exotic, n->plain_ok);
     }
     switch (route) {
     case YEP_SC_NOTHING:
@@ -1120,9 +1128,8 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             vn0->count == 0) {
             yep_view kv = wv(w, kn0->value);
             yep_view vv = wv(w, vn0->value);
-            if (kv.len > 0 && !key_written_over_limit(w, kn0) &&
-                yep_style_plain_key_safe((const char*)kv.p, kv.len) &&
-                (vv.len == 0 || yep_style_plain_safe((const char*)vv.p, vv.len))) {
+            if (kv.len > 0 && !key_written_over_limit(w, kn0) && kn0->plain_ok &&
+                (vv.len == 0 || vn0->plain_ok)) {
                 /* fused member write: plain-safe spans carry no breaks,
                  * so the col scan is arithmetic and one reservation
                  * covers the whole member (line + key + ':' + value) */

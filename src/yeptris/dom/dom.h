@@ -68,6 +68,12 @@ typedef struct yep_dnode {
                             * byte set (#352 lane 2): the serializer's
                             * sc_route skips its rescan. Set at every
                             * value assignment; 0 = unknown = scan. */
+    uint8_t plain_ok;      /* value bytes verified yep_scan_plain_safe
+                            * (#352 lane 3): the emitter skips its
+                            * plain-safety walk (the block kernel's 35%
+                            * frame). Same invariant as no_exotic: set
+                            * at every dom_set_value; 0 = unknown =
+                            * derive. */
     uint8_t tag_id;        /* resolved tag (resolve/resolver.h) */
     uint32_t first_child;  /* child link (mappings: key,value,key,value…) */
     uint32_t last_child;
