@@ -3098,3 +3098,54 @@ built binaries only, never cross-time comparisons (an earlier 282 vs
 Traps: the writer's fields initialize per entry — a new yep_writer
 field MUST be zeroed at every em.w init site or stack garbage arms it
 (the first round's Mutate/BulkBuild/Limits failures were bounded=garbage).
+
+## #474 dead end: the 16-byte NEON string probe inside LSTR_SCAN — measured DEAD (2026-10-30)
+
+The slice-two hypothesis from the arm64 lane naming (+668: the 8-byte
+SWAR hasvalue span scan): widen the fused walk's string-arm rounds to
+16-byte NEON block masks (vceq quote/backslash + vclt control + vcge
+high floor, packed via the `vshrn_n_u16(vreinterpretq_u16_u8(m), 4)`
+movemask) — two probes covering span bytes 8-40 after SWAR round 1,
+so the 8-31-byte class closes in one probe instead of 1-3 SWAR rounds.
+
+Built (branch perf/474-block-mask, full diff preserved at
+/tmp/474-probe-experiment.patch within this session): always_inline
+file-scope helper (pointer-free, offset-returning — an out-param
+version passing `&count`/`&i` measured 0.55x by spilling the walk's
+register-resident state around every call), gated 618/618 ctest +
+32-row route-parity + corpus FNV. Verdict DEAD, three independent
+reasons:
+
+1. **Class share**: the users corpus's 2.7M quoted spans are 88.9%
+   <=7 bytes (SWAR round 1 closes them; the probe never fires) and
+   11.1% are 8-31 bytes — where the probe is roughly OP-PARITY with
+   the rounds it replaces (1 vld1q + ~8 vector ops + 3 shrn + ctz vs
+   2-3 rounds x ~7 ALU ops; Apple cores schedule the SWAR 4-wide).
+   Ceiling on the lane: ~2% end-to-end, below any local noise floor.
+
+2. **The nibble-pack trap (the real bug found)**: the shrn movemask
+   holds TWO input bytes per result byte (byte 2k -> bit 8k+3, byte
+   2k+1 -> bit 8k+7). The SWAR `ctz/8` extraction returns HALF the
+   byte index for even-position closes — the probe mislocated the
+   close, `i` landed mid-string, and **the fused walk rejected the
+   whole document into the chain fallback**, which produced the
+   byte-identical tape (43ade582479d84de) — every OUTPUT-parity gate
+   stayed green while the route silently broke and the "A/B" measured
+   chain-vs-chain (the 0.5x "regression" was the fallback chain, the
+   recovery was the fixed route). Correct extraction:
+   `(bit >> 3) * 2 + ((bit >> 2) & 1)`.
+
+3. **Route-split invisibility LAW**: output parity (tape FNV, event
+   dumps, statuses) CANNOT detect a route-identity break when the
+   fallback produces identical bytes. Any cut inside a route-priority
+   chain (fused walk -> token-contract -> record walk -> chain) needs
+   a ROUTE-level assertion — profile the leaf (the fused route shows
+   as one inlined `yeptris_parse_json_tape` leaf; a fallback shows
+   `tape_walk` + `yep_json_string` + `gate_scan`) or count route
+   entries — before believing any A/B. The 0.5x collapse was the
+   most informative measurement of the session.
+
+The remaining #474 lever stays as the ledger named it: the multi-
+member block-mask restructure (vector ACROSS members, handing the
+state machine its next lane) + the +2468 classifier lane — a design
+change, not a probe swap.
