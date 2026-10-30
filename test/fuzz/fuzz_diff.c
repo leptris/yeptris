@@ -1616,6 +1616,49 @@ static size_t yd_mb_break_len(const uint8_t* data, size_t size, size_t i) {
     return 0;
 }
 
+/* The charset split COMPOSED with the raw-break law: when the split
+ * copy still carries a raw NEL/LS/PS, libyaml's reading of the split
+ * copy takes a different arm than yeptris's (the split alone cannot
+ * reconcile: libyaml turns "&k :":<PS> ..." into the anchored map
+ * while yeptris folds one plain), so LF-substitute the split copy and
+ * require BOTH engines to agree there byte-strict AND that reading to
+ * equal libyaml's ORIGINAL dump — libyaml is invariant under the
+ * composition, exactly the composed-break signature (the r88
+ * two-continuation minimal, crash-94a6a42e: "&k:\":<PS> U\\<PS> U"). */
+static int yd_charset_split_lf_composed_agrees(const char* sub, size_t o, const char* ldump) {
+    char* lf = malloc(o + 1);
+    if (lf == NULL) {
+        return 0;
+    }
+    size_t lo = 0;
+    for (size_t i = 0; i < o;) {
+        if (i + 2 < o && (unsigned char)sub[i] == 0xE2 && (unsigned char)sub[i + 1] == 0x80 &&
+            ((unsigned char)sub[i + 2] == 0xA8 || (unsigned char)sub[i + 2] == 0xA9)) {
+            lf[lo++] = '\n';
+            i += 3;
+        } else if (i + 1 < o && (unsigned char)sub[i] == 0xC2 &&
+                   (unsigned char)sub[i + 1] == 0x85) {
+            lf[lo++] = '\n';
+            i += 2;
+        } else {
+            lf[lo++] = sub[i++];
+        }
+    }
+    int yok = 0;
+    int lok = 0;
+    char* yd3 = yd_sem_dump(lf, lo, &yok);
+    char* ld3 = yd_libyaml_dump(lf, lo, &lok);
+    /* libyaml's ORIGINAL reading keeps the raw PS bytes inside the
+     * scalar where the LF-substituted copy renders the fold as a
+     * blank — the existing fold relation spans exactly that */
+    int ok = yd3 != NULL && yok && ld3 != NULL && lok && strcmp(yd3, ld3) == 0 &&
+             yd_dump_eq_mod_lsps_fold(ld3, ldump);
+    free(yd3);
+    free(ld3);
+    free(lf);
+    return ok;
+}
+
 static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, const char* ydump,
                                              const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
@@ -2201,7 +2244,11 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
               * byte-invariant under the split either way, so the
               * composite signature is the charset law AND the fold
               * law, both documented */
-             (sub_has_triple && yd_dump_eq_mod_lsps_fold(ydump2, ldump2)))) {
+             (sub_has_triple && yd_dump_eq_mod_lsps_fold(ydump2, ldump2)) ||
+             /* ... and the split can ride a raw NEL/LS/PS whose break
+              * law composes with it; the LF-substituted split is the
+              * pivot both engines read identically (see the helper) */
+             (sub_has_triple && yd_charset_split_lf_composed_agrees(sub, o, ldump)))) {
             free(ldump2);
             free(ydump2);
             free(sub);
