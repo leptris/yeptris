@@ -1738,6 +1738,43 @@ static int yd_charset_split_lf_composed_agrees(const char* sub, size_t o, const 
 }
 
 static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                             const char* ldump);
+
+/* The charset transform's verify legs over ONE candidate copy: yeptris
+ * and libyaml must agree there (byte-exact, or mod the documented
+ * LS/PS fold relation, or on the LF-substituted pivot) AND libyaml
+ * must be byte-invariant between the original and the copy. Shared by
+ * the all-splits copy and the r95 per-split solo copies. */
+static int yd_charset_verify_copy(const char* sub, size_t o, const char* ldump) {
+    int ok2 = 0;
+    char* ydump2 = yd_sem_dump(sub, o, &ok2);
+    if (ydump2 == NULL || !ok2) {
+        free(ydump2);
+        return 0;
+    }
+    int ok3 = 0;
+    char* ldump2 = yd_libyaml_dump(sub, o, &ok3);
+    /* the fold-walk leg requires a raw LS/PS triple in the copy — its
+     * arms are the PS/LS family's dump relations; without the scan the
+     * space-eating arm would scope to every charset split */
+    int has_triple = 0;
+    for (size_t t = 0; t + 2 < o; t++) {
+        if ((unsigned char)sub[t] == 0xE2 && (unsigned char)sub[t + 1] == 0x80 &&
+            ((unsigned char)sub[t + 2] == 0xA8 || (unsigned char)sub[t + 2] == 0xA9)) {
+            has_triple = 1;
+            break;
+        }
+    }
+    int ok =
+        ldump2 != NULL && ok3 && strcmp(ldump, ldump2) == 0 &&
+        (strcmp(ydump2, ldump2) == 0 || (has_triple && yd_dump_eq_mod_lsps_fold(ydump2, ldump2)) ||
+         (has_triple && yd_charset_split_lf_composed_agrees(sub, o, ldump)));
+    free(ldump2);
+    free(ydump2);
+    return ok;
+}
+
+static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, const char* ydump,
                                              const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
@@ -2031,6 +2068,12 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     size_t o = 0;
     quote = 0;
     prev = '\n';
+    /* the r95 law: record each split's original index — a LATER,
+     * non-load-bearing split in the same copy (a '!' run in a trailing
+     * document) can poison the all-splits verify while the load-bearing
+     * split verifies clean alone; each gets a solo retry */
+    size_t split_at[8];
+    int nsplits = 0;
     /* the gate's word-start law again: a mid-word quote is plain
      * content, or the copy rides "inside quotes" past the '&' run */
     int word_led2 = 1;
@@ -2206,6 +2249,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                  * that swallowed the PS and skipped the LATER anchor
                  * (the nightly's round 87, crash-629bf361) */
                 sub[o++] = ' '; /* libyaml's truncation point becomes a token break */
+                if (nsplits < 8) {
+                    split_at[nsplits++] = i;
+                }
                 /* the residual token is copied blind, so the walk must
                  * take its first byte's own law here: a colon-riding
                  * plain ("&k :`c ...") OPENS the plain -- leaving it
@@ -2286,6 +2332,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         }
     }
     char* ydump2 = yd_sem_dump(sub, o, &ok2);
+    int carried = 0;
     if (ydump2 != NULL && ok2) {
         /* the PROPS-LED composite (the nightly's round 40,
          * "!str-f &U:ba:\n- ..."): yeptris's original reading puts
@@ -2296,44 +2343,34 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
          * both engines agree on the SPLIT form, and libyaml is
          * INVARIANT under it (its own reading truncates at the ':'
          * anyway) -- exactly the charset-tokenization signature. */
-        int ok3 = 0;
-        char* ldump2 = yd_libyaml_dump(sub, o, &ok3);
-        /* the fold-walk leg requires a raw LS/PS triple in the split
-         * copy — its arms are the PS/LS family's dump relations (the
-         * r86 member included); without the scan the space-eating arm
-         * would scope to every charset split */
-        int sub_has_triple = 0;
-        for (size_t t = 0; t + 2 < o; t++) {
-            if ((unsigned char)sub[t] == 0xE2 && (unsigned char)sub[t + 1] == 0x80 &&
-                ((unsigned char)sub[t + 2] == 0xA8 || (unsigned char)sub[t + 2] == 0xA9)) {
-                sub_has_triple = 1;
-                break;
+        carried = yd_charset_verify_copy(sub, o, ldump);
+        if (!carried && nsplits > 0) {
+            /* the r95 multi-split decline ("&I:<205KB>...'---\n!!int'",
+             * crash-975fc078): a LATER, non-load-bearing split rides in
+             * the same copy (a props run in the trailing document) and
+             * its own reading difference poisons the verify — while the
+             * load-bearing split verifies clean ALONE (the all-splits
+             * invariant held; only the yeptris-vs-libyaml leg died).
+             * Each recorded split gets a solo copy (verbatim + one
+             * insert); any one passing the same legs carries. */
+            for (int k = 0; k < nsplits && !carried; k++) {
+                char* s1 = malloc(size + 1);
+                if (s1 == NULL) {
+                    break;
+                }
+                memcpy(s1, data, split_at[k]);
+                s1[split_at[k]] = ' ';
+                memcpy(s1 + split_at[k] + 1, data + split_at[k], size - split_at[k]);
+                carried = yd_charset_verify_copy(s1, size + 1, ldump);
+                free(s1);
             }
         }
-        if (ldump2 != NULL && ok3 && strcmp(ldump, ldump2) == 0 &&
-            (strcmp(ydump2, ldump2) == 0 ||
-             /* the split can ALSO leave the plain-LS/PS fold law on
-              * the table (round 66: "&k:j:(<PS> UT\r|\r\n.V|" -- the
-              * ':' split reconciles the anchor reading, and the PS
-              * inside the residual plain then folds in yeptris only;
-              * round 86 composes the same triple with CR CR so BOTH
-              * engines render the fold as escaped newlines and the
-              * difference is the one separating blank); libyaml is
-              * byte-invariant under the split either way, so the
-              * composite signature is the charset law AND the fold
-              * law, both documented */
-             (sub_has_triple && yd_dump_eq_mod_lsps_fold(ydump2, ldump2)) ||
-             /* ... and the split can ride a raw NEL/LS/PS whose break
-              * law composes with it; the LF-substituted split is the
-              * pivot both engines read identically (see the helper) */
-             (sub_has_triple && yd_charset_split_lf_composed_agrees(sub, o, ldump)))) {
-            free(ldump2);
+        if (carried) {
             free(ydump2);
             free(sub);
             free(sub2);
             return 1;
         }
-        free(ldump2);
     }
     free(sub);
     if (ydump2 == NULL || !ok2) {
