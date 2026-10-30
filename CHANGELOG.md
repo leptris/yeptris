@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **#742: `yeptris_cbor_decode_sax` — the CBOR decode-only face goes public** — the sink vtable the DOM builder drives (`yep_cbor_sink`) was already an exported seam; the slice makes it the public SAX surface: `yeptris_cbor_sax` (ctx + seven callbacks) in `<yeptris/cbor.h>`, one call, no document, no nodes — items land in consumer callbacks as they parse, with the DOM's exact rendered text forms, `is_key` parity, tag chains, and indefinite-string concatenation. Measured justification (perf ledger 2026-10-29): the scan-only route reads 270 MB/s vs the DOM entry's 128 on the same corpus — DOM construction is over half the decode lane — so validation, counting, and streaming transforms belong here. `consumed` walks RFC 8742 sequences without a DOM; the internal seam aliases the public struct (`typedef yeptris_cbor_sax yep_cbor_sink`), so `yeptris_cbor_decode_sax` is a straight passthrough and the ABI is unchanged. Pinned by eight `CborSax` tests (callback shapes, caps, tag chain, indefinite rules, the consumed walk, sink-failure→MEMORY, the ARG contract, strict mode).
+
 ## [0.6.50] - 2026-10-29
 
 ### Fixed
