@@ -6676,3 +6676,54 @@ TEST(TagResolve, SecondarySurvivesPrimaryRedefinition) {
         yeptris_document_free(doc);
     }
 }
+
+TEST(Parse, ColonBeforeRawMultibyteBreakTerminatesThePlain) {
+    /* #833: ':' before a raw NEL/LS/PS takes the same separator arm as
+     * ':' before its LF spelling (libyaml's IS_BLANKZ): the PS twin
+     * and the LF twin produce identical SEMANTIC event streams (the
+     * value's plain ends at the colon and the following line nests —
+     * before the fix the PS spelling kept the colon in the plain).
+     * Positions are layout and differ between break spellings at EOF,
+     * so the comparison strips them. */
+    const std::string ps = "\xe2\x80\xa9";
+    const std::string nel = "\xc2\x85";
+    const std::string lf = "\n";
+    struct Row {
+        std::string raw;
+        std::string lf;
+    };
+    const Row twins[] = {
+        {"&a" + lf + " U\\:\":" + ps, "&a" + lf + " U\\:\":" + lf},
+        {"a:" + lf + " U\\:\":" + ps, "a:" + lf + " U\\:\":" + lf},
+        {"k: v" + ps + "n: x", "k: v" + lf + "n: x"},
+    };
+    for (const Row& r : twins) {
+        std::vector<std::string> raw = v818_events(r.raw);
+        std::vector<std::string> unix = v818_events(r.lf);
+        ASSERT_FALSE(raw.empty()) << r.raw;
+        ASSERT_EQ(raw.size(), unix.size()) << r.raw;
+        for (size_t i = 0; i < raw.size(); i++) {
+            /* strip the line:col-end_line:end_col tail (layout) */
+            std::string a = raw[i], b = unix[i];
+            size_t pa = a.rfind('/'), pb = b.rfind('/');
+            ASSERT_NE(pa, std::string::npos) << a;
+            ASSERT_NE(pb, std::string::npos) << b;
+            a.resize(pa);
+            b.resize(pb);
+            EXPECT_EQ(a, b) << r.raw << " event " << i;
+        }
+    }
+    /* the structure: the value's ':' + raw break ends the plain and
+     * the pair's value is the NESTED map (two mapping starts), same
+     * count as the LF twin */
+    {
+        std::vector<std::string> ev = v818_events("a:" + lf + " U\\:\":" + ps);
+        int maps = 0;
+        for (const std::string& s : ev) {
+            if (s.rfind(std::to_string((int)YEPTRIS_EV_MAPPING_START) + "/", 0) == 0) {
+                maps++;
+            }
+        }
+        EXPECT_EQ(maps, 2) << "the ':' + raw break did not nest the pair's value";
+    }
+}
