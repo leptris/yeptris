@@ -379,7 +379,8 @@ static int e_comment_at(const yep_engine* e) {
 }
 
 static int e_at_eol(yep_engine* e) {
-    return e->pos >= e->len || e->p[e->pos] == '\n' || e->p[e->pos] == '\r' || e_comment_at(e);
+    return e->pos >= e->len || e->p[e->pos] == '\n' || e->p[e->pos] == '\r' || e_comment_at(e) ||
+           yep_scan_mb_break_len(e->p, e->len, e->pos) > 0;
 }
 
 static int e_skip_to_eol(yep_engine* e) {
@@ -3889,6 +3890,16 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
     for (;;) {
         if (e->pos >= e->len) {
             goto empty_value;
+        }
+        /* a raw NEL/LS/PS here is this line's break: consume it exactly
+         * as the BLANK branch below consumes an LF-ended empty line —
+         * yep_scan_line's line model does not treat a break byte at the
+         * loop head as a line end, so without this the props-only line
+         * re-entered e_node on the break byte (rows 1-2) and the marker
+         * became the scalar's value (row 5's consume-first form) */
+        if (yep_scan_mb_break_len(e->p, e->len, e->pos) > 0) {
+            e_line_done(e, e->pos);
+            continue;
         }
         yep_line_info li;
         if (e->pos == e->line_start) {
