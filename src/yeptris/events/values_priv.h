@@ -24,6 +24,8 @@ typedef struct yep_value_ctx {
     int oom;
     int unsupported;                   /* linearize: construct the emitter cannot express */
     uint8_t key_pend[YEP_V_MAX_DEPTH]; /* per open map: key slot taken */
+    uint8_t is_seq[YEP_V_MAX_DEPTH];   /* per open frame: 1 = sequence —
+                                        * entries never take key slots */
     int depth;
 } yep_value_ctx;
 
