@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **fuzz: the charset-carry walks learn the r69 multibyte-break law (the nightly's round 87, part one)** — crash-629bf361 (`ke&&k:": &---<PS> ? &--02:in~`, 28 bytes) decomposed into TWO layers: a comparator walk-model gap (LANDED here) and an engine route split (filed as #818). The walks treated the raw PS bytes as plain content: the first anchor (`&a`/`&---`) split AT the break (a break-ended name is already complete — no truncation exists), the phantom residual opened a plain that swallowed the break, and the key-position anchor (`&--02`) never split. Both walks now end tokens at raw NEL/LS/PS sequences exactly like the engine's own `yep_scan_prop_end` has since r69/#778 (`yd_mb_break_len`): the break is a line break in the walk model, break-ended anchor names take no split, and the gate/transform scans stop there. Gates: the minimals (`k: &a<PS> ? &--02:in~` class) carry with byte-verified splits, the 405-snapshot corpus + the r66/r85/r86 seeds + the qflow family replay clean under ASan, clang-format clean. The artifact stays carried-open on #818's engine dig (yeptris's `+MAP &a` vs one plain is a structural event-count difference no split reconciles).
+
 ### Added
 
 - **#742: the bench matrix's CBOR tier tracks the decode-only SAX face** — a new `decode-only SAX MB/s (#742)` column rides the CBOR-vs-JSOn table: the same canonical corpus decoded through `yeptris_cbor_decode_sax` into a counting sink (nothing built — the scanner's own speed, the like-for-like answer to tinycbor's get_next loop), interleaved best-of beside the DOM decode row. Local quick run: 223-233 MB/s SAX vs 80-88 MB/s DOM decode on the tier's shapes (~2.7x, and past the tinycbor row's class) — the CI matrix now referees the decode-only campaign per platform.

@@ -1597,6 +1597,25 @@ static int yd_anchor_byte_in_libyaml_set(unsigned char n) {
            n == '-';
 }
 
+/* the r69 engine law (yep_scan_prop_end stops at NEL/LS/PS) in the
+ * walk form: a raw multibyte break sequence ENDS tokens like \n/\r —
+ * the byte-wise walks otherwise rode the PS bytes as plain content,
+ * splitting an anchor at the break and poisoning the plain state so a
+ * LATER anchor never split (the nightly's round 87, crash-629bf361:
+ * "k: &a<PS> ? &--02:in~" — '&a' split at the PS, and the key-position
+ * '&--02' rode as props-adjacent content). Returns the sequence length
+ * (2 = NEL, 3 = LS/PS), 0 when data[i] starts no break. */
+static size_t yd_mb_break_len(const uint8_t* data, size_t size, size_t i) {
+    if (i + 1 < size && data[i] == 0xC2 && data[i + 1] == 0x85) {
+        return 2; /* NEL */
+    }
+    if (i + 2 < size && data[i] == 0xE2 && data[i + 1] == 0x80 &&
+        (data[i + 2] == 0xA8 || data[i + 2] == 0xA9)) {
+        return 3; /* LS / PS */
+    }
+    return 0;
+}
+
 static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, const char* ydump,
                                              const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
@@ -1652,6 +1671,20 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     size_t bs_col = 0;
     for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
+        /* the r87 law: a raw NEL/LS/PS is a line break in this walk's
+         * model — the head's column bookkeeping and the tail's
+         * node_pos/only_dash effects of a \n, applied in one place */
+        size_t mbl_ = yd_mb_break_len(data, size, i);
+        if (mbl_ > 0) {
+            col = 0;
+            line_first = (size_t)-1;
+            line_pending = (plain_open || bs_open) ? 1 : 0;
+            node_pos = (plain_open || bs_open) ? 0 : 1;
+            only_dash = 1;
+            prev = '\n';
+            i += mbl_ - 1; /* the loop's own i++ lands past the sequence */
+            continue;
+        }
         /* column bookkeeping (approximate: 1 byte = 1 column) */
         if (c == '\n' || c == '\r') {
             col = 0;
@@ -1804,7 +1837,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if ((c == '&' || c == '*') && !gate && !plain_open && (node_pos || saw_prop)) {
             size_t j = i + 1;
             while (j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
-                   data[j] != '\r') {
+                   data[j] != '\r' && yd_mb_break_len(data, size, j) == 0) {
                 if (!yd_anchor_byte_in_libyaml_set(data[j])) {
                     gate = 1;
                     break;
@@ -1896,6 +1929,21 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     size_t bs_col2 = 0;
     for (size_t i = 0; i < size;) {
         unsigned char c = data[i];
+        /* the r87 law again: a raw NEL/LS/PS breaks the line — copied
+         * verbatim, with the \n state effects */
+        size_t mbl2_ = yd_mb_break_len(data, size, i);
+        if (mbl2_ > 0) {
+            for (size_t k2_ = 0; k2_ < mbl2_; k2_++) {
+                sub[o++] = (char)data[i++];
+            }
+            col2 = 0;
+            line_first2 = (size_t)-1;
+            line_pending2 = (plain_open2 || bs_open2) ? 1 : 0;
+            node_pos2 = (plain_open2 || bs_open2) ? 0 : 1;
+            only_dash2 = 1;
+            prev = '\n';
+            continue;
+        }
         if (c == '\n' || c == '\r') {
             col2 = 0;
             line_first2 = (size_t)-1;
@@ -2019,7 +2067,8 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             i++;
             size_t name_o = o;
             while (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
-                   data[i] != '\r' && yd_anchor_byte_in_libyaml_set(data[i])) {
+                   data[i] != '\r' && yd_mb_break_len(data, size, i) == 0 &&
+                   yd_anchor_byte_in_libyaml_set(data[i])) {
                 sub[o++] = (char)data[i++];
             }
             /* split ONLY a real anchor (at least one in-set name byte
@@ -2029,7 +2078,12 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
              * inserted a space that corrupted the scalar
              * (crash-e1d13ebe, the corpus sweep after #713's arms) */
             if (o > name_o && i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
-                data[i] != '\r') {
+                data[i] != '\r' && yd_mb_break_len(data, size, i) == 0) {
+                /* a break-ended name is COMPLETE — no truncation, no
+                 * space (the break already ends the token in both
+                 * engines); inserting one here opened a phantom plain
+                 * that swallowed the PS and skipped the LATER anchor
+                 * (the nightly's round 87, crash-629bf361) */
                 sub[o++] = ' '; /* libyaml's truncation point becomes a token break */
                 /* the residual token is copied blind, so the walk must
                  * take its first byte's own law here: a colon-riding
@@ -2045,7 +2099,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                     !(f == ':' && (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
                                    data[i + 1] == '\n' || data[i + 1] == '\r'));
                 while (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
-                       data[i] != '\r') {
+                       data[i] != '\r' && yd_mb_break_len(data, size, i) == 0) {
                     sub[o++] = (char)data[i++];
                 }
                 if (plain_residual) {
