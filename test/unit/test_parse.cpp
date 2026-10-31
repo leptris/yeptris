@@ -6903,3 +6903,44 @@ TEST(Parse, NormWalkFlowOpenersOpenAtTokenPositionsOnly) {
         EXPECT_TRUE(value_ok) << "the interior-[ fold did not take the newline tally";
     }
 }
+
+TEST(Parse, DeepIndentLineKeepsItsIndentPastUint16) {
+    /* a 65536-space line wrapped the uint16 line-indent to 0 and the
+     * STEP route read it as a dedent: the whole-doc parse kept the
+     * line verbatim (libyaml parity, Psych-checked) while the chunked
+     * feed errored at the truncated cut — whole-vs-chunked identity,
+     * the #839 family. yep_line_info.indent is 32-bit now. */
+    const std::string deep(65536, ' ');
+    const std::string y = "a: |\n  text\n" + deep + "deep\n  tail\n";
+    YeptrisRecorder whole = yeptris_recorder_new();
+    ASSERT_NE(whole, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(whole, y.data(), y.size(), 1), YEPTRIS_OK);
+    size_t nw = 0;
+    const YeptrisEventRecord* rw = yeptris_recorder_records(whole, &nw);
+    ASSERT_EQ(nw, 8u) << "doc/map-start/key/scalar/map-end/doc-end + bookkeeping";
+    /* the scalar is the longest arena record; its length pins the
+     * verbatim deep line (libyaml: 65538 = 65534 spaces + "deep") */
+    uint32_t scalar_len = 0;
+    for (size_t i = 0; i < nw; i++) {
+        if (rw[i].value_len > scalar_len) {
+            scalar_len = rw[i].value_len;
+        }
+    }
+    EXPECT_EQ(scalar_len, 65549u) << "the scalar must keep the deep line verbatim";
+    /* every split point: the chunked stream must agree with the whole */
+    for (size_t k : {size_t{4096}, size_t{65535}, size_t{65536}, size_t{65537},
+                     size_t{66000}}) {
+        if (k >= y.size())
+            continue;
+        YeptrisRecorder ch = yeptris_recorder_new();
+        ASSERT_NE(ch, nullptr);
+        ASSERT_EQ(yeptris_recorder_feed(ch, y.data(), k, 0), YEPTRIS_OK) << "split " << k;
+        ASSERT_EQ(yeptris_recorder_feed(ch, y.data() + k, y.size() - k, 1), YEPTRIS_OK)
+            << "split " << k;
+        size_t nc = 0;
+        yeptris_recorder_records(ch, &nc);
+        EXPECT_EQ(nw, nc) << "split " << k;
+        yeptris_recorder_free(ch);
+    }
+    yeptris_recorder_free(whole);
+}

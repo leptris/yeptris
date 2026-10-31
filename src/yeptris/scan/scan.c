@@ -97,7 +97,7 @@ void yep_scan_line_f(const char* p, size_t len, size_t pos, const yep_line_facts
     li.first = 0;
     li.end = f->end;
     size_t j = f->indent;
-    li.indent = (uint16_t)(j - pos);
+    li.indent = (uint32_t)(j - pos);
     if (j < li.end && p[j] == '\t') {
         size_t k = j;
         while (k < li.end && (p[k] == ' ' || p[k] == '\t')) {

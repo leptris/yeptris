@@ -604,7 +604,7 @@ static int e_close_to(yep_engine* e, int to_depth) {
 /* ------------------------------------------------------------- scalars */
 
 /* Quoted scalar at the opening quote; spans lines when needed. */
-static int e_quoted_floor(yep_engine* e, yep_event* ev, uint16_t min_indent, int enforce) {
+static int e_quoted_floor(yep_engine* e, yep_event* ev, uint32_t min_indent, int enforce) {
     unsigned char q = (unsigned char)e->p[e->pos];
     size_t content_start = e->pos + 1;
     int has_esc = 0;
@@ -885,12 +885,12 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
                 if (content_indent <= parent_col) {
                     break; /* no block content */
                 }
-            } else if (li.indent <= parent_col) {
+            } else if ((int)li.indent <= parent_col) {
                 break; /* dedent ends the block */
-            } else if (li.indent < content_indent && li.indent <= parent_col) {
+            } else if ((int)li.indent < content_indent && (int)li.indent <= parent_col) {
                 break;
             }
-            if (li.indent < content_indent) {
+            if ((int)li.indent < content_indent) {
                 break;
             }
         }
@@ -902,10 +902,10 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
                     if (content_indent <= parent_col) {
                         break;
                     }
-                } else if (li.indent < content_indent) {
+                } else if ((int)li.indent < content_indent) {
                     break;
                 }
-                if (li.indent >= content_indent) {
+                if ((int)li.indent >= content_indent) {
                     uint32_t from2 = li.offset + (uint32_t)content_indent;
                     if (e->fold_n >= YEP_MAX_FOLD_LINES) {
                         return e_fail(e, YEP_ERR_MEMORY, e->pos);
@@ -945,7 +945,7 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
             }
             /* a blank line whose spaces extend past the content indent is
              * CONTENT (kept verbatim); otherwise it is a pure break */
-            if (content_indent >= 0 && li.indent > content_indent) {
+            if (content_indent >= 0 && (int)li.indent > content_indent) {
                 if (e->fold_n >= YEP_MAX_FOLD_LINES) {
                     return e_fail(e, YEP_ERR_MEMORY, e->pos);
                 }
@@ -996,7 +996,7 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
         /* leading blank lines belong to the block content */
         e->fold[e->fold_n].breaks_before = saw_content ? pending_breaks + 1 : pending_breaks;
         e->fold[e->fold_n].more_indented =
-            li.indent > content_indent ||
+            (int)li.indent > content_indent ||
             (from < li.end && (e->p[from] == ' ' || e->p[from] == '\t'));
         e->fold_n++;
         saw_content = 1;
@@ -5432,7 +5432,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 e_fail(e, YEP_ERR_TAB_IN_INDENT, e->pos + li.indent);
                 goto fail;
             }
-            li.indent = (uint16_t)(t - li.offset);
+            li.indent = (uint32_t)(t - li.offset);
         }
         if (li.flags & YEP_LF_DIRECTIVE) {
             if (doc_open) {
@@ -5752,7 +5752,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
          * dash-blank test is computed once per line (TODO.restructure/75
          * — it was spelled out twice below); the top frame loads once
          * per iteration. */
-        uint16_t c = li.indent;
+        uint32_t c = li.indent;
         const int dash_blank =
             li.first == '-' &&
             (li.offset + li.indent + 1 >= e->len || e->p[li.offset + li.indent + 1] == ' ' ||
