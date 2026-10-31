@@ -1122,3 +1122,44 @@ TEST(Emit, AnchorNameTailColonBlockStyleIsUnserializable) {
     yeptris_document_free(dr);
     EXPECT_EQ(roundtrip(rider), want);
 }
+
+TEST(EmitStream, ScalarLargerThanTheWindowChunks) {
+    /* the 2026-10-31 audit's streaming-overflow finding: one wr_put
+     * of a scalar larger than the fixed window memcpy'd straight past
+     * it — the route's memory bound was only as good as its largest
+     * single put. The put now chunks across flushes; the bytes are
+     * identical to the buffered serialize. */
+    std::string big(220 * 1024, 'x');
+    std::string y = "k: " + big + "\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y.c_str(), y.size(), &st);
+    ASSERT_NE(doc, nullptr);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    size_t blen = 0;
+    char* buffered = yeptris_serialize(doc, &blen);
+    ASSERT_NE(buffered, nullptr);
+    SinkAcc acc;
+    size_t slen = yeptris_serialize_stream(doc, nullptr, sink_append, &acc);
+    EXPECT_EQ(slen, blen);
+    EXPECT_EQ(acc.out.size(), blen);
+    EXPECT_EQ(memcmp(acc.out.data(), buffered, blen), 0);
+    EXPECT_GT(acc.calls, 1u); /* the big scalar crossed the window */
+    free(buffered);
+    yeptris_document_free(doc);
+
+    /* the fused block-map member write bypasses wr_put: a long VALUE
+     * there must take the fall-through, not the direct member write */
+    std::string y2 = "a: 1\nb: " + big + "\nc: 2\n";
+    YeptrisDocument doc2 = yeptris_parse(y2.c_str(), y2.size(), &st);
+    ASSERT_NE(doc2, nullptr);
+    size_t blen2 = 0;
+    char* buffered2 = yeptris_serialize(doc2, &blen2);
+    ASSERT_NE(buffered2, nullptr);
+    SinkAcc acc2;
+    size_t slen2 = yeptris_serialize_stream(doc2, nullptr, sink_append, &acc2);
+    EXPECT_EQ(slen2, blen2);
+    EXPECT_EQ(acc2.out.size(), blen2);
+    EXPECT_EQ(memcmp(acc2.out.data(), buffered2, blen2), 0);
+    free(buffered2);
+    yeptris_document_free(doc2);
+}

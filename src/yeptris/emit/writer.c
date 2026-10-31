@@ -95,6 +95,40 @@ static void wr_put(yep_writer* w, const char* p, uint32_t n) {
         w->len += n;
         return;
     }
+    if (w->sink != NULL && !w->grow && !w->bounded && w->cap > 0 &&
+        (size_t)n > w->cap - w->len - 1) {
+        /* the fixed-window streaming route cannot hold this put even
+         * after the watermark flush: CHUNK it — window-sized pieces
+         * with a flush between each. Append-only output makes any cut
+         * a safe cut; the sink sees more, smaller chunks. Memory stays
+         * bounded by the window (the route's whole point) — the old
+         * unconditional memcpy wrote straight past it for any scalar
+         * larger than the remaining room (the 2026-10-31 audit's
+         * streaming-overflow finding). */
+        size_t off = 0;
+        while (off < (size_t)n) {
+            if (w->sink_aborted) {
+                w->len += (size_t)n - off; /* keep counting: the caller fails */
+                return;
+            }
+            size_t room = w->cap - w->len - 1;
+            if (room > (size_t)n - off) {
+                room = (size_t)n - off;
+            }
+            memcpy(w->p + w->len, p + off, room);
+            w->len += room;
+            off += room;
+            if (off < (size_t)n) {
+                if (w->sink(w->sink_ctx, w->p, w->len) != 0) {
+                    w->sink_aborted = 1;
+                } else {
+                    w->flushed += w->len;
+                    w->len = 0;
+                }
+            }
+        }
+        return;
+    }
     /* the +1 reserves the terminator slot: the serializers write the
      * NUL at p[len] after the run, and a write landing exactly on cap
      * (len + n == cap) put that NUL one byte past the buffer — the
@@ -1128,41 +1162,57 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             vn0->count == 0) {
             yep_view kv = wv(w, kn0->value);
             yep_view vv = wv(w, vn0->value);
-            if (kv.len > 0 && !key_written_over_limit(w, kn0) && kn0->plain_ok &&
-                (vv.len == 0 || vn0->plain_ok)) {
+            uint32_t f_ind = 0, f_nl = 0, f_total = 0;
+            int fused = kv.len > 0 && !key_written_over_limit(w, kn0) && kn0->plain_ok &&
+                        (vv.len == 0 || vn0->plain_ok);
+            if (fused) {
                 /* fused member write: plain-safe spans carry no breaks,
                  * so the col scan is arithmetic and one reservation
                  * covers the whole member (line + key + ':' + value) */
-                uint32_t ind = pair > 0 ? (uint32_t)content_col : 0u;
-                uint32_t nl = (pair > 0 && w->last != '\n') ? 1u : 0u;
-                uint32_t total = nl + ind + kv.len + 1u + (vv.len > 0 ? vv.len + 1u : 0u);
+                f_ind = pair > 0 ? (uint32_t)content_col : 0u;
+                f_nl = (pair > 0 && w->last != '\n') ? 1u : 0u;
+                f_total = f_nl + f_ind + kv.len + 1u + (vv.len > 0 ? vv.len + 1u : 0u);
+                /* the fixed-window streaming route: the fused write
+                 * bypasses wr_put (whose chunked path bounds every
+                 * put), and this block ends in continue — so a member
+                 * that does not fit the window must DECLINE THE WHOLE
+                 * ARM to reach the general body, which emits the
+                 * identical bytes through wr_put. cap==0 routes are the
+                 * old trusted-count forms: the writer cannot reason
+                 * about their capacity, and they keep the arm. */
+                if (!w->dry && !w->grow && w->cap != 0 && w->len + (size_t)f_total + 1 > w->cap) {
+                    fused = 0;
+                }
+            }
+            if (fused) {
                 w->last = vv.len > 0 ? (char)vv.p[vv.len - 1] : ':';
-                if (nl) {
-                    w->col = (int)(total - 1u); /* the break resets, then the line */
+                if (f_nl) {
+                    w->col = (int)(f_total - 1u); /* the break resets, then the line */
                 } else {
-                    w->col += (int)total;
+                    w->col += (int)f_total;
                 }
                 if (w->dry) {
-                    w->len += total;
+                    w->len += f_total;
                 } else {
-                    if (w->grow && w->len + total + 1 > w->cap) {
+                    if (w->grow && w->len + f_total + 1 > w->cap) {
                         if (w->bounded) {
                             w->oom = 1; /* keep counting: the trusted caller reads the size */
                         } else {
-                            wr_grow(w, total);
+                            wr_grow(w, f_total);
                         }
                     }
                     if (w->oom) {
-                        w->len += total; /* keep counting: the caller fails on oom */
+                        w->len += f_total; /* keep counting: the caller fails on oom */
                     } else {
                         /* the fused write bypasses wr_put/wr_byte: keep
                          * the reservation honest (the #739 lane-1 law) */
-                        w->reserve = (size_t)total <= w->reserve ? w->reserve - (size_t)total : 0;
+                        w->reserve =
+                            (size_t)f_total <= w->reserve ? w->reserve - (size_t)f_total : 0;
                         char* q = w->p + w->len;
-                        if (nl) {
+                        if (f_nl) {
                             *q++ = '\n';
                         }
-                        for (uint32_t i = 0; i < ind; i++) {
+                        for (uint32_t i = 0; i < f_ind; i++) {
                             *q++ = ' ';
                         }
                         memcpy(q, kv.p, kv.len);
@@ -1172,7 +1222,7 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
                             *q++ = ' ';
                             memcpy(q, vv.p, vv.len);
                         }
-                        w->len += total;
+                        w->len += f_total;
                         wr_maybe_flush(w);
                     }
                 }
