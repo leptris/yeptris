@@ -6783,7 +6783,7 @@ TEST(Parse, NormWalkFlowSeparatorsDoNotArmBlockTokenStarts) {
         ASSERT_FALSE(ev.empty());
         bool value_ok = false;
         for (const std::string& s : ev) {
-            if (s.find("/b,!<\n\nN") != std::string::npos) {
+            if (s.find("=b,!<\n\nN") != std::string::npos) {
                 value_ok = true;
             }
         }
