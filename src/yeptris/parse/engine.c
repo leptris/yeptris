@@ -1076,9 +1076,9 @@ static int e_plain_multiline(yep_engine* e, yep_span s0, uint32_t block_floor, y
             break;
         }
         breaks++;
-            e_line_done(e, e->pos);
-            yep_line_info li = e_line_info_here(e);
-            if (li.flags & YEP_LF_BLANK) {
+        e_line_done(e, e->pos);
+        yep_line_info li = e_line_info_here(e);
+        if (li.flags & YEP_LF_BLANK) {
             /* Park at the line end: the loop's next break consumption
              * counts this blank line's own break. */
             e->pos = li.end;
