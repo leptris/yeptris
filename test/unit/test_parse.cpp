@@ -6928,8 +6928,7 @@ TEST(Parse, DeepIndentLineKeepsItsIndentPastUint16) {
     }
     EXPECT_EQ(scalar_len, 65549u) << "the scalar must keep the deep line verbatim";
     /* every split point: the chunked stream must agree with the whole */
-    for (size_t k : {size_t{4096}, size_t{65535}, size_t{65536}, size_t{65537},
-                     size_t{66000}}) {
+    for (size_t k : {size_t{4096}, size_t{65535}, size_t{65536}, size_t{65537}, size_t{66000}}) {
         if (k >= y.size())
             continue;
         YeptrisRecorder ch = yeptris_recorder_new();

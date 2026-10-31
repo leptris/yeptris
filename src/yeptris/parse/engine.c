@@ -176,7 +176,7 @@ struct yep_engine {
 
 /* ------------------------------------------------------------ forwards */
 
-static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col);
+static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col);
 static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col);
 
 /* ---------------------------------------------------------------- util */
@@ -500,7 +500,7 @@ static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln,
 
 /* silent: the sink's on_block_open built the node — push the frame
  * without emitting (TODO.restructure/57). */
-static int e_open_map(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln, yep_view anchor,
+static int e_open_map(yep_engine* e, uint32_t col, uint32_t line, uint32_t coln, yep_view anchor,
                       yep_view tag, uint32_t anchor_id, int silent) {
     if (e->depth > 0 && e->frames[e->depth - 1].kind == YEP_FRAME_MAP &&
         e->frames[e->depth - 1].col == col) {
@@ -3375,7 +3375,7 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
  * pend props (parsed at the parent's value position on an earlier line)
  * belong to the VALUE node as a whole — a collection START event when
  * the value is a collection. */
-static int e_node(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
+static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
     size_t node_at = e->pos;
     yep_view pend_a = e->pend_anchor, pend_t = e->pend_tag;
     uint32_t pend_aid = e->pend_anchor_id;
