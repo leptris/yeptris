@@ -90,13 +90,13 @@ typedef struct yep_sink {
      * placed, 0 = not handled (the engine emits the two events
      * exactly as before), <0 = abort. */
     int (*on_block_pair)(void* ctx, const yep_view* key, const struct yep_block_value* v,
-                         uint32_t line, uint16_t key_col, uint16_t val_col);
+                         uint32_t line, uint32_t key_col, uint32_t val_col);
     /* Optional block-open fast path (TODO.restructure/57): a `key:`
      * line whose value lives on FOLLOWING lines, when the engine is
      * about to open a FRESH mapping. 1 = the sink built the map node
      * (placed, stack pushed) and the key node — the engine opens its
      * frame silently and skips both events; 0 = events as before. */
-    int (*on_block_open)(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col);
+    int (*on_block_open)(void* ctx, const yep_view* key, uint32_t line, uint32_t key_col);
     /* Optional dash-item fast path (TODO.restructure/78): a classified
      * `- value` plain item after the engine opened (or continued) the
      * block sequence. 1 = the sink built and placed the item node,

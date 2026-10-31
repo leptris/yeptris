@@ -241,7 +241,7 @@ static int yt_on_scalar(void* ctx, const yep_view* value, const yep_view* tag,
 }
 
 static int yt_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, uint32_t line,
-                            uint16_t key_col, uint16_t val_col) {
+                            uint32_t key_col, uint32_t val_col) {
     (void)line;
     (void)key_col;
     (void)val_col; /* yep_dnode carries no positions (64-2c) */
@@ -278,7 +278,7 @@ static int yt_on_block_pair(void* ctx, const yep_view* key, const yep_block_valu
     return 1; /* handled: the engine skips the two events */
 }
 
-static int yt_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col) {
+static int yt_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint32_t key_col) {
     (void)line;
     (void)key_col;
     yep_ytape* t = (yep_ytape*)ctx;

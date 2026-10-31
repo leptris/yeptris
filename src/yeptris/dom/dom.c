@@ -1146,7 +1146,7 @@ void dom_on_flow_rollback(void* ctx) {
  * call — the DOM stack mirrors what the MAP_START event would have
  * pushed. 0 only for the depth cap (the engine then takes the events,
  * which own the error). */
-int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col) {
+int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint32_t key_col) {
     yep_dom* d = (yep_dom*)ctx;
     if (d->depth >= YEP_DOM_MAX_DEPTH) {
         return 0;
@@ -1194,7 +1194,7 @@ int dom_on_block_item(void* ctx, const yep_block_value* v) {
  * happen when the engine resolved the name) falls back to the two
  * events with nothing built. */
 int dom_on_block_pair(void* ctx, const yep_view* key, const yep_block_value* v, uint32_t line,
-                      uint16_t key_col, uint16_t val_col) {
+                      uint32_t key_col, uint32_t val_col) {
     yep_dom* d = (yep_dom*)ctx;
     uint32_t target = 0;
     if (v->cls == YEP_LVAL_ALIAS) {
