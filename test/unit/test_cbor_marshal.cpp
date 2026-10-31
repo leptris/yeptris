@@ -269,3 +269,10 @@ TEST(CborMarshal, CyclesAreUnsupported) {
 }
 
 } // namespace
+
+TEST(CborMarshal, FloatStrtodOverflowRejectsLikeTheLiteralSpellings) {
+    /* the JSON reader's twin gate: strtod overflow ("1e999") rejected
+     * exactly like the literal inf/nan spellings (the audit's float
+     * inf gate). */
+    expect_unsupported("660a3165393939");
+}

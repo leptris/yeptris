@@ -687,6 +687,13 @@ static int cm_value(cm_ctx* c, cm_buf* out) {
             return cm_fail(c, YEPTRIS_ERROR_UNSUPPORTED); /* the host loop raises */
         }
         double d = strtod(tmp, NULL);
+        if (!isfinite(d)) {
+            /* the literal spellings gate above; a strtod OVERFLOW
+             * ("1e999") manufactures the same non-finite without
+             * spelling it — the same strict reject (Ruby streams only
+             * ever carry finites or the literal inf/nan spellings) */
+            return cm_fail(c, YEPTRIS_ERROR_UNSUPPORTED);
+        }
         uint8_t fw = yep_cbor_float_width(d);
         if (cm_reserve(c, out, 9) != 0) {
             return -1;
