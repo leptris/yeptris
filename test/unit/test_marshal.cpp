@@ -255,16 +255,37 @@ TEST(Marshal, BignumTextBeyondTheOldLimbCap) {
      * boundary = 270 limbs). */
     std::string in700 = "a: 1" + std::string(700, '0') + "\n";
     expect_marshal(in700.c_str(),
-                   "04087b0649220661063a0645546c2b019200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010397aa6fdb1a0e2c5fcdb8f0d7a5c30e2be4abb6c5150d3906c9f558e4c5883cd0b2bc8d7b75a807d54d4cd657dc3bbec5aab61a11d4f0ebfa436b7e03b65c515c29c51ec2852f8369b9bfbcbd77fc930a537dd320e4aaa8e6e5b10939a053ac2cfcb4d1bc79800e143a16f75715e789c7951fe15216bc1889e7a3bd695de33051c77fe83d18062eb5f27169239d09d2e1eabfb8a31243aa95175efa7b8dcc92087cfb63ca9aba2a27e5fc024b52cb3942ef6f7fb712bc1779aa520123b91eef2281edd6312943e67c9c62800",
+                   "04087b0649220661063a0645546c2b0192000000000000000000000000000000000000000000"
+                   "0000000000000000000000000000000000000000000000000000000000000000000000000000"
+                   "0000000000000000000000000000000000000000000000000000000010397aa6fdb1a0e2c5fc"
+                   "db8f0d7a5c30e2be4abb6c5150d3906c9f558e4c5883cd0b2bc8d7b75a807d54d4cd657dc3bb"
+                   "ec5aab61a11d4f0ebfa436b7e03b65c515c29c51ec2852f8369b9bfbcbd77fc930a537dd320e"
+                   "4aaa8e6e5b10939a053ac2cfcb4d1bc79800e143a16f75715e789c7951fe15216bc1889e7a3b"
+                   "d695de33051c77fe83d18062eb5f27169239d09d2e1eabfb8a31243aa95175efa7b8dcc92087"
+                   "cfb63ca9aba2a27e5fc024b52cb3942ef6f7fb712bc1779aa520123b91eef2281edd6312943e"
+                   "67c9c62800",
                    YEPTRIS_MARSHAL_FIRST_DOC);
     std::string in1299 = "a: " + std::string(1299, '9') + "\n";
     expect_marshal(in1299.c_str(),
-                   "04087b0649220661063a0645546c2b020e01ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe76972b8ed21ec3741e6e46215b589706400ad3e64cea5a322328e15186cc67365253f4ae9488d0e9d562a2798f0a8e67749e01f8e7fe1baa56aa85ff8beaf32d4cc8734c346309fdf5376cf09016c55b7ba5117fea93677ea503389ac333cc3ac61ee306aa113b7a6d48f91d0b07251c09ab10f90e029c03f9737bac5bcddd5014a81b75ea212e8b26e94693e374ffa94ff6679ed8fc5909ad3e30b036d059d7f7db01e70bba5da2257d43d87b1443ae28be76f02c18e2fe408e4827efe1b2b2434c5db13ac577b99db2dc098bd0857c15a77181da350776509bfbff0da10ad9e9240b9fa40ccd318fc653689763272677aa324faa4ca47a53cd47f5541840ff1701cf68976055d1d2519dd4d3240c832eac09e9ecdbbae87b8fa5b535b62a0184b799f693f961e0146e6f1fb92b98af634885e82ad213a6a424f3c7357a7cdf5bef8adc69041bc13d6ab107c2a01fa7322f305d11a9eff7ec22400a7509571f39053c2ce41b95785938b9a38e6490a048d86d5556c4f8c1709",
+                   "04087b0649220661063a0645546c2b020e01ffffffffffffffffffffffffffffffffffffffff"
+                   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffe76972b8ed21ec3741e6"
+                   "e46215b589706400ad3e64cea5a322328e15186cc67365253f4ae9488d0e9d562a2798f0a8e6"
+                   "7749e01f8e7fe1baa56aa85ff8beaf32d4cc8734c346309fdf5376cf09016c55b7ba5117fea9"
+                   "3677ea503389ac333cc3ac61ee306aa113b7a6d48f91d0b07251c09ab10f90e029c03f9737ba"
+                   "c5bcddd5014a81b75ea212e8b26e94693e374ffa94ff6679ed8fc5909ad3e30b036d059d7f7d"
+                   "b01e70bba5da2257d43d87b1443ae28be76f02c18e2fe408e4827efe1b2b2434c5db13ac577b"
+                   "99db2dc098bd0857c15a77181da350776509bfbff0da10ad9e9240b9fa40ccd318fc65368976"
+                   "3272677aa324faa4ca47a53cd47f5541840ff1701cf68976055d1d2519dd4d3240c832eac09e"
+                   "9ecdbbae87b8fa5b535b62a0184b799f693f961e0146e6f1fb92b98af634885e82ad213a6a42"
+                   "4f3c7357a7cdf5bef8adc69041bc13d6ab107c2a01fa7322f305d11a9eff7ec22400a7509571"
+                   "f39053c2ce41b95785938b9a38e6490a048d86d5556c4f8c1709",
                    YEPTRIS_MARSHAL_FIRST_DOC);
 }
 
 } // namespace
-
 
 /* #178: an explicit tag anywhere in the subtree bails marshal_node —
  * the value records carry the resolver's verdict, not the source tag,

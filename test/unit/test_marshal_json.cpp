@@ -131,8 +131,7 @@ TEST(MarshalJson, NestingRejectsBeyondTheDepthBudget) {
         char* out = nullptr;
         size_t olen = 0;
         std::string m = nest(d);
-        YeptrisStatus st =
-            yeptris_json_from_marshal(m.data(), m.size(), 1, &out, &olen);
+        YeptrisStatus st = yeptris_json_from_marshal(m.data(), m.size(), 1, &out, &olen);
         EXPECT_EQ(st, YEPTRIS_OK) << "depth=" << d;
         EXPECT_NE(out, nullptr);
         yeptris_marshal_free(out);
@@ -141,8 +140,7 @@ TEST(MarshalJson, NestingRejectsBeyondTheDepthBudget) {
         char* out = nullptr;
         size_t olen = 0;
         std::string m = nest(d);
-        YeptrisStatus st =
-            yeptris_json_from_marshal(m.data(), m.size(), 1, &out, &olen);
+        YeptrisStatus st = yeptris_json_from_marshal(m.data(), m.size(), 1, &out, &olen);
         EXPECT_EQ(st, YEPTRIS_ERROR_UNSUPPORTED) << "depth=" << d;
         EXPECT_EQ(out, nullptr);
     }

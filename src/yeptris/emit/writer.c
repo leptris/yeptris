@@ -1603,10 +1603,10 @@ typedef struct {
                  * 'I'-wrapped construct registers ONCE (at the 'I');
                  * its immediate inner must not add a second entry or
                  * every later '@' link shifts */
-    int depth; /* mj_value recursion guard — the reader walks hostile
-                * bytes, not Ruby's heap: nesting is unbounded in the
-                * input, the stack is not (the parser's own
-                * max_depth=1000 is the same law) */
+    int depth;  /* mj_value recursion guard — the reader walks hostile
+                 * bytes, not Ruby's heap: nesting is unbounded in the
+                 * input, the stack is not (the parser's own
+                 * max_depth=1000 is the same law) */
 } mj_ctx;
 
 static int mj_fail(mj_ctx* c) {
