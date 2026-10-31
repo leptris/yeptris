@@ -551,6 +551,10 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
         return 0;
     }
     em.w.p = window;
+    /* the writer owns the window size now: wr_put's chunked path and
+     * the fused member write bounds-check against it (a scalar larger
+     * than the window used to memcpy straight past it) */
+    em.w.cap = YEP_EMIT_WATERMARK * 2;
     em.w.sink_aborted = 0;
     size_t total = yep_emit_run(&em, 0);
     if (em.w.len > 0 && !em.w.sink_aborted) {
