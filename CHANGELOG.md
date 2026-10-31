@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **engine: `serialize_json` spells no node properties** — JSON output carried YAML properties verbatim (`k: !` serialized as `{"k": ! ""}`, anchors rode inline, aliases wrote `*x` — every family invalid JSON, caught by the ts bridge's YAML-to-JSON export). The projection now drops tags and anchors and writes aliases as `null` (bounded: a dereference would loop on cycles); the json key rule stops letting properties select the explicit `? key :` form; the hostile-anchor-name laws still run on the json route, so a document with no safe spelling keeps failing the serialize. Pinned by `EmitJson.PropertylessProjection` (8 cases x default + compact).
+- **engine: the marshal reader shares the parser's depth law** — `yeptris_json_from_marshal` recursed per nesting level with no budget: hostile bytes (header + N nested `[`, no Ruby needed) walked the stack to a SIGSEGV. Both recursive walkers (`mj_value`, `mj_discard_value`) now ride a shared depth budget capped at 1000, the parser's `max_depth` law; deeper streams reject with `YEPTRIS_ERROR_UNSUPPORTED`. Pinned by `MarshalJson.NestingRejectsBeyondTheDepthBudget` (999/1000 parse, 1001/100000 reject; a 200000-deep probe rejects cleanly).
+- **engine: marshal bignum limb integrity — no silent truncation, no UB shift** — `e_bignum_text` used a fixed 128-limb array (~616 digits) while its entry gate admitted 1299-digit text: every value in between emitted a silently WRONG number (carries past limb 128 were dropped). The arrays now size from the gate bound (272 limbs); 10^700 (146 limbs) and the 1299-digit boundary (270 limbs) emit byte-identical to Ruby `Marshal.dump`, pinned with Ruby's true bytes. The reader's bignum decode shifted into a signed int64 — at limb 3 the 0xFFFF limb lands in the sign bit (UB) — the shift moves to the unsigned domain.
+- **engine: line indents are 32-bit** — a 65536-space line wrapped the uint16 `yep_line_info.indent` to 0: the whole-document route kept the line verbatim (libyaml parity) while the step/feed route read it as a dedent and errored at the cut — whole-vs-chunked feed identity, the #839 family. `indent` widens to `uint32_t` across the scan struct, `yep_scan_line_f`, the step scan's inline builder, the quoted-floor parameter and the fold-walk comparisons. Pinned by `Parse.DeepIndentLineKeepsItsIndentPastUint16` (the scalar keeps the deep line verbatim and five split points replay identically).
+- **engine: the JSON number scans bounds-check the entry index** — `yep_json_number_scan` and `yep_json_number_shape` read `p[*i]` before any bounds check: a caller handing `*i == len` (a number token ending exactly at the buffer end) read one byte past. Both exported primitives reject at entry now. Pinned by `JsonNumberScan.IndexAtEndRejectsWithoutTouchingPastTheBuffer`.
+
 ## [0.6.52] - 2026-10-31
 
 ### Fixed
