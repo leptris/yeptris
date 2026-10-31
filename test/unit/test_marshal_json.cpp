@@ -147,3 +147,20 @@ TEST(MarshalJson, NestingRejectsBeyondTheDepthBudget) {
 }
 
 } // namespace
+
+TEST(MarshalJson, FloatStrtodOverflowRejectsLikeTheLiteralSpellings) {
+    /* the strcmp gate rejects the literal inf/nan spellings, but a
+     * strtod OVERFLOW ("1e999") manufactured the same non-finite from
+     * text that never spelled it — and yep_d2s_json rode it into the
+     * output. Both marshal readers reject non-finite now. 'f' + 05 +
+     * "1e999" (the CBOR twin's pin rides CborMarshal). */
+    expect_unsupported("660a3165393939");
+    /* a finite scientific form still loads (sanity, "1.5e2" -> 150) */
+    std::string m = "\x04\x08" + std::string("\x66\x0a\x31\x2e\x35\x65\x32", 7);
+    char* out = nullptr;
+    size_t olen = 0;
+    YeptrisStatus st = yeptris_json_from_marshal(m.data(), m.size(), 1, &out, &olen);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    EXPECT_EQ(std::string(out, olen), "150.0");
+    yeptris_marshal_free(out);
+}

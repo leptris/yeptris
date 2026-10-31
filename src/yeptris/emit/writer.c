@@ -24,6 +24,7 @@
 
 #include "style.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -1969,9 +1970,11 @@ static int mj_value_inner(mj_ctx* c) {
         memcpy(tmp, c->s.p + c->s.at, tl);
         tmp[tl] = '\0';
         c->s.at += (size_t)len;
-        if (strcmp(tmp, "inf") == 0 || strcmp(tmp, "-inf") == 0 || strcmp(tmp, "nan") == 0)
-            return mj_fail(c); /* JSON has no inf/nan spelling */
         double d = strtod(tmp, NULL);
+        if (!isfinite(d))
+            return mj_fail(c); /* JSON has no inf/nan spelling — and a
+                                * strtod OVERFLOW ("1e999") produces
+                                * one from text that never spells it */
         char buf[40];
         int wl = yep_d2s_json(d, buf);
         wr_put(c->w, buf, (uint32_t)wl);
