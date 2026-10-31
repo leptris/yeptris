@@ -159,3 +159,18 @@ TEST(JsonNumberScan, EightDigitSwarExactness) {
     ASSERT_EQ(yep_json_number_scan("9999999999999999999999", 22, &i, &shape, &iv, &dv), 1);
     EXPECT_DOUBLE_EQ(dv, 9999999999999999999999.0);
 }
+
+TEST(JsonNumberScan, IndexAtEndRejectsWithoutTouchingPastTheBuffer) {
+    /* the exported primitives read p[*i] before any bounds check: a
+     * caller handing *i == len (a number-typed token ending exactly at
+     * the buffer end) walked one past. The guard is at ENTRY now. */
+    char buf[] = {'1', '2', '3'};
+    size_t i = 3; /* == len */
+    EXPECT_EQ(yep_json_number_scan(buf, 3, &i, NULL, NULL, NULL), 0);
+    EXPECT_EQ(yep_json_number_shape(buf, 3, &i, NULL), 0);
+    EXPECT_EQ(yep_json_number(buf, 3, &i), 0);
+    i = 2; /* the '-' slot of a bare '-' sentinel */
+    buf[2] = '-';
+    EXPECT_EQ(yep_json_number_scan(buf, 3, &i, NULL, NULL, NULL), 0);
+    EXPECT_EQ(yep_json_number_shape(buf, 3, &i, NULL), 0);
+}
