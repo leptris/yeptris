@@ -6840,3 +6840,66 @@ TEST(Parse, NormWalkFlowSeparatorsDoNotArmBlockTokenStarts) {
         EXPECT_TRUE(value_ok) << "the NEL fold did not take the newline tally";
     }
 }
+
+TEST(Parse, NormWalkFlowOpenersOpenAtTokenPositionsOnly) {
+    /* the r98 nightly: the #836 phantom had a FLOW half. The
+     * unconditioned '[' arm let a plain's interior '[' ("ya200%[")
+     * open a PHANTOM flow whose ',' armed the next token slot and a
+     * following "!<" opened a phantom verbatim — breaks inside
+     * verbatim ride unnormalized, the raw NELs defeated the
+     * line-facts kernel, and the fold rendered one fold-SPACE per
+     * break instead of the n-1 newline tally. The opener now fires at
+     * a token position or directly after the value ':' ("k:{a: 1}");
+     * "k: {" rides tok_start already. */
+    const std::string nel = "\xc2\x85";
+    const std::string lf = "\n";
+    struct Row {
+        std::string raw;
+        std::string lf;
+    };
+    const Row twins[] = {
+        {";!k1<<btag:ya200%[,,,!<!" + nel + nel + nel + "NN$",
+         ";!k1<<btag:ya200%[,,,!<!" + lf + lf + lf + "NN$"},
+        /* the real flow still opens after the value ':', glued form */
+        {"k:{a:!<!x>," + nel + nel + nel + "b}", "k:{a:!<!x>," + lf + lf + lf + "b}"},
+        /* and the blank twin keeps riding tok_start */
+        {"k: {a:!<!x>," + nel + nel + nel + "b}", "k: {a:!<!x>," + lf + lf + lf + "b}"},
+        /* a verbatim INSIDE the real flow keeps raw breaks: closed
+         * tag, NELs outside it fold with the flow plain law */
+        {"[q,!<!x>," + nel + nel + nel + "b]", "[q,!<!x>," + lf + lf + lf + "b]"},
+    };
+    for (const Row& r : twins) {
+        std::vector<std::string> raw = v818_events(r.raw);
+        std::vector<std::string> unix = v818_events(r.lf);
+        ASSERT_FALSE(raw.empty()) << r.raw;
+        ASSERT_EQ(raw.size(), unix.size()) << r.raw;
+        for (size_t i = 0; i < raw.size(); i++) {
+            std::string a = raw[i], b = unix[i];
+            if (a == "<feed-error>" || b == "<feed-error>") {
+                EXPECT_EQ(a, b) << r.raw;
+                continue;
+            }
+            size_t pa = a.rfind('/'), pb = b.rfind('/');
+            ASSERT_NE(pa, std::string::npos) << a;
+            ASSERT_NE(pb, std::string::npos) << b;
+            a.resize(pa);
+            b.resize(pb);
+            EXPECT_EQ(a, b) << r.raw << " event " << i;
+        }
+    }
+    /* the structure: the r98 artifact's fold takes the n-1 newline
+     * tally byte-strictly (libyaml's rendering), never one fold-space
+     * per break */
+    {
+        std::vector<std::string> ev =
+            v818_events(";!k1<<btag:ya200%[,,,!<!" + nel + nel + nel + "NN$");
+        ASSERT_FALSE(ev.empty());
+        bool value_ok = false;
+        for (const std::string& s : ev) {
+            if (s.find("/=;!k1<<btag:ya200%[,,,!<!\n\nNN") != std::string::npos) {
+                value_ok = true;
+            }
+        }
+        EXPECT_TRUE(value_ok) << "the interior-[ fold did not take the newline tally";
+    }
+}

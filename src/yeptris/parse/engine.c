@@ -4569,8 +4569,18 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         }
         c->tok_start = 0;
     }
-    if (ch == '[' || ch == '{') {
-        c->tok_start = 1; /* a flow opener begins a token slot */
+    if ((ch == '[' || ch == '{') && (c->tok_start || c->prev == ':')) {
+        /* a flow opener begins a token slot — at a token position, or
+         * directly after the value ':' ("k:{a: 1}" opens; the blank
+         * twin "k: {" rides tok_start already). Unconditioned, a
+         * plain's interior '[' ("ya200%[") opened a PHANTOM flow whose
+         * ',' armed the next token slot and a following "!<" opened a
+         * phantom verbatim — breaks inside verbatim ride unnormalized,
+         * the raw NELs defeated the line-facts kernel, and the plain
+         * fold rendered one fold-SPACE per break instead of the n-1
+         * newline tally (the r98 nightly — the #836 phantom's flow
+         * half; the comma half landed in #836 itself). */
+        c->tok_start = 1;
         c->in_flow++;
     } else if (ch == ',') {
         /* flow separators glue the next token — THE COMMA IN FLOW
