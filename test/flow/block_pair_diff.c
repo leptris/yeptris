@@ -12,12 +12,12 @@ static int g_pair_cases = 0;
 static int g_pair_hits = 0;
 
 static int counting_pair(void* ctx, const yep_view* key, const yep_block_value* v, uint32_t line,
-                         uint16_t key_col, uint16_t val_col) {
+                         uint32_t key_col, uint32_t val_col) {
     g_pair_hits++;
     return dom_on_block_pair(ctx, key, v, line, key_col, val_col);
 }
 static int g_open_hits = 0;
-static int counting_open(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col) {
+static int counting_open(void* ctx, const yep_view* key, uint32_t line, uint32_t key_col) {
     g_open_hits++;
     return dom_on_block_open(ctx, key, line, key_col);
 }

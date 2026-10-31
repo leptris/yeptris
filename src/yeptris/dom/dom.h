@@ -289,8 +289,8 @@ int dom_on_scalar(void* ctx, const yep_view* value, const yep_view* tag, const y
                   int borrowed);
 
 int dom_on_block_pair(void* ctx, const yep_view* key, const struct yep_block_value* v,
-                      uint32_t line, uint16_t key_col, uint16_t val_col);
-int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint16_t key_col);
+                      uint32_t line, uint32_t key_col, uint32_t val_col);
+int dom_on_block_open(void* ctx, const yep_view* key, uint32_t line, uint32_t key_col);
 int dom_on_block_item(void* ctx, const yep_block_value* v);
 
 /* Direct DOM construction from a strict-validated JSON buffer

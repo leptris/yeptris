@@ -49,7 +49,7 @@ typedef enum {
 
 /* One open collection frame (the engine's indentation stack). */
 typedef struct {
-    uint16_t col;
+    uint32_t col;
     uint8_t kind;
     uint8_t inline_doc; /* opened on the --- line: deeper keys only */
 } yep_frame;
@@ -163,7 +163,7 @@ struct yep_engine {
     int last_root_flow;                                 /* a root-level flow node just completed */
     int tag_undef;                                      /* an unresolved !handle! was seen (QLJ7) */
     int doc_inline;                                     /* content node opened on the --- line */
-    uint16_t flow_floor; /* parent column of the current block-level flow */
+    uint32_t flow_floor; /* parent column of the current block-level flow */
     int flow_enforce;    /* flow continuation lines must out-indent it */
     int compat_grammar;  /* 11-COMPAT: libyaml/psych grammar parity —
                           * the flow indent floor (9C9N/VJP3) is a
@@ -177,7 +177,7 @@ struct yep_engine {
 /* ------------------------------------------------------------ forwards */
 
 static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col);
-static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col);
+static int e_parse_value(yep_engine* e, yep_ctx ctx, uint32_t floor_col);
 
 /* ---------------------------------------------------------------- util */
 
@@ -462,7 +462,7 @@ static uint32_t anchor_define(yep_engine* e, yep_view name) {
 /* Opens a collection frame unless the top frame already continues at
  * exactly this column (sibling entries reuse it). anchor/tag ride the
  * START event. Returns 0 on success. */
-static int e_open_seq(yep_engine* e, uint16_t col, uint32_t line, uint32_t coln, yep_view anchor,
+static int e_open_seq(yep_engine* e, uint32_t col, uint32_t line, uint32_t coln, yep_view anchor,
                       yep_view tag, uint32_t anchor_id) {
     if (e->depth > 0 && e->frames[e->depth - 1].kind == YEP_FRAME_SEQ &&
         e->frames[e->depth - 1].col == col) {
@@ -555,7 +555,7 @@ static int e_flush_q_value(yep_engine* e) {
  * value arrived inline) the innermost '?' pending resolves — without
  * this pop the stack keeps a stale entry and the outer pair's null
  * flushes inside the wrong map (the nightly's run 38387614146). */
-static int e_pair_value_done(yep_engine* e, yep_ctx ctx, uint16_t key_col) {
+static int e_pair_value_done(yep_engine* e, yep_ctx ctx, uint32_t key_col) {
     /* the pair's own level, BEFORE its value parse: the value may open
      * deeper frames ("? a:\n   ? b<EOF>") and a post-parse depth read
      * then matches the DEEPER pair's pending slot, popping the wrong
@@ -1893,7 +1893,7 @@ static int e_flow_key_after(const char* p, size_t len, size_t close) {
  * rejects it, and the fast path must agree (the nightly's run
  * 38280372447: whole vs chunked split across the fast/slow paths and
  * produced two different verdicts for the same bytes). */
-static int e_flow_floor_ok(const char* p, size_t open, size_t close, uint16_t floor) {
+static int e_flow_floor_ok(const char* p, size_t open, size_t close, uint32_t floor) {
     size_t j = open;
     while (j < close) {
         /* the break rule is the scan's: \n, or a \r the next byte does
@@ -3036,7 +3036,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
 
 /* Plain (optionally anchored) value: emit, fold continuations, land at
  * the line end. root_ctx is 0 — every arm has pushed a frame. */
-static int e_shape_plain_value(yep_engine* e, const yep_line_shape* sh, uint16_t floor,
+static int e_shape_plain_value(yep_engine* e, const yep_line_shape* sh, uint32_t floor,
                                yep_view anchor, uint32_t anchor_id) {
     yep_event ev;
     e_event_init(&ev, YEP_EV_SCALAR);
@@ -3078,7 +3078,7 @@ static int e_shape_plain_value(yep_engine* e, const yep_line_shape* sh, uint16_t
 
 /* Flow value: the JSON fast path first; anything else restores the
  * cursor and runs the value chain (which re-derives the flow arms). */
-static int e_shape_flow_value(yep_engine* e, const yep_line_shape* sh, uint16_t floor,
+static int e_shape_flow_value(yep_engine* e, const yep_line_shape* sh, uint32_t floor,
                               yep_ctx next) {
     yep_view none = {NULL, 0};
     e->pos = sh->val_start;
@@ -3119,7 +3119,7 @@ static int e_shape_alias_value(yep_engine* e, const yep_line_shape* sh, int unde
         if (e_simple_key_ok(e, sh->val_start, e->pos) != 0) {
             return -1;
         }
-        uint16_t key_col = (uint16_t)e_col(e, sh->val_start);
+        uint32_t key_col = e_col(e, sh->val_start);
         int rc = e_open_map(e, key_col, e->line, key_col + 1, none, none, 0, 0);
         if (rc != 0) {
             return rc;
@@ -3141,7 +3141,7 @@ static int e_shape_alias_value(yep_engine* e, const yep_line_shape* sh, int unde
  * emit it: the pair path takes the whole line without events, and
  * building kv up front discarded ~48 stores per classified line
  * (TODO.restructure/63 phase 1). */
-static void e_key_event(const yep_engine* e, const yep_line_shape* sh, uint16_t key_col,
+static void e_key_event(const yep_engine* e, const yep_line_shape* sh, uint32_t key_col,
                         uint32_t line, yep_event* kv) {
     e_event_init(kv, YEP_EV_SCALAR);
     kv->style = YEP_STYLE_PLAIN;
@@ -3156,7 +3156,7 @@ static void e_key_event(const yep_engine* e, const yep_line_shape* sh, uint16_t 
     e_pos_mark(e, sh->key_end, &kv->end_line, &kv->end_col);
 }
 
-static int e_classified(yep_engine* e, uint16_t floor_col) {
+static int e_classified(yep_engine* e, uint32_t floor_col) {
     yep_line_info li = e_line_info_here(e);
     if (e->pos != e->line_start + li.indent) {
         return 0; /* mid-line entry: the chain keeps its dispatch */
@@ -3177,7 +3177,7 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
         default:
             return 0;
         }
-        uint16_t col = (uint16_t)e_col(e, e->pos);
+        uint32_t col = e_col(e, e->pos);
         int rc = e_open_seq(e, col, e->line, col + 1, none, none, 0);
         if (rc != 0) {
             return rc;
@@ -3203,7 +3203,7 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
     if (e_simple_key_ok(e, sh->key_start, sh->key_end) != 0) {
         return -1;
     }
-    uint16_t key_col = (uint16_t)e_col(e, e->pos);
+    uint32_t key_col = e_col(e, e->pos);
     /* `key:` with the value on following lines, opening a FRESH map:
      * the sink may build map+key in one call (TODO.restructure/57) —
      * the engine then opens its frame silently. Sibling keys (the map
@@ -3241,7 +3241,7 @@ static int e_classified(yep_engine* e, uint16_t floor_col) {
     /* the pair facts are captured BEFORE the fold: e_plain_multiline
      * advances line/pos across continuations */
     uint32_t pair_line = e->line;
-    uint16_t pair_val_col = (uint16_t)e_col(e, sh->val_start);
+    uint32_t pair_val_col = e_col(e, sh->val_start);
     yep_block_value v;
     memset(&v, 0, sizeof(v));
     v.cls = (uint8_t)sh->val;
@@ -3482,7 +3482,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
         if (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag)) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "&a - x" */
         }
-        uint16_t col = (uint16_t)e_col(e, e->pos);
+        uint32_t col = e_col(e, e->pos);
         int rc = e_open_seq(e, col, e->line, col + 1, node_a, node_t, node_aid);
         if (rc != 0) {
             return rc;
@@ -3515,7 +3515,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
         if (e->pos > 0 && e->p[e->pos - 1] == '\t') {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "?\t-" (Y79Y) */
         }
-        uint16_t col = (uint16_t)e_col(e, e->pos);
+        uint32_t col = e_col(e, e->pos);
         int rc = e_open_map(e, col, e->line, col + 1, pend_a, pend_t, pend_aid, 0);
         if (rc != 0) {
             return rc;
@@ -3639,7 +3639,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
             if (e_simple_key_ok(e, node_at, e->pos) != 0) {
                 return -1;
             }
-            uint16_t key_col = (uint16_t)e_col(e, node_at);
+            uint32_t key_col = e_col(e, node_at);
             int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
             if (rc != 0) {
                 return rc;
@@ -3683,7 +3683,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
             if (e_simple_key_ok(e, node_at, e->pos) != 0) {
                 return -1;
             }
-            uint16_t key_col = (uint16_t)e_col(e, node_at);
+            uint32_t key_col = e_col(e, node_at);
             int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
             if (rc != 0) {
                 return rc;
@@ -3722,7 +3722,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
             if (e_simple_key_ok(e, node_at, e->pos) != 0) {
                 return -1;
             }
-            uint16_t key_col = (uint16_t)e_col(e, node_at);
+            uint32_t key_col = e_col(e, node_at);
             int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
             if (rc != 0) {
                 return rc;
@@ -3777,7 +3777,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
         if (e->doc_inline && (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
             return e_fail(e, YEP_ERR_UNEXPECTED, e->pos); /* "--- &a k: v" */
         }
-        uint16_t key_col = (uint16_t)e_col(e, node_at);
+        uint32_t key_col = e_col(e, node_at);
         int rc = e_open_map(e, key_col, e->line, key_col + 1, pend_a, pend_t, pend_aid, 0);
         if (rc != 0) {
             return rc;
@@ -3837,7 +3837,7 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
 }
 
 /* Value after "key:" / "-" / "?": on this line, or on following lines. */
-static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
+static int e_parse_value(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
     e_skip_inline_space(e);
     if (!e_at_eol(e)) {
         if (ctx == YEP_CTX_AFTER_COLON && e->p[e->pos] == '-' &&
@@ -3849,7 +3849,7 @@ static int e_parse_value(yep_engine* e, yep_ctx ctx, uint16_t floor_col) {
             (e->pos + 1 >= e->len || e->p[e->pos + 1] == ' ' || e->p[e->pos + 1] == '\t' ||
              e->p[e->pos + 1] == '\n' || e->p[e->pos + 1] == '\r')) {
             /* "- :" — a compact pair with an empty key */
-            uint16_t col = (uint16_t)e_col(e, e->pos);
+            uint32_t col = e_col(e, e->pos);
             int rc = e_open_map(e, col, e->line, col + 1, e->pend_anchor, e->pend_tag,
                                 e->pend_anchor_id, 0);
             if (rc != 0) {
