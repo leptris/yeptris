@@ -291,8 +291,13 @@ static int psych_int_text(const char* p, uint32_t len) {
 }
 
 /* decimal text -> bignum limbs (base 2^16 LE), then Marshal's 'l':
- * sign + w_long(limb count) + limbs. 128 limbs = 2048 bits covers
- * ~616 decimal digits; longer texts stay Strings (pathological). */
+ * sign + w_long(limb count) + limbs. The gate (marshal_node: text
+ * under 1300 chars) bounds the digits at 1299 -> ceil(1299*log2(10)/16)
+ * = 270 limbs; the arrays are sized from that bound so no carry is
+ * ever dropped (the old 128-limb cap silently truncated 617..1299-digit
+ * values into wrong numbers). */
+#define E_BIGNUM_LIMBS_MAX 272
+
 static void e_bignum_text(E* e, const char* p, uint32_t len) {
     int neg = 0;
     if (p[0] == '-' || p[0] == '+') {
@@ -300,7 +305,7 @@ static void e_bignum_text(E* e, const char* p, uint32_t len) {
         p++;
         len--;
     }
-    uint16_t limbs[128];
+    uint16_t limbs[E_BIGNUM_LIMBS_MAX];
     memset(limbs, 0, sizeof(limbs));
     int nl = 1;
     for (uint32_t i = 0; i < len; i++) {
@@ -313,7 +318,7 @@ static void e_bignum_text(E* e, const char* p, uint32_t len) {
             limbs[j] = (uint16_t)(t & 0xffffu);
             carry = t >> 16;
         }
-        while (carry != 0 && nl < 128) {
+        while (carry != 0 && nl < E_BIGNUM_LIMBS_MAX) {
             limbs[nl++] = (uint16_t)(carry & 0xffffu);
             carry >>= 16;
         }
@@ -324,7 +329,7 @@ static void e_bignum_text(E* e, const char* p, uint32_t len) {
     e_byte(e, 'l');
     e_byte(e, neg ? '-' : '+');
     e_long(e, nl);
-    unsigned char b[256];
+    unsigned char b[E_BIGNUM_LIMBS_MAX * 2];
     for (int i = 0; i < nl; i++) {
         b[2 * i] = (unsigned char)(limbs[i] & 0xff);
         b[2 * i + 1] = (unsigned char)(limbs[i] >> 8);
