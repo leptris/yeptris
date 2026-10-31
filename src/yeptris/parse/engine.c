@@ -4201,15 +4201,10 @@ yep_engine* yep_engine_create(const yep_allocator* sys) {
  * length is not strlen()'s: the INPUT may carry NUL bytes of its own,
  * and a strlen() of the copy truncates the run at the first one (the
  * nightly's run 38524928004: "\0\n---\r<U+2028>" whole-parsed as an
- * empty stream while the chunked cut skipped the copy). */
-static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len, size_t* out_len) {
-    char* out = yep_engine_normalize_breaks(e->sys, p, len, out_len, NULL);
-    if (out == NULL) {
-        return p;
-    }
-    e->norm_buf = out;
-    return out;
-}
+ * empty stream while the chunked cut skipped the copy). The context
+ * walk behind the copy lives below (issue #638); since #839 the
+ * chunked route threads it across --- cuts so every document
+ * normalizes to the same bytes the one-buffer walk produces. */
 
 /* The NEL/LS/PS -> '\n' copy (the one-shot path rides this BEFORE the
  * engine so the normalized bytes own the document's `transcoded` slot;
@@ -4258,6 +4253,13 @@ typedef struct yep_norm_ctx {
     int bs_content;
     uint32_t bs_indent; /* the header line's indent; (uint32_t)-1 = the
                          * doc-inline root rule (markers only) */
+    uint8_t started;    /* at least one byte consumed: the walk's i == 0
+                         * clauses are stream-start, not buffer-start —
+                         * the chunked route resumes mid-stream at a ---
+                         * cut, and the carried context must say so */
+    unsigned char prev; /* the last consumed byte (valid when started):
+                         * the '#' and line-start tests peek p[i - 1],
+                         * which at a resumed buffer is carried state */
 } yep_norm_ctx;
 
 typedef struct yep_norm_tok {
@@ -4415,8 +4417,12 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         norm_break_arms(c);
         return t;
     }
-    if (ch == '#' && (i == 0 || c->at_break || p[i - 1] == '\n' || p[i - 1] == '\r' ||
-                      p[i - 1] == ' ' || p[i - 1] == '\t')) {
+    /* the i == 0 clauses below are STREAM start: `started`/`prev` carry
+     * them across the chunked route's per-document resumes (issue #839)
+     * — a fresh context at a --- cut would otherwise read the resumed
+     * buffer's first byte as a line start the whole walk never saw */
+    if (ch == '#' && (!c->started || c->at_break || c->prev == '\n' || c->prev == '\r' ||
+                      c->prev == ' ' || c->prev == '\t')) {
         c->in_comment = 1;
         c->at_break = 0;
         return t;
@@ -4429,7 +4435,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         return t;
     }
 
-    int line_start = (i == 0 || c->at_break || p[i - 1] == '\n' || p[i - 1] == '\r');
+    int line_start = (!c->started || c->at_break || c->prev == '\n' || c->prev == '\r');
 
     /* block scalars: inside the fold no quote opens and every break
      * keeps its fold; the region ends at a col-0 marker, a %-line
@@ -4519,7 +4525,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
     if (!c->bs_open && ch == '-' && i + 2 < len && p[i + 1] == '-' && p[i + 2] == '-' &&
         (i + 3 >= len || p[i + 3] == ' ' || p[i + 3] == '\t' || p[i + 3] == '\n' ||
          p[i + 3] == '\r') &&
-        (c->at_break || i == 0)) {
+        (c->at_break || !c->started)) {
         c->in_flow = 0; /* the marker bounds the document even when the
                          * walk still believes a flow is open (the same
                          * round-35 law as the in-quote rescue) */
@@ -4597,7 +4603,36 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
 }
 
 char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_t len,
+                                  size_t* out_len, int* kept_raw);
+
+static char* norm_breaks_run(const yep_allocator* sys, const char* p, size_t len, size_t* out_len,
+                             int* kept_raw, yep_norm_ctx* ctx);
+
+char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_t len,
                                   size_t* out_len, int* kept_raw) {
+    return norm_breaks_run(sys, p, len, out_len, kept_raw, NULL);
+}
+
+/* The context-threaded core (#839). ctx == NULL is the one-shot form:
+ * fresh state, and the !exotic early exit stands (no walk, no state).
+ * A non-NULL ctx rides in the step state: the chunked route parses
+ * whole documents, so the walk never sees a mid-construct cut — the
+ * divergence was the RESUME state. A --- cut lands exactly where the
+ * whole walk holds some carried state (an open quote it has not been
+ * rescued from, at_break, the raw prev byte); resuming fresh re-lexes
+ * the marker line differently ("--- 'tail": whole's rescue leaves
+ * tok_start 0 so the apostrophe is content, a fresh context's
+ * tok_start 1 opens a quote). Carrying, never resetting: doc N's walk
+ * sees the same bytes with the same state whole holds at the cut, so
+ * doc N + 1's start state equals whole's there — the induction makes
+ * the concatenated documents byte-identical to the one-buffer walk.
+ * The probe ALWAYS runs in this form (even without exotic leads): the
+ * carried state must advance over every byte, or the next resume
+ * starts stale. Both outcomes keep zero-copy semantics: a document
+ * whose exotic bytes all ride raw is used as-is, and those raw bytes
+ * are exactly what the one-buffer walk's copy carries for them. */
+static char* norm_breaks_run(const yep_allocator* sys, const char* p, size_t len, size_t* out_len,
+                             int* kept_raw, yep_norm_ctx* ctx) {
     if (kept_raw != NULL) {
         *kept_raw = 0;
     }
@@ -4614,15 +4649,21 @@ char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_
         exotic = 1; /* any NEL/LS/PS lead byte needs the context walk */
         break;
     }
-    if (!exotic) {
-        return NULL;
-    }
     yep_norm_ctx probe;
-    memset(&probe, 0, sizeof(probe));
-    probe.tok_start = 1;
+    if (ctx != NULL) {
+        probe = *ctx;
+    } else {
+        if (!exotic) {
+            return NULL;
+        }
+        memset(&probe, 0, sizeof(probe));
+        probe.tok_start = 1;
+    }
     int found = 0;
     for (size_t j = 0; j < len;) {
         yep_norm_tok t = norm_step(&probe, p, len, j);
+        probe.started = 1;
+        probe.prev = (unsigned char)p[j + t.n - 1];
         if (t.fold_off >= 0) {
             found = 1;
             break;
@@ -4630,22 +4671,34 @@ char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_
         j += t.n;
     }
     if (!found) {
-        if (kept_raw != NULL) {
-            *kept_raw = 1; /* every exotic byte rides raw */
+        if (ctx != NULL) {
+            *ctx = probe; /* the carried state advanced even with no fold */
+        } else {
+            if (kept_raw != NULL) {
+                *kept_raw = 1; /* every exotic byte rides raw */
+            }
+            return NULL; /* the exotic bytes all ride inside quoted regions:
+                          * the zero-copy path keeps them raw (the fix) */
         }
-        return NULL; /* the exotic bytes all ride inside quoted regions:
-                      * the zero-copy path keeps them raw (the fix) */
+        return NULL;
     }
     char* out = yep_alloc(sys, len + 1);
     if (out == NULL) {
         return NULL;
     }
     yep_norm_ctx cp;
-    memset(&cp, 0, sizeof(cp));
-    cp.tok_start = 1;
+    if (ctx != NULL) {
+        cp = *ctx; /* restart from the same carried state: the probe's
+                    * partial walk (it broke at the fold) is discarded */
+    } else {
+        memset(&cp, 0, sizeof(cp));
+        cp.tok_start = 1;
+    }
     size_t o = 0;
     for (size_t j = 0; j < len;) {
         yep_norm_tok t = norm_step(&cp, p, len, j);
+        cp.started = 1;
+        cp.prev = (unsigned char)p[j + t.n - 1];
         if (t.fold_off < 0) {
             if (kept_raw != NULL && *kept_raw == 0) {
                 for (size_t m = 0; m + 1 < t.n; m++) {
@@ -4671,6 +4724,19 @@ char* yep_engine_normalize_breaks(const yep_allocator* sys, const char* p, size_
     if (out_len != NULL) {
         *out_len = o;
     }
+    if (ctx != NULL) {
+        *ctx = cp;
+    }
+    return out;
+}
+
+static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len, size_t* out_len,
+                                      yep_norm_ctx* ctx) {
+    char* out = norm_breaks_run(e->sys, p, len, out_len, NULL, ctx);
+    if (out == NULL) {
+        return p;
+    }
+    e->norm_buf = out;
     return out;
 }
 
@@ -4697,6 +4763,11 @@ typedef struct yep_stepstate {
     int at_break;       /* the previous position was a line break
                          * (multibyte breaks leave a non-break byte as
                          * p[i-1], so the '#' prev-byte test misses them) */
+    yep_norm_ctx nctx;  /* the break normalizer's carried context (#839):
+                         * each document's walk resumes with exactly the
+                         * state the whole-stream walk holds at the ---
+                         * cut, so per-document normalization is
+                         * byte-identical to the one-buffer walk */
 } yep_stepstate;
 
 static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep_sink* sink,
@@ -4849,6 +4920,19 @@ static size_t step_scan(yep_stepstate* st) {
              * {..." whole 2 / chunked 3, the nightly's run
              * 39062394941) */
             if (c == '\n') {
+                st->in_comment = 0;
+                st->tok_start = 1;
+                st->word_led = 0;
+                st->at_break = 1;
+            } else if (c == '\r' && (i + 1 >= st->len || (unsigned char)p[i + 1] != '\n')) {
+                /* a lone CR is a line break too (CRLF rides the \n arm
+                 * next iteration; the state is identical either way).
+                 * Missing this arm kept the scan inside a comment whose
+                 * line ended CR, the tab-led `{ {?` flow opener on the
+                 * next line went untracked, and the cut landed at the
+                 * following --- INSIDE the engine's open flow (the r97
+                 * nightly, yeptris#839: whole errored at the flow's ---
+                 * while chunked cut and errored at the cut edge) */
                 st->in_comment = 0;
                 st->tok_start = 1;
                 st->word_led = 0;
@@ -5210,6 +5294,10 @@ int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, con
     }
     yep_stepstate* st = e->step;
     st->tok_start = 1; /* the buffer starts at a line start */
+    if (st->nctx.started == 0) {
+        st->nctx.tok_start = 1; /* the stream's first walk: the same
+                                 * fresh state the one-shot starts */
+    }
     if (len > 0) {
         if (st->len + len > st->cap) {
             size_t cap = st->cap ? st->cap : 4096;
@@ -5275,7 +5363,8 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
      * it, and the next transcode replaces it. */
     e->parsing_final = emit_end;
     size_t norm_len = len;
-    e->p = e_normalize_breaks(e, buf, len, &norm_len);
+    yep_norm_ctx* nctx = e->step != NULL ? &((yep_stepstate*)e->step)->nctx : NULL;
+    e->p = e_normalize_breaks(e, buf, len, &norm_len, nctx);
     e->len = norm_len;
     e->pos = 0;
     e->line = 1 + e->line_base;

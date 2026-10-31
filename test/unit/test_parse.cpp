@@ -6728,6 +6728,56 @@ TEST(Parse, ColonBeforeRawMultibyteBreakTerminatesThePlain) {
     }
 }
 
+TEST(Feed, CommentCrEndsTheCommentForTheCutScan) {
+    /* #839 (the r97 nightly): a comment whose line ends in a LONE CR
+     * kept the step scan "in comment" — the scan's comment arm ended
+     * only on \n/NEL/LS/PS — so the TAB-led `{ {?` flow opener on the
+     * next line went untracked and the cut landed at the following
+     * --- INSIDE the engine's open flow: the whole parse errored
+     * inside the flow while the chunked replay errored at its own cut
+     * edge, one event apart. The comment arm ends on a lone CR exactly
+     * like the scan's main break arm; the whole/chunked streams agree
+     * for EVERY split point, and the CRLF spelling twins it. */
+    const std::string rows[] = {
+        "a: # c\r\t{ {?\n--- x\n",
+        "a: # c\r\n\t{ {?\n--- x\n",
+    };
+    for (const std::string& y : rows) {
+        YeptrisRecorder whole = yeptris_recorder_new();
+        ASSERT_NE(whole, nullptr);
+        YeptrisStatus sw = yeptris_recorder_feed(whole, y.data(), y.size(), 1);
+        size_t nw = 0;
+        const YeptrisEventRecord* rw = yeptris_recorder_records(whole, &nw);
+        std::vector<std::string> ew;
+        for (size_t i = 0; i < nw; i++) {
+            char buf[128];
+            snprintf(buf, sizeof(buf), "%u/%u/%u/%u/%u:%u", rw[i].type, rw[i].style, rw[i].flags,
+                     rw[i].tag_id, rw[i].line, rw[i].col);
+            ew.emplace_back(buf);
+        }
+        for (size_t k = 1; k < y.size(); k++) {
+            YeptrisRecorder ch = yeptris_recorder_new();
+            ASSERT_NE(ch, nullptr);
+            YeptrisStatus sc = yeptris_recorder_feed(ch, y.data(), k, 0);
+            if (sc == YEPTRIS_OK) {
+                sc = yeptris_recorder_feed(ch, y.data() + k, y.size() - k, 1);
+            }
+            ASSERT_EQ(sw, sc) << "split " << k << " of " << y;
+            size_t nc = 0;
+            const YeptrisEventRecord* rc = yeptris_recorder_records(ch, &nc);
+            ASSERT_EQ(nw, nc) << "split " << k << " of " << y;
+            for (size_t i = 0; i < nc; i++) {
+                char buf[128];
+                snprintf(buf, sizeof(buf), "%u/%u/%u/%u/%u:%u", rc[i].type, rc[i].style,
+                         rc[i].flags, rc[i].tag_id, rc[i].line, rc[i].col);
+                EXPECT_EQ(ew[i], buf) << "split " << k << " of " << y << " event " << i;
+            }
+            yeptris_recorder_free(ch);
+        }
+        yeptris_recorder_free(whole);
+    }
+}
+
 TEST(Parse, NormWalkFlowSeparatorsDoNotArmBlockTokenStarts) {
     /* #836: the break normalizer's context walk armed tok_start after
      * a BLOCK plain's interior comma (and mid-word colon) — a following
