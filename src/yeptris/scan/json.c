@@ -250,6 +250,9 @@ int yep_json_number_scan(const char* p, size_t len, size_t* i, int* is_float, in
                          double* dv) {
     size_t k = *i;
     int neg = 0;
+    if (k >= len) {
+        return 0; /* the caller's index is at the end: p[len] is OOB */
+    }
     if (p[k] == '-') {
         neg = 1;
         k++;
@@ -438,6 +441,9 @@ int yep_json_number(const char* p, size_t len, size_t* i) {
  * the full scan (the 2M tape-diff oracle pins the equivalence). */
 int yep_json_number_shape(const char* p, size_t len, size_t* i, int* is_float) {
     size_t k = *i;
+    if (k >= len) {
+        return 0; /* the caller's index is at the end: p[len] is OOB */
+    }
     if (p[k] == '-') {
         k++;
     }
