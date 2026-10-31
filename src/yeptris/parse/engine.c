@@ -1076,9 +1076,9 @@ static int e_plain_multiline(yep_engine* e, yep_span s0, uint32_t block_floor, y
             break;
         }
         breaks++;
-        e_line_done(e, e->pos);
-        yep_line_info li = e_line_info_here(e);
-        if (li.flags & YEP_LF_BLANK) {
+            e_line_done(e, e->pos);
+            yep_line_info li = e_line_info_here(e);
+            if (li.flags & YEP_LF_BLANK) {
             /* Park at the line end: the loop's next break consumption
              * counts this blank line's own break. */
             e->pos = li.end;
@@ -4563,16 +4563,35 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         }
         c->tok_start = 0;
     }
-    if (ch == ',' || ch == ':' || ch == '[' || ch == '{' || ch == ']' || ch == '}') {
-        c->tok_start = 1; /* flow separators: the next byte may begin a
-                           * token with no space ("{\"a\":...") */
-    }
     if (ch == '[' || ch == '{') {
+        c->tok_start = 1; /* a flow opener begins a token slot */
         c->in_flow++;
-    } else if (ch == ']' || ch == '}') {
+    } else if (ch == ',') {
+        /* flow separators glue the next token — THE COMMA IN FLOW
+         * ONLY. The unconditioned arm let a BLOCK plain's interior
+         * comma arm tok_start, a following "!<" opened a phantom
+         * verbatim tag that swallowed the rest of the input (breaks
+         * inside ride unnormalized), and the raw NEL/LS/PS bytes then
+         * defeated the line-facts kernel's \n/\r law — the plain
+         * fold's blank-line tally lost them (the r96 nightly,
+         * yeptris#836, "b,,,!<!<"+NEL^3). ':' stays unconditioned:
+         * the BLOCK value position rides it ("k: 'x'" opens the
+         * quote, the NormLsPs pins). */
         if (c->in_flow > 0) {
-            c->in_flow--;
+            c->tok_start = 1;
         }
+    } else if (ch == ':') {
+        /* the separator law (#833's own predicate): a ':' arms the
+         * next token slot only before a blank/EOL/EOF — "k: 'x'"
+         * opens the value quote (the NormLsPs pins) while an
+         * interior "x:!<" of a block plain does NOT (the phantom
+         * verbatim again, the #836 colon-led twin) */
+        if (i + 1 >= len || p[i + 1] == ' ' || p[i + 1] == '\t' || p[i + 1] == '\n' ||
+            p[i + 1] == '\r') {
+            c->tok_start = 1;
+        }
+    } else if (ch == ']' || ch == '}') {
+        c->tok_start = 1;
     }
     return t;
 }
