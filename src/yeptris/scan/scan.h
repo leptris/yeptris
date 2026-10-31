@@ -20,7 +20,9 @@ extern "C" {
 typedef struct yep_line_info {
     uint32_t offset; /* byte offset of the line start */
     uint32_t end;    /* byte offset of the line break (exclusive content end) */
-    uint16_t indent; /* column of the first non-space (== end - offset when blank) */
+    uint32_t indent; /* column of the first non-space (== end - offset when blank);
+                      * 32-bit: a 65536-space line wrapped to 0 and read as a
+                      * dedent (the 2026-10-31 audit) */
     uint16_t flags;
     unsigned char first; /* first content byte ('\0' for blank lines) */
 } yep_line_info;
