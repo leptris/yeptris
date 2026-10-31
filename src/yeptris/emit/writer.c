@@ -1928,7 +1928,9 @@ static int mj_value_inner(mj_ctx* c) {
             unsigned char lo, hi;
             if (mj_byte(c, &lo) != 0 || mj_byte(c, &hi) != 0)
                 return -1;
-            v |= (int64_t)(lo | ((uint64_t)hi << 8)) << (16 * i);
+            /* shift in the unsigned domain: the signed form put
+             * 0xFFFF into the sign bit at limb 3 (UB, UBSan-flagged) */
+            v |= (int64_t)((uint64_t)(lo | ((uint64_t)hi << 8)) << (16 * i));
         }
         if (sign == 0x2d)
             v = -v;
