@@ -1622,6 +1622,10 @@ typedef struct {
                  * 'I'-wrapped construct registers ONCE (at the 'I');
                  * its immediate inner must not add a second entry or
                  * every later '@' link shifts */
+    int depth; /* mj_value recursion guard — the reader walks hostile
+                * bytes, not Ruby's heap: nesting is unbounded in the
+                * input, the stack is not (the parser's own
+                * max_depth=1000 is the same law) */
 } mj_ctx;
 
 static int mj_fail(mj_ctx* c) {
@@ -1748,7 +1752,23 @@ static int mj_ivar_pairs(mj_ctx* c) {
 }
 
 /* stream-position-only walk: consumes one value, emits nothing */
+
+#define MJ_DEPTH_MAX 1000
+
+/* the discard twin rides the same budget (its 'I'/'['/'{' recursion is
+ * just as hostile-byte reachable) */
+static int mj_discard_value_inner(mj_ctx* c);
+
 static int mj_discard_value(mj_ctx* c) {
+    if (c->depth >= MJ_DEPTH_MAX)
+        return mj_fail(c);
+    c->depth++;
+    int rc = mj_discard_value_inner(c);
+    c->depth--;
+    return rc;
+}
+
+static int mj_discard_value_inner(mj_ctx* c) {
     unsigned char t;
     int rc = mj_byte(c, &t);
     if (rc != 0)
@@ -1847,7 +1867,20 @@ static int mj_emit_memo(mj_ctx* c, const mj_obj* o) {
     return 0;
 }
 
+static int mj_value_inner(mj_ctx* c);
+
+/* the wrapper owns the recursion budget: hostile bytes can nest arrays
+ * without bound, the stack cannot (the parser's max_depth=1000 law) */
 static int mj_value(mj_ctx* c) {
+    if (c->depth >= MJ_DEPTH_MAX)
+        return mj_fail(c);
+    c->depth++;
+    int rc = mj_value_inner(c);
+    c->depth--;
+    return rc;
+}
+
+static int mj_value_inner(mj_ctx* c) {
     unsigned char t;
     size_t tpos = c->s.at;
     int reg_idx = -1;

@@ -110,4 +110,42 @@ TEST(MarshalJson, UnsupportedPaths) {
     expect_unsupported("0000");
 }
 
+TEST(MarshalJson, NestingRejectsBeyondTheDepthBudget) {
+    // hostile bytes nest '[' without bound; the reader walks bytes, not
+    // Ruby's heap, so nesting shares the parser's max_depth=1000 law.
+    // legal bytes: header + N x (5b 06 = '[' with 1 element) + innermost
+    // empty array (5b 00)
+    auto nest = [](int depth) {
+        std::string s;
+        s.push_back('\x04');
+        s.push_back('\x08');
+        for (int i = 0; i < depth - 1; i++) {
+            s.push_back('\x5b');
+            s.push_back('\x06');
+        }
+        s.push_back('\x5b');
+        s.push_back('\x00');
+        return s;
+    };
+    for (int d : {1, 999, 1000}) {
+        char* out = nullptr;
+        size_t olen = 0;
+        std::string m = nest(d);
+        YeptrisStatus st =
+            yeptris_json_from_marshal(m.data(), m.size(), 1, &out, &olen);
+        EXPECT_EQ(st, YEPTRIS_OK) << "depth=" << d;
+        EXPECT_NE(out, nullptr);
+        yeptris_marshal_free(out);
+    }
+    for (int d : {1001, 100000}) {
+        char* out = nullptr;
+        size_t olen = 0;
+        std::string m = nest(d);
+        YeptrisStatus st =
+            yeptris_json_from_marshal(m.data(), m.size(), 1, &out, &olen);
+        EXPECT_EQ(st, YEPTRIS_ERROR_UNSUPPORTED) << "depth=" << d;
+        EXPECT_EQ(out, nullptr);
+    }
+}
+
 } // namespace
