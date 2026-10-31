@@ -688,6 +688,78 @@ static int yd_qc_quote_dash_run(uint8_t* sub, size_t* subn, const uint8_t* data,
     return 1;
 }
 
+/* The UTF-16 BOM-quirk carry (the r100 nightly, crash-b09d2b15: "FE
+ * FF FE FF 00 0A FE FF FE FF 00 0A"). The input sniffs UTF-16 with a
+ * FEFF mark, and libyaml's reader strips MORE FEFF units than the
+ * mark: the catch-144 double-mark strip PLUS the catch-60 line-start
+ * strip, both in unit space (the oracle table for FEFF^n + 000A:
+ * libyaml keeps n-2; two lines of FEFF pairs keep one). yeptris keeps
+ * one mark and rides the rest as content (the catch-121 consistency
+ * law). No byte-level input removal verifies here — libyaml re-strips
+ * a kept unit at its own line start, so libyaml(remove) never equals
+ * libyaml(original). The catch-121 form instead: transform the input
+ * to WHAT LIBYAML'S READER CONSUMED (apply both strips in unit
+ * space), re-encode to UTF-8, and require yeptris's reading of that
+ * to equal libyaml's original dump. */
+static int yd_bom_utf16_line_start_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                              const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 6 || size > 8192 || (size % 2) != 0) {
+        return 0;
+    }
+    int be = data[0] == 0xFE && data[1] == 0xFF;
+    int le = data[0] == 0xFF && data[1] == 0xFE;
+    if (!be && !le) {
+        return 0;
+    }
+    unsigned char* sub = malloc(size * 3);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    int feature = 0;
+    int first_after_mark = 1;
+    int line_start = 0; /* the mark is consumed; the next unit is NOT
+                         * a line start (the mark strip is catch-144's
+                         * separate extra-FEFF arm) */
+    for (size_t u = 1; u * 2 + 1 < size; u++) {
+        size_t at = u * 2;
+        unsigned char hi = be ? data[at] : data[at + 1];
+        unsigned char lo = be ? data[at + 1] : data[at];
+        if (hi == 0xFE && lo == 0xFF) {
+            if (first_after_mark || line_start) {
+                feature = 1; /* libyaml's reader strips this unit */
+                first_after_mark = 0;
+                line_start = 0;
+                continue;
+            }
+        }
+        first_after_mark = 0;
+        /* re-encode the unit to UTF-8 */
+        unsigned cp = (unsigned)hi << 8 | lo;
+        if (cp < 0x80) {
+            sub[o++] = (unsigned char)cp;
+        } else if (cp < 0x800) {
+            sub[o++] = (unsigned char)(0xC0 | (cp >> 6));
+            sub[o++] = (unsigned char)(0x80 | (cp & 0x3F));
+        } else {
+            sub[o++] = (unsigned char)(0xE0 | (cp >> 12));
+            sub[o++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+            sub[o++] = (unsigned char)(0x80 | (cp & 0x3F));
+        }
+        line_start = (hi == 0x00 && lo == 0x0A);
+    }
+    if (!feature) {
+        free(sub);
+        return 0;
+    }
+    int yok2 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, o, &yok2);
+    int known = (yok2 && ydump2 != NULL && strcmp(ydump2, ldump) == 0);
+    free(ydump2);
+    free(sub);
+    return known;
+}
+
 static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
                                               const char* ldump) {
     if (ydump == NULL || ldump == NULL || size < 5 || size > 8192) {
@@ -3017,6 +3089,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_qflow_question_colon_divergence(data, size, ydump, ldump) ||
          yd_bom_content_divergence(ydump, ldump) ||
          yd_bom_line_start_divergence(data, size, ydump, ldump) ||
+         yd_bom_utf16_line_start_divergence(data, size, ydump, ldump) ||
          yd_breaknorm_divergence(data, size, ydump) ||
          yd_nel_break_divergence(data, size, ydump, ldump) ||
          yd_composed_break_divergence(data, size) || yd_root_block_content_divergence(data, size) ||
