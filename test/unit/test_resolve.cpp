@@ -56,6 +56,7 @@ TEST(Core12, SpecTables) {
         {"0", YEPTRIS_TAG_INT},          {"7", YEPTRIS_TAG_INT},
         {"-3", YEPTRIS_TAG_INT},         {"+27", YEPTRIS_TAG_INT},
         {"0x1A", YEPTRIS_TAG_INT},       {"-0x10", YEPTRIS_TAG_INT},
+        {"0X1A", YEPTRIS_TAG_STR}, /* lowercase 0x only — the core regexp */
         {"0o17", YEPTRIS_TAG_INT},       {"1_000", YEPTRIS_TAG_STR}, /* no _ in 1.2 */
         {"0", YEPTRIS_TAG_INT},          {"08", YEPTRIS_TAG_INT},    /* dec */
         {"1.", YEPTRIS_TAG_FLOAT},       {"1e3", YEPTRIS_TAG_FLOAT},
@@ -109,6 +110,7 @@ TEST(Compat11, PsychScalarScanner) {
         {"017", YEPTRIS_TAG_INT},   /* leading-0 octal */
         {"1_000", YEPTRIS_TAG_INT}, /* underscores */
         {"-0x2f", YEPTRIS_TAG_INT},
+        {"0X1A", YEPTRIS_TAG_STR}, /* psych keeps it a String too */
         {".inf", YEPTRIS_TAG_FLOAT},
         {"-.Inf", YEPTRIS_TAG_FLOAT},
         {".NAN", YEPTRIS_TAG_FLOAT},

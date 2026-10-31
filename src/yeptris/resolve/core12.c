@@ -78,7 +78,9 @@ static yep_tag_id core12(void* ctx, const char* p, uint32_t n) {
             }
         }
     }
-    if (n - i > 2 && p[i] == '0' && (p[i + 1] == 'x' || p[i + 1] == 'X')) {
+    if (n - i > 2 && p[i] == '0' &&
+        p[i + 1] == 'x') { /* lowercase only: the core schema's int regexp; "0X1A" rides a string
+                              (psych agrees) */
         for (uint32_t k = i + 2; k < n; k++) {
             char c = p[k];
             if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {

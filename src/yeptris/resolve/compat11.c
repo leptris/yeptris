@@ -248,7 +248,8 @@ static yep_tag_id compat11(void* ctx, const char* p, uint32_t n) {
     if (n - i > 2 && p[i] == '0' && (p[i + 1] == 'b' || p[i + 1] == 'B')) {
         return is_digits_us(p + i + 2, n - i - 2) ? 1 : 0;
     }
-    if (n - i > 2 && p[i] == '0' && (p[i + 1] == 'x' || p[i + 1] == 'X')) {
+    if (n - i > 2 && p[i] == '0' &&
+        p[i + 1] == 'x') { /* lowercase only — psych keeps "0X1A" a String */
         uint32_t k = i + 2;
         if (p[k] == '_') {
             k++;
