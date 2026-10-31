@@ -6727,3 +6727,66 @@ TEST(Parse, ColonBeforeRawMultibyteBreakTerminatesThePlain) {
         EXPECT_EQ(maps, 2) << "the ':' + raw break did not nest the pair's value";
     }
 }
+
+TEST(Parse, NormWalkFlowSeparatorsDoNotArmBlockTokenStarts) {
+    /* #836: the break normalizer's context walk armed tok_start after
+     * a BLOCK plain's interior comma (and mid-word colon) — a following
+     * "!<" opened a PHANTOM verbatim tag that swallowed the rest of
+     * the input (breaks inside verbatim ride unnormalized), the raw
+     * NEL bytes then defeated the line-facts kernel's \n/\r law, and
+     * the plain fold's blank-line tally rendered one fold-SPACE per
+     * break instead of the n-1 newline tally. The comma arms IN FLOW
+     * ONLY; the colon arms only as a separator (before blank/EOL/EOF —
+     * "k: 'x'" keeps opening the value quote, the NormLsPs pins). */
+    const std::string ps = "\xe2\x80\xa9";
+    const std::string nel = "\xc2\x85";
+    const std::string lf = "\n";
+    struct Row {
+        std::string raw;
+        std::string lf;
+    };
+    const Row twins[] = {
+        {"b,!<" + nel + nel + nel + "N", "b,!<" + lf + lf + lf + "N"},
+        {"b,,,!<" + nel + nel + nel + "NNN", "b,,,!<" + lf + lf + lf + "NNN"},
+        {"x:!<!<" + nel + nel + nel + "N", "x:!<!<" + lf + lf + lf + "N"},
+        {"k: v,!<!<" + nel + nel + nel + "N", "k: v,!<!<" + lf + lf + lf + "N"},
+        /* the flow glue keeps working: the separators arm in flow */
+        {"[a,!<" + nel + nel + nel + "b]", "[a,!<" + lf + lf + lf + "b]"},
+    };
+    for (const Row& r : twins) {
+        std::vector<std::string> raw = v818_events(r.raw);
+        std::vector<std::string> unix = v818_events(r.lf);
+        ASSERT_FALSE(raw.empty()) << r.raw;
+        ASSERT_EQ(raw.size(), unix.size()) << r.raw;
+        for (size_t i = 0; i < raw.size(); i++) {
+            std::string a = raw[i], b = unix[i];
+            if (a == "<feed-error>" || b == "<feed-error>") {
+                /* a BOTH-ERROR row: the two engines' verdicts are the
+                 * pin ("k: v,!<!<" + breaks rejects on both sides —
+                 * the "!<" verbatim tag never closes) */
+                EXPECT_EQ(a, b) << r.raw;
+                continue;
+            }
+            size_t pa = a.rfind('/'), pb = b.rfind('/');
+            ASSERT_NE(pa, std::string::npos) << a;
+            ASSERT_NE(pb, std::string::npos) << b;
+            a.resize(pa);
+            b.resize(pb);
+            EXPECT_EQ(a, b) << r.raw << " event " << i;
+        }
+    }
+    /* the structure: the normalized NELs take the n-1 newline tally —
+     * the value's fold matches libyaml byte-strictly (2 newlines for
+     * 3 breaks), never one fold-space per break */
+    {
+        std::vector<std::string> ev = v818_events("b,!<" + nel + nel + nel + "N");
+        ASSERT_FALSE(ev.empty());
+        bool value_ok = false;
+        for (const std::string& s : ev) {
+            if (s.find("/b,!<\n\nN") != std::string::npos) {
+                value_ok = true;
+            }
+        }
+        EXPECT_TRUE(value_ok) << "the NEL fold did not take the newline tally";
+    }
+}
