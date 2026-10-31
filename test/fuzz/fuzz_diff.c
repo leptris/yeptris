@@ -661,6 +661,33 @@ static int yd_qc_dash_plain_safe(unsigned char c) {
            c == '-' || c == '.' || c == '/' || c == ' ' || c == '\t';
 }
 
+/* Quotes a dash-led plain run in the rewritten sub (the r89 law:
+ * '-' needs a ns-plain-safe follower in flow, so yeptris errors on
+ * the bare-dash spell while libyaml reads the bare-dash value — the
+ * style-blind dump reads the quoted run as the same scalar). The run
+ * scan declines on a quote or escape (the byte-strict verify would
+ * refuse the rewrite anyway). Returns 1 when the run was quoted. */
+static int yd_qc_quote_dash_run(uint8_t* sub, size_t* subn, const uint8_t* data, size_t size,
+                                size_t* i) {
+    if (*i >= size || data[*i] != '-' || (*i + 1 < size && yd_qc_dash_plain_safe(data[*i + 1]))) {
+        return 0;
+    }
+    size_t vs = *i;
+    while (vs < size && data[vs] != ',' && data[vs] != '}' && data[vs] != ']' && data[vs] != '\n' &&
+           data[vs] != '\r') {
+        if (data[vs] == '"' || data[vs] == '\\') {
+            return 0;
+        }
+        vs++;
+    }
+    sub[(*subn)++] = '"';
+    while (*i < vs) {
+        sub[(*subn)++] = (char)data[(*i)++];
+    }
+    sub[(*subn)++] = '"';
+    return 1;
+}
+
 static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
                                               const char* ldump) {
     if (ydump == NULL || ldump == NULL || size < 5 || size > 8192) {
@@ -760,33 +787,9 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
             sub[subn++] = ' ';
             i += 2;
             /* a dash-led value the strict flow plain rejects (the
-             * nightly's r89, crash-f3268315: "?:-," -- '-' needs a
-             * ns-plain-safe follower in flow, so yeptris errors on
-             * the '"" : -' spell while libyaml reads the bare-dash
-             * value): quote the value run instead -- the style-blind
-             * dump reads the same scalar. The run scan declines on a
-             * quote or escape (the byte-strict verify would refuse
-             * the rewrite anyway). */
-            if (i < size && data[i] == '-' &&
-                (i + 1 >= size || !yd_qc_dash_plain_safe(data[i + 1]))) {
-                size_t vs = i;
-                int okrun = 1;
-                while (vs < size && data[vs] != ',' && data[vs] != '}' && data[vs] != ']' &&
-                       data[vs] != '\n' && data[vs] != '\r') {
-                    if (data[vs] == '"' || data[vs] == '\\') {
-                        okrun = 0;
-                        break;
-                    }
-                    vs++;
-                }
-                if (okrun) {
-                    sub[subn++] = '"';
-                    while (i < vs) {
-                        sub[subn++] = (char)data[i++];
-                    }
-                    sub[subn++] = '"';
-                }
-            }
+             * nightly's r89, crash-f3268315: "?:-,") — quote the run,
+             * the style-blind dump reads the same scalar */
+            (void)yd_qc_quote_dash_run(sub, &subn, data, size, &i);
             continue;
         } else if (c == '?' && depth > 0) {
             /* a BARE '?' with a GLUED follower ("?M-b%rM", the nightly's
@@ -800,6 +803,13 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
                 data[i + 1] != '\r' && data[i + 1] != ',' && data[i + 1] != ']' &&
                 data[i + 1] != '}') {
                 i++;
+                /* the dropped '?' leaves the follower a KEY-position
+                 * plain; a dash-led one ("?-,", the r99 nightly,
+                 * crash-d1ecb259) is a run yeptris's flow plain
+                 * rejects (the r89 law) — quote it, same spell as the
+                 * "?:" arm below, or the byte-strict verify dies on
+                 * yeptris's own sub error */
+                (void)yd_qc_quote_dash_run(sub, &subn, data, size, &i);
                 continue;
             }
             /* a BARE '?' at a line/boundary end (r85, crash-2bdccbe:
