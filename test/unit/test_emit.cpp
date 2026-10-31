@@ -553,6 +553,44 @@ TEST(EmitJson, WalkerShapes) {
     }
 }
 
+TEST(EmitJson, PropertylessProjection) {
+    /* JSON has no tags, anchors, or alias references: the projection
+     * drops the properties and aliases ride null (bounded — a deref
+     * would loop on cycles). The ts probe caught the tag leak
+     * ("k: !" -> {"k": ! ""}); anchors and aliases shared the gap. */
+    struct {
+        const char* in;
+        const char* want;
+        const char* want_compact;
+    } cases[] = {
+        {"k: !\n", "{\"k\": \"\"}\n", "{\"k\":\"\"}\n"},
+        {"k: !!str v\n", "{\"k\": \"v\"}\n", "{\"k\":\"v\"}\n"},
+        {"k: &a 1\n", "{\"k\": 1}\n", "{\"k\":1}\n"},
+        {"a: &x {b: 1}\n", "{\"a\": {\"b\": 1}}\n", "{\"a\":{\"b\":1}}\n"},
+        {"a: &x 1\nb: *x\n", "{\"a\": 1, \"b\": null}\n", "{\"a\":1,\"b\":null}\n"},
+        {"{!!str k: v}\n", "{\"k\": \"v\"}\n", "{\"k\":\"v\"}\n"},
+        {"[&a 1, *a]\n", "[1, null]\n", "[1,null]\n"},
+        {"a:\n  b: &c\n    d: 1\n", "{\"a\": {\"b\": {\"d\": 1}}}\n",
+         "{\"a\":{\"b\":{\"d\":1}}}\n"},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse(c.in, strlen(c.in), &st);
+        ASSERT_NE(d, nullptr);
+        size_t len = 0;
+        char* out = yeptris_serialize_json(d, &len);
+        ASSERT_NE(out, nullptr) << "input [" << c.in << "]";
+        EXPECT_EQ(std::string(out, len), c.want) << "input [" << c.in << "]";
+        free(out);
+        size_t clen = 0;
+        char* cout = yeptris_serialize_json_ex(d, &clen, 1);
+        ASSERT_NE(cout, nullptr) << "compact [" << c.in << "]";
+        EXPECT_EQ(std::string(cout, clen), c.want_compact) << "compact [" << c.in << "]";
+        free(cout);
+        yeptris_document_free(d);
+    }
+}
+
 TEST(EmitJson, UnserializableCompactStaysNull) {
     /* the unserializable law is entry-wide: a flow-hostile anchor name
      * has no JSON spelling — serialize_json has always failed; the

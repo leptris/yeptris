@@ -804,8 +804,14 @@ static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
     if (anchor_name_unspellable(w, n)) {
         return;
     }
-    wr_byte(w, '&');
     yep_view adec = wv(w, n->anchor);
+    if (w->json) {
+        /* JSON spells no anchors — but a name the emitter could never
+         * spell still fails the entry (the "{k: &a?b v}" law) */
+        wr_anchor_check(w, &adec);
+        return;
+    }
+    wr_byte(w, '&');
     if (w->canonical) {
         uint32_t idx = yep_nametab_get(&em->canon_names, adec);
         if (idx == YEP_NAMETAB_NIL) {
@@ -824,6 +830,12 @@ static void emit_anchor_ex(yep_emitter* em, const yep_dnode* n) {
 
 static void emit_alias_ex(yep_emitter* em, const yep_dnode* n) {
     yep_writer* w = &em->w;
+    if (w->json) {
+        /* JSON has no alias references: the projection writes null
+         * (bounded — dereferencing would loop on cycles) */
+        wr_put(w, "null", 4);
+        return;
+    }
     yep_view name_v = wv(w, n->value);
     if (w->in_flow && !w->canonical) {
         /* the alias twin of wr_anchor_check: a flow alias is spelled
@@ -958,6 +970,9 @@ static void emit_tag(yep_writer* w, const yep_dnode* n) {
     if (n->tag.len == 0) {
         return;
     }
+    if (w->json) {
+        return; /* JSON spells no tags (the ts probe: "k: !" -> {"k": ! ""}) */
+    }
     yep_view tdec = wv(w, n->tag);
     wr_tag_token(w, &tdec);
     wr_byte(w, ' ');
@@ -967,15 +982,18 @@ static void emit_tag(yep_writer* w, const yep_dnode* n) {
  * "key:"/"-" — properties may not precede a dash entry directly (the
  * suite's SY6V rule). */
 static void emit_props_tail(yep_writer* w, const yep_dnode* n) {
+    if (n->anchor.len > 0 && anchor_name_unspellable(w, n)) {
+        return;
+    }
+    if (w->json) {
+        return; /* JSON spells no properties */
+    }
     if (n->tag.len > 0) {
         wr_byte(w, ' ');
         yep_view tdec2 = wv(w, n->tag);
         wr_tag_token(w, &tdec2);
     }
     if (n->anchor.len > 0) {
-        if (anchor_name_unspellable(w, n)) {
-            return;
-        }
         wr_byte(w, ' ');
         yep_view adec2 = wv(w, n->anchor);
         wr_anchor_check(w, &adec2);
@@ -1502,9 +1520,10 @@ static void emit_json_flow(yep_emitter* em, uint32_t id) {
         }
         if (map) {
             /* the one generic-path rule JSON keeps: a non-scalar key
-             * (or one carrying props) rides the explicit "? key : "
-             * form — same bytes emit_flow writes */
-            if (cn->anchor.len > 0 || cn->tag.len > 0 || cn->kind != 0) {
+             * rides the explicit "? key : " form — same bytes emit_flow
+             * writes. (Propertied scalar keys used to join it; JSON
+             * drops properties, so they ride the plain quoted form.) */
+            if (cn->kind != 0) {
                 wr_put(w, "? ", 2);
                 emit_json_node(em, child);
                 wr_put(w, " : ", 3);
