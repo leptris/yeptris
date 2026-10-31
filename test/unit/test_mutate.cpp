@@ -546,3 +546,31 @@ TEST(ValueStream, ColumnarDrainMatchesRecords) {
     EXPECT_EQ(e.count, 0u);
     yeptris_value_free_columns(&e);
 }
+
+TEST(Mutate, AnchorGrowthKeepsTheMutationTables) {
+    /* audit 2026-10-31: dom_anchor_set's growth path freed mut_att /
+     * mut_depth - tables it does NOT own (dom_mut_grow allocates,
+     * copies and frees them together with the cap that tracks their
+     * size). Harmless today only because the mutation tables cannot
+     * exist during a parse - the frees were no-ops - but the
+     * ownership must not rely on that accident. 65+ anchors force
+     * the growth; a mutation entry then exercises the tables; the
+     * ASan build pins the whole path. */
+    std::string y;
+    for (int i = 0; i < 70; i++) {
+        y += "- &a" + std::to_string(i) + " v" + std::to_string(i) + "\n";
+    }
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y.data(), y.size(), &st);
+    ASSERT_NE(doc, nullptr);
+    EXPECT_EQ(st, YEPTRIS_OK);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(yeptris_node_seq_count(root), 70u);
+    /* a mutation entry exercises the mut tables past the growth */
+    YeptrisNode extra = yeptris_node_new_scalar(doc, "x", 1, YEPTRIS_STYLE_PLAIN);
+    ASSERT_NE(extra, nullptr);
+    EXPECT_EQ(yeptris_node_seq_add(root, extra), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_node_seq_count(root), 71u);
+    yeptris_document_free(doc);
+}

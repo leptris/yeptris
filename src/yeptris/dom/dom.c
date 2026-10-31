@@ -223,8 +223,13 @@ static int dom_anchor_set(yep_dom* d, uint32_t ordinal, uint32_t node) {
         if (d->anchor_nodes != NULL) {
             memcpy(na, d->anchor_nodes, d->anchor_nodes_cap * sizeof(*na));
             yep_free(d->sys, d->anchor_nodes);
-            yep_free(d->sys, d->mut_att);
-            yep_free(d->sys, d->mut_depth);
+            /* ONLY the anchor table: the mut side tables belong to
+             * dom_mut_grow alone (it allocates, copies and frees them
+             * together with the cap that tracks their size). These two
+             * frees were copy-paste debris from that path -- harmless
+             * today only because the mutation tables cannot exist
+             * during a parse -- but the ownership must not rely on
+             * that accident (audit 2026-10-31). */
         }
         d->anchor_nodes = na;
         d->anchor_nodes_cap = cap;
