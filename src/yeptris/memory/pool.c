@@ -43,6 +43,13 @@ void* yep_pool_alloc(yep_pool* pool, size_t size, size_t align) {
     if (pool == NULL || size == 0 || !yep_align_ok(align)) {
         return NULL;
     }
+    /* mirror of the arena guard: the fit test's start+size and the
+     * payload sums must not wrap on a hostile size */
+    if (size > (SIZE_MAX - align) / 2) {
+        /* half the pointer space: both the fit test's start+size and
+         * the new-block payload sums stay wrap-free below this */
+        return NULL;
+    }
 
     yep_block* b = pool->head;
     if (b == NULL) { /* the lazy first block (#157) */

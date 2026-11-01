@@ -161,7 +161,7 @@ YEPTRIS_API const YeptrisEvent* yeptris_iterparse_next(YeptrisIterparse it, size
         yep_engine_destroy(eng);
         if (rc == -1) {
             it->done = 1;
-            it->status = YEPTRIS_ERROR_PARSE;
+            it->status = err != NULL ? YEPTRIS_ERROR_PARSE : YEPTRIS_ERROR_MEMORY;
             if (it->store.n == 0) {
                 if (!it->emitted_stream_start) {
                     /* the engine emitted +STR before failing: match it */

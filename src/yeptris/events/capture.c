@@ -29,8 +29,14 @@ void yep_rec_free(yep_rec_store* s) {
     yep_rec_init(s);
 }
 
-static uint32_t arena_put(yep_rec_store* s, const char* p, uint32_t len) {
+/* Returns 0 ok / -1 OOM. On OOM the record is NOT committed (the
+ * caller unwinds before s->n++): the old drop-the-string form left
+ * value_len set with offset 0, so materialize read whatever string
+ * lived at the arena head - or past a NULL arena on first-alloc
+ * failure. */
+static int arena_put(yep_rec_store* s, const char* p, uint32_t len, uint32_t* off) {
     if (len == 0 || p == NULL) {
+        *off = 0;
         return 0;
     }
     if (s->arena_len + len > s->arena_cap) {
@@ -40,15 +46,15 @@ static uint32_t arena_put(yep_rec_store* s, const char* p, uint32_t len) {
         }
         char* na = realloc(s->arena, cap);
         if (na == NULL) {
-            return 0; /* OOM: the string is dropped, not fatal */
+            return -1;
         }
         s->arena = na;
         s->arena_cap = cap;
     }
     memcpy(s->arena + s->arena_len, p, len);
-    uint32_t off = (uint32_t)s->arena_len;
+    *off = (uint32_t)s->arena_len;
     s->arena_len += len;
-    return off;
+    return 0;
 }
 
 int yep_rec_on_event(void* ctx, const yep_event* ev) {
@@ -116,11 +122,17 @@ int yep_rec_on_event(void* ctx, const yep_event* ev) {
     r->col = ev->col;
     r->end_line = ev->end_line;
     r->end_col = ev->end_col;
-    r->value_off = arena_put(s, (const char*)ev->value.p, (uint32_t)ev->value.len);
+    if (arena_put(s, (const char*)ev->value.p, (uint32_t)ev->value.len, &r->value_off) != 0) {
+        return -1;
+    }
     r->value_len = (uint32_t)ev->value.len;
-    r->anchor_off = arena_put(s, (const char*)ev->anchor.p, (uint32_t)ev->anchor.len);
+    if (arena_put(s, (const char*)ev->anchor.p, (uint32_t)ev->anchor.len, &r->anchor_off) != 0) {
+        return -1;
+    }
     r->anchor_len = (uint32_t)ev->anchor.len;
-    r->tag_off = arena_put(s, (const char*)ev->tag.p, (uint32_t)ev->tag.len);
+    if (arena_put(s, (const char*)ev->tag.p, (uint32_t)ev->tag.len, &r->tag_off) != 0) {
+        return -1;
+    }
     r->tag_len = (uint32_t)ev->tag.len;
     s->n++;
     return 0;

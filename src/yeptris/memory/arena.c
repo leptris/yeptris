@@ -85,6 +85,14 @@ void* yep_arena_alloc(yep_arena* arena, size_t size, size_t align) {
     if (arena == NULL || size == 0 || !yep_align_ok(align)) {
         return NULL;
     }
+    /* a hostile size near SIZE_MAX must FAIL the fit test, not wrap
+     * start+size past the pointer space and pass it (the sizing sums
+     * below stay inside the guard's slack) */
+    if (size > (SIZE_MAX - align) / 2) {
+        /* half the pointer space: both the fit test's start+size and
+         * the new-block payload sums stay wrap-free below this */
+        return NULL;
+    }
 
     yep_arena_block* b = arena->head;
     uintptr_t base = (uintptr_t)b + sizeof(yep_arena_block);
