@@ -410,7 +410,8 @@ engine_enter:
                           .on_block_pair = dom_on_block_pair,
                           .on_scalar = dom_on_scalar,
                           .on_block_open = dom_on_block_open,
-                          .on_block_item = dom_on_block_item};
+                          .on_block_item = dom_on_block_item,
+                          .compose = 1};
     }
     int rc = 0;
     if (have_tape && !norm_kept_raw && ytap_flow_rooted(&yt) == 0) {

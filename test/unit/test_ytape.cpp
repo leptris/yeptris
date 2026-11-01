@@ -232,6 +232,37 @@ TEST(YTape, ErrorParityWithEagerParse) {
     }
 }
 
+TEST(YTape, ComposerRejectionOnBothRoutes) {
+    /* #847 law two (the nightly's r101 split): the scanner emits the
+     * ALIAS event for any name; the composers — the eager DOM sink
+     * AND the record tape, which replays into a DOM — reject an
+     * unresolvable one at parse time (libyaml's "found undefined
+     * alias"). Event consumers keep the carry (the recorder pin in
+     * test_parse.cpp). */
+    const char* bad[] = {
+        "bad: *missing\n",  /* the name is defined nowhere */
+        "[*a, &a 1]\n",     /* a true forward reference */
+        "a: &x 1\nb: *y\n", /* defined name beside the undefined one */
+    };
+    for (const char* s : bad) {
+        YeptrisStatus st1 = YEPTRIS_OK, st2 = YEPTRIS_OK;
+        YeptrisDocument e1 = yeptris_parse_eager_ex(s, strlen(s), NULL, &st1);
+        YeptrisDocument e2 = yeptris_parse_ex(s, strlen(s), NULL, &st2);
+        EXPECT_EQ(e1, nullptr) << s;
+        EXPECT_EQ(st1, YEPTRIS_ERROR_PARSE) << s;
+        EXPECT_EQ(e2, nullptr) << s;
+        EXPECT_EQ(st2, YEPTRIS_ERROR_PARSE) << s;
+        if (st1 == YEPTRIS_ERROR_PARSE) {
+            uint32_t line = 0, col = 0;
+            const char* msg = yeptris_last_error(&line, &col);
+            EXPECT_STRNE(msg, "") << s;
+            EXPECT_GE(line, 1u) << s;
+        }
+        yeptris_document_free(e1);
+        yeptris_document_free(e2);
+    }
+}
+
 TEST(YTape, EmptyStreamReturnsNullBothWays) {
     YeptrisStatus st1 = YEPTRIS_OK, st2 = YEPTRIS_OK;
     YeptrisDocument e1 = yeptris_parse_ex("", 0, NULL, &st1);

@@ -110,6 +110,13 @@ typedef struct yep_sink {
     int (*on_scalar)(void* ctx, const struct yep_view* value, const struct yep_view* tag,
                      const struct yep_view* anchor, uint32_t anchor_id, uint8_t tag_id,
                      uint8_t style, uint8_t implicit, uint8_t flow, int borrowed);
+    /* Document composers (libyaml's scanner/composer split): the
+     * scanner emits the ALIAS event for ANY name, while a sink that
+     * builds a document rejects an alias whose target is undefined or
+     * not yet placed ("found undefined alias"). Set for the DOM and
+     * record-tape routes; event consumers (recorder/pull/push) leave
+     * it 0 so their streams carry every alias like libyaml's. */
+    uint8_t compose;
 } yep_sink;
 
 /* Value facts for on_block_pair (the classified value classes the
