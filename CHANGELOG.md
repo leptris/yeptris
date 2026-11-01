@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **engine: the scanner/composer alias split (#847)** — libyaml's scanner emits the ALIAS event for ANY name; its composer rejects what it cannot resolve ("found undefined alias"). yeptris rejected inside `e_alias` unconditionally, so event streams (recorder/pull/push) diverged from libyaml's for every dangling alias — the nightly's round-101 finding. The rejection now rides a `compose` bit on the internal sink: the DOM and record-tape routes keep the parse-time error (yeptris_parse still returns NULL with the position and message — `Parse.Errors`, `AliasMemoResetPerDocument`, `AliasToUnplacedAnchorRejects` hold unchanged, and `YTape.ComposerRejectionOnBothRoutes` pins both routes), while event consumers carry the name for their host's resolution (`Parse.RecorderCarriesDanglingAlias`). The bindings own the carry now: the py loaders raise `found undefined alias` (PyYAML ComposerError parity) and reset anchors per document, the ruby materializer clears anchors at `DOCUMENT_START`.
+
 ## [0.6.54] - 2026-11-01
 
 ### Fixed
