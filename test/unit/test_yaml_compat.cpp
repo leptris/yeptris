@@ -35,7 +35,9 @@ std::string run_first_types(const char* y, yep_ly_event* evs, int max, int* n) {
                      .on_block_pair = NULL,
                      .on_block_open = NULL,
                      .on_block_item = NULL,
-                     .on_scalar = NULL};
+                     .on_scalar = NULL,
+                     .compose = 0};
+
     int rc = yep_engine_run(eng, y, strlen(y), &sink);
     yep_engine_destroy(eng);
     return rc == 0 ? "ok" : "error";
@@ -144,7 +146,9 @@ TEST(YamlCompat, FlowCollectionsAndTags) {
                      .on_block_pair = NULL,
                      .on_block_open = NULL,
                      .on_block_item = NULL,
-                     .on_scalar = NULL};
+                     .on_scalar = NULL,
+                     .compose = 0};
+
     const char* y = "!!seq [1, 2]\n";
     int rc = yep_engine_run(eng, y, strlen(y), &sink);
     yep_engine_destroy(eng);
