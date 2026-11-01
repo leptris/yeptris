@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **simd: the AVX2 `copy_count3` tail guards its scalar callee** — count-only callers hand len 0 with a NULL dst; forming `dst + 0` is UB (the nonnull attribute) even though nothing is dereferenced. NEON always had the guard; AVX2 mirrors it now. Pinned by `SimdText.CopyCount3RejectsNullTail`.
+- **engine: OOM paths are honest and hostile sizes cannot wrap** — (1) the recorder arena's `arena_put` returned 0 on OOM while the caller still set `value_len`: materialize read whatever string lived at the arena head, or past a NULL arena on first-alloc failure — OOM now unwinds the record. (2) a failed SINK was mapped to `YEPTRIS_ERROR_PARSE` because the engine's rc is shared; the discriminator is the error channel (a parse error always sets it, a sink failure leaves it clean) — sink failures report `YEPTRIS_ERROR_MEMORY` in the recorder and iterparse now. (3) a dangling final UTF-32 unit (`len % 4 != 0`) was silently truncated while the UTF-16 twin rejects its own — rejects at the offending byte (`Transcode.Utf32DanglingUnitRejectsLikeUtf16`). (4) a size near SIZE_MAX wrapped `start + size` in the arena/pool fit tests — both allocators reject above `(SIZE_MAX - align) / 2` where every downstream sum stays wrap-free (`Memory.HostileSizesFailTheFitTest`).
+
+### Added
+
+- **ci: the NEON kernels get sanitizer exposure** — the Linux sanitizer jobs dispatch the AVX2 shapes only; `simd_text_neon.c` had zero coverage. A macOS arm64 (macos-15) job runs the full suite under ASAN+UBSAN with the 32 MB stack law.
+
 ## [0.6.53] - 2026-10-31
 
 ### Fixed
