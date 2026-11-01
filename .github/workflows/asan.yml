@@ -100,3 +100,38 @@ jobs:
       # undefined behavior is a bug, not a report: -fno-sanitize-recover
       - name: Test under UBSan
         run: ctest --test-dir build --output-on-failure
+
+  asan-neon:
+    # the macOS arm64 runners dispatch the NEON kernels — the AVX2
+    # shapes are covered by the Linux jobs above, NEON had zero
+    # sanitizer exposure (the 2026-10-31 audit). The stack bump is the
+    # macOS 8MB-stack law: ASan frames inflate ~2x and the deep-fold
+    # corpus files overflow the default.
+    name: AddressSanitizer + UBSan (macOS arm64, NEON)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (ASAN + UBSAN)
+        run: |
+          cmake -B build -S . \
+            -DBUILD_TESTING=ON \
+            -DYEPTRIS_BUILD_CLI=ON \
+            -DYEPTRIS_ENABLE_ASAN=ON \
+            -DYEPTRIS_ENABLE_UBSAN=ON \
+            -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Fetch conformance corpora
+        run: scripts/fetch-corpora.sh
+
+      - name: Test under sanitizers
+        run: |
+          ulimit -s 32768
+          ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1
