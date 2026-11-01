@@ -248,7 +248,8 @@ YEPTRIS_API YeptrisStatus yeptris_schema_load(const char* source, size_t len, Ye
                      .on_block_pair = dom_on_block_pair,
                      .on_scalar = dom_on_scalar,
                      .on_block_open = dom_on_block_open,
-                     .on_block_item = dom_on_block_item};
+                     .on_block_item = dom_on_block_item,
+                     .compose = 1};
     if (eng == NULL || dom == NULL) {
         st = YEPTRIS_ERROR_MEMORY;
         goto out;

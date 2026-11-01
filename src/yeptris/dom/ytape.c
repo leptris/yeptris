@@ -590,6 +590,8 @@ void ytap_sink(yep_ytape* t, yep_sink* sink) {
     sink->on_scalar = yt_on_scalar;
     sink->on_block_open = yt_on_block_open;
     sink->on_block_item = yt_on_block_item;
+    sink->compose = 1; /* the tape replays into a DOM: the composer's
+                        * undefined-alias rejection stays at parse time */
 }
 
 /* ---- replay ---- */

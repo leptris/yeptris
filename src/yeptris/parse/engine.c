@@ -1435,13 +1435,22 @@ static int e_alias(yep_engine* e, yep_event* ev) {
         return e_fail(e, YEP_ERR_UNEXPECTED, star);
     }
     uint32_t target = anchor_id_of(e, name);
-    if (target == 0 || (target <= e->anchor_serial && e->anchor_placed != NULL &&
-                        e->anchor_placed[target - 1] == 0)) {
+    /* libyaml's scanner/composer split: the scanner emits the ALIAS
+     * event for ANY name; the composer rejects what it cannot resolve
+     * ("found undefined alias"). Rejecting here unconditionally made
+     * event streams (recorder/pull/push) diverge from libyaml's for
+     * every dangling alias ({?\n:*c }, the nightly's r101), so the
+     * rejection rides the sink's compose bit: document builders (the
+     * DOM, the record tape) keep the parse-time error, event
+     * consumers carry the name for their host's resolution (the ruby
+     * materializer raises; the py loader does since this change too). */
+    if (e->sink != NULL && e->sink->compose &&
+        (target == 0 || (target <= e->anchor_serial && e->anchor_placed != NULL &&
+                         e->anchor_placed[target - 1] == 0))) {
         /* undefined, or defined-but-not-yet-placed: the props scan
          * registers the name before the anchor's node reaches the
          * output, so an alias here would precede its definition and
-         * the re-parse would reject the document (libyaml: "found
-         * undefined alias") */
+         * the re-parse would reject the document */
         e->pos = star;
         return e_fail(e, YEP_ERR_UNDEFINED_ALIAS, star);
     }

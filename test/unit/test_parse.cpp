@@ -4704,6 +4704,53 @@ TEST(Parse, AliasToUnplacedAnchorRejects) {
     free(s1);
 }
 
+TEST(Parse, RecorderCarriesDanglingAlias) {
+    /* the composer split's other half (#847 r101): the recorder is an
+     * event consumer, not a composer — its stream carries the ALIAS
+     * event for ANY name (libyaml's scanner emits it; only libyaml's
+     * composer rejects), and the parse must not fail. The name rides
+     * the arena for the host's resolution (the ruby materializer and
+     * the py loader raise on an unknown one). */
+    const char* y = "bad: *missing\n";
+    YeptrisRecorder rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(rec, y, strlen(y), 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(rec, &alen);
+    int found = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_ALIAS) {
+            found = 1;
+            ASSERT_LE(rs[i].value_off + rs[i].value_len, alen);
+            EXPECT_EQ(rs[i].value_len, 7u);
+            EXPECT_EQ(memcmp(arena + rs[i].value_off, "missing", 7), 0);
+        }
+    }
+    EXPECT_EQ(found, 1) << y;
+    yeptris_recorder_free(rec);
+    /* flow: the same carry inside a flow sequence, alias before its
+     * anchor (the AliasToUnplacedAnchorRejects shape) */
+    const char* f = "[*a, &a 1]\n";
+    rec = yeptris_recorder_new();
+    ASSERT_NE(rec, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(rec, f, strlen(f), 1), YEPTRIS_OK);
+    rs = yeptris_recorder_records(rec, &n);
+    arena = yeptris_recorder_arena(rec, &alen);
+    found = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (rs[i].type == YEPTRIS_EV_ALIAS) {
+            found = 1;
+            ASSERT_LE(rs[i].value_off + rs[i].value_len, alen);
+            EXPECT_EQ(rs[i].value_len, 1u);
+            EXPECT_EQ(memcmp(arena + rs[i].value_off, "a", 1), 0);
+        }
+    }
+    EXPECT_EQ(found, 1) << f;
+    yeptris_recorder_free(rec);
+}
+
 static int on_count_events(void* ctx, const YeptrisEvent* ev) {
     (void)ev;
     (*(int*)ctx)++;

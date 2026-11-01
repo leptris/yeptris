@@ -82,7 +82,8 @@ TEST(AllocFail, EveryNthAcrossAParse) {
                          .on_block_pair = NULL,
                          .on_block_open = NULL,
                          .on_block_item = NULL,
-                         .on_scalar = NULL};
+                         .on_scalar = NULL,
+                         .compose = 1};
         yep_engine_run(eng, kDoc, strlen(kDoc), &sink);
         /* failure (or, before the countdown hits, success) is fine;
          * a crash or ASAN finding is not */
