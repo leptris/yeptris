@@ -7141,3 +7141,39 @@ TEST(Parse, DeepIndentLineKeepsItsIndentPastUint16) {
     }
     yeptris_recorder_free(whole);
 }
+
+TEST(Parse, PlainHexScalarStaysScalar863) {
+    /* yeptris#863: on the x86_64-linux and Windows builds a plain
+     * scalar under `key:` materialized as a ONE-ELEMENT SEQUENCE
+     * (fontist's formula round-trips re-serialized `sha256` values as
+     * sequences). arm64-darwin parsed the same document as a scalar.
+     * The kind contract is arch-independent: a plain scalar stays a
+     * scalar. */
+    const char* doc = "resources:\n"
+                      "  andale32.exe:\n"
+                      "    sha256: "
+                      "0524fe42951adc3a7eb870e32f0920313c71f170c859b5f770d82b4ee111e970\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(doc, strlen(doc), &st);
+    ASSERT_NE(d, nullptr) << "status " << (int)st;
+    YeptrisNode root = yeptris_document_root(d, 0);
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(yeptris_node_kind(root), YEPTRIS_NODE_MAPPING);
+
+    YeptrisNode resources = yeptris_node_map_get(root, "resources", 9);
+    ASSERT_NE(resources, nullptr);
+    EXPECT_EQ(yeptris_node_kind(resources), YEPTRIS_NODE_MAPPING)
+        << "resources must stay a mapping";
+
+    YeptrisNode exe = yeptris_node_map_get(resources, "andale32.exe", 12);
+    ASSERT_NE(exe, nullptr);
+    EXPECT_EQ(yeptris_node_kind(exe), YEPTRIS_NODE_MAPPING)
+        << "andale32.exe must stay a mapping";
+
+    YeptrisNode sha = yeptris_node_map_get(exe, "sha256", 6);
+    ASSERT_NE(sha, nullptr);
+    EXPECT_EQ(yeptris_node_kind(sha), YEPTRIS_NODE_SCALAR)
+        << "the plain sha256 value must materialize as a scalar, not a sequence";
+    EXPECT_EQ(val(sha), "0524fe42951adc3a7eb870e32f0920313c71f170c859b5f770d82b4ee111e970");
+    yeptris_document_free(d);
+}
