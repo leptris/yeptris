@@ -898,3 +898,15 @@ TEST(SimdText, Count3PerfSmoke) {
            scalar_ms);
     SUCCEED() << "count3 ratio " << ratio << "x (informational)";
 }
+
+TEST(SimdText, CopyCount3RejectsNullTail) {
+    /* count-only callers hand len 0 with a NULL dst: forming dst+0 is
+     * UB even though nothing is dereferenced. The AVX2 tail guarded
+     * the scalar callee like NEON always had (the audit's item 8). */
+    const yep_text_kernels* k = yep_text_active();
+    size_t n0 = 7, n1 = 7, n2 = 7;
+    k->copy_count3(NULL, "x", 0, ':', '"', '\'', &n0, &n1, &n2);
+    EXPECT_EQ(n0, 0u);
+    EXPECT_EQ(n1, 0u);
+    EXPECT_EQ(n2, 0u);
+}
