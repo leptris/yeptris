@@ -307,3 +307,19 @@ TEST(Transcode, IllFormedInputs) {
     EXPECT_EQ(yep_transcode_to_utf8(sys, YEP_ENC_UTF16LE, NULL, 0, &out, &out_len, &err), 0);
     EXPECT_EQ(out_len, 0u);
 }
+
+TEST(Transcode, Utf32DanglingUnitRejectsLikeUtf16) {
+    /* a trailing partial unit was silently DROPPED (units = len/4 with
+     * no len%4 check) while the UTF-16 twin rejects its own dangling
+     * unit; the header contract says truncated units error. */
+    const yep_allocator* sys = yep_system_allocator();
+    for (yep_encoding enc : {YEP_ENC_UTF32LE, YEP_ENC_UTF32BE}) {
+        const unsigned char in[] = {0, 0, 0, 0, 'x', 'y'};
+        unsigned char* out = nullptr;
+        size_t out_len = 0;
+        size_t err = 0;
+        EXPECT_EQ(yep_transcode_to_utf8(sys, enc, in, 6, &out, &out_len, &err), -2);
+        EXPECT_EQ(err, 4u) << "the offending byte is the dangling unit's start";
+        EXPECT_EQ(out, nullptr);
+    }
+}

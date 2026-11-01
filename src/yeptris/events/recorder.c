@@ -74,9 +74,13 @@ YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char*
         if (err != NULL) {
             rec->err_line = err->line;
             rec->err_col = err->col;
+            rec->status = YEPTRIS_ERROR_PARSE;
+        } else {
+            /* a clean error channel means the SINK failed: the capture
+             * ran out of memory, the bytes never were a parse error */
+            rec->status = YEPTRIS_ERROR_MEMORY;
         }
-        rec->final_fed = 1; /* a parse error kills the stream */
-        rec->status = YEPTRIS_ERROR_PARSE;
+        rec->final_fed = 1; /* a failed feed kills the stream */
         return rec->status;
     }
     rec->status = YEPTRIS_OK;

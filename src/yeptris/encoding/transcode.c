@@ -95,6 +95,15 @@ static int yep_transcode_utf16(const yep_allocator* sys, int big_endian, const u
 static int yep_transcode_utf32(const yep_allocator* sys, int big_endian, const unsigned char* src,
                                size_t len, unsigned char** out, size_t* out_len, size_t* err_pos) {
     size_t units = len / 4;
+    if (len % 4 != 0) {
+        /* a dangling final unit is an error, not a silent truncation
+         * (the UTF-16 twin rejects its own; the header contract says
+         * truncated units error at the offending byte) */
+        if (err_pos != NULL) {
+            *err_pos = units * 4;
+        }
+        return -2;
+    }
     unsigned char* dst = yep_alloc(sys, len ? len : 1);
     if (dst == NULL) {
         return -1;

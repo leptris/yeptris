@@ -208,3 +208,25 @@ TEST(Arena, StatsTrackUsage) {
     yep_arena_destroy(arena);
     EXPECT_EQ(ca.live.load(), 0);
 }
+
+TEST(Memory, HostileSizesFailTheFitTest) {
+    /* a size near SIZE_MAX used to wrap start+size in the fit test
+     * and the payload sums below it - the request "fit" and the
+     * allocators wrote bookkeeping past the pointer space. Both now
+     * reject at entry (the audit's wrap findings). */
+    CountingAlloc ca;
+    yep_pool* pool = yep_pool_create(&ca.base, 256);
+    ASSERT_NE(pool, nullptr);
+    EXPECT_EQ(yep_pool_alloc(pool, SIZE_MAX - 4, 8), nullptr);
+    EXPECT_EQ(yep_pool_alloc(pool, SIZE_MAX / 2, 8), nullptr);
+    yep_arena* arena = yep_arena_create(&ca.base, NULL);
+    ASSERT_NE(arena, nullptr);
+    EXPECT_EQ(yep_arena_alloc(arena, SIZE_MAX - 4, 8), nullptr);
+    EXPECT_EQ(yep_arena_alloc(arena, SIZE_MAX / 2, 8), nullptr);
+    /* a normal alloc still works after the hostile asks */
+    EXPECT_NE(yep_arena_alloc(arena, 64, 8), nullptr);
+    EXPECT_NE(yep_pool_alloc(pool, 64, 8), nullptr);
+    yep_arena_destroy(arena);
+    yep_pool_destroy(pool);
+    EXPECT_EQ(ca.live.load(), 0);
+}
