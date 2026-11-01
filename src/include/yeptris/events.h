@@ -105,8 +105,8 @@ typedef struct {
     uint8_t style;
     uint8_t flags;  /* YEPTRIS_EF_* */
     uint8_t tag_id; /* resolved implicit tag (YeptrisTagId, resolve.h) —
-                     * the typing SSOT, so hosts never re-scan. Uses the
-                     * struct's pad byte: sizeof stays 36 (ABI-pinned) */
+                     * the typing SSOT, so hosts never re-scan (the
+                     * struct is 44B, ABI-pinned; the bindings mirror it) */
     uint32_t line;
     uint32_t col;
     uint32_t end_line; /* #179: libyaml end_mark semantics (see the
