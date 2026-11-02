@@ -102,6 +102,12 @@ jobs:
       - name: fuzz_marshal
         run: ulimit -s 32768 || true; ./build/test/fuzz_marshal_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 test/fuzz/corpus/marshal
 
+      # the compiled-schema economy (#885 item 3): untrusted SCHEMA
+      # bytes through compile/validate/free — the checked-in seeds
+      # under test/fuzz/corpus/schema_compile
+      - name: fuzz_schema_compile
+        run: ulimit -s 32768 || true; ./build/test/fuzz_schema_compile_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 test/fuzz/corpus/schema_compile
+
       - name: Retain crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4
