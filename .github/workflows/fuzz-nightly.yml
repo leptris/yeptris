@@ -97,6 +97,11 @@ jobs:
       - name: fuzz_cbor
         run: ulimit -s 32768 || true; ./build/test/fuzz_cbor_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 test/fuzz/corpus/cbor
 
+      # the two Marshal wire readers (json + cbor dump faces): the
+      # checked-in seeds under test/fuzz/corpus/marshal
+      - name: fuzz_marshal
+        run: ulimit -s 32768 || true; ./build/test/fuzz_marshal_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 test/fuzz/corpus/marshal
+
       - name: Retain crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4
