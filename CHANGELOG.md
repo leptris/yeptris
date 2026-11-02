@@ -6,6 +6,17 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **the compiled-schema economy (#885 item 3): compile once, validate many** — the leptris-XSD shape lands: `yeptris_schema_compile` parses a JSON Schema document ONCE into an opaque retained handle (the schema bytes, its DOM, and the pattern kernel's compiled NFA programs — a bounded 256-program cache, invalid patterns not retained), `yeptris_schema_validate` validates any number of instance streams against it, `yeptris_schema_free` frees everything in one call (document-scoped ownership; read-only sharing safe). `yeptris_json_schema_validate` keeps its exact one-shot contract and rides compile+validate+free internally — the JSON-Schema-Test-Suite's 1298 verdicts are byte-for-byte unchanged.
+- **the JSON-Schema-Test-Suite port: the validate bar (#885 item 2)** — the official draft2020-12 suite vendored as fixtures (46 files, 1298 cases): 1158 pass, 140 documented carries, ZERO failures; every covered keyword passes 100% of its cases. Implemented this sweep: multipleOf (libm-free, inf-safe), min/maxProperties, patternProperties (the pattern kernel over key strings), propertyNames, contains+min/maxContains, dependentRequired, dependentSchemas, if/then/else; additionalProperties now excludes patternProperties matches. Carries (documented in MATRIX.md, UPASS-guarded): remote $ref/base URIs, $anchor/$dynamicRef/$id, unevaluated* annotation plumbing, the bounded regex subset's Unicode classes, metaschema vocabulary negotiation. The port FOUND AND FIXED four engine bugs: uniqueItems' mapping hash was key-order dependent (duplicate objects read as unique); const/enum compared numbers tag-strictly (`const 0` rejected `0.0`; `1` and `1.0` are one duplicate-key canonical form); unknown letter escapes were SyntaxErrors where ECMA-262 Annex B reads them as identity escapes; dependentRequired's detail printf read past a DOM allocation (caught by the port's own ASan CI leg).
+
+### Fixed
+
+- **a NULL/0-byte stream parses through a non-null base** — parse_impl's BOM arithmetic computed `buf + bom` on the caller's pointer: a NULL buffer with len 0 (the validate face's empty-schema inputs) made that NULL+0, undefined behavior clang's UBSan flags and the macOS arm64 sanitizer leg aborts on (gcc's UBSan stays silent, which is why ubuntu CI never saw it). Three validate-face tests aborted on it before the fix.
+
 ## [0.6.58] - 2026-11-02
 
 ### Added
