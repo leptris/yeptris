@@ -193,8 +193,7 @@ void yep_validate_emit(yep_vctx* c, int code, uint32_t off, const char* detail_f
         d->offset = off;
         line_col_of(c, off, &d->line, &d->col);
     }
-    size_t plen = c->path_len < YEPTRIS_DIAG_PATH_MAX - 1 ? c->path_len
-                                                          : YEPTRIS_DIAG_PATH_MAX - 1;
+    size_t plen = c->path_len < YEPTRIS_DIAG_PATH_MAX - 1 ? c->path_len : YEPTRIS_DIAG_PATH_MAX - 1;
     if (c->path != NULL) {
         memcpy(d->path, c->path, plen);
     }
@@ -370,9 +369,8 @@ int yep_validate_node_equal(const yep_dom* da, uint32_t a, const yep_dom* db, ui
                     }
                     found = 1;
                 }
-                kb = vb != UINT32_MAX && yep_dom_node(db, vb)
-                         ? yep_dom_node(db, vb)->next_sibling
-                         : UINT32_MAX;
+                kb = vb != UINT32_MAX && yep_dom_node(db, vb) ? yep_dom_node(db, vb)->next_sibling
+                                                              : UINT32_MAX;
             }
             if (!found) {
                 return 0;
@@ -462,26 +460,37 @@ static void check_duplicates(yep_vctx* c, uint32_t map_id) {
             tbl[i].hash = h;
             tbl[i].node = k + 1; /* +1: node 0 means empty */
         }
-        k = v != UINT32_MAX && yep_dom_node(d, v) ? yep_dom_node(d, v)->next_sibling
-                                                  : UINT32_MAX;
+        k = v != UINT32_MAX && yep_dom_node(d, v) ? yep_dom_node(d, v)->next_sibling : UINT32_MAX;
     }
     yep_free(sys, tbl);
 }
 
 static const char* tag_word(uint8_t id) {
     switch (id) {
-    case YEPTRIS_TAG_STR: return "string";
-    case YEPTRIS_TAG_INT: return "int";
-    case YEPTRIS_TAG_FLOAT: return "float";
-    case YEPTRIS_TAG_BOOL: return "bool";
-    case YEPTRIS_TAG_NULL: return "null";
-    case YEPTRIS_TAG_TIMESTAMP: return "timestamp";
-    case YEPTRIS_TAG_SEQ: return "sequence";
-    case YEPTRIS_TAG_MAP: return "mapping";
-    case YEPTRIS_TAG_BINARY: return "binary";
-    case YEPTRIS_TAG_MERGE: return "merge";
-    case YEPTRIS_TAG_VALUE: return "value";
-    default: return "custom";
+    case YEPTRIS_TAG_STR:
+        return "string";
+    case YEPTRIS_TAG_INT:
+        return "int";
+    case YEPTRIS_TAG_FLOAT:
+        return "float";
+    case YEPTRIS_TAG_BOOL:
+        return "bool";
+    case YEPTRIS_TAG_NULL:
+        return "null";
+    case YEPTRIS_TAG_TIMESTAMP:
+        return "timestamp";
+    case YEPTRIS_TAG_SEQ:
+        return "sequence";
+    case YEPTRIS_TAG_MAP:
+        return "mapping";
+    case YEPTRIS_TAG_BINARY:
+        return "binary";
+    case YEPTRIS_TAG_MERGE:
+        return "merge";
+    case YEPTRIS_TAG_VALUE:
+        return "value";
+    default:
+        return "custom";
     }
 }
 
@@ -557,12 +566,14 @@ static void check_json_key(yep_vctx* c, uint32_t key_id) {
             return;
         }
         if (want >= YEPTRIS_TAG_INT && want <= YEPTRIS_TAG_NULL) {
-            yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off, "mapping key is %s (expected a "
-                                              "string)",
-                                              tag_word(want));
+            yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
+                              "mapping key is %s (expected a "
+                              "string)",
+                              tag_word(want));
         } else {
-            yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, off, "mapping key carries a non-JSON "
-                                              "tag");
+            yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, off,
+                              "mapping key carries a non-JSON "
+                              "tag");
         }
         return;
     }
@@ -577,9 +588,10 @@ static void check_json_key(yep_vctx* c, uint32_t key_id) {
         return;
     }
     if (cls != (int)YEPTRIS_TAG_STR) {
-        yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off, "mapping key is %s (expected a "
-                                          "string)",
-                                          tag_word((uint8_t)cls));
+        yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
+                          "mapping key is %s (expected a "
+                          "string)",
+                          tag_word((uint8_t)cls));
     }
 }
 
@@ -591,8 +603,7 @@ static void check_json_scalar(yep_vctx* c, uint32_t id) {
     if (n->tag.len > 0) {
         uint8_t want = n->tag_id;
         if (want == YEPTRIS_TAG_TIMESTAMP || want == YEPTRIS_TAG_BINARY ||
-            want == YEPTRIS_TAG_MERGE || want == YEPTRIS_TAG_VALUE ||
-            want == YEPTRIS_TAG_CUSTOM) {
+            want == YEPTRIS_TAG_MERGE || want == YEPTRIS_TAG_VALUE || want == YEPTRIS_TAG_CUSTOM) {
             yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, yep_validate_node_off(d, id),
                               "explicit %s tag is not a JSON type", tag_word(want));
         }
@@ -672,8 +683,8 @@ static void walk_family(yep_vctx* c, uint32_t id, const yep_resolver* fam, int j
         check_duplicates(c, id);
         uint32_t k = n->first_child;
         while (k != UINT32_MAX && !c->oom) {
-            uint32_t v = yep_dom_node(c->dom, k) ? yep_dom_node(c->dom, k)->next_sibling
-                                                 : UINT32_MAX;
+            uint32_t v =
+                yep_dom_node(c->dom, k) ? yep_dom_node(c->dom, k)->next_sibling : UINT32_MAX;
             if (json_family) {
                 check_json_key(c, k);
             }
@@ -694,9 +705,8 @@ static void walk_family(yep_vctx* c, uint32_t id, const yep_resolver* fam, int j
                     yep_validate_path_pop(c, mark);
                 }
             }
-            k = v != UINT32_MAX && yep_dom_node(c->dom, v)
-                    ? yep_dom_node(c->dom, v)->next_sibling
-                    : UINT32_MAX;
+            k = v != UINT32_MAX && yep_dom_node(c->dom, v) ? yep_dom_node(c->dom, v)->next_sibling
+                                                           : UINT32_MAX;
         }
         break;
     }

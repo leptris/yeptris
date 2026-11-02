@@ -361,11 +361,13 @@ engine_enter:
         }
         /* the direct builders resolve with the engine's schema (the typing
          * SSOT — one resolver decision per scalar, whichever path builds) */
-        dom->resolver = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
-                            ? yep_resolver_compat11()
-                            : (opts != NULL && opts->schema == YEPTRIS_SCHEMA_12_JSON)
-                                  ? yep_resolver_json12()
-                                  : yep_resolver_core12();
+        if (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT) {
+            dom->resolver = yep_resolver_compat11();
+        } else if (opts != NULL && opts->schema == YEPTRIS_SCHEMA_12_JSON) {
+            dom->resolver = yep_resolver_json12();
+        } else {
+            dom->resolver = yep_resolver_core12();
+        }
         /* BEFORE the run: input-slice strings borrow as views (zero copy)
          * — the document keeps `transcoded` alive for exactly this. Set
          * after, every scalar was arena-copied (found 2026-09-10). */
@@ -426,12 +428,11 @@ engine_enter:
         yep_engine_destroy(eng);
         eng = NULL;
     } else if (have_tape && !norm_kept_raw &&
-               ytap_fused_run(&yt,
-                              (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
-                                  ? yep_resolver_compat11()
-                                  : (opts != NULL && opts->schema == YEPTRIS_SCHEMA_12_JSON)
-                                        ? yep_resolver_json12()
-                                        : yep_resolver_core12()) == 0) {
+               ytap_fused_run(&yt, (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
+                                       ? yep_resolver_compat11()
+                                   : (opts != NULL && opts->schema == YEPTRIS_SCHEMA_12_JSON)
+                                       ? yep_resolver_json12()
+                                       : yep_resolver_core12()) == 0) {
         /* the fused block runner owned the whole document — the engine
          * never runs (TODO.restructure/79). Its only cost was the parse
          * front-end above; on a bail it unwound and the engine runs. */
