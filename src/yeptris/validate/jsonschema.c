@@ -1300,11 +1300,16 @@ static void check_dependent_required(js_ctx* j, uint32_t dr_id, uint32_t inst_id
                     uint32_t nl = 0;
                     if (schema_word(j, rk, &name, &nl) &&
                         inst_find_key(d, inst_id, name, nl, NULL) == UINT32_MAX) {
+                        /* the detail text is printf-composed: the view
+                         * is NOT NUL-terminated — %s reads past the
+                         * DOM allocation (ASan-caught); copy first */
+                        char namebuf[64];
+                        size_t cl = name_copy(namebuf, sizeof(namebuf), name, nl);
                         size_t mark = j->v.path_len;
-                        int pushed = yep_validate_path_push(&j->v, name, nl);
+                        int pushed = yep_validate_path_push(&j->v, namebuf, cl);
                         yep_validate_emit(&j->v, YEPTRIS_DIAG_DEPENDENT_REQUIRED,
                                           yep_validate_node_off(j->v.dom, inst_id),
-                                          "\"%s\" requires \"%s\"", trigbuf, name);
+                                          "\"%s\" requires \"%s\"", trigbuf, namebuf);
                         if (pushed == 0) {
                             yep_validate_path_pop(&j->v, mark);
                         }
