@@ -3550,7 +3550,7 @@ TEST(Parse, PlainFoldAlgebraPsLedRunsAndAnchorCharset) {
     } cases[] = {
         {"a:(\xE2\x80\xA9\rb", "a:(\nb"},               /* PS+CR: 2 breaks -> n-1 */
         {"a:(\xE2\x80\xA9\xE2\x80\xA9\rb", "a:(\n\nb"}, /* 3 breaks -> n-1 = 2 */
-        {"a:(\n\n\nb", "a:(\n\nb"},      /* the LF twin (3 breaks): same algebra */
+        {"a:(\n\n\nb", "a:(\n\nb"},                     /* the LF twin (3 breaks): same algebra */
         {"a:(\xE2\x80\xA8\rb", "a:(\nb"},               /* the LS twin */
     };
     for (const auto& c : cases) {
