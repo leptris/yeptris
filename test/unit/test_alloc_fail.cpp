@@ -15,6 +15,7 @@
 
 extern "C" {
 #include "dom/dom.h"
+#include "events/capture.h"
 #include "memory/allocator.h"
 #include "parse/engine.h"
 }
@@ -158,4 +159,75 @@ TEST(AllocFail, NoAllocationNoFailure) {
     yep_dom_destroy(dom);
     yep_engine_destroy(eng);
     EXPECT_EQ(ctx.failures, 0u);
+}
+
+/* (a)+(d) audit round 5: an injected failure must never read as a
+ * parse-class error at the engine boundary (the routes map the CODE to
+ * the public status), and a swallowed arena write must never survive
+ * as a silent success (the DOM's oom law — yep_dom_str_put's empty
+ * view). Both sinks: the DOM builder (its failures leave the channel
+ * clean) and the recorder capture (the engine's own YEP_ERR_MEMORY
+ * sets it). */
+TEST(AllocFail, OomNeverReadsAsParseOrSilentSuccess) {
+    for (size_t every = 1; every <= 24; every++) {
+        for (int use_dom = 0; use_dom < 2; use_dom++) {
+            fail_ctx ctx = {every, every, 0, 0};
+            yep_allocator a = {fail_alloc, fail_free, &ctx};
+            yep_engine* eng = yep_engine_create(&a);
+            if (eng == NULL) {
+                continue;
+            }
+            yep_dom* dom = NULL;
+            yep_rec_store store;
+            yep_rec_init(&store);
+            yep_sink sink;
+            if (use_dom) {
+                dom = yep_dom_create(&a);
+                if (dom == NULL) {
+                    yep_engine_destroy(eng);
+                    continue;
+                }
+                sink = (yep_sink){.on_event = yep_dom_on_event,
+                                  .ctx = dom,
+                                  .on_flow_build = NULL,
+                                  .on_flow_commit = NULL,
+                                  .on_flow_rollback = NULL,
+                                  .on_block_pair = NULL,
+                                  .on_block_open = NULL,
+                                  .on_block_item = NULL,
+                                  .on_scalar = NULL,
+                                  .compose = 1};
+            } else {
+                sink = (yep_sink){.on_event = yep_rec_on_event,
+                                  .ctx = &store,
+                                  .on_flow_build = NULL,
+                                  .on_flow_commit = NULL,
+                                  .on_block_item = NULL};
+            }
+            int rc = yep_engine_run(eng, kDoc, strlen(kDoc), &sink);
+            if (rc != 0) {
+                const yep_error* err = yep_engine_error(eng);
+                ASSERT_NE(err, nullptr);
+                /* memory (the engine's own) or clean (a sink failure).
+                 * UNDEFINED_ALIAS is the designed secondary effect of a
+                 * failed anchor-table growth ("OOM leaves the anchor
+                 * undefined so its alias errors" — engine.c), not a
+                 * misread. Any other parse-class code means an
+                 * allocation failure was reported as bad input. */
+                EXPECT_TRUE(err->code == YEP_ERR_MEMORY || err->code == YEP_ERR_NONE ||
+                            err->code == YEP_ERR_UNDEFINED_ALIAS)
+                    << "every=" << every << " sink=" << use_dom
+                    << " code=" << yep_error_string(err->code);
+            } else if (use_dom) {
+                /* silent success with a failed arena write is exactly
+                 * the corruption the oom law exists to kill */
+                EXPECT_EQ(dom->oom, 0) << "every=" << every << ": silent arena corruption";
+            }
+            yep_rec_free(&store);
+            if (dom != NULL) {
+                yep_dom_destroy(dom);
+            }
+            yep_engine_destroy(eng);
+        }
+    }
 }

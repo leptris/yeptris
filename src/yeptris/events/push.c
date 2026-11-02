@@ -101,10 +101,16 @@ YEPTRIS_API YeptrisStatus yeptris_push_parse(const char* buf, size_t len, yeptri
     yep_text_active()->scan_stats(buf, len, &pst);
     yep_engine_prepare(eng, &pst);
     int rc = yep_engine_run(eng, buf, len, &sink);
+    const yep_error* err = yep_engine_error(eng);
     yep_engine_destroy(eng);
     if (rc == 0) {
         return YEPTRIS_OK;
     }
-    /* -2: the callback aborted — reported as a parse stop, not a bug */
+    /* the engine's own memory failures report MEMORY (the parse route's
+     * law); the callback abort keeps its documented contract — a parse
+     * stop, clean channel */
+    if (err != NULL && err->code == YEP_ERR_MEMORY) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
     return YEPTRIS_ERROR_PARSE;
 }

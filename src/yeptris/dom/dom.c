@@ -26,16 +26,35 @@ static int cap_arena(const yep_dom* d, uint32_t need) {
     return d->input_len == 0 || (size_t)(d->str_len + need) <= d->input_len * 128 + (1u << 20);
 }
 
+/* Doubling with the uint32 ceiling (the audit's wrap finding): the old
+ * `while (cap < target) cap *= 2` wrapped to 0 and span forever once a
+ * cap crossed 2^31 with a target above it. A cap that cannot double
+ * inside uint32 — or a target past the 32-bit space at all — is an
+ * alloc failure, never a wrapped capacity. */
+static int dom_cap_next(uint32_t cap, size_t target, uint32_t* out) {
+    if (target > UINT32_MAX) {
+        return 0;
+    }
+    while (cap < target) {
+        if (cap > UINT32_MAX / 2) {
+            return 0;
+        }
+        cap *= 2;
+    }
+    *out = cap;
+    return 1;
+}
+
 int dom_grow_nodes(yep_dom* d, uint32_t need) {
-    if (d->ncount + need <= d->ncap) {
+    if ((size_t)d->ncount + need <= d->ncap) {
         return 1;
     }
     if (!cap_nodes(d)) {
         return 0;
     }
-    uint32_t ncap = d->ncap ? d->ncap * 2 : 64;
-    while (ncap < d->ncount + need) {
-        ncap *= 2;
+    uint32_t ncap;
+    if (!dom_cap_next(d->ncap ? d->ncap : 64, (size_t)d->ncount + need, &ncap)) {
+        return 0;
     }
     yep_dnode* nd = yep_pool_alloc(d->pool, (size_t)ncap * sizeof(yep_dnode), 16);
     if (nd == NULL) {
@@ -50,15 +69,15 @@ int dom_grow_nodes(yep_dom* d, uint32_t need) {
 }
 
 int dom_grow_docs(yep_dom* d, uint32_t need) {
-    if (d->dcount + need <= d->dcap) {
+    if ((size_t)d->dcount + need <= d->dcap) {
         return 1;
     }
     if (d->input_len != 0 && (size_t)d->dcount > d->input_len / 2 + 16) {
         return 0;
     }
-    uint32_t ncap = d->dcap ? d->dcap * 2 : 16;
-    while (ncap < d->dcount + need) {
-        ncap *= 2;
+    uint32_t ncap;
+    if (!dom_cap_next(d->dcap ? d->dcap : 16, (size_t)d->dcount + need, &ncap)) {
+        return 0;
     }
     uint32_t* nd = yep_pool_alloc(d->pool, (size_t)ncap * sizeof(uint32_t), 16);
     if (nd == NULL) {
@@ -75,15 +94,15 @@ int dom_grow_docs(yep_dom* d, uint32_t need) {
 /* Doubles the arena until cap bytes fit; 0 on OOM. Offsets stored in
  * nodes stay valid across the move. */
 static int str_grow(yep_dom* d, uint32_t need) {
-    if (d->str_len + need <= d->str_cap) {
+    if ((size_t)d->str_len + need <= d->str_cap) {
         return 1;
     }
     if (!cap_arena(d, need)) {
         return 0;
     }
-    uint32_t cap = d->str_cap ? d->str_cap : 256;
-    while (cap < d->str_len + need) {
-        cap *= 2;
+    uint32_t cap;
+    if (!dom_cap_next(d->str_cap ? d->str_cap : 256, (size_t)d->str_len + need, &cap)) {
+        return 0;
     }
     char* ns = yep_alloc(d->sys, cap);
     if (ns == NULL) {
@@ -100,8 +119,15 @@ static int str_grow(yep_dom* d, uint32_t need) {
 
 yep_sview yep_dom_str_put(yep_dom* d, const char* p, uint32_t len) {
     yep_sview sv = {YEP_SV_INPUT, 0}; /* empty: arena offset 0 */
-    if (len == 0 || !str_grow(d, len)) {
-        return sv; /* len 0 or OOM: empty view */
+    if (len == 0) {
+        return sv;
+    }
+    if (!str_grow(d, len)) {
+        /* OOM: an empty view here would silently corrupt the document
+         * (the value reads as ""). Record it; dom_place/dom_open_node
+         * fail the parse with the memory status. */
+        d->oom = 1;
+        return sv;
     }
     memcpy(d->str + d->str_len, p, len);
     sv.off = YEP_SV_INPUT | d->str_len;
@@ -172,6 +198,11 @@ uint32_t dom_open_node(yep_dom* d, uint8_t kind, const yep_view* tag, const yep_
     n->kind = kind;
     n->tag = dom_str_in(d, tag, 0);
     n->anchor = dom_str_in(d, anchor, anchor_borrowed);
+    if (d->oom) {
+        /* the tag/anchor arena write failed: refuse the node (the slot
+         * is uncommitted — the next open re-initializes it) */
+        return UINT32_MAX;
+    }
     n->style = style;
     n->implicit = implicit;
     n->flow = flow;
@@ -213,8 +244,8 @@ static int dom_anchor_set(yep_dom* d, uint32_t ordinal, uint32_t node) {
                 cap = sized;
             }
         }
-        while (cap < ordinal) {
-            cap *= 2;
+        if (!dom_cap_next(cap, ordinal, &cap)) {
+            return -1; /* the wrap-checked doubling (audit round 5) */
         }
         uint32_t* na = yep_alloc(d->sys, cap * sizeof(*na));
         if (na == NULL) {
@@ -271,9 +302,9 @@ static int dom_mut_grow(yep_dom* d, uint32_t need) {
     if (need <= d->mut_tbl_cap) {
         return 1;
     }
-    uint32_t cap = d->mut_tbl_cap ? d->mut_tbl_cap : 64;
-    while (cap < need) {
-        cap *= 2;
+    uint32_t cap;
+    if (!dom_cap_next(d->mut_tbl_cap ? d->mut_tbl_cap : 64, need, &cap)) {
+        return 0; /* the wrap-checked doubling (audit round 5) */
     }
     uint8_t* na = yep_alloc(d->sys, (size_t)cap / 8 + 1);
     uint16_t* nd = yep_alloc(d->sys, (size_t)cap * sizeof(uint16_t));
@@ -335,8 +366,13 @@ void dom_mut_set_depth(yep_dom* d, uint32_t id, uint16_t depth) {
 }
 
 /* Places a completed node: value for a pending key, child of the top
- * collection, or document root. */
+ * collection, or document root. Every builder path ends here, so it is
+ * also the OOM choke: an arena write that failed (d->oom) must fail
+ * the node, never leave a silently-empty value in the tree. */
 int dom_place(yep_dom* d, uint32_t id) {
+    if (d->oom) {
+        return -1;
+    }
     if (d->depth == 0) {
         if (!dom_grow_docs(d, 1)) {
             return -1;
