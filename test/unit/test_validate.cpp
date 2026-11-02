@@ -569,14 +569,14 @@ TEST(ValidateJsonSchema, AllOfAnyOfOneOfNot) {
     const char* one = "{\"oneOf\":[{\"type\":\"integer\"},{\"minimum\":5}]}";
     ASSERT_EQ(js_first(one, "1\n", &r), nullptr); /* int only */
     free_report(r);
-    ASSERT_EQ(js_first(one, "2.5\n", &r), nullptr); /* minimum only */
+    ASSERT_EQ(js_first(one, "5.5\n", &r), nullptr); /* float >= 5: minimum only */
     free_report(r);
     const yeptris_diagnostic* d3 = js_first(one, "7\n", &r); /* both */
     ASSERT_NE(d3, nullptr);
     EXPECT_EQ(d3->code, (uint32_t)YEPTRIS_DIAG_ONE_OF);
     EXPECT_NE(strstr(d3->detail, "2 of"), nullptr);
     free_report(r);
-    const yeptris_diagnostic* d4 = js_first(one, "\"x\"\n", &r); /* neither */
+    const yeptris_diagnostic* d4 = js_first(one, "2.5\n", &r); /* neither branch */
     ASSERT_NE(d4, nullptr);
     EXPECT_EQ(d4->code, (uint32_t)YEPTRIS_DIAG_ONE_OF);
     free_report(r);
@@ -706,7 +706,9 @@ TEST(ValidateRegex, SearchSemantics) {
     EXPECT_EQ(yep_re_search("\\bcat\\b", (uint32_t)strlen("\\bcat\\b"), "a cat sat", 9), 1);
     EXPECT_EQ(yep_re_search("\\bcat\\b", (uint32_t)strlen("\\bcat\\b"), "scatter", 7), 0);
     // the NFA is linear: the classic blowup pattern answers instantly
-    EXPECT_EQ(yep_re_search("(a+)+$", (uint32_t)strlen("(a+)+$"), "aaaaaaaaaaaaaaaaaaaaaaaaaaaab", 29), 0);
+    const char* blowup = "aaaaaaaaaaaaaaaaaaaaaaaaaaaab";
+    EXPECT_EQ(yep_re_search("(a+)+$", (uint32_t)strlen("(a+)+$"), blowup,
+                            (uint32_t)strlen(blowup)), 0);
     // SyntaxErrors
     EXPECT_EQ(yep_re_search("(a", (uint32_t)strlen("(a"), "a", 1), -1);
     EXPECT_EQ(yep_re_search("[a", (uint32_t)strlen("[a"), "a", 1), -1);

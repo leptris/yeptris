@@ -712,8 +712,8 @@ YEPTRIS_API size_t yeptris_validate_report_count(const yeptris_validate_report* 
     return report ? report->count : 0;
 }
 
-YEPTRIS_API const yeptris_diagnostic* yeptris_validate_report_at(const yeptris_validate_report* report,
-                                                                 size_t index) {
+YEPTRIS_API const yeptris_diagnostic*
+yeptris_validate_report_at(const yeptris_validate_report* report, size_t index) {
     if (report == NULL || index >= report->count) {
         return NULL;
     }
