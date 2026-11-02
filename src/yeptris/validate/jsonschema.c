@@ -230,7 +230,8 @@ static int resolve_ref(js_ctx* j, const char* p, uint32_t plen, uint32_t* out) {
     uint32_t cur = j->sroot;
     size_t i = 1;
     if (i >= plen || p[i] != '/') {
-        return i == plen; /* "#" alone is the root */
+        *out = cur; /* "#" alone is the root */
+        return i == plen;
     }
     int tokens = 0;
     while (i < plen) {
@@ -730,8 +731,9 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                     /* items applies from prefixItems' count on */
                     uint32_t ich = yep_dom_node(j->v.dom, inst_id)->first_child;
                     for (uint32_t skip = 0; skip < prefix && ich != UINT32_MAX; skip++) {
-                        ich = yep_dom_node(j->v.dom, ich) ? yep_dom_node(j->v.dom, ich)->next_sibling
-                                                          : UINT32_MAX;
+                        ich = yep_dom_node(j->v.dom, ich)
+                                  ? yep_dom_node(j->v.dom, ich)->next_sibling
+                                  : UINT32_MAX;
                     }
                     for (uint32_t i = prefix; i < cnt && ich != UINT32_MAX; i++) {
                         uint32_t ni = yep_dom_node(j->v.dom, ich)
@@ -914,13 +916,13 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
             uint32_t ap;
             int af = 0;
             if (kw_schema(j, schema_id, "additionalProperties", &ap, &af)) {
+                /* k steps pair-to-pair: every visited node IS a key */
                 uint32_t k = n->first_child;
-                int want_key = 1;
                 while (k != UINT32_MAX) {
                     uint32_t v = yep_dom_node(j->v.dom, k) ? yep_dom_node(j->v.dom, k)->next_sibling
                                                            : UINT32_MAX;
                     const yep_dnode* kn = yep_dom_node(j->v.dom, k);
-                    if (want_key && kn != NULL && kn->kind == YEP_DOM_SCALAR) {
+                    if (kn != NULL && kn->kind == YEP_DOM_SCALAR) {
                         yep_view kv = yep_dom_view(j->v.dom, kn->value);
                         int known = 0;
                         if (have_props) {
@@ -960,7 +962,6 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                             }
                         }
                     }
-                    want_key = !want_key;
                     k = v != UINT32_MAX && yep_dom_node(j->v.dom, v)
                             ? yep_dom_node(j->v.dom, v)->next_sibling
                             : UINT32_MAX;
@@ -997,8 +998,14 @@ int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root,
         j.v.path_len = 0;
         js_validate_doc(&j, doc_roots[i]);
         if (j.v.oom) {
+            yep_free(yep_system_allocator(), j.v.line_off);
+            yep_free(yep_system_allocator(), j.v.path);
             return -1;
         }
     }
+    /* the walk's scratch (the lazy line index, the path buffer) dies
+     * here: the report carries only finished diagnostics */
+    yep_free(yep_system_allocator(), j.v.line_off);
+    yep_free(yep_system_allocator(), j.v.path);
     return 0;
 }
