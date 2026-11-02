@@ -442,8 +442,7 @@ engine_enter:
          * never were a parse error. Mapping it to PARSE let
          * yep_dom_str_put's swallowed OOM surface as a syntax error
          * (the audit's finding: silent doc corruption reads worse). */
-        yep_err_code code =
-            (ee && ee->code != YEP_ERR_NONE) ? ee->code : YEP_ERR_MEMORY;
+        yep_err_code code = (ee && ee->code != YEP_ERR_NONE) ? ee->code : YEP_ERR_MEMORY;
         if (ee) {
             yep_error* tls = yep_error_tls();
             *tls = *ee;

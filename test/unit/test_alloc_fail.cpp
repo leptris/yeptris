@@ -180,34 +180,24 @@ TEST(AllocFail, OomNeverReadsAsParseOrSilentSuccess) {
             yep_dom* dom = NULL;
             yep_rec_store store;
             yep_rec_init(&store);
-            yep_sink sink;
+            /* value-init (every field zero) then per-branch field sets:
+             * a C99 compound literal `(yep_sink){...}` is not valid C++
+             * and MSVC rejects it (the round-5 win leg's C4576); the
+             * declared designated init the file uses elsewhere covers
+             * only declaration-time initialization */
+            yep_sink sink = {};
             if (use_dom) {
                 dom = yep_dom_create(&a);
                 if (dom == NULL) {
                     yep_engine_destroy(eng);
                     continue;
                 }
-                sink = (yep_sink){.on_event = yep_dom_on_event,
-                                  .ctx = dom,
-                                  .on_flow_build = NULL,
-                                  .on_flow_commit = NULL,
-                                  .on_flow_rollback = NULL,
-                                  .on_block_pair = NULL,
-                                  .on_block_open = NULL,
-                                  .on_block_item = NULL,
-                                  .on_scalar = NULL,
-                                  .compose = 1};
+                sink.on_event = yep_dom_on_event;
+                sink.ctx = dom;
+                sink.compose = 1;
             } else {
-                sink = (yep_sink){.on_event = yep_rec_on_event,
-                                  .ctx = &store,
-                                  .on_flow_build = NULL,
-                                  .on_flow_commit = NULL,
-                                  .on_flow_rollback = NULL,
-                                  .on_block_pair = NULL,
-                                  .on_block_open = NULL,
-                                  .on_block_item = NULL,
-                                  .on_scalar = NULL,
-                                  .compose = 0};
+                sink.on_event = yep_rec_on_event;
+                sink.ctx = &store;
             }
             int rc = yep_engine_run(eng, kDoc, strlen(kDoc), &sink);
             if (rc != 0) {

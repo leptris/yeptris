@@ -216,7 +216,19 @@ YEPTRIS_API const YeptrisEvent* yeptris_iterparse_next(YeptrisIterparse it, size
         yep_engine_prepare(eng, &pst);
         int rc = yep_engine_run(eng, it->buf + it->cursor, it->len - it->cursor, &sink);
         size_t pos = yep_engine_pos(eng);
-        const yep_error* err = yep_engine_error(eng);
+        /* the error slot lives inside the engine and destroy munmaps it
+         * (glibc serves the ~260KB engine with mmap): copy the verdict
+         * out BEFORE the free */
+        yep_err_code err_code = YEP_ERR_NONE;
+        uint32_t err_line = 0, err_col = 0;
+        {
+            const yep_error* err = yep_engine_error(eng);
+            if (err != NULL) {
+                err_code = err->code;
+                err_line = err->line;
+                err_col = err->col;
+            }
+        }
         yep_engine_destroy(eng);
         /* A failed run with a SET channel is a parse-class error and the
          * CODE picks the public status; a failed run with a CLEAN
@@ -228,12 +240,12 @@ YEPTRIS_API const YeptrisEvent* yeptris_iterparse_next(YeptrisIterparse it, size
         int failed = rc == -1 || s.oom;
         if (failed) {
             it->done = 1;
-            if (err != NULL && err->code != YEP_ERR_NONE) {
-                it->err_line = err->line;
-                it->err_col = err->col;
-                it->status = err->code == YEP_ERR_MEMORY     ? YEPTRIS_ERROR_MEMORY
-                             : err->code == YEP_ERR_ENCODING ? YEPTRIS_ERROR_ENCODING
-                                                             : YEPTRIS_ERROR_PARSE;
+            if (err_code != YEP_ERR_NONE) {
+                it->err_line = err_line;
+                it->err_col = err_col;
+                it->status = err_code == YEP_ERR_MEMORY     ? YEPTRIS_ERROR_MEMORY
+                             : err_code == YEP_ERR_ENCODING ? YEPTRIS_ERROR_ENCODING
+                                                            : YEPTRIS_ERROR_PARSE;
             } else {
                 it->status = YEPTRIS_ERROR_MEMORY;
             }

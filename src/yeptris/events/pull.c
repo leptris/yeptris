@@ -44,17 +44,30 @@ YEPTRIS_API YeptrisPullParser yeptris_pull_new(const char* buf, size_t len) {
     yep_text_active()->scan_stats(buf, len, &pst);
     yep_engine_prepare(eng, &pst);
     int rc = yep_engine_run(eng, buf, len, &sink);
-    const yep_error* err = yep_engine_error(eng);
+    /* the error slot lives INSIDE the engine, and the engine is a
+     * ~260KB allocation glibc serves with mmap — destroy munmaps it,
+     * so the slot's verdict must be copied out BEFORE destroy (the
+     * round-5 CI segfaulted reading err->code after the free). */
+    yep_err_code err_code = YEP_ERR_NONE;
+    uint32_t err_line = 0, err_col = 0;
+    {
+        const yep_error* err = yep_engine_error(eng);
+        if (err != NULL) {
+            err_code = err->code;
+            err_line = err->line;
+            err_col = err->col;
+        }
+    }
     yep_engine_destroy(eng);
     /* the error CODE decides the public status — the parse route's law
      * (the recorder twin carries the full comment). A clean channel
      * under a failed run is the capture sink failing: memory. */
-    if (rc != 0 && err != NULL && err->code != YEP_ERR_NONE) {
-        p->err_line = err->line;
-        p->err_col = err->col;
-        p->status = err->code == YEP_ERR_MEMORY     ? YEPTRIS_ERROR_MEMORY
-                    : err->code == YEP_ERR_ENCODING ? YEPTRIS_ERROR_ENCODING
-                                                    : YEPTRIS_ERROR_PARSE;
+    if (rc != 0 && err_code != YEP_ERR_NONE) {
+        p->err_line = err_line;
+        p->err_col = err_col;
+        p->status = err_code == YEP_ERR_MEMORY     ? YEPTRIS_ERROR_MEMORY
+                    : err_code == YEP_ERR_ENCODING ? YEPTRIS_ERROR_ENCODING
+                                                   : YEPTRIS_ERROR_PARSE;
     } else {
         p->status = rc == 0 ? YEPTRIS_OK : YEPTRIS_ERROR_MEMORY;
     }
