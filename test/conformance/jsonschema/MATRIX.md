@@ -190,3 +190,10 @@ remotes tree (remote-ref HTTP fixtures).
    literal text. Digits stay SyntaxError (backreferences stay out of the
    subset — an ignored pattern beats a misread one). Pinned in
    `test_validate.cpp:ValidateRegex.SearchSemantics`.
+4. **dependentRequired's detail text read past the DOM allocation** —
+   caught by the ASan CI leg ON this suite's run: the emitter composes
+   details with printf, and the schema-side name view is not
+   NUL-terminated, so `%s` walked past the buffer. Every emit in the
+   sweep copies into a bounded buffer before composing; the suite and
+   the pins run ASan-clean (`YEPTRIS_ENABLE_ASAN` build, same matrix
+   numbers).
