@@ -101,7 +101,7 @@ jobs:
             V="${{ github.event.pull_request.head.ref }}"
             V="${V#release/v}"
           fi
-          scripts/build-native-asset.sh "$V" https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/native-asset"
+          YEPTRIS_ENGINE_SRC="$GITHUB_WORKSPACE" scripts/build-native-asset.sh "$V" https://github.com/leptris/yeptris-ruby "$RUNNER_TEMP/native-asset"
 
       - name: Tag and publish the GitHub Release
         run: |
