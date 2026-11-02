@@ -21,7 +21,23 @@
 #include <string.h>
 
 #if defined(_MSC_VER)
-#define __builtin_trap() __debugbreak()
+/* MSVC cannot use __builtin_trap(); the shim names the trap SITE so a
+ * windows-only violation is diagnosed by CI, not guessed at. */
+#include <stdio.h>
+static const char* trap_site_;
+#define __builtin_trap()                                                                           \
+    do {                                                                                           \
+        fprintf(stderr, "fuzz_validate: TRAP %s (status=%d n=%lu)\n",                              \
+                trap_site_ ? trap_site_ : "?", (int)last_status_, (unsigned long)last_count_);     \
+        fflush(stderr);                                                                            \
+        __debugbreak();                                                                            \
+    } while (0)
+static YeptrisStatus last_status_;
+static size_t last_count_;
+#else
+static const char* trap_site_;
+static int last_status_;
+static size_t last_count_;
 #endif
 
 #include <yeptris/validate.h>
@@ -35,27 +51,35 @@ static int status_known(YeptrisStatus st) {
 }
 
 static void drain(YeptrisStatus st, yeptris_validate_report* r) {
+    last_status_ = (int)st;
     if (!status_known(st)) {
+        trap_site_ = "unknown-status";
         __builtin_trap(); /* a status the validator does not own */
     }
     if (st == YEPTRIS_OK || st == YEPTRIS_ERROR_SCHEMA) {
         if (r == NULL) {
+            trap_site_ = "no-report";
             __builtin_trap(); /* a completed validation with no report */
         }
         size_t n = yeptris_validate_report_count(r);
+        last_count_ = n;
         for (size_t i = 0; i < n; i++) {
             const yeptris_diagnostic* d = yeptris_validate_report_at(r, i);
             if (d == NULL || d->code == 0u /* YEPTRIS_DIAG_NONE is never emitted */) {
+                trap_site_ = "code-none";
                 __builtin_trap();
             }
             if (memchr(d->path, '\0', YEPTRIS_DIAG_PATH_MAX) == NULL) {
+                trap_site_ = "path-unterminated";
                 __builtin_trap(); /* paths are always NUL-terminated */
             }
         }
         if (n > 256u /* YEP_VALIDATE_MAX_DIAGS, pinned by test_abi */) {
+            trap_site_ = "cap-exceeded";
             __builtin_trap(); /* the cap is a hard ceiling */
         }
     } else if (r != NULL) {
+        trap_site_ = "failed-with-report";
         __builtin_trap(); /* a failed validation allocated a report */
     }
     yeptris_validate_report_free(r);

@@ -167,7 +167,9 @@ static int p_escape(re_ctx* c, int* out) {
     }
     char e = c->pat[c->pi++];
     switch (e) {
-    case 'd': case 'w': case 's': {
+    case 'd':
+    case 'w':
+    case 's': {
         int id = cls_new(c);
         if (id < 0) {
             return -1;
@@ -176,7 +178,9 @@ static int p_escape(re_ctx* c, int* out) {
         *out = id;
         return 1;
     }
-    case 'D': case 'W': case 'S': {
+    case 'D':
+    case 'W':
+    case 'S': {
         int id = cls_new(c);
         if (id < 0) {
             return -1;
@@ -185,14 +189,30 @@ static int p_escape(re_ctx* c, int* out) {
         *out = id;
         return 1;
     }
-    case 'b': *out = RE_AS_WBOUND; return -2;
-    case 'B': *out = RE_AS_NWBOUND; return -2;
-    case 'n': *out = '\n'; return 0;
-    case 't': *out = '\t'; return 0;
-    case 'r': *out = '\r'; return 0;
-    case 'f': *out = '\f'; return 0;
-    case 'v': *out = '\v'; return 0;
-    case '0': *out = 0; return 0;
+    case 'b':
+        *out = RE_AS_WBOUND;
+        return -2;
+    case 'B':
+        *out = RE_AS_NWBOUND;
+        return -2;
+    case 'n':
+        *out = '\n';
+        return 0;
+    case 't':
+        *out = '\t';
+        return 0;
+    case 'r':
+        *out = '\r';
+        return 0;
+    case 'f':
+        *out = '\f';
+        return 0;
+    case 'v':
+        *out = '\v';
+        return 0;
+    case '0':
+        *out = 0;
+        return 0;
     case 'x': {
         int v = p_hex(c, 2);
         if (v < 0) {
@@ -770,7 +790,7 @@ static int c_node(re_ctx* c, int id, re_frag* out, int depth) {
             } else {
                 frag_bit(&chain, split, 0); /* empty copy: both arms exit */
             }
-            frag_or(&chain, &f);     /* the copy's exits join the chain */
+            frag_or(&chain, &f);        /* the copy's exits join the chain */
             frag_bit(&exits, split, 1); /* the skip arm */
             if (acc.in < 0) {
                 acc.in = split; /* entry = the first split */
@@ -778,7 +798,7 @@ static int c_node(re_ctx* c, int id, re_frag* out, int depth) {
         }
         out->in = acc.in;
         frag_init(out, out->in);
-        frag_or(out, &chain);  /* the last body's exits reach the end */
+        frag_or(out, &chain); /* the last body's exits reach the end */
         frag_or(out, &exits);
         return 0;
     }

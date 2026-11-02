@@ -23,7 +23,6 @@
  * is bounded; allocation failure flags the context and unwinds.
  */
 
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -39,9 +38,9 @@
 #define JS_MAX_UNIQUE 4096 /* uniqueItems' hash table cap; over: O(n^2) probe */
 
 typedef struct {
-    yep_vctx v;          /* instance-side context (path, report, guards) */
-    const yep_dom* sd;   /* the schema document's tree */
-    uint32_t sroot;      /* the schema's document root */
+    yep_vctx v;        /* instance-side context (path, report, guards) */
+    const yep_dom* sd; /* the schema document's tree */
+    uint32_t sroot;    /* the schema's document root */
 } js_ctx;
 
 /* ---- schema-side facts -------------------------------------------------- */
@@ -149,8 +148,12 @@ static void inst_type(const yep_dom* d, uint32_t id, const char** word, int* int
         return;
     }
     switch (yep_validate_scalar_tag(n)) {
-    case YEPTRIS_TAG_NULL: *word = "null"; break;
-    case YEPTRIS_TAG_BOOL: *word = "boolean"; break;
+    case YEPTRIS_TAG_NULL:
+        *word = "null";
+        break;
+    case YEPTRIS_TAG_BOOL:
+        *word = "boolean";
+        break;
     case YEPTRIS_TAG_INT:
         *word = "integer";
         *integer = 1;
@@ -158,7 +161,11 @@ static void inst_type(const yep_dom* d, uint32_t id, const char** word, int* int
     case YEPTRIS_TAG_FLOAT: {
         yep_view v = yep_dom_view(d, n->value);
         double dv = 0;
-        if (yep_num_f64(v.p, v.len, &dv) == 0 && dv == floor(dv)) {
+        /* integral test without libm: in int64 range a cast round-trips
+         * iff the fractional part is zero; outside it (and inf) every
+         * double is already integral, floor()==dv; NaN is not. */
+        const int in_i64 = dv >= -9223372036854775808.0 && dv < 9223372036854775808.0;
+        if (yep_num_f64(v.p, v.len, &dv) == 0 && (in_i64 ? dv == (double)(int64_t)dv : dv == dv)) {
             /* 2020-12: "integer" means a zero fractional part */
             *word = "integer";
             *integer = 1;
@@ -167,7 +174,9 @@ static void inst_type(const yep_dom* d, uint32_t id, const char** word, int* int
         }
         break;
     }
-    default: *word = "string"; break;
+    default:
+        *word = "string";
+        break;
     }
 }
 
@@ -325,9 +334,10 @@ static void check_unique(js_ctx* j, uint32_t seq_id, uint32_t inst_off) {
     while (cap < n * 2 && cap < JS_MAX_UNIQUE) {
         cap *= 2;
     }
-    if (cap >= JS_MAX_UNIQUE && n > JS_MAX_UNIQUE) {
-        /* fall through: the load factor rises, still correct */
-    }
+    /* cap never reaches n when n exceeds JS_MAX_UNIQUE: elements beyond
+     * a FULL table are unchecked below (a 100%%-full table cannot probe
+     * — the linear scan would spin forever). Bounded memory, bounded
+     * time; the check degrades to the first `cap` distinct entries. */
     struct {
         uint32_t hash;
         uint32_t node; /* +1 encoded */
@@ -340,14 +350,17 @@ static void check_unique(js_ctx* j, uint32_t seq_id, uint32_t inst_off) {
     uint32_t ch = s->first_child;
     int idx = 0;
     int reported = 0;
+    uint32_t inserted = 0;
     while (ch != UINT32_MAX && !reported) {
+        if (inserted == cap) {
+            break; /* the table is full: stop checking (see the cap note) */
+        }
         uint64_t h64 = yep_validate_node_hash(d, ch, 0);
         uint32_t h = (uint32_t)(h64 ^ (h64 >> 32));
         uint32_t i = h & (cap - 1);
         int dup = 0;
         while (tbl[i].node != 0) {
-            if (tbl[i].hash == h &&
-                yep_validate_node_equal(d, tbl[i].node - 1, d, ch, 0)) {
+            if (tbl[i].hash == h && yep_validate_node_equal(d, tbl[i].node - 1, d, ch, 0)) {
                 dup = 1;
                 break;
             }
@@ -356,11 +369,11 @@ static void check_unique(js_ctx* j, uint32_t seq_id, uint32_t inst_off) {
         if (dup) {
             reported = 1;
             yep_validate_emit(&j->v, YEPTRIS_DIAG_UNIQUE_ITEMS, inst_off,
-                              "elements %u and %u are equal", (uint32_t)idx,
-                              (uint32_t)(idx - 1));
+                              "elements %u and %u are equal", (uint32_t)idx, (uint32_t)(idx - 1));
         } else {
             tbl[i].hash = h;
             tbl[i].node = ch + 1;
+            inserted++;
         }
         ch = yep_dom_node(d, ch) ? yep_dom_node(d, ch)->next_sibling : UINT32_MAX;
         idx++;
@@ -413,8 +426,7 @@ static int schema_number(const js_ctx* j, uint32_t id, double* out) {
  * pattern sources); 0 when unreadable. */
 static int schema_word(const js_ctx* j, uint32_t id, const char** p, uint32_t* len) {
     const yep_dnode* n = snode(j, id);
-    if (n == NULL || n->kind != YEP_DOM_SCALAR ||
-        yep_validate_scalar_tag(n) != YEPTRIS_TAG_STR) {
+    if (n == NULL || n->kind != YEP_DOM_SCALAR || yep_validate_scalar_tag(n) != YEPTRIS_TAG_STR) {
         return 0;
     }
     yep_view v = yep_dom_view(j->sd, n->value);
@@ -464,16 +476,14 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
         uint32_t rl = 0;
         if (schema_word(j, ref_val, &rp, &rl)) {
             if (++j->v.ref_depth > JS_MAX_REF_CHAIN) {
-                yep_validate_emit(&j->v, YEPTRIS_DIAG_REF,
-                                  yep_validate_node_off(j->v.dom, inst_id),
+                yep_validate_emit(&j->v, YEPTRIS_DIAG_REF, yep_validate_node_off(j->v.dom, inst_id),
                                   "$ref chain exceeds %d (a cycle?)", JS_MAX_REF_CHAIN);
                 j->v.ref_depth = 0;
                 return;
             }
             uint32_t target = UINT32_MAX;
             if (!resolve_ref(j, rp, rl, &target)) {
-                yep_validate_emit(&j->v, YEPTRIS_DIAG_REF,
-                                  yep_validate_node_off(j->v.dom, inst_id),
+                yep_validate_emit(&j->v, YEPTRIS_DIAG_REF, yep_validate_node_off(j->v.dom, inst_id),
                                   "$ref \"%.*s\" does not resolve", (int)(rl > 64 ? 64 : rl), rp);
                 j->v.ref_depth = 0;
                 return;
@@ -528,8 +538,8 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                 }
                 want[cl] = '\0';
                 yep_validate_emit(&j->v, YEPTRIS_DIAG_TYPE,
-                                  yep_validate_node_off(j->v.dom, inst_id),
-                                  "expected %s, got %s", want, it);
+                                  yep_validate_node_off(j->v.dom, inst_id), "expected %s, got %s",
+                                  want, it);
             }
         }
     }
@@ -537,8 +547,7 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
     /* const / enum */
     {
         uint32_t cv;
-        if (kw_get(j, schema_id, "const", &cv) && cv != UINT32_MAX &&
-            snode(j, cv) != NULL) {
+        if (kw_get(j, schema_id, "const", &cv) && cv != UINT32_MAX && snode(j, cv) != NULL) {
             if (!yep_validate_node_equal(j->sd, cv, j->v.dom, inst_id, 0)) {
                 yep_validate_emit(&j->v, YEPTRIS_DIAG_CONST,
                                   yep_validate_node_off(j->v.dom, inst_id),
@@ -809,8 +818,7 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
         }
         if (kw_get(j, schema_id, "not", &cv) && cv != UINT32_MAX) {
             if (js_holds(j, cv, inst_id, depth)) {
-                yep_validate_emit(&j->v, YEPTRIS_DIAG_NOT,
-                                  yep_validate_node_off(j->v.dom, inst_id),
+                yep_validate_emit(&j->v, YEPTRIS_DIAG_NOT, yep_validate_node_off(j->v.dom, inst_id),
                                   "the not-schema matched");
             }
         }
@@ -822,9 +830,8 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
         if (n != NULL && n->kind == YEP_DOM_MAPPING) {
             /* properties: known keys */
             uint32_t props = UINT32_MAX;
-            int have_props = kw_get(j, schema_id, "properties", &props) &&
-                             props != UINT32_MAX && snode(j, props) != NULL &&
-                             snode(j, props)->kind == YEP_DOM_MAPPING;
+            int have_props = kw_get(j, schema_id, "properties", &props) && props != UINT32_MAX &&
+                             snode(j, props) != NULL && snode(j, props)->kind == YEP_DOM_MAPPING;
             uint32_t req;
             if (kw_get(j, schema_id, "required", &req) && req != UINT32_MAX) {
                 const yep_dnode* rn = snode(j, req);
@@ -929,22 +936,20 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                             uint32_t pk = snode(j, props)->first_child;
                             while (pk != UINT32_MAX && !known) {
                                 const yep_dnode* pkn = snode(j, pk);
-                                uint32_t pv = snode(j, pk) ? snode(j, pk)->next_sibling
-                                                           : UINT32_MAX;
+                                uint32_t pv =
+                                    snode(j, pk) ? snode(j, pk)->next_sibling : UINT32_MAX;
                                 if (pkn != NULL && pkn->kind == YEP_DOM_SCALAR) {
                                     yep_view pw = yep_dom_view(j->sd, pkn->value);
                                     known = pw.len == kv.len &&
                                             (kv.len == 0 || memcmp(pw.p, kv.p, kv.len) == 0);
                                 }
-                                pk = pv != UINT32_MAX && snode(j, pv)
-                                         ? snode(j, pv)->next_sibling
-                                         : UINT32_MAX;
+                                pk = pv != UINT32_MAX && snode(j, pv) ? snode(j, pv)->next_sibling
+                                                                      : UINT32_MAX;
                             }
                         }
                         if (!known) {
                             char namebuf[64];
-                            size_t cl = kv.len < sizeof(namebuf) - 1 ? kv.len
-                                                                     : sizeof(namebuf) - 1;
+                            size_t cl = kv.len < sizeof(namebuf) - 1 ? kv.len : sizeof(namebuf) - 1;
                             if (cl > 0 && kv.p != NULL) {
                                 memcpy(namebuf, kv.p, cl);
                             }
@@ -983,9 +988,9 @@ static int js_validate_doc(js_ctx* j, uint32_t inst_root) {
 /* The public entry lives in validate.c (yeptris_json_schema_validate):
  * it parses both sides, builds the report and drives this seam per
  * document (the declaration is internal.h's — the shared SSOT). */
-int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root,
-                       const yep_dom* instance_dom, const uint32_t* doc_roots,
-                       uint32_t doc_count, yeptris_validate_report* rep) {
+int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const yep_dom* instance_dom,
+                       const uint32_t* doc_roots, uint32_t doc_count,
+                       yeptris_validate_report* rep) {
     js_ctx j;
     memset(&j, 0, sizeof(j));
     j.sd = schema_dom;
