@@ -58,6 +58,7 @@ add_executable(test_unit
     unit/test_json_number_scan.cpp
     unit/test_line_shape.cpp
     unit/test_schema.cpp
+    unit/test_validate.cpp
     unit/test_tape.cpp
     unit/test_ytape.cpp
     unit/test_plan.cpp
@@ -179,6 +180,19 @@ add_test(
     NAME fuzz-marshal-corpus
     COMMAND fuzz_marshal ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/marshal
 )
+
+# the validation face (#882): both walks over untrusted bytes must be
+# crash-clean (statuses OK/SCHEMA/PARSE/DEPTH/ENCODING/MEMORY/ARG only)
+add_executable(fuzz_validate fuzz/fuzz_validate.c)
+target_link_libraries(fuzz_validate PRIVATE yeptris_static)
+target_include_directories(fuzz_validate PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+target_compile_definitions(fuzz_validate PRIVATE YEP_FUZZ_STANDALONE)
+yeptris_set_warnings(fuzz_validate)
+
+add_test(
+    NAME fuzz-validate-corpus
+    COMMAND fuzz_validate ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/validate
+)
 add_test(
     NAME fuzz-roundtrip-corpus
     COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
@@ -239,6 +253,12 @@ if(YEPTRIS_ENABLE_FUZZING)
     target_include_directories(fuzz_marshal_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
     yeptris_set_warnings(fuzz_marshal_lf)
     target_link_options(fuzz_marshal_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
+
+    add_executable(fuzz_validate_lf fuzz/fuzz_validate.c)
+    target_link_libraries(fuzz_validate_lf PRIVATE yeptris_static)
+    target_include_directories(fuzz_validate_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+    yeptris_set_warnings(fuzz_validate_lf)
+    target_link_options(fuzz_validate_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
 endif()
 endif()
 

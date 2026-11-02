@@ -76,6 +76,26 @@ void yep_validate_path_pop(yep_vctx* c, size_t mark);
  * budget are invalid. 1 match, 0 no match, -1 invalid pattern. */
 int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_len);
 
+/* Canonical scalar tag of a DOM node (explicit tag, then the parse
+ * resolver's plain verdict, then str): the value model both walks
+ * compare under. */
+uint8_t yep_validate_scalar_tag(const yep_dnode* n);
+
+/* Canonical-form hash and equality over DOM subtrees (spec 3.2.1.3:
+ * same tag + canonical form; numbers numerically within a tag). The
+ * equality may cross documents — the schema's enum/const live in a
+ * different DOM than the instance. Depth-bounded. */
+uint64_t yep_validate_node_hash(const yep_dom* d, uint32_t id, int depth);
+int yep_validate_node_equal(const yep_dom* da, uint32_t a, const yep_dom* db, uint32_t b,
+                            int depth);
+
+/* jsonschema.c's driver: applies the schema tree (its own DOM) to
+ * every instance document root, emitting into `rep`. Returns 0, -1
+ * on OOM. */
+int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root,
+                       const yep_dom* instance_dom, const uint32_t* doc_roots,
+                       uint32_t doc_count, yeptris_validate_report* rep);
+
 #ifdef __cplusplus
 }
 #endif

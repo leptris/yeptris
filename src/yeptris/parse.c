@@ -325,9 +325,13 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
 engine_enter:
     eng = yep_engine_create(sys);
     if (opts != NULL) {
+        /* the typing SSOT: the family's resolver (compat11 when asked,
+         * json12 for the 12_JSON validation family, core12 otherwise) */
         yep_engine_set_resolver(eng, opts->schema == YEPTRIS_SCHEMA_11_COMPAT
                                          ? yep_resolver_compat11()
-                                         : yep_resolver_core12());
+                                         : (opts->schema == YEPTRIS_SCHEMA_12_JSON
+                                                ? yep_resolver_json12()
+                                                : yep_resolver_core12()));
         if (opts->schema == YEPTRIS_SCHEMA_11_COMPAT) {
             /* the compat schema is the psych/libyaml surface: its grammar
              * must accept what libyaml accepts (the flow floor is suite-
@@ -359,7 +363,9 @@ engine_enter:
          * SSOT — one resolver decision per scalar, whichever path builds) */
         dom->resolver = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
                             ? yep_resolver_compat11()
-                            : yep_resolver_core12();
+                            : (opts != NULL && opts->schema == YEPTRIS_SCHEMA_12_JSON)
+                                  ? yep_resolver_json12()
+                                  : yep_resolver_core12();
         /* BEFORE the run: input-slice strings borrow as views (zero copy)
          * — the document keeps `transcoded` alive for exactly this. Set
          * after, every scalar was arena-copied (found 2026-09-10). */
@@ -420,9 +426,12 @@ engine_enter:
         yep_engine_destroy(eng);
         eng = NULL;
     } else if (have_tape && !norm_kept_raw &&
-               ytap_fused_run(&yt, (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
-                                       ? yep_resolver_compat11()
-                                       : yep_resolver_core12()) == 0) {
+               ytap_fused_run(&yt,
+                              (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
+                                  ? yep_resolver_compat11()
+                                  : (opts != NULL && opts->schema == YEPTRIS_SCHEMA_12_JSON)
+                                        ? yep_resolver_json12()
+                                        : yep_resolver_core12()) == 0) {
         /* the fused block runner owned the whole document — the engine
          * never runs (TODO.restructure/79). Its only cost was the parse
          * front-end above; on a bail it unwound and the engine runs. */
@@ -496,9 +505,8 @@ engine_enter:
     }
     yep_mutex_init(&doc->lazy_mu);
     doc->sys = sys;
-    doc->schema = (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
-                      ? YEPTRIS_SCHEMA_11_COMPAT
-                      : YEPTRIS_SCHEMA_12_CORE;
+    doc->schema = (opts != NULL && opts->schema != YEPTRIS_SCHEMA_12_CORE) ? opts->schema
+                                                                           : YEPTRIS_SCHEMA_12_CORE;
     doc->transcoded = transcoded;
     doc->transcoded_len = transcoded_len;
     doc->input = buf;

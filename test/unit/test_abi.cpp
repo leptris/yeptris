@@ -47,6 +47,21 @@ static_assert(YEPTRIS_STYLE_DOUBLE_QUOTED == 3, "pinned ABI value");
 static_assert(YEPTRIS_STYLE_LITERAL == 4, "pinned ABI value");
 static_assert(YEPTRIS_STYLE_FOLDED == 5, "pinned ABI value");
 
+/* ---- Schemas / diagnostics: pinned (#882). */
+static_assert(YEPTRIS_SCHEMA_12_CORE == 0, "pinned ABI value");
+static_assert(YEPTRIS_SCHEMA_11_COMPAT == 1, "pinned ABI value");
+static_assert(YEPTRIS_SCHEMA_12_JSON == 2, "pinned ABI value");
+
+static_assert(YEPTRIS_DIAG_NONE == 0, "pinned ABI value");
+static_assert(YEPTRIS_DIAG_TAG_MISMATCH == 1, "pinned ABI value");
+static_assert(YEPTRIS_DIAG_KEY_NOT_STRING == 2, "pinned ABI value");
+static_assert(YEPTRIS_DIAG_NON_JSON_TYPE == 3, "pinned ABI value");
+static_assert(YEPTRIS_DIAG_DUPLICATE_KEY == 4, "pinned ABI value");
+static_assert(YEPTRIS_DIAG_TYPE == 5, "pinned ABI value");
+static_assert(sizeof(yeptris_diagnostic) == 400, "diagnostic layout pinned");
+static_assert(YEPTRIS_DIAG_PATH_MAX == 256, "diagnostic path slot pinned");
+static_assert(YEPTRIS_DIAG_DETAIL_MAX == 128, "diagnostic detail slot pinned");
+
 TEST(Abi, VersionStringMatchesMacros) {
     const char* v = yeptris_version();
     ASSERT_NE(v, nullptr);

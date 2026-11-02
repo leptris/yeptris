@@ -323,14 +323,17 @@ static int p_quant(re_ctx* c, uint16_t* min, uint16_t* max, int* lazy) {
         kind = 1;
         *min = 0;
         *max = RE_REP_INF;
+        c->pi++;
     } else if (q == '+') {
         kind = 2;
         *min = 1;
         *max = RE_REP_INF;
+        c->pi++;
     } else if (q == '?') {
         kind = 3;
         *min = 0;
         *max = 1;
+        c->pi++;
     } else if (q == '{') {
         uint32_t save = c->pi;
         c->pi++;
@@ -350,8 +353,9 @@ static int p_quant(re_ctx* c, uint16_t* min, uint16_t* max, int* lazy) {
             return 0;
         }
         uint32_t m = n;
-        int open_ended = 0;
+        int have_comma = 0;
         if (c->pi < c->pn && c->pat[c->pi] == ',') {
+            have_comma = 1;
             c->pi++;
             m = 0;
             int dm = 0;
@@ -365,8 +369,7 @@ static int p_quant(re_ctx* c, uint16_t* min, uint16_t* max, int* lazy) {
                 dm++;
             }
             if (dm == 0) {
-                open_ended = 1;
-                m = RE_REP_INF;
+                m = RE_REP_INF; /* {n,} */
             }
         }
         if (c->pi >= c->pn || c->pat[c->pi] != '}') {
@@ -374,8 +377,8 @@ static int p_quant(re_ctx* c, uint16_t* min, uint16_t* max, int* lazy) {
             return 0; /* literal '{' */
         }
         c->pi++;
-        if (!open_ended) {
-            m = n;
+        if (!have_comma) {
+            m = n; /* {n} */
         }
         if (m != RE_REP_INF && m < n) {
             c->err = 1;
@@ -636,7 +639,9 @@ static int c_node(re_ctx* c, int id, re_frag* out, int depth) {
         return 0;
     }
     case A_BYTE: {
-        int pc = emit_inst(c, RE_OP_BYTE, 0, a->a, 0);
+        /* the literal rides cls: x/y are the jump-target pair, and the
+         * pending-exit machinery writes x — it must never carry data */
+        int pc = emit_inst(c, RE_OP_BYTE, a->a, 0, 0);
         if (pc < 0) {
             return -1;
         }
@@ -798,14 +803,14 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
     if (root < 0 || c.pi != c.pn) {
         return -1; /* trailing garbage is a SyntaxError */
     }
-    if (emit_inst(&c, RE_OP_MATCH, 0, 0, 0) < 0) {
-        return -1;
-    }
     re_frag f;
     if (c_node(&c, root, &f, 0) < 0) {
         return -1;
     }
-    frag_connect(&f, c.inst, c.inst_n - 1);
+    if (emit_inst(&c, RE_OP_MATCH, 0, 0, 0) < 0) {
+        return -1;
+    }
+    frag_connect(&f, c.inst, c.inst_n - 1); /* MATCH emits last */
     if (c.err) {
         return -1;
     }
@@ -815,11 +820,15 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
     uint32_t gen = 1;
     memset(mark, 0, sizeof(mark));
 
-    /* initial closure at subject offset 0 (from the entry pc 0) */
+    if (f.in < 0) {
+        return 1; /* an empty pattern matches everywhere */
+    }
+    /* initial closure at subject offset 0 (from the fragment entry;
+     * MATCH is emitted LAST, so pc 0 is a pattern instruction) */
     int cur_n = 0;
     {
         int st_n = 0;
-        stack[st_n++] = 0;
+        stack[st_n++] = (uint16_t)f.in;
         while (st_n > 0) {
             uint16_t pc = stack[--st_n];
             if (mark[pc] == (uint8_t)gen) {
@@ -835,8 +844,25 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
             } else if (op == RE_OP_MATCH) {
                 return 1; /* the empty match at offset 0 */
             } else if (op == RE_OP_ASSERT) {
-                if (c.inst[pc].cls == RE_AS_BOL) { /* at offset 0: holds */
-                    stack[st_n++] = (uint16_t)(pc + 1);
+                /* offset 0: BOL always holds; EOL only on the empty
+                 * subject; a word boundary holds exactly when the
+                 * subject starts inside a word (no previous char) */
+                int ok = 0;
+                switch (c.inst[pc].cls) {
+                case RE_AS_BOL:
+                    ok = 1;
+                    break;
+                case RE_AS_EOL:
+                    ok = (int)s_len == 0;
+                    break;
+                default: {
+                    int wn = s_len > 0 && re_word((unsigned char)s[0]);
+                    ok = c.inst[pc].cls == RE_AS_WBOUND ? (int)wn : !(int)wn;
+                    break;
+                }
+                }
+                if (ok) {
+                    stack[st_n++] = c.inst[pc].x; /* the connected exit */
                 }
             } else {
                 cur[cur_n++] = pc; /* CHAR/BYTE: a live thread */
@@ -854,13 +880,16 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
         for (int i = 0; i < cur_n; i++) {
             uint16_t pc = cur[i];
             int hit = c.inst[pc].op == RE_OP_BYTE
-                          ? (c.inst[pc].x == byte)
+                          ? (c.inst[pc].cls == byte)
                           : (c.cls[c.inst[pc].cls][(byte >> 3) & 31] & (1u << (byte & 7))) != 0;
             if (hit) {
-                nxt[nxt_n++] = (uint16_t)(pc + 1);
+                /* the exit is the CONNECTED target (frag_connect), not
+                 * a fall-through: fragments link arbitrary pcs */
+                nxt[nxt_n++] = c.inst[pc].x;
             }
         }
-        nxt[nxt_n++] = 0; /* unanchored: the search restarts everywhere */
+        nxt[nxt_n++] = (uint16_t)f.in; /* unanchored: the search restarts
+                                        * at every offset */
         gen++;
         if ((gen & 0xFF) == 0) {
             memset(mark, 0, sizeof(mark));
@@ -892,17 +921,17 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
                     ok = (sp + 1) == 0;
                     break;
                 case RE_AS_EOL:
-                    ok = (sp + 1) == (int)s_len;
+                    ok = (int)(sp + 1) == (int)s_len;
                     break;
                 default: {
                     int wp = re_word((unsigned char)s[sp]);
-                    int wn = (sp + 1) < s_len && re_word((unsigned char)s[sp + 1]);
+                    int wn = (sp + 1) < (uint32_t)s_len && re_word((unsigned char)s[sp + 1]);
                     ok = c.inst[pc].cls == RE_AS_WBOUND ? (wp != wn) : (wp == wn);
                     break;
                 }
                 }
                 if (ok) {
-                    stack[st_n++] = (uint16_t)(pc + 1);
+                    stack[st_n++] = c.inst[pc].x; /* the connected exit */
                 }
             } else {
                 nxt[live_n++] = pc; /* a live thread for the next byte */

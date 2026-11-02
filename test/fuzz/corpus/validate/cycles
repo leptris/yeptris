@@ -1,0 +1,2 @@
+{"definitions":{"a":{"anyOf":[{"type":"string"},{"$ref":"#/definitions/a"}]}},
+"b":{"$ref":"#/definitions/a"},"$ref":"#/definitions/b"}
