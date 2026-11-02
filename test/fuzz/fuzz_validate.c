@@ -32,7 +32,7 @@ static const char* trap_site_;
         fflush(stderr);                                                                            \
         __debugbreak();                                                                            \
     } while (0)
-static YeptrisStatus last_status_;
+static int last_status_;
 static size_t last_count_;
 #else
 static const char* trap_site_;
