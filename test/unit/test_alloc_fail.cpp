@@ -202,7 +202,12 @@ TEST(AllocFail, OomNeverReadsAsParseOrSilentSuccess) {
                                   .ctx = &store,
                                   .on_flow_build = NULL,
                                   .on_flow_commit = NULL,
-                                  .on_block_item = NULL};
+                                  .on_flow_rollback = NULL,
+                                  .on_block_pair = NULL,
+                                  .on_block_open = NULL,
+                                  .on_block_item = NULL,
+                                  .on_scalar = NULL,
+                                  .compose = 0};
             }
             int rc = yep_engine_run(eng, kDoc, strlen(kDoc), &sink);
             if (rc != 0) {
