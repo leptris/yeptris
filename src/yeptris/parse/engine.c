@@ -1107,6 +1107,17 @@ static int e_plain_multiline(yep_engine* e, yep_span s0, uint32_t block_floor, y
         if (s.term == YEP_TERM_COLON) {
             return e_fail(e, YEP_ERR_UNEXPECTED, s.end);
         }
+        if (s.end == s.start && s.term == YEP_TERM_EOL) {
+            /* The continuation line opens with a raw multibyte break
+             * (NEL/LS/PS): scan stopped on it before any content, and
+             * the line-facts kernel (\n/\r law) could not park it as a
+             * blank line. No piece: the break rides the loop's own
+             * tally, so a run of breaks folds to the (n-1) newline law
+             * -- one fold-space per break made "nnn]\n!<"+NEL^2+"NNN"
+             * read "nnn] !<  NNN" where libyaml folds "nnn] !<\nNNN"
+             * (the r102 nightly, yeptris#870). */
+            continue;
+        }
         if (e->fold_n >= YEP_MAX_FOLD_LINES) {
             return e_fail(e, YEP_ERR_MEMORY, e->pos);
         }

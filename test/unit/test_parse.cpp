@@ -6965,6 +6965,72 @@ TEST(Parse, NormWalkFlowSeparatorsDoNotArmBlockTokenStarts) {
     }
 }
 
+TEST(Parse, RawNelBreakRunFoldsToNewlineTally) {
+    /* yeptris#870, the r102 nightly (crash-1269e4d228d06): a plain
+     * continuation whose line opens with RAW NEL bytes (they ride past
+     * the break normalizer when a line-start "!<" opened a verbatim
+     * region) stopped yep_scan_plain before any content, and the block
+     * fold walk emitted one EMPTY fold piece per break -- one fold-space
+     * per break, "nnn] !<  NNN", where libyaml's trailing-breaks law
+     * folds N consecutive breaks to (N-1) literal newlines:
+     * "nnn] !<\nNNN". The flow walk already rode that law (it never
+     * slots an empty piece); the block walk now skips the empty piece
+     * and lets the run tally. */
+    const std::string nel = "\xc2\x85";
+    const struct {
+        const char* in;
+        const char* want;
+    } cases[] = {
+        /* the artifact's exact bytes */
+        {"nnn]\n!<\xc2\x85\xc2\x85NNN", "nnn] !<\nNNN"},
+        /* the LF control: 3 breaks -> 2 newlines (libyaml-identical) */
+        {"a\n\n\nb", "a\n\nb"},
+        /* the NEL tally: 1 break folds to a space, n>1 to n-1 newlines */
+        {"a\n!<\xc2\x85" "b", "a !< b"},
+        {"a\n!<\xc2\x85\xc2\x85" "b", "a !<\nb"},
+        {"a\n!<\xc2\x85\xc2\x85\xc2\x85" "b", "a !<\n\nb"},
+        /* the mixed run: LF + NEL^2 -- one tally across the kinds */
+        {"a\n!<\n\xc2\x85\xc2\x85" "b", "a !<\n\nb"},
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.in, strlen(c.in), &st);
+        ASSERT_NE(doc, nullptr) << c.in;
+        EXPECT_EQ(val(yeptris_document_root(doc, 0)), c.want) << c.in;
+        yeptris_document_free(doc);
+    }
+    /* the twin law: the raw-NEL fold equals the normalized (LF) fold
+     * byte-strictly on the whole route */
+    {
+        const std::string raw = "nnn]\n!<" + nel + nel + "NNN";
+        const std::string norm = "nnn]\n!<\n\nNNN";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d1 = yeptris_parse(raw.data(), raw.size(), &st);
+        ASSERT_NE(d1, nullptr);
+        YeptrisDocument d2 = yeptris_parse(norm.data(), norm.size(), &st);
+        ASSERT_NE(d2, nullptr);
+        std::string v1 = val(yeptris_document_root(d1, 0));
+        std::string v2 = val(yeptris_document_root(d2, 0));
+        yeptris_document_free(d1);
+        yeptris_document_free(d2);
+        EXPECT_EQ(v1, "nnn] !<\nNNN") << raw;
+        EXPECT_EQ(v1, v2) << "the NEL twin diverges from its LF twin";
+    }
+    /* the recorder route (per-feed normalization, threaded context)
+     * carries the same tally */
+    {
+        std::vector<std::string> ev = v818_events("nnn]\n!<" + nel + nel + "NNN");
+        ASSERT_FALSE(ev.empty());
+        bool value_ok = false;
+        for (const std::string& s : ev) {
+            if (s.find("=nnn] !<\nNNN/") != std::string::npos) {
+                value_ok = true;
+            }
+        }
+        EXPECT_TRUE(value_ok) << "the recorder route lost the newline tally";
+    }
+}
+
 TEST(Parse, NormWalkFlowOpenersOpenAtTokenPositionsOnly) {
     /* the r98 nightly: the #836 phantom had a FLOW half. The
      * unconditioned '[' arm let a plain's interior '[' ("ya200%[")
