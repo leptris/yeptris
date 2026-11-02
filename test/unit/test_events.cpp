@@ -399,7 +399,8 @@ TEST(Events, RecorderFeedStripsUtf8BomLikeParse) {
         yeptris_recorder_free(r);
     }
     {
-        const char* bom = "\xEF\xBB\xBF" "k: v\n";
+        const char* bom = "\xEF\xBB\xBF"
+                          "k: v\n";
         YeptrisRecorder r = yeptris_recorder_new();
         ASSERT_EQ(yeptris_recorder_feed(r, bom, strlen(bom), 1), YEPTRIS_OK);
         size_t n = 0;
@@ -416,7 +417,11 @@ TEST(Events, RecorderFeedStripsUtf8BomLikeParse) {
     {
         YeptrisRecorder r = yeptris_recorder_new();
         ASSERT_EQ(yeptris_recorder_feed(r, "\xEF\xBB", 2, 0), YEPTRIS_OK);
-        ASSERT_EQ(yeptris_recorder_feed(r, "\xBF" "k: v\n", 6, 1), YEPTRIS_OK);
+        ASSERT_EQ(yeptris_recorder_feed(r,
+                                        "\xBF"
+                                        "k: v\n",
+                                        6, 1),
+                  YEPTRIS_OK);
         size_t n = 0;
         yeptris_recorder_records(r, &n);
         EXPECT_EQ(n, base.size());
@@ -441,7 +446,8 @@ TEST(Events, IterparseResumeSurvivesEncodingFrontEnd) {
     const char* plain = "a: 1\n---\nb: 2\n---\nc: 3\n";
     EXPECT_EQ(iterparse_docs(plain, strlen(plain)), 3);
 
-    const char* bom = "\xEF\xBB\xBF" "a: 1\n---\nb: 2\n---\nc: 3\n";
+    const char* bom = "\xEF\xBB\xBF"
+                      "a: 1\n---\nb: 2\n---\nc: 3\n";
     EXPECT_EQ(iterparse_docs(bom, strlen(bom)), 3) << "the mark is not a re-parse seed";
 
     /* one NEL (indented plain continuation — the shape both routes
@@ -452,9 +458,9 @@ TEST(Events, IterparseResumeSurvivesEncodingFrontEnd) {
     EXPECT_EQ(iterparse_docs(nel, strlen(nel)), 3);
 
     /* units kept adjacent (a mis-paired literal sniffs as garbage) */
-    const unsigned char le[] = {0xFF, 0xFE, 'a',  0,   ':', 0, ' ',  0, '1',  0, '\n', 0,
-                                '-',  0,    '-',  0,   '-', 0, '\n', 0, 'b',  0, ':',  0,
-                                ' ',  0,    '2',  0,   '\n', 0, '-',  0, '-',  0, '-',  0,
-                                '\n', 0,    'c',  0,   ':', 0, ' ',  0, '3',  0, '\n', 0};
+    const unsigned char le[] = {0xFF, 0xFE, 'a', 0, ':',  0, ' ',  0, '1', 0, '\n', 0,
+                                '-',  0,    '-', 0, '-',  0, '\n', 0, 'b', 0, ':',  0,
+                                ' ',  0,    '2', 0, '\n', 0, '-',  0, '-', 0, '-',  0,
+                                '\n', 0,    'c', 0, ':',  0, ' ',  0, '3', 0, '\n', 0};
     EXPECT_EQ(iterparse_docs((const char*)le, sizeof(le)), 3) << "UTF-16LE transcode + resume";
 }
