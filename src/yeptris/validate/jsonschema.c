@@ -1,17 +1,27 @@
 /* jsonschema.c — the JSON Schema draft 2020-12 keyword subset
- * (#882 slice 2).
+ * (#882 slice 2; #885 item 2 sweep).
  *
  * The schema and the target are both parsed with the same engine; the
  * walk applies the schema tree to the instance tree and emits
  * diagnostics at instance JSON-pointer paths. Subset: type, enum,
- * const, pattern, minimum/maximum/exclusive*, minLength/maxLength
- * (code points), minItems/maxItems, uniqueItems, properties, required,
- * additionalProperties (bool or schema), items (+ prefixItems; the
- * draft-07 array form rides as prefixItems), allOf/anyOf/oneOf/not,
- * $ref (LOCAL "#/..." pointers — $defs and definitions both resolve),
- * boolean schemas. Unknown keywords, and known keywords whose values
- * cannot be read, are IGNORED (2020-12's posture) — an unreadable
- * constraint never guesses.
+ * const, pattern, minimum/maximum/exclusive*, multipleOf (libm-free
+ * quotient integrality), minLength/maxLength (code points),
+ * minItems/maxItems, uniqueItems, contains (+ minContains/maxContains
+ * via suppressed probes), properties, required, patternProperties
+ * (the pattern kernel over KEY strings), propertyNames (the schema
+ * applies to the key string itself), minProperties/maxProperties,
+ * additionalProperties (bool or schema; excludes properties AND
+ * patternProperties matches), dependentRequired, dependentSchemas,
+ * if/then/else (the if-schema rides a suppressed probe), items
+ * (+ prefixItems; the draft-07 array form rides as prefixItems),
+ * allOf/anyOf/oneOf/not, $ref (LOCAL "#/..." pointers — $defs and
+ * definitions both resolve), boolean schemas. Unknown keywords, and
+ * known keywords whose values cannot be read, are IGNORED (2020-12's
+ * posture) — an unreadable constraint never guesses. Carried out of
+ * the subset (documented in test/conformance/jsonschema/MATRIX.md):
+ * unevaluatedItems/unevaluatedProperties (annotation plumbing),
+ * $anchor/$id/$dynamicRef (pointer/base-URI machinery), remote $ref,
+ * contentMediaType/contentSchema (annotation-only in 2020-12).
  *
  * Instance types ride the core-schema resolution (the YAML->JSON data
  * model): "y" is boolean, 1.0 is integer (2020-12: zero fractional
@@ -220,9 +230,42 @@ static int inst_seq_count(const yep_dom* d, uint32_t id, uint32_t* count) {
     return 1;
 }
 
+/* Finds an instance pair by key bytes (scalar keys only): the VALUE
+ * node id, UINT32_MAX absent. *key_out receives the KEY node id when
+ * non-NULL (patternProperties/propertyNames walk the key itself). */
+static uint32_t inst_find_key(const yep_dom* d, uint32_t map_id, const char* name, size_t nl,
+                              uint32_t* key_out) {
+    const yep_dnode* n = yep_dom_node(d, map_id);
+    if (n == NULL || n->kind != YEP_DOM_MAPPING) {
+        return UINT32_MAX;
+    }
+    uint32_t k = n->first_child;
+    while (k != UINT32_MAX) {
+        uint32_t v = yep_dom_node(d, k) ? yep_dom_node(d, k)->next_sibling : UINT32_MAX;
+        const yep_dnode* kn = yep_dom_node(d, k);
+        if (kn != NULL && kn->kind == YEP_DOM_SCALAR) {
+            yep_view kv = yep_dom_view(d, kn->value);
+            if (kv.len == nl && (nl == 0 || memcmp(kv.p, name, nl) == 0)) {
+                if (key_out != NULL) {
+                    *key_out = k;
+                }
+                return v;
+            }
+        }
+        k = v != UINT32_MAX && yep_dom_node(d, v) ? yep_dom_node(d, v)->next_sibling : UINT32_MAX;
+    }
+    return UINT32_MAX;
+}
+
 /* ---- the walk ----------------------------------------------------------- */
 
 static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth);
+
+/* the object-keyword walkers (defined after js_apply) */
+static void check_pattern_properties(js_ctx* j, uint32_t pp_id, uint32_t inst_id, int depth);
+static void check_property_names(js_ctx* j, uint32_t pn_id, uint32_t inst_id, int depth);
+static void check_dependent_required(js_ctx* j, uint32_t dr_id, uint32_t inst_id, int depth);
+static void check_dependent_schemas(js_ctx* j, uint32_t ds_id, uint32_t inst_id, int depth);
 
 /* A suppressed probe: does `schema_id` hold at `inst_id`? Diagnostics
  * during the trial are swallowed. */
@@ -621,6 +664,28 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                                       "%g is not less than %g", iv, b);
                 }
             }
+            if (kw_get(j, schema_id, "multipleOf", &mv) && mv != UINT32_MAX) {
+                double m;
+                if (schema_number(j, mv, &m)) {
+                    /* integrality of iv/m, libm-free: NaN fails (q==q),
+                     * +-inf fails (q-q is NaN); every finite |q| >= 2^53
+                     * is already an integer at double precision, and
+                     * below that the int64 cast round-trips iff q is
+                     * integral. A 0 divisor (never a legal schema) lands
+                     * in inf/NaN and fails every instance. */
+                    double q = iv / m;
+                    int ok = (q == q) && (q - q == 0);
+                    if (ok) {
+                        double aq = q < 0 ? -q : q;
+                        ok = aq >= 9007199254740992.0 /* 2^53 */ || q == (double)(int64_t)q;
+                    }
+                    if (!ok) {
+                        yep_validate_emit(&j->v, YEPTRIS_DIAG_MULTIPLE_OF,
+                                          yep_validate_node_off(j->v.dom, inst_id),
+                                          "%g is not a multiple of %g", iv, m);
+                    }
+                }
+            }
         }
     }
 
@@ -690,6 +755,57 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
             int uf = 0;
             if (kw_schema(j, schema_id, "uniqueItems", &uv, &uf) && uf == 0) {
                 check_unique(j, inst_id, yep_validate_node_off(j->v.dom, inst_id));
+            }
+            /* contains: count the items the schema holds on (suppressed
+             * probes), then the minContains/maxContains qualifiers
+             * (defaults: at least one; no maximum). min/maxContains
+             * without contains are annotations — ignored. */
+            uint32_t ctv;
+            if (kw_get(j, schema_id, "contains", &ctv) && ctv != UINT32_MAX) {
+                int ctf = 0;
+                if (snode(j, ctv) != NULL && schema_truth(j, ctv, &ctf)) {
+                    uint32_t matches = 0;
+                    uint32_t ich = yep_dom_node(j->v.dom, inst_id)
+                                       ? yep_dom_node(j->v.dom, inst_id)->first_child
+                                       : UINT32_MAX;
+                    for (uint32_t i = 0; i < cnt && ich != UINT32_MAX; i++) {
+                        uint32_t ni = yep_dom_node(j->v.dom, ich)
+                                          ? yep_dom_node(j->v.dom, ich)->next_sibling
+                                          : UINT32_MAX;
+                        if (js_holds(j, ctv, ich, depth)) {
+                            matches++;
+                        }
+                        ich = ni;
+                    }
+                    double minc = 1.0;
+                    double maxc = -1.0; /* unset */
+                    uint32_t mc;
+                    int have_minc = 0;
+                    if (kw_get(j, schema_id, "minContains", &mc) && mc != UINT32_MAX) {
+                        if (schema_number(j, mc, &minc)) {
+                            have_minc = 1;
+                        } else {
+                            minc = 1.0; /* an unreadable qualifier: default */
+                        }
+                    }
+                    if (kw_get(j, schema_id, "maxContains", &mc) && mc != UINT32_MAX) {
+                        if (!schema_number(j, mc, &maxc)) {
+                            maxc = -1.0;
+                        }
+                    }
+                    if ((double)matches < minc) {
+                        yep_validate_emit(
+                            &j->v, have_minc ? YEPTRIS_DIAG_MIN_CONTAINS : YEPTRIS_DIAG_CONTAINS,
+                            yep_validate_node_off(j->v.dom, inst_id),
+                            "%u of %u items match the contains schema (need %g)", matches, cnt,
+                            minc);
+                    } else if (maxc >= 0.0 && (double)matches > maxc) {
+                        yep_validate_emit(&j->v, YEPTRIS_DIAG_MAX_CONTAINS,
+                                          yep_validate_node_off(j->v.dom, inst_id),
+                                          "%u of %u items match the contains schema (max %g)",
+                                          matches, cnt, maxc);
+                    }
+                }
             }
             /* prefixItems: per-index schemas; the draft-07 array form
              * of items rides the same semantics */
@@ -830,14 +946,50 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
         }
     }
 
+    /* if/then/else: the if-schema rides a suppressed probe; exactly one
+     * of then/else applies. An unreadable if (or then/else) is ignored. */
+    {
+        uint32_t ifv;
+        if (kw_get(j, schema_id, "if", &ifv) && ifv != UINT32_MAX) {
+            int iff = 0;
+            if (schema_truth(j, ifv, &iff)) {
+                uint32_t tv = UINT32_MAX, ev = UINT32_MAX;
+                int tf = 0, ef = 0;
+                int have_t = kw_schema(j, schema_id, "then", &tv, &tf);
+                int have_e = kw_schema(j, schema_id, "else", &ev, &ef);
+                if (js_holds(j, ifv, inst_id, depth)) {
+                    if (have_t) {
+                        js_apply(j, tv, inst_id, depth);
+                    }
+                } else if (have_e) {
+                    js_apply(j, ev, inst_id, depth);
+                }
+            }
+        }
+    }
+
     /* the object keywords (ignored on non-objects) */
     {
         const yep_dnode* n = yep_dom_node(j->v.dom, inst_id);
         if (n != NULL && n->kind == YEP_DOM_MAPPING) {
+            const uint32_t pairs = n->count / 2;
             /* properties: known keys */
             uint32_t props = UINT32_MAX;
             int have_props = kw_get(j, schema_id, "properties", &props) && props != UINT32_MAX &&
                              snode(j, props) != NULL && snode(j, props)->kind == YEP_DOM_MAPPING;
+            /* patternProperties: pattern -> schema over the KEY strings
+             * (readable once; additionalProperties must exclude its
+             * matches too) */
+            uint32_t pp_id = UINT32_MAX;
+            {
+                uint32_t ppid;
+                if (kw_get(j, schema_id, "patternProperties", &ppid) && ppid != UINT32_MAX) {
+                    const yep_dnode* pnm = snode(j, ppid);
+                    if (pnm != NULL && pnm->kind == YEP_DOM_MAPPING) {
+                        pp_id = ppid;
+                    }
+                }
+            }
             uint32_t req;
             if (kw_get(j, schema_id, "required", &req) && req != UINT32_MAX) {
                 const yep_dnode* rn = snode(j, req);
@@ -847,41 +999,22 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                         const char* name = NULL;
                         uint32_t nl = 0;
                         uint32_t nc = snode(j, ch) ? snode(j, ch)->next_sibling : UINT32_MAX;
-                        if (schema_word(j, ch, &name, &nl)) {
-                            uint32_t hit = UINT32_MAX;
-                            uint32_t k = n->first_child;
-                            while (k != UINT32_MAX) {
-                                uint32_t v = yep_dom_node(j->v.dom, k)
-                                                 ? yep_dom_node(j->v.dom, k)->next_sibling
-                                                 : UINT32_MAX;
-                                const yep_dnode* kn = yep_dom_node(j->v.dom, k);
-                                if (kn != NULL && kn->kind == YEP_DOM_SCALAR) {
-                                    yep_view kv = yep_dom_view(j->v.dom, kn->value);
-                                    if (kv.len == nl && (nl == 0 || memcmp(kv.p, name, nl) == 0)) {
-                                        hit = v;
-                                        break;
-                                    }
-                                }
-                                k = v != UINT32_MAX && yep_dom_node(j->v.dom, v)
-                                        ? yep_dom_node(j->v.dom, v)->next_sibling
-                                        : UINT32_MAX;
-                            }
-                            if (hit == UINT32_MAX) {
-                                char namebuf[64];
-                                size_t cl = nl < sizeof(namebuf) - 1 ? nl : sizeof(namebuf) - 1;
-                                memcpy(namebuf, name, cl);
-                                namebuf[cl] = '\0';
-                                /* the diagnostic points at the missing
-                                 * leaf: object path + /key (the ajv
-                                 * instancePath convention) */
-                                size_t mark = j->v.path_len;
-                                int pushed = yep_validate_path_push(&j->v, namebuf, cl);
-                                yep_validate_emit(&j->v, YEPTRIS_DIAG_REQUIRED,
-                                                  yep_validate_node_off(j->v.dom, inst_id),
-                                                  "missing required property \"%s\"", namebuf);
-                                if (pushed == 0) {
-                                    yep_validate_path_pop(&j->v, mark);
-                                }
+                        if (schema_word(j, ch, &name, &nl) &&
+                            inst_find_key(j->v.dom, inst_id, name, nl, NULL) == UINT32_MAX) {
+                            char namebuf[64];
+                            size_t cl = nl < sizeof(namebuf) - 1 ? nl : sizeof(namebuf) - 1;
+                            memcpy(namebuf, name, cl);
+                            namebuf[cl] = '\0';
+                            /* the diagnostic points at the missing
+                             * leaf: object path + /key (the ajv
+                             * instancePath convention) */
+                            size_t mark = j->v.path_len;
+                            int pushed = yep_validate_path_push(&j->v, namebuf, cl);
+                            yep_validate_emit(&j->v, YEPTRIS_DIAG_REQUIRED,
+                                              yep_validate_node_off(j->v.dom, inst_id),
+                                              "missing required property \"%s\"", namebuf);
+                            if (pushed == 0) {
+                                yep_validate_path_pop(&j->v, mark);
                             }
                         }
                         ch = nc;
@@ -925,6 +1058,57 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                     k = v != UINT32_MAX && snode(j, v) ? snode(j, v)->next_sibling : UINT32_MAX;
                 }
             }
+            /* patternProperties: every pattern that matches a key
+             * applies its schema to that key's value */
+            if (pp_id != UINT32_MAX) {
+                check_pattern_properties(j, pp_id, inst_id, depth);
+            }
+            /* propertyNames: the schema applies to each KEY string */
+            {
+                uint32_t pnv;
+                if (kw_get(j, schema_id, "propertyNames", &pnv) && pnv != UINT32_MAX) {
+                    int pnf = 0;
+                    if (snode(j, pnv) != NULL && schema_truth(j, pnv, &pnf)) {
+                        check_property_names(j, pnv, inst_id, depth);
+                    }
+                }
+            }
+            /* min/maxProperties */
+            {
+                uint32_t mv;
+                if (kw_get(j, schema_id, "minProperties", &mv) && mv != UINT32_MAX) {
+                    double b;
+                    if (schema_number(j, mv, &b) && (double)pairs < b) {
+                        yep_validate_emit(&j->v, YEPTRIS_DIAG_MIN_PROPERTIES,
+                                          yep_validate_node_off(j->v.dom, inst_id),
+                                          "%u properties is fewer than %g", pairs, b);
+                    }
+                }
+                if (kw_get(j, schema_id, "maxProperties", &mv) && mv != UINT32_MAX) {
+                    double b;
+                    if (schema_number(j, mv, &b) && (double)pairs > b) {
+                        yep_validate_emit(&j->v, YEPTRIS_DIAG_MAX_PROPERTIES,
+                                          yep_validate_node_off(j->v.dom, inst_id),
+                                          "%u properties is more than %g", pairs, b);
+                    }
+                }
+            }
+            /* dependentRequired: name -> the names that must ride along */
+            {
+                uint32_t drv;
+                if (kw_get(j, schema_id, "dependentRequired", &drv) && drv != UINT32_MAX) {
+                    check_dependent_required(j, drv, inst_id, depth);
+                }
+            }
+            /* dependentSchemas: when the named key is present, its
+             * schema applies to the whole object (walked directly, like
+             * allOf: the inner diagnostics carry the failure) */
+            {
+                uint32_t dsv;
+                if (kw_get(j, schema_id, "dependentSchemas", &dsv) && dsv != UINT32_MAX) {
+                    check_dependent_schemas(j, dsv, inst_id, depth);
+                }
+            }
             /* additionalProperties: the keys properties does not name */
             uint32_t ap;
             int af = 0;
@@ -948,6 +1132,26 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                                     yep_view pw = yep_dom_view(j->sd, pkn->value);
                                     known = pw.len == kv.len &&
                                             (kv.len == 0 || memcmp(pw.p, kv.p, kv.len) == 0);
+                                }
+                                pk = pv != UINT32_MAX && snode(j, pv) ? snode(j, pv)->next_sibling
+                                                                      : UINT32_MAX;
+                            }
+                        }
+                        /* patternProperties matches take the key out of
+                         * additionalProperties' scope too (2020-12) */
+                        if (!known && pp_id != UINT32_MAX) {
+                            const yep_dnode* pnm = snode(j, pp_id);
+                            uint32_t pk = pnm->first_child;
+                            while (pk != UINT32_MAX && !known) {
+                                const yep_dnode* pkn = snode(j, pk);
+                                uint32_t pv =
+                                    snode(j, pk) ? snode(j, pk)->next_sibling : UINT32_MAX;
+                                const char* pat = NULL;
+                                uint32_t pl = 0;
+                                if (pkn != NULL && pkn->kind == YEP_DOM_SCALAR &&
+                                    schema_word(j, pk, &pat, &pl) &&
+                                    yep_re_search(pat, pl, kv.p != NULL ? kv.p : "", kv.len) == 1) {
+                                    known = 1;
                                 }
                                 pk = pv != UINT32_MAX && snode(j, pv) ? snode(j, pv)->next_sibling
                                                                       : UINT32_MAX;
@@ -979,6 +1183,160 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                 }
             }
         }
+    }
+}
+
+/* ---- the object-keyword walkers ------------------------------------------ */
+
+/* Copies a bounded name for diagnostics/detail text: the copied
+ * length (the caller pushes paths with it — keys may hold NULs). */
+static size_t name_copy(char* buf, size_t cap, const char* p, size_t len) {
+    size_t cl = len < cap - 1 ? len : cap - 1;
+    if (cl > 0 && p != NULL) {
+        memcpy(buf, p, cl);
+    }
+    buf[cl] = '\0';
+    return cl;
+}
+
+/* patternProperties: pattern -> schema over the KEY strings; every
+ * matching pattern applies its schema to the key's value (a false
+ * schema rides js_apply's FALSE_SCHEMA diagnostic). */
+static void check_pattern_properties(js_ctx* j, uint32_t pp_id, uint32_t inst_id, int depth) {
+    const yep_dom* d = j->v.dom;
+    const yep_dnode* pnm = snode(j, pp_id);
+    const yep_dnode* inst = yep_dom_node(d, inst_id);
+    if (pnm == NULL || inst == NULL) {
+        return;
+    }
+    uint32_t k = inst->first_child;
+    while (k != UINT32_MAX && !j->v.oom) {
+        uint32_t v = yep_dom_node(d, k) ? yep_dom_node(d, k)->next_sibling : UINT32_MAX;
+        const yep_dnode* kn = yep_dom_node(d, k);
+        uint32_t nk =
+            v != UINT32_MAX && yep_dom_node(d, v) ? yep_dom_node(d, v)->next_sibling : UINT32_MAX;
+        if (kn != NULL && kn->kind == YEP_DOM_SCALAR && v != UINT32_MAX) {
+            yep_view kv = yep_dom_view(d, kn->value);
+            uint32_t pk = pnm->first_child;
+            while (pk != UINT32_MAX && !j->v.oom) {
+                const yep_dnode* pkn = snode(j, pk);
+                uint32_t pv = snode(j, pk) ? snode(j, pk)->next_sibling : UINT32_MAX;
+                uint32_t np =
+                    pv != UINT32_MAX && snode(j, pv) ? snode(j, pv)->next_sibling : UINT32_MAX;
+                const char* pat = NULL;
+                uint32_t pl = 0;
+                if (pkn != NULL && pkn->kind == YEP_DOM_SCALAR && pv != UINT32_MAX &&
+                    schema_word(j, pk, &pat, &pl) &&
+                    yep_re_search(pat, pl, kv.p != NULL ? kv.p : "", kv.len) == 1) {
+                    char namebuf[64];
+                    size_t cl = name_copy(namebuf, sizeof(namebuf), kv.p, kv.len);
+                    size_t mark = j->v.path_len;
+                    if (yep_validate_path_push(&j->v, namebuf, cl) == 0) {
+                        js_apply(j, pv, v, depth);
+                        yep_validate_path_pop(&j->v, mark);
+                    }
+                }
+                pk = np;
+            }
+        }
+        k = nk;
+    }
+}
+
+/* propertyNames: the schema applies to each KEY (the key string IS the
+ * instance; a false propertyNames rides FALSE_SCHEMA at the key). */
+static void check_property_names(js_ctx* j, uint32_t pn_id, uint32_t inst_id, int depth) {
+    const yep_dom* d = j->v.dom;
+    const yep_dnode* inst = yep_dom_node(d, inst_id);
+    if (inst == NULL) {
+        return;
+    }
+    uint32_t k = inst->first_child;
+    while (k != UINT32_MAX && !j->v.oom) {
+        uint32_t v = yep_dom_node(d, k) ? yep_dom_node(d, k)->next_sibling : UINT32_MAX;
+        const yep_dnode* kn = yep_dom_node(d, k);
+        uint32_t nk =
+            v != UINT32_MAX && yep_dom_node(d, v) ? yep_dom_node(d, v)->next_sibling : UINT32_MAX;
+        if (kn != NULL && kn->kind == YEP_DOM_SCALAR) {
+            yep_view kv = yep_dom_view(d, kn->value);
+            char namebuf[64];
+            size_t cl = name_copy(namebuf, sizeof(namebuf), kv.p, kv.len);
+            size_t mark = j->v.path_len;
+            if (yep_validate_path_push(&j->v, namebuf, cl) == 0) {
+                js_apply(j, pn_id, k, depth);
+                yep_validate_path_pop(&j->v, mark);
+            }
+        }
+        k = nk;
+    }
+}
+
+/* dependentRequired: name -> the names required alongside it. A
+ * present trigger with an absent dependent is DIAG_DEPENDENT_REQUIRED
+ * at the object (the missing leaf's path, the required convention). */
+static void check_dependent_required(js_ctx* j, uint32_t dr_id, uint32_t inst_id, int depth) {
+    (void)depth;
+    const yep_dom* d = j->v.dom;
+    const yep_dnode* dm = snode(j, dr_id);
+    if (dm == NULL || dm->kind != YEP_DOM_MAPPING) {
+        return;
+    }
+    uint32_t sk = dm->first_child;
+    while (sk != UINT32_MAX && !j->v.oom) {
+        uint32_t sv = snode(j, sk) ? snode(j, sk)->next_sibling : UINT32_MAX;
+        uint32_t ns = sv != UINT32_MAX && snode(j, sv) ? snode(j, sv)->next_sibling : UINT32_MAX;
+        const yep_dnode* skn = snode(j, sk);
+        if (skn != NULL && skn->kind == YEP_DOM_SCALAR && sv != UINT32_MAX) {
+            yep_view trig = yep_dom_view(j->sd, skn->value);
+            const yep_dnode* ln = snode(j, sv);
+            if (trig.p != NULL && ln != NULL && ln->kind == YEP_DOM_SEQUENCE &&
+                inst_find_key(d, inst_id, trig.p, trig.len, NULL) != UINT32_MAX) {
+                char trigbuf[64];
+                name_copy(trigbuf, sizeof(trigbuf), trig.p, trig.len);
+                uint32_t rk = ln->first_child;
+                while (rk != UINT32_MAX && !j->v.oom) {
+                    uint32_t rn = snode(j, rk) ? snode(j, rk)->next_sibling : UINT32_MAX;
+                    const char* name = NULL;
+                    uint32_t nl = 0;
+                    if (schema_word(j, rk, &name, &nl) &&
+                        inst_find_key(d, inst_id, name, nl, NULL) == UINT32_MAX) {
+                        size_t mark = j->v.path_len;
+                        int pushed = yep_validate_path_push(&j->v, name, nl);
+                        yep_validate_emit(&j->v, YEPTRIS_DIAG_DEPENDENT_REQUIRED,
+                                          yep_validate_node_off(j->v.dom, inst_id),
+                                          "\"%s\" requires \"%s\"", trigbuf, name);
+                        if (pushed == 0) {
+                            yep_validate_path_pop(&j->v, mark);
+                        }
+                    }
+                    rk = rn;
+                }
+            }
+        }
+        sk = ns;
+    }
+}
+
+/* dependentSchemas: when the named key is present, its schema applies
+ * to the whole object. */
+static void check_dependent_schemas(js_ctx* j, uint32_t ds_id, uint32_t inst_id, int depth) {
+    const yep_dom* d = j->v.dom;
+    const yep_dnode* dm = snode(j, ds_id);
+    if (dm == NULL || dm->kind != YEP_DOM_MAPPING) {
+        return;
+    }
+    uint32_t sk = dm->first_child;
+    while (sk != UINT32_MAX && !j->v.oom) {
+        uint32_t sv = snode(j, sk) ? snode(j, sk)->next_sibling : UINT32_MAX;
+        uint32_t ns = sv != UINT32_MAX && snode(j, sv) ? snode(j, sv)->next_sibling : UINT32_MAX;
+        const yep_dnode* skn = snode(j, sk);
+        if (skn != NULL && skn->kind == YEP_DOM_SCALAR && sv != UINT32_MAX) {
+            yep_view trig = yep_dom_view(j->sd, skn->value);
+            if (trig.p != NULL && inst_find_key(d, inst_id, trig.p, trig.len, NULL) != UINT32_MAX) {
+                js_apply(j, sv, inst_id, depth);
+            }
+        }
+        sk = ns;
     }
 }
 

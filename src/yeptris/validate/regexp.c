@@ -223,9 +223,13 @@ static int p_escape(re_ctx* c, int* out) {
         return 0;
     }
     default:
-        /* letters/digits outside the set (incl. backrefs): SyntaxError;
-         * punctuation: identity escape */
-        if ((e >= 'a' && e <= 'z') || (e >= 'A' && e <= 'Z') || (e >= '0' && e <= '9')) {
+        /* non-unicode ECMA-262 (Annex B): unknown LETTER escapes are
+         * identity escapes — \p outside unicode mode is the literal
+         * 'p' (property escapes need the u flag this kernel does not
+         * carry). Digits stay SyntaxError: 1-9 are backreferences,
+         * out of the subset — an ignored pattern beats a misread one.
+         * Punctuation is identity too. */
+        if (e >= '0' && e <= '9') {
             c->err = 1;
             return -1;
         }

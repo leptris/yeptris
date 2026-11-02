@@ -269,12 +269,16 @@ uint64_t yep_validate_node_hash(const yep_dom* d, uint32_t id, int depth) {
         return h;
     }
     if (n->kind == YEP_DOM_MAPPING) {
+        /* mappings are UNORDERED (spec 3.2.1.3 canonical form): the
+         * fold is commutative (XOR of per-pair mixes) so key order
+         * cannot change the fingerprint */
         uint64_t h = 0x5EED4A9ULL;
         uint32_t k = n->first_child;
         while (k != UINT32_MAX) {
             uint32_t v = yep_dom_node(d, k) ? yep_dom_node(d, k)->next_sibling : UINT32_MAX;
-            h = hash_mix(h, yep_validate_node_hash(d, k, depth + 1));
-            h = hash_mix(h, yep_validate_node_hash(d, v, depth + 1));
+            uint64_t pair = hash_mix(0x51D1, yep_validate_node_hash(d, k, depth + 1));
+            pair = hash_mix(pair, yep_validate_node_hash(d, v, depth + 1));
+            h ^= pair;
             k = v != UINT32_MAX && yep_dom_node(d, v) ? yep_dom_node(d, v)->next_sibling
                                                       : UINT32_MAX;
         }
@@ -285,21 +289,21 @@ uint64_t yep_validate_node_hash(const yep_dom* d, uint32_t id, int depth) {
     yep_view v = yep_dom_view(d, n->value);
     uint64_t h = 0x5CA1A + tag;
     if (tag == YEPTRIS_TAG_INT || tag == YEPTRIS_TAG_FLOAT) {
-        /* canonical: the numeric value (0o13 == 0xB == 11; 1 == 1.0
-         * rides the same number bucket only when the tags match) */
-        int64_t iv = 0;
+        /* canonical: the numeric VALUE, one bucket for both tags (1 and
+         * 1.0 are the same canonical number) — the double bits; exact
+         * for i64-representable magnitudes up to 2^53, and beyond that
+         * two distinct ints may collide (equality is the authority, a
+         * collision only costs a probe) */
         double dv = 0;
+        int64_t iv = 0;
         if (yep_num_i64(v.p, v.len, &iv) == 0) {
-            int is_neg = iv < 0;
-            uint64_t mag = is_neg ? (uint64_t)(-(iv + 1)) + 1 : (uint64_t)iv;
-            h = hash_mix(h, mag ^ (is_neg ? 0x8000000000000000ULL : 0));
-        } else if (yep_num_f64(v.p, v.len, &dv) == 0) {
-            uint64_t bits;
-            memcpy(&bits, &dv, sizeof(bits));
-            h = hash_mix(h, bits);
+            dv = (double)iv;
         } else {
-            h = hash_mix(h, v.len);
+            yep_num_f64(v.p, v.len, &dv);
         }
+        uint64_t bits;
+        memcpy(&bits, &dv, sizeof(bits));
+        h = hash_mix(h, bits);
         return h;
     }
     for (uint32_t i = 0; i < v.len; i++) {
@@ -380,22 +384,29 @@ int yep_validate_node_equal(const yep_dom* da, uint32_t a, const yep_dom* db, ui
         }
         return 1;
     }
-    /* scalars */
+    /* scalars: numbers (int or float, either tag) compare by numeric
+     * value (2020-12: 0 and 0.0 are one constant); everything else
+     * requires the same tag */
     uint8_t ta = yep_validate_scalar_tag(na), tb = yep_validate_scalar_tag(nb);
-    if (ta != tb) {
+    int numa = ta == YEPTRIS_TAG_INT || ta == YEPTRIS_TAG_FLOAT;
+    int numb = tb == YEPTRIS_TAG_INT || tb == YEPTRIS_TAG_FLOAT;
+    if (numa != numb) {
         return 0;
     }
     yep_view va = yep_dom_view(da, na->value);
     yep_view vb = yep_dom_view(db, nb->value);
-    if (ta == YEPTRIS_TAG_INT || ta == YEPTRIS_TAG_FLOAT) {
-        double fa, fb;
+    if (numa) {
         int64_t ia, ib;
         if (yep_num_i64(va.p, va.len, &ia) == 0 && yep_num_i64(vb.p, vb.len, &ib) == 0) {
             return ia == ib;
         }
+        double fa, fb;
         if (yep_num_f64(va.p, va.len, &fa) == 0 && yep_num_f64(vb.p, vb.len, &fb) == 0) {
             return fa == fb;
         }
+        return 0;
+    }
+    if (ta != tb) {
         return 0;
     }
     return va.len == vb.len && (va.len == 0 || memcmp(va.p, vb.p, va.len) == 0);

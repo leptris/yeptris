@@ -193,6 +193,29 @@ add_test(
     NAME fuzz-validate-corpus
     COMMAND fuzz_validate ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/validate
 )
+
+# ---- JSON-Schema-Test-Suite (draft2020-12) driver (#885 item 2) --------
+# The vendored fixtures under conformance/jsonschema/tests are the
+# official suite's main tests; optional/ carries the pieces the
+# subset's divergence is documented against. carries.txt names the
+# expected failures (remote refs, $id/$anchor machinery, unimplemented
+# keywords) — see conformance/jsonschema/MATRIX.md.
+add_executable(test_jsonschema_suite conformance/jsonschema/js_suite.c)
+target_link_libraries(test_jsonschema_suite PRIVATE yeptris_static)
+target_include_directories(test_jsonschema_suite PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+yeptris_set_warnings(test_jsonschema_suite)
+add_test(
+    NAME jsonschema-suite
+    COMMAND test_jsonschema_suite
+            ${CMAKE_CURRENT_SOURCE_DIR}/conformance/jsonschema/carries.txt
+            ${CMAKE_CURRENT_SOURCE_DIR}/conformance/jsonschema/tests
+)
+add_test(
+    NAME jsonschema-suite-optional
+    COMMAND test_jsonschema_suite
+            ${CMAKE_CURRENT_SOURCE_DIR}/conformance/jsonschema/carries.txt
+            ${CMAKE_CURRENT_SOURCE_DIR}/conformance/jsonschema/optional
+)
 add_test(
     NAME fuzz-roundtrip-corpus
     COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots

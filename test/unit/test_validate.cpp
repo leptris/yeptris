@@ -5,8 +5,13 @@
 // draft 2020-12 keyword subset (type/required/enum/const/pattern/
 // numeric+string+array bounds, uniqueItems, properties/additional,
 // items/prefixItems, allOf/anyOf/oneOf/not, local $ref, boolean
-// schemas, unknown keywords ignored, the depth/ref guards), plus the
-// bounded regex kernel behind `pattern`.
+// schemas, unknown keywords ignored, the depth/ref guards) plus the
+// #885 item 2 sweep keywords (multipleOf, min/maxProperties,
+// patternProperties, propertyNames, contains family,
+// dependentRequired/dependentSchemas, if/then/else) and the
+// suite-exposed fixes (order-independent mapping hashes, cross-tag
+// numeric const/enum equality), plus the bounded regex kernel behind
+// `pattern`.
 #include <gtest/gtest.h>
 
 #include <cstring>
@@ -648,6 +653,229 @@ TEST(ValidateJsonSchema, BooleanSchemasAndUnknownKeywords) {
     free_report(r);
 }
 
+// ---- the 2020-12 sweep (#885 item 2): the suite-pinned keywords ----------
+
+TEST(ValidateJsonSchema, MultipleOfIsLibmFreeQuotientIntegrality) {
+    yeptris_validate_report* r = NULL;
+    // integer and float multiples ride the same quotient test
+    ASSERT_EQ(js_first("{\"multipleOf\":2}", "10\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first("{\"multipleOf\":1.5}", "4.5\n", &r), nullptr);
+    free_report(r);
+    // the suite's float pair: 0.00751/0.0001 is not integral
+    const yeptris_diagnostic* d = js_first("{\"multipleOf\":0.0001}", "0.00751\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_MULTIPLE_OF);
+    free_report(r);
+    ASSERT_EQ(js_first("{\"multipleOf\":0.0001}", "0.0075\n", &r), nullptr);
+    free_report(r);
+    // a quotient of +inf fails, never crashes (the suite's 1e308/1e-308)
+    const yeptris_diagnostic* dinf = js_first("{\"multipleOf\":1e-308}", "1e308\n", &r);
+    ASSERT_NE(dinf, nullptr);
+    EXPECT_EQ(dinf->code, (uint32_t)YEPTRIS_DIAG_MULTIPLE_OF);
+    free_report(r);
+    // non-numeric instances ignore multipleOf; unreadable values too
+    ASSERT_EQ(js_first("{\"multipleOf\":2}", "text\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first("{\"multipleOf\":\"x\"}", "3\n", &r), nullptr);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, MinMaxPropertiesCountPairs) {
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(js_first("{\"minProperties\":1,\"maxProperties\":2}", "a: 1\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d = js_first("{\"minProperties\":2}", "a: 1\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_MIN_PROPERTIES);
+    free_report(r);
+    const yeptris_diagnostic* d2 = js_first("{\"maxProperties\":1}", "a: 1\nb: 2\n", &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_MAX_PROPERTIES);
+    free_report(r);
+    // non-objects ignore both
+    ASSERT_EQ(js_first("{\"minProperties\":2,\"maxProperties\":1}", "[1]\n", &r), nullptr);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, PatternPropertiesApplyByKeyName) {
+    yeptris_validate_report* r = NULL;
+    // the kernel runs over the KEY bytes; matching keys walk their value
+    const char* schema = "{\"patternProperties\":{\"^a\":{\"type\":\"integer\"}}}";
+    ASSERT_EQ(js_first(schema, "apple: 1\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d = js_first(schema, "apple: text\nother: text\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TYPE);
+    EXPECT_STREQ(d->path, "/apple");
+    free_report(r);
+    // a false patternProperty schema fails matched keys only
+    const yeptris_diagnostic* d2 =
+        js_first("{\"patternProperties\":{\"^v\":false}}", "vroom: 1\nother: 2\n", &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_FALSE_SCHEMA);
+    EXPECT_STREQ(d2->path, "/vroom");
+    free_report(r);
+    // additionalProperties does not see patternProperties matches (2020-12)
+    const char* both = "{\"properties\":{\"foo\":{}},\"patternProperties\":{\"^v\":{}},"
+                       "\"additionalProperties\":false}";
+    ASSERT_EQ(js_first(both, "foo: 1\nvroom: 2\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d3 = js_first(both, "foo: 1\nquux: 2\n", &r);
+    ASSERT_NE(d3, nullptr);
+    EXPECT_EQ(d3->code, (uint32_t)YEPTRIS_DIAG_ADDITIONAL_PROPERTY);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, PropertyNamesAppliesToTheKeyStrings) {
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(js_first("{\"propertyNames\":{\"maxLength\":3}}", "abc: 1\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d =
+        js_first("{\"propertyNames\":{\"maxLength\":3}}", "abcd: 1\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_STREQ(d->path, "/abcd");
+    free_report(r);
+    // a false propertyNames rejects every key; empty objects ride
+    ASSERT_EQ(js_first("{\"propertyNames\":false}", "{}\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first("{\"propertyNames\":true}", "anything: 1\n", &r), nullptr);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, ContainsCountsHeldItems) {
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(js_first("{\"contains\":{\"type\":\"integer\"}}", "[text, 1]\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d =
+        js_first("{\"contains\":{\"type\":\"integer\"}}", "[text, more]\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_CONTAINS);
+    free_report(r);
+    // minContains/maxContains bound the match count; minContains 0 holds
+    // on arrays the contains schema never matches
+    ASSERT_EQ(js_first("{\"contains\":{\"type\":\"integer\"},\"minContains\":2}", "[1, 2]\n", &r),
+              nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first("{\"contains\":{\"type\":\"integer\"},\"minContains\":0}", "[text]\n", &r),
+              nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d2 = js_first("{\"contains\":{\"type\":\"integer\"},"
+                                            "\"maxContains\":1}",
+                                            "[1, 2]\n", &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_MAX_CONTAINS);
+    free_report(r);
+    // contains on a non-array is ignored
+    ASSERT_EQ(js_first("{\"contains\":{\"type\":\"integer\"}}", "text\n", &r), nullptr);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, DependentRequiredAndDependentSchemas) {
+    yeptris_validate_report* r = NULL;
+    const char* dr = "{\"dependentRequired\":{\"credit_card\":[\"billing_details\"]}}";
+    ASSERT_EQ(js_first(dr, "credit_card: 1\nbilling_details: x\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first(dr, "name: bob\n", &r), nullptr); // the trigger absent
+    free_report(r);
+    const yeptris_diagnostic* d = js_first(dr, "credit_card: 1\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_DEPENDENT_REQUIRED);
+    EXPECT_STREQ(d->path, "/billing_details"); /* the missing leaf */
+    free_report(r);
+
+    // dependentSchemas applies the schema when the key is present
+    const char* ds = "{\"dependentSchemas\":{\"credit_card\":{\"required\":"
+                     "[\"billing_details\"]}}}";
+    ASSERT_EQ(js_first(ds, "credit_card: 1\nbilling_details: x\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first(ds, "name: bob\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d2 = js_first(ds, "credit_card: 1\n", &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_REQUIRED);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, IfThenElseRidesASuppressedProbe) {
+    yeptris_validate_report* r = NULL;
+    const char* schema = "{\"if\":{\"properties\":{\"kind\":{\"const\":\"int\"}}},"
+                         "\"then\":{\"required\":[\"value\"]},"
+                         "\"else\":{\"required\":[\"other\"]}}";
+    ASSERT_EQ(js_first(schema, "kind: int\nvalue: 1\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first(schema, "kind: str\nother: 1\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d = js_first(schema, "kind: int\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_REQUIRED); /* then fired */
+    EXPECT_STREQ(d->path, "/value");
+    free_report(r);
+    const yeptris_diagnostic* d2 = js_first(schema, "kind: str\n", &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_REQUIRED); /* else fired */
+    EXPECT_STREQ(d2->path, "/other");
+    free_report(r);
+    // if without then/else constrains nothing; an unreadable if is ignored
+    ASSERT_EQ(js_first("{\"if\":{\"type\":\"integer\"}}", "text\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first("{\"if\":\"x\"}", "text\n", &r), nullptr);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, UniqueItemsIgnoresKeyOrder) {
+    // the suite caught the order-dependent mapping hash: canonical form
+    // of a mapping is its CONTENT, never the pair order
+    yeptris_validate_report* r = NULL;
+    const char* schema = "{\"uniqueItems\":true}";
+    const yeptris_diagnostic* d =
+        js_first(schema, "- {\"a\": 1, \"b\": 2}\n- {\"b\": 2, \"a\": 1}\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_UNIQUE_ITEMS);
+    free_report(r);
+    ASSERT_EQ(js_first(schema, "- {\"a\": 1, \"b\": 2}\n- {\"b\": 3, \"a\": 1}\n", &r), nullptr);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, ConstEnumCompareNumbersAcrossIntAndFloatTags) {
+    // the suite caught the tag-strict equality: 2020-12 compares NUMBERS
+    // by value — 0.0 is the constant 0; 1.0 is not the constant true
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(js_first("{\"const\":0}", "0.0\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first("{\"const\":1.0}", "1\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first("{\"const\":-2.0}", "-2\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d = js_first("{\"const\":1}", "true\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_CONST);
+    free_report(r);
+    // enum rides the same canonical equality, element-wise
+    ASSERT_EQ(js_first("{\"enum\":[3, 4.5, \"x\"]}", "4.5\n", &r), nullptr);
+    free_report(r);
+    // the suite's [0]-vs-[0.0] shape: the member [1] equals [1.0] ...
+    ASSERT_EQ(js_first("{\"enum\":[[1]]}", "[1.0]\n", &r), nullptr);
+    free_report(r);
+    // ... and the equality descends: [[1]] is a member of [[[1]]]
+    ASSERT_EQ(js_first("{\"enum\":[[[1]]]}", "[[1.0]]\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d2 = js_first("{\"enum\":[[1]]}", "[[true]]\n", &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_ENUM);
+    free_report(r);
+    // duplicate keys ride the same canonical form: 1 and 1.0 are ONE key
+    const yeptris_diagnostic* d3 = validate_first("a: 1\n\"a\": 1.0\n", YEPTRIS_SCHEMA_12_CORE, &r);
+    ASSERT_NE(d3, nullptr);
+    EXPECT_EQ(d3->code, (uint32_t)YEPTRIS_DIAG_DUPLICATE_KEY);
+    free_report(r);
+    // the JSON family keeps a plain int key a JSON production; the
+    // quoted twin is still the same canonical key
+    ASSERT_EQ(js_first("{\"type\":\"object\"}", "a: 1\n\"a\": 2\n", &r), nullptr)
+        << "no key-stringness noise expected for JSON-production keys";
+    free_report(r);
+}
+
 TEST(ValidateJsonSchema, BadInputs) {
     yeptris_validate_report* r = NULL;
     // the schema bytes must parse
@@ -704,8 +932,14 @@ TEST(ValidateRegex, SearchSemantics) {
     // SyntaxErrors
     EXPECT_EQ(yep_re_search("(a", (uint32_t)strlen("(a"), "a", 1), -1);
     EXPECT_EQ(yep_re_search("[a", (uint32_t)strlen("[a"), "a", 1), -1);
-    EXPECT_EQ(yep_re_search("a\\q", (uint32_t)strlen("a\\q"), "a", 1), -1);
     EXPECT_EQ(yep_re_search("*a", (uint32_t)strlen("*a"), "a", 1), -1);
     EXPECT_EQ(yep_re_search("(a)\\1", (uint32_t)strlen("(a)\\1"), "aa", 2), -1);
     EXPECT_EQ(yep_re_search("", (uint32_t)strlen(""), "a", 1), -1);
+    // non-unicode ECMA-262 (Annex B): unknown LETTER escapes are identity
+    // escapes — \p without the u flag is the literal 'p' (pattern.json's
+    // Unicode-property-escape group rides this); digits stay SyntaxError
+    EXPECT_EQ(yep_re_search("a\\q", (uint32_t)strlen("a\\q"), "aq", 2), 1);
+    EXPECT_EQ(yep_re_search("a\\q", (uint32_t)strlen("a\\q"), "a", 1), 0);
+    EXPECT_EQ(yep_re_search("\\p{Digit}", (uint32_t)strlen("\\p{Digit}"), "p{Digit}", 8), 1);
+    EXPECT_EQ(yep_re_search("\\p{Digit}", (uint32_t)strlen("\\p{Digit}"), "123", 3), 0);
 }

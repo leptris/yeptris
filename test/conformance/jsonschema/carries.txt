@@ -1,0 +1,162 @@
+# carries.txt — expected failures for the JSON-Schema-Test-Suite driver (#885 item 2).
+#
+# Format:  "file.json"                    — the whole file is carried
+#          "file.json :: NEEDLE"          — group OR test description contains NEEDLE
+#          "file.json :: GROUP :: TEST"   — group description contains GROUP and
+#                                            test description contains TEST
+#
+# Each carry is a DOCUMENTED divergence (MATRIX.md is the SSOT) — never a
+# fake pass: carried failures are counted separately in the summary, and a
+# carried case that starts passing prints UPASS so the stale carry gets
+# dropped. Re-derive this list from a run over /dev/null as the carries file.
+#
+# == remote-reference machinery (base URIs, $id, URN targets, $anchor,
+# $dynamicRef) — the $ref subset resolves LOCAL "#/..." pointers only
+anchor.json
+dynamicRef.json
+refRemote.json
+#
+# unevaluatedItems — annotation plumbing (which sibling/branch evaluated
+# which array items) is out of the subset
+unevaluatedItems.json :: unevaluatedItems false :: with unevaluated items
+unevaluatedItems.json :: unevaluatedItems as schema :: with invalid unevaluated items
+unevaluatedItems.json :: unevaluatedItems with tuple :: with unevaluated items
+unevaluatedItems.json :: unevaluatedItems with nested tuple :: with unevaluated items
+unevaluatedItems.json :: unevaluatedItems with nested items :: with invalid additional item
+unevaluatedItems.json :: unevaluatedItems with anyOf :: when one schema matches and has unevaluated items
+unevaluatedItems.json :: unevaluatedItems with anyOf :: when two schemas match and has unevaluated items
+unevaluatedItems.json :: unevaluatedItems with oneOf :: with unevaluated items
+unevaluatedItems.json :: unevaluatedItems with not :: with unevaluated items
+unevaluatedItems.json :: unevaluatedItems with if/then/else :: when if matches and it has unevaluated items
+unevaluatedItems.json :: unevaluatedItems with if/then/else :: when if doesn't match and it has unevaluated items
+unevaluatedItems.json :: unevaluatedItems with boolean schemas :: with unevaluated items
+unevaluatedItems.json :: unevaluatedItems with $ref :: with unevaluated items
+unevaluatedItems.json :: unevaluatedItems before $ref :: with unevaluated items
+unevaluatedItems.json :: unevaluatedItems with $dynamicRef :: with no unevaluated items
+unevaluatedItems.json :: unevaluatedItems can't see inside cousins :: always fails
+unevaluatedItems.json :: item is evaluated in an uncle schema to unevaluatedItems :: uncle keyword evaluation is not significant
+unevaluatedItems.json :: unevaluatedItems depends on adjacent contains :: contains passes, second item is not evaluated
+unevaluatedItems.json :: unevaluatedItems depends on multiple nested contains :: 7 not evaluated, fails unevaluatedItems
+unevaluatedItems.json :: unevaluatedItems and contains interact to control item dependency relationship :: only b's are invalid
+unevaluatedItems.json :: unevaluatedItems and contains interact to control item dependency relationship :: only c's are invalid
+unevaluatedItems.json :: unevaluatedItems and contains interact to control item dependency relationship :: only b's and c's are invalid
+unevaluatedItems.json :: unevaluatedItems and contains interact to control item dependency relationship :: only a's and c's are invalid
+unevaluatedItems.json :: unevaluatedItems with minContains = 0 :: no items evaluated by contains
+unevaluatedItems.json :: unevaluatedItems with minContains = 0 :: some but not all items evaluated by contains
+unevaluatedItems.json :: unevaluatedItems can see annotations from if without then and else :: invalid in case if is evaluated
+unevaluatedItems.json :: Evaluated items collection needs to consider instance location :: with an unevaluated item that exists at another location
+#
+# unevaluatedProperties — annotation plumbing (see above)
+unevaluatedProperties.json :: unevaluatedProperties schema :: with invalid unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties false :: with unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with adjacent properties :: with unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with adjacent patternProperties :: with unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with nested properties :: with additional properties
+unevaluatedProperties.json :: unevaluatedProperties with nested patternProperties :: with additional properties
+unevaluatedProperties.json :: unevaluatedProperties with anyOf :: when one matches and has unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with anyOf :: when two match and has unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with oneOf :: with unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with not :: with unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with if/then/else :: when if is true and has unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with if/then/else :: when if is false and has unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with if/then/else, then not defined :: when if is true and has unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with if/then/else, then not defined :: when if is false and has unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with if/then/else, else not defined :: when if is true and has unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with if/then/else, else not defined :: when if is false and has no unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with if/then/else, else not defined :: when if is false and has unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with dependentSchemas :: with unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with boolean schemas :: with unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with $ref :: with unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties before $ref :: with unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties with $dynamicRef :: with no unevaluated properties
+unevaluatedProperties.json :: unevaluatedProperties can't see inside cousins :: always fails
+unevaluatedProperties.json :: unevaluatedProperties can't see inside cousins (reverse order) :: always fails
+unevaluatedProperties.json :: nested unevaluatedProperties, outer true, inner false, properties outside :: with no nested unevaluated properties
+unevaluatedProperties.json :: nested unevaluatedProperties, outer true, inner false, properties outside :: with nested unevaluated properties
+unevaluatedProperties.json :: nested unevaluatedProperties, outer true, inner false, properties inside :: with nested unevaluated properties
+unevaluatedProperties.json :: cousin unevaluatedProperties, true and false, true with properties :: with no nested unevaluated properties
+unevaluatedProperties.json :: cousin unevaluatedProperties, true and false, true with properties :: with nested unevaluated properties
+unevaluatedProperties.json :: cousin unevaluatedProperties, true and false, false with properties :: with nested unevaluated properties
+unevaluatedProperties.json :: property is evaluated in an uncle schema to unevaluatedProperties :: uncle keyword evaluation is not significant
+unevaluatedProperties.json :: in-place applicator siblings, allOf has unevaluated :: base case: both properties present
+unevaluatedProperties.json :: in-place applicator siblings, allOf has unevaluated :: in place applicator siblings, foo is missing
+unevaluatedProperties.json :: in-place applicator siblings, anyOf has unevaluated :: base case: both properties present
+unevaluatedProperties.json :: in-place applicator siblings, anyOf has unevaluated :: in place applicator siblings, bar is missing
+unevaluatedProperties.json :: unevaluatedProperties + single cyclic ref :: Unevaluated on 1st level is invalid
+unevaluatedProperties.json :: unevaluatedProperties + single cyclic ref :: Unevaluated on 2nd level is invalid
+unevaluatedProperties.json :: unevaluatedProperties + single cyclic ref :: Unevaluated on 3rd level is invalid
+unevaluatedProperties.json :: dynamic evaluation inside nested refs :: xx + foo is invalid
+unevaluatedProperties.json :: unevaluatedProperties not affected by propertyNames :: string property is invalid
+unevaluatedProperties.json :: unevaluatedProperties can see annotations from if without then and else :: invalid in case if is evaluated
+unevaluatedProperties.json :: dependentSchemas with unevaluatedProperties :: unevaluatedProperties doesn't consider dependentSchemas
+unevaluatedProperties.json :: dependentSchemas with unevaluatedProperties :: unevaluatedProperties doesn't see bar when foo2 is absent
+unevaluatedProperties.json :: Evaluated properties collection needs to consider instance location :: with an unevaluated property that exists at another location
+unevaluatedProperties.json :: Evaluated properties collection needs to consider instance location with patternProperties :: with an unevaluated property that exists at another location
+unevaluatedProperties.json :: Evaluated properties collection needs to consider instance location with additionalProperties :: with an unevaluated property that exists at another location
+#
+# not.json: annotations inside not (unevaluated* interplay) — carried with
+# the unevaluated family
+not.json :: collect annotations inside a 'not', even if collection is disabled :: unevaluated property
+#
+# vocabulary.json: a $schema metaschema without the validation vocabulary
+# must un-assert minimum — vocabulary negotiation is out of the subset
+vocabulary.json :: schema that uses custom metaschema with with no validation vocabulary :: no validation: invalid number, but it still validates
+#
+# defs.json: the metaschema $ref is remote
+defs.json :: validate definition against metaschema :: valid definition schema
+#
+# ref.json: pointer percent-encoding, $id/relative-URI scoping, URN base
+# URIs, and remote targets — the $ref subset is LOCAL "#/..." only
+ref.json :: escaped pointer ref :: percent valid
+ref.json :: remote ref, containing refs itself :: remote ref valid
+ref.json :: Recursive references between schemas :: valid tree
+ref.json :: refs with quote :: object with numbers is valid
+ref.json :: ref creates new scope when adjacent to keywords :: referenced subschema doesn't see annotations from properties
+ref.json :: refs with relative uris and defs :: valid on both fields
+ref.json :: relative refs with absolute uris and defs :: valid on both fields
+ref.json :: $id must be resolved against nearest parent, not just immediate parent :: number is valid
+ref.json :: order of evaluation: $id and $ref :: data is valid against first definition
+ref.json :: order of evaluation: $id and $anchor and $ref :: data is valid against first definition
+ref.json :: order of evaluation: $id and $ref on nested schema :: data is valid against nested sibling
+ref.json :: simple URN base URI with $ref via the URN :: valid under the URN IDed schema
+ref.json :: URN base URI with URN and JSON pointer ref :: a string is valid
+ref.json :: URN base URI with URN and anchor ref :: a string is valid
+ref.json :: URN ref with nested pointer ref :: a string is valid
+ref.json :: ref to if :: an integer is valid
+ref.json :: ref to then :: an integer is valid
+ref.json :: ref to else :: an integer is valid
+ref.json :: ref with absolute-path-reference :: a string is valid
+#
+# pattern: Unicode property escapes (\p{...}) need the u-flag machinery
+# the bounded kernel does not carry — the two letters-match cases diverge
+pattern.json :: pattern with Unicode property escape requires unicode mode :: ASCII letters match
+pattern.json :: pattern with Unicode property escape requires unicode mode :: Non-ASCII letters match
+#
+# patternProperties: the same \p{...} divergence on property names
+patternProperties.json :: patternProperties with Unicode property escape :: Unicode letter property name matches but value type is incorrect
+
+# == optional/ecmascript-regex.json — the bounded byte-oriented kernel diverges
+# from ECMA-262 Unicode semantics per case family: \c control escapes,
+# \d \w \s \D \W \S as ASCII-only classes (ECMA wants Unicode letters/digits/
+# whitespace), and \p{...} property escapes (u-flag semantics). Documented in
+# MATRIX.md; ASCII-semantics cases in the same groups pass and are not carried.
+ecmascript-regex.json :: ECMA 262 regex escapes control codes with \\c and upper letter :: matches
+ecmascript-regex.json :: ECMA 262 regex escapes control codes with \\c and lower letter :: matches
+ecmascript-regex.json :: ECMA 262 \\D matches everything but ascii digits :: NKO DIGIT ZERO matches (unlike e.g. Python)
+ecmascript-regex.json :: ECMA 262 \\D matches everything but ascii digits :: NKO DIGIT ZERO (as \\u escape) matches
+ecmascript-regex.json :: ECMA 262 \\W matches everything but ascii letters :: latin-1 e-acute matches (unlike e.g. Python)
+ecmascript-regex.json :: ECMA 262 \\s matches whitespace :: latin-1 non-breaking-space matches
+ecmascript-regex.json :: ECMA 262 \\s matches whitespace :: zero-width whitespace matches
+ecmascript-regex.json :: ECMA 262 \\s matches whitespace :: paragraph separator matches (line terminator)
+ecmascript-regex.json :: ECMA 262 \\s matches whitespace :: EM SPACE matches (Space_Separator)
+ecmascript-regex.json :: ECMA 262 \\S matches everything but whitespace :: Non-whitespace matches
+ecmascript-regex.json :: patterns always use unicode semantics with pattern :: ascii character in json string
+ecmascript-regex.json :: patterns always use unicode semantics with pattern :: literal unicode character in json string
+ecmascript-regex.json :: patterns always use unicode semantics with pattern :: unicode character in hex format in string
+ecmascript-regex.json :: pattern with non-ASCII digits :: ascii digits
+ecmascript-regex.json :: pattern with non-ASCII digits :: non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)
+ecmascript-regex.json :: patterns always use unicode semantics with patternProperties :: ascii character in json string
+ecmascript-regex.json :: patterns always use unicode semantics with patternProperties :: literal unicode character in json string
+ecmascript-regex.json :: patterns always use unicode semantics with patternProperties :: unicode character in hex format in string
+ecmascript-regex.json :: patternProperties with non-ASCII digits :: ascii digits
+ecmascript-regex.json :: patternProperties with non-ASCII digits :: non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)
