@@ -141,6 +141,13 @@ YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char*
  * the next feed; reset at every feed entry (drain per chunk). */
 YEPTRIS_API const YeptrisEventRecord* yeptris_recorder_records(YeptrisRecorder rec, size_t* count);
 YEPTRIS_API const char* yeptris_recorder_arena(YeptrisRecorder rec, size_t* len);
+
+/* Status of the last feed with its 1-based error position (0 = the
+ * failure carries no position, e.g. a capture allocation failure).
+ * Mirror of yeptris_pull_status / yeptris_iterparse_status. */
+YEPTRIS_API YeptrisStatus yeptris_recorder_status(const YeptrisRecorder rec, uint32_t* line,
+                                                  uint32_t* col);
+
 YEPTRIS_API void yeptris_recorder_free(YeptrisRecorder rec);
 
 /* ---- iterparse -------------------------------------------------------- */

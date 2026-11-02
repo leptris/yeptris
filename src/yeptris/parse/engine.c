@@ -4798,7 +4798,39 @@ typedef struct yep_stepstate {
                          * state the whole-stream walk holds at the ---
                          * cut, so per-document normalization is
                          * byte-identical to the one-buffer walk */
+    int gated;          /* the encoding front-end ran: BOM decisions
+                         * belong to the stream's first bytes, never to
+                         * a mid-stream chunk (a later U+FEFF is
+                         * content). While 0 the head may still be a
+                         * BOM prefix, and scanned is 0 by the same
+                         * law -- every hold returns before step_scan. */
 } yep_stepstate;
+
+/* True when buf[0..len) could still be the PREFIX of a BOM (the rest
+ * arrives with the next chunk): the sniff needs its full width, so a
+ * 1-3-byte head holds the gate instead of reading a mark's bytes as
+ * content. A buffer long enough for the sniff to decide never gets
+ * here. */
+static int step_bom_prefix(const char* buf, size_t len) {
+    const unsigned char* p = (const unsigned char*)buf;
+    switch (p[0]) {
+    case 0xEF:
+        return len == 1 || (len == 2 && p[1] == 0xBB);
+    case 0xFF:
+    case 0xFE:
+        return len == 1;
+    case 0x00:
+        if (len == 1) {
+            return 1;
+        }
+        if (p[1] != 0x00) {
+            return 0;
+        }
+        return len == 2 || p[2] == 0xFE;
+    default:
+        return 0;
+    }
+}
 
 static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep_sink* sink,
                            int emit_start, int emit_end);
@@ -5343,6 +5375,33 @@ int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, con
         }
         memcpy(st->buf + st->len, chunk, len);
         st->len += len;
+    }
+    /* the encoding front-end the one-shot owns (yep_engine_run): the
+     * stepping route (and the recorder riding it) had NONE, so UTF-16
+     * bytes fed through it parsed garbage silently. The gate runs
+     * once, on the stream's first bytes: the UTF-8 BOM strips (a lone
+     * one is an empty stream, not a U+FEFF scalar -- the one-shot's
+     * round-122 law), a UTF-16/32 BOM rejects (chunk-wise transcoding
+     * cannot carry state across feeds: a surrogate pair split by the
+     * chunk boundary has nowhere to live), and an undecided prefix
+     * holds until enough bytes decide it. */
+    if (!st->gated && st->len > 0) {
+        yep_encoding enc = YEP_ENC_UNKNOWN;
+        size_t bom = yep_bom_sniff((const unsigned char*)st->buf, st->len, &enc);
+        if (enc == YEP_ENC_UTF8) {
+            memmove(st->buf, st->buf + bom, st->len - bom);
+            st->len -= bom;
+            st->gated = 1;
+        } else if (enc == YEP_ENC_UTF16LE || enc == YEP_ENC_UTF16BE || enc == YEP_ENC_UTF32LE ||
+                   enc == YEP_ENC_UTF32BE) {
+            yep_error_set(&e->err, YEP_ERR_ENCODING, 1, 1, bom,
+                          "the chunked route cannot decode UTF-16/32 input");
+            return -1;
+        } else if (st->len >= 4 || !step_bom_prefix(st->buf, st->len)) {
+            st->gated = 1;
+        } else if (!final) {
+            return 0; /* the head may still complete a BOM: hold */
+        }
     }
     if (!final) {
         size_t cut = step_scan(st);

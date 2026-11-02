@@ -11,6 +11,8 @@
 
 #include "../../include/yeptris/events.h"
 #include "../common/simd_text.h"
+#include "../encoding/encoding.h"
+#include "../memory/allocator.h"
 #include "../parse/engine.h"
 #include "capture.h"
 
@@ -44,6 +46,11 @@ struct yeptris_iterparse {
     size_t len;
     size_t cursor;
     int done;
+    int gated;      /* the encoding front-end ran once: after it, buf
+                     * indexes the space every engine run's pos lives
+                     * in (the resume arithmetic requires it) */
+    unsigned char* owned;   /* UTF-16/32 transcode output (buf moved) */
+    char* norm;             /* NEL/LS/PS-normalized copy (buf moved) */
     int emitted_stream_start;
     int pending_stream_end; /* deliver a final lone STREAM_END slice */
     YeptrisStatus status;
@@ -76,6 +83,55 @@ YEPTRIS_API const YeptrisEvent* yeptris_iterparse_next(YeptrisIterparse it, size
         return NULL;
     }
     for (;;) {
+        /* the encoding front-end, ONCE (the yep_engine_run law): the
+         * resume arithmetic below adds the engine's pos to it->cursor,
+         * and pos lives in the buffer space the RUN parsed — never the
+         * raw bytes. The front-end's consumed prefix broke that twice:
+         * the BOM it strips (pos cannot see it, so a BOM'd stream
+         * re-parsed the previous document's tail), and the UTF-16/32
+         * transcode (pos counts UTF-8 bytes, cursor counts raw ones —
+         * slices corrupted). The NEL/LS/PS break normalizer inside the
+         * run shifts pos the same way, so the gate owns both: encode
+         * to UTF-8 and normalize here, move buf, and the spaces agree. */
+        if (!it->gated) {
+            it->gated = 1;
+            const yep_allocator* sys = yep_system_allocator();
+            yep_encoding enc = YEP_ENC_UNKNOWN;
+            size_t bom = yep_bom_sniff((const unsigned char*)it->buf, it->len, &enc);
+            if (enc == YEP_ENC_UTF16LE || enc == YEP_ENC_UTF16BE || enc == YEP_ENC_UTF32LE ||
+                enc == YEP_ENC_UTF32BE) {
+                size_t tlen = 0;
+                size_t terr = 0;
+                int rc = yep_transcode_to_utf8(sys, enc, (const unsigned char*)it->buf + bom,
+                                               it->len - bom, &it->owned, &tlen, &terr);
+                if (rc != 0) {
+                    it->done = 1;
+                    it->status = YEPTRIS_ERROR_ENCODING;
+                    it->err_line = 1;
+                    it->err_col = 1;
+                    return NULL;
+                }
+                /* the copy IS the post-gate buffer: it opens at the
+                 * first content byte (the mark never entered it), so
+                 * cursor restarts at zero — keeping `bom` here skipped
+                 * the copy's first unit and corrupted the first slice */
+                it->buf = (const char*)it->owned;
+                it->len = tlen;
+                it->cursor = 0;
+            } else {
+                it->cursor = bom; /* the mark is the front-end's prefix */
+            }
+            size_t nlen = 0;
+            int kept_raw = 0;
+            char* norm = yep_engine_normalize_breaks(sys, it->buf + it->cursor,
+                                                     it->len - it->cursor, &nlen, &kept_raw);
+            if (norm != NULL) {
+                it->norm = norm;
+                it->buf = norm;
+                it->len = nlen;
+                it->cursor = 0; /* the copy starts at its own zero */
+            }
+        }
         if (it->done && it->pending_stream_end && it->next >= it->store.n) {
             it->pending_stream_end = 0;
             if (!it->emitted_stream_start) {
@@ -202,6 +258,9 @@ YEPTRIS_API void yeptris_iterparse_free(YeptrisIterparse it) {
     if (it == NULL) {
         return;
     }
+    const yep_allocator* sys = yep_system_allocator();
+    yep_free(sys, it->owned);
+    yep_free(sys, it->norm);
     yep_rec_free(&it->store);
     free(it->mat);
     free(it);

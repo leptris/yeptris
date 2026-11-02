@@ -37,6 +37,20 @@ YEPTRIS_API YeptrisRecorder yeptris_recorder_new_ex(YeptrisSchema schema) {
     return r;
 }
 
+/* The engine's error code decides the public status — the parse
+ * route's law (parse.c maps YEP_ERR_* to the pinned codes). A clean
+ * channel means the SINK failed: the capture ran out of memory, the
+ * bytes never were a parse error. */
+static YeptrisStatus rec_status_from_err(const yep_error* err) {
+    if (err == NULL) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    if (err->code == YEP_ERR_ENCODING) {
+        return YEPTRIS_ERROR_ENCODING;
+    }
+    return YEPTRIS_ERROR_PARSE;
+}
+
 YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char* chunk, size_t len,
                                                 int final) {
     if (rec == NULL || (chunk == NULL && len != 0)) {
@@ -74,12 +88,8 @@ YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char*
         if (err != NULL) {
             rec->err_line = err->line;
             rec->err_col = err->col;
-            rec->status = YEPTRIS_ERROR_PARSE;
-        } else {
-            /* a clean error channel means the SINK failed: the capture
-             * ran out of memory, the bytes never were a parse error */
-            rec->status = YEPTRIS_ERROR_MEMORY;
         }
+        rec->status = rec_status_from_err(err);
         rec->final_fed = 1; /* a failed feed kills the stream */
         return rec->status;
     }
@@ -105,6 +115,20 @@ YEPTRIS_API const char* yeptris_recorder_arena(YeptrisRecorder rec, size_t* len)
         *len = rec->store.arena_len;
     }
     return rec->store.arena;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_recorder_status(const YeptrisRecorder rec, uint32_t* line,
+                                                  uint32_t* col) {
+    if (rec == NULL) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    if (line != NULL) {
+        *line = rec->err_line;
+    }
+    if (col != NULL) {
+        *col = rec->err_col;
+    }
+    return rec->status;
 }
 
 YEPTRIS_API void yeptris_recorder_free(YeptrisRecorder rec) {
