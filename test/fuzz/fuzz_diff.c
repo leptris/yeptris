@@ -1677,11 +1677,24 @@ static int yd_fold_walk(const char* ydump, size_t y, const char* ldump, size_t l
          * prints — the triple is ADDITIVE to the run (consume it
          * alone when the renders then align), while round 72's shape
          * REPLACES one yeptris escape (consume both). The caller's
-         * raw-triple check scopes both to the fold family. */
+         * raw-triple check scopes both to the fold family.
+         * The r104 member (crash-955b6f217c, 16 PS-led break runs):
+         * when the triple's follower is exactly yeptris's next byte the
+         * additive reading is FORCED — yeptris's rendering is libyaml's
+         * minus the raw triple (the #638 law: libyaml joins the LS/PS
+         * verbatim where yeptris's b-char algebra folds the run), so no
+         * alternative arm can align the site and nothing can backtrack
+         * into the replacement here (libyaml is never SHORTER than
+         * yeptris at a PS site). Walk it linearly: the recursive probe
+         * was depth-capped at 8 and the artifact outran it. */
         int y_esc_lf = ydump[y] == '\\' && ydump[y + 1] == 'n';
         if (y_esc_lf && l_raw_ps) {
-            if (depth < 8 && ldump[l + 3] == ydump[y] &&
-                yd_fold_walk(ydump, y, ldump, l + 3, depth + 1, diffs + 1)) {
+            if (ldump[l + 3] == ydump[y]) {
+                l += 3;
+                diffs++;
+                continue;
+            }
+            if (depth < 8 && yd_fold_walk(ydump, y, ldump, l + 3, depth + 1, diffs + 1)) {
                 return 1;
             }
             y += 2;
