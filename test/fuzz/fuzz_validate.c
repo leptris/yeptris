@@ -124,6 +124,7 @@ int main(int argc, char** argv) {
                 static uint8_t buf[VALIDATE_MAX];
                 size_t n = fread(buf, 1, sizeof(buf), f);
                 fclose(f);
+                fprintf(stderr, "fuzz_validate: seed %s (%zu bytes)\n", ent->d_name, n);
                 probe_one(buf, n);
                 files++;
             }
@@ -134,6 +135,7 @@ int main(int argc, char** argv) {
                 static uint8_t buf[VALIDATE_MAX];
                 size_t n = fread(buf, 1, sizeof(buf), f);
                 fclose(f);
+                fprintf(stderr, "fuzz_validate: file %s (%zu bytes)\n", argv[a], n);
                 probe_one(buf, n);
                 files++;
             }
