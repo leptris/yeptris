@@ -153,6 +153,14 @@ target_compile_definitions(fuzz_transcode PRIVATE YEP_FUZZ_STANDALONE)
 yeptris_set_warnings(fuzz_transcode)
 yeptris_set_warnings(fuzz_roundtrip)
 
+# the two Marshal wire readers (emit/writer.c + cbor/from_marshal.c):
+# the 2026-10 audit found the format's readers un-fuzzed
+add_executable(fuzz_marshal fuzz/fuzz_marshal.c)
+target_link_libraries(fuzz_marshal PRIVATE yeptris_static)
+target_include_directories(fuzz_marshal PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+target_compile_definitions(fuzz_marshal PRIVATE YEP_FUZZ_STANDALONE)
+yeptris_set_warnings(fuzz_marshal)
+
 add_test(
     NAME fuzz-corpus
     COMMAND fuzz_parse ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
@@ -166,6 +174,10 @@ add_test(
 add_test(
     NAME fuzz-cbor-corpus
     COMMAND fuzz_cbor ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/cbor
+)
+add_test(
+    NAME fuzz-marshal-corpus
+    COMMAND fuzz_marshal ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/marshal
 )
 add_test(
     NAME fuzz-roundtrip-corpus
@@ -221,6 +233,12 @@ if(YEPTRIS_ENABLE_FUZZING)
     target_include_directories(fuzz_cbor_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
     yeptris_set_warnings(fuzz_cbor_lf)
     target_link_options(fuzz_cbor_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
+
+    add_executable(fuzz_marshal_lf fuzz/fuzz_marshal.c)
+    target_link_libraries(fuzz_marshal_lf PRIVATE yeptris_static)
+    target_include_directories(fuzz_marshal_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+    yeptris_set_warnings(fuzz_marshal_lf)
+    target_link_options(fuzz_marshal_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
 endif()
 endif()
 
