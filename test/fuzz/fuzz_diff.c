@@ -721,20 +721,27 @@ static int yd_bom_utf16_line_start_divergence(const uint8_t* data, size_t size, 
     int line_start = 0; /* the mark is consumed; the next unit is NOT
                          * a line start (the mark strip is catch-144's
                          * separate extra-FEFF arm) */
+    /* the UTF-8 twin OPENS with a mark: the input's own mark was
+     * consumed as the encoding declaration, so the twin must hand
+     * yeptris a mark too -- every remaining unit (libyaml's
+     * buffer-state-dependent line-start BOM eats INCLUDED) rides as
+     * content, exactly the catch-121 reading (the #867 dig's
+     * EncodingTwin law: yeptris reads both encodings byte-identically) */
+    sub[o++] = 0xEF;
+    sub[o++] = 0xBB;
+    sub[o++] = 0xBF;
     for (size_t u = 1; u * 2 + 1 < size; u++) {
         size_t at = u * 2;
         unsigned char hi = be ? data[at] : data[at + 1];
         unsigned char lo = be ? data[at + 1] : data[at];
         if (hi == 0xFE && lo == 0xFF) {
             if (first_after_mark || line_start) {
-                feature = 1; /* libyaml's reader strips this unit */
-                first_after_mark = 0;
-                line_start = 0;
-                continue;
+                feature = 1; /* the unit whose fate diverges */
             }
         }
         first_after_mark = 0;
-        /* re-encode the unit to UTF-8 */
+        /* re-encode the unit to UTF-8 -- kept even when it is a BOM
+         * the twin treats as content */
         unsigned cp = (unsigned)hi << 8 | lo;
         if (cp < 0x80) {
             sub[o++] = (unsigned char)cp;
@@ -752,9 +759,54 @@ static int yd_bom_utf16_line_start_divergence(const uint8_t* data, size_t size, 
         free(sub);
         return 0;
     }
+    /* the carry: yeptris's twin dump must equal its ORIGINAL dump
+     * byte for byte (the #867 EncodingTwin law), and libyaml's dump
+     * must agree on every non-BOM byte with STRICTLY fewer BOMs --
+     * its UTF-16 reader ate line-start BOM units, nothing else (the
+     * r101 artifact: 7 vs 5, skeletons identical). Content corruption
+     * of any non-BOM byte declines. */
     int yok2 = 0;
     char* ydump2 = yd_sem_dump((const char*)sub, o, &yok2);
-    int known = (yok2 && ydump2 != NULL && strcmp(ydump2, ldump) == 0);
+    int known = 0;
+    if (yok2 && ydump2 != NULL && strcmp(ydump2, ydump) == 0) {
+        size_t yn = strlen(ydump);
+        size_t ln = strlen(ldump);
+        char* ys = malloc(yn + 1);
+        char* ls = malloc(ln + 1);
+        if (ys != NULL && ls != NULL) {
+            size_t yo = 0;
+            int yb = 0;
+            for (const char* q = ydump; *q != '\0'; q++) {
+                if ((unsigned char)q[0] == 0xEF && (unsigned char)q[1] == 0xBB &&
+                    (unsigned char)q[2] == 0xBF) {
+                    q += 2;
+                    yb++;
+                    continue;
+                }
+                if (*q != ' ') {
+                    ys[yo++] = *q;
+                }
+            }
+            ys[yo] = '\0';
+            size_t lo2 = 0;
+            int lb = 0;
+            for (const char* q = ldump; *q != '\0'; q++) {
+                if ((unsigned char)q[0] == 0xEF && (unsigned char)q[1] == 0xBB &&
+                    (unsigned char)q[2] == 0xBF) {
+                    q += 2;
+                    lb++;
+                    continue;
+                }
+                if (*q != ' ') {
+                    ls[lo2++] = *q;
+                }
+            }
+            ls[lo2] = '\0';
+            known = (yb > lb && yo == lo2 && memcmp(ys, ls, lo2) == 0);
+        }
+        free(ys);
+        free(ls);
+    }
     free(ydump2);
     free(sub);
     return known;
