@@ -160,15 +160,21 @@ static void inst_type(const yep_dom* d, uint32_t id, const char** word, int* int
         break;
     case YEPTRIS_TAG_FLOAT: {
         yep_view v = yep_dom_view(d, n->value);
-        double dv = 0;
-        /* integral test without libm: in int64 range a cast round-trips
-         * iff the fractional part is zero; outside it (and inf) every
-         * double is already integral, floor()==dv; NaN is not. */
-        const int in_i64 = dv >= -9223372036854775808.0 && dv < 9223372036854775808.0;
-        if (yep_num_f64(v.p, v.len, &dv) == 0 && (in_i64 ? dv == (double)(int64_t)dv : dv == dv)) {
-            /* 2020-12: "integer" means a zero fractional part */
-            *word = "integer";
-            *integer = 1;
+        double dv;
+        /* 2020-12: "integer" means a zero fractional part. The range
+         * guard must read the PARSED value (it once sat before the
+         * parse, saw dv==0, folded constant-true, and left the cast
+         * UB on out-of-range/NaN doubles). No libm: in int64 range a
+         * cast round-trips iff the fractional part is zero; outside
+         * it every finite double is already integral; NaN is not. */
+        if (yep_num_f64(v.p, v.len, &dv) == 0) {
+            const int in_i64 = dv >= -9223372036854775808.0 && dv < 9223372036854775808.0;
+            if (in_i64 ? dv == (double)(int64_t)dv : dv == dv) {
+                *word = "integer";
+                *integer = 1;
+            } else {
+                *word = "number";
+            }
         } else {
             *word = "number";
         }
