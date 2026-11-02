@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **the validation face (#882 slice 1): the schema-family walks + the JSON Schema 2020-12 subset** — `yeptris_validate` parses and validates in one pass against the YAML 1.2 Core/JSON families (explicit-tag consistency, mapping-key uniqueness by canonical form — `0o13` and `0xB` are ONE key — and the JSON family's string-key + JSON-production rules), and `yeptris_json_schema_validate` walks a JSON Schema draft 2020-12 subset (type with the zero-fraction integer rule, enum/const, pattern, min/maxLength in code points, min/maxItems, uniqueItems, numeric bounds, properties/required/additionalProperties, items + prefixItems, allOf/anyOf/oneOf/not, local `#/` $ref with a 64-hop chain guard, boolean schemas). Reports cap at 256 enumerated diagnostics (never first-fail), each with a JSON-pointer path and line:col. The `pattern` kernel is a bounded Thompson-NFA regex (Pike VM, O(subject x program), no backtracking blowup; unsupported constructs are SyntaxErrors that ignore the keyword — 2020-12's posture). The fuzz harness pins the status contract over untrusted bytes on both walks. The campaign continues on #885 (official-suite keyword sweep, compiled-schema economy, streaming validation, binding faces).
+
+### Fixed
+
+- **the validation harness's own invariant trap cannot fire on argument order, and its trap sites are named on every compiler** — `drain(validate(..., &r), r)` read the report argument in unspecified order; gcc-x86_64's right-to-left evaluation handed the harness NULL on every completed validation and tripped its own silent `__builtin_trap` (the trap naming was MSVC-only, so ubuntu CI showed a bare SIGILL while arm/clang/MSVC evaluated left-to-right and passed). The calls are sequenced and every trap site prints its name on all compilers; the standalone harness names the faulting PC for future digs.
+- **the JSON Schema integer test reads the parsed value before its int64 range guard** — the guard once read `dv` before the parse (saw 0, folded constant-true) and left the narrowing cast undefined on out-of-range/NaN doubles; the range test now rides the parsed value (outside int64 range every finite double is already integral; NaN is not).
+- **the regex closure stack bounds its worst-case depth** — the Pike VM's seeds plus one net push per marked instruction reach 2m+2 entries, one past the old 2m array at the full program budget.
+
 ## [0.6.57] - 2026-11-02
 
 ### Added
