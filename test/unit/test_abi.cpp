@@ -58,6 +58,8 @@ static_assert(YEPTRIS_DIAG_KEY_NOT_STRING == 2, "pinned ABI value");
 static_assert(YEPTRIS_DIAG_NON_JSON_TYPE == 3, "pinned ABI value");
 static_assert(YEPTRIS_DIAG_DUPLICATE_KEY == 4, "pinned ABI value");
 static_assert(YEPTRIS_DIAG_TYPE == 5, "pinned ABI value");
+static_assert(YEPTRIS_DIAG_MULTIPLE_OF == 27, "pinned ABI value (sweep head)");
+static_assert(YEPTRIS_DIAG_DEPENDENT_REQUIRED == 33, "pinned ABI value (sweep tail)");
 static_assert(sizeof(yeptris_diagnostic) == 400, "diagnostic layout pinned");
 static_assert(YEPTRIS_DIAG_PATH_MAX == 256, "diagnostic path slot pinned");
 static_assert(YEPTRIS_DIAG_DETAIL_MAX == 128, "diagnostic detail slot pinned");

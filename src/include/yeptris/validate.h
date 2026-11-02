@@ -76,6 +76,14 @@ typedef enum {
     YEPTRIS_DIAG_LIMIT = 26,        /* report truncated (the sentinel
                                      * rides the LAST slot; more
                                      * diagnostics were dropped) */
+    /* the 2020-12 sweep (#885 item 2) */
+    YEPTRIS_DIAG_MULTIPLE_OF = 27,
+    YEPTRIS_DIAG_MIN_PROPERTIES = 28,
+    YEPTRIS_DIAG_MAX_PROPERTIES = 29,
+    YEPTRIS_DIAG_CONTAINS = 30,
+    YEPTRIS_DIAG_MIN_CONTAINS = 31,
+    YEPTRIS_DIAG_MAX_CONTAINS = 32,
+    YEPTRIS_DIAG_DEPENDENT_REQUIRED = 33,
 } YeptrisDiagCode;
 
 /* Bounded diagnostic text; always NUL-terminated (over-long paths and
@@ -127,13 +135,17 @@ YEPTRIS_API YeptrisStatus yeptris_validate(const char* buf, size_t len, YeptrisS
 YEPTRIS_API YeptrisStatus yeptris_validate_document(YeptrisDocument doc, YeptrisSchema schema,
                                                     yeptris_validate_report** out);
 
-/* JSON Schema draft 2020-12 subset (#882 slice 2). `schema` is parsed
- * with the same engine (JSON is YAML flow); document 0 of the stream
- * is the schema. Keyword subset: type, enum, const, pattern, minimum/
- * maximum/exclusiveMinimum/exclusiveMaximum (numeric, 2020-12 form),
- * minLength/maxLength (code points), minItems/maxItems, uniqueItems,
- * items (+ prefixItems; the draft-07 array form rides as prefixItems),
- * properties, required, additionalProperties (bool or schema),
+/* JSON Schema draft 2020-12 subset (#882 slice 2; #885 item 2). `schema`
+ * is parsed with the same engine (JSON is YAML flow); document 0 of the
+ * stream is the schema. Keyword subset: type, enum, const, pattern,
+ * minimum/maximum/exclusiveMinimum/exclusiveMaximum (numeric, 2020-12
+ * form), multipleOf (libm-free quotient test), minLength/maxLength
+ * (code points), minItems/maxItems, uniqueItems, contains (+ the
+ * minContains/maxContains qualifiers), items (+ prefixItems; the
+ * draft-07 array form rides as prefixItems), properties, required,
+ * patternProperties, propertyNames, minProperties/maxProperties,
+ * additionalProperties (bool or schema; excludes patternProperties
+ * matches), dependentRequired, dependentSchemas, if/then/else,
  * allOf/anyOf/oneOf/not, $ref (LOCAL "#/..." pointers only — $defs and
  * definitions both resolve). Boolean schemas (`true`/`false`) apply.
  * Unknown keywords and known keywords with unreadable values are
