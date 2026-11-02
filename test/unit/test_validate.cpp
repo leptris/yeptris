@@ -1148,6 +1148,14 @@ TEST(ValidateCompiledSchema, HandleGuards) {
     EXPECT_EQ(yeptris_schema_validate(s, "1", 1, NULL), YEPTRIS_ERROR_ARG);
     EXPECT_EQ(yeptris_schema_validate(s, NULL, 3, &r), YEPTRIS_ERROR_ARG);
     EXPECT_EQ(r, nullptr);
+    // the (NULL, 0) shapes are legal empties: the parse reads them
+    // through a non-null base (the macOS CI catch), so compile reads
+    // no-document and validate reads an empty valid stream
+    EXPECT_EQ(yeptris_schema_compile(NULL, 0), nullptr); /* empty schema: no document */
+    ASSERT_EQ(yeptris_schema_validate(s, NULL, 0, &r), YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    yeptris_validate_report_free(r);
     yeptris_schema_free(s);
     // NULL free is a no-op, like documents
     yeptris_schema_free(NULL);
