@@ -435,6 +435,17 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qdash-value-split.bin
     )
 
+    # the r107 nightly's composition (crash-7fda24ee, a 25k dump whose
+    # one content BOM sits LATE): the BOM-strip probe gated on the dump
+    # TAIL but memcpy'd the dump HEAD into an 8k stack buffer -- the
+    # whole-length gate must classify it known without un-classifying
+    # the earlier seeds
+    add_test(
+        NAME fuzz-diff-r107-bom-late-head
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-content-late-head-overflow.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

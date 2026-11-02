@@ -149,12 +149,15 @@ static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
         return 0; /* yeptris's first scalar must open with a content BOM */
     }
     char stripped[8192];
-    size_t head = (size_t)(val - ydump) + 7; /* keep "=VAL : " */
-    size_t left = strlen(ydump) - head;
-    if (left >= sizeof(stripped)) {
+    /* the whole composed twin rides this buffer: the r107 nightly's
+     * crash-7fda24ee gated on the TAIL (left) but memcpy'd the PREFIX
+     * (head) -- a late content BOM in a big dump wrote 25k bytes into
+     * 8k of stack */
+    if (strlen(ydump) >= sizeof(stripped)) {
         return 0;
     }
-    memcpy(stripped, ydump, head); /* up to and incl. "=VAL : " */
+    size_t head = (size_t)(val - ydump) + 7; /* keep "=VAL : " */
+    memcpy(stripped, ydump, head);           /* up to and incl. "=VAL : " */
     size_t o = head;
     const char* rest = ydump + head;
     if (rest[0] == (char)0xEF && rest[1] == (char)0xBB && rest[2] == (char)0xBF) {
