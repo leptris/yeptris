@@ -464,3 +464,52 @@ TEST(Events, IterparseResumeSurvivesEncodingFrontEnd) {
                                 '\n', 0,    'c', 0, ':',  0, ' ',  0, '3', 0, '\n', 0};
     EXPECT_EQ(iterparse_docs((const char*)le, sizeof(le)), 3) << "UTF-16LE transcode + resume";
 }
+
+/* (a) OOM mapping, route-level: the engine's fold cap (8192 pieces) is
+ * a REAL memory-status failure reachable with the system allocator —
+ * every route but parse reported PARSE for it (the round-2
+ * `err != NULL` discriminator could never fire: yep_engine_error always
+ * returns the slot). The TLS channel carries "out of memory"; the
+ * public statuses must agree. */
+TEST(Events, EngineMemoryLimitsReportMemoryNotParse) {
+    std::string big;
+    for (int i = 0; i < 9000; i++) {
+        big += "x\n";
+    }
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse(big.data(), big.size(), &st);
+    EXPECT_EQ(st, YEPTRIS_ERROR_MEMORY) << "parse is the mapping's reference";
+    EXPECT_EQ(d, nullptr);
+    yeptris_document_free(d);
+
+    struct Ctx {
+        int n = 0;
+    } ctx;
+    auto fn = [](void* v, const YeptrisEvent*) -> int {
+        ((Ctx*)v)->n++;
+        return 0;
+    };
+    st = yeptris_push_parse(big.data(), big.size(), fn, &ctx);
+    EXPECT_EQ(st, YEPTRIS_ERROR_MEMORY) << "push";
+
+    YeptrisPullParser p = yeptris_pull_new(big.data(), big.size());
+    uint32_t line = 0, col = 0;
+    EXPECT_EQ(yeptris_pull_status(p, &line, &col), YEPTRIS_ERROR_MEMORY) << "pull";
+    EXPECT_GT(line, 0u); /* the engine's e_fail carries 8193:1 */
+    yeptris_pull_free(p);
+
+    YeptrisRecorder r = yeptris_recorder_new();
+    EXPECT_EQ(yeptris_recorder_feed(r, big.data(), big.size(), 1), YEPTRIS_ERROR_MEMORY)
+        << "recorder";
+    EXPECT_EQ(yeptris_recorder_status(r, &line, &col), YEPTRIS_ERROR_MEMORY);
+    EXPECT_GT(line, 0u);
+    yeptris_recorder_free(r);
+
+    YeptrisIterparse it = yeptris_iterparse_new(big.data(), big.size());
+    size_t n = 0;
+    while (yeptris_iterparse_next(it, &n) != NULL) {
+    }
+    EXPECT_EQ(yeptris_iterparse_status(it, nullptr, nullptr), YEPTRIS_ERROR_MEMORY)
+        << "iterparse";
+    yeptris_iterparse_free(it);
+}

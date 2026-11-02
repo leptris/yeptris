@@ -40,9 +40,12 @@ YEPTRIS_API YeptrisRecorder yeptris_recorder_new_ex(YeptrisSchema schema) {
 /* The engine's error code decides the public status — the parse
  * route's law (parse.c maps YEP_ERR_* to the pinned codes). A clean
  * channel means the SINK failed: the capture ran out of memory, the
- * bytes never were a parse error. */
+ * bytes never were a parse error. The MEMORY arm: the engine's own
+ * allocation failures (e_fail(YEP_ERR_MEMORY)) used to read as a parse
+ * error here — yep_engine_error always returns the slot, so the old
+ * `err != NULL` discriminator could never fire (the audit's finding). */
 static YeptrisStatus rec_status_from_err(const yep_error* err) {
-    if (err == NULL) {
+    if (err == NULL || err->code == YEP_ERR_NONE || err->code == YEP_ERR_MEMORY) {
         return YEPTRIS_ERROR_MEMORY;
     }
     if (err->code == YEP_ERR_ENCODING) {
@@ -85,7 +88,7 @@ YEPTRIS_API YeptrisStatus yeptris_recorder_feed(YeptrisRecorder rec, const char*
     int rc = yep_engine_step(rec->eng, chunk, len, final, &sink);
     if (rc != 0) {
         const yep_error* err = yep_engine_error(rec->eng);
-        if (err != NULL) {
+        if (err != NULL && err->code != YEP_ERR_NONE) {
             rec->err_line = err->line;
             rec->err_col = err->col;
         }

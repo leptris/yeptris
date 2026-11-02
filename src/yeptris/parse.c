@@ -437,7 +437,13 @@ engine_enter:
     }
     if (rc != 0) {
         const yep_error* ee = yep_engine_error(eng);
-        yep_err_code code = ee ? ee->code : YEP_ERR_UNEXPECTED;
+        /* a CLEAN channel under a failed run means the SINK failed — a
+         * builder ran out of memory (the DOM's oom law), the bytes
+         * never were a parse error. Mapping it to PARSE let
+         * yep_dom_str_put's swallowed OOM surface as a syntax error
+         * (the audit's finding: silent doc corruption reads worse). */
+        yep_err_code code =
+            (ee && ee->code != YEP_ERR_NONE) ? ee->code : YEP_ERR_MEMORY;
         if (ee) {
             yep_error* tls = yep_error_tls();
             *tls = *ee;

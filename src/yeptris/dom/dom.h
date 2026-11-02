@@ -119,6 +119,11 @@ typedef struct yep_dom {
      * OFFSETS into it, so growth never dangles (dom_str_put) */
     char* str;
     uint32_t str_len, str_cap;
+    /* an arena write failed (str_put under OOM): the value would have
+     * silently become the empty view — doc corruption. Sticky; every
+     * builder path checks it at dom_place/dom_open_node and fails the
+     * parse with the memory status. */
+    int oom;
     const char* input_base; /* borrowed parse input (offset base) */
     /* handle arena: thread-safe (atomic bump) — query APIs allocate
      * YeptrisNode wrappers here, so read-only document sharing across

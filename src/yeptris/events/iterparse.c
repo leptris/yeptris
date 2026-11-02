@@ -19,6 +19,12 @@
 typedef struct {
     yep_rec_store* store;
     int doc_ends; /* DOCUMENT_END events seen this run */
+    int oom;      /* the capture failed: yep_rec_on_event returned
+                   * nonzero — the engine's rc (-2) is shared with the
+                   * normal document-abort, so without this bit an OOM
+                   * was indistinguishable from doc-complete and the
+                   * final event vanished silently (the audit's
+                   * finding) */
 } yep_iter_sink;
 
 static int iter_on_event(void* ctx, const yep_event* ev) {
@@ -33,6 +39,7 @@ static int iter_on_event(void* ctx, const yep_event* ev) {
     }
     int rc = yep_rec_on_event(s->store, ev);
     if (rc != 0) {
+        s->oom = 1;
         return rc;
     }
     if (s->doc_ends >= 1) {
@@ -189,7 +196,7 @@ YEPTRIS_API const YeptrisEvent* yeptris_iterparse_next(YeptrisIterparse it, size
          * document's start on the resumed run */
         yep_rec_reset(&it->store);
         it->next = 0;
-        yep_iter_sink s = {&it->store, 0};
+        yep_iter_sink s = {&it->store, 0, 0};
         yep_engine* eng = yep_engine_create(yep_system_allocator());
         if (eng == NULL) {
             it->done = 1;
@@ -210,14 +217,26 @@ YEPTRIS_API const YeptrisEvent* yeptris_iterparse_next(YeptrisIterparse it, size
         int rc = yep_engine_run(eng, it->buf + it->cursor, it->len - it->cursor, &sink);
         size_t pos = yep_engine_pos(eng);
         const yep_error* err = yep_engine_error(eng);
-        if (rc == -1 && err != NULL) {
-            it->err_line = err->line;
-            it->err_col = err->col;
-        }
         yep_engine_destroy(eng);
-        if (rc == -1) {
+        /* A failed run with a SET channel is a parse-class error and the
+         * CODE picks the public status; a failed run with a CLEAN
+         * channel is the capture sink dying — memory, never a parse
+         * error, and never a silent stream end (the old code fell into
+         * the doc-complete arm on rc == -2 and the final event
+         * vanished). The abort (rc == -2 without s.oom) stays the
+         * normal per-document completion. */
+        int failed = rc == -1 || s.oom;
+        if (failed) {
             it->done = 1;
-            it->status = err != NULL ? YEPTRIS_ERROR_PARSE : YEPTRIS_ERROR_MEMORY;
+            if (err != NULL && err->code != YEP_ERR_NONE) {
+                it->err_line = err->line;
+                it->err_col = err->col;
+                it->status = err->code == YEP_ERR_MEMORY     ? YEPTRIS_ERROR_MEMORY
+                             : err->code == YEP_ERR_ENCODING ? YEPTRIS_ERROR_ENCODING
+                                                             : YEPTRIS_ERROR_PARSE;
+            } else {
+                it->status = YEPTRIS_ERROR_MEMORY;
+            }
             if (it->store.n == 0) {
                 if (!it->emitted_stream_start) {
                     /* the engine emitted +STR before failing: match it */

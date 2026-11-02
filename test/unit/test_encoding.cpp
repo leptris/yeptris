@@ -11,6 +11,10 @@
 #include <string>
 #include <vector>
 
+#include <yeptris/dom.h>
+#include <yeptris/events.h>
+#include <yeptris/parse.h>
+
 #include "encoding/encoding.h"
 #include "memory/allocator.h"
 
@@ -322,4 +326,34 @@ TEST(Transcode, Utf32DanglingUnitRejectsLikeUtf16) {
         EXPECT_EQ(err, 4u) << "the offending byte is the dangling unit's start";
         EXPECT_EQ(out, nullptr);
     }
+}
+
+/* Route-level twin of Utf32DanglingUnitRejectsLikeUtf16 (audit round 5):
+ * the decoder rejects the dangling unit, and every front-end-gated
+ * route must surface that as the ENCODING status — the round-2 fix
+ * pinned the decoder alone, no route. */
+TEST(Transcode, Utf32DanglingByteErrorsOnEveryGatedRoute) {
+    /* UTF-32LE mark + one 'a' unit + one dangling trailing byte */
+    const unsigned char in[] = {0xFF, 0xFE, 0x00, 0x00, 'a', 0, 0, 0, 0x55};
+
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse((const char*)in, sizeof(in), &st);
+    EXPECT_EQ(st, YEPTRIS_ERROR_ENCODING);
+    EXPECT_EQ(doc, nullptr);
+    yeptris_document_free(doc);
+
+    YeptrisPullParser p = yeptris_pull_new((const char*)in, sizeof(in));
+    ASSERT_NE(p, nullptr);
+    uint32_t line = 0, col = 0;
+    EXPECT_EQ(yeptris_pull_status(p, &line, &col), YEPTRIS_ERROR_ENCODING);
+    EXPECT_EQ(line, 1u); /* the mark: the error positions at the stream head */
+    yeptris_pull_free(p);
+
+    YeptrisIterparse it = yeptris_iterparse_new((const char*)in, sizeof(in));
+    size_t n = 0;
+    while (yeptris_iterparse_next(it, &n) != NULL) {
+        /* the failure may surface a +STR matcher slice first */
+    }
+    EXPECT_EQ(yeptris_iterparse_status(it, nullptr, nullptr), YEPTRIS_ERROR_ENCODING);
+    yeptris_iterparse_free(it);
 }
