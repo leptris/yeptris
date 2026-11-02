@@ -61,6 +61,12 @@ static int push_on_event(void* ctx, const yep_event* ev) {
     e.flow = ev->flow;
     e.line = ev->line;
     e.col = ev->col;
+    /* the cross-model identity law (#179, test_event_marks): push,
+     * pull and the recorder emit identical mark data — dropping the
+     * end marks here made the push route's events half-marked where
+     * pull/recorder carried all four fields */
+    e.end_line = ev->end_line;
+    e.end_col = ev->end_col;
     e.value = ev->value.len > 0 ? (const char*)ev->value.p : NULL;
     e.value_len = ev->value.len;
     e.anchor = ev->anchor.len > 0 ? (const char*)ev->anchor.p : NULL;
