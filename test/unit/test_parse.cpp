@@ -3588,6 +3588,110 @@ TEST(Parse, PlainFoldAlgebraPsLedRunsAndAnchorCharset) {
     }
 }
 
+TEST(Parse, PlainTrailingBreakRunsClipAtEof) {
+    /* the r105 nightly's dig (nightly 41432246664): trailing break
+     * runs at EOF, including runs that mix PS/LS/NEL into LF/CR. The
+     * designed 1.2 law: a PLAIN scalar carries no trailing breaks —
+     * s-plain ends at the final break and the run never reaches the
+     * value — so every shape here parses to exactly "v". libyaml
+     * clips plain trailing runs at EOF the same way (the pure shape
+     * is EQUAL on both engines, no comparator arm needed); the
+     * keep-N-1-at-EOF form is libyaml's BLOCK-clip-chomping law, where
+     * the suite sides with yeptris (L24T#2) and yeptris keeps the
+     * synthesized break — the clip-breakless family (issue #146,
+     * comparator carry PR #640, pinned as
+     * BlockClipAtBreaklessEofKeepsTheBreak). Plain != block: the clip
+     * here is the grammar, not chomping. */
+    struct {
+        const char* y;
+    } cases[] = {
+        {"v\n"},                       /* single break */
+        {"v\n\n"},                     /* LF run */
+        {"v\n\xE2\x80\xA9"},           /* LF PS */
+        {"v\n\xE2\x80\xA9\n"},         /* LF PS LF */
+        {"v\n\xE2\x80\xA8\r"},         /* LF LS CR */
+        {"v\r\n\xC2\x85\xE2\x80\xA9"}, /* CRLF NEL PS */
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(c.y, strlen(c.y), &st);
+        ASSERT_NE(doc, nullptr) << "input=" << c.y << " err=" << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        size_t vl = 0;
+        const char* v = yeptris_node_value(root, &vl);
+        ASSERT_NE(v, nullptr);
+        EXPECT_EQ(std::string(v, vl), "v") << c.y;
+        yeptris_document_free(doc);
+    }
+    /* the keyed twin: the run trails the PAIR's value, same clip */
+    {
+        const char* y = "k: v\n\xE2\x80\xA9\n";
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << "err=" << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(map_str(root, "k"), "v") << y;
+        yeptris_document_free(doc);
+    }
+}
+
+TEST(Parse, PsMixedRunFoldsNMinus1AndPropsLeadClips) {
+    /* the r105 artifact's engine law (crash-73d10cce..., the fuzz_diff
+     * carry, corpus seed anchor-charset-ps-fold-replace-run.bin):
+     * "&I:V\n<PS>\n+". Two designed legs. (1) The ':' rides the anchor
+     * name (the suite's ns-anchor-char law, the r104 twin), so the
+     * props line carries NO content — the leading LF-PS-LF break run
+     * folds away ENTIRELY and the value is the final line alone.
+     * libyaml truncates the name at ':' and reads ":V" as the plain's
+     * head, which turns the run into a mid-scalar one. (2) A
+     * mid-scalar run mixing PS/LS into LF/CR folds n-1 (every break
+     * normalizes; the r104 pin's algebra), where libyaml joins the
+     * PS/LS verbatim and folds only its LF/CR count — the documented
+     * rendering divergence the fold walk's replace arm reconciles. */
+    struct {
+        const char* y;
+        const char* want;
+    } cases[] = {
+        {"v\n\xE2\x80\xA9\n+w", "v\n\n+w"},               /* LF PS LF: n-1 = 2 */
+        {"v\n\xE2\x80\xA8\r+w", "v\n\n+w"},               /* the LS/CR twin */
+        {"v\n\xE2\x80\xA9\xE2\x80\xA9\n+w", "v\n\n\n+w"}, /* 4 breaks -> 3 */
+        {"v\n\n\n+w", "v\n\n+w"},                         /* the LF twin: same algebra */
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(c.y, strlen(c.y), &st);
+        ASSERT_NE(doc, nullptr) << "input=" << c.y << " err=" << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        size_t vl = 0;
+        const char* v = yeptris_node_value(root, &vl);
+        ASSERT_NE(v, nullptr);
+        EXPECT_EQ(std::string(v, vl), std::string(c.want)) << c.y;
+        yeptris_document_free(doc);
+    }
+    /* the artifact byte-exact: anchor "I:V", value "+" */
+    {
+        const char* y = "&I:V\n\xE2\x80\xA9\n+";
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << "err=" << yeptris_last_error(NULL, NULL);
+        ASSERT_EQ(yeptris_document_count(doc), 1u);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        size_t al = 0;
+        const char* a = yeptris_node_anchor(root, &al);
+        ASSERT_NE(a, nullptr);
+        EXPECT_EQ(std::string(a, al), "I:V") << y;
+        size_t vl = 0;
+        const char* v = yeptris_node_value(root, &vl);
+        ASSERT_NE(v, nullptr);
+        EXPECT_EQ(std::string(v, vl), "+") << y;
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, UnicodeBreaksNormalizeLookalikesStay) {
     /* real NEL/LS/PS normalize to a line break (folded plain picks up
      * a space); the lookalike byte runs must ride through untouched */

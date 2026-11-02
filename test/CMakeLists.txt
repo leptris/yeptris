@@ -362,6 +362,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-ps-crcr-additive-deep.bin
     )
 
+    # the r105 nightly's composition (anchor-charset x a PS-mixed break
+    # RUN): the run arm walks position-wise — additive while the
+    # escape counts match, the round-72 replacement one-short — and
+    # must classify it known without un-classifying the r104 seed
+    add_test(
+        NAME fuzz-diff-r105-composition
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-ps-fold-replace-run.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

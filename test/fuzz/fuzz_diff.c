@@ -1686,9 +1686,81 @@ static int yd_fold_walk(const char* ydump, size_t y, const char* ldump, size_t l
          * alternative arm can align the site and nothing can backtrack
          * into the replacement here (libyaml is never SHORTER than
          * yeptris at a PS site). Walk it linearly: the recursive probe
-         * was depth-capped at 8 and the artifact outran it. */
+         * was depth-capped at 8 and the artifact outran it.
+         * The r105 member (crash-73d10ccefb0181f1679c9d698d87a1294f339125,
+         * nightly 41432246664) is a break RUN mixing PS/LS into the
+         * LF/CR breaks, rendered by the two engines' DIFFERENT fold
+         * algebras: yeptris normalizes every break and folds n-1
+         * newlines, libyaml keeps the raw triple(s) and folds only its
+         * LF/CR count (n'-1) — so the run walks POSITION-WISE and the
+         * escapes after a triple decide: equal counts take the triple
+         * ADDITIVE (the r104 forced reading, sites with the same escape
+         * count on both sides classify exactly as before), one-short
+         * take the round-72 REPLACEMENT (yeptris's PS-position break
+         * renders \n where libyaml joins the raw PS). A run failing
+         * the count law falls to the single-site arms below, so no
+         * accepted site changes verdict. */
         int y_esc_lf = ydump[y] == '\\' && ydump[y + 1] == 'n';
         if (y_esc_lf && l_raw_ps) {
+            size_t y2 = y;
+            size_t l2 = l;
+            int run_ok = 1;
+            int run_diffs = 0;
+            while (run_ok) {
+                int y_esc2 = ydump[y2] == '\\' && ydump[y2 + 1] == 'n';
+                int l_triple =
+                    (unsigned char)ldump[l2] == 0xE2 && (unsigned char)ldump[l2 + 1] == 0x80 &&
+                    ((unsigned char)ldump[l2 + 2] == 0xA8 || (unsigned char)ldump[l2 + 2] == 0xA9);
+                if (y_esc2 && l_triple) {
+                    /* the escapes after this triple, run-scoped */
+                    size_t l3 = l2 + 3;
+                    size_t y3 = y2;
+                    size_t ly = 0;
+                    size_t yy = 0;
+                    for (;;) {
+                        if (ldump[l3] == '\\' && ldump[l3 + 1] == 'n') {
+                            ly++;
+                            l3 += 2;
+                        } else if ((unsigned char)ldump[l3] == 0xE2 &&
+                                   (unsigned char)ldump[l3 + 1] == 0x80 &&
+                                   ((unsigned char)ldump[l3 + 2] == 0xA8 ||
+                                    (unsigned char)ldump[l3 + 2] == 0xA9)) {
+                            l3 += 3;
+                        } else {
+                            break;
+                        }
+                    }
+                    while (ydump[y3] == '\\' && ydump[y3 + 1] == 'n') {
+                        yy++;
+                        y3 += 2;
+                    }
+                    if (ly == yy) {
+                        l2 += 3; /* additive: the triple rides alone */
+                    } else if (ly == yy - 1) {
+                        y2 += 2; /* replace: this break is the raw PS */
+                        l2 += 3;
+                    } else {
+                        run_ok = 0;
+                        break;
+                    }
+                    run_diffs++;
+                } else if (y_esc2 && ldump[l2] == '\\' && ldump[l2 + 1] == 'n') {
+                    y2 += 2; /* the run's paired escapes */
+                    l2 += 2;
+                } else if (!y_esc2 && (unsigned char)ldump[l2] != 0xE2 && ldump[l2] != '\\' &&
+                           ldump[l2] != '\0') {
+                    break; /* both runs ended together */
+                } else {
+                    run_ok = 0; /* exactly one run ended: out of family */
+                    break;
+                }
+            }
+            if (run_ok) {
+                y = y2;
+                l = l2;
+                diffs += run_diffs;
+                continue;
+            }
             if (ldump[l + 3] == ydump[y]) {
                 l += 3;
                 diffs++;
