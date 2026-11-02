@@ -13,11 +13,20 @@ WORK="${3:-$(mktemp -d)}"
 OUT="$WORK/yeptris-native-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).tar.gz"
 
 echo "::group::Build libyeptris v$V"
-git clone --quiet --depth 1 --branch "v$V" https://github.com/leptris/yeptris "$WORK/yeptris-c"
-cmake -B "$WORK/yeptris-c/build" -S "$WORK/yeptris-c" -G Ninja \
+# The first release of a version has no tag yet, so the publish job
+# builds from its own checkout (YEPTRIS_ENGINE_SRC); the clone path
+# stays for standalone/republish runs.
+if [ -n "${YEPTRIS_ENGINE_SRC:-}" ] && [ -f "$YEPTRIS_ENGINE_SRC/CMakeLists.txt" ]; then
+  YEPTRIS_C="$YEPTRIS_ENGINE_SRC"
+  echo "engine from $YEPTRIS_C"
+else
+  YEPTRIS_C="$WORK/yeptris-c"
+  git clone --quiet --depth 1 --branch "v$V" https://github.com/leptris/yeptris "$YEPTRIS_C"
+fi
+cmake -B "$WORK/yeptris-c-build" -S "$YEPTRIS_C" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DYEPTRIS_BUILD_TESTING=OFF \
   -DYEPTRIS_BUILD_CLI=OFF -DYEPTRIS_BUILD_SHARED=ON
-cmake --build "$WORK/yeptris-c/build"
+cmake --build "$WORK/yeptris-c-build"
 echo "::endgroup::"
 
 echo "::group::Build the extension"
@@ -31,8 +40,8 @@ else
   echo "no lockstep gem tag v$V.* — extension from main"
 fi
 cd ext/yeptris_native
-YEPTRIS_LIB_PATH="$WORK/yeptris-c/build/src/libyeptris.so" \
-  YEPTRIS_SRC="$WORK/yeptris-c/src" ruby extconf.rb
+YEPTRIS_LIB_PATH="$WORK/yeptris-c-build/src/libyeptris.so" \
+  YEPTRIS_SRC="$YEPTRIS_C/src" ruby extconf.rb
 make
 echo "::endgroup::"
 
