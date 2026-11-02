@@ -236,10 +236,15 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
         goto fail;
     }
 
+    /* a NULL/0-byte stream is a valid empty input: parse it through a
+     * non-null base so the BOM arithmetic never computes NULL+0
+     * (clang's UBSan flags the zero-offset-null form; gcc's does not —
+     * the schema-econ BadInputs pin surfaced it on the macOS arm64 leg) */
+    const char* src = buf != NULL ? buf : "";
     const yep_allocator* sys = yep_system_allocator();
 
     /* Encoding front-end: BOM sniff; borrow UTF-8, transcode the rest. */
-    const char* data = buf;
+    const char* data = src;
     size_t data_len = len;
     unsigned char* transcoded = NULL;
     size_t transcoded_len = 0;
@@ -256,8 +261,8 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
         goto engine_enter;
     }
 
-    size_t bom = yep_bom_sniff((const unsigned char*)buf, len, &enc);
-    data = buf + bom;
+    size_t bom = yep_bom_sniff((const unsigned char*)src, len, &enc);
+    data = src + bom;
     data_len = len - bom;
 
     if (enc == YEP_ENC_UTF16LE || enc == YEP_ENC_UTF16BE || enc == YEP_ENC_UTF32LE ||
