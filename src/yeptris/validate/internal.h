@@ -92,9 +92,8 @@ int yep_validate_node_equal(const yep_dom* da, uint32_t a, const yep_dom* db, ui
 /* jsonschema.c's driver: applies the schema tree (its own DOM) to
  * every instance document root, emitting into `rep`. Returns 0, -1
  * on OOM. */
-int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root,
-                       const yep_dom* instance_dom, const uint32_t* doc_roots,
-                       uint32_t doc_count, yeptris_validate_report* rep);
+int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const yep_dom* instance_dom,
+                       const uint32_t* doc_roots, uint32_t doc_count, yeptris_validate_report* rep);
 
 #ifdef __cplusplus
 }
