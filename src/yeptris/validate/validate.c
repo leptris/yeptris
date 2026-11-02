@@ -750,21 +750,31 @@ YEPTRIS_API void yeptris_validate_report_free(yeptris_validate_report* report) {
     yep_free(sys, report);
 }
 
-/* The shared tail: walk every document of the DOM into a fresh report. */
-static YeptrisStatus validate_dom(yep_dom* dom, const yep_resolver* fam, int json_family,
-                                  yeptris_validate_report** out) {
+/* The report constructor (internal.h's seam — one home for the shape). */
+yeptris_validate_report* yep_validate_report_new(void) {
     const yep_allocator* sys = yep_system_allocator();
     yeptris_validate_report* r = yep_alloc(sys, sizeof(*r));
     if (r == NULL) {
-        return YEPTRIS_ERROR_MEMORY;
+        return NULL;
     }
     r->diags = yep_alloc(sys, YEP_VALIDATE_MAX_DIAGS * sizeof(yeptris_diagnostic));
     if (r->diags == NULL) {
         yep_free(sys, r);
-        return YEPTRIS_ERROR_MEMORY;
+        return NULL;
     }
     r->count = 0;
     r->truncated = 0;
+    return r;
+}
+
+/* The shared tail: walk every document of the DOM into a fresh report. */
+static YeptrisStatus validate_dom(yep_dom* dom, const yep_resolver* fam, int json_family,
+                                  yeptris_validate_report** out) {
+    const yep_allocator* sys = yep_system_allocator();
+    yeptris_validate_report* r = yep_validate_report_new();
+    if (r == NULL) {
+        return YEPTRIS_ERROR_MEMORY;
+    }
 
     yep_vctx c;
     memset(&c, 0, sizeof(c));
@@ -827,18 +837,10 @@ YEPTRIS_API YeptrisStatus yeptris_validate_document(YeptrisDocument doc, Yeptris
     }
     if (dom == NULL) {
         /* an empty stream (or NULL doc): valid, empty report */
-        const yep_allocator* sys = yep_system_allocator();
-        yeptris_validate_report* r = yep_alloc(sys, sizeof(*r));
+        yeptris_validate_report* r = yep_validate_report_new();
         if (r == NULL) {
             return YEPTRIS_ERROR_MEMORY;
         }
-        r->diags = yep_alloc(sys, YEP_VALIDATE_MAX_DIAGS * sizeof(yeptris_diagnostic));
-        if (r->diags == NULL) {
-            yep_free(sys, r);
-            return YEPTRIS_ERROR_MEMORY;
-        }
-        r->count = 0;
-        r->truncated = 0;
         *out = r;
         return YEPTRIS_OK;
     }
@@ -882,69 +884,17 @@ YEPTRIS_API YeptrisStatus yeptris_json_schema_validate(const char* schema, size_
         return YEPTRIS_ERROR_ARG;
     }
     *out = NULL;
-    const yep_allocator* sys = yep_system_allocator();
-    YeptrisParseOptions opts;
-    memset(&opts, 0, sizeof(opts)); /* core12 both sides: the YAML->JSON data model */
-
-    /* the schema document (document 0 of its stream) */
+    /* the compiled-schema economy, one call deep (#885 item 3): the
+     * schema parses ONCE here exactly as it always did, rides the SAME
+     * walk and report paths as the retained handle, and dies at return
+     * — the observable statuses and byte-for-byte verdicts are the
+     * suite port's 1298 cases, unchanged */
     YeptrisStatus st = YEPTRIS_OK;
-    YeptrisDocument sdoc = yeptris_parse_eager_ex(schema, schema_len, &opts, &st);
-    if (sdoc == NULL) {
-        if (st == YEPTRIS_OK) {
-            yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
-                          "the schema bytes hold no document");
-            return YEPTRIS_ERROR_ARG;
-        }
-        return st; /* the schema did not parse */
+    yeptris_schema* s = yep_schema_compile_st(schema, schema_len, &st);
+    if (s == NULL) {
+        return st; /* the schema's parse/arg failure, verbatim */
     }
-    yep_dom* sdom = yep_doc_dom((yeptris_document*)sdoc);
-    if (sdom == NULL || sdom->dcount == 0) {
-        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
-                      "the schema bytes hold no document");
-        yeptris_document_free(sdoc);
-        return YEPTRIS_ERROR_ARG;
-    }
-
-    /* the instance stream */
-    YeptrisDocument idoc = yeptris_parse_eager_ex(buf, len, &opts, &st);
-    if (idoc == NULL) {
-        yeptris_document_free(sdoc);
-        if (st == YEPTRIS_OK) {
-            /* an empty instance stream: nothing to invalidate */
-            return yeptris_validate_document(NULL, YEPTRIS_SCHEMA_12_CORE, out);
-        }
-        return st;
-    }
-    yep_dom* idom = yep_doc_dom((yeptris_document*)idoc);
-    if (idom == NULL) {
-        yeptris_document_free(idoc);
-        yeptris_document_free(sdoc);
-        return YEPTRIS_ERROR_MEMORY;
-    }
-
-    yeptris_validate_report* r = yep_alloc(sys, sizeof(*r));
-    if (r == NULL) {
-        yeptris_document_free(idoc);
-        yeptris_document_free(sdoc);
-        return YEPTRIS_ERROR_MEMORY;
-    }
-    r->diags = yep_alloc(sys, YEP_VALIDATE_MAX_DIAGS * sizeof(yeptris_diagnostic));
-    if (r->diags == NULL) {
-        yep_free(sys, r);
-        yeptris_document_free(idoc);
-        yeptris_document_free(sdoc);
-        return YEPTRIS_ERROR_MEMORY;
-    }
-    r->count = 0;
-    r->truncated = 0;
-
-    int rc = yep_jsonschema_run(sdom, sdom->docs[0], idom, idom->docs, idom->dcount, r);
-    yeptris_document_free(idoc);
-    yeptris_document_free(sdoc);
-    if (rc != 0) {
-        yeptris_validate_report_free(r);
-        return YEPTRIS_ERROR_MEMORY;
-    }
-    *out = r;
-    return r->count > 0 ? YEPTRIS_ERROR_SCHEMA : YEPTRIS_OK;
+    st = yeptris_schema_validate(s, buf, len, out);
+    yeptris_schema_free(s);
+    return st;
 }

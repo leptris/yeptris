@@ -162,6 +162,37 @@ YEPTRIS_API YeptrisStatus yeptris_json_schema_validate(const char* schema, size_
                                                        const char* buf, size_t len,
                                                        yeptris_validate_report** out);
 
+/* The COMPILED SCHEMA — the leptris-XSD economy (#885 item 3): parse
+ * the schema ONCE, validate MANY instance streams against the retained
+ * model. The handle owns everything it reads: the schema bytes (copied
+ * — the retained DOM's views borrow them), the parsed document, and
+ * the pattern kernel's compiled programs (the XSD content-model
+ * analog: `(a+)+$` compiles once here, not once per validated string
+ * the way the one-shot face pays). yeptris_schema_compile returns NULL
+ * on failure; yeptris_last_error() carries the why (bad arguments,
+ * bytes that hold no document, a schema that does not parse,
+ * allocation failure).
+ *
+ * yeptris_schema_validate keeps yeptris_json_schema_validate's exact
+ * status/report contract; diagnostics enumerate every miss across
+ * every document of the instance stream. yeptris_schema_free releases
+ * the handle and everything it owns in ONE call (no refcounting) —
+ * afterwards the handle is DEAD: passing it anywhere is undefined,
+ * exactly like a freed document. NULL is accepted (a no-op).
+ *
+ * Thread law: one schema handle per thread, like documents — the
+ * handle is immutable after compile (the pattern programs are built at
+ * compile time), so read-only sharing across threads is safe; reports
+ * are per-call and caller-owned. */
+typedef struct yeptris_schema yeptris_schema;
+
+YEPTRIS_API yeptris_schema* yeptris_schema_compile(const char* bytes, size_t n);
+
+YEPTRIS_API YeptrisStatus yeptris_schema_validate(yeptris_schema* s, const char* buf, size_t len,
+                                                  yeptris_validate_report** out);
+
+YEPTRIS_API void yeptris_schema_free(yeptris_schema* s);
+
 #ifdef __cplusplus
 }
 #endif

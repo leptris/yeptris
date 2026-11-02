@@ -72,9 +72,23 @@ void yep_validate_path_pop(yep_vctx* c, size_t mark);
  * literals, '.', classes, groups, alternation, the greedy/lazy
  * quantifiers, anchors, \d\w\s\D\W\S\b\B and \xHH. Byte-oriented
  * (ASCII classes; UTF-8 literals match byte-wise). A Thompson NFA —
- * O(len * m), no backtracking blowup; patterns over the program
- * budget are invalid. 1 match, 0 no match, -1 invalid pattern. */
+ * O(len * m), no backtracking blowup, no recursion over the subject.
+ * Patterns over the program budget are invalid. 1 match, 0 no match,
+ * -1 invalid pattern. */
 int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_len);
+
+/* The retained-program cache behind the compiled schema (#885 item 3):
+ * pattern source -> compiled NFA, populated at compile time, immutable
+ * afterwards (read-only sharing, the document law). A miss — a NULL
+ * cache included — compiles fresh with yep_re_search's exact verdicts;
+ * cache_add returns 1 stored, 0 not retained (invalid pattern, empty,
+ * table full — misses recompile), -1 allocation failure (loud). */
+typedef struct yep_re_cache yep_re_cache;
+yep_re_cache* yep_re_cache_new(void);
+void yep_re_cache_free(yep_re_cache* t);
+int yep_re_cache_add(yep_re_cache* t, const char* pat, uint32_t plen);
+int yep_re_cache_search(const yep_re_cache* t, const char* pat, uint32_t plen, const char* s,
+                        uint32_t s_len);
 
 /* Canonical scalar tag of a DOM node (explicit tag, then the parse
  * resolver's plain verdict, then str): the value model both walks
@@ -90,10 +104,25 @@ int yep_validate_node_equal(const yep_dom* da, uint32_t a, const yep_dom* db, ui
                             int depth);
 
 /* jsonschema.c's driver: applies the schema tree (its own DOM) to
- * every instance document root, emitting into `rep`. Returns 0, -1
- * on OOM. */
+ * every instance document root, emitting into `rep`. `cache` is the
+ * compiled schema's retained pattern programs (NULL: none — the
+ * one-shot face). Returns 0, -1 on OOM. */
 int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const yep_dom* instance_dom,
-                       const uint32_t* doc_roots, uint32_t doc_count, yeptris_validate_report* rep);
+                       const uint32_t* doc_roots, uint32_t doc_count, yeptris_validate_report* rep,
+                       const yep_re_cache* cache);
+
+/* The report constructor (validate.c owns the report machinery): a
+ * fresh empty report, NULL on allocation failure. */
+yeptris_validate_report* yep_validate_report_new(void);
+
+/* compile.c's seam (#885 item 3): the compiled-schema constructor with
+ * an explicit status — the one-shot face preserves its exact observable
+ * statuses through it. NULL on failure with *st = YEPTRIS_ERROR_ARG
+ * (NULL bytes with length, or bytes that hold no document; the thread
+ * error channel carries the message), the failed parse's status, or
+ * YEPTRIS_ERROR_MEMORY. */
+struct yeptris_schema;
+yeptris_schema* yep_schema_compile_st(const char* bytes, size_t n, YeptrisStatus* st);
 
 #ifdef __cplusplus
 }
