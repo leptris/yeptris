@@ -39,9 +39,13 @@ set(YEPTRIS_SOURCES
     yeptris/resolve/tags.c
     yeptris/resolve/core12.c
     yeptris/resolve/compat11.c
+    yeptris/resolve/json12.c
     yeptris/parse/numbers.c
     yeptris/events/values.c
     yeptris/schema.c
+    yeptris/validate/regexp.c
+    yeptris/validate/validate.c
+    yeptris/validate/jsonschema.c
     yeptris/tape.c
     yeptris/plan.c
 
@@ -95,6 +99,7 @@ set(YEPTRIS_PUBLIC_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/parse.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/values.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/schema.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/validate.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/tape.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/plan.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/yeptris/marshal.h

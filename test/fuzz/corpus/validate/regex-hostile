@@ -1,0 +1,1 @@
+{"type":"string","pattern":"(a+)+$","enum":[1,[1,{k: [2]}]],"not":{"pattern":"((((a))))+"}}

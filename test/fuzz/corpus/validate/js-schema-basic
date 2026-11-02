@@ -1,0 +1,5 @@
+{"$defs":{"sha":{"type":"string","pattern":"^[a-f0-9]{8}$"}},"type":"object",
+"required":["name"],"properties":{"name":{"type":"string"},
+"resources":{"type":"object","additionalProperties":{"$ref":"#/$defs/sha"}},
+"tags":{"type":"array","items":{"type":"string"},"uniqueItems":true}},
+"additionalProperties":false}

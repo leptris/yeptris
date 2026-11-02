@@ -26,8 +26,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <yeptris/dom.h>
 #include <yeptris/validate.h>
 
+#include "../common/error.h"
 #include "../doc.h"
 #include "../memory/allocator.h"
 #include "../parse/numbers.h"
@@ -169,6 +171,10 @@ void yep_validate_path_pop(yep_vctx* c, size_t mark) {
 /* ---- the report --------------------------------------------------------- */
 
 void yep_validate_emit(yep_vctx* c, int code, uint32_t off, const char* detail_fmt, ...) {
+    if (c->suppress > 0) {
+        c->trial_hit = 1; /* a probe (anyOf/oneOf/not): swallow and mark */
+        return;
+    }
     yeptris_validate_report* r = c->rep;
     if (r->count >= YEP_VALIDATE_MAX_DIAGS) {
         /* the cap: the LAST slot becomes the LIMIT sentinel */
@@ -219,30 +225,30 @@ uint32_t yep_validate_node_off(const yep_dom* d, uint32_t id) {
     return UINT32_MAX;
 }
 
-/* ---- canonical key/value facts ------------------------------------------ */
+/* ---- canonical key/value facts (shared with jsonschema.c) ---------------- */
 
 /* The resolved tag id of a scalar node (explicit tag wins, then the
  * plain verdict already on the node, then str for quoted/block). */
-static uint8_t scalar_tag(const yep_dnode* n) {
+uint8_t yep_validate_scalar_tag(const yep_dnode* n) {
     if (n->tag.len > 0) {
         return n->tag_id;
     }
-    if (n->style == YEP_STYLE_PLAIN) {
-        return n->tag_id; /* the parse resolver's verdict */
+    /* implicit marks the resolver's verdict even at style ANY (the
+     * document-level empty scalar carries no token to style) */
+    if (n->style == YEP_STYLE_PLAIN || n->implicit) {
+        return n->tag_id;
     }
     return YEPTRIS_TAG_STR;
 }
 
 /* Canonical hash of a node (the key-uniqueness fingerprint): tags and
  * canonical forms, numeric values for int/float. */
-static uint64_t node_hash(const yep_dom* d, uint32_t id, int depth);
-
 static uint64_t hash_mix(uint64_t h, uint64_t v) {
     h ^= v + 0x9E3779B97F4A7C15ULL + (h << 6) + (h >> 2);
     return h;
 }
 
-static uint64_t node_hash(const yep_dom* d, uint32_t id, int depth) {
+uint64_t yep_validate_node_hash(const yep_dom* d, uint32_t id, int depth) {
     if (depth > 64) {
         return 0xDA7A;
     }
@@ -251,32 +257,32 @@ static uint64_t node_hash(const yep_dom* d, uint32_t id, int depth) {
         return 0;
     }
     if (n->kind == YEP_DOM_ALIAS) {
-        return n->target != UINT32_MAX ? node_hash(d, n->target, depth + 1)
+        return n->target != UINT32_MAX ? yep_validate_node_hash(d, n->target, depth + 1)
                                        : hash_mix(0xA11A, n->value.len);
     }
     if (n->kind == YEP_DOM_SEQUENCE) {
         uint64_t h = 0x5EED51ULL;
         uint32_t ch = n->first_child;
         while (ch != UINT32_MAX) {
-            h = hash_mix(h, node_hash(d, ch, depth + 1));
+            h = hash_mix(h, yep_validate_node_hash(d, ch, depth + 1));
             ch = yep_dom_node(d, ch) ? yep_dom_node(d, ch)->next_sibling : UINT32_MAX;
         }
         return h;
     }
     if (n->kind == YEP_DOM_MAPPING) {
-        uint64_t h = 0x5EED_MAP;
+        uint64_t h = 0x5EED4A9ULL;
         uint32_t k = n->first_child;
         while (k != UINT32_MAX) {
             uint32_t v = yep_dom_node(d, k) ? yep_dom_node(d, k)->next_sibling : UINT32_MAX;
-            h = hash_mix(h, node_hash(d, k, depth + 1));
-            h = hash_mix(h, node_hash(d, v, depth + 1));
+            h = hash_mix(h, yep_validate_node_hash(d, k, depth + 1));
+            h = hash_mix(h, yep_validate_node_hash(d, v, depth + 1));
             k = v != UINT32_MAX && yep_dom_node(d, v) ? yep_dom_node(d, v)->next_sibling
                                                       : UINT32_MAX;
         }
         return h;
     }
     /* scalar: tag + canonical form */
-    uint8_t tag = scalar_tag(n);
+    uint8_t tag = yep_validate_scalar_tag(n);
     yep_view v = yep_dom_view(d, n->value);
     uint64_t h = 0x5CA1A + tag;
     if (tag == YEPTRIS_TAG_INT || tag == YEPTRIS_TAG_FLOAT) {
@@ -305,21 +311,26 @@ static uint64_t node_hash(const yep_dom* d, uint32_t id, int depth) {
 
 /* Canonical equality (spec 3.2.1.3): same tag and canonical form.
  * Collections compare structurally; numbers within one tag compare
- * numerically. Depth-bounded like the hashes. */
-static int node_equal(const yep_dom* d, uint32_t a, uint32_t b, int depth) {
+ * numerically. The two sides may live in different DOMs (the JSON
+ * Schema face compares instances against a schema's enum/const).
+ * Depth-bounded like the hashes. */
+int yep_validate_node_equal(const yep_dom* da, uint32_t a, const yep_dom* db, uint32_t b,
+                            int depth) {
     if (depth > 64) {
         return 0;
     }
-    const yep_dnode* na = yep_dom_node(d, a);
-    const yep_dnode* nb = yep_dom_node(d, b);
+    const yep_dnode* na = yep_dom_node(da, a);
+    const yep_dnode* nb = yep_dom_node(db, b);
     if (na == NULL || nb == NULL) {
-        return a == b;
+        return 0;
     }
     if (na->kind == YEP_DOM_ALIAS) {
-        return na->target != UINT32_MAX && node_equal(d, na->target, b, depth + 1);
+        return na->target != UINT32_MAX &&
+               yep_validate_node_equal(da, na->target, db, b, depth + 1);
     }
     if (nb->kind == YEP_DOM_ALIAS) {
-        return nb->target != UINT32_MAX && node_equal(d, a, nb->target, depth + 1);
+        return nb->target != UINT32_MAX &&
+               yep_validate_node_equal(da, a, db, nb->target, depth + 1);
     }
     if (na->kind != nb->kind) {
         return 0;
@@ -330,13 +341,13 @@ static int node_equal(const yep_dom* d, uint32_t a, uint32_t b, int depth) {
         }
         uint32_t ca = na->first_child, cb = nb->first_child;
         while (ca != UINT32_MAX && cb != UINT32_MAX) {
-            if (!node_equal(d, ca, cb, depth + 1)) {
+            if (!yep_validate_node_equal(da, ca, db, cb, depth + 1)) {
                 return 0;
             }
-            const yep_dnode* da = yep_dom_node(d, ca);
-            const yep_dnode* db = yep_dom_node(d, cb);
-            ca = da ? da->next_sibling : UINT32_MAX;
-            cb = db ? db->next_sibling : UINT32_MAX;
+            const yep_dnode* da2 = yep_dom_node(da, ca);
+            const yep_dnode* db2 = yep_dom_node(db, cb);
+            ca = da2 ? da2->next_sibling : UINT32_MAX;
+            cb = db2 ? db2->next_sibling : UINT32_MAX;
         }
         return ca == UINT32_MAX && cb == UINT32_MAX;
     }
@@ -346,44 +357,46 @@ static int node_equal(const yep_dom* d, uint32_t a, uint32_t b, int depth) {
         }
         uint32_t ka = na->first_child;
         while (ka != UINT32_MAX) {
-            uint32_t va = yep_dom_node(d, ka) ? yep_dom_node(d, ka)->next_sibling : UINT32_MAX;
+            uint32_t va = yep_dom_node(da, ka) ? yep_dom_node(da, ka)->next_sibling : UINT32_MAX;
             /* find ka's key in b */
             uint32_t kb = nb->first_child;
             int found = 0;
             while (kb != UINT32_MAX && !found) {
-                uint32_t vb = yep_dom_node(d, kb) ? yep_dom_node(d, kb)->next_sibling : UINT32_MAX;
-                if (node_equal(d, ka, kb, depth + 1)) {
-                    if (!node_equal(d, va, vb, depth + 1)) {
+                uint32_t vb =
+                    yep_dom_node(db, kb) ? yep_dom_node(db, kb)->next_sibling : UINT32_MAX;
+                if (yep_validate_node_equal(da, ka, db, kb, depth + 1)) {
+                    if (!yep_validate_node_equal(da, va, db, vb, depth + 1)) {
                         return 0;
                     }
                     found = 1;
                 }
-                kb = vb != UINT32_MAX && yep_dom_node(d, vb) ? yep_dom_node(d, vb)->next_sibling
-                                                             : UINT32_MAX;
+                kb = vb != UINT32_MAX && yep_dom_node(db, vb)
+                         ? yep_dom_node(db, vb)->next_sibling
+                         : UINT32_MAX;
             }
             if (!found) {
                 return 0;
             }
-            ka = va != UINT32_MAX && yep_dom_node(d, va) ? yep_dom_node(d, va)->next_sibling
-                                                         : UINT32_MAX;
+            ka = va != UINT32_MAX && yep_dom_node(da, va) ? yep_dom_node(da, va)->next_sibling
+                                                          : UINT32_MAX;
         }
         return 1;
     }
     /* scalars */
-    uint8_t ta = scalar_tag(na), tb = scalar_tag(nb);
+    uint8_t ta = yep_validate_scalar_tag(na), tb = yep_validate_scalar_tag(nb);
     if (ta != tb) {
         return 0;
     }
-    yep_view va = yep_dom_view(d, na->value);
-    yep_view vb = yep_dom_view(d, nb->value);
+    yep_view va = yep_dom_view(da, na->value);
+    yep_view vb = yep_dom_view(db, nb->value);
     if (ta == YEPTRIS_TAG_INT || ta == YEPTRIS_TAG_FLOAT) {
-        double da, db;
+        double fa, fb;
         int64_t ia, ib;
         if (yep_num_i64(va.p, va.len, &ia) == 0 && yep_num_i64(vb.p, vb.len, &ib) == 0) {
             return ia == ib;
         }
-        if (yep_num_f64(va.p, va.len, &da) == 0 && yep_num_f64(vb.p, vb.len, &db) == 0) {
-            return da == db;
+        if (yep_num_f64(va.p, va.len, &fa) == 0 && yep_num_f64(vb.p, vb.len, &fb) == 0) {
+            return fa == fb;
         }
         return 0;
     }
@@ -423,11 +436,11 @@ static void check_duplicates(yep_vctx* c, uint32_t map_id) {
     int reported = 0;
     while (k != UINT32_MAX) {
         uint32_t v = yep_dom_node(d, k) ? yep_dom_node(d, k)->next_sibling : UINT32_MAX;
-        uint64_t h64 = node_hash(d, k, 0);
+        uint64_t h64 = yep_validate_node_hash(d, k, 0);
         uint32_t h = (uint32_t)(h64 ^ (h64 >> 32));
         uint32_t i = h & (cap - 1);
         while (tbl[i].node != 0) {
-            if (tbl[i].hash == h && node_equal(d, tbl[i].node - 1, k, 0)) {
+            if (tbl[i].hash == h && yep_validate_node_equal(d, tbl[i].node - 1, d, k, 0)) {
                 if (!reported) {
                     reported = 1;
                     uint32_t off = yep_validate_node_off(d, k);
@@ -553,7 +566,7 @@ static void check_json_key(yep_vctx* c, uint32_t key_id) {
         }
         return;
     }
-    if (n->style != YEP_STYLE_PLAIN) {
+    if (!(n->implicit || n->style == YEP_STYLE_PLAIN)) {
         return; /* quoted/block keys are strings */
     }
     yep_view v = yep_dom_view(d, n->value);
@@ -585,8 +598,8 @@ static void check_json_scalar(yep_vctx* c, uint32_t id) {
         }
         return;
     }
-    if (n->style != YEP_STYLE_PLAIN) {
-        return;
+    if (!(n->implicit || n->style == YEP_STYLE_PLAIN)) {
+        return; /* quoted/block scalars are strings */
     }
     yep_view v = yep_dom_view(d, n->value);
     if (yep_json12_plain(v.p != NULL ? v.p : "", v.len) == 0) {
@@ -638,6 +651,7 @@ static void walk_family(yep_vctx* c, uint32_t id, const yep_resolver* fam, int j
     case YEP_DOM_ALIAS:
         break; /* the target is validated at its own place */
     case YEP_DOM_SEQUENCE: {
+        check_tag(c, id, fam, json_family);
         size_t mark = c->path_len;
         uint32_t idx = 0;
         uint32_t ch = n->first_child;
@@ -653,11 +667,9 @@ static void walk_family(yep_vctx* c, uint32_t id, const yep_resolver* fam, int j
         break;
     }
     case YEP_DOM_MAPPING: {
+        check_tag(c, id, fam, json_family);
         size_t mark = c->path_len;
         check_duplicates(c, id);
-        if (c->oom) {
-            break;
-        }
         uint32_t k = n->first_child;
         while (k != UINT32_MAX && !c->oom) {
             uint32_t v = yep_dom_node(c->dom, k) ? yep_dom_node(c->dom, k)->next_sibling
@@ -745,9 +757,8 @@ static YeptrisStatus validate_dom(yep_dom* dom, const yep_resolver* fam, int jso
         walk_family(&c, dom->docs[i], fam, json_family);
     }
 
-    const char* path = c.path;
     yep_free(sys, c.line_off);
-    yep_free(sys, path);
+    yep_free(sys, c.path);
 
     YeptrisStatus st = YEPTRIS_OK;
     if (c.oom) {
@@ -841,4 +852,78 @@ YEPTRIS_API YeptrisStatus yeptris_validate(const char* buf, size_t len, YeptrisS
     st = yeptris_validate_document(doc, schema, out);
     yeptris_document_free(doc);
     return st;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_json_schema_validate(const char* schema, size_t schema_len,
+                                                       const char* buf, size_t len,
+                                                       yeptris_validate_report** out) {
+    if (out == NULL || (buf == NULL && len != 0) || (schema == NULL && schema_len != 0)) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    *out = NULL;
+    const yep_allocator* sys = yep_system_allocator();
+    YeptrisParseOptions opts;
+    memset(&opts, 0, sizeof(opts)); /* core12 both sides: the YAML->JSON data model */
+
+    /* the schema document (document 0 of its stream) */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument sdoc = yeptris_parse_eager_ex(schema, schema_len, &opts, &st);
+    if (sdoc == NULL) {
+        if (st == YEPTRIS_OK) {
+            yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
+                          "the schema bytes hold no document");
+            return YEPTRIS_ERROR_ARG;
+        }
+        return st; /* the schema did not parse */
+    }
+    yep_dom* sdom = yep_doc_dom((yeptris_document*)sdoc);
+    if (sdom == NULL || sdom->dcount == 0) {
+        yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
+                      "the schema bytes hold no document");
+        yeptris_document_free(sdoc);
+        return YEPTRIS_ERROR_ARG;
+    }
+
+    /* the instance stream */
+    YeptrisDocument idoc = yeptris_parse_eager_ex(buf, len, &opts, &st);
+    if (idoc == NULL) {
+        yeptris_document_free(sdoc);
+        if (st == YEPTRIS_OK) {
+            /* an empty instance stream: nothing to invalidate */
+            return yeptris_validate_document(NULL, YEPTRIS_SCHEMA_12_CORE, out);
+        }
+        return st;
+    }
+    yep_dom* idom = yep_doc_dom((yeptris_document*)idoc);
+    if (idom == NULL) {
+        yeptris_document_free(idoc);
+        yeptris_document_free(sdoc);
+        return YEPTRIS_ERROR_MEMORY;
+    }
+
+    yeptris_validate_report* r = yep_alloc(sys, sizeof(*r));
+    if (r == NULL) {
+        yeptris_document_free(idoc);
+        yeptris_document_free(sdoc);
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    r->diags = yep_alloc(sys, YEP_VALIDATE_MAX_DIAGS * sizeof(yeptris_diagnostic));
+    if (r->diags == NULL) {
+        yep_free(sys, r);
+        yeptris_document_free(idoc);
+        yeptris_document_free(sdoc);
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    r->count = 0;
+    r->truncated = 0;
+
+    int rc = yep_jsonschema_run(sdom, sdom->docs[0], idom, idom->docs, idom->dcount, r);
+    yeptris_document_free(idoc);
+    yeptris_document_free(sdoc);
+    if (rc != 0) {
+        yeptris_validate_report_free(r);
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    *out = r;
+    return r->count > 0 ? YEPTRIS_ERROR_SCHEMA : YEPTRIS_OK;
 }

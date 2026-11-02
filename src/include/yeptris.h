@@ -18,6 +18,7 @@
 #include <yeptris/parse.h>
 #include <yeptris/resolve.h>
 #include <yeptris/types.h>
+#include <yeptris/validate.h>
 #include <yeptris/version.h>
 
 #endif /* YEPTRIS_H */
