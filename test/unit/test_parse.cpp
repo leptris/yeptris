@@ -16,6 +16,7 @@
 #include "common/simd_text.h"
 #include "parse/engine.h"
 #include "scan/scan.h"
+#include "tape_in.h"
 #include <yeptris/json.h>
 
 namespace {
@@ -5161,6 +5162,83 @@ TEST(Parse, PushRouteLoneUtf16BomIsEmptyStream) {
     /* STREAM_START + STREAM_END only: the mark is all encoding, no
      * document (libyaml reader parity) */
     EXPECT_EQ(events, 2);
+}
+
+TEST(Parse, EncodingTwinBomOnlyFirstLineReadsTheSame) {
+    /* #867 (the r101 artifact crash-c409923b): a BOM-only first line
+     * followed by <BOM><U+FEFF> lines must read identically in every
+     * input encoding -- the encoding front-end strips exactly ONE
+     * mark and the rest rides as content on every route (lazy tape /
+     * fused runner, eager DOM / engine, push, drain). The 22-byte
+     * UTF-16BE artifact and its UTF-8 twin carry the same logical
+     * content: mark + L1=<BOM> + L2..L4=<BOM><U+FEFF> (L4 breakless),
+     * so the value is 7 U+FEFF in fold groups [1][2][2][2] and the
+     * serialized bytes of all four (2 encodings x 2 routes) match. */
+    const unsigned char be[] = {0xFE, 0xFF, 0xFE, 0xFF, 0x00, 0x0A, 0xFE, 0xFF, 0xFE,
+                                0xFF, 0x00, 0x0A, 0xFE, 0xFF, 0xFE, 0xFF, 0x00, 0x0A,
+                                0xFE, 0xFF, 0xFE, 0xFF};
+    /* the UTF-8 twin: mark + the same post-mark content units */
+    const char u8[] = "\xef\xbb\xbf"
+                      "\xef\xbb\xbf\x0a"
+                      "\xef\xbb\xbf\xef\xbb\xbf\x0a"
+                      "\xef\xbb\xbf\xef\xbb\xbf\x0a"
+                      "\xef\xbb\xbf\xef\xbb\xbf";
+    /* BOM SP <BOM><BOM> SP <BOM><BOM> SP <BOM><BOM> -- 7 U+FEFF folded */
+    const char want[] = "\xef\xbb\xbf \xef\xbb\xbf\xef\xbb\xbf \xef\xbb\xbf\xef\xbb\xbf "
+                        "\xef\xbb\xbf\xef\xbb\xbf";
+    char* ser[4] = {NULL, NULL, NULL, NULL};
+    size_t ser_len[4] = {0, 0, 0, 0};
+    for (int i = 0; i < 4; i++) {
+        const char* buf = (i % 2 == 0) ? (const char*)be : u8;
+        size_t len = (i % 2 == 0) ? sizeof(be) : sizeof(u8) - 1;
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = (i < 2) ? yeptris_parse(buf, len, &st)
+                                      : yeptris_parse_eager_ex(buf, len, NULL, &st);
+        ASSERT_NE(doc, nullptr) << "route " << i << " st " << (int)st;
+        ASSERT_EQ(st, YEPTRIS_OK) << "route " << i;
+        ASSERT_EQ(yeptris_document_count(doc), 1u) << "route " << i;
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        size_t vlen = 0;
+        const char* v = yeptris_node_value(root, &vlen);
+        ASSERT_NE(v, nullptr);
+        EXPECT_EQ(vlen, sizeof(want) - 1) << "route " << i;
+        EXPECT_EQ(memcmp(v, want, sizeof(want) - 1), 0) << "route " << i;
+        ser[i] = yeptris_serialize(doc, &ser_len[i]);
+        ASSERT_NE(ser[i], nullptr);
+        yeptris_document_free(doc);
+    }
+    for (int i = 1; i < 4; i++) {
+        ASSERT_NE(ser[i], (char*)NULL);
+        EXPECT_EQ(ser_len[i], ser_len[0]) << "route " << i;
+        EXPECT_EQ(memcmp(ser[i], ser[0], ser_len[0]), 0) << "route " << i;
+        free(ser[i]);
+    }
+    free(ser[0]);
+}
+
+TEST(Parse, BomOnlyFirstLineBomIsContent) {
+    /* #867's minimal shape: mark + <BOM> LF <BOM><BOM> LF. The head
+     * EF BB BF is the mark (catch 121: ANY head BOM is a mark); the
+     * BOM that follows it is L1's CONTENT, not a second mark -- the
+     * value keeps all 3 content BOMs folded as <BOM> SP <BOM><BOM>. */
+    const char in[] = "\xef\xbb\xbf\xef\xbb\xbf\x0a\xef\xbb\xbf\xef\xbb\xbf\x0a";
+    const char want[] = "\xef\xbb\xbf \xef\xbb\xbf\xef\xbb\xbf";
+    for (int eager = 0; eager < 2; eager++) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = eager ? yeptris_parse_eager_ex(in, sizeof(in) - 1, NULL, &st)
+                                    : yeptris_parse(in, sizeof(in) - 1, &st);
+        ASSERT_NE(doc, nullptr) << "eager " << eager;
+        ASSERT_EQ(yeptris_document_count(doc), 1u);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        size_t vlen = 0;
+        const char* v = yeptris_node_value(root, &vlen);
+        ASSERT_NE(v, nullptr);
+        EXPECT_EQ(vlen, sizeof(want) - 1) << "eager " << eager;
+        EXPECT_EQ(memcmp(v, want, sizeof(want) - 1), 0) << "eager " << eager;
+        yeptris_document_free(doc);
+    }
 }
 
 TEST(Parse, FlowKeyColonAfterTabsDefers) {
