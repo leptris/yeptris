@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **engine: a raw NEL break run folds by the trailing-breaks law (#870)** — a line-start `!<` arms the break normalizer's verbatim region (the #836 phantom family), so raw U+0085 breaks reached the plain fold walk unnormalized; the walk slotted the scanner's empty span as a fold piece and reset the break tally per piece, emitting one fold-space per break where libyaml keeps N-1 literal newlines. The walk skips the empty piece and lets the run tally (the flow walk's law). Pinned across the artifact bytes, the LF control, the 1/2/3-break tally, the mixed LF+NEL run, and the recorder route (`Parse.RawNelBreakRunFoldsToNewlineTally`).
+
+### Added
+
+- **engine: the EncodingTwin pins (#871)** — the #867 dig proved yeptris reads the r101 artifact's content byte-identically in UTF-16BE and UTF-8 on every route (the engine half of that issue was verified NOT a bug; the one-mark law explains the "6 vs 7" comparison). `Parse.EncodingTwinBomOnlyFirstLineReadsTheSame` + `Parse.BomOnlyFirstLineBomIsContent` pin the law so the comparator's UTF-16 carry (#872) cannot mask a future engine regression.
+
 ## [0.6.55] - 2026-11-01
 
 ### Fixed
