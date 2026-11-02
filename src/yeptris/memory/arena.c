@@ -98,7 +98,15 @@ void* yep_arena_alloc(yep_arena* arena, size_t size, size_t align) {
     uintptr_t base = (uintptr_t)b + sizeof(yep_arena_block);
     uintptr_t start = yep_round_up(base + b->used, align);
 
-    if (start + size > base + b->size) {
+    /* the fit test in subtraction form (the audit's finding): the old
+     * `start + size > base + b->size` wraps when size rides past the
+     * pointer space and the request "fits". The limit-first clause
+     * covers the round_up overshoot — start can sit up to align-1
+     * bytes past the limit, where `limit - start` would underflow — so
+     * both comparisons are wrap-free without leaning on the
+     * hostile-size guard above. */
+    uintptr_t limit = base + b->size;
+    if (start >= limit || size > limit - start) {
         /* Amortized doubling: each new block is at least twice the last,
          * unless the request itself is larger. */
         size_t payload = arena->last_block_size * 2;

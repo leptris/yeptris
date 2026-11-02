@@ -101,7 +101,17 @@ YEPTRIS_API YeptrisStatus yeptris_push_parse(const char* buf, size_t len, yeptri
     yep_text_active()->scan_stats(buf, len, &pst);
     yep_engine_prepare(eng, &pst);
     int rc = yep_engine_run(eng, buf, len, &sink);
-    const yep_error* err = yep_engine_error(eng);
+    /* the error slot lives inside the engine and destroy munmaps it
+     * (glibc serves the ~260KB engine with mmap): copy the verdict out
+     * BEFORE the free — reading err->code after destroy segfaulted the
+     * round-5 CI */
+    yep_err_code err_code = YEP_ERR_NONE;
+    {
+        const yep_error* err = yep_engine_error(eng);
+        if (err != NULL) {
+            err_code = err->code;
+        }
+    }
     yep_engine_destroy(eng);
     if (rc == 0) {
         return YEPTRIS_OK;
@@ -109,7 +119,7 @@ YEPTRIS_API YeptrisStatus yeptris_push_parse(const char* buf, size_t len, yeptri
     /* the engine's own memory failures report MEMORY (the parse route's
      * law); the callback abort keeps its documented contract — a parse
      * stop, clean channel */
-    if (err != NULL && err->code == YEP_ERR_MEMORY) {
+    if (err_code == YEP_ERR_MEMORY) {
         return YEPTRIS_ERROR_MEMORY;
     }
     return YEPTRIS_ERROR_PARSE;

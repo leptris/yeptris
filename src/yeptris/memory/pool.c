@@ -64,7 +64,11 @@ void* yep_pool_alloc(yep_pool* pool, size_t size, size_t align) {
     uintptr_t base = (uintptr_t)b + sizeof(yep_block);
     uintptr_t start = yep_round_up(base + b->used, align);
 
-    if (start + size > base + b->size) {
+    /* the fit test in subtraction form — the arena twin carries the
+     * full comment (wrap-free comparisons, round_up overshoot covered
+     * by the limit-first clause) */
+    uintptr_t limit = base + b->size;
+    if (start >= limit || size > limit - start) {
         /* Dedicated-or-default new block, sized so the aligned request
          * always fits (malloc returns at least 16-byte-aligned memory, so
          * the correction is < align). */
