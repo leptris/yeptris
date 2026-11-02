@@ -5174,9 +5174,8 @@ TEST(Parse, EncodingTwinBomOnlyFirstLineReadsTheSame) {
      * content: mark + L1=<BOM> + L2..L4=<BOM><U+FEFF> (L4 breakless),
      * so the value is 7 U+FEFF in fold groups [1][2][2][2] and the
      * serialized bytes of all four (2 encodings x 2 routes) match. */
-    const unsigned char be[] = {0xFE, 0xFF, 0xFE, 0xFF, 0x00, 0x0A, 0xFE, 0xFF, 0xFE,
-                                0xFF, 0x00, 0x0A, 0xFE, 0xFF, 0xFE, 0xFF, 0x00, 0x0A,
-                                0xFE, 0xFF, 0xFE, 0xFF};
+    const unsigned char be[] = {0xFE, 0xFF, 0xFE, 0xFF, 0x00, 0x0A, 0xFE, 0xFF, 0xFE, 0xFF, 0x00,
+                                0x0A, 0xFE, 0xFF, 0xFE, 0xFF, 0x00, 0x0A, 0xFE, 0xFF, 0xFE, 0xFF};
     /* the UTF-8 twin: mark + the same post-mark content units */
     const char u8[] = "\xef\xbb\xbf"
                       "\xef\xbb\xbf\x0a"
@@ -5192,8 +5191,8 @@ TEST(Parse, EncodingTwinBomOnlyFirstLineReadsTheSame) {
         const char* buf = (i % 2 == 0) ? (const char*)be : u8;
         size_t len = (i % 2 == 0) ? sizeof(be) : sizeof(u8) - 1;
         YeptrisStatus st = YEPTRIS_OK;
-        YeptrisDocument doc = (i < 2) ? yeptris_parse(buf, len, &st)
-                                      : yeptris_parse_eager_ex(buf, len, NULL, &st);
+        YeptrisDocument doc =
+            (i < 2) ? yeptris_parse(buf, len, &st) : yeptris_parse_eager_ex(buf, len, NULL, &st);
         ASSERT_NE(doc, nullptr) << "route " << i << " st " << (int)st;
         ASSERT_EQ(st, YEPTRIS_OK) << "route " << i;
         ASSERT_EQ(yeptris_document_count(doc), 1u) << "route " << i;
