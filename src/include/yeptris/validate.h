@@ -22,6 +22,15 @@
  * scalars whose bytes the DOM owns in its arena have no input
  * position; the path still identifies them exactly).
  *
+ * STREAMS (#885 item 4): a validated stream is addressed as an array
+ * of documents. When the input holds MORE THAN ONE document, every
+ * diagnostic path is prefixed with its document's index segment —
+ * "/1/a/b" is a/b of document 1 (0-based), so diagnostics name their
+ * document even when the miss is unpositioned (an empty document's
+ * Error-row scalar has no line/col). Line/col/offset stay
+ * input-absolute. Streams with a single document keep the bare
+ * instance pointers — existing consumers' paths are unchanged.
+ *
  * Results are WHOLE REPORTS: one call, no per-diagnostic callback —
  * the caller drains the flat array and frees the report once.
  */
@@ -118,7 +127,13 @@ YEPTRIS_API void yeptris_validate_report_free(yeptris_validate_report* report);
 
 /* Parses `buf` (the same front door as yeptris_parse_ex: encodings,
  * BOM, NEL normalization) and validates every document of the stream
- * against `schema`. Paths are root-relative per document.
+ * against `schema` — the strict lanes: explicit-tag consistency,
+ * canonical-form key uniqueness, and (12_JSON) string keys over the
+ * JSON productions. Paths are root-relative per document; a
+ * multi-document stream prefixes them with the document index (see
+ * STREAMS above), so diagnostics name their document. The parse's own
+ * guards compose: a document past the engine's depth cap fails the
+ * parse (YEPTRIS_ERROR_DEPTH) before any validation runs.
  *
  * Status: YEPTRIS_OK (valid; *out is a report — possibly with zero
  * diagnostics for an empty stream); YEPTRIS_ERROR_SCHEMA (invalid:
@@ -175,7 +190,9 @@ YEPTRIS_API YeptrisStatus yeptris_json_schema_validate(const char* schema, size_
  *
  * yeptris_schema_validate keeps yeptris_json_schema_validate's exact
  * status/report contract; diagnostics enumerate every miss across
- * every document of the instance stream. yeptris_schema_free releases
+ * every document of the instance stream — the stream face's document
+ * attribution applies (see STREAMS above): a multi-document stream's
+ * paths carry the document index. yeptris_schema_free releases
  * the handle and everything it owns in ONE call (no refcounting) —
  * afterwards the handle is DEAD: passing it anywhere is undefined,
  * exactly like a freed document. NULL is accepted (a no-op).

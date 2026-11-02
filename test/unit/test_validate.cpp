@@ -11,7 +11,12 @@
 // dependentRequired/dependentSchemas, if/then/else) and the
 // suite-exposed fixes (order-independent mapping hashes, cross-tag
 // numeric const/enum equality), plus the bounded regex kernel behind
-// `pattern`.
+// `pattern`, the stream face's per-document diagnostics (#885 item 4:
+// multi-document streams address their documents as array elements —
+// "/1/k" is key k of document 1; single-document streams keep the
+// bare instance pointers; the parse depth guard composes), and the
+// strict lanes' per-family resolvability (#885 item 5: `0o7` under
+// JSON, string keys, enumerate-every-miss duplicate keys).
 #include <gtest/gtest.h>
 
 #include <cstring>
@@ -242,6 +247,92 @@ TEST(Validate, DuplicateKeysBothFamiliesCanonicalForm) {
     free_report(r);
 }
 
+TEST(Validate, DuplicateKeysEnumerateEveryMiss) {
+    // enumerate-all-misses: every key whose canonical form already
+    // appeared is its own diagnostic — three equal keys, two misses;
+    // the third occurrence matches the retained first key
+    yeptris_validate_report* r = NULL;
+    const yeptris_diagnostic* d = validate_first("a: 1\na: 2\na: 3\n", YEPTRIS_SCHEMA_12_CORE, &r);
+    ASSERT_NE(d, nullptr);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)2);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_DUPLICATE_KEY);
+    EXPECT_STREQ(d->detail, "duplicate mapping key (\"a\")");
+    const yeptris_diagnostic* d2 = yeptris_validate_report_at(r, 1);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_DUPLICATE_KEY);
+    EXPECT_EQ(d2->line, (uint32_t)3); /* the third occurrence's position */
+    free_report(r);
+
+    // two distinct duplicated keys enumerate independently
+    r = NULL;
+    const yeptris_diagnostic* d3 =
+        validate_first("a: 1\na: 2\nb: 1\nb: 2\n", YEPTRIS_SCHEMA_12_CORE, &r);
+    ASSERT_NE(d3, nullptr);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)2);
+    EXPECT_EQ(yeptris_validate_report_at(r, 0)->line, (uint32_t)2);
+    EXPECT_EQ(yeptris_validate_report_at(r, 1)->line, (uint32_t)4);
+    free_report(r);
+
+    // FIRST occurrence over a mapping pair: keys equal across sibling
+    // mappings are NOT duplicates (uniqueness scopes to one mapping)
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("- a: 1\n- a: 2\n", strlen("- a: 1\n- a: 2\n"),
+                               YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+}
+
+// ---- the strict lanes (#885 item 5): resolvability per family -----------
+
+TEST(Validate, StrictLaneResolvabilityPerFamily) {
+    // the mission's named case: `0o7` is a CORE int production but
+    // matches no JSON production — the strict JSON lane rejects it,
+    // the core lane accepts it as the int it resolves to
+    yeptris_validate_report* r = NULL;
+    const yeptris_diagnostic* dj = validate_first("\"k\": 0o7\n", YEPTRIS_SCHEMA_12_JSON, &r);
+    ASSERT_NE(dj, nullptr);
+    EXPECT_EQ(dj->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
+    EXPECT_STREQ(dj->path, "/k");
+    free_report(r);
+
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("k: 0o7\n", strlen("k: 0o7\n"), YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+
+    // hex: core-resolvable, no JSON production
+    r = NULL;
+    const yeptris_diagnostic* dh = validate_first("\"k\": 0x1F\n", YEPTRIS_SCHEMA_12_JSON, &r);
+    ASSERT_NE(dh, nullptr);
+    EXPECT_EQ(dh->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
+    free_report(r);
+
+    // the core lane's str default: `yes`/`no` are plain strings under
+    // 1.2 core (compat owns the bool words), and everything else
+    // resolves — the core lane never flags an untagged plain scalar
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("a: yes\nb: n\nc: 1:30\nd: on\n",
+                               strlen("a: yes\nb: n\nc: 1:30\nd: on\n"), YEPTRIS_SCHEMA_12_CORE,
+                               &r),
+              YEPTRIS_OK);
+    free_report(r);
+
+    // key types where the family demands scalars: the strict JSON lane
+    // demands STRING keys — int/bool/null/float keys ride
+    // KEY_NOT_STRING (collection keys too), core allows them all
+    r = NULL;
+    const yeptris_diagnostic* dk =
+        validate_first("123: \"v\"\ntrue: \"w\"\n", YEPTRIS_SCHEMA_12_JSON, &r);
+    ASSERT_NE(dk, nullptr);
+    EXPECT_EQ(dk->code, (uint32_t)YEPTRIS_DIAG_KEY_NOT_STRING);
+    free_report(r);
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("123: v\ntrue: w\n[1]: x\n", strlen("123: v\ntrue: w\n[1]: x\n"),
+                               YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+}
+
 TEST(Validate, PathsEscapeJsonPointerTokens) {
     yeptris_validate_report* r = NULL;
     const char* src = "a/b: !!int x\n";
@@ -257,9 +348,110 @@ TEST(Validate, MultiDocumentStreamsValidatePerDocument) {
     const yeptris_diagnostic* d = validate_first(src, YEPTRIS_SCHEMA_12_CORE, &r);
     ASSERT_NE(d, nullptr);
     EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
-    EXPECT_STREQ(d->path, ""); /* root-relative per document */
+    EXPECT_STREQ(d->path, "/1"); /* the stream is an array of documents:
+                                  * document 1 (the second) carries the miss */
     EXPECT_EQ(d->line, (uint32_t)2);
     free_report(r);
+}
+
+// ---- the stream face: per-document diagnostics (#885 item 4) ------------
+
+TEST(Validate, StreamDiagsCarryTheDocumentIndex) {
+    // doc 2 invalid at a nested key: the path names the document
+    // ("/1/..."), docs 1 and 3 stay clean — exactly one diagnostic
+    yeptris_validate_report* r = NULL;
+    const char* src = "--- a: 1\n"
+                      "---\n"
+                      "resources:\n"
+                      "  andale32:\n"
+                      "    sha256: !!int nope\n"
+                      "--- c: 3\n";
+    const yeptris_diagnostic* d = validate_first(src, YEPTRIS_SCHEMA_12_CORE, &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    EXPECT_STREQ(d->path, "/1/resources/andale32/sha256");
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    EXPECT_EQ(d->line, (uint32_t)5); /* line/col stay input-absolute */
+    free_report(r);
+
+    // a flow document mid-stream attributes the same way
+    r = NULL;
+    const yeptris_diagnostic* d2 =
+        validate_first("--- {a: 1}\n--- {b: !!int x}\n", YEPTRIS_SCHEMA_12_CORE, &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_STREQ(d2->path, "/1/b");
+    free_report(r);
+
+    // document 0 spells its index too: explicit beats implicit
+    r = NULL;
+    const yeptris_diagnostic* d3 =
+        validate_first("--- !!int x\n--- 2\n", YEPTRIS_SCHEMA_12_CORE, &r);
+    ASSERT_NE(d3, nullptr);
+    EXPECT_STREQ(d3->path, "/0");
+    free_report(r);
+}
+
+TEST(Validate, StreamsWithEmptyDocumentsAttributeThem) {
+    // the empty middle document is a plain empty scalar: clean under
+    // core, the Error row under the strict JSON family — and the miss
+    // is unpositioned (no line/col) but still attributed to document 1
+    yeptris_validate_report* r = NULL;
+    const yeptris_diagnostic* d = validate_first("--- 1\n---\n--- 3\n", YEPTRIS_SCHEMA_12_JSON, &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
+    EXPECT_STREQ(d->path, "/1");
+    EXPECT_EQ(d->line, (uint32_t)0);
+    free_report(r);
+
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("--- 1\n---\n--- 3\n", strlen("--- 1\n---\n--- 3\n"),
+                               YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+}
+
+TEST(Validate, StreamDiagsCarryTheDocumentIndexViaDocumentEntry) {
+    // the same contract through an already-parsed multi-doc forest
+    yeptris_validate_report* r = NULL;
+    const char* src = "--- k: !!int x\n--- j: 2\n";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(src, strlen(src), &st);
+    ASSERT_NE(doc, nullptr);
+    ASSERT_EQ(yeptris_validate_document(doc, YEPTRIS_SCHEMA_12_CORE, &r), YEPTRIS_ERROR_SCHEMA);
+    ASSERT_NE(r, nullptr);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    EXPECT_STREQ(yeptris_validate_report_at(r, 0)->path, "/0/k");
+    free_report(r);
+    yeptris_document_free(doc);
+}
+
+TEST(Validate, DepthGuardComposesWithStreams) {
+    // a document past the engine's depth cap fails the PARSE (the
+    // guard is the engine's, before any validation runs): status
+    // DEPTH, no report — for a deep document mid-stream as much as a
+    // lone one, through the family walk and the compiled face alike
+    std::string deep(1100, '[');
+    deep.append(1100, ']');
+    const std::string lone = deep + "\n";
+    const std::string mid = "--- 1\n--- " + deep + "\n--- 3\n";
+
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate(lone.data(), lone.size(), YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_ERROR_DEPTH);
+    EXPECT_EQ(r, nullptr);
+    r = NULL;
+    ASSERT_EQ(yeptris_validate(mid.data(), mid.size(), YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_ERROR_DEPTH);
+    EXPECT_EQ(r, nullptr);
+
+    // the compiled face rides the same parse guard
+    const char* schema = "{\"type\":\"array\"}";
+    yeptris_schema* s = yeptris_schema_compile(schema, strlen(schema));
+    ASSERT_NE(s, nullptr);
+    r = NULL;
+    ASSERT_EQ(yeptris_schema_validate(s, mid.data(), mid.size(), &r), YEPTRIS_ERROR_DEPTH);
+    EXPECT_EQ(r, nullptr);
+    yeptris_schema_free(s);
 }
 
 TEST(Validate, EmptyAndEdgeInputs) {
@@ -1052,7 +1244,7 @@ TEST(ValidateCompiledSchema, CompileOnceValidateMany) {
     yeptris_validate_report_free(r);
 
     // 7: a multi-document stream — diagnostics across both docs of
-    // one validate call
+    // one validate call, the miss attributed to document 1
     ASSERT_EQ(yeptris_schema_validate(s, "{\"name\":\"ok\"}\n---\n{\"name\":\"Nope\"}\n",
                                       strlen("{\"name\":\"ok\"}\n---\n{\"name\":\"Nope\"}\n"), &r),
               YEPTRIS_ERROR_SCHEMA);
@@ -1060,6 +1252,7 @@ TEST(ValidateCompiledSchema, CompileOnceValidateMany) {
     d = yeptris_validate_report_at(r, 0);
     ASSERT_NE(d, nullptr);
     EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_PATTERN);
+    EXPECT_STREQ(d->path, "/1/name");
     yeptris_validate_report_free(r);
 
     // 8: an empty instance stream is valid
@@ -1068,6 +1261,30 @@ TEST(ValidateCompiledSchema, CompileOnceValidateMany) {
     EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
     yeptris_validate_report_free(r);
 
+    yeptris_schema_free(s);
+}
+
+TEST(ValidateCompiledSchema, StreamDiagnosticsCarryTheDocumentIndex) {
+    // the compiled stream face validates EVERY document in turn
+    // (compile once / validate many) and attributes each miss: docs 1
+    // and 3 are clean, doc 2 is named by the path prefix, and one
+    // stream-wide report comes back
+    const char* schema = "{\"type\":\"object\","
+                         "\"required\":[\"name\"],"
+                         "\"properties\":{\"name\":{\"type\":\"string\"}}}";
+    yeptris_schema* s = yeptris_schema_compile(schema, strlen(schema));
+    ASSERT_NE(s, nullptr);
+    const char* stream = "{\"name\":\"a\"}\n---\nname: 7\n---\n{\"name\":\"c\"}\n";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_schema_validate(s, stream, strlen(stream), &r), YEPTRIS_ERROR_SCHEMA);
+    ASSERT_NE(r, nullptr);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    const yeptris_diagnostic* d = yeptris_validate_report_at(r, 0);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TYPE);
+    EXPECT_STREQ(d->path, "/1/name");
+    EXPECT_EQ(d->line, (uint32_t)3); /* input-absolute, the stream's line 3 */
+    yeptris_validate_report_free(r);
     yeptris_schema_free(s);
 }
 

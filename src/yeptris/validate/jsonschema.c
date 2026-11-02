@@ -1377,7 +1377,11 @@ int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const ye
     j.v.input_len = instance_dom->input_len;
     for (uint32_t i = 0; i < doc_count; i++) {
         j.v.path_len = 0;
+        /* the stream face's document attribution: a multi-document
+         * stream addresses its documents as array elements */
+        size_t mark = yep_validate_doc_prefix(&j.v, doc_count > 1, i);
         js_validate_doc(&j, doc_roots[i]);
+        yep_validate_path_pop(&j.v, mark);
         if (j.v.oom) {
             yep_free(yep_system_allocator(), j.v.line_off);
             yep_free(yep_system_allocator(), j.v.path);
