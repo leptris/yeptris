@@ -305,6 +305,27 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             j++;
             continue;
         }
+        /* the empty-key colon fold (the nightly's round 106,
+         * crash-d708b17c: "{\n?{?\n:cic l},\n?M,\n?:}\n" composes the
+         * colon member with the ?-members below): libyaml's VALUE
+         * token splits a ':'-led plain — an EMPTY key plus the value
+         * "cic l" — while the suite's ns-plain-first law (HM87
+         * "[:x]", 58MP "{x: :x}") keeps ":cic l" ONE plain key with an
+         * empty value (yd_qcolon_walk's own branch). One artifact can
+         * compose members of BOTH walks and each walk demands full
+         * alignment, so this walk must explain the colon split too
+         * (the same law as the qcolon walk's ?-block composition). */
+        if (lens[i] >= 7 && strncmp(lines[i], "=VAL : ", 7) == 0 &&
+            (lens[i] == 7 || lines[i][lens[i] - 1] == ' ') && i + 1 < n && lens[i + 1] >= 8 &&
+            strncmp(lines[i + 1], "=VAL : ", 7) == 0 && j + 1 < yn &&
+            ylens[j] == lens[i] + 1 + (lens[i + 1] - 7) &&
+            memcmp(ylines[j], lines[i], lens[i]) == 0 && ylines[j][lens[i]] == ':' &&
+            memcmp(ylines[j] + lens[i] + 1, lines[i + 1] + 7, lens[i + 1] - 7) == 0 &&
+            ylens[j + 1] == 7 && strncmp(ylines[j + 1], "=VAL : ", 7) == 0) {
+            i++;    /* the loop's own ++ completes libyaml's split pair */
+            j += 2; /* yeptris's ':X' key and its empty value */
+            continue;
+        }
         /* the key-line twin inside a bigger map: yeptris's value
          * carries the leading '?' libyaml consumed — including the
          * EMPTY key ("{?:\n}" -> libyaml key "", yeptris key "?";
@@ -441,6 +462,17 @@ static int yd_qcolon_walk(const char* ldump, const char* ydump2) {
             strncmp(ylines[j + 1], "=VAL : ", 7) == 0) {
             i++;    /* the loop's own ++ completes the pair's two lines */
             j += 2; /* yeptris's '?:V' key and its empty value */
+            continue;
+        }
+        /* the ?X-key twin (yd_qflow_divergence's key-line twin): the
+         * r106 mutant's pair 2 ("?:}" — libyaml empty key, yeptris
+         * plain "?") composes the ?-colon-value fold above with the
+         * plain-? key; like the qflow walk's colon fold, one walk
+         * must hold both families' members */
+        if (lens[i] >= 7 && strncmp(lines[i], "=VAL : ", 7) == 0 && ylens[j] == lens[i] + 1 &&
+            strncmp(ylines[j], "=VAL : ?", 8) == 0 &&
+            memcmp(ylines[j] + 8, lines[i] + 7, lens[i] - 7) == 0) {
+            j++;
             continue;
         }
         /* the ?-single-pair twin (yd_qflow_divergence's block shape):

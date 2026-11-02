@@ -415,6 +415,26 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-ps-fold-replace-run.bin
     )
 
+    # the r106 nightly's composition (flow-? explicit-key x flow-:
+    # value-split, "{\n?{?\n:cic l},\n?M,\n?:}"): the qflow walk's
+    # empty-key colon fold must explain BOTH family members in one
+    # pass and classify it known without un-classifying r104/r105
+    add_test(
+        NAME fuzz-diff-r106-composition
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-q-nested-indicator.bin
+    )
+
+    # the r106 carry's own composition check (the bounded session's
+    # mutant, "{\n?:-.?:M,\n?:}\n"): the ?-colon-value fold plus the
+    # plain-? key in ONE walk — the qcolon walk's new ?X twin; must
+    # stay known beside the r106 artifact
+    add_test(
+        NAME fuzz-diff-r106-qdash-split
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qdash-value-split.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
