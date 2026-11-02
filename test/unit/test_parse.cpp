@@ -6969,8 +6969,7 @@ TEST(Parse, PlainHexScalarStaysScalar863) {
 
     YeptrisNode exe = yeptris_node_map_get(resources, "andale32.exe", 12);
     ASSERT_NE(exe, nullptr);
-    EXPECT_EQ(yeptris_node_kind(exe), YEPTRIS_NODE_MAPPING)
-        << "andale32.exe must stay a mapping";
+    EXPECT_EQ(yeptris_node_kind(exe), YEPTRIS_NODE_MAPPING) << "andale32.exe must stay a mapping";
 
     YeptrisNode sha = yeptris_node_map_get(exe, "sha256", 6);
     ASSERT_NE(sha, nullptr);
