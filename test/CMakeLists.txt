@@ -335,6 +335,15 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
     )
 
+    # the r104 nightly's composition (anchor-charset x PS-led plain
+    # folds, 16 sites): the carry's forced-additive walk must classify
+    # it known, not abort
+    add_test(
+        NAME fuzz-diff-r104-composition
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-ps-crcr-additive-deep.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

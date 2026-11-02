@@ -3531,6 +3531,63 @@ TEST(Parse, NormBreakLeadsMatchRuntimeBuild) {
     EXPECT_EQ(0, memcmp(&yep_norm_break_leads, &ss, sizeof(ss)));
 }
 
+/* The r104 nightly's composition (crash-955b6f217c, the fuzz_diff
+ * carry): PS-led plain fold runs plus an anchor whose name leaves
+ * libyaml's charset. yeptris's side is DESIGNED behavior — the plain
+ * fold algebra (n breaks fold to n-1 newlines, one to a space) and the
+ * suite's ns-anchor-char law (a ':' rides an anchor name when its
+ * follower is no separator; printable exotics stay in the name) — and
+ * libyaml's twin is the documented 1.1-vs-1.2 divergence (Y2GN/2SXE/
+ * W5VH): its [0-9A-Za-z_-] charset truncates at the ':', so
+ * "&k::<WON>" names "k::<WON>" here while libyaml names "k" and reads
+ * "::<WON>" as the plain's head. The differential arm classifies the
+ * pair (test/fuzz/corpus/parse/anchor-charset-ps-crcr-additive-deep.bin
+ * is the corpus seed). */
+TEST(Parse, PlainFoldAlgebraPsLedRunsAndAnchorCharset) {
+    struct {
+        const char* y;
+        const char* want;
+    } cases[] = {
+        {"a:(\xE2\x80\xA9\rb", "a:(\nb"},               /* PS+CR: 2 breaks -> n-1 */
+        {"a:(\xE2\x80\xA9\xE2\x80\xA9\rb", "a:(\n\nb"}, /* 3 breaks -> n-1 = 2 */
+        {"a:(\n\n\nb", "a:(\n\nb"},      /* the LF twin (3 breaks): same algebra */
+        {"a:(\xE2\x80\xA8\rb", "a:(\nb"},               /* the LS twin */
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(c.y, strlen(c.y), &st);
+        ASSERT_NE(doc, nullptr) << "input=" << c.y << " err=" << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        size_t vl = 0;
+        const char* v = yeptris_node_value(root, &vl);
+        ASSERT_NE(v, nullptr);
+        EXPECT_EQ(std::string(v, vl), std::string(c.want)) << c.y;
+        yeptris_document_free(doc);
+    }
+    /* the artifact's head: the anchor carries the ':'-riding name (and
+     * the printable exotic); the plain's leading PS+CR blank line folds
+     * away and the PS+CR+CR run folds to n-1 = 2 newlines */
+    {
+        const char* y = "&k::(\xE2\x82\xA9\rj:(\xE2\x80\xA9\r\rT";
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << "err=" << yeptris_last_error(NULL, NULL);
+        ASSERT_EQ(yeptris_document_count(doc), 1u);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        size_t al = 0;
+        const char* a = yeptris_node_anchor(root, &al);
+        ASSERT_NE(a, nullptr);
+        EXPECT_EQ(std::string(a, al), std::string("k::(\xE2\x82\xA9"));
+        size_t vl = 0;
+        const char* v = yeptris_node_value(root, &vl);
+        ASSERT_NE(v, nullptr);
+        EXPECT_EQ(std::string(v, vl), std::string("j:(\n\nT"));
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, UnicodeBreaksNormalizeLookalikesStay) {
     /* real NEL/LS/PS normalize to a line break (folded plain picks up
      * a space); the lookalike byte runs must ride through untouched */
