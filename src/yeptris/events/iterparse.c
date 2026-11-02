@@ -46,11 +46,11 @@ struct yeptris_iterparse {
     size_t len;
     size_t cursor;
     int done;
-    int gated;      /* the encoding front-end ran once: after it, buf
-                     * indexes the space every engine run's pos lives
-                     * in (the resume arithmetic requires it) */
-    unsigned char* owned;   /* UTF-16/32 transcode output (buf moved) */
-    char* norm;             /* NEL/LS/PS-normalized copy (buf moved) */
+    int gated;            /* the encoding front-end ran once: after it, buf
+                           * indexes the space every engine run's pos lives
+                           * in (the resume arithmetic requires it) */
+    unsigned char* owned; /* UTF-16/32 transcode output (buf moved) */
+    char* norm;           /* NEL/LS/PS-normalized copy (buf moved) */
     int emitted_stream_start;
     int pending_stream_end; /* deliver a final lone STREAM_END slice */
     YeptrisStatus status;
