@@ -6986,11 +6986,19 @@ TEST(Parse, RawNelBreakRunFoldsToNewlineTally) {
         /* the LF control: 3 breaks -> 2 newlines (libyaml-identical) */
         {"a\n\n\nb", "a\n\nb"},
         /* the NEL tally: 1 break folds to a space, n>1 to n-1 newlines */
-        {"a\n!<\xc2\x85" "b", "a !< b"},
-        {"a\n!<\xc2\x85\xc2\x85" "b", "a !<\nb"},
-        {"a\n!<\xc2\x85\xc2\x85\xc2\x85" "b", "a !<\n\nb"},
+        {"a\n!<\xc2\x85"
+         "b",
+         "a !< b"},
+        {"a\n!<\xc2\x85\xc2\x85"
+         "b",
+         "a !<\nb"},
+        {"a\n!<\xc2\x85\xc2\x85\xc2\x85"
+         "b",
+         "a !<\n\nb"},
         /* the mixed run: LF + NEL^2 -- one tally across the kinds */
-        {"a\n!<\n\xc2\x85\xc2\x85" "b", "a !<\n\nb"},
+        {"a\n!<\n\xc2\x85\xc2\x85"
+         "b",
+         "a !<\n\nb"},
     };
     for (const auto& c : cases) {
         YeptrisStatus st = YEPTRIS_OK;
