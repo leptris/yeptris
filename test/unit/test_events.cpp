@@ -507,9 +507,7 @@ TEST(Events, EngineMemoryLimitsReportMemoryNotParse) {
 
     YeptrisIterparse it = yeptris_iterparse_new(big.data(), big.size());
     size_t n = 0;
-    while (yeptris_iterparse_next(it, &n) != NULL) {
-    }
-    EXPECT_EQ(yeptris_iterparse_status(it, nullptr, nullptr), YEPTRIS_ERROR_MEMORY)
-        << "iterparse";
+    while (yeptris_iterparse_next(it, &n) != NULL) {}
+    EXPECT_EQ(yeptris_iterparse_status(it, nullptr, nullptr), YEPTRIS_ERROR_MEMORY) << "iterparse";
     yeptris_iterparse_free(it);
 }
