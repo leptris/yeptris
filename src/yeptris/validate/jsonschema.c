@@ -51,6 +51,9 @@ typedef struct {
     yep_vctx v;        /* instance-side context (path, report, guards) */
     const yep_dom* sd; /* the schema document's tree */
     uint32_t sroot;    /* the schema's document root */
+    /* the compiled schema's retained pattern programs (NULL: the
+     * one-shot face — every search compiles fresh, identical verdicts) */
+    const yep_re_cache* cache;
 } js_ctx;
 
 /* ---- schema-side facts -------------------------------------------------- */
@@ -718,7 +721,7 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                 if (schema_word(j, pv, &pat, &pl)) {
                     const yep_dnode* n = yep_dom_node(j->v.dom, inst_id);
                     yep_view v = yep_dom_view(j->v.dom, n->value);
-                    int rc = yep_re_search(pat, pl, v.p != NULL ? v.p : "", v.len);
+                    int rc = yep_re_cache_search(j->cache, pat, pl, v.p != NULL ? v.p : "", v.len);
                     if (rc == 0) {
                         yep_validate_emit(&j->v, YEPTRIS_DIAG_PATTERN,
                                           yep_validate_node_off(j->v.dom, inst_id),
@@ -1150,7 +1153,8 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
                                 uint32_t pl = 0;
                                 if (pkn != NULL && pkn->kind == YEP_DOM_SCALAR &&
                                     schema_word(j, pk, &pat, &pl) &&
-                                    yep_re_search(pat, pl, kv.p != NULL ? kv.p : "", kv.len) == 1) {
+                                    yep_re_cache_search(j->cache, pat, pl, kv.p != NULL ? kv.p : "",
+                                                        kv.len) == 1) {
                                     known = 1;
                                 }
                                 pk = pv != UINT32_MAX && snode(j, pv) ? snode(j, pv)->next_sibling
@@ -1227,7 +1231,7 @@ static void check_pattern_properties(js_ctx* j, uint32_t pp_id, uint32_t inst_id
                 uint32_t pl = 0;
                 if (pkn != NULL && pkn->kind == YEP_DOM_SCALAR && pv != UINT32_MAX &&
                     schema_word(j, pk, &pat, &pl) &&
-                    yep_re_search(pat, pl, kv.p != NULL ? kv.p : "", kv.len) == 1) {
+                    yep_re_cache_search(j->cache, pat, pl, kv.p != NULL ? kv.p : "", kv.len) == 1) {
                     char namebuf[64];
                     size_t cl = name_copy(namebuf, sizeof(namebuf), kv.p, kv.len);
                     size_t mark = j->v.path_len;
@@ -1354,16 +1358,19 @@ static int js_validate_doc(js_ctx* j, uint32_t inst_root) {
     return j->v.oom ? -1 : 0;
 }
 
-/* The public entry lives in validate.c (yeptris_json_schema_validate):
- * it parses both sides, builds the report and drives this seam per
- * document (the declaration is internal.h's — the shared SSOT). */
+/* The public entries live in validate.c/compile.c (yeptris_json_schema_
+ * validate compiles+validates+frees through the compiled handle; the
+ * compiled face drives this seam per instance stream): they parse the
+ * sides, build the report and hand over the schema DOM + the retained
+ * pattern cache (the declarations are internal.h's — the shared SSOT). */
 int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const yep_dom* instance_dom,
-                       const uint32_t* doc_roots, uint32_t doc_count,
-                       yeptris_validate_report* rep) {
+                       const uint32_t* doc_roots, uint32_t doc_count, yeptris_validate_report* rep,
+                       const yep_re_cache* cache) {
     js_ctx j;
     memset(&j, 0, sizeof(j));
     j.sd = schema_dom;
     j.sroot = schema_root;
+    j.cache = cache;
     j.v.dom = instance_dom;
     j.v.rep = rep;
     j.v.input = instance_dom->input_base;

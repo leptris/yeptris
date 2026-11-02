@@ -943,3 +943,229 @@ TEST(ValidateRegex, SearchSemantics) {
     EXPECT_EQ(yep_re_search("\\p{Digit}", (uint32_t)strlen("\\p{Digit}"), "p{Digit}", 8), 1);
     EXPECT_EQ(yep_re_search("\\p{Digit}", (uint32_t)strlen("\\p{Digit}"), "123", 3), 0);
 }
+
+// ---- the compiled-schema economy (#885 item 3) ---------------------------
+//
+// The handle compiles ONCE (schema DOM + the pattern kernel's programs)
+// and validates many streams; the verdicts must equal the one-shot
+// face's byte for byte (the suite port's 1298 cases are the global
+// referee — these pins ride the same walk through both faces).
+
+namespace {
+
+// Runs BOTH faces over (schema, doc) and pins them together: status,
+// diagnostic count, and the first diagnostic's code/path/detail.
+void pin_faces(const char* schema, const char* doc) {
+    yeptris_schema* s = yeptris_schema_compile(schema, strlen(schema));
+    ASSERT_NE(s, nullptr) << "the test schema must compile";
+    yeptris_validate_report* r1 = NULL;
+    yeptris_validate_report* r2 = NULL;
+    YeptrisStatus st1 = yeptris_schema_validate(s, doc, strlen(doc), &r1);
+    YeptrisStatus st2 = yeptris_json_schema_validate(schema, strlen(schema), doc, strlen(doc), &r2);
+    ASSERT_EQ(st1, st2) << "the compiled face shares the one-shot's statuses";
+    ASSERT_EQ(yeptris_validate_report_count(r1), yeptris_validate_report_count(r2));
+    const yeptris_diagnostic* d1 = yeptris_validate_report_at(r1, 0);
+    const yeptris_diagnostic* d2 = yeptris_validate_report_at(r2, 0);
+    if (d1 == nullptr) {
+        EXPECT_EQ(d2, nullptr);
+    } else {
+        ASSERT_NE(d2, nullptr);
+        EXPECT_EQ(d1->code, d2->code);
+        EXPECT_STREQ(d1->path, d2->path);
+        EXPECT_STREQ(d1->detail, d2->detail);
+    }
+    yeptris_validate_report_free(r1);
+    yeptris_validate_report_free(r2);
+    yeptris_schema_free(s);
+}
+
+} // namespace
+
+TEST(ValidateCompiledSchema, CompileOnceValidateMany) {
+    // the pattern kernel is the XSD content-model analog: the schema's
+    // four patterns compile at handle-compile time, then every stream
+    // reuses them
+    const char* schema =
+        "{\"definitions\":{\"code\":{\"type\":\"string\",\"pattern\":\"^C-[0-9]{3}$\"}},"
+        "\"type\":\"object\","
+        "\"required\":[\"name\"],"
+        "\"properties\":{\"name\":{\"type\":\"string\",\"pattern\":\"^[a-z]+\"},"
+        "\"code\":{\"$ref\":\"#/definitions/code\"}},"
+        "\"patternProperties\":{\"^x-\":{\"maximum\":10}}}";
+    yeptris_schema* s = yeptris_schema_compile(schema, strlen(schema));
+    ASSERT_NE(s, nullptr);
+
+    yeptris_validate_report* r = NULL;
+    // 1: valid
+    ASSERT_EQ(yeptris_schema_validate(s, "{\"name\":\"abc\",\"code\":\"C-123\"}\n",
+                                      strlen("{\"name\":\"abc\",\"code\":\"C-123\"}\n"), &r),
+              YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    yeptris_validate_report_free(r);
+
+    // 2: the plain pattern misses
+    ASSERT_EQ(
+        yeptris_schema_validate(s, "{\"name\":\"Abc\"}\n", strlen("{\"name\":\"Abc\"}\n"), &r),
+        YEPTRIS_ERROR_SCHEMA);
+    ASSERT_NE(r, nullptr);
+    const yeptris_diagnostic* d = yeptris_validate_report_at(r, 0);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_PATTERN);
+    EXPECT_STREQ(d->path, "/name");
+    yeptris_validate_report_free(r);
+
+    // 3: the $ref'd pattern misses (a string satisfies type; the
+    // ref'd pattern rejects)
+    ASSERT_EQ(yeptris_schema_validate(s, "{\"name\":\"ok\",\"code\":\"X-99\"}\n",
+                                      strlen("{\"name\":\"ok\",\"code\":\"X-99\"}\n"), &r),
+              YEPTRIS_ERROR_SCHEMA);
+    d = yeptris_validate_report_at(r, 0);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_PATTERN);
+    EXPECT_STREQ(d->path, "/code");
+    yeptris_validate_report_free(r);
+
+    // 4: the patternProperties schema holds
+    ASSERT_EQ(yeptris_schema_validate(s, "{\"name\":\"ok\",\"x-thing\":5}\n",
+                                      strlen("{\"name\":\"ok\",\"x-thing\":5}\n"), &r),
+              YEPTRIS_OK);
+    yeptris_validate_report_free(r);
+
+    // 5: and misses over 10
+    ASSERT_EQ(yeptris_schema_validate(s, "{\"name\":\"ok\",\"x-thing\":11}\n",
+                                      strlen("{\"name\":\"ok\",\"x-thing\":11}\n"), &r),
+              YEPTRIS_ERROR_SCHEMA);
+    d = yeptris_validate_report_at(r, 0);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_MAXIMUM);
+    EXPECT_STREQ(d->path, "/x-thing");
+    yeptris_validate_report_free(r);
+
+    // 6: a required miss rides the same handle untouched
+    ASSERT_EQ(
+        yeptris_schema_validate(s, "{\"code\":\"C-001\"}\n", strlen("{\"code\":\"C-001\"}\n"), &r),
+        YEPTRIS_ERROR_SCHEMA);
+    d = yeptris_validate_report_at(r, 0);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_REQUIRED);
+    yeptris_validate_report_free(r);
+
+    // 7: a multi-document stream — diagnostics across both docs of
+    // one validate call
+    ASSERT_EQ(yeptris_schema_validate(s, "{\"name\":\"ok\"}\n---\n{\"name\":\"Nope\"}\n",
+                                      strlen("{\"name\":\"ok\"}\n---\n{\"name\":\"Nope\"}\n"), &r),
+              YEPTRIS_ERROR_SCHEMA);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    d = yeptris_validate_report_at(r, 0);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_PATTERN);
+    yeptris_validate_report_free(r);
+
+    // 8: an empty instance stream is valid
+    ASSERT_EQ(yeptris_schema_validate(s, "", 0, &r), YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    yeptris_validate_report_free(r);
+
+    yeptris_schema_free(s);
+}
+
+TEST(ValidateCompiledSchema, WrongSchemaRejectedIdenticallyToOneShot) {
+    // the compiled face and the one-shot face must agree byte for byte
+    // across shapes: patterns, bounds, refs, booleans, oneOf
+    pin_faces("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\"}}}",
+              "{\"a\": \"str\"}\n");
+    pin_faces("{\"properties\":{\"a\":{\"pattern\":\"^p\"},\"b\":{\"pattern\":\"^q\"}}}",
+              "{\"a\": \"xp\", \"b\": \"yq\"}\n");
+    pin_faces("{\"patternProperties\":{\"^[0-9]\":{\"minLength\":3}}}", "12: abc\n");
+    pin_faces("{\"$defs\":{\"n\":{\"type\":\"number\"}},\"allOf\":[{\"$ref\":\"#/$defs/n\"},"
+              "{\"maximum\":5}]}",
+              "7\n");
+    pin_faces("false", "1\n");
+    pin_faces("{\"oneOf\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}", "true\n");
+    pin_faces("{\"type\":\"array\",\"items\":{\"enum\":[1,2]}}", "- 1\n- 3\n- 2\n");
+    // the schema bytes hold no document / do not parse: same NULL, and
+    // the one-shot's exact statuses stay reachable through the faces
+    EXPECT_EQ(yeptris_schema_compile("", 0), nullptr);
+    EXPECT_EQ(yeptris_schema_compile(NULL, 5), nullptr);
+    yeptris_validate_report* r = NULL;
+    EXPECT_EQ(yeptris_json_schema_validate("", 0, "1\n", 2, &r), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(yeptris_json_schema_validate("{unbalanced", 11, "1\n", 2, &r), YEPTRIS_ERROR_PARSE);
+    EXPECT_EQ(r, nullptr);
+}
+
+TEST(ValidateCompiledSchema, InvalidPatternIsIgnoredLikeOneShot) {
+    // a pattern outside the subset is not retained: every use
+    // recompiles to -1 and the keyword is ignored — both faces alike
+    pin_faces("{\"properties\":{\"a\":{\"pattern\":\"(a\"}}}", "{\"a\": \"x\"}\n");
+    pin_faces("{\"patternProperties\":{\"[0\":{\"type\":\"integer\"}}}", "{\"[0\": \"s\"}\n");
+    pin_faces("{\"properties\":{\"a\":{\"pattern\":\"\"}}}", "{\"a\": \"x\"}\n");
+}
+
+TEST(ValidateCompiledSchema, ManyPatternsSharePrograms) {
+    // ten pattern nodes over one handle; verdicts identical to the
+    // one-shot for documents that trip each of them
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s", "{\"properties\":{");
+    for (int i = 0; i < 10; i++) {
+        char part[64];
+        snprintf(part, sizeof(part), "%s\"k%d\":{\"pattern\":\"^p%d$\"}", i ? "," : "", i, i);
+        strncat(buf, part, sizeof(buf) - strlen(buf) - 1);
+    }
+    strncat(buf, "}}", sizeof(buf) - strlen(buf) - 1);
+    yeptris_schema* s = yeptris_schema_compile(buf, strlen(buf));
+    ASSERT_NE(s, nullptr);
+    yeptris_validate_report* r = NULL;
+    // a document tripping ALL ten at once: the report enumerates the
+    // misses on one walk of one stream
+    char doc[256];
+    snprintf(doc, sizeof(doc), "%s", "{");
+    for (int i = 0; i < 10; i++) {
+        char part[32];
+        snprintf(part, sizeof(part), "%s\"k%d\":\"z\"", i ? "," : "", i);
+        strncat(doc, part, sizeof(doc) - strlen(doc) - 1);
+    }
+    strncat(doc, "}\n", sizeof(doc) - strlen(doc) - 1);
+    ASSERT_EQ(yeptris_schema_validate(s, doc, strlen(doc), &r), YEPTRIS_ERROR_SCHEMA);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)10);
+    for (size_t i = 0; i < 10; i++) {
+        const yeptris_diagnostic* d = yeptris_validate_report_at(r, i);
+        ASSERT_NE(d, nullptr);
+        EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_PATTERN);
+    }
+    yeptris_validate_report_free(r);
+    yeptris_schema_free(s);
+}
+
+TEST(ValidateCompiledSchema, HandleGuards) {
+    yeptris_validate_report* r = NULL;
+    // argument gates: the same shapes as the one-shot's
+    EXPECT_EQ(yeptris_schema_validate(NULL, "1", 1, &r), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(r, nullptr);
+    yeptris_schema* s = yeptris_schema_compile("true", 4);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(yeptris_schema_validate(s, "1", 1, NULL), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(yeptris_schema_validate(s, NULL, 3, &r), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(r, nullptr);
+    yeptris_schema_free(s);
+    // NULL free is a no-op, like documents
+    yeptris_schema_free(NULL);
+}
+
+TEST(ValidateCompiledSchema, FreedHandleContract) {
+    // the documented contract: free then NO use (the handle is dead);
+    // a fresh handle from the same bytes works and frees cleanly even
+    // when never validated
+    const char* schema = "{\"type\":\"integer\"}";
+    yeptris_schema* s = yeptris_schema_compile(schema, strlen(schema));
+    ASSERT_NE(s, nullptr);
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_schema_validate(s, "5\n", 2, &r), YEPTRIS_OK);
+    yeptris_validate_report_free(r);
+    yeptris_schema_free(s);
+    // an unvalidated handle frees clean
+    yeptris_schema* s2 = yeptris_schema_compile(schema, strlen(schema));
+    ASSERT_NE(s2, nullptr);
+    yeptris_schema_free(s2);
+}

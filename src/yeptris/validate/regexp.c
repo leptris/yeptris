@@ -19,6 +19,14 @@
  * Every array is a fixed stack budget; overflow is a SyntaxError (-1),
  * never a crash. Truth lives here once (MECE: a second consumer moves
  * this to its own module).
+ *
+ * Two consumption shapes over one compiler (#885 item 3):
+ * `yep_re_search` compiles into a stack ctx and drops it (the one-shot
+ * walk, zero allocation); the retained-program cache
+ * (`yep_re_cache_*`) compiles a schema's patterns ONCE into exact-size
+ * heap programs and runs them per validated string — the XSD
+ * content-model economy. A cache miss recompiles (identical verdicts);
+ * the cache itself is immutable once populated.
  */
 
 #include <string.h>
@@ -814,33 +822,43 @@ static int c_node(re_ctx* c, int id, re_frag* out, int depth) {
     }
 }
 
-/* ---- the public search: Pike VM over the subject ----------------------- */
+/* ---- compile: pattern -> program --------------------------------------- */
 
-int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_len) {
-    if (pat == NULL || pat_len == 0 || pat_len > RE_MAX_PAT) {
-        return -1;
-    }
-    re_ctx c;
-    memset(&c, 0, sizeof(c));
-    c.pat = pat;
-    c.pn = pat_len;
-
-    int root = p_alt(&c, 0);
-    if (root < 0 || c.pi != c.pn) {
+/* parse + compile into the caller's ctx: MATCH emits last, every
+ * pending arrow resolves. 0 ok (the fragment entry pc in *entry_out),
+ * -1 SyntaxError (or a budget trip — the caller treats both as
+ * "pattern outside the subset", never a guess). */
+static int re_build(re_ctx* c, const char* pat, uint32_t pat_len, int* entry_out) {
+    memset(c, 0, sizeof(*c));
+    c->pat = pat;
+    c->pn = pat_len;
+    int root = p_alt(c, 0);
+    if (root < 0 || c->pi != c->pn) {
         return -1; /* trailing garbage is a SyntaxError */
     }
     re_frag f;
-    if (c_node(&c, root, &f, 0) < 0) {
+    if (c_node(c, root, &f, 0) < 0) {
         return -1;
     }
-    if (emit_inst(&c, RE_OP_MATCH, 0, 0, 0) < 0) {
+    if (emit_inst(c, RE_OP_MATCH, 0, 0, 0) < 0) {
         return -1;
     }
-    frag_connect(&f, c.inst, c.inst_n - 1); /* MATCH emits last */
-    if (c.err) {
+    frag_connect(&f, c->inst, c->inst_n - 1); /* MATCH emits last */
+    if (c->err) {
         return -1;
     }
+    *entry_out = f.in;
+    return 0;
+}
 
+/* ---- the Pike VM (shared by the one-shot and the retained programs) ----- */
+
+/* Runs one compiled program over the subject: 1 match, 0 no match.
+ * `entry` is the fragment entry pc (MATCH is emitted last, so the graph
+ * is self-contained). Never fails: a program exists only when its
+ * pattern compiled. */
+static int re_vm(const re_inst* inst, const uint8_t (*cls)[32], int entry, const char* s,
+                 uint32_t s_len) {
     uint8_t mark[RE_MAX_INST];
     uint16_t cur[RE_MAX_INST], nxt[RE_MAX_INST];
     /* closure depth: the seeds (m+1: live threads + the unanchored
@@ -851,7 +869,7 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
     uint32_t gen = 1;
     memset(mark, 0, sizeof(mark));
 
-    if (f.in < 0) {
+    if (entry < 0) {
         return 1; /* an empty pattern matches everywhere */
     }
     /* initial closure at subject offset 0 (from the fragment entry;
@@ -859,19 +877,19 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
     int cur_n = 0;
     {
         int st_n = 0;
-        stack[st_n++] = (uint16_t)f.in;
+        stack[st_n++] = (uint16_t)entry;
         while (st_n > 0) {
             uint16_t pc = stack[--st_n];
             if (mark[pc] == (uint8_t)gen) {
                 continue;
             }
             mark[pc] = (uint8_t)gen;
-            uint8_t op = c.inst[pc].op;
+            uint8_t op = inst[pc].op;
             if (op == RE_OP_JMP) {
-                stack[st_n++] = c.inst[pc].x;
+                stack[st_n++] = inst[pc].x;
             } else if (op == RE_OP_SPLIT) {
-                stack[st_n++] = c.inst[pc].x;
-                stack[st_n++] = c.inst[pc].y;
+                stack[st_n++] = inst[pc].x;
+                stack[st_n++] = inst[pc].y;
             } else if (op == RE_OP_MATCH) {
                 return 1; /* the empty match at offset 0 */
             } else if (op == RE_OP_ASSERT) {
@@ -879,7 +897,7 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
                  * subject; a word boundary holds exactly when the
                  * subject starts inside a word (no previous char) */
                 int ok = 0;
-                switch (c.inst[pc].cls) {
+                switch (inst[pc].cls) {
                 case RE_AS_BOL:
                     ok = 1;
                     break;
@@ -888,12 +906,12 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
                     break;
                 default: {
                     int wn = s_len > 0 && re_word((unsigned char)s[0]);
-                    ok = c.inst[pc].cls == RE_AS_WBOUND ? (int)wn : !(int)wn;
+                    ok = inst[pc].cls == RE_AS_WBOUND ? (int)wn : !(int)wn;
                     break;
                 }
                 }
                 if (ok) {
-                    stack[st_n++] = c.inst[pc].x; /* the connected exit */
+                    stack[st_n++] = inst[pc].x; /* the connected exit */
                 }
             } else {
                 cur[cur_n++] = pc; /* CHAR/BYTE: a live thread */
@@ -910,17 +928,17 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
         int nxt_n = 0;
         for (int i = 0; i < cur_n; i++) {
             uint16_t pc = cur[i];
-            int hit = c.inst[pc].op == RE_OP_BYTE
-                          ? (c.inst[pc].cls == byte)
-                          : (c.cls[c.inst[pc].cls][(byte >> 3) & 31] & (1u << (byte & 7))) != 0;
+            int hit = inst[pc].op == RE_OP_BYTE
+                          ? (inst[pc].cls == byte)
+                          : (cls[inst[pc].cls][(byte >> 3) & 31] & (1u << (byte & 7))) != 0;
             if (hit) {
                 /* the exit is the CONNECTED target (frag_connect), not
                  * a fall-through: fragments link arbitrary pcs */
-                nxt[nxt_n++] = c.inst[pc].x;
+                nxt[nxt_n++] = inst[pc].x;
             }
         }
-        nxt[nxt_n++] = (uint16_t)f.in; /* unanchored: the search restarts
-                                        * at every offset */
+        nxt[nxt_n++] = (uint16_t)entry; /* unanchored: the search restarts
+                                         * at every offset */
         gen++;
         if ((gen & 0xFF) == 0) {
             memset(mark, 0, sizeof(mark));
@@ -937,17 +955,17 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
                 continue;
             }
             mark[pc] = (uint8_t)gen;
-            uint8_t op = c.inst[pc].op;
+            uint8_t op = inst[pc].op;
             if (op == RE_OP_JMP) {
-                stack[st_n++] = c.inst[pc].x;
+                stack[st_n++] = inst[pc].x;
             } else if (op == RE_OP_SPLIT) {
-                stack[st_n++] = c.inst[pc].x;
-                stack[st_n++] = c.inst[pc].y;
+                stack[st_n++] = inst[pc].x;
+                stack[st_n++] = inst[pc].y;
             } else if (op == RE_OP_MATCH) {
                 matched = 1;
             } else if (op == RE_OP_ASSERT) {
                 int ok = 0;
-                switch (c.inst[pc].cls) {
+                switch (inst[pc].cls) {
                 case RE_AS_BOL:
                     ok = (sp + 1) == 0;
                     break;
@@ -957,12 +975,12 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
                 default: {
                     int wp = re_word((unsigned char)s[sp]);
                     int wn = (sp + 1) < (uint32_t)s_len && re_word((unsigned char)s[sp + 1]);
-                    ok = c.inst[pc].cls == RE_AS_WBOUND ? (wp != wn) : (wp == wn);
+                    ok = inst[pc].cls == RE_AS_WBOUND ? (wp != wn) : (wp == wn);
                     break;
                 }
                 }
                 if (ok) {
-                    stack[st_n++] = c.inst[pc].x; /* the connected exit */
+                    stack[st_n++] = inst[pc].x; /* the connected exit */
                 }
             } else {
                 nxt[live_n++] = pc; /* a live thread for the next byte */
@@ -975,4 +993,142 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
         cur_n = live_n;
     }
     return 0;
+}
+
+/* ---- the one-shot search (compile fresh, run, drop) --------------------- */
+
+int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_len) {
+    if (pat == NULL || pat_len == 0 || pat_len > RE_MAX_PAT) {
+        return -1;
+    }
+    re_ctx c;
+    int entry = -1;
+    if (re_build(&c, pat, pat_len, &entry) != 0) {
+        return -1;
+    }
+    return re_vm(c.inst, c.cls, entry, s, s_len);
+}
+
+/* ---- the retained programs (the compiled schema's pattern cache) -------- */
+
+/* A compiled program: exact-size copies of the instruction stream and
+ * the class table (the ctx's bounded budgets, retained past the
+ * compile call). */
+typedef struct {
+    re_inst* inst;
+    uint8_t (*cls)[32];
+    int inst_n, cls_n;
+    int entry;
+} re_prog;
+
+static void re_prog_free(re_prog* p) {
+    const yep_allocator* sys = yep_system_allocator();
+    yep_free(sys, p->inst);
+    yep_free(sys, p->cls);
+    p->inst = NULL;
+    p->cls = NULL;
+}
+
+/* Compiles into a heap program. 0 ok; -1 SyntaxError or allocation
+ * failure (nothing retained; both read as "the pattern is unusable",
+ * the kernel's ignore posture). */
+static int re_compile(const char* pat, uint32_t pat_len, re_prog* out) {
+    if (pat == NULL || pat_len == 0 || pat_len > RE_MAX_PAT) {
+        return -1;
+    }
+    re_ctx c;
+    int entry = -1;
+    if (re_build(&c, pat, pat_len, &entry) != 0) {
+        return -1;
+    }
+    const yep_allocator* sys = yep_system_allocator();
+    re_prog p;
+    memset(&p, 0, sizeof(p));
+    p.inst_n = c.inst_n;
+    p.cls_n = c.cls_n;
+    p.entry = entry;
+    p.inst = yep_alloc(sys, (size_t)c.inst_n * sizeof(re_inst));
+    p.cls = yep_alloc(sys, (size_t)(c.cls_n > 0 ? c.cls_n : 1) * 32);
+    if (p.inst == NULL || p.cls == NULL) {
+        re_prog_free(&p);
+        return -1;
+    }
+    memcpy(p.inst, c.inst, (size_t)c.inst_n * sizeof(re_inst));
+    memcpy(p.cls, c.cls, (size_t)c.cls_n * 32);
+    *out = p;
+    return 0;
+}
+
+/* The table: pattern source -> compiled program. Keys are the schema's
+ * own byte views (stable for the handle's lifetime); lookups compare
+ * content so equal patterns share one program. Bounded: over
+ * RE_CACHE_MAX entries a miss recompiles — the one-shot behavior. */
+#define RE_CACHE_MAX 256
+typedef struct {
+    const char* pat;
+    uint32_t plen;
+    re_prog prog;
+} re_cache_slot;
+
+struct yep_re_cache {
+    re_cache_slot slot[RE_CACHE_MAX];
+    int n;
+};
+
+yep_re_cache* yep_re_cache_new(void) {
+    yep_re_cache* t = yep_alloc(yep_system_allocator(), sizeof(yep_re_cache));
+    if (t != NULL) {
+        memset(t, 0, sizeof(*t)); /* the allocator does not zero: n starts empty */
+    }
+    return t;
+}
+
+void yep_re_cache_free(yep_re_cache* t) {
+    if (t == NULL) {
+        return;
+    }
+    for (int i = 0; i < t->n; i++) {
+        re_prog_free(&t->slot[i].prog);
+    }
+    yep_free(yep_system_allocator(), t);
+}
+
+int yep_re_cache_add(yep_re_cache* t, const char* pat, uint32_t plen) {
+    if (t == NULL || pat == NULL || plen == 0) {
+        return 0; /* nothing to retain */
+    }
+    for (int i = 0; i < t->n; i++) {
+        if (t->slot[i].plen == plen && memcmp(t->slot[i].pat, pat, plen) == 0) {
+            return 1; /* already retained (equal patterns share one program) */
+        }
+    }
+    if (t->n >= RE_CACHE_MAX) {
+        return 0; /* the table is full: misses recompile per use, as the
+                   * one-shot face always has */
+    }
+    re_prog p;
+    if (re_compile(pat, plen, &p) != 0) {
+        return 0; /* invalid pattern: not retained; every use reads -1,
+                   * exactly the uncached verdict */
+    }
+    t->slot[t->n].pat = pat;
+    t->slot[t->n].plen = plen;
+    t->slot[t->n].prog = p;
+    t->n++;
+    return 1;
+}
+
+int yep_re_cache_search(const yep_re_cache* t, const char* pat, uint32_t plen, const char* s,
+                        uint32_t s_len) {
+    if (t != NULL && pat != NULL) {
+        for (int i = 0; i < t->n; i++) {
+            if (t->slot[i].plen == plen && memcmp(t->slot[i].pat, pat, plen) == 0) {
+                return re_vm(t->slot[i].prog.inst, t->slot[i].prog.cls, t->slot[i].prog.entry, s,
+                             s_len);
+            }
+        }
+    }
+    /* a miss (or no cache: the one-shot face) compiles fresh — identical
+     * verdicts either way, and the handle stays untouched */
+    return yep_re_search(pat, plen, s, s_len);
 }
