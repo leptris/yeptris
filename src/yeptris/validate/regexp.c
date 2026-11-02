@@ -836,7 +836,12 @@ int yep_re_search(const char* pat, uint32_t pat_len, const char* s, uint32_t s_l
     }
 
     uint8_t mark[RE_MAX_INST];
-    uint16_t cur[RE_MAX_INST], nxt[RE_MAX_INST], stack[RE_MAX_INST * 2];
+    uint16_t cur[RE_MAX_INST], nxt[RE_MAX_INST];
+    /* closure depth: the seeds (m+1: live threads + the unanchored
+     * restart) plus one net push per newly marked instruction (m) —
+     * 2m+2, not 2m (a 320-instruction program once had one 2-byte
+     * overflow slot) */
+    uint16_t stack[RE_MAX_INST * 2 + 2];
     uint32_t gen = 1;
     memset(mark, 0, sizeof(mark));
 
