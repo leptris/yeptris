@@ -194,6 +194,22 @@ add_test(
     COMMAND fuzz_validate ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/validate
 )
 
+# the compiled-schema economy (#885 item 3): untrusted SCHEMA bytes —
+# not just instance bytes — through compile/validate/free must be
+# crash- and leak-clean (statuses OK/SCHEMA/PARSE/DEPTH/ENCODING/
+# MEMORY/ARG only); the compile arena, the pattern-program builder and
+# the $ref depth guards all live past the call
+add_executable(fuzz_schema_compile fuzz/fuzz_schema_compile.c)
+target_link_libraries(fuzz_schema_compile PRIVATE yeptris_static)
+target_include_directories(fuzz_schema_compile PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+target_compile_definitions(fuzz_schema_compile PRIVATE YEP_FUZZ_STANDALONE)
+yeptris_set_warnings(fuzz_schema_compile)
+
+add_test(
+    NAME fuzz-schema-compile-corpus
+    COMMAND fuzz_schema_compile ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/schema_compile
+)
+
 # ---- JSON-Schema-Test-Suite (draft2020-12) driver (#885 item 2) --------
 # The vendored fixtures under conformance/jsonschema/tests are the
 # official suite's main tests; optional/ carries the pieces the
@@ -282,6 +298,12 @@ if(YEPTRIS_ENABLE_FUZZING)
     target_include_directories(fuzz_validate_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
     yeptris_set_warnings(fuzz_validate_lf)
     target_link_options(fuzz_validate_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
+
+    add_executable(fuzz_schema_compile_lf fuzz/fuzz_schema_compile.c)
+    target_link_libraries(fuzz_schema_compile_lf PRIVATE yeptris_static)
+    target_include_directories(fuzz_schema_compile_lf PRIVATE ${CMAKE_SOURCE_DIR}/src/include)
+    yeptris_set_warnings(fuzz_schema_compile_lf)
+    target_link_options(fuzz_schema_compile_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
 endif()
 endif()
 
@@ -444,6 +466,18 @@ if(YEPTRIS_LIBYAML_ROOT)
         NAME fuzz-diff-r107-bom-late-head
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-content-late-head-overflow.bin
+    )
+
+    # the r107 validation session's second candidate (the "{?#}" family,
+    # a SPLIT: libyaml's flow-? KEY token glues the '#' into a comment
+    # and rejects what yeptris's plain-'?' law accepts) — the quote-out
+    # split arm must classify both the minimal artifact and its
+    # two-member composition, without un-classifying the r10x seeds
+    add_test(
+        NAME fuzz-diff-qhash-glued-comment
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-q-hash-glued-comment.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-q-hash-glued-comment-pair.bin
     )
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

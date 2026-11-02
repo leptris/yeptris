@@ -1,0 +1,1 @@
+{"type":123,"required":"x","maximum":"z","enum":{"a":1},"items":true,"patternProperties":[1,2],"dependentRequired":7,"minLength":{"0":1},"contains":42,"if":[],"allOf":"nope","not":9,"multipleOf":true}

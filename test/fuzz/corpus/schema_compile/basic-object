@@ -1,0 +1,8 @@
+{"$defs":{"sha":{"type":"string","pattern":"^[a-f0-9]{8}$"}},
+"type":"object","required":["name","resources"],
+"properties":{"name":{"type":"string","minLength":1},
+"port":{"type":"integer","minimum":1,"maximum":65535},
+"resources":{"type":"object","additionalProperties":{"$ref":"#/$defs/sha"}},
+"tags":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+"mode":{"enum":["safe","fast"]}},
+"additionalProperties":false,"minProperties":1,"dependentRequired":{"port":["mode"]}}

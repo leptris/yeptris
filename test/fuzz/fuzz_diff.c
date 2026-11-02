@@ -1019,6 +1019,148 @@ static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const cha
     return yd_qcolon_walk(ldump, ydump);
 }
 
+/* True when the verdict is the glued-comment x flow-'?' SPLIT (the PR
+ * #894 validation session's candidate, "{?#}"): libyaml's scanner
+ * makes a KEY token for a flow '?' with ANY follower (the 1.1 law the
+ * qflow family carries) and its post-token skip then eats the GLUED
+ * '#...' as a comment — the closer vanishes and the flow collection
+ * never closes (libyaml REJECTS); yeptris's suite-pinned plain reading
+ * (HM87/652Z: a flow '?' with a non-space follower rides as plain
+ * content, and a '#' glued to content is content) keeps "?#" ONE plain
+ * KEY — the divergence is exactly that indicator law plus the comment
+ * glue (block context agrees: there libyaml's KEY token needs the
+ * simple-key position and "?#" stays plain on both sides). The probe
+ * quotes each '?#'-led plain run ('"?#"' — quoting is style-blind,
+ * the YD dumps carry no style): yeptris's reading of the rewrite must
+ * equal its original dump byte for byte (the rewrite is
+ * meaning-preserving) AND libyaml's reading of the rewrite must land
+ * on that same dump (the divergence was exactly the law above). A run
+ * that cannot be quoted ('"' or '\\' inside) declines. */
+static int yd_qflow_glued_hash_split(const uint8_t* data, size_t size, const char* ydump) {
+    if (ydump == NULL || size == 0 || size > 8192) {
+        return 0;
+    }
+    /* pass 1: a glued "?#" at flow depth, outside quotes? */
+    int depth = 0;
+    int quote = 0;
+    int hits = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\') {
+                i++;
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            continue;
+        }
+        if (c == '\'') {
+            quote = '\'';
+        } else if (c == '"') {
+            quote = '"';
+        } else if (c == '[' || c == '{') {
+            depth++;
+        } else if (c == ']' || c == '}') {
+            depth--;
+        } else if (c == '?' && depth > 0 && i + 1 < size && data[i + 1] == '#') {
+            hits++;
+        }
+    }
+    if (hits == 0) {
+        return 0;
+    }
+    /* pass 2: quote each '?#'-led plain run (two added bytes per run,
+     * runs never overlap: size * 3 bounds the copy) */
+    char* sub = malloc(size * 3 + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t subn = 0;
+    depth = 0;
+    quote = 0;
+    for (size_t i = 0; i < size;) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            sub[subn++] = (char)c;
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                sub[subn++] = (char)data[++i];
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            i++;
+            continue;
+        }
+        if (c == '\'') {
+            quote = '\'';
+        } else if (c == '"') {
+            quote = '"';
+        } else if (c == '[' || c == '{') {
+            depth++;
+        } else if (c == ']' || c == '}') {
+            depth--;
+        } else if (c == '?' && depth > 0 && i + 1 < size && data[i + 1] == '#') {
+            /* the run: to a flow indicator, a separator ':' (blank or
+             * flow follower), a break, a blank-led comment '#', or
+             * EOF; quotes and escapes cannot ride a quoted rewrite */
+            size_t j = i;
+            int bad = 0;
+            while (j < size) {
+                unsigned char r = data[j];
+                if (r == ',' || r == '[' || r == ']' || r == '{' || r == '}' || r == '\n' ||
+                    r == '\r') {
+                    break;
+                }
+                if (r == ':') {
+                    unsigned char f = j + 1 < size ? data[j + 1] : ' ';
+                    if (f == ' ' || f == '\t' || f == '\n' || f == '\r' || f == ',' || f == ']' ||
+                        f == '}') {
+                        break; /* the pair separator: the run ends here */
+                    }
+                }
+                if (r == '#' && j > i && (data[j - 1] == ' ' || data[j - 1] == '\t')) {
+                    break; /* a comment starts: the run ends before it */
+                }
+                if (r == '"' || r == '\\') {
+                    bad = 1;
+                    break;
+                }
+                j++;
+            }
+            if (bad) {
+                free(sub);
+                return 0;
+            }
+            size_t e = j;
+            while (e > i && (data[e - 1] == ' ' || data[e - 1] == '\t')) {
+                e--; /* plain scalars strip trailing blanks: keep them out */
+            }
+            sub[subn++] = '"';
+            for (size_t k = i; k < e; k++) {
+                sub[subn++] = (char)data[k];
+            }
+            sub[subn++] = '"';
+            i = j;
+            continue;
+        }
+        sub[subn++] = (char)c;
+        i++;
+    }
+    int yok2 = 0;
+    int lok2 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, subn, &yok2);
+    char* ldump2 = yd_libyaml_dump((const char*)sub, subn, &lok2);
+    int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ydump) == 0 &&
+                 strcmp(ldump2, ydump) == 0);
+    free(ydump2);
+    free(ldump2);
+    free(sub);
+    return known;
+}
+
 /* True when the difference is exactly the documented LS/PS break-
  * normalization family. yeptris normalizes LS/PS (U+2028/9) to '\n'
  * BEFORE the parse; libyaml treats them as breaks in block context
@@ -3274,6 +3416,13 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_anchor_glued_follower_divergence(data, size, ydump, ldump) ||
          yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
          yd_nonspecific_tag_divergence(data, size, ydump));
+    /* the glued-comment x flow-'?' split ("{?#}", the PR #894 session's
+     * second candidate): libyaml's KEY-token-plus-comment-glue reading
+     * REJECTS what yeptris's suite-pinned plain-'?' law accepts — a
+     * documented split, classified by the quote-out transform */
+    if (!known && v == YD_YEPTRIS_ONLY) {
+        known = yd_qflow_glued_hash_split(data, size, ydump);
+    }
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
