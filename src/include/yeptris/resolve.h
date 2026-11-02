@@ -40,10 +40,12 @@ typedef enum {
     YEPTRIS_TAG_CUSTOM = 11,
 } YeptrisTagId;
 
-/* Schemas. */
+/* Schemas. Appending only — bindings hard-code the values (test_abi). */
 typedef enum {
     YEPTRIS_SCHEMA_12_CORE = 0, /* default: the yaml-test-suite target */
     YEPTRIS_SCHEMA_11_COMPAT,   /* libyaml/Psych implicit typing */
+    YEPTRIS_SCHEMA_12_JSON,     /* spec 10.2: JSON productions; plain
+                                 * scalars matching none are errors (#882) */
 } YeptrisSchema;
 
 /* Canonical tag URI for a core id ("tag:yaml.org,2002:str"); NULL for

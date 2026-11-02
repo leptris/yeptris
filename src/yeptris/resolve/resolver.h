@@ -40,6 +40,15 @@ static inline yep_tag_id yep_resolve_number(const yep_resolver* r, int is_float)
 const yep_resolver* yep_resolver_core12(void);
 const yep_resolver* yep_resolver_compat11(void);
 
+/* The spec 10.2 JSON schema resolver (#882): null/true/false exact,
+ * the JSON int and float productions, everything else str. Parse stays
+ * lenient — the VALIDATOR flags plain scalars that matched no
+ * production (the spec's `*` -> Error row) through the classifier. */
+const yep_resolver* yep_resolver_json12(void);
+/* 1 when the plain span matches a JSON-schema production. The one
+ * truth table for the 12_JSON family (validate/ re-asks it). */
+int yep_json12_plain(const char* p, uint32_t n);
+
 /* core tag id <-> canonical URI (tags.c is the identity SSOT). */
 const char* yep_tag_uri(yep_tag_id id);
 
