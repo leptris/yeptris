@@ -6,6 +6,19 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **engine: the encoding front-end reaches every route (#877)** — `yep_engine_run` gated BOM/UTF-16/32 input, but `yep_engine_step`, the recorder, and the iterparse resume fed raw bytes to the engine: UTF-16 input silently produced garbage events (the round-122 bug class), and three resume-offset drifts reproduced on main. One gate now fronts every route (UTF-16/32 rejects as ENCODING at 1:1; the UTF-8 BOM strips across split feeds), iterparse resumes past the stripped prefix, and push events carry `end_line`/`end_col` so the push model's marks match pull/recorder (cross-model identity). Additive: `yeptris_recorder_status` reports the last feed's status with its 1-based error position (mirror of the pull/iterparse status calls).
+- **engine: the marshal wire readers get a fuzzer (#879)** — both readers (`emit/writer.c` and `cbor/from_marshal.c`) are exercised by a new `fuzz_marshal` harness over a 17-seed corpus, wired into ctest and the fuzz nightly. The release workflow now builds the native assets BEFORE tagging, so a failed asset build can no longer strand a bare tag.
+- **engine: the #863 plain-hex-scalar pin lands on main (#876)** — `Parse.PlainHexScalarStaysScalar863` pins the issue's exact document (the fontist build's scalar-kind contract) across the build matrix; the guard had been stranded on a branch.
+
+### Fixed
+
+- **engine: allocation failure reads as MEMORY on every route, and the DOM arena cannot corrupt silently (#878)** — the round-2 "clean error channel" discriminator provably never fired (`yep_engine_error` always returns the slot), so a fold-cap OOM reported PARSE on four routes; OOM is now discriminated by error code with route pins, iterparse carries a sink-OOM bit so a capture failure cannot masquerade as stream end, and the recorder's verdict is copied out before the engine dies. `yep_dom_str_put` OOM propagates through a sticky `dom->oom` + `dom_place` choke (a failed arena write can no longer read as silent success — `AllocFail.OomNeverReadsAsParseOrSilentSuccess`), uint32 capacity doubling is wrap-checked, and the arena/pool fit tests take the promised subtraction form (MSVC-clean sink init throughout).
+- **engine: the nightly r104 composition classifies known (#880)** — anchor-charset x PS-fold, 16 PS-led break runs: the fold walk's forced-additive arm was depth-capped at 8 and the artifact outran it; the walk is now a linear loop, mutation-checked (unfixed input aborts, fixed input classifies), with the artifact as a corpus seed and the fold algebra pinned.
+
 ## [0.6.56] - 2026-11-02
 
 ### Fixed
