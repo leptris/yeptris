@@ -1,14 +1,16 @@
 /* regexp.c — the bounded ECMA-regex subset behind JSON Schema's
- * `pattern` keyword (#882 slice 2).
+ * `pattern` keyword (#882 slice 2; #885 item 2).
  *
  * Supported: literals, '.', [...] classes (ranges, negation, \d\w\s
  * and their negations, \n\t\r\f\v\0, \xHH), groups (capturing ignored,
  * (?:...) fine), alternation, the quantifiers * + ? {n} {n,} {n,m}
  * (lazy markers parse and are ignored — match/no-match has no
  * preference), the ^ $ \b \B assertions. Unsupported constructs
- * (backreferences, lookaround, unknown letter escapes) are
- * SyntaxErrors: the caller treats an invalid pattern as an absent
- * keyword (2020-12's ignore posture), never a guess.
+ * (backreferences, lookaround) are SyntaxErrors, and unknown LETTER
+ * escapes are identity escapes (non-unicode ECMA-262 Annex B: \p
+ * without the u flag is the literal 'p'): the caller treats an invalid
+ * pattern as an absent keyword (2020-12's ignore posture), never a
+ * guess.
  *
  * Shape: byte-oriented — classes are ASCII, UTF-8 literals match
  * byte-wise (ASCII patterns, the JSON Schema norm, are exact).
