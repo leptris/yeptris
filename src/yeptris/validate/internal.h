@@ -68,6 +68,17 @@ int yep_validate_path_push(yep_vctx* c, const char* seg, size_t seg_len);
 int yep_validate_path_push_index(yep_vctx* c, uint32_t idx);
 void yep_validate_path_pop(yep_vctx* c, size_t mark);
 
+/* The stream face's document attribution (#885 item 4): a validated
+ * stream is addressed as an array of documents — when it holds MORE
+ * THAN ONE document, every diagnostic path is prefixed with the
+ * document's index segment, so diagnostics name their document ("/1/k"
+ * is key k of document 1; the line/col stay input-absolute). Streams
+ * with a single document keep the bare instance pointers (the
+ * JSON-Schema-Test-Suite's paths and every single-doc pin are
+ * unchanged). Call before a document's walk and pop the returned mark
+ * after it; OOM sets ctx.oom and the walk unwinds. */
+size_t yep_validate_doc_prefix(yep_vctx* c, int qualified, uint32_t index);
+
 /* The bounded ECMA-regex subset behind `pattern` (jsonschema.c):
  * literals, '.', classes, groups, alternation, the greedy/lazy
  * quantifiers, anchors, \d\w\s\D\W\S\b\B and \xHH. Byte-oriented

@@ -168,6 +168,14 @@ void yep_validate_path_pop(yep_vctx* c, size_t mark) {
     c->path_len = mark;
 }
 
+size_t yep_validate_doc_prefix(yep_vctx* c, int qualified, uint32_t index) {
+    size_t mark = c->path_len;
+    if (qualified && yep_validate_path_push_index(c, index) != 0) {
+        c->oom = 1; /* the path scratch failed: the walk unwinds */
+    }
+    return mark;
+}
+
 /* ---- the report --------------------------------------------------------- */
 
 void yep_validate_emit(yep_vctx* c, int code, uint32_t off, const char* detail_fmt, ...) {
@@ -442,7 +450,6 @@ static void check_duplicates(yep_vctx* c, uint32_t map_id) {
     }
     memset(tbl, 0, (size_t)cap * sizeof(key_slot));
     uint32_t k = m->first_child;
-    int reported = 0;
     while (k != UINT32_MAX) {
         uint32_t v = yep_dom_node(d, k) ? yep_dom_node(d, k)->next_sibling : UINT32_MAX;
         uint64_t h64 = yep_validate_node_hash(d, k, 0);
@@ -450,19 +457,19 @@ static void check_duplicates(yep_vctx* c, uint32_t map_id) {
         uint32_t i = h & (cap - 1);
         while (tbl[i].node != 0) {
             if (tbl[i].hash == h && yep_validate_node_equal(d, tbl[i].node - 1, d, k, 0)) {
-                if (!reported) {
-                    reported = 1;
-                    uint32_t off = yep_validate_node_off(d, k);
-                    yep_view kv = yep_dom_view(d, yep_dom_node(d, k)->value);
-                    char key[40];
-                    size_t kl = kv.len < sizeof(key) - 8 ? kv.len : sizeof(key) - 8;
-                    if (kl > 0 && kv.p != NULL) {
-                        memcpy(key, kv.p, kl);
-                    }
-                    key[kl] = '\0';
-                    yep_validate_emit(c, YEPTRIS_DIAG_DUPLICATE_KEY, off,
-                                      "duplicate mapping key (\"%s\")", key);
+                /* enumerate EVERY miss: each key whose canonical form
+                 * already appeared is its own diagnostic (the report
+                 * cap bounds a hostile mapping) */
+                uint32_t off = yep_validate_node_off(d, k);
+                yep_view kv = yep_dom_view(d, yep_dom_node(d, k)->value);
+                char key[40];
+                size_t kl = kv.len < sizeof(key) - 8 ? kv.len : sizeof(key) - 8;
+                if (kl > 0 && kv.p != NULL) {
+                    memcpy(key, kv.p, kl);
                 }
+                key[kl] = '\0';
+                yep_validate_emit(c, YEPTRIS_DIAG_DUPLICATE_KEY, off,
+                                  "duplicate mapping key (\"%s\")", key);
                 break;
             }
             i = (i + 1) & (cap - 1);
@@ -784,8 +791,12 @@ static YeptrisStatus validate_dom(yep_dom* dom, const yep_resolver* fam, int jso
     c.input_len = dom->input_len;
 
     for (uint32_t i = 0; i < dom->dcount && !c.oom; i++) {
-        c.path_len = 0; /* paths are root-relative per document */
+        c.path_len = 0; /* root-relative per document; a multi-document
+                         * stream addresses its documents as array
+                         * elements: "/i" + the instance pointer */
+        size_t mark = yep_validate_doc_prefix(&c, dom->dcount > 1, i);
         walk_family(&c, dom->docs[i], fam, json_family);
+        yep_validate_path_pop(&c, mark);
     }
 
     yep_free(sys, c.line_off);
