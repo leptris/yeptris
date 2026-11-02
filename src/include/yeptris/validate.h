@@ -99,8 +99,7 @@ YEPTRIS_CT_ASSERT(sizeof(yeptris_diagnostic) ==
 typedef struct yeptris_validate_report yeptris_validate_report;
 
 /* Diagnostic count (0 = the document is valid). */
-YEPTRIS_API size_t
-yeptris_validate_report_count(const yeptris_validate_report* report);
+YEPTRIS_API size_t yeptris_validate_report_count(const yeptris_validate_report* report);
 
 /* Diagnostic i (0-based); NULL out of range. Memory: borrowed from the
  * report — valid until yeptris_validate_report_free. */

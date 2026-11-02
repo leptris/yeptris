@@ -106,9 +106,9 @@ TEST(Validate, JsonFamilyFlagsPlainNonProductionScalars) {
     free_report(r);
 
     r = NULL;
-    ASSERT_EQ(yeptris_validate("name: hello\n", strlen("name: hello\n"), YEPTRIS_SCHEMA_12_CORE,
-                               &r),
-              YEPTRIS_OK);
+    ASSERT_EQ(
+        yeptris_validate("name: hello\n", strlen("name: hello\n"), YEPTRIS_SCHEMA_12_CORE, &r),
+        YEPTRIS_OK);
     free_report(r);
 
     // quoted scalars are strings: fine under the JSON family
@@ -137,8 +137,7 @@ TEST(Validate, JsonFamilyFlagsNonStringKeysButAcceptsStringOnes) {
 
     // core-12 allows keys of any type
     r = NULL;
-    ASSERT_EQ(yeptris_validate("123: \"v\"\n", strlen("123: \"v\"\n"), YEPTRIS_SCHEMA_12_CORE,
-                               &r),
+    ASSERT_EQ(yeptris_validate("123: \"v\"\n", strlen("123: \"v\"\n"), YEPTRIS_SCHEMA_12_CORE, &r),
               YEPTRIS_OK);
     free_report(r);
 
@@ -196,9 +195,9 @@ TEST(Validate, JsonFamilyTagConsistencyUsesJsonProductions) {
     free_report(r);
 
     r = NULL;
-    ASSERT_EQ(yeptris_validate("a: !!int 0x1A\n", strlen("a: !!int 0x1A\n"),
-                               YEPTRIS_SCHEMA_12_CORE, &r),
-              YEPTRIS_OK);
+    ASSERT_EQ(
+        yeptris_validate("a: !!int 0x1A\n", strlen("a: !!int 0x1A\n"), YEPTRIS_SCHEMA_12_CORE, &r),
+        YEPTRIS_OK);
     free_report(r);
 }
 
@@ -210,25 +209,23 @@ TEST(Validate, DuplicateKeysBothFamiliesCanonicalForm) {
     free_report(r);
 
     // spec 3.2.1.3: 0o13 and 0xB are the same int — ONE key
-    const yeptris_diagnostic* d2 =
-        validate_first("k: 0o13\nk: 0xB\n", YEPTRIS_SCHEMA_12_CORE, &r);
+    const yeptris_diagnostic* d2 = validate_first("k: 0o13\nk: 0xB\n", YEPTRIS_SCHEMA_12_CORE, &r);
     ASSERT_NE(d2, nullptr);
     EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_DUPLICATE_KEY);
     free_report(r);
 
     // the same KEY twice with differently-typed values is the issue's
     // "multiple types for one key": still one duplicate
-    const yeptris_diagnostic* dm =
-        validate_first("k: 1\nk: 1.0\n", YEPTRIS_SCHEMA_12_CORE, &r);
+    const yeptris_diagnostic* dm = validate_first("k: 1\nk: 1.0\n", YEPTRIS_SCHEMA_12_CORE, &r);
     ASSERT_NE(dm, nullptr);
     EXPECT_EQ(dm->code, (uint32_t)YEPTRIS_DIAG_DUPLICATE_KEY);
     free_report(r);
 
     // int 1 vs float 1.0 AS keys carry different tags: distinct keys
     r = NULL;
-    ASSERT_EQ(yeptris_validate("1: a\n1.0: b\n", strlen("1: a\n1.0: b\n"), YEPTRIS_SCHEMA_12_CORE,
-                               &r),
-              YEPTRIS_OK);
+    ASSERT_EQ(
+        yeptris_validate("1: a\n1.0: b\n", strlen("1: a\n1.0: b\n"), YEPTRIS_SCHEMA_12_CORE, &r),
+        YEPTRIS_OK);
     free_report(r);
 
     // nested duplicate: the diagnostic rides the inner mapping's path
@@ -319,8 +316,7 @@ namespace {
 const yeptris_diagnostic* js_first(const char* schema, const char* doc,
                                    yeptris_validate_report** out) {
     *out = NULL;
-    YeptrisStatus st =
-        yeptris_json_schema_validate(schema, strlen(schema), doc, strlen(doc), out);
+    YeptrisStatus st = yeptris_json_schema_validate(schema, strlen(schema), doc, strlen(doc), out);
     if (st == YEPTRIS_OK) {
         return nullptr;
     }
@@ -396,8 +392,7 @@ TEST(ValidateJsonSchema, EnumConst) {
 
 TEST(ValidateJsonSchema, NumericBoundsAndExclusiveForms) {
     yeptris_validate_report* r = NULL;
-    const yeptris_diagnostic* d =
-        js_first("{\"type\":\"number\",\"minimum\":3}", "2\n", &r);
+    const yeptris_diagnostic* d = js_first("{\"type\":\"number\",\"minimum\":3}", "2\n", &r);
     ASSERT_NE(d, nullptr);
     EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_MINIMUM);
     free_report(r);
@@ -411,8 +406,7 @@ TEST(ValidateJsonSchema, NumericBoundsAndExclusiveForms) {
     EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_EXCLUSIVE_MINIMUM);
     free_report(r);
 
-    const yeptris_diagnostic* d3 =
-        js_first("{\"type\":\"number\",\"maximum\":10}", "10.5\n", &r);
+    const yeptris_diagnostic* d3 = js_first("{\"type\":\"number\",\"maximum\":10}", "10.5\n", &r);
     ASSERT_NE(d3, nullptr);
     EXPECT_EQ(d3->code, (uint32_t)YEPTRIS_DIAG_MAXIMUM);
     free_report(r);
@@ -436,8 +430,8 @@ TEST(ValidateJsonSchema, NumericBoundsAndExclusiveForms) {
 TEST(ValidateJsonSchema, StringBoundsUseCodePoints) {
     yeptris_validate_report* r = NULL;
     // "éé" is 4 UTF-8 bytes but 2 code points
-    const yeptris_diagnostic* d = js_first("{\"type\":\"string\",\"minLength\":3}",
-                                           "\"\xC3\xA9\xC3\xA9\"", &r);
+    const yeptris_diagnostic* d =
+        js_first("{\"type\":\"string\",\"minLength\":3}", "\"\xC3\xA9\xC3\xA9\"", &r);
     ASSERT_NE(d, nullptr);
     EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_MIN_LENGTH);
     free_report(r);
@@ -449,8 +443,7 @@ TEST(ValidateJsonSchema, StringBoundsUseCodePoints) {
 
 TEST(ValidateJsonSchema, PatternMatchesThroughTheBoundedKernel) {
     yeptris_validate_report* r = NULL;
-    ASSERT_EQ(js_first("{\"type\":\"string\",\"pattern\":\"^[a-z]+$\"}", "\"abc\"", &r),
-              nullptr);
+    ASSERT_EQ(js_first("{\"type\":\"string\",\"pattern\":\"^[a-z]+$\"}", "\"abc\"", &r), nullptr);
     free_report(r);
     const yeptris_diagnostic* d =
         js_first("{\"type\":\"string\",\"pattern\":\"^[a-z]+$\"}", "\"ABC\"", &r);
@@ -492,8 +485,8 @@ TEST(ValidateJsonSchema, ArrayBoundsUniqueItems) {
 TEST(ValidateJsonSchema, ItemsAndPrefixItems) {
     yeptris_validate_report* r = NULL;
     // items: one schema over every element
-    const yeptris_diagnostic* d = js_first("{\"items\":{\"type\":\"integer\"}}", "[1, \"x\", 3]",
-                                           &r);
+    const yeptris_diagnostic* d =
+        js_first("{\"items\":{\"type\":\"integer\"}}", "[1, \"x\", 3]", &r);
     ASSERT_NE(d, nullptr);
     EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TYPE);
     EXPECT_STREQ(d->path, "/1");
@@ -611,8 +604,7 @@ TEST(ValidateJsonSchema, LocalRefsResolveAndCarryPaths) {
     free_report(r);
 
     // an unresolvable pointer is a REF diagnostic at the instance
-    const yeptris_diagnostic* d3 =
-        js_first("{\"$ref\":\"#/nowhere\"}", "\"x\"\n", &r);
+    const yeptris_diagnostic* d3 = js_first("{\"$ref\":\"#/nowhere\"}", "\"x\"\n", &r);
     ASSERT_NE(d3, nullptr);
     EXPECT_EQ(d3->code, (uint32_t)YEPTRIS_DIAG_REF);
     free_report(r);
@@ -707,8 +699,8 @@ TEST(ValidateRegex, SearchSemantics) {
     EXPECT_EQ(yep_re_search("\\bcat\\b", (uint32_t)strlen("\\bcat\\b"), "scatter", 7), 0);
     // the NFA is linear: the classic blowup pattern answers instantly
     const char* blowup = "aaaaaaaaaaaaaaaaaaaaaaaaaaaab";
-    EXPECT_EQ(yep_re_search("(a+)+$", (uint32_t)strlen("(a+)+$"), blowup,
-                            (uint32_t)strlen(blowup)), 0);
+    EXPECT_EQ(yep_re_search("(a+)+$", (uint32_t)strlen("(a+)+$"), blowup, (uint32_t)strlen(blowup)),
+              0);
     // SyntaxErrors
     EXPECT_EQ(yep_re_search("(a", (uint32_t)strlen("(a"), "a", 1), -1);
     EXPECT_EQ(yep_re_search("[a", (uint32_t)strlen("[a"), "a", 1), -1);
