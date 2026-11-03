@@ -558,10 +558,9 @@ TEST(ValueStream, CollectionTagTextRidesTheOpens) {
     size_t n = 0;
     char* arena = NULL;
     size_t alen = 0;
-    ASSERT_EQ(
-        yeptris_value_drain(set_doc, strlen(set_doc), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n, &arena,
-                            &alen),
-        YEPTRIS_OK);
+    ASSERT_EQ(yeptris_value_drain(set_doc, strlen(set_doc), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n,
+                                  &arena, &alen),
+              YEPTRIS_OK);
     ASSERT_GE(n, 2u);
     ASSERT_EQ(vals[1].kind, YEP_V_MAP_OPEN);
     ASSERT_EQ(vals[1].len, strlen("tag:yaml.org,2002:set"));
@@ -573,10 +572,9 @@ TEST(ValueStream, CollectionTagTextRidesTheOpens) {
     const char* omap_doc = "k: !!omap\n  - p: 1\n";
     vals = NULL;
     arena = NULL;
-    ASSERT_EQ(
-        yeptris_value_drain(omap_doc, strlen(omap_doc), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n, &arena,
-                            &alen),
-        YEPTRIS_OK);
+    ASSERT_EQ(yeptris_value_drain(omap_doc, strlen(omap_doc), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n,
+                                  &arena, &alen),
+              YEPTRIS_OK);
     int seq_opens = 0;
     for (size_t i = 0; i < n; i++) {
         if (vals[i].kind == YEP_V_SEQ_OPEN) {

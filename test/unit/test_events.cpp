@@ -309,8 +309,7 @@ TEST(Events, CollectionTagTextSurvivesTheRecorder) {
         if (recs[i].type == YEPTRIS_EV_MAPPING_START) {
             map_starts++;
             ASSERT_EQ(recs[i].tag_len, strlen("tag:yaml.org,2002:set"));
-            EXPECT_EQ(memcmp(arena + recs[i].tag_off, "tag:yaml.org,2002:set", recs[i].tag_len),
-                      0);
+            EXPECT_EQ(memcmp(arena + recs[i].tag_off, "tag:yaml.org,2002:set", recs[i].tag_len), 0);
         } else {
             EXPECT_EQ(recs[i].tag_len, 0u);
         }
