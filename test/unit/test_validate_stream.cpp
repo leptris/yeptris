@@ -288,35 +288,39 @@ TEST(ValidateStream, StreamAttribution) {
     EXPECT_EQ(yeptris_validate_report_at(r, 1)->line, (uint32_t)1);
     yeptris_validate_report_free(r);
 
-    // a literal block scalar takes the quoted law (clean under JSON);
-    // the one miss is the plain KEY, positioned at its bytes on BOTH
-    // routes (the differential gate pins the pair)
+    // a literal block scalar takes the quoted law, and a plain KEY is
+    // a string (spec 10.2 example 10.8 — the #908 law both routes
+    // share): the document is clean under the JSON family on BOTH
+    // routes
     r = NULL;
     ASSERT_EQ(yeptris_validate_stream("k: |\n  text\n", strlen("k: |\n  text\n"),
+                                      YEPTRIS_SCHEMA_12_JSON, &r),
+              YEPTRIS_OK);
+    yeptris_validate_report_free(r);
+
+    // the family's teeth survive the event route: a non-string KEY
+    // rides the string-key demand, positioned at its bytes on BOTH
+    // routes (the differential gate pins the pair)
+    r = NULL;
+    ASSERT_EQ(yeptris_validate_stream("123: |\n  text\n", strlen("123: |\n  text\n"),
                                       YEPTRIS_SCHEMA_12_JSON, &r),
               YEPTRIS_ERROR_SCHEMA);
     ASSERT_NE(r, nullptr);
     ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
     d = yeptris_validate_report_at(r, 0);
-    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_KEY_NOT_STRING);
     EXPECT_STREQ(d->path, "");
     EXPECT_EQ(d->line, (uint32_t)1);
     EXPECT_EQ(d->col, (uint32_t)1);
     yeptris_validate_report_free(r);
 
-    // an unpositioned miss on the event route: the empty document's
-    // scalar matches no JSON production and carries no bytes
+    // the empty document's scalar is a no-production plain: a STRING
+    // under the example-10.8 law — the stream stays clean on both
+    // routes
     r = NULL;
     ASSERT_EQ(yeptris_validate_stream("--- 1\n---\n--- 3\n", strlen("--- 1\n---\n--- 3\n"),
                                       YEPTRIS_SCHEMA_12_JSON, &r),
-              YEPTRIS_ERROR_SCHEMA);
-    ASSERT_NE(r, nullptr);
-    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
-    d = yeptris_validate_report_at(r, 0);
-    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
-    EXPECT_STREQ(d->path, "/1");
-    EXPECT_EQ(d->line, (uint32_t)0);
-    EXPECT_EQ(d->col, (uint32_t)0);
+              YEPTRIS_OK);
     yeptris_validate_report_free(r);
 }
 
