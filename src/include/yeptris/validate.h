@@ -157,6 +157,33 @@ YEPTRIS_API YeptrisStatus yeptris_validate(const char* buf, size_t len, YeptrisS
 YEPTRIS_API YeptrisStatus yeptris_validate_document(YeptrisDocument doc, YeptrisSchema schema,
                                                     yeptris_validate_report** out);
 
+/* The EVENT-ROUTE twin of yeptris_validate (#902): the same parse
+ * (front-end, depth/encoding guards, statuses — the DOM route's
+ * sink-entry seam) feeding a streaming validator state machine. The
+ * family lanes ride the event walk itself; NO node tree is ever
+ * built. Everything observable is the DOM route's, by construction
+ * and by the differential gate:
+ *
+ *  - diagnostics: the same code rail (0-35 after the sweep), the same report shape and
+ *    cap, the same JSON-pointer paths and the stream face's
+ *    per-document attribution — emitted in the DOM walk's order (a
+ *    mapping's own tag check, its duplicate-key misses, then its
+ *    pairs' content);
+ *  - positions: the DOM route's region law — a diagnostic sits at the
+ *    node's input-borrowed value bytes (0/0 when the engine pooled
+ *    them), so line/col/offset match bit for bit;
+ *  - statuses: OK / SCHEMA / PARSE / DEPTH / ENCODING / MEMORY / ARG,
+ *    byte-identical argument gates (NULL with length, 11_COMPAT).
+ *
+ * The compiled JSON Schema lane (yeptris_schema_validate) keeps the
+ * DOM route: its evaluator needs random access (uniqueItems, contains,
+ * required); a streaming twin waits for #901's annotation-model seam.
+ *
+ * Memory: the caller owns *out; free it with
+ * yeptris_validate_report_free. */
+YEPTRIS_API YeptrisStatus yeptris_validate_stream(const char* buf, size_t len, YeptrisSchema schema,
+                                                  yeptris_validate_report** out);
+
 /* JSON Schema draft 2020-12 subset (#882 slice 2; #885 item 2; the
  * 2020-12 sota sweep). `schema` is parsed with the same engine (JSON
  * is YAML flow); document 0 of the stream is the schema. Keyword

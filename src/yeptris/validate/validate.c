@@ -178,12 +178,8 @@ size_t yep_validate_doc_prefix(yep_vctx* c, int qualified, uint32_t index) {
 
 /* ---- the report --------------------------------------------------------- */
 
-void yep_validate_emit(yep_vctx* c, int code, uint32_t off, const char* detail_fmt, ...) {
-    if (c->suppress > 0) {
-        c->trial_fail++; /* a probe (anyOf/oneOf/not/if): swallow, fail its own extent */
-        return;
-    }
-    c->fail_mark++; /* the application that owns this extent is invalid */
+/* The report-path writer (the cap law's one home). */
+void yep_validate_report_put(yep_vctx* c, const yeptris_diagnostic* d) {
     yeptris_validate_report* r = c->rep;
     if (r->count >= YEP_VALIDATE_MAX_DIAGS) {
         /* the cap: the LAST slot becomes the LIMIT sentinel */
@@ -195,22 +191,44 @@ void yep_validate_emit(yep_vctx* c, int code, uint32_t off, const char* detail_f
                  YEP_VALIDATE_MAX_DIAGS);
         return;
     }
-    yeptris_diagnostic* d = &r->diags[r->count];
-    memset(d, 0, sizeof(*d));
-    d->code = (uint32_t)code;
+    r->diags[r->count++] = *d;
+}
+
+void yep_validate_emit(yep_vctx* c, int code, uint32_t off, const char* detail_fmt, ...) {
+    if (c->suppress > 0) {
+        c->trial_fail++; /* a probe (anyOf/oneOf/not/if): swallow, fail its own extent */
+        return;
+    }
+    c->fail_mark++; /* the application that owns this extent is invalid */
+    yeptris_diagnostic d;
+    memset(&d, 0, sizeof(d));
+    d.code = (uint32_t)code;
     if (off != UINT32_MAX && off < c->input_len) {
-        d->offset = off;
-        line_col_of(c, off, &d->line, &d->col);
+        d.offset = off;
+        line_col_of(c, off, &d.line, &d.col);
     }
     size_t plen = c->path_len < YEPTRIS_DIAG_PATH_MAX - 1 ? c->path_len : YEPTRIS_DIAG_PATH_MAX - 1;
     if (c->path != NULL) {
-        memcpy(d->path, c->path, plen);
+        memcpy(d.path, c->path, plen);
     }
     va_list ap;
     va_start(ap, detail_fmt);
-    vsnprintf(d->detail, sizeof(d->detail), detail_fmt, ap);
+    vsnprintf(d.detail, sizeof(d.detail), detail_fmt, ap);
     va_end(ap);
-    r->count++;
+    if (c->stage_put != NULL) {
+        /* the event route's staging (#902): the diagnostic joins the
+         * OPEN mapping's stage — the flush replays [own tag][duplicates]
+         * [pair content] so the report order stays the DOM walk's.
+         * NOTHING is dropped here: the walk position is unknown until
+         * the flush order is fixed (a mapping's duplicates precede its
+         * content), so the cap law applies at the replay, through
+         * yep_validate_report_put — the staging holds O(violations),
+         * the same input-bounded class as the DOM route's tree. */
+        c->staged++;
+        c->stage_put(c->stage, &d);
+        return;
+    }
+    yep_validate_report_put(c, &d);
 }
 
 /* ---- node facts --------------------------------------------------------- */
@@ -235,24 +253,57 @@ uint32_t yep_validate_node_off(const yep_dom* d, uint32_t id) {
 
 /* ---- canonical key/value facts (shared with jsonschema.c) ---------------- */
 
-/* The resolved tag id of a scalar node (explicit tag wins, then the
- * plain verdict already on the node, then str for quoted/block). */
-uint8_t yep_validate_scalar_tag(const yep_dnode* n) {
-    if (n->tag.len > 0) {
-        return n->tag_id;
+/* The scalar tag law (internal.h's fact core; the DOM wrapper below
+ * and the event route's facts both land here). */
+uint8_t yep_validate_tag_of(uint8_t tag_id, int has_tag, int plainish) {
+    if (has_tag) {
+        return tag_id;
     }
     /* implicit marks the resolver's verdict even at style ANY (the
      * document-level empty scalar carries no token to style) */
-    if (n->style == YEP_STYLE_PLAIN || n->implicit) {
-        return n->tag_id;
+    if (plainish) {
+        return tag_id;
     }
     return YEPTRIS_TAG_STR;
 }
 
+/* The resolved tag id of a scalar node (explicit tag wins, then the
+ * plain verdict already on the node, then str for quoted/block). */
+uint8_t yep_validate_scalar_tag(const yep_dnode* n) {
+    return yep_validate_tag_of(n->tag_id, n->tag.len > 0,
+                               n->style == YEP_STYLE_PLAIN || n->implicit);
+}
+
 /* Canonical hash of a node (the key-uniqueness fingerprint): tags and
  * canonical forms, numeric values for int/float. */
-static uint64_t hash_mix(uint64_t h, uint64_t v) {
+uint64_t yep_validate_hash_mix(uint64_t h, uint64_t v) {
     h ^= v + 0x9E3779B97F4A7C15ULL + (h << 6) + (h >> 2);
+    return h;
+}
+
+/* The scalar arm (internal.h's law): base + tag; int/float fold the
+ * numeric VALUE — one bucket for both tags (1 and 1.0 are the same
+ * canonical number) — exact for i64-representable magnitudes up to
+ * 2^53, and beyond that two distinct ints may collide (equality is
+ * the authority, a collision only costs a probe); everything else
+ * folds the raw bytes. */
+uint64_t yep_validate_scalar_digest(uint8_t tag, yep_view v) {
+    uint64_t h = YEP_VAL_DIGEST_SCALAR + tag;
+    if (tag == YEPTRIS_TAG_INT || tag == YEPTRIS_TAG_FLOAT) {
+        double dv = 0;
+        int64_t iv = 0;
+        if (yep_num_i64(v.p, v.len, &iv) == 0) {
+            dv = (double)iv;
+        } else {
+            yep_num_f64(v.p, v.len, &dv);
+        }
+        uint64_t bits;
+        memcpy(&bits, &dv, sizeof(bits));
+        return yep_validate_hash_mix(h, bits);
+    }
+    for (uint32_t i = 0; i < v.len; i++) {
+        h = yep_validate_hash_mix(h, (unsigned char)v.p[i]);
+    }
     return h;
 }
 
@@ -266,13 +317,13 @@ uint64_t yep_validate_node_hash(const yep_dom* d, uint32_t id, int depth) {
     }
     if (n->kind == YEP_DOM_ALIAS) {
         return n->target != UINT32_MAX ? yep_validate_node_hash(d, n->target, depth + 1)
-                                       : hash_mix(0xA11A, n->value.len);
+                                       : yep_validate_hash_mix(YEP_VAL_DIGEST_ALIAS, n->value.len);
     }
     if (n->kind == YEP_DOM_SEQUENCE) {
-        uint64_t h = 0x5EED51ULL;
+        uint64_t h = YEP_VAL_DIGEST_SEQ_SEED;
         uint32_t ch = n->first_child;
         while (ch != UINT32_MAX) {
-            h = hash_mix(h, yep_validate_node_hash(d, ch, depth + 1));
+            h = yep_validate_hash_mix(h, yep_validate_node_hash(d, ch, depth + 1));
             ch = yep_dom_node(d, ch) ? yep_dom_node(d, ch)->next_sibling : UINT32_MAX;
         }
         return h;
@@ -281,12 +332,13 @@ uint64_t yep_validate_node_hash(const yep_dom* d, uint32_t id, int depth) {
         /* mappings are UNORDERED (spec 3.2.1.3 canonical form): the
          * fold is commutative (XOR of per-pair mixes) so key order
          * cannot change the fingerprint */
-        uint64_t h = 0x5EED4A9ULL;
+        uint64_t h = YEP_VAL_DIGEST_MAP_SEED;
         uint32_t k = n->first_child;
         while (k != UINT32_MAX) {
             uint32_t v = yep_dom_node(d, k) ? yep_dom_node(d, k)->next_sibling : UINT32_MAX;
-            uint64_t pair = hash_mix(0x51D1, yep_validate_node_hash(d, k, depth + 1));
-            pair = hash_mix(pair, yep_validate_node_hash(d, v, depth + 1));
+            uint64_t pair = yep_validate_hash_mix(YEP_VAL_DIGEST_PAIR_SEED,
+                                                  yep_validate_node_hash(d, k, depth + 1));
+            pair = yep_validate_hash_mix(pair, yep_validate_node_hash(d, v, depth + 1));
             h ^= pair;
             k = v != UINT32_MAX && yep_dom_node(d, v) ? yep_dom_node(d, v)->next_sibling
                                                       : UINT32_MAX;
@@ -294,31 +346,7 @@ uint64_t yep_validate_node_hash(const yep_dom* d, uint32_t id, int depth) {
         return h;
     }
     /* scalar: tag + canonical form */
-    uint8_t tag = yep_validate_scalar_tag(n);
-    yep_view v = yep_dom_view(d, n->value);
-    uint64_t h = 0x5CA1A + tag;
-    if (tag == YEPTRIS_TAG_INT || tag == YEPTRIS_TAG_FLOAT) {
-        /* canonical: the numeric VALUE, one bucket for both tags (1 and
-         * 1.0 are the same canonical number) — the double bits; exact
-         * for i64-representable magnitudes up to 2^53, and beyond that
-         * two distinct ints may collide (equality is the authority, a
-         * collision only costs a probe) */
-        double dv = 0;
-        int64_t iv = 0;
-        if (yep_num_i64(v.p, v.len, &iv) == 0) {
-            dv = (double)iv;
-        } else {
-            yep_num_f64(v.p, v.len, &dv);
-        }
-        uint64_t bits;
-        memcpy(&bits, &dv, sizeof(bits));
-        h = hash_mix(h, bits);
-        return h;
-    }
-    for (uint32_t i = 0; i < v.len; i++) {
-        h = hash_mix(h, (unsigned char)v.p[i]);
-    }
-    return h;
+    return yep_validate_scalar_digest(yep_validate_scalar_tag(n), yep_dom_view(d, n->value));
 }
 
 /* Canonical equality (spec 3.2.1.3): same tag and canonical form.
@@ -515,44 +543,40 @@ static const char* tag_word(uint8_t id) {
 
 /* Explicit-tag consistency (both families): the tag asserts a type the
  * content cannot carry. seq/map check the node KIND; the five core
- * scalar tags re-resolve the content through the family resolver. */
-static void check_tag(yep_vctx* c, uint32_t id, const yep_resolver* fam, int json_family) {
-    const yep_dom* d = c->dom;
-    const yep_dnode* n = yep_dom_node(d, id);
-    if (n->tag.len == 0) {
+ * scalar tags re-resolve the content through the family resolver.
+ * internal.h's fact core — the event route feeds the same five facts. */
+void yep_check_tag_facts(yep_vctx* c, int kind, int has_tag, uint8_t tag_id, yep_view value,
+                         uint32_t off, const yep_resolver* fam, int json_family) {
+    if (!has_tag) {
         return; /* no explicit tag */
     }
-    uint8_t want = n->tag_id;
+    uint8_t want = tag_id;
     const char* w = tag_word(want);
     if (want == YEPTRIS_TAG_SEQ || want == YEPTRIS_TAG_MAP || want == YEPTRIS_TAG_STR) {
-        int ok = want == YEPTRIS_TAG_STR
-                     ? n->kind == YEP_DOM_SCALAR
-                     : (want == YEPTRIS_TAG_SEQ && n->kind == YEP_DOM_SEQUENCE) ||
-                           (want == YEPTRIS_TAG_MAP && n->kind == YEP_DOM_MAPPING);
+        int ok = want == YEPTRIS_TAG_STR ? kind == YEP_DOM_SCALAR
+                                         : (want == YEPTRIS_TAG_SEQ && kind == YEP_DOM_SEQUENCE) ||
+                                               (want == YEPTRIS_TAG_MAP && kind == YEP_DOM_MAPPING);
         if (!ok) {
-            yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, yep_validate_node_off(d, id),
-                              "explicit %s tag on a %s", w,
-                              n->kind == YEP_DOM_SCALAR
+            yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, off, "explicit %s tag on a %s", w,
+                              kind == YEP_DOM_SCALAR
                                   ? "scalar"
-                                  : (n->kind == YEP_DOM_SEQUENCE ? "sequence" : "mapping"));
+                                  : (kind == YEP_DOM_SEQUENCE ? "sequence" : "mapping"));
         }
         return;
     }
     if (want >= YEPTRIS_TAG_INT && want <= YEPTRIS_TAG_NULL) {
-        if (n->kind != YEP_DOM_SCALAR) {
-            yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, yep_validate_node_off(d, id),
-                              "explicit %s tag on a %s", w,
-                              n->kind == YEP_DOM_SEQUENCE ? "sequence" : "mapping");
+        if (kind != YEP_DOM_SCALAR) {
+            yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, off, "explicit %s tag on a %s", w,
+                              kind == YEP_DOM_SEQUENCE ? "sequence" : "mapping");
             return;
         }
-        yep_view v = yep_dom_view(d, n->value);
-        uint8_t got = fam->resolve(fam->ctx, v.p != NULL ? v.p : "", v.len);
+        uint8_t got = fam->resolve(fam->ctx, value.p != NULL ? value.p : "", value.len);
         if (got != want) {
             if (json_family) {
-                yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, yep_validate_node_off(d, id),
+                yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, off,
                                   "explicit %s tag; content is not a JSON %s", w, w);
             } else {
-                yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, yep_validate_node_off(d, id),
+                yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, off,
                                   "explicit %s tag on %s content", w, tag_word(got));
             }
         }
@@ -560,6 +584,53 @@ static void check_tag(yep_vctx* c, uint32_t id, const yep_resolver* fam, int jso
     }
     /* timestamp/binary/merge/value/custom: consumer-defined under core;
      * the JSON family rejects them wholesale (checked by the caller). */
+}
+
+static void check_tag(yep_vctx* c, uint32_t id, const yep_resolver* fam, int json_family) {
+    const yep_dom* d = c->dom;
+    const yep_dnode* n = yep_dom_node(d, id);
+    if (n->tag.len == 0) {
+        return;
+    }
+    yep_check_tag_facts(c, (int)n->kind, 1, n->tag_id, yep_dom_view(d, n->value),
+                        yep_validate_node_off(d, id), fam, json_family);
+}
+
+/* json12: a SCALAR mapping key's checks (internal.h's fact core). */
+void yep_check_json_key_facts(yep_vctx* c, int has_tag, uint8_t tag_id, int plainish,
+                              yep_view value, uint32_t off) {
+    if (has_tag) {
+        uint8_t want = tag_id;
+        if (want == YEPTRIS_TAG_STR) {
+            return;
+        }
+        if (want >= YEPTRIS_TAG_INT && want <= YEPTRIS_TAG_NULL) {
+            yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
+                              "mapping key is %s (expected a "
+                              "string)",
+                              tag_word(want));
+        } else {
+            yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, off,
+                              "mapping key carries a non-JSON "
+                              "tag");
+        }
+        return;
+    }
+    if (!plainish) {
+        return; /* quoted/block keys are strings */
+    }
+    int cls = yep_json12_plain(value.p != NULL ? value.p : "", value.len);
+    if (cls == 0) {
+        yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, off,
+                          "plain scalar matches no JSON production");
+        return;
+    }
+    if (cls != (int)YEPTRIS_TAG_STR) {
+        yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
+                          "mapping key is %s (expected a "
+                          "string)",
+                          tag_word((uint8_t)cls));
+    }
 }
 
 /* json12: a mapping key must be a string scalar. */
@@ -578,58 +649,60 @@ static void check_json_key(yep_vctx* c, uint32_t key_id) {
                           n->kind == YEP_DOM_SEQUENCE ? "sequence" : "mapping");
         return;
     }
-    uint32_t off = yep_validate_node_off(d, key_id);
-    if (n->tag.len > 0) {
-        uint8_t want = n->tag_id;
-        if (want == YEPTRIS_TAG_STR) {
+    yep_check_json_key_facts(c, n->tag.len > 0, n->tag_id,
+                             n->implicit || n->style == YEP_STYLE_PLAIN, yep_dom_view(d, n->value),
+                             yep_validate_node_off(d, key_id));
+}
+
+/* json12: a mapping key must be a string scalar; a plain scalar
+ * matching no JSON production IS a string (spec 10.2 example 10.8's
+ * "A null"/"Booleans" are plain block keys) — the string-key demand
+ * bars only keys resolving to non-string productions. internal.h's
+ * fact core: the DOM walk and the event route both land here, so the
+ * two routes cannot diverge on a verdict. */
+void yep_check_json_key_facts(yep_vctx* c, int has_tag, uint8_t tag_id, int plainish,
+                              yep_view value, uint32_t off) {
+    if (has_tag) {
+        if (tag_id == YEPTRIS_TAG_STR) {
             return;
         }
-        if (want >= YEPTRIS_TAG_INT && want <= YEPTRIS_TAG_NULL) {
+        if (tag_id >= YEPTRIS_TAG_INT && tag_id <= YEPTRIS_TAG_NULL) {
             yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
-                              "mapping key is %s (expected a "
-                              "string)",
-                              tag_word(want));
+                              "mapping key is %s (expected a string)", tag_word(tag_id));
         } else {
             yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, off,
-                              "mapping key carries a non-JSON "
-                              "tag");
+                              "mapping key carries a non-JSON tag");
         }
         return;
     }
-    if (!(n->implicit || n->style == YEP_STYLE_PLAIN)) {
+    if (!plainish) {
         return; /* quoted/block keys are strings */
     }
-    yep_view v = yep_dom_view(d, n->value);
-    int cls = yep_json12_plain(v.p != NULL ? v.p : "", v.len);
-    /* a plain key matching no JSON production IS a string (spec 10.2:
-     * example 10.8's "A null"/"Booleans" are plain block keys) — the
-     * string-key demand bars only keys resolving to non-string
-     * productions; the no-production Error row governs VALUES */
+    int cls = yep_json12_plain(value.p != NULL ? value.p : "", value.len);
     if (cls != 0 && cls != (int)YEPTRIS_TAG_STR) {
         yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
-                          "mapping key is %s (expected a "
-                          "string)",
-                          tag_word((uint8_t)cls));
+                          "mapping key is %s (expected a string)", tag_word((uint8_t)cls));
     }
 }
 
-/* json12: plain scalars matching no JSON production are STRINGS —
- * spec 10.2 example 10.8 resolves them as strings (keys AND the
- * "Invalid" list), overriding the table's "should consider an error"
- * note, which governs JSON-file processing warnings. The family's
- * validation teeth are the string-key demand (check_json_key) and
- * explicit non-JSON tags; implicit no-match plains stay family-neutral. */
+/* json12 scalar facts: only explicit non-JSON tags diagnose — example
+ * 10.8 resolves implicit no-production plains as strings (keys AND
+ * the "Invalid" list), overriding the table's error note. */
+void yep_check_json_scalar_facts(yep_vctx* c, int has_tag, uint8_t tag_id, int plainish,
+                                 yep_view value, uint32_t off) {
+    (void)plainish;
+    (void)value;
+    if (has_tag) {
+        uint8_t want = tag_id;
+    }
+}
+
 static void check_json_scalar(yep_vctx* c, uint32_t id) {
     const yep_dom* d = c->dom;
     const yep_dnode* n = yep_dom_node(d, id);
-    if (n->tag.len > 0) {
-        uint8_t want = n->tag_id;
-        if (want == YEPTRIS_TAG_TIMESTAMP || want == YEPTRIS_TAG_BINARY ||
-            want == YEPTRIS_TAG_MERGE || want == YEPTRIS_TAG_VALUE || want == YEPTRIS_TAG_CUSTOM) {
-            yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, yep_validate_node_off(d, id),
-                              "explicit %s tag is not a JSON type", tag_word(want));
-        }
-    }
+    yep_check_json_scalar_facts(c, n->tag.len > 0, n->tag_id,
+                                n->implicit || n->style == YEP_STYLE_PLAIN,
+                                yep_dom_view(d, n->value), yep_validate_node_off(d, id));
 }
 
 static void walk_family(yep_vctx* c, uint32_t id, const yep_resolver* fam, int json_family);
@@ -809,7 +882,9 @@ static YeptrisStatus validate_dom(yep_dom* dom, const yep_resolver* fam, int jso
     return st;
 }
 
-static int schema_is_family(YeptrisSchema schema, const yep_resolver** fam, int* json_family) {
+/* The family selector (internal.h's seam): 11_COMPAT is the
+ * parse-compat resolver, not a validation family. */
+int yep_validate_schema_family(YeptrisSchema schema, const yep_resolver** fam, int* json_family) {
     switch (schema) {
     case YEPTRIS_SCHEMA_12_CORE:
         *fam = yep_resolver_core12();
@@ -832,7 +907,7 @@ YEPTRIS_API YeptrisStatus yeptris_validate_document(YeptrisDocument doc, Yeptris
     *out = NULL;
     const yep_resolver* fam;
     int json_family;
-    if (!schema_is_family(schema, &fam, &json_family)) {
+    if (!yep_validate_schema_family(schema, &fam, &json_family)) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
                       "schema %d is not a validation family", (int)schema);
         return YEPTRIS_ERROR_ARG;
@@ -861,7 +936,7 @@ YEPTRIS_API YeptrisStatus yeptris_validate(const char* buf, size_t len, YeptrisS
     *out = NULL;
     const yep_resolver* fam;
     int json_family;
-    if (!schema_is_family(schema, &fam, &json_family)) {
+    if (!yep_validate_schema_family(schema, &fam, &json_family)) {
         yep_error_set(yep_error_tls(), YEP_ERR_UNEXPECTED, 0, 0, 0,
                       "schema %d is not a validation family", (int)schema);
         return YEPTRIS_ERROR_ARG;

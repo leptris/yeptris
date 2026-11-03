@@ -59,6 +59,7 @@ add_executable(test_unit
     unit/test_line_shape.cpp
     unit/test_schema.cpp
     unit/test_validate.cpp
+    unit/test_validate_stream.cpp
     unit/test_tape.cpp
     unit/test_ytape.cpp
     unit/test_plan.cpp

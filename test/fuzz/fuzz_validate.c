@@ -1,7 +1,10 @@
 /* fuzz_validate.c — the validation face's invariants (#882; the
- * TODO.impl/19 discipline). Both walks over UNTRUSTED bytes:
+ * TODO.impl/19 discipline). The walks over UNTRUSTED bytes:
  *
- *  - the family walk (12_CORE / 12_JSON): parse+validate fused;
+ *  - the family walk (12_CORE / 12_JSON): parse+validate fused, the
+ *    DOM route;
+ *  - the event route (#902): the same families through the streaming
+ *    twin (yeptris_validate_stream) — no DOM, the same contract;
  *  - the JSON Schema walk: the same bytes as BOTH schema and instance
  *    (the cross product reaches the schema-side guards, the pointer
  *    resolver and the regex kernel with hostile patterns).
@@ -112,6 +115,18 @@ static int probe_one(const uint8_t* data, size_t size) {
     r = NULL;
     fprintf(stderr, "fuzz_validate: leg json\n");
     st = yeptris_validate(buf, size, YEPTRIS_SCHEMA_12_JSON, &r);
+    drain(st, r);
+    /* the event route (#902): the same bytes through the streaming
+     * twin — the same status contract, the same report shape */
+    st = YEPTRIS_ERROR_ARG;
+    r = NULL;
+    fprintf(stderr, "fuzz_validate: leg core-stream\n");
+    st = yeptris_validate_stream(buf, size, YEPTRIS_SCHEMA_12_CORE, &r);
+    drain(st, r);
+    st = YEPTRIS_ERROR_ARG;
+    r = NULL;
+    fprintf(stderr, "fuzz_validate: leg json-stream\n");
+    st = yeptris_validate_stream(buf, size, YEPTRIS_SCHEMA_12_JSON, &r);
     drain(st, r);
     /* the schema side rides the same bytes: hostile schemas reach the
      * pointer resolver, the keyword readers and the regex kernel */

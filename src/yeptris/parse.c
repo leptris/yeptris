@@ -228,22 +228,22 @@ jfail:
     return NULL;
 }
 
-static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisParseOptions* opts,
-                                  int json_mode, int lazy, YeptrisStatus* status) {
-    YeptrisStatus st = YEPTRIS_OK;
-    if (buf == NULL && len != 0) {
-        st = YEPTRIS_ERROR_ARG;
-        goto fail;
-    }
-
+/* The shared parse front-end (the encoding law, one home): BOM sniff;
+ * borrow UTF-8, transcode the rest; printability; NEL normalization.
+ * Returns 0 ok, -1 failed (*st carries ENCODING). *transcoded owns any
+ * copy (the system allocator frees it); *data and *data_len point at
+ * the bytes the engine runs on. json_mode skips the YAML-only passes (the
+ * JSON reader validated its own grammar and well-formedness at the
+ * entry and keeps U+0085 raw inside strings). */
+static int parse_frontend(const char* buf, size_t len, const yep_allocator* sys, int json_mode,
+                          const char** data_out, size_t* data_len_out,
+                          unsigned char** transcoded_out, size_t* transcoded_len_out,
+                          int* norm_kept_raw_out, YeptrisStatus* st) {
     /* a NULL/0-byte stream is a valid empty input: parse it through a
      * non-null base so the BOM arithmetic never computes NULL+0
      * (clang's UBSan flags the zero-offset-null form; gcc's does not —
      * the schema-econ BadInputs pin surfaced it on the macOS arm64 leg) */
     const char* src = buf != NULL ? buf : "";
-    const yep_allocator* sys = yep_system_allocator();
-
-    /* Encoding front-end: BOM sniff; borrow UTF-8, transcode the rest. */
     const char* data = src;
     size_t data_len = len;
     unsigned char* transcoded = NULL;
@@ -258,7 +258,12 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
          * entry: no BOM, no transcoding, and never the printable set —
          * RFC 8259 allows DEL and noncharacters that YAML c-printable
          * excludes. The engine takes the bytes directly. */
-        goto engine_enter;
+        *data_out = data;
+        *data_len_out = data_len;
+        *transcoded_out = NULL;
+        *transcoded_len_out = 0;
+        *norm_kept_raw_out = 0;
+        return 0;
     }
 
     size_t bom = yep_bom_sniff((const unsigned char*)src, len, &enc);
@@ -274,8 +279,8 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
             yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, terr,
                           "ill-formed input encoding");
             yep_free(sys, transcoded);
-            st = YEPTRIS_ERROR_ENCODING;
-            goto fail;
+            *st = YEPTRIS_ERROR_ENCODING;
+            return -1;
         }
         data = (const char*)transcoded;
         data_len = transcoded_len;
@@ -284,8 +289,8 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
             yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, pverr,
                           "non-printable character at byte %zu", pverr);
             yep_free(sys, transcoded);
-            st = YEPTRIS_ERROR_ENCODING;
-            goto fail;
+            *st = YEPTRIS_ERROR_ENCODING;
+            return -1;
         }
     } else {
         /* The encoding gate rides the cheap gate_scan kernel; sizing
@@ -299,8 +304,8 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
             if (!yep_printable_validate((const unsigned char*)data, data_len, &verr)) {
                 yep_error_set(yep_error_tls(), YEP_ERR_ENCODING, 0, 0, verr,
                               "ill-formed or non-printable UTF-8 at byte %zu", verr);
-                st = YEPTRIS_ERROR_ENCODING;
-                goto fail;
+                *st = YEPTRIS_ERROR_ENCODING;
+                return -1;
             }
         }
     }
@@ -325,9 +330,128 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
         }
     }
 
+    *data_out = data;
+    *data_len_out = data_len;
+    *transcoded_out = transcoded;
+    *transcoded_len_out = transcoded_len;
+    *norm_kept_raw_out = norm_kept_raw;
+    return 0;
+}
+
+/* parse.c's sink-entry seam (#902): the DOM route's exact front-end and
+ * engine run into a caller sink — no DOM, no tape. Statuses are the
+ * parse route's (OK, or PARSE / DEPTH / ENCODING / MEMORY; the sink's
+ * own failure rides MEMORY like the DOM builder's). on_input (may be
+ * NULL) receives the run's input view — the DOM route's input_base law
+ * (the transcoded copy, or the caller's bytes) and its post-BOM length
+ * — immediately before the engine runs, because the events' borrowed
+ * views subtract from it. The bytes live only for the run. */
+YeptrisStatus yep_parse_events(const char* buf, size_t len, YeptrisSchema schema,
+                               const yep_sink* sink,
+                               void (*on_input)(void* ctx, const char* base, size_t len),
+                               void* on_ctx) {
+    if (sink == NULL || (buf == NULL && len != 0)) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    const yep_allocator* sys = yep_system_allocator();
+    const char* data = NULL;
+    size_t data_len = 0;
+    unsigned char* transcoded = NULL;
+    size_t transcoded_len = 0;
+    int norm_kept_raw = 0;
+    YeptrisStatus st = YEPTRIS_OK;
+    if (parse_frontend(buf, len, sys, 0, &data, &data_len, &transcoded, &transcoded_len,
+                       &norm_kept_raw, &st) != 0) {
+        return st;
+    }
+    yep_engine* eng = yep_engine_create(sys);
+    if (eng == NULL) {
+        yep_free(sys, transcoded);
+        return YEPTRIS_ERROR_MEMORY;
+    }
+    /* the typing SSOT: the family's resolver (compat11 when asked,
+     * json12 for the 12_JSON validation family, core12 otherwise) */
+    yep_engine_set_resolver(eng, schema == YEPTRIS_SCHEMA_11_COMPAT
+                                     ? yep_resolver_compat11()
+                                     : (schema == YEPTRIS_SCHEMA_12_JSON ? yep_resolver_json12()
+                                                                         : yep_resolver_core12()));
+    if (schema == YEPTRIS_SCHEMA_11_COMPAT) {
+        /* the compat schema is the psych/libyaml surface (see
+         * parse_impl's twin comment) */
+        yep_engine_set_compat_grammar(eng, 1);
+    }
+    {
+        /* the nametab reserve survives: a memchr chain for '&' is far
+         * cheaper than the class sweep it replaced */
+        yep_text_stats amp_only = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        const char* q = data == NULL ? "" : data;
+        const char* end = q + data_len;
+        if (q != NULL) {
+            while ((q = memchr(q, '&', (size_t)(end - q))) != NULL) {
+                amp_only.amp++;
+                q++;
+            }
+        }
+        yep_engine_prepare(eng, &amp_only);
+    }
+    yep_engine_front_done(eng);
+    if (on_input != NULL) {
+        on_input(on_ctx, transcoded ? (const char*)transcoded : buf, data_len);
+    }
+    int rc = yep_engine_run(eng, data, data_len, sink);
+    if (rc != 0) {
+        /* the error CODE decides the public status — the parse route's
+         * law (parse_impl carries the full comment): a CLEAN channel
+         * under a failed run means the SINK failed */
+        const yep_error* ee = yep_engine_error(eng);
+        yep_err_code code = (ee && ee->code != YEP_ERR_NONE) ? ee->code : YEP_ERR_MEMORY;
+        if (ee) {
+            yep_error* tls = yep_error_tls();
+            *tls = *ee;
+        }
+        yep_pool* finish = yep_engine_detach_pool(eng);
+        yep_pool_destroy(finish);
+        yep_engine_destroy(eng);
+        yep_free(sys, transcoded);
+        return (code == YEP_ERR_MEMORY)  ? YEPTRIS_ERROR_MEMORY
+               : (code == YEP_ERR_DEPTH) ? YEPTRIS_ERROR_DEPTH
+                                         : YEPTRIS_ERROR_PARSE;
+    }
+    yep_pool* finish = yep_engine_detach_pool(eng);
+    yep_pool_destroy(finish); /* nothing borrows the finish pool: every
+                               * consumer copies (snapshot law) */
+    yep_engine_destroy(eng);
+    yep_free(sys, transcoded);
+    return YEPTRIS_OK;
+}
+
+static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisParseOptions* opts,
+                                  int json_mode, int lazy, YeptrisStatus* status) {
+    YeptrisStatus st = YEPTRIS_OK;
+    if (buf == NULL && len != 0) {
+        st = YEPTRIS_ERROR_ARG;
+        goto fail;
+    }
+
+    const yep_allocator* sys = yep_system_allocator();
+
+    /* Encoding front-end (parse_frontend owns the law): BOM sniff;
+     * borrow UTF-8, transcode the rest; NEL normalization. */
+    const char* data = NULL;
+    size_t data_len = 0;
+    unsigned char* transcoded = NULL;
+    size_t transcoded_len = 0;
+    int norm_kept_raw = 0; /* raw NEL/LS/PS survived the quote-aware
+                            * walk: the engine route owns the document
+                            * (the tape runner predates the cut) */
+
+    if (parse_frontend(buf, len, sys, json_mode, &data, &data_len, &transcoded, &transcoded_len,
+                       &norm_kept_raw, &st) != 0) {
+        goto fail;
+    }
+
     /* Engine → DOM. */
     yep_engine* eng = NULL;
-engine_enter:
     eng = yep_engine_create(sys);
     if (opts != NULL) {
         /* the typing SSOT: the family's resolver (compat11 when asked,
