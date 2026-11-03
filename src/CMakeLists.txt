@@ -51,6 +51,7 @@ set(YEPTRIS_SOURCES
     yeptris/plan.c
 
     yeptris/marshal.c
+    yeptris/marshal/to_json.c
     yeptris/visit/json_visit.c
     yeptris/visit/yaml_visit.c
     yeptris/visit/dom_visit.c

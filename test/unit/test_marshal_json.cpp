@@ -3,7 +3,7 @@
  *
  * The fixtures are hex-locked Ruby 3.4 dumps. The registration law
  * they pin (derived empirically, see the mj_value comment in
- * emit/writer.c): '[', '{', '"', 'f', 'l' and anything 'I'-wrapped
+ * marshal/to_json.c): '[', '{', '"', 'f', 'l' and anything 'I'-wrapped
  * register once per construct in 0-based stream order — the root
  * included, wrappers transparent — and every '@' indexes that
  * sequence. The linked-fixture group exists because a random-tree

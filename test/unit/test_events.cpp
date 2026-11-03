@@ -511,3 +511,48 @@ TEST(Events, EngineMemoryLimitsReportMemoryNotParse) {
     EXPECT_EQ(yeptris_iterparse_status(it, nullptr, nullptr), YEPTRIS_ERROR_MEMORY) << "iterparse";
     yeptris_iterparse_free(it);
 }
+
+/* #904 item 4, the abort-text law: a nonzero callback return surfaces
+ * as YEPTRIS_ERROR_PARSE with the last-error channel SET — the mark is
+ * the event the callback aborted on (the old code returned PARSE over
+ * a CLEAN TLS slot, so yeptris_last_error served whatever stale
+ * message this thread's previous operation had left). */
+TEST(Events, PushCallbackAbortSetsTheErrorChannel) {
+    struct Ctx {
+        int seen = 0;
+        uint32_t abort_line = 0, abort_col = 0;
+    } ctx;
+    auto fn = [](void* v, const YeptrisEvent* e) -> int {
+        Ctx* c = (Ctx*)v;
+        c->seen++;
+        if (e->type == YEPTRIS_EV_SCALAR && e->value_len == 5) {
+            /* abort at "three" — the mark travels to the channel */
+            c->abort_line = e->line;
+            c->abort_col = e->col;
+            return 7; /* any nonzero aborts */
+        }
+        return 0;
+    };
+    /* push clears the TLS slot at entry (the abort-text law's
+     * verification basis), so whatever an earlier test on this thread
+     * left in the channel cannot leak into this run's verdict */
+    uint32_t line = 99, col = 99;
+
+    const char* doc = "a: 1\nb: 2\nthree: 2.5\n";
+    YeptrisStatus st = yeptris_push_parse(doc, strlen(doc), fn, &ctx);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    EXPECT_GT(ctx.seen, 0);
+
+    const char* msg = yeptris_last_error(&line, &col);
+    EXPECT_NE(strstr(msg, "aborted"), nullptr)
+        << "the abort text must be set, not a stale message: " << msg;
+    EXPECT_EQ(line, ctx.abort_line);
+    EXPECT_EQ(col, ctx.abort_col);
+    /* "three" sits on the doc's third line */
+    EXPECT_EQ(ctx.abort_line, 3u);
+
+    /* a following clean run clears the channel again */
+    auto ok_fn = [](void*, const YeptrisEvent*) -> int { return 0; };
+    EXPECT_EQ(yeptris_push_parse("x: 1\n", 5, ok_fn, nullptr), YEPTRIS_OK);
+    EXPECT_STREQ(yeptris_last_error(&line, &col), "");
+}

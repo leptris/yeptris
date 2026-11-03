@@ -3,7 +3,7 @@
  * format un-fuzzed).
  *
  * Two readers of the Marshal 4.8 wire format exist: the dump face's
- * yeptris_json_from_marshal (emit/writer.c, yeptris-ruby#322) and the
+ * yeptris_json_from_marshal (marshal/to_json.c, yeptris-ruby#322) and the
  * CBOR twin yeptris_cbor_from_marshal (cbor/from_marshal.c). Property:
  * arbitrary bytes only ever produce OK (bytes out, freeable),
  * UNSUPPORTED (the binding's fallback signal), MEMORY or ARG — never

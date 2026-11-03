@@ -56,6 +56,17 @@ static int opts_block_fold(const yeptris_emit_options* opts) {
     return opts->block_fold != 0;
 }
 
+/* The emitter's SCRATCH rides the document's allocator (#904 item 3):
+ * sc_dec and the streaming window are emitter-internal (never leak
+ * into caller hands), so the fail-injection harness — a counting
+ * allocator passed at the document's build — now reaches them. The
+ * CALLER-RETURNED output buffers stay system-malloc on purpose: their
+ * release contract is free() (emit.h "malloc'd buffer, caller frees"),
+ * and a failing allocator's pointer cannot be freed by the host. */
+static const yep_allocator* emit_sys(const yeptris_document* doc) {
+    return doc->sys != NULL ? doc->sys : yep_system_allocator();
+}
+
 YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
                                              const yeptris_emit_options* opts, char* buf,
                                              size_t cap) {
@@ -96,10 +107,11 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
     memset(&em.canon_names, 0, sizeof(em.canon_names));
-    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, emit_sys(em.doc))) {
         return 0;
     }
-    em.w.sc_dec = (uint8_t*)malloc(em.doc->dom->ncount > 0 ? em.doc->dom->ncount : 1);
+    em.w.sc_dec =
+        (uint8_t*)yep_alloc(emit_sys(em.doc), em.doc->dom->ncount > 0 ? em.doc->dom->ncount : 1);
     if (em.w.sc_dec == NULL) {
         if (em.canon_names.sys != NULL) {
             yep_nametab_free(&em.canon_names);
@@ -108,7 +120,7 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     }
     size_t need = yep_emit_run(&em, 1);
     if (buf == NULL || cap < need + 1) {
-        free(em.w.sc_dec);
+        yep_free(emit_sys(em.doc), em.w.sc_dec);
         if (em.canon_names.sys != NULL) {
             yep_nametab_free(&em.canon_names);
         }
@@ -116,7 +128,7 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     }
     em.w.p = buf;
     size_t wrote = yep_emit_run(&em, 0);
-    free(em.w.sc_dec);
+    yep_free(emit_sys(em.doc), em.w.sc_dec);
     if (em.canon_names.sys != NULL) {
         yep_nametab_free(&em.canon_names);
     }
@@ -164,7 +176,7 @@ YEPTRIS_API size_t yeptris_serialize_into_trusted(YeptrisDocument handle,
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
     memset(&em.canon_names, 0, sizeof(em.canon_names));
-    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, emit_sys(em.doc))) {
         return 0;
     }
     /* #352: ONE bounded wet pass — no memo, no dry run (the emit-split
@@ -232,7 +244,7 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
     memset(&em.canon_names, 0, sizeof(em.canon_names));
-    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, emit_sys(em.doc))) {
         return NULL;
     }
     /* #352 slice 2: ONE wet pass into a growable buffer — the dry
@@ -241,6 +253,9 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
      * starts at the input size (+64) and doubles on demand; a final
      * shrink-to-fit keeps the returned allocation tight. No dry pass,
      * so no decisions table. */
+    /* raw malloc ON PURPOSE (#904 item 3): this buffer is RETURNED —
+     * the release contract is the host's free() (emit.h), so it must
+     * come from the system allocator, not the document's */
     size_t est = em.doc->dom->input_len + 64;
     if (est < 256) {
         est = 256;
@@ -290,6 +305,8 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
  * (+64) and doubles on demand; shrink-to-fit at the end. Owns the
  * emitter's canon_names cleanup. */
 static char* yep_json_run_growable(yep_emitter* em, size_t* len) {
+    /* raw malloc ON PURPOSE (#904 item 3): the buffer is RETURNED —
+     * the host's free() owns it (emit.h), system allocator only */
     size_t est = em->doc->dom->input_len + 64;
     if (est < 256) {
         est = 256;
@@ -506,9 +523,11 @@ char* yep_serialize_json_pretty_ex(const yeptris_document* doc, size_t* len, con
     em.w.sink_aborted = 0;
     em.w.flushed = 0;
     memset(&em.canon_names, 0, sizeof(em.canon_names));
-    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, emit_sys(doc))) {
         return NULL;
     }
+    /* raw malloc ON PURPOSE (#904 item 3): the dry-wet pair's exact-
+     * sized output is RETURNED — the host's free() owns it */
     size_t need = yep_emit_run(&em, 1);
     char* out = malloc(need + 1);
     if (out == NULL) {
@@ -579,11 +598,14 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     em.w.sink_ctx = ctx;
     em.w.watermark = YEP_EMIT_WATERMARK;
     memset(&em.canon_names, 0, sizeof(em.canon_names));
-    if (em.w.canonical && !yep_nametab_init(&em.canon_names, yep_system_allocator())) {
+    if (em.w.canonical && !yep_nametab_init(&em.canon_names, emit_sys(em.doc))) {
         return 0;
     }
-    /* one scratch window; the writer flushes it when it fills */
-    char* window = malloc(YEP_EMIT_WATERMARK * 2);
+    /* one scratch window; the writer flushes it when it fills.
+     * Document allocator (#904 item 3): emitter-internal scratch —
+     * flushed out through the sink, never returned — so the
+     * fail-injection harness reaches it. */
+    char* window = yep_alloc(emit_sys(em.doc), YEP_EMIT_WATERMARK * 2);
     if (window == NULL) {
         if (em.canon_names.sys != NULL) {
             yep_nametab_free(&em.canon_names);
@@ -604,7 +626,7 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
             /* total already counted by the flush hooks */
         }
     }
-    free(window);
+    yep_free(emit_sys(em.doc), window);
     if (em.canon_names.sys != NULL) {
         yep_nametab_free(&em.canon_names);
     }
