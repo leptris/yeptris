@@ -1261,8 +1261,12 @@ static void re_closure(re_mach* v, uint16_t seed, uint32_t pos) {
     v->stack[st_n++] = seed;
     while (st_n > 0) {
         uint16_t pc = v->stack[--st_n];
-        if (v->mark_gen[pc] == (uint8_t)v->gen && v->mark_pos[pc] == (uint8_t)pos &&
-            v->mark_tag[pc] == 2) {
+        /* the TAG field is the gate: it is memset at entry and written
+         * together with gen/pos, so testing it first keeps the other
+         * two reads defined (valgrind: they are uninitialized until
+         * the pc's first real marking) */
+        if (v->mark_tag[pc] == 2 && v->mark_gen[pc] == (uint8_t)v->gen &&
+            v->mark_pos[pc] == (uint8_t)pos) {
             continue;
         }
         v->mark_gen[pc] = (uint8_t)v->gen;
@@ -1307,8 +1311,8 @@ static void re_ring_push(re_mach* v, uint16_t pc, uint32_t pos) {
     if (slot < 1 || slot > 4) {
         return; /* unreachable (adv <= 4); a guard, not a guess */
     }
-    if (v->ring_gen[pc] == (uint8_t)v->gen && v->ring_pos[pc] == (uint8_t)pos &&
-        v->ring_tag[pc] == 1) {
+    if (v->ring_tag[pc] == 1 && v->ring_gen[pc] == (uint8_t)v->gen &&
+        v->ring_pos[pc] == (uint8_t)pos) {
         return;
     }
     v->ring_gen[pc] = (uint8_t)v->gen;
@@ -1386,7 +1390,7 @@ static int re_vm(const re_inst* inst, const uint8_t (*cls)[32], const uint32_t* 
         uint32_t len = 1;
         uint32_t cp = re_cp_at(s, s_len, sp, &len);
         for (int pc = 0; pc < RE_MAX_INST; pc++) {
-            if (mark_gen[pc] != (uint8_t)gen || mark_pos[pc] != (uint8_t)sp || mark_tag[pc] != 2) {
+            if (mark_tag[pc] != 2 || mark_gen[pc] != (uint8_t)gen || mark_pos[pc] != (uint8_t)sp) {
                 continue;
             }
             const re_inst* in = &inst[pc];
