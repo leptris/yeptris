@@ -51,6 +51,7 @@ static_assert(YEPTRIS_STYLE_FOLDED == 5, "pinned ABI value");
 static_assert(YEPTRIS_SCHEMA_12_CORE == 0, "pinned ABI value");
 static_assert(YEPTRIS_SCHEMA_11_COMPAT == 1, "pinned ABI value");
 static_assert(YEPTRIS_SCHEMA_12_JSON == 2, "pinned ABI value");
+static_assert(YEPTRIS_SCHEMA_12_FULL == 3, "pinned ABI value (#906 slice 3)");
 
 static_assert(YEPTRIS_DIAG_NONE == 0, "pinned ABI value");
 static_assert(YEPTRIS_DIAG_TAG_MISMATCH == 1, "pinned ABI value");

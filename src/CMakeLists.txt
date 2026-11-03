@@ -40,6 +40,7 @@ set(YEPTRIS_SOURCES
     yeptris/resolve/core12.c
     yeptris/resolve/compat11.c
     yeptris/resolve/json12.c
+    yeptris/resolve/full12.c
     yeptris/parse/numbers.c
     yeptris/events/values.c
     yeptris/schema.c

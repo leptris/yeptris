@@ -36,6 +36,24 @@ YEPTRIS_API const char* yeptris_last_error(uint32_t* line, uint32_t* col) {
 static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisParseOptions* opts,
                                   int json_mode, int lazy, YeptrisStatus* status);
 
+/* The schema -> resolver dispatch point (OCP: the typing SSOT's ONE
+ * switch). Every build route selects its resolver here — the event
+ * entry, the engine and the direct-builder DOM, the fused block
+ * runner (and validate/stream.c's event route, through the event
+ * entry). */
+static const yep_resolver* resolver_for_schema(YeptrisSchema schema) {
+    switch (schema) {
+    case YEPTRIS_SCHEMA_11_COMPAT:
+        return yep_resolver_compat11();
+    case YEPTRIS_SCHEMA_12_JSON:
+        return yep_resolver_json12();
+    case YEPTRIS_SCHEMA_12_FULL:
+        return yep_resolver_full12();
+    default:
+        return yep_resolver_core12(); /* 12_CORE and the zero default */
+    }
+}
+
 YEPTRIS_API YeptrisDocument yeptris_parse(const char* buf, size_t len, YeptrisStatus* status) {
     return yeptris_parse_ex(buf, len, NULL, status);
 }
@@ -63,8 +81,7 @@ yep_dom* yep_doc_dom(yeptris_document* doc) {
             yep_ytape* t = (yep_ytape*)doc->lazy_tape;
             yep_dom* dom = yep_dom_create(doc->sys);
             if (dom != NULL) {
-                dom->resolver = (doc->schema == YEPTRIS_SCHEMA_11_COMPAT) ? yep_resolver_compat11()
-                                                                          : yep_resolver_core12();
+                dom->resolver = resolver_for_schema(doc->schema);
             }
             if (dom != NULL && dom_from_ytape(dom, t) == 0) {
                 doc->dom = dom;
@@ -369,12 +386,9 @@ YeptrisStatus yep_parse_events(const char* buf, size_t len, YeptrisSchema schema
         yep_free(sys, transcoded);
         return YEPTRIS_ERROR_MEMORY;
     }
-    /* the typing SSOT: the family's resolver (compat11 when asked,
-     * json12 for the 12_JSON validation family, core12 otherwise) */
-    yep_engine_set_resolver(eng, schema == YEPTRIS_SCHEMA_11_COMPAT
-                                     ? yep_resolver_compat11()
-                                     : (schema == YEPTRIS_SCHEMA_12_JSON ? yep_resolver_json12()
-                                                                         : yep_resolver_core12()));
+    /* the typing SSOT: the family's resolver (resolver_for_schema is
+     * the one switch) */
+    yep_engine_set_resolver(eng, resolver_for_schema(schema));
     if (schema == YEPTRIS_SCHEMA_11_COMPAT) {
         /* the compat schema is the psych/libyaml surface (see
          * parse_impl's twin comment) */
@@ -451,16 +465,13 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
     }
 
     /* Engine → DOM. */
+    const YeptrisSchema schema = opts != NULL ? opts->schema : YEPTRIS_SCHEMA_12_CORE;
     yep_engine* eng = NULL;
     eng = yep_engine_create(sys);
     if (opts != NULL) {
-        /* the typing SSOT: the family's resolver (compat11 when asked,
-         * json12 for the 12_JSON validation family, core12 otherwise) */
-        yep_engine_set_resolver(eng, opts->schema == YEPTRIS_SCHEMA_11_COMPAT
-                                         ? yep_resolver_compat11()
-                                         : (opts->schema == YEPTRIS_SCHEMA_12_JSON
-                                                ? yep_resolver_json12()
-                                                : yep_resolver_core12()));
+        /* the typing SSOT: the family's resolver (resolver_for_schema
+         * is the one switch) */
+        yep_engine_set_resolver(eng, resolver_for_schema(schema));
         if (opts->schema == YEPTRIS_SCHEMA_11_COMPAT) {
             /* the compat schema is the psych/libyaml surface: its grammar
              * must accept what libyaml accepts (the flow floor is suite-
@@ -490,13 +501,7 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
         }
         /* the direct builders resolve with the engine's schema (the typing
          * SSOT — one resolver decision per scalar, whichever path builds) */
-        if (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT) {
-            dom->resolver = yep_resolver_compat11();
-        } else if (opts != NULL && opts->schema == YEPTRIS_SCHEMA_12_JSON) {
-            dom->resolver = yep_resolver_json12();
-        } else {
-            dom->resolver = yep_resolver_core12();
-        }
+        dom->resolver = resolver_for_schema(schema);
         /* BEFORE the run: input-slice strings borrow as views (zero copy)
          * — the document keeps `transcoded` alive for exactly this. Set
          * after, every scalar was arena-copied (found 2026-09-10). */
@@ -557,11 +562,7 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
         yep_engine_destroy(eng);
         eng = NULL;
     } else if (have_tape && !norm_kept_raw &&
-               ytap_fused_run(&yt, (opts != NULL && opts->schema == YEPTRIS_SCHEMA_11_COMPAT)
-                                       ? yep_resolver_compat11()
-                                   : (opts != NULL && opts->schema == YEPTRIS_SCHEMA_12_JSON)
-                                       ? yep_resolver_json12()
-                                       : yep_resolver_core12()) == 0) {
+               ytap_fused_run(&yt, resolver_for_schema(schema)) == 0) {
         /* the fused block runner owned the whole document — the engine
          * never runs (TODO.restructure/79). Its only cost was the parse
          * front-end above; on a bail it unwound and the engine runs. */

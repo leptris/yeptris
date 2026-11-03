@@ -261,3 +261,176 @@ TEST(Resolve, MaxDepthOption) {
     EXPECT_EQ(st, YEPTRIS_ERROR_DEPTH);
     EXPECT_EQ(doc, nullptr);
 }
+
+/* ---- the FULL 1.2 family (#906 slice 3) --------------------------------- */
+//
+// full12 = the core productions (spec 10.4: interoperable schemas are
+// "strongly recommended ... based on the core schema") + the yaml.org
+// type repository carried forward in practice: RFC3339-era timestamps
+// (spec example 2.22's canonical/iso8601/spaced/date forms) and the
+// merge/value words. PyYAML 6.0.2's SafeLoader is the practice oracle
+// for the timestamp surface; scripts/pyyaml-timestamp-diff.py
+// regenerates the bounded corpus below from a live PyYAML.
+
+TEST(Full12, SpecExample22Forms) {
+    // spec 2.22 "Timestamps", verbatim
+    YeptrisParseOptions opts = {};
+    opts.schema = YEPTRIS_SCHEMA_12_FULL;
+    const Vec v[] = {
+        {"2001-12-15T02:59:43.1Z", YEPTRIS_TAG_TIMESTAMP},       /* canonical */
+        {"2001-12-14t21:59:43.10-05:00", YEPTRIS_TAG_TIMESTAMP}, /* iso8601 */
+        {"2001-12-14 21:59:43.10 -5", YEPTRIS_TAG_TIMESTAMP},    /* spaced */
+        {"2002-12-14", YEPTRIS_TAG_TIMESTAMP},                   /* date */
+    };
+    run_vecs(v, sizeof(v) / sizeof(v[0]), &opts);
+
+    // the same plains under 12_CORE stay strings: core has no timestamp
+    // production (spec 10.3), deliberately — full is the extension lane
+    YeptrisParseOptions core = {};
+    core.schema = YEPTRIS_SCHEMA_12_CORE;
+    const Vec c[] = {
+        {"2001-12-15T02:59:43.1Z", YEPTRIS_TAG_STR},
+        {"2001-12-14t21:59:43.10-05:00", YEPTRIS_TAG_STR},
+        {"2001-12-14 21:59:43.10 -5", YEPTRIS_TAG_STR},
+        {"2002-12-14", YEPTRIS_TAG_STR},
+    };
+    run_vecs(c, sizeof(c) / sizeof(c[0]), &core);
+}
+
+TEST(Full12, PyYamlTimestampDifferential) {
+    // PyYAML 6.0.2 verdicts (yaml.compose -> node.tag) for the bounded
+    // corpus. Every entry is a lone plain-scalar document, so the
+    // engine's scanner delivers the bytes the resolver saw.
+    YeptrisParseOptions opts = {};
+    opts.schema = YEPTRIS_SCHEMA_12_FULL;
+    const Vec v[] = {
+        // accepted: month/day/hour are 1-2 digits once a time part exists
+        {"2001-01-01T1:00:00", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01t1:00:00", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01  1:00:00", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01 1:00:00", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T01:00:00", YEPTRIS_TAG_TIMESTAMP},
+        // fraction: dot then ZERO or more digits
+        {"2001-01-01T01:00:00.", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T01:00:00.5", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T01:00:00.123456789", YEPTRIS_TAG_TIMESTAMP},
+        // timezone: optional; Z or a signed 1-2 digit offset, :mm optional
+        {"2001-01-01T01:00:00Z", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T01:00:00+5", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T01:00:00-5", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T01:00:00+05", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T01:00:00+05:30", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T01:00:00-05:00", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T01:00:00 +5", YEPTRIS_TAG_TIMESTAMP},   /* space before tz */
+        {"2001-01-01T01:00:00    Z", YEPTRIS_TAG_TIMESTAMP}, /* a space run */
+        {"2001-01-01T01:00:00 Z", YEPTRIS_TAG_TIMESTAMP},
+        // range is NOT a resolution concern: the oracle tags these, its
+        // constructor raises later (full12 is spec-refereed resolution)
+        {"2001-13-14", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-00-00", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T25:99:99", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-32", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-12-14 24:00:00", YEPTRIS_TAG_TIMESTAMP},
+        // other in-range shapes
+        {"2001-12-14 21:59:43", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-12-14 21:59:43.0 -05:00", YEPTRIS_TAG_TIMESTAMP},
+        {"0000-01-01", YEPTRIS_TAG_TIMESTAMP},
+        {"9999-12-31", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T00:00:00-00:00", YEPTRIS_TAG_TIMESTAMP},
+        {"2001-01-01T00:00:00+00:00", YEPTRIS_TAG_TIMESTAMP},
+        // rejected: date-only demands EXACTLY two-digit month and day
+        {"2001-1-1", YEPTRIS_TAG_STR},
+        {"2001-01-1", YEPTRIS_TAG_STR},
+        {"2001-1-01", YEPTRIS_TAG_STR},
+        {"2001-12-14x", YEPTRIS_TAG_STR},
+        // rejected: the time part is mandatory once the date is narrow
+        {"2001-01-01T001:00:00", YEPTRIS_TAG_STR}, /* hour is 1-2 digits */
+        {"2001-01-01T01:0:00", YEPTRIS_TAG_STR},   /* mm/ss exactly two */
+        {"2001-01-01T01:00:0", YEPTRIS_TAG_STR},
+        {"2001-01-01T01:00", YEPTRIS_TAG_STR},
+        {"2001-01-01T01:00:00:00", YEPTRIS_TAG_STR},
+        {"2001-01-01T01:00:00,5", YEPTRIS_TAG_STR}, /* comma fraction */
+        {"2001-01-01T01:00:00.5.5", YEPTRIS_TAG_STR},
+        // rejected: tz casings and widths
+        {"2001-01-01T01:00:00z", YEPTRIS_TAG_STR},
+        {"2001-01-01T01:00:00+0530", YEPTRIS_TAG_STR},
+        {"2001-01-01T01:00:00+05:30x", YEPTRIS_TAG_STR},
+        // rejected: year shape and sign
+        {"-2001-12-14", YEPTRIS_TAG_STR},
+        {"+2001-12-14", YEPTRIS_TAG_STR},
+        {"20011-12-14", YEPTRIS_TAG_STR},
+        {"201-12-14", YEPTRIS_TAG_STR},
+        {"2002-12-14T00:00:00Z extra", YEPTRIS_TAG_STR},
+        // the oracle's scanner rejects a TAB separator before resolution;
+        // the oracle's REGEX accepts [ \t]+ and this engine's scanner
+        // delivers the tab, so the regex answer is the pinned one
+        {"2001-01-01\t1:00:00", YEPTRIS_TAG_TIMESTAMP},
+    };
+    run_vecs(v, sizeof(v) / sizeof(v[0]), &opts);
+}
+
+TEST(Full12, CoreBaseAndRepositoryWords) {
+    YeptrisParseOptions opts = {};
+    opts.schema = YEPTRIS_SCHEMA_12_FULL;
+    const Vec v[] = {
+        // the core productions ride verbatim (full is core-based)
+        {"null", YEPTRIS_TAG_NULL},
+        {"~", YEPTRIS_TAG_NULL},
+        {"true", YEPTRIS_TAG_BOOL},
+        {"FALSE", YEPTRIS_TAG_BOOL},
+        {"0x1A", YEPTRIS_TAG_INT},
+        {"0o17", YEPTRIS_TAG_INT},
+        {"-19", YEPTRIS_TAG_INT},
+        {"1e3", YEPTRIS_TAG_FLOAT},
+        {"1.5e-3", YEPTRIS_TAG_FLOAT},
+        {"+.Inf", YEPTRIS_TAG_FLOAT},
+        {"0X1A", YEPTRIS_TAG_STR},  /* core's lowercase 0x */
+        {"yes", YEPTRIS_TAG_STR},   /* 1.1 bool words stay compat's */
+        {"1:30", YEPTRIS_TAG_STR},  /* no sexagesimal in 1.2 */
+        {"1_000", YEPTRIS_TAG_STR}, /* no underscores in 1.2 */
+        // the 1.1 full-schema words PyYAML also resolves implicitly
+        {"=", YEPTRIS_TAG_VALUE},
+        {"<<", YEPTRIS_TAG_MERGE},
+        // quoted scalars are never implicit; explicit tags win
+        {"'2001-12-14'", YEPTRIS_TAG_STR},
+        {"\"2001-12-14\"", YEPTRIS_TAG_STR},
+        {"!!timestamp 2001-12-14", YEPTRIS_TAG_TIMESTAMP},
+        {"!!str 2001-12-14", YEPTRIS_TAG_STR},
+        {"!!binary aGVsbG8=", YEPTRIS_TAG_BINARY},
+        // collections keep their kind tags
+        {"[2001-12-14]", YEPTRIS_TAG_SEQ},
+        {"{d: 2001-12-14}", YEPTRIS_TAG_MAP},
+    };
+    run_vecs(v, sizeof(v) / sizeof(v[0]), &opts);
+}
+
+TEST(Full12, FullVsCoreDivergence) {
+    // The divergence table's non-timestamp rows: full is SPEC-refereed
+    // (core-based), NOT PyYAML-refereed — PyYAML's implicit typing is
+    // the 1.1 schema verbatim (underscores/sexagesimal/octal-leading-0
+    // ints, yes/no bools, dot-required floats). These stay with
+    // 11_COMPAT; a 1.2 interoperable schema keeps the core productions
+    // (spec 10.4's recommendation).
+    YeptrisParseOptions full = {};
+    full.schema = YEPTRIS_SCHEMA_12_FULL;
+    YeptrisParseOptions core = {};
+    core.schema = YEPTRIS_SCHEMA_12_CORE;
+    const Vec c[] = {
+        {"0o17", YEPTRIS_TAG_INT},    /* PyYAML: str (no 0o production) */
+        {"08", YEPTRIS_TAG_INT},      /* PyYAML: str (octal-only prefix) */
+        {"1e3", YEPTRIS_TAG_FLOAT},   /* PyYAML: str (dot required) */
+        {"1.5e2", YEPTRIS_TAG_FLOAT}, /* PyYAML: str (signed exponent) */
+        {"1_000", YEPTRIS_TAG_STR},   /* PyYAML: int (underscores) */
+        {"1:30", YEPTRIS_TAG_STR},    /* PyYAML: int (sexagesimal) */
+        {"yes", YEPTRIS_TAG_STR},     /* PyYAML: bool (1.1 words) */
+        {"=", YEPTRIS_TAG_VALUE},     /* full's repository word */
+        {"<<", YEPTRIS_TAG_MERGE},    /* full's repository word */
+    };
+    run_vecs(c, sizeof(c) / sizeof(c[0]), &full);
+    const Vec k[] = {
+        {"0o17", YEPTRIS_TAG_INT},    {"08", YEPTRIS_TAG_INT},    {"1e3", YEPTRIS_TAG_FLOAT},
+        {"1.5e2", YEPTRIS_TAG_FLOAT}, {"1_000", YEPTRIS_TAG_STR}, {"1:30", YEPTRIS_TAG_STR},
+        {"yes", YEPTRIS_TAG_STR},     {"=", YEPTRIS_TAG_STR},     {"<<", YEPTRIS_TAG_STR},
+    };
+    run_vecs(k, sizeof(k) / sizeof(k[0]), &core);
+}

@@ -102,7 +102,7 @@ static yep_tag_id json12_number(void* ctx, int is_float) {
     return is_float ? 2 : 1;
 }
 
-static const yep_resolver k_json12 = {json12, json12_number, NULL};
+static const yep_resolver k_json12 = {json12, json12_number, NULL, 0};
 
 const yep_resolver* yep_resolver_json12(void) {
     return &k_json12;
