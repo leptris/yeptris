@@ -596,7 +596,12 @@ static void check_tag(yep_vctx* c, uint32_t id, const yep_resolver* fam, int jso
                         yep_validate_node_off(d, id), fam, json_family);
 }
 
-/* json12: a SCALAR mapping key's checks (internal.h's fact core). */
+/* json12: a SCALAR mapping key's checks (internal.h's fact core —
+ * the DOM walk and the event route both land here, so the two routes
+ * cannot diverge on a verdict). A plain key matching no JSON
+ * production IS a string (spec 10.2 example 10.8's "A null"/
+ * "Booleans" are plain block keys) — the string-key demand bars only
+ * keys resolving to non-string productions. */
 void yep_check_json_key_facts(yep_vctx* c, int has_tag, uint8_t tag_id, int plainish,
                               yep_view value, uint32_t off) {
     if (has_tag) {
@@ -620,12 +625,7 @@ void yep_check_json_key_facts(yep_vctx* c, int has_tag, uint8_t tag_id, int plai
         return; /* quoted/block keys are strings */
     }
     int cls = yep_json12_plain(value.p != NULL ? value.p : "", value.len);
-    if (cls == 0) {
-        yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, off,
-                          "plain scalar matches no JSON production");
-        return;
-    }
-    if (cls != (int)YEPTRIS_TAG_STR) {
+    if (cls != 0 && cls != (int)YEPTRIS_TAG_STR) {
         yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
                           "mapping key is %s (expected a "
                           "string)",
@@ -654,37 +654,6 @@ static void check_json_key(yep_vctx* c, uint32_t key_id) {
                              yep_validate_node_off(d, key_id));
 }
 
-/* json12: a mapping key must be a string scalar; a plain scalar
- * matching no JSON production IS a string (spec 10.2 example 10.8's
- * "A null"/"Booleans" are plain block keys) — the string-key demand
- * bars only keys resolving to non-string productions. internal.h's
- * fact core: the DOM walk and the event route both land here, so the
- * two routes cannot diverge on a verdict. */
-void yep_check_json_key_facts(yep_vctx* c, int has_tag, uint8_t tag_id, int plainish,
-                              yep_view value, uint32_t off) {
-    if (has_tag) {
-        if (tag_id == YEPTRIS_TAG_STR) {
-            return;
-        }
-        if (tag_id >= YEPTRIS_TAG_INT && tag_id <= YEPTRIS_TAG_NULL) {
-            yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
-                              "mapping key is %s (expected a string)", tag_word(tag_id));
-        } else {
-            yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, off,
-                              "mapping key carries a non-JSON tag");
-        }
-        return;
-    }
-    if (!plainish) {
-        return; /* quoted/block keys are strings */
-    }
-    int cls = yep_json12_plain(value.p != NULL ? value.p : "", value.len);
-    if (cls != 0 && cls != (int)YEPTRIS_TAG_STR) {
-        yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
-                          "mapping key is %s (expected a string)", tag_word((uint8_t)cls));
-    }
-}
-
 /* json12 scalar facts: only explicit non-JSON tags diagnose — example
  * 10.8 resolves implicit no-production plains as strings (keys AND
  * the "Invalid" list), overriding the table's error note. */
@@ -694,6 +663,11 @@ void yep_check_json_scalar_facts(yep_vctx* c, int has_tag, uint8_t tag_id, int p
     (void)value;
     if (has_tag) {
         uint8_t want = tag_id;
+        if (want == YEPTRIS_TAG_TIMESTAMP || want == YEPTRIS_TAG_BINARY ||
+            want == YEPTRIS_TAG_MERGE || want == YEPTRIS_TAG_VALUE || want == YEPTRIS_TAG_CUSTOM) {
+            yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, off,
+                              "explicit %s tag is not a JSON type", tag_word(want));
+        }
     }
 }
 
