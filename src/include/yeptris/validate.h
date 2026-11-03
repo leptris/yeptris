@@ -20,6 +20,11 @@
  *     target against it — draft 2020-12 keyword subset (see the entry
  *     comment). Unknown keywords are ignored, per 2020-12.
  *
+ * The COMPILED-schema economy (`yeptris_schema_*`) retains one parsed
+ * schema for many instance streams; the TAG-DRIVEN registry
+ * (`yeptris_schema_registry_*`, #906 slice 4) binds compiled schemas
+ * to user tags over the family walk (`yeptris_validate_ex`).
+ *
  * Every diagnostic carries a JSON-pointer instance path ("/a/b/0" —
  * ~0/~1 escaped), a YEPTRIS_DIAG_* code, a bounded expected/got
  * detail, and the offending node's 1-based line/column (0 = unknown:
@@ -256,6 +261,86 @@ YEPTRIS_API YeptrisStatus yeptris_schema_validate(yeptris_schema* s, const char*
                                                   yeptris_validate_report** out);
 
 YEPTRIS_API void yeptris_schema_free(yeptris_schema* s);
+
+/* ---- the TAG-DRIVEN SCHEMA registry (#906 slice 4) -----------------------
+ *
+ * The dialect table's reserved slot: a compiled schema binds to a user
+ * tag, so a document node carrying `!shape` (its EXPLICIT tag, exactly
+ * the resolved bytes the DOM exposes — `!shape`, `!<tag:...>`, or a
+ * `%TAG`-resolved URI; `!!x` arrives as `tag:yaml.org,2002:x`) has its
+ * SUBTREE validated against the bound schema. Registration is the only
+ * extension point (OCP): the family walk reads the registry, it never
+ * grows schema branches.
+ *
+ * Matching is byte-exact on the tag's resolved form and fires only on
+ * an explicit tag — implicit (plain) typing never triggers a binding.
+ * An unregistered tag passes untouched: no diagnostic, no lane. The
+ * hook rides the DOM family walk (yeptris_validate_ex /
+ * yeptris_validate_document_ex): roots, sequence items and mapping
+ * VALUES (a tagged mapping KEY is not registry-validated — its
+ * instance path is undefined in the walk's model). Diagnostics from a
+ * bound subtree land at the tag site: the tag node's own path + the
+ * schema walk's instance pointers, with the offending node's
+ * line/col/offset; the report cap and codes are the shared rail.
+ * Bindings COMPOSE: a node inside a bound subtree that carries its own
+ * registered tag is validated by both schemas.
+ *
+ * THE REGISTRY LAW (the document-ownership law, no refcounting): the
+ * registry BORROWS the compiled schemas it binds — it owns nothing
+ * they own. A bound schema must OUTLIVE the registry: free the
+ * registry first (yeptris_schema_registry_free), then the schemas.
+ * Freeing a bound schema while its registry lives leaves the registry
+ * dead (a later lookup is undefined), exactly like a freed document.
+ * NULL is accepted everywhere a handle is (a NULL registry is simply
+ * no bindings; yeptris_schema_registry_free(NULL) is a no-op).
+ *
+ * Thread law: one registry per thread, like documents and schemas —
+ * it is mutable under register and read-only during validation;
+ * read-only sharing across threads (no register in flight) is safe. */
+typedef struct yeptris_schema_registry yeptris_schema_registry;
+
+/* A fresh empty registry; NULL on allocation failure. */
+YEPTRIS_API yeptris_schema_registry* yeptris_schema_registry_new(void);
+
+/* Binds `tag` (copied — nothing borrows the caller's bytes beyond the
+ * call) to the compiled `schema` (borrowed — see THE REGISTRY LAW).
+ * Status: YEPTRIS_OK; YEPTRIS_ERROR_ARG (NULL handle, an empty tag,
+ * or a NULL schema); YEPTRIS_ERROR_MEMORY. Re-registering a tag
+ * REPLACES the binding (last registration wins). */
+YEPTRIS_API YeptrisStatus yeptris_schema_registry_register(yeptris_schema_registry* reg,
+                                                           const char* tag, size_t tag_len,
+                                                           const yeptris_schema* schema);
+
+/* The schema bound to `tag` (exact bytes), or NULL. Memory: borrowed
+ * from the registry — valid until a register replaces the tag or the
+ * registry is freed. */
+YEPTRIS_API const yeptris_schema* yeptris_schema_registry_lookup(const yeptris_schema_registry* reg,
+                                                                 const char* tag, size_t tag_len);
+
+YEPTRIS_API void yeptris_schema_registry_free(yeptris_schema_registry* reg);
+
+/* Validation options (size-versioned like yeptris_emit_options:
+ * initialize with {sizeof(yeptris_validate_options)} so future fields
+ * stay optional; NULL selects the defaults). */
+typedef struct yeptris_validate_options {
+    uint32_t size; /* sizeof(yeptris_validate_options) */
+    /* The tag-driven registry (#906 slice 4): NULL = none. Only read
+     * when the caller's struct is large enough (size-versioned). The
+     * registry is borrowed for the call; see THE REGISTRY LAW above. */
+    const yeptris_schema_registry* registry;
+} yeptris_validate_options;
+
+/* yeptris_validate / yeptris_validate_document with options: the
+ * family walk plus, when a registry is attached, the tag-driven
+ * schema applications described above. Everything else (statuses,
+ * report shape, paths, positions) is the flat face's, unchanged. */
+YEPTRIS_API YeptrisStatus yeptris_validate_ex(const char* buf, size_t len, YeptrisSchema schema,
+                                              const yeptris_validate_options* opts,
+                                              yeptris_validate_report** out);
+
+YEPTRIS_API YeptrisStatus yeptris_validate_document_ex(YeptrisDocument doc, YeptrisSchema schema,
+                                                       const yeptris_validate_options* opts,
+                                                       yeptris_validate_report** out);
 
 #ifdef __cplusplus
 }

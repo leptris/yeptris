@@ -1889,3 +1889,34 @@ int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const ye
     yep_free(sys, j.ei);
     return rc;
 }
+
+/* The tag-driven hook's seam (internal.h, #906 slice 4): one bound
+ * schema applied to ONE instance subtree through the CALLER'S walk
+ * context. The context is copied in (its path prefix is the tag
+ * site's — the subtree's instance pointers extend it), the schema
+ * root is applied at depth 0 (the same walk, the same annotation
+ * model), and the context is copied back: the report, the guards and
+ * the scratch pointers stay the caller's, so the cap law and the
+ * line/col resolution hold across the whole report. */
+int yep_jsonschema_apply_subtree(const yep_dom* schema_dom, uint32_t schema_root, yep_vctx* inst,
+                                 uint32_t inst_root, const yep_re_cache* cache,
+                                 const js_resources* res) {
+    if (schema_dom == NULL || inst == NULL) {
+        return 0;
+    }
+    js_ctx j;
+    memset(&j, 0, sizeof(j));
+    j.sd = schema_dom;
+    j.sroot = schema_root;
+    j.cache = cache;
+    j.res = res;
+    j.v = *inst; /* the caller's prefix, report, line index, guards */
+    js_apply(&j, j.sroot, inst_root, 0);
+    /* the annotation arenas are THIS application's scratch (the full
+     * driver's tail law) — they never join the caller's context */
+    const yep_allocator* sys = yep_system_allocator();
+    yep_free(sys, j.ep);
+    yep_free(sys, j.ei);
+    *inst = j.v; /* scratch may have grown: the caller still frees it */
+    return j.v.oom ? -1 : 0;
+}

@@ -245,20 +245,29 @@ static void e_anchor_mark(yep_engine* e, uint32_t id);
 
 static int emit_now(yep_engine* e, const yep_event* ev) {
     e_anchor_mark(e, ev->anchor_id);
-    if (ev->type == YEP_EV_SCALAR) {
-        /* Resolution happens exactly here: every scalar path flows
-         * through this choke point (the resolver is the typing SSOT) */
-        if (ev->tag.len > 0) {
-            yep_tag_id tid = yep_tag_from_uri((const char*)ev->tag.p, ev->tag.len);
-            /* psych's own dumped form is the LOCAL !binary shorthand,
-             * and stdlib to_ruby accepts it beside the core URI (#168)
-             * — compat schemas resolve it to BINARY as well */
-            if (tid == YEPTRIS_TAG_CUSTOM && ev->tag.len == 7 &&
-                memcmp(ev->tag.p, "!binary", 7) == 0 && e->resolver == yep_resolver_compat11()) {
-                tid = YEPTRIS_TAG_BINARY;
-            }
-            ((yep_event*)ev)->tag_id = tid;
-        } else if (ev->implicit && e->resolver != NULL) {
+    if (ev->tag.len > 0) {
+        /* Explicit-tag resolution (the typing SSOT for SCALARS AND
+         * COLLECTIONS): an event's tag_id names the explicit tag's id,
+         * so the family walk's consistency check can tell `!!map` on a
+         * mapping, `!!seq` on a sequence and a consumer-defined custom
+         * tag (CUSTOM, no family verdict) apart — a collection event's
+         * id used to stay 0 ("str"), which made EVERY tagged collection
+         * read as `!!str` and diagnose a false mismatch (#906 slice 4's
+         * tag-driven lane needs the true id). Both routes read this
+         * field, so the DOM and event walks stay in lockstep. */
+        yep_tag_id tid = yep_tag_from_uri((const char*)ev->tag.p, ev->tag.len);
+        /* psych's own dumped form is the LOCAL !binary shorthand,
+         * and stdlib to_ruby accepts it beside the core URI (#168)
+         * — compat schemas resolve it to BINARY as well */
+        if (ev->type == YEP_EV_SCALAR && tid == YEPTRIS_TAG_CUSTOM && ev->tag.len == 7 &&
+            memcmp(ev->tag.p, "!binary", 7) == 0 && e->resolver == yep_resolver_compat11()) {
+            tid = YEPTRIS_TAG_BINARY;
+        }
+        ((yep_event*)ev)->tag_id = tid;
+    } else if (ev->type == YEP_EV_SCALAR) {
+        /* implicit typing: scalars only (a collection's id stays 0,
+         * its "no tag" value) */
+        if (ev->implicit && e->resolver != NULL) {
             ((yep_event*)ev)->tag_id = e->resolver->resolve(
                 e->resolver->ctx, (const char*)ev->value.p, (uint32_t)ev->value.len);
         } else {
