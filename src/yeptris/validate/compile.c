@@ -43,6 +43,7 @@ struct yeptris_schema {
     const yep_dom* dom;    /* borrowed from doc (yep_doc_dom) */
     uint32_t sroot;        /* the schema document's root (docs[0]) */
     yep_re_cache* cache;   /* owned: pattern source -> compiled NFA; immutable after compile */
+    js_resources* res;     /* owned: $id/$anchor/$dynamicAnchor map + ref-site bases */
 };
 
 /* ---- the pattern collection (compile-time, eager) ----------------------- */
@@ -188,8 +189,22 @@ yeptris_schema* yep_schema_compile_st(const char* bytes, size_t n, YeptrisStatus
         return NULL;
     }
 
+    /* the identifier map: $id resources, anchors, ref-site bases —
+     * built once by the crawl, read-only afterwards (OOM is loud) */
+    js_resources* res = yep_js_resources_crawl(dom, dom->docs[0]);
+    if (res == NULL) {
+        yep_re_cache_free(cache);
+        yeptris_document_free(doc);
+        yep_free(sys, copy);
+        yep_error_set(yep_error_tls(), YEP_ERR_MEMORY, 0, 0, 0,
+                      "the schema's identifier map failed to build");
+        *st = YEPTRIS_ERROR_MEMORY;
+        return NULL;
+    }
+
     yeptris_schema* s = yep_alloc(sys, sizeof(*s));
     if (s == NULL) {
+        yep_js_resources_free(res);
         yep_re_cache_free(cache);
         yeptris_document_free(doc);
         yep_free(sys, copy);
@@ -201,6 +216,7 @@ yeptris_schema* yep_schema_compile_st(const char* bytes, size_t n, YeptrisStatus
     s->dom = dom;
     s->sroot = dom->docs[0];
     s->cache = cache;
+    s->res = res;
     return s;
 }
 
@@ -216,6 +232,7 @@ YEPTRIS_API void yeptris_schema_free(yeptris_schema* s) {
         return;
     }
     const yep_allocator* sys = yep_system_allocator();
+    yep_js_resources_free(s->res);
     yep_re_cache_free(s->cache);
     yeptris_document_free(s->doc); /* the DOM and every pool under it */
     yep_free(sys, s->bytes);       /* the views' home: freed after its readers */
@@ -257,9 +274,11 @@ YEPTRIS_API YeptrisStatus yeptris_schema_validate(yeptris_schema* s, const char*
         yeptris_document_free(idoc);
         return YEPTRIS_ERROR_MEMORY;
     }
-    /* the handle is a pure reader here (its cache is immutable): the
-     * same walk, the same report shape, the one-shot's verdicts */
-    int rc = yep_jsonschema_run(s->dom, s->sroot, idom, idom->docs, idom->dcount, r, s->cache);
+    /* the handle is a pure reader here (its cache and identifier map
+     * are immutable): the same walk, the same report shape, the
+     * one-shot's verdicts */
+    int rc =
+        yep_jsonschema_run(s->dom, s->sroot, idom, idom->docs, idom->dcount, r, s->cache, s->res);
     yeptris_document_free(idoc);
     if (rc != 0) {
         yeptris_validate_report_free(r);

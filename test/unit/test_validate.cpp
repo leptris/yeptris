@@ -856,6 +856,118 @@ TEST(ValidateJsonSchema, RefCyclesAreGuardedNeverCrash) {
     free_report(r);
 }
 
+TEST(ValidateJsonSchema, AnchorAndIdResourcesResolve) {
+    yeptris_validate_report* r = NULL;
+    // a plain-name fragment ($anchor) resolved against the document base
+    const char* anchor_schema = "{\"$ref\":\"#foo\","
+                                "\"$defs\":{\"A\":{\"$anchor\":\"foo\",\"type\":\"integer\"}}}";
+    ASSERT_EQ(js_first(anchor_schema, "1\n", &r), nullptr);
+    free_report(r);
+    ASSERT_NE(js_first(anchor_schema, "\"a\"\n", &r), nullptr);
+    free_report(r);
+
+    // $id composes the base: a relative $id rides its nearest enclosing $id,
+    // and the pointer fragment walks from THAT resource's root
+    const char* id_schema =
+        "{\"$id\":\"http://example.com/a.json\","
+        "\"$defs\":{\"x\":{\"$id\":\"b/c.json\","
+        "\"not\":{\"$defs\":{\"y\":{\"$id\":\"d.json\",\"type\":\"number\"}}}}},"
+        "\"allOf\":[{\"$ref\":\"http://example.com/b/d.json\"}]}";
+    ASSERT_EQ(js_first(id_schema, "1\n", &r), nullptr);
+    free_report(r);
+    ASSERT_NE(js_first(id_schema, "\"a\"\n", &r), nullptr);
+    free_report(r);
+
+    // a relative path reference resolves against the base's directory
+    const char* rel_schema = "{\"$id\":\"http://example.com/ref/nested/base.json\","
+                             "\"$defs\":{\"num\":{\"$id\":\"num.json\",\"type\":\"number\"}},"
+                             "\"$ref\":\"num.json\"}";
+    ASSERT_EQ(js_first(rel_schema, "5\n", &r), nullptr);
+    free_report(r);
+    ASSERT_NE(js_first(rel_schema, "\"x\"\n", &r), nullptr);
+    free_report(r);
+
+    // an anchor under a DIFFERENT resource is not found from this base
+    const char* cross_schema =
+        "{\"$id\":\"http://example.com/root.json\","
+        "\"$ref\":\"http://example.com/other.json#pt\","
+        "\"$defs\":{\"a\":{\"$id\":\"other.json\",\"$anchor\":\"pt\",\"type\":\"string\"}}}";
+    ASSERT_EQ(js_first(cross_schema, "\"s\"\n", &r), nullptr);
+    free_report(r);
+    ASSERT_NE(js_first(cross_schema, "1\n", &r), nullptr);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, PointerFragmentsDecodeTheUriLayer) {
+    yeptris_validate_report* r = NULL;
+    // %25 decodes before the tilde layer: "percent%field" is reached by
+    // "#/$defs/percent%25field"
+    const char* schema = "{\"$defs\":{\"tilde~field\":{\"type\":\"integer\"},"
+                         "\"slash/field\":{\"type\":\"integer\"},"
+                         "\"percent%field\":{\"type\":\"integer\"}},"
+                         "\"properties\":{\"t\":{\"$ref\":\"#/$defs/tilde~0field\"},"
+                         "\"s\":{\"$ref\":\"#/$defs/slash~1field\"},"
+                         "\"p\":{\"$ref\":\"#/$defs/percent%25field\"}}}";
+    ASSERT_EQ(js_first(schema, "{t: 1, s: 2, p: 3}\n", &r), nullptr);
+    free_report(r);
+    ASSERT_NE(js_first(schema, "{t: \"x\"}\n", &r), nullptr);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, DynamicRefResolvesTheOutermostScopedAnchor) {
+    yeptris_validate_report* r = NULL;
+    // the spec appendix C shape, self-contained: tree recurses through
+    // $dynamicRef, strict-tree extends it — the recursion must land on
+    // the OUTERMOST resource's $dynamicAnchor (strict-tree itself), so
+    // unevaluatedProperties guards the children too
+    const char* schema = "{\"$id\":\"https://example.com/strict\","
+                         "\"$dynamicAnchor\":\"node\","
+                         "\"type\":\"object\","
+                         "\"properties\":{\"v\":{\"const\":7},"
+                         "\"children\":{\"type\":\"array\",\"items\":{\"$dynamicRef\":\"#node\"}}},"
+                         "\"$defs\":{"
+                         "\"tree\":{\"$id\":\"https://example.com/tree\","
+                         "\"$dynamicAnchor\":\"node\","
+                         "\"type\":\"string\",\"required\":[\"children\"]}}}";
+    ASSERT_EQ(js_first(schema, "{v: 7, children: []}\n", &r), nullptr);
+    free_report(r);
+    /* the child items face the OUTERMOST resource's anchor (strict's,
+     * where the instance must be an object with v == 7): a static
+     * fallback would apply tree's anchor, whose type string rejects
+     * every child object */
+    ASSERT_EQ(js_first(schema, "{children: [{v: 7}]}\n", &r), nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first(schema, "{children: [{v: 7, children: [{v: 7}]}]}\n", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d = js_first(schema, "{children: [{v: 8}]}\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_CONST);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, DynamicRefScopeIsLeftAndProbesEnterNone) {
+    yeptris_validate_report* r = NULL;
+    // leaving a dynamic scope: the then-branch's resource scopes the
+    // $dynamicRef; the if-probe's resource does NOT (first_scope is
+    // entered only as a trial, and trials leave no scope)
+    const char* schema =
+        "{\"$id\":\"http://example.com/main\","
+        "\"if\":{\"$id\":\"first_scope\",\"$defs\":{\"thingy\":{"
+        "\"$dynamicAnchor\":\"thingy\",\"type\":\"number\"}}},"
+        "\"then\":{\"$id\":\"second_scope\",\"$ref\":\"start\","
+        "\"$defs\":{\"thingy\":{\"$dynamicAnchor\":\"thingy\",\"type\":\"null\"}}},"
+        "\"$defs\":{"
+        "\"start\":{\"$id\":\"start\",\"$dynamicRef\":\"inner_scope#thingy\"},"
+        "\"thingy\":{\"$id\":\"inner_scope\",\"$dynamicAnchor\":\"thingy\","
+        "\"type\":\"string\"}}}";
+    ASSERT_EQ(js_first(schema, "null\n", &r), nullptr); /* second_scope's anchor wins */
+    free_report(r);
+    ASSERT_NE(js_first(schema, "\"a string\"\n", &r), nullptr);
+    free_report(r);
+    ASSERT_NE(js_first(schema, "42\n", &r), nullptr);
+    free_report(r);
+}
+
 TEST(ValidateJsonSchema, BooleanSchemasAndUnknownKeywords) {
     yeptris_validate_report* r = NULL;
     ASSERT_EQ(js_first("true", "\"anything\"\n", &r), nullptr);

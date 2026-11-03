@@ -46,6 +46,7 @@ set(YEPTRIS_SOURCES
     yeptris/validate/regexp.c
     yeptris/validate/validate.c
     yeptris/validate/compile.c
+    yeptris/validate/resources.c
     yeptris/validate/jsonschema.c
     yeptris/tape.c
     yeptris/plan.c
