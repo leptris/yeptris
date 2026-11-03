@@ -600,12 +600,11 @@ static void check_json_key(yep_vctx* c, uint32_t key_id) {
     }
     yep_view v = yep_dom_view(d, n->value);
     int cls = yep_json12_plain(v.p != NULL ? v.p : "", v.len);
-    if (cls == 0) {
-        yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, off,
-                          "plain scalar matches no JSON production");
-        return;
-    }
-    if (cls != (int)YEPTRIS_TAG_STR) {
+    /* a plain key matching no JSON production IS a string (spec 10.2:
+     * example 10.8's "A null"/"Booleans" are plain block keys) — the
+     * string-key demand bars only keys resolving to non-string
+     * productions; the no-production Error row governs VALUES */
+    if (cls != 0 && cls != (int)YEPTRIS_TAG_STR) {
         yep_validate_emit(c, YEPTRIS_DIAG_KEY_NOT_STRING, off,
                           "mapping key is %s (expected a "
                           "string)",
@@ -613,8 +612,12 @@ static void check_json_key(yep_vctx* c, uint32_t key_id) {
     }
 }
 
-/* json12: plain scalars must match a JSON production; explicit
- * non-JSON tags rejected (the caller runs check_tag separately). */
+/* json12: plain scalars matching no JSON production are STRINGS —
+ * spec 10.2 example 10.8 resolves them as strings (keys AND the
+ * "Invalid" list), overriding the table's "should consider an error"
+ * note, which governs JSON-file processing warnings. The family's
+ * validation teeth are the string-key demand (check_json_key) and
+ * explicit non-JSON tags; implicit no-match plains stay family-neutral. */
 static void check_json_scalar(yep_vctx* c, uint32_t id) {
     const yep_dom* d = c->dom;
     const yep_dnode* n = yep_dom_node(d, id);
@@ -625,15 +628,6 @@ static void check_json_scalar(yep_vctx* c, uint32_t id) {
             yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, yep_validate_node_off(d, id),
                               "explicit %s tag is not a JSON type", tag_word(want));
         }
-        return;
-    }
-    if (!(n->implicit || n->style == YEP_STYLE_PLAIN)) {
-        return; /* quoted/block scalars are strings */
-    }
-    yep_view v = yep_dom_view(d, n->value);
-    if (yep_json12_plain(v.p != NULL ? v.p : "", v.len) == 0) {
-        yep_validate_emit(c, YEPTRIS_DIAG_NON_JSON_TYPE, yep_validate_node_off(d, id),
-                          "plain scalar matches no JSON production");
     }
 }
 

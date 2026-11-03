@@ -7,9 +7,13 @@
  *     consistency (spec 10.3 resolution) and mapping-key uniqueness
  *     (spec 3.2.1.3: keys compare by canonical form — 0o13 and 0xB
  *     are the same key). Under YEPTRIS_SCHEMA_12_JSON the spec 10.2
- *     family applies: every PLAIN scalar must match a JSON production
- *     (the table's `*` -> Error row), mapping keys must be strings,
- *     non-JSON tags are rejected; core checks still run.
+ *     family applies: implicit resolution uses ONLY the JSON
+ *     productions (the core extensions — 0o/0x radix, "+12.3",
+ *     "True"/"~" casings — stay strings, per example 10.8's Invalid
+ *     list), mapping keys must be strings (a key resolving to a
+ *     non-string production is KEY_NOT_STRING; a no-production plain
+ *     key IS a string, per example 10.8), explicit non-JSON tags are
+ *     rejected; core checks still run.
  *
  *  2. JSON SCHEMA validation (`yeptris_json_schema_validate`): the
  *     schema arrives as bytes (parsed with the same engine), the
