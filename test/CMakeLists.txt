@@ -481,6 +481,24 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-q-hash-glued-comment-pair.bin
     )
 
+    # the r108 nightly's composition (the glued-tag x alias-name
+    # charset, crash-54b5b756): the artifact's "!!i&a:" is ONE tag in
+    # both engines — the '&' rides the ns-uri-char suffix — and "*a:"
+    # names "a:" per the suite (2SXE). The charset walk split inside
+    # the tag URI (corrupting the copy, so the verify's early return
+    # skipped the r95 solo retries) and declined its own alias split;
+    # tag-URI bytes are not name runs, and a glued apostrophe rides the
+    # suffix too (the 6-byte drift the same session's minimizer found).
+    # All three shapes — the 128-byte artifact, the 12-byte glued-'&'
+    # minimal, the 6-byte glued-quote drift — must classify known
+    add_test(
+        NAME fuzz-diff-r108-composition
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-charset-glued-tag.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-charset-glued-tag-min.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-charset-glued-quote.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
