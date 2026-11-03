@@ -86,6 +86,8 @@ static_assert(YEPTRIS_DIAG_CONTAINS == 30, "pinned ABI value");
 static_assert(YEPTRIS_DIAG_MIN_CONTAINS == 31, "pinned ABI value");
 static_assert(YEPTRIS_DIAG_MAX_CONTAINS == 32, "pinned ABI value");
 static_assert(YEPTRIS_DIAG_DEPENDENT_REQUIRED == 33, "pinned ABI value (sweep tail)");
+static_assert(YEPTRIS_DIAG_UNEVALUATED_PROPERTY == 34, "pinned ABI value (annotation model)");
+static_assert(YEPTRIS_DIAG_UNEVALUATED_ITEM == 35, "pinned ABI value (annotation model tail)");
 static_assert(sizeof(yeptris_diagnostic) == 400, "diagnostic layout pinned");
 static_assert(YEPTRIS_DIAG_PATH_MAX == 256, "diagnostic path slot pinned");
 static_assert(YEPTRIS_DIAG_DETAIL_MAX == 128, "diagnostic detail slot pinned");

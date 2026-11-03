@@ -97,6 +97,9 @@ typedef enum {
     YEPTRIS_DIAG_MIN_CONTAINS = 31,
     YEPTRIS_DIAG_MAX_CONTAINS = 32,
     YEPTRIS_DIAG_DEPENDENT_REQUIRED = 33,
+    /* the 2020-12 unevaluated* annotation model (the sota sweep) */
+    YEPTRIS_DIAG_UNEVALUATED_PROPERTY = 34, /* no sibling/applicator evaluated it */
+    YEPTRIS_DIAG_UNEVALUATED_ITEM = 35,
 } YeptrisDiagCode;
 
 /* Bounded diagnostic text; always NUL-terminated (over-long paths and
