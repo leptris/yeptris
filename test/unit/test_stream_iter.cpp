@@ -180,3 +180,43 @@ TEST(StreamIter, ToleratedDocumentsMatchLoadStreamValues) {
     yeptris_document_free(doc);
     yeptris_stream_iter_free(it);
 }
+
+TEST(StreamIter, SliceServesTheLastSuccessfulFrame) {
+    // the slice accessor: hosts with their own value route re-parse
+    // exactly these bytes — the offsets must track the frame extents
+    // (and die ARG after a failure, the end, or a NULL out-param)
+    const char* src = "--- first\n--- {a: 1}\n--- {{{{ bad\n--- last\n";
+    yeptris_stream_iter* it = yeptris_stream_iter_new(src, strlen(src), nullptr);
+    ASSERT_NE(it, nullptr);
+
+    size_t off = 999, len = 0;
+    YeptrisDocument doc = nullptr;
+    ASSERT_EQ(yeptris_stream_iter_next(it, &doc, nullptr), YEPTRIS_OK);
+    yeptris_document_free(doc);
+    EXPECT_EQ(yeptris_stream_iter_slice(it, &off, &len), YEPTRIS_OK);
+    EXPECT_EQ(memcmp(src + off, "--- first", 9), 0);
+
+    ASSERT_EQ(yeptris_stream_iter_next(it, &doc, nullptr), YEPTRIS_OK);
+    yeptris_document_free(doc);
+    EXPECT_EQ(yeptris_stream_iter_slice(it, &off, &len), YEPTRIS_OK);
+    EXPECT_EQ(memcmp(src + off, "--- {a: 1}", 9), 0);
+
+    /* the failed frame: the slice goes ARG (the frame is ill-formed) */
+    EXPECT_EQ(yeptris_stream_iter_next(it, &doc, nullptr), YEPTRIS_ERROR_PARSE);
+    EXPECT_EQ(doc, nullptr);
+    EXPECT_EQ(yeptris_stream_iter_slice(it, &off, &len), YEPTRIS_ERROR_ARG);
+
+    /* the recovery frame serves again */
+    ASSERT_EQ(yeptris_stream_iter_next(it, &doc, nullptr), YEPTRIS_OK);
+    yeptris_document_free(doc);
+    EXPECT_EQ(yeptris_stream_iter_slice(it, &off, &len), YEPTRIS_OK);
+    EXPECT_EQ(memcmp(src + off, "--- last", 8), 0);
+
+    /* the stream end: ARG, not a stale frame */
+    doc = nullptr;
+    EXPECT_EQ(yeptris_stream_iter_next(it, &doc, nullptr), YEPTRIS_OK);
+    EXPECT_EQ(doc, nullptr);
+    EXPECT_EQ(yeptris_stream_iter_slice(it, &off, &len), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(yeptris_stream_iter_slice(nullptr, &off, &len), YEPTRIS_ERROR_ARG);
+    yeptris_stream_iter_free(it);
+}
