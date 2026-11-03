@@ -212,7 +212,10 @@ YEPTRIS_API YeptrisStatus yeptris_validate_stream(const char* buf, size_t len, Y
  * (`true`/`false`) apply. Unknown keywords and known keywords with
  * unreadable values are ignored (2020-12). Instance types ride the
  * core-schema resolution (the YAML->JSON data model): "y" is boolean,
- * 1.0 is integer.
+ * 1.0 is integer. The IETF WG's next-edition draft
+ * (draft-ietf-jsonschema-json-schema-00) carries these same keyword
+ * semantics — no evaluator delta; the diff record is
+ * docs/schema/ietf-wg-draft-delta.md.
  *
  * Status: as yeptris_validate, plus YEPTRIS_ERROR_ARG when the schema
  * bytes hold no document, and YEPTRIS_ERROR_PARSE when they do not

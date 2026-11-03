@@ -1574,6 +1574,102 @@ void pin_faces(const char* schema, const char* doc) {
 
 } // namespace
 
+// ---- the IETF WG draft's own examples (issue #906 slice 2) ---------------
+//
+// draft-ietf-jsonschema-json-schema-00 carries the 2020-12 semantics with
+// NO keyword-level deltas (docs/schema/ietf-wg-draft-delta.md), so these
+// pins guard the draft's flagship examples — the machinery the WG text
+// showcases, verbatim — rather than any behavior change.
+
+TEST(ValidateJsonSchemaWgDraft, RefsExamplePositiveInteger) {
+    // WG §4.2.2 "$defs": the canonical reference example, verbatim
+    const char* schema = "{\"type\":\"array\","
+                         "\"items\":{\"$ref\":\"#/$defs/positiveInteger\"},"
+                         "\"$defs\":{\"positiveInteger\":"
+                         "{\"type\":\"integer\",\"exclusiveMinimum\":0}}}";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(js_first(schema, "[1, 2, 3]", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d = js_first(schema, "[1, -2]", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_EXCLUSIVE_MINIMUM);
+    EXPECT_STREQ(d->path, "/1");
+    free_report(r);
+}
+
+TEST(ValidateJsonSchemaWgDraft, DereferencingExampleRootJson) {
+    // WG §11.2: $id base composition + the "#item" plain-name fragment
+    // resolve within the document; "other.json" resolves OUTSIDE it, and
+    // the WG's own walkthrough ("which is not defined in this document")
+    // is our no-fetch boundary: DIAG_REF at the property the
+    // additionalProperties schema applies to
+    const char* schema = "{\"$id\":\"https://example.net/root.json\","
+                         "\"items\":{\"type\":\"array\",\"items\":{\"$ref\":\"#item\"}},"
+                         "\"$defs\":{\"single\":{\"$anchor\":\"item\",\"type\":\"object\","
+                         "\"additionalProperties\":{\"$ref\":\"other.json\"}}}}";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(js_first(schema, "[[{}]]", &r), nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d = js_first(schema, "[[{\"a\": 1}]]", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_REF);
+    EXPECT_STREQ(d->path, "/0/0/a");
+    free_report(r);
+}
+
+TEST(ValidateJsonSchemaWgDraft, AppendixCTreeStrictTreeDynamicScope) {
+    // WG Appendix C verbatim, bundled the only way the face can hold two
+    // resources (tree rides under $defs with its $id; "tree" against the
+    // strict-tree base resolves to https://example.com/tree). The
+    // misspelled "daat" must trip strict-tree's unevaluatedProperties —
+    // so the $dynamicRef recursion inside tree's children must land on
+    // the OUTERMOST resource's anchor (strict-tree), not tree's own.
+    // The upstream suite pins this example only through its remote
+    // corpus (the carried strict-tree group), so this is the pin.
+    const char* schema = "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\","
+                         "\"$id\":\"https://example.com/strict-tree\","
+                         "\"$dynamicAnchor\":\"node\","
+                         "\"$ref\":\"tree\","
+                         "\"unevaluatedProperties\":false,"
+                         "\"$defs\":{\"tree\":{"
+                         "\"$id\":\"https://example.com/tree\","
+                         "\"$dynamicAnchor\":\"node\","
+                         "\"type\":\"object\","
+                         "\"properties\":{\"data\":true,"
+                         "\"children\":{\"type\":\"array\","
+                         "\"items\":{\"$dynamicRef\":\"#node\"}}}}}}";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(js_first(schema, "{children: [{data: 1}]}", &r), nullptr);
+    free_report(r);
+    // the misspelled field, one level deep
+    const yeptris_diagnostic* d = js_first(schema, "{children: [{daat: 1}]}", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_UNEVALUATED_PROPERTY);
+    EXPECT_STREQ(d->path, "/children/0/daat");
+    free_report(r);
+    // the recursion still guards THROUGH the dynamic reference
+    d = js_first(schema, "{children: [{children: [{daat: 1}]}]}", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_UNEVALUATED_PROPERTY);
+    EXPECT_STREQ(d->path, "/children/0/children/0/daat");
+    free_report(r);
+    // and the compiled face's verdicts ride the same walk
+    pin_faces(schema, "{children: [{data: 1}]}");
+    pin_faces(schema, "{children: [{daat: 1}]}");
+}
+
+TEST(ValidateJsonSchemaWgDraft, ReadOnlyWriteOnlyAnnotationsNeverAssert) {
+    // WG §10.4.1's example: readOnly/writeOnly are annotations — the
+    // example instance validates (the WG's output units for it are the
+    // slice-5 output face, not an assertion)
+    const char* schema = "{\"$id\":\"https://example.com/schema\",\"type\":\"object\","
+                         "\"properties\":{\"username\":{\"type\":\"string\",\"readOnly\":true},"
+                         "\"password\":{\"type\":\"string\",\"writeOnly\":true}}}";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(js_first(schema, "{username: xyz, password: \"123\"}", &r), nullptr);
+    free_report(r);
+}
+
 TEST(ValidateCompiledSchema, CompileOnceValidateMany) {
     // the pattern kernel is the XSD content-model analog: the schema's
     // four patterns compile at handle-compile time, then every stream
