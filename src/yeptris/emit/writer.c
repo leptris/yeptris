@@ -357,6 +357,88 @@ static void emit_sq(yep_writer* w, const char* p, uint32_t n) {
     wr_byte(w, '\'');
 }
 
+/* Block-side width folding (#903): libyaml's plain/single-quoted fold
+ * walk. At an INTERIOR single space (not the value's first or last
+ * byte, no adjacent spaces) with the column past best_width, the break
+ * REPLACES the space and the continuation re-indents to the fold
+ * column — parent_col + indent (libyaml's emit_scalar bumps the write
+ * indent to parent_indent + best_indent for the scalar's own lines).
+ * The folded bodies carry no breaks by construction: sc_route sends
+ * multiline content to DQ/literal, so the walk only decides on ' '
+ * (IS_SPACE — a tab is content). Columns are BYTES, matching the
+ * engine's existing 13B flow fold; libyaml counts characters, so
+ * multi-byte content folds at slightly different points (documented
+ * divergence, ASCII input folds byte-identically). */
+
+/* The fold break: libyaml's write_indent mid-scalar — indention is
+ * always clear there, so it is exactly a break plus the pad. */
+static void wr_fold_break(yep_writer* w, int fold_col) {
+    wr_byte(w, '\n');
+    wr_indent(w, fold_col);
+}
+
+/* The shared walk for a plain body (no doubling to apply). The fold
+ * decision prices the PENDING run in (it flushes only at a fold): the
+ * live column at the candidate space is w->col + run — exactly
+ * libyaml's emitter->column at the same byte. */
+static void emit_plain_folded(yep_writer* w, const char* p, uint32_t n, int fold_col) {
+    uint32_t run = 0; /* pending flush span length */
+    uint32_t i = 0;
+    while (i < n) {
+        if (p[i] == ' ' && i > 0 && i + 1 < n && w->col + (int)run > w->best_width &&
+            p[i - 1] != ' ' && p[i + 1] != ' ') {
+            if (run) {
+                wr_put(w, p + i - run, run);
+                run = 0;
+            }
+            wr_fold_break(w, fold_col);
+            i++; /* the fold consumes the space (libyaml: MOVE without WRITE) */
+            continue;
+        }
+        i++;
+        run++;
+    }
+    if (run) {
+        wr_put(w, p + n - run, run);
+    }
+}
+
+/* The single-quoted twin: '' doubling rides the same walk (a doubled
+ * apostrophe is two written bytes; the column tracking through wr_put
+ * prices it in automatically). */
+static void emit_sq_folded(yep_writer* w, const char* p, uint32_t n, int fold_col) {
+    wr_byte(w, '\'');
+    uint32_t run = 0;
+    uint32_t i = 0;
+    while (i < n) {
+        if (p[i] == '\'') {
+            if (run) {
+                wr_put(w, p + i - run, run);
+                run = 0;
+            }
+            wr_put(w, "''", 2);
+            i++;
+            continue;
+        }
+        if (p[i] == ' ' && i > 0 && i + 1 < n && w->col + (int)run > w->best_width &&
+            p[i - 1] != ' ' && p[i + 1] != ' ') {
+            if (run) {
+                wr_put(w, p + i - run, run);
+                run = 0;
+            }
+            wr_fold_break(w, fold_col);
+            i++;
+            continue;
+        }
+        i++;
+        run++;
+    }
+    if (run) {
+        wr_put(w, p + n - run, run);
+    }
+    wr_byte(w, '\'');
+}
+
 /* JSON string escapes: \" \\ \b \f \n \r \t and \uXXXX for other
  * controls; raw UTF-8 passes through (RFC 8259). */
 static void emit_dq_json(yep_writer* w, const char* p, uint32_t n) {
@@ -397,9 +479,10 @@ static void emit_dq_json(yep_writer* w, const char* p, uint32_t n) {
     wr_byte(w, '"');
 }
 
-/* Literal block: header at the cursor, body lines at parent_col+2.
- * The explicit indicator is always '2' because the pad is defined as
- * parent_col+2 everywhere (the contract that keeps it valid). */
+/* Literal block: header at the cursor, body lines at parent_col+indent.
+ * The explicit indicator spells the pad when it is ambiguous because
+ * the pad is defined as parent_col+indent everywhere (the contract
+ * that keeps it valid; indent=2 gives the historical '2'). */
 static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
     yep_view vdec = wv(w, n->value);
     const char* p = (const char*)vdec.p;
@@ -418,12 +501,14 @@ static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
     /* libyaml's indicator rules (#290 family 4): the explicit indent
      * appears when the first body line starts with a space or is
      * blank — the base indent is unambiguous otherwise (the pad is
-     * parent_col+2 by contract; F6MC's leading-blank folded bodies) */
+     * parent_col+indent by contract; F6MC's leading-blank folded
+     * bodies). The digit spells the pad (#903: '2' at the default
+     * indent, the caller's level otherwise). */
     if (body > 0 && (p[0] == ' ' || p[0] == '\n')) {
-        wr_byte(w, '2');
+        wr_byte(w, (char)('0' + w->indent));
     }
     wr_byte(w, '\n');
-    int pad = parent_col + 2;
+    int pad = parent_col + w->indent;
     wr_indent(w, pad);
     for (uint32_t i = 0; i < body; i++) {
         wr_byte(w, p[i]);
@@ -699,10 +784,21 @@ static void emit_scalar(yep_writer* w, const yep_dnode* n, int parent_col, int a
         break; /* an empty plain value emits as nothing (libyaml's null
                   rendering, issue #290) */
     case YEP_SC_PLAIN:
-        wr_put(w, p, len);
+        if (w->block_fold && !as_key && !w->in_flow && len > 0) {
+            /* #903: block-context width folding; keys never fold
+             * (libyaml: allow_breaks = !simple_key_context) and flow
+             * members keep the flow walk */
+            emit_plain_folded(w, p, len, parent_col + w->indent);
+        } else {
+            wr_put(w, p, len);
+        }
         break;
     case YEP_SC_SQ:
-        emit_sq(w, p, len);
+        if (w->block_fold && !as_key && !w->in_flow && len > 0) {
+            emit_sq_folded(w, p, len, parent_col + w->indent);
+        } else {
+            emit_sq(w, p, len);
+        }
         break;
     case YEP_SC_LITERAL:
         emit_literal(w, n, parent_col);
@@ -1172,13 +1268,16 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
          * key, plain unpropertied scalar value, both safety-proven by
          * the exact predicates sc_route consults (no memo touch, so
          * the dry/wet sc_i streams stay aligned). Anything else falls
-         * through untouched — parity by construction. */
+         * through untouched — parity by construction. block_fold
+         * (#903) declines the arm wholesale: the fused write's
+         * arithmetic column model has no fold walk, and the general
+         * body emits the identical bytes with folding. */
         const yep_dnode* kn0 = yep_dom_node(d, child);
         const yep_dnode* vn0 = yep_dom_node(d, kn0->next_sibling);
-        if (!w->canonical && !w->json && !w->force_flow && vn0 != NULL && kn0->kind == 0 &&
-            kn0->style == 1 && kn0->anchor.len == 0 && kn0->tag.len == 0 && kn0->count == 0 &&
-            vn0->kind == 0 && vn0->style == 1 && vn0->anchor.len == 0 && vn0->tag.len == 0 &&
-            vn0->count == 0) {
+        if (!w->canonical && !w->json && !w->force_flow && !w->block_fold && vn0 != NULL &&
+            kn0->kind == 0 && kn0->style == 1 && kn0->anchor.len == 0 && kn0->tag.len == 0 &&
+            kn0->count == 0 && vn0->kind == 0 && vn0->style == 1 && vn0->anchor.len == 0 &&
+            vn0->tag.len == 0 && vn0->count == 0) {
             yep_view kv = wv(w, kn0->value);
             yep_view vv = wv(w, vn0->value);
             uint32_t f_ind = 0, f_nl = 0, f_total = 0;
@@ -1337,11 +1436,11 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
                  * with a complex key forcing the explicit form) */
                 if (!(vn->kind == 0 || vn->kind == 3 || vn->flow || vn->count == 0)) {
                     int seq_val = (vn->kind == 1 && !vn->flow);
-                    int val_col = seq_val ? content_col : content_col + 2;
+                    int val_col = seq_val ? content_col : content_col + w->indent;
                     emit_props_tail(w, vn);
                     wr_byte(w, '\n');
                     wr_indent(w, val_col);
-                    emit_node(em, kn->next_sibling, val_col - 2, 0);
+                    emit_node(em, kn->next_sibling, val_col - w->indent, 0);
                 } else {
                     emit_node(em, kn->next_sibling, content_col, 0);
                 }
@@ -1368,15 +1467,16 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             } else {
                 /* nested block collection: next line. libyaml parity:
                  * a SEQUENCE value sits at the key's column (zero
-                 * extra indent); mappings indent +2 (issue #95) */
+                 * extra indent); mappings indent one level (issue #95;
+                 * the level width is the #903 indent option) */
                 int seq_val = (vn->kind == 1 && !vn->flow);
-                int val_col = seq_val ? content_col : content_col + 2;
+                int val_col = seq_val ? content_col : content_col + w->indent;
                 emit_props_tail(w, vn);
                 wr_byte(w, '\n');
                 wr_indent(w, val_col);
-                /* emit_block_seq dashes at parent_col+2: pass val_col-2
-                 * so the dashes land at val_col exactly */
-                emit_node(em, kn->next_sibling, val_col - 2, 0);
+                /* emit_block_seq dashes at parent_col+indent: pass
+                 * val_col-indent so the dashes land at val_col exactly */
+                emit_node(em, kn->next_sibling, val_col - w->indent, 0);
             }
         }
         pair++;
@@ -1419,11 +1519,19 @@ static void emit_block_seq(yep_emitter* em, uint32_t id, int content_col) {
             wr_byte(w, '-');
             emit_props_tail(w, cn);
             wr_byte(w, '\n');
-            wr_indent(w, content_col + 2);
+            wr_indent(w, content_col + w->indent);
             emit_node(em, child, content_col, 0);
         } else {
             /* compact: a block collection starts right after "- " */
             wr_put(w, "- ", 2);
+            if (w->indent > 2 && cn->kind != 0 && cn->kind != 3 && !cn->flow && cn->count > 0) {
+                /* libyaml/PyYAML's indent shape (#903): a nested
+                 * block collection's first line rides at the LEVEL
+                 * column (dash + indent), not the dash+2 token width
+                 * — indent=4 spells "-   a: 1" / "-   - x"; scalars,
+                 * aliases and empty/flow collections keep "- x" */
+                wr_indent(w, w->indent - 2);
+            }
             emit_node(em, child, content_col, 0);
         }
         idx++;
@@ -1459,7 +1567,10 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
             emit_anchor_ex(em, n);
             wr_put(w, "{}", 2);
         } else {
-            emit_block_map(em, id, parent_col + 2);
+            /* the root (parent_col < 0, the caller's -2) rides column
+             * 0; every nesting level adds the indent option (#903) */
+            int base = (parent_col < 0) ? parent_col + 2 : parent_col + w->indent;
+            emit_block_map(em, id, base);
         }
         return;
     }
@@ -1469,7 +1580,8 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
             emit_anchor_ex(em, n);
             wr_put(w, "[]", 2);
         } else {
-            emit_block_seq(em, id, parent_col + 2);
+            int base = (parent_col < 0) ? parent_col + 2 : parent_col + w->indent;
+            emit_block_seq(em, id, base);
         }
         return;
     }
@@ -2143,6 +2255,10 @@ YEPTRIS_API YeptrisStatus yeptris_json_from_marshal(const char* m, size_t m_len,
     w->canonical = 0;
     w->explicit_doc_start = 0;
     w->best_width = 0;
+    w->indent = 2; /* #903 fields: the JSON lane never folds or
+                    * block-indents, but the writer stays fully
+                    * initialized */
+    w->block_fold = 0;
     w->sv_input = NULL;
     w->sv_arena = NULL;
     w->sink = NULL;

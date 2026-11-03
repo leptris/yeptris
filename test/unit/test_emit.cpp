@@ -60,7 +60,7 @@ TEST(Emit, ExplicitDocStartOption) {
     free(out);
 
     /* the option carries the leading marker (Psych implicit=false) */
-    yeptris_emit_options opts = {sizeof(opts), 0, 0, 1};
+    yeptris_emit_options opts = {sizeof(opts), 0, 0, 1, 0, 0};
     out = yeptris_serialize_ex(doc, &opts, &len);
     ASSERT_NE(out, nullptr);
     EXPECT_EQ(std::string(out, len), "---\nversion: 1.2.3\n");
@@ -82,7 +82,8 @@ TEST(Emit, ExplicitDocStartOption) {
     st = YEPTRIS_OK;
     doc = yeptris_parse("a: 1\n", 5, &st);
     ASSERT_EQ(st, YEPTRIS_OK);
-    yeptris_emit_options old_shape = {4, 0, 0, 0}; /* too small: explicit_doc_start unread */
+    yeptris_emit_options old_shape = {4, 0, 0,
+                                      0, 0, 0}; /* too small: the option fields are unread */
     out = yeptris_serialize_ex(doc, &old_shape, &len);
     ASSERT_NE(out, nullptr);
     EXPECT_EQ(std::string(out, len), "a: 1\n");
@@ -350,7 +351,7 @@ static std::string canon(const char* y) {
     if (doc == nullptr) {
         return "<parse-failed>";
     }
-    yeptris_emit_options opts = {sizeof(opts), 1, 0, 0};
+    yeptris_emit_options opts = {sizeof(opts), 1, 0, 0, 0, 0};
     size_t len = 0;
     char* out = yeptris_serialize_ex(doc, &opts, &len);
     yeptris_document_free(doc);
@@ -610,7 +611,7 @@ TEST(EmitJson, UnserializableCompactStaysNull) {
 }
 
 TEST(EmitCanonical, OptionsVersioning) {
-    yeptris_emit_options opts = {4, 1, 0, 0}; /* too small: canonical+explicit unread */
+    yeptris_emit_options opts = {4, 1, 0, 0, 0, 0}; /* too small: the option fields are unread */
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse("a: 1\n", 5, &st);
     ASSERT_NE(doc, nullptr);
@@ -710,7 +711,7 @@ TEST(EmitFold, FlowWrapsPastBestWidth) {
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
     ASSERT_NE(doc, nullptr);
-    yeptris_emit_options opts = {sizeof(opts), 0, 30, 0};
+    yeptris_emit_options opts = {sizeof(opts), 0, 30, 0, 0, 0};
     size_t len = 0;
     char* out = yeptris_serialize_ex(doc, &opts, &len);
     ASSERT_NE(out, nullptr);
@@ -751,12 +752,235 @@ TEST(EmitFold, DefaultUnfoldsSmall) {
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
     ASSERT_NE(doc, nullptr);
-    yeptris_emit_options opts = {sizeof(opts), 0, 0, 0};
+    yeptris_emit_options opts = {sizeof(opts), 0, 0, 0, 0, 0};
     size_t len = 0;
     char* out = yeptris_serialize_ex(doc, &opts, &len);
     ASSERT_NE(out, nullptr);
     EXPECT_EQ(std::string(out, len), "a: [1, 2, 3]\n");
     free(out);
+    yeptris_document_free(doc);
+}
+
+/* ---- #903: block-side width folding + the indent option --------------
+ *
+ * Reference bytes below were produced by libyaml 0.2.5's own emitter
+ * (yaml_emitter_set_width / best_indent) on the same parsed content.
+ * ASCII fold parity is byte-exact; the documented divergence is the
+ * column model (bytes here, characters in libyaml) and that
+ * double-quoted bodies never fold (libyaml folds them; the engine's
+ * canonical/DQ form is fixed by design). */
+
+namespace {
+
+/* parse + serialize with explicit options */
+std::string ser_opts(const char* y, const yeptris_emit_options& opts) {
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    EXPECT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL) << " [" << y << "]";
+    if (doc == nullptr) {
+        return "<parse-failed>";
+    }
+    size_t len = 0;
+    char* out = yeptris_serialize_ex(doc, &opts, &len);
+    yeptris_document_free(doc);
+    if (out == nullptr) {
+        return "<emit-failed>";
+    }
+    std::string r(out, len);
+    free(out);
+    return r;
+}
+
+} // namespace
+
+/* (pin a) block plain/single-quoted folding at a chosen width matches
+ * libyaml's fold on the same input, byte for byte. */
+TEST(EmitFold903, BlockPlainMatchesLibyaml) {
+    const char* words = "aaa bbb ccc ddd eee fff ggg hhh iii";
+    char y[256];
+    yeptris_emit_options fold = {sizeof(yeptris_emit_options), 0, 20, 0, 0, 1};
+    yeptris_emit_options fold4 = {sizeof(yeptris_emit_options), 0, 20, 0, 4, 1};
+
+    /* root scalar: fold column is the scalar's own level (0 + indent) */
+    snprintf(y, sizeof(y), "%s\n", words);
+    EXPECT_EQ(ser_opts(y, fold), "aaa bbb ccc ddd eee fff\n  ggg hhh iii\n");
+
+    /* map value: fold column is the key's column + indent */
+    snprintf(y, sizeof(y), "key: %s\n", words);
+    EXPECT_EQ(ser_opts(y, fold), "key: aaa bbb ccc ddd eee\n  fff ggg hhh iii\n");
+
+    /* root single-quoted: same walk over the quoted body */
+    snprintf(y, sizeof(y), "'%s'\n", words);
+    EXPECT_EQ(ser_opts(y, fold), "'aaa bbb ccc ddd eee fff\n  ggg hhh iii'\n");
+
+    /* single-quoted map value: '' doubling and the fold coexist */
+    snprintf(y, sizeof(y), "key: '%s'\n", words);
+    EXPECT_EQ(ser_opts(y, fold), "key: 'aaa bbb ccc ddd\n  eee fff ggg hhh iii'\n");
+
+    /* libyaml skips double spaces (adjacent-space guard) */
+    EXPECT_EQ(ser_opts("k: aa  bb  cc dd ee ff gg hh\n", fold),
+              "k: aa  bb  cc dd ee ff\n  gg hh\n");
+
+    /* nested level: fold column = key column + indent (ind=4: 4 then 8) */
+    snprintf(y, sizeof(y), "a:\n    key: %s\n", words);
+    EXPECT_EQ(ser_opts(y, fold4), "a:\n    key: aaa bbb ccc ddd\n        eee fff ggg hhh\n"
+                                  "        iii\n");
+
+    /* seq item: fold column = dash column + indent */
+    snprintf(y, sizeof(y), "- %s\n", words);
+    EXPECT_EQ(ser_opts(y, fold), "- aaa bbb ccc ddd eee\n  fff ggg hhh iii\n");
+    EXPECT_EQ(ser_opts(y, fold4), "- aaa bbb ccc ddd eee\n    fff ggg hhh iii\n");
+}
+
+/* (pin a, acceptance) a 200-char plain scalar folds at width 80 in
+ * BLOCK context; the bytes are libyaml's. */
+TEST(EmitFold903, BlockPlainFoldsAt80) {
+    const char* v = "The quick brown fox jumps over the lazy dog and keeps running through the "
+                    "meadow while the sun sets slowly behind the distant hills casting long "
+                    "shadows across the quiet valley floor below";
+    char y[512];
+    snprintf(y, sizeof(y), "key: %s\n", v);
+    yeptris_emit_options opts = {sizeof(yeptris_emit_options), 0, 80, 0, 0, 1};
+    std::string out = ser_opts(y, opts);
+    EXPECT_EQ(out,
+              "key: The quick brown fox jumps over the lazy dog and keeps running through the "
+              "meadow\n"
+              "  while the sun sets slowly behind the distant hills casting long shadows across "
+              "the\n"
+              "  quiet valley floor below\n");
+    /* and it re-parses to the same DATA (the folded form is libyaml's
+     * rendering; the engine's default walk of the re-parsed document
+     * rides its multiline-upgrade law, so equality is checked on the
+     * node value, not the bytes) */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d2 = yeptris_parse(out.data(), out.size(), &st);
+    ASSERT_NE(d2, nullptr);
+    YeptrisNode root2 = yeptris_document_root(d2, 0);
+    YeptrisNode val2 = yeptris_node_map_get(root2, "key", 3);
+    ASSERT_NE(val2, nullptr);
+    size_t vlen = 0;
+    const char* vbytes = yeptris_node_value(val2, &vlen);
+    ASSERT_NE(vbytes, nullptr);
+    EXPECT_EQ(std::string(vbytes, vlen), std::string(v, strlen(v)));
+    yeptris_document_free(d2);
+}
+
+/* the default-off law: without block_fold (or with a pre-#903 struct
+ * size) block output stays width-invariant — byte-identical with the
+ * pre-option releases. */
+TEST(EmitFold903, DefaultOffStaysWidthInvariant) {
+    const char* y = "key: aaa bbb ccc ddd eee fff ggg hhh iii jjj kkk lll mmm nnn ooo ppp\n";
+    yeptris_emit_options width_only = {sizeof(yeptris_emit_options), 0, 20, 0, 0, 0};
+    yeptris_emit_options old_struct = {16, 0, 20, 0, 7, 7}; /* pre-#903 size: new fields unread */
+    yeptris_emit_options default_opts = {sizeof(yeptris_emit_options), 0, 0, 0, 0, 0};
+    std::string with_width = ser_opts(y, width_only);
+    std::string old_shape = ser_opts(y, old_struct);
+    std::string deflt = ser_opts(y, default_opts);
+    /* one long plain line regardless of width */
+    std::string single = y;
+    EXPECT_EQ(with_width, single);
+    EXPECT_EQ(old_shape, single);
+    EXPECT_EQ(deflt, single);
+    /* a short folded member emits identically to the default walk */
+    yeptris_emit_options fold = {sizeof(yeptris_emit_options), 0, 20, 0, 0, 1};
+    EXPECT_EQ(ser_opts("a: 1\nb: two\n", fold), "a: 1\nb: two\n");
+}
+
+/* (pin c) canonical mode stays byte-stable under both new options —
+ * and the options cannot alter the fixed canonical form. */
+TEST(EmitFold903, CanonicalByteStableUnderBothOptions) {
+    const char* cases[] = {
+        "a: 1\nb: [x, y]\nc:\n  d: 2\ntext: |\n  line one\n  line two\nk: plain words here\n",
+        "- - 1\n  - 2\n- k: v\n",
+    };
+    for (const char* y : cases) {
+        yeptris_emit_options opts = {sizeof(yeptris_emit_options), 1, 30, 0, 4, 1};
+        std::string c1 = ser_opts(y, opts);
+        std::string c2 = ser_opts(c1.c_str(), opts);
+        EXPECT_EQ(c1, c2) << "input [" << y << "] -> [" << c1 << "]";
+        /* indent and block_fold cannot alter the fixed canonical form
+         * (same width both sides — the 13B flow wrap is width-driven
+         * and stays) */
+        yeptris_emit_options opts_bare = {sizeof(yeptris_emit_options), 1, 30, 0, 0, 0};
+        EXPECT_EQ(ser_opts(y, opts_bare), c1);
+    }
+}
+
+/* (pin b) indent=4 shapes: libyaml parity for maps, indentless seq
+ * values, seq-item levels, and literal pads. */
+TEST(EmitIndent903, ShapesAt4) {
+    yeptris_emit_options i4 = {sizeof(yeptris_emit_options), 0, 0, 0, 4, 0};
+    EXPECT_EQ(ser_opts("a:\n  - 1\n  - 2\nb:\n    c: 3\n", i4), "a:\n- 1\n- 2\nb:\n    c: 3\n");
+    EXPECT_EQ(ser_opts("- a: 1\n  b: 2\n- c: 3\n", i4), "-   a: 1\n    b: 2\n-   c: 3\n");
+    EXPECT_EQ(ser_opts("- - 1\n  - 2\n- - 3\n", i4), "-   - 1\n    - 2\n-   - 3\n");
+    EXPECT_EQ(ser_opts("a:\n  b:\n    c: 1\n", i4), "a:\n    b:\n        c: 1\n");
+    /* literal pad: key column + indent, digit spells the pad */
+    EXPECT_EQ(ser_opts("k: |\n  a\n  b\n", i4), "k: |\n    a\n    b\n");
+    EXPECT_EQ(ser_opts("|-\n  a\n  b\n", i4), "|-\n    a\n    b\n");
+    /* props-dash form: the dash stays bare, props ride it, and the
+     * collection starts at the level column (libyaml's shape) */
+    EXPECT_EQ(ser_opts("list:\n  - &x 1\n  - *x\n", i4), "list:\n- &x 1\n- *x\n");
+    EXPECT_EQ(ser_opts("- &a\n  b: 1\n", i4), "- &a\n    b: 1\n");
+}
+
+/* (pin b) indent=4 emission re-parses to the same document. */
+TEST(EmitIndent903, RoundTripsAt4) {
+    const char* cases[] = {
+        "a:\n  - 1\n  - 2\nb:\n    c: 3\n",
+        "- a: 1\n  b: 2\n- c: 3\n",
+        "- - 1\n  - 2\n- - 3\n",
+        "a:\n  b:\n    c: 1\n",
+        "k: |\n  a\n  b\n",
+        "|-\n  a\n  b\n",
+        "- &a\n  b: 1\n",
+    };
+    for (const char* y : cases) {
+        yeptris_emit_options i4 = {sizeof(yeptris_emit_options), 0, 0, 0, 4, 0};
+        std::string out = ser_opts(y, i4);
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d2 = yeptris_parse(out.data(), out.size(), &st);
+        ASSERT_NE(d2, nullptr) << "[" << out << "]";
+        size_t blen = 0;
+        char* bare = yeptris_serialize(d2, &blen); /* default walk = the reference shape */
+        std::string s2(bare ? bare : "", bare ? blen : 0);
+        free(bare);
+        yeptris_document_free(d2);
+        yeptris_emit_options default_opts = {sizeof(yeptris_emit_options), 0, 0, 0, 0, 0};
+        std::string s1 = ser_opts(y, default_opts);
+        EXPECT_EQ(s2, s1) << "indent=4 output re-parsed differently for [" << y << "]";
+    }
+}
+
+/* out-of-range indents ride the default 2 (libyaml's clamp). */
+TEST(EmitIndent903, ClampsOutOfRange) {
+    yeptris_emit_options i1 = {sizeof(yeptris_emit_options), 0, 0, 0, 1, 0};
+    yeptris_emit_options i0 = {sizeof(yeptris_emit_options), 0, 0, 0, 0, 0};
+    yeptris_emit_options i10 = {sizeof(yeptris_emit_options), 0, 0, 0, 10, 0};
+    yeptris_emit_options i9 = {sizeof(yeptris_emit_options), 0, 0, 0, 9, 0};
+    EXPECT_EQ(ser_opts("a:\n  b: 1\n", i1), "a:\n  b: 1\n");
+    EXPECT_EQ(ser_opts("a:\n  b: 1\n", i0), "a:\n  b: 1\n");
+    EXPECT_EQ(ser_opts("a:\n  b: 1\n", i10), "a:\n  b: 1\n");
+    /* 9 is honored */
+    EXPECT_EQ(ser_opts("a:\n  b: 1\n", i9), "a:\n         b: 1\n");
+    /* a pre-#903 struct size keeps the default */
+    yeptris_emit_options old_shape = {16, 0, 0, 0, 7, 7};
+    EXPECT_EQ(ser_opts("a:\n  b: 1\n", old_shape), "a:\n  b: 1\n");
+}
+
+/* the streaming route folds identically to the buffered one. */
+TEST(EmitFold903, StreamMatchesBufferedWithFold) {
+    const char* y = "key: aaa bbb ccc ddd eee fff ggg hhh iii jjj kkk lll mmm nnn ooo ppp\n"
+                    "list:\n  - aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt\n"
+                    "  - plain second item\n";
+    yeptris_emit_options opts = {sizeof(yeptris_emit_options), 0, 40, 0, 2, 1};
+    std::string buffered = ser_opts(y, opts);
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr);
+    SinkAcc acc;
+    size_t slen = yeptris_serialize_stream(doc, &opts, sink_append, &acc);
+    EXPECT_EQ(slen, buffered.size());
+    EXPECT_EQ(acc.out, buffered);
     yeptris_document_free(doc);
 }
 
