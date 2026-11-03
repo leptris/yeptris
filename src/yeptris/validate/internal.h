@@ -90,8 +90,11 @@ size_t yep_validate_doc_prefix(yep_vctx* c, int qualified, uint32_t index);
 
 /* The bounded ECMA-regex subset behind `pattern` (jsonschema.c):
  * literals, '.', classes, groups, alternation, the greedy/lazy
- * quantifiers, anchors, \d\w\s\D\W\S\b\B and \xHH. Byte-oriented
- * (ASCII classes; UTF-8 literals match byte-wise). A Thompson NFA —
+ * quantifiers, anchors, \d\w\s\D\W\S\b\B, \xHH, \cX and the
+ * \p{Letter}/\p{digit} property escapes. Classes match WHOLE UTF-8
+ * code points (the named classes carry range tables: ASCII \d/\w,
+ * Unicode \s, code-point complements, generated Unicode properties);
+ * literals match byte-wise. A Thompson NFA over per-thread positions —
  * O(len * m), no backtracking blowup, no recursion over the subject.
  * Patterns over the program budget are invalid. 1 match, 0 no match,
  * -1 invalid pattern. */

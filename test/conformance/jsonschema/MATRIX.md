@@ -34,16 +34,18 @@ failure fails the run.
 
 | section  | files | cases  | pass  | carried | FAILED | UPASS |
 | -------- | ----- | ------ | ----- | ------- | ------ | ----- |
-| tests/   | 46    | 1298   | 1271  | 27      | 0      | 0     |
-| optional | 1     | 74     | 56    | 18      | 0      | 0     |
+| tests/   | 46    | 1298   | 1274  | 24      | 0      | 0     |
+| optional | 1     | 74     | 74    | 0       | 0      | 0     |
 
-**Every covered keyword passes 100% of its suite cases.** The sota sweep took
-the verdict from 1158/1298 (140 carries) to 1271/1298 (27 carries) by landing
-the two machinery families the draft's heart is made of — 2020-12 reference
-resolution and the unevaluated* annotation model — plus the ECMA-262 `\c`
-control escapes in the pattern kernel. All 45 remaining carried cases ride two
-documented policy families (below); no case fails for an unexplained reason,
-and no carry is a fake pass.
+**Every covered keyword passes 100% of its suite cases; the optional
+ecmascript-regex section passes 74/74 uncarried.** The sota sweep took the
+verdict from 1158/1298 (140 carries) to 1274/1298 (24 carries) by landing the
+machinery the draft's heart is made of: 2020-12 reference resolution, the
+unevaluated* annotation model, and the pattern kernel's code-point classes
+(`\p{Letter}`/`\p{digit}` property escapes, Unicode `\s`, the `\D`/`\W`/`\S`
+complements, whole-code-point brackets and dot — a position-aware Pike VM).
+The 24 remaining carried cases ride ONE documented policy family (below); no
+case fails for an unexplained reason, and no carry is a fake pass.
 
 ## Per-file results (tests/)
 
@@ -81,8 +83,8 @@ and no carry is a fake pass.
 | multipleOf.json               | 11   | 0       |                                               |
 | not.json                      | 40   | 0       | annotations inside `not` collect (and never escape) |
 | oneOf.json                    | 27   | 0       |                                               |
-| pattern.json                  | 10   | 2       | `\p{Letter}` property escape (regex family 2) |
-| patternProperties.json        | 26   | 1       | `\p{Letter}` on property names (regex family 2) |
+| pattern.json                  | 12   | 0       | `\p{Letter}` resolved by the code-point classes |
+| patternProperties.json        | 27   | 0       | `\p{Letter}` resolved by the code-point classes |
 | prefixItems.json              | 11   | 0       |                                               |
 | properties.json               | 28   | 0       |                                               |
 | propertyNames.json            | 22   | 0       |                                               |
@@ -95,7 +97,7 @@ and no carry is a fake pass.
 | unevaluatedProperties.json    | 129  | 0       | the annotation model                          |
 | vocabulary.json               | 3    | 1       | vocabulary negotiation needs an external metaschema |
 
-optional: `ecmascript-regex.json` — 56 pass, 18 carried, 0 failed.
+optional: `ecmascript-regex.json` — 74 pass, 0 carried, 0 failed.
 
 ## Keyword matrix
 
@@ -104,7 +106,7 @@ optional: `ecmascript-regex.json` — 56 pass, 18 carried, 0 failed.
 | type                       | slice 2     | 100%   |                                                          |
 | enum                       | slice 2     | 100%   |                                                          |
 | const                      | slice 2     | 100%   |                                                          |
-| pattern                    | sota sweep  | 83%    | the `\p{...}` groups carry (family 2)                     |
+| pattern                    | sota sweep  | 100%   | `\p{Letter}` rides the kernel's property tables           |
 | minimum / maximum          | slice 2     | 100%   |                                                          |
 | exclusiveMinimum / Maximum | slice 2     | 100%   |                                                          |
 | multipleOf                 | this sweep  | 100%   |                                                          |
@@ -115,7 +117,7 @@ optional: `ecmascript-regex.json` — 56 pass, 18 carried, 0 failed.
 | prefixItems / items        | slice 2     | 100%   |                                                          |
 | properties                 | slice 2     | 100%   |                                                          |
 | required                   | slice 2     | 100%   |                                                          |
-| patternProperties          | this sweep  | 96%    | the `\p{...}` group carries (family 2)                    |
+| patternProperties          | this sweep  | 100%   | (was 96%: the `\p{...}` group now passes)                 |
 | propertyNames              | this sweep  | 100%   | annotates nothing (a different instance location)         |
 | minProperties / maxProperties | this sweep | 100% |                                                          |
 | additionalProperties       | slice 2     | 100%   | excludes patternProperties matches, per 2020-12; its applied keys annotate |
@@ -171,24 +173,23 @@ Skipped optional directories (not vendored): `optional/format/`
    remote corpus would test it only against fixtures keyed to one host —
    the honest boundary is the validator's, not the corpus's.
 
-2. **The bounded pattern kernel's byte model (3 main + 18 optional cases).**
-   The pattern engine is the bounded Thompson-NFA kernel
-   (`validate/regexp.c`): byte-oriented, ASCII classes, ECMA-262 Annex B
-   non-unicode semantics — literals match byte-wise, classes are 256-bit
-   byte tables, and the VM consumes one byte per step. The carried cases all
-   need CODE-POINT semantics: `\p{Letter}`/`\p{digit}` property escapes
-   (u-flag machinery this kernel does not carry — `\p{...}` reads as the
-   Annex B identity escape, so `pattern` groups that expect it to match a
-   Unicode letter diverge), and the optional `ecmascript-regex.json` groups
-   where a class must consume a whole multi-byte code point
-   (`^\D$`/`^\S$`/`^\W$`/`^\s$` against non-ASCII subjects: the byte model
-   consumes one byte, so `$` cannot land after a multi-byte code point).
-   The ASCII-semantics cases in the same groups pass and are NOT carried;
-   `\d`, `\w`, `\D`, `\W` are ASCII classes exactly as ECMA-262 defines
-   them, and `\c` control escapes landed in the sota sweep. Closing the
-   rest means the kernel stepping by code point — a VM-model change whose
-   blast radius is every existing pattern verdict, kept out of this sweep
-   on risk.
+2. **(Landed in this sweep — recorded for the ledger.)** The pattern
+   kernel previously stepped BYTES with ASCII-only classes, which carried
+   3 main + 18 optional cases: `\p{...}` property escapes read as Annex B
+   identity escapes, and the named classes could not consume a whole
+   multi-byte code point (so `$` never landed after one). The kernel now
+   runs a position-aware Pike VM: code points are decoded once per step,
+   bracket classes and dot match WHOLE code points (every byte of the
+   point must sit in the byte bitmap — exactly the ECMA verdict for both
+   positive and negated classes), `\s` is ECMA WhiteSpace plus
+   LineTerminator, `\D`/`\W`/`\S` are code-point complements, and
+   `\p{Letter}`/`\p{digit}` ride generated Unicode 13.0.0 range tables
+   (regexp.c; the two canonical spellings only — any other `\p{...}` name
+   stays the Annex B identity escape, pinned). Thread positions live in a
+   five-slot ring (a code point consumes at most 4 bytes), deduped per
+   (pc, position) with separate closure and ring marks; the budget
+   constants are unchanged and every array stays fixed-size. Zero optional
+   carries remain.
 
 ## Bugs the suite exposed in covered keywords (all fixed + pinned)
 
