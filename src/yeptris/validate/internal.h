@@ -331,6 +331,15 @@ int yep_jsonschema_apply_subtree(const yep_dom* schema_dom, uint32_t schema_root
                                  uint32_t inst_root, const yep_re_cache* cache,
                                  const js_resources* res);
 
+/* ---- the structured output face (#906 slice 5) ---------------------------
+ *
+ * output.c: the report -> JSON transform (the published BASIC shape;
+ * the byte contract lives on the public header). The keyword names
+ * behind the code-derived keywordLocation pointers — the one table
+ * (the output SSOT): a code without a keyword row writes the root
+ * pointer "". */
+const char* yep_validate_output_keyword(uint32_t code);
+
 #ifdef __cplusplus
 }
 #endif

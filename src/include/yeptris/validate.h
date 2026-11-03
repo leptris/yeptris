@@ -23,7 +23,9 @@
  * The COMPILED-schema economy (`yeptris_schema_*`) retains one parsed
  * schema for many instance streams; the TAG-DRIVEN registry
  * (`yeptris_schema_registry_*`, #906 slice 4) binds compiled schemas
- * to user tags over the family walk (`yeptris_validate_ex`).
+ * to user tags over the family walk (`yeptris_validate_ex`). The
+ * report converts to the published JSON-Schema output shape
+ * (`yeptris_validate_report_write`, #906 slice 5).
  *
  * Every diagnostic carries a JSON-pointer instance path ("/a/b/0" —
  * ~0/~1 escaped), a YEPTRIS_DIAG_* code, a bounded expected/got
@@ -341,6 +343,39 @@ YEPTRIS_API YeptrisStatus yeptris_validate_ex(const char* buf, size_t len, Yeptr
 YEPTRIS_API YeptrisStatus yeptris_validate_document_ex(YeptrisDocument doc, YeptrisSchema schema,
                                                        const yeptris_validate_options* opts,
                                                        yeptris_validate_report** out);
+
+/* ---- the structured OUTPUT face (#906 slice 5) ---------------------------
+ *
+ * The report as the json-schema.org RECOMMENDED OUTPUT shape (core
+ * spec section 12; the meta-schema at
+ * https://json-schema.org/draft/2020-12/output/schema): one root
+ * output unit — {"valid", "keywordLocation", "instanceLocation"} and,
+ * when the report carries diagnostics, "errors" — with one child unit
+ * per diagnostic {valid, keywordLocation, instanceLocation, error}.
+ * This is the published BASIC form: the report is flat by the
+ * enumerated-misses law, so the schema-structured DETAILED/VERBOSE
+ * hierarchies (which need per-miss schema-side keyword paths the flat
+ * report does not carry) are not derivable from it. keywordLocation
+ * is derived from the diagnostic code — the keyword's name segment
+ * ("/type", "/required", ...; the family codes and the bookkeeping
+ * codes sit at the root pointer ""); it is a JSON Pointer, but NOT
+ * necessarily resolvable in the schema (the flat report carries no
+ * schema path). absoluteKeywordLocation is never emitted, and $ref
+ * sites report the root pointer, so the output always satisfies the
+ * published meta-schema. Strings are JSON-escaped (RFC 8259); the
+ * bytes are UTF-8; the transform is pure and deterministic — the same
+ * report always produces the same bytes.
+ *
+ * buf == NULL: returns the exact byte count needed, writes nothing.
+ * Otherwise writes at most cap bytes (NUL-terminated when cap
+ * allows) and returns the count written; when cap is too small
+ * nothing is written and the needed size is returned. Returns 0 on a
+ * NULL report (use the flat face for those — the transform never
+ * invents a verdict).
+ *
+ * Memory: writes into the caller's buffer; borrows nothing. */
+YEPTRIS_API size_t yeptris_validate_report_write(const yeptris_validate_report* report, char* buf,
+                                                 size_t cap);
 
 #ifdef __cplusplus
 }
