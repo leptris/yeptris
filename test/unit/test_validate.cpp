@@ -382,18 +382,18 @@ TEST(Validate, StreamDiagsCarryTheDocumentIndex) {
     // doc 2 invalid at a nested key: the path names the document
     // ("/1/..."), docs 1 and 3 stay clean — exactly one diagnostic
     yeptris_validate_report* r = NULL;
-    const char* src = "--- a: 1\n"
+    const char* src = "---\na: 1\n"
                       "---\n"
                       "resources:\n"
                       "  andale32:\n"
                       "    sha256: !!int nope\n"
-                      "--- c: 3\n";
+                      "---\nc: 3\n";
     const yeptris_diagnostic* d = validate_first(src, YEPTRIS_SCHEMA_12_CORE, &r);
     ASSERT_NE(d, nullptr);
     EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
     EXPECT_STREQ(d->path, "/1/resources/andale32/sha256");
     EXPECT_EQ(yeptris_validate_report_count(r), (size_t)1);
-    EXPECT_EQ(d->line, (uint32_t)5); /* line/col stay input-absolute */
+    EXPECT_EQ(d->line, (uint32_t)6); /* line/col stay input-absolute */
     free_report(r);
 
     // a flow document mid-stream attributes the same way
@@ -445,7 +445,7 @@ TEST(Validate, StreamsWithEmptyDocumentsAttributeThem) {
 TEST(Validate, StreamDiagsCarryTheDocumentIndexViaDocumentEntry) {
     // the same contract through an already-parsed multi-doc forest
     yeptris_validate_report* r = NULL;
-    const char* src = "--- k: !!int x\n--- j: 2\n";
+    const char* src = "---\nk: !!int x\n---\nj: 2\n";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(src, strlen(src), &st);
     ASSERT_NE(doc, nullptr);

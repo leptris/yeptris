@@ -58,7 +58,7 @@ TEST(ValidateStream, DifferentialCorpus) {
         "a: 1\n",
         "k:\n",
         "--- 1\n--- !!int x\n",
-        "--- a: 1\n---\nresources:\n  andale32:\n    sha256: !!int nope\n--- c: 3\n",
+        "---\na: 1\n---\nresources:\n  andale32:\n    sha256: !!int nope\n---\nc: 3\n",
         "--- {a: 1}\n--- {b: !!int x}\n",
         "--- !!int x\n--- 2\n",
         "--- 1\n---\n--- 3\n",
@@ -117,7 +117,7 @@ TEST(ValidateStream, DifferentialCorpus) {
         "- |\n  x\n- !!int nope\n",
         "doc: &d\n  x: 1\nuse: *d\n",
         "x: &k 1\n? *k\n: v\nj: *k\n",
-        "&a 1\n...\n--- b: *a\n",
+        "&a 1\n...\n---\nb: *a\n",
         "&s [*s, 1]\n",
         "list: &l\n  - 1\n  - 2\nother: *l\nbad: !!int x\n",
         "a: &v [1, 2]\nb: *v\nv2: &w {p: 1}\nw2: *w\n",
@@ -181,7 +181,7 @@ TEST(ValidateStream, DifferentialCap) {
 
     std::string many;
     for (int d = 0; d < 4; d++) {
-        many += "--- d" + std::to_string(d) + ": 1\n";
+        many += "---\nd" + std::to_string(d) + ": 1\n";
         for (int i = 0; i < 70; i++) {
             many += "k" + std::to_string(i) + ": !!int nope\n";
         }
@@ -189,11 +189,11 @@ TEST(ValidateStream, DifferentialCap) {
     pin_routes_both_families(many.c_str());
 
     // every miss in ONE pair region, then more documents after
-    std::string mixed = "--- a: 1\n---\n";
+    std::string mixed = "---\na: 1\n---\n";
     for (int i = 0; i < 150; i++) {
         mixed += "k" + std::to_string(i) + ": !!int nope\n";
     }
-    mixed += "--- z: 9\n";
+    mixed += "---\nz: 9\n";
     pin_routes_both_families(mixed.c_str());
 }
 
@@ -258,12 +258,12 @@ TEST(ValidateStream, Contract) {
 // document's unpositioned Error row still attributes.
 TEST(ValidateStream, StreamAttribution) {
     yeptris_validate_report* r = NULL;
-    const char* src = "--- a: 1\n"
+    const char* src = "---\na: 1\n"
                       "---\n"
                       "resources:\n"
                       "  andale32:\n"
                       "    sha256: !!int nope\n"
-                      "--- c: 3\n";
+                      "---\nc: 3\n";
     ASSERT_EQ(yeptris_validate_stream(src, strlen(src), YEPTRIS_SCHEMA_12_CORE, &r),
               YEPTRIS_ERROR_SCHEMA);
     ASSERT_NE(r, nullptr);
@@ -271,7 +271,7 @@ TEST(ValidateStream, StreamAttribution) {
     const yeptris_diagnostic* d = yeptris_validate_report_at(r, 0);
     EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
     EXPECT_STREQ(d->path, "/1/resources/andale32/sha256");
-    EXPECT_EQ(d->line, (uint32_t)5);
+    EXPECT_EQ(d->line, (uint32_t)6);
     yeptris_validate_report_free(r);
 
     // duplicate keys order: the misses precede the pairs' content —

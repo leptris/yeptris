@@ -1623,7 +1623,7 @@ TEST(Parse, AliasMemoResetPerDocument) {
      * alias (resolving it) while the chunked feed (which resets the
      * engine per cut) correctly failed: transport changed semantics.
      * Anchors are per-document; the memo invalidates with them. */
-    const char* y = ": &ORIGIN{}\n*ORIGIN\n--- t: *ORIGIN\n";
+    const char* y = ": &ORIGIN{}\n*ORIGIN\n---\nt: *ORIGIN\n";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
     EXPECT_EQ(doc, nullptr) << y; /* doc 2's alias must NOT resolve */
@@ -1634,6 +1634,156 @@ TEST(Parse, AliasMemoResetPerDocument) {
     YeptrisDocument doc2 = yeptris_parse(y2, strlen(y2), &st2);
     ASSERT_NE(doc2, nullptr) << y2;
     yeptris_document_free(doc2);
+}
+
+/* ---- the document-boundary law (issue #900) -------------------------- */
+
+namespace {
+int push_count(void* ctx, const YeptrisEvent* ev) {
+    (void)ev;
+    (*(int*)ctx)++;
+    return 0;
+}
+} // namespace
+
+TEST(Parse, DocumentMarkerLineOpensNoBlockCollection) {
+    /* issue #900's six-row premise refuted: a block collection cannot
+     * open on the "--- " line at all. libyaml 0.2.5/90a56d4, Psych 5
+     * and PyYAML (pure and C) all fail at the pair separator — the
+     * document indicator disables block entries until a line break —
+     * and the suite pins the class INVALID (9KBC, CXX2). Before this
+     * fix the engine opened the pair and died at the FOLLOWING line
+     * with the generic default-arm "unexpected parser state". Each
+     * route sharing the engine must read the same code, message and
+     * position. */
+    struct Case {
+        const char* y;
+        uint32_t line, col;
+        const char* msg;
+    };
+    const Case cases[] = {
+        {"--- a: 1\n", 1, 6, "mapping values are not allowed in this context"},
+        {"--- a: 1\na: 3\n", 1, 6, "mapping values are not allowed in this context"},
+        {"--- a: 1\nhello\n", 1, 6, "mapping values are not allowed in this context"},
+        {"--- a: 1\n- x\n", 1, 6, "mapping values are not allowed in this context"},
+        {"--- a: 1\n--- a: 2\n--- a: 3\n", 1, 6, "mapping values are not allowed in this context"},
+        {"--- a: 1\n--- a: 2\na: 3\n", 1, 6, "mapping values are not allowed in this context"},
+        {"--- a: 1\n...\na: 3\n", 1, 6, "mapping values are not allowed in this context"},
+        {"--- \"a\": 1\n", 1, 8, "mapping values are not allowed in this context"},
+        {"--- &a a: b\n", 1, 9, "mapping values are not allowed in this context"},
+        {"--- !!map a: b\n", 1, 12, "mapping values are not allowed in this context"},
+        {"--- - x\n", 1, 5, "block sequence entries are not allowed in this context"},
+        {"--- ? a\n: b\n", 1, 5, "mapping keys are not allowed in this context"},
+    };
+    for (const Case& c : cases) {
+        const size_t n = strlen(c.y);
+        /* the default (record-tape) route and the eager engine route */
+        for (int route = 0; route < 2; route++) {
+            YeptrisStatus st = YEPTRIS_OK;
+            YeptrisDocument doc = route == 0 ? yeptris_parse_ytape_ex(c.y, n, nullptr, &st)
+                                             : yeptris_parse_eager_ex(c.y, n, nullptr, &st);
+            EXPECT_EQ(doc, nullptr) << c.y;
+            EXPECT_EQ(st, YEPTRIS_ERROR_PARSE) << c.y;
+            const yep_error* err = yep_error_tls();
+            EXPECT_EQ(err->code, YEP_ERR_DOC_BOUNDARY) << c.y;
+            EXPECT_STREQ(err->msg, c.msg) << c.y;
+            EXPECT_EQ(err->line, c.line) << c.y;
+            EXPECT_EQ(err->col, c.col) << c.y;
+            yeptris_document_free(doc);
+        }
+        /* the push route (one more sink over the same engine) */
+        int events = 0;
+        EXPECT_EQ(yeptris_push_parse(c.y, n, push_count, &events), YEPTRIS_ERROR_PARSE) << c.y;
+        EXPECT_EQ(yep_error_tls()->code, YEP_ERR_DOC_BOUNDARY) << c.y;
+        EXPECT_STREQ(yep_error_tls()->msg, c.msg) << c.y;
+        EXPECT_EQ(yep_error_tls()->line, c.line) << c.y;
+        EXPECT_EQ(yep_error_tls()->col, c.col) << c.y;
+        EXPECT_EQ(events, 2) << c.y; /* STREAM_START + DOCUMENT_START */
+    }
+    /* scalars, flow nodes, block scalars and properties on the marker
+     * line stay legal — the oracle and the suite agree (27NA, 2G84,
+     * 35KP; props then the node on following lines, 2XXW/CXX2's
+     * legal twin). */
+    const char* ok[] = {"--- a\n",    "--- [1, 2]\n",        "--- {a: b}\n",     "--- |\n  x\n",
+                        "--- &a x\n", "--- !!map\n  a: 1\n", "--- !!seq\n- x\n", "--- &a\n- x\n"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << y << ": " << yeptris_last_error(nullptr, nullptr);
+        EXPECT_EQ(yeptris_document_count(doc), (size_t)1) << y;
+        yeptris_document_free(doc);
+    }
+}
+
+TEST(Parse, BareDocumentAfterExplicitIsAbsorbedNotANewDocument) {
+    /* the issue's Expected ("3 documents") is refuted by the oracle:
+     * libyaml, Psych and PyYAML all read the column-0 content as a
+     * CONTINUATION of the explicit document's open root collection.
+     * "---\na: 1\n---\na: 2\na: 3\n" is 2 documents; a: 3 is the
+     * second pair of document 2 (six scalars in the oracle's event
+     * stream). The marker-line law keeps the inline twin ("--- a: 1")
+     * out of the boundary question entirely (it fails at 1:6). */
+    {
+        const char* y = "---\na: 1\n---\na: 2\na: 3\n";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(nullptr, nullptr);
+        ASSERT_EQ(yeptris_document_count(doc), (size_t)2) << y;
+        YeptrisNode d2 = yeptris_document_root(doc, 1);
+        ASSERT_NE(d2, nullptr);
+        EXPECT_EQ(yeptris_node_kind(d2), YEPTRIS_NODE_MAPPING);
+        EXPECT_EQ(yeptris_node_map_count(d2), (size_t)2); /* a: 2 and a: 3 */
+        yeptris_document_free(doc);
+    }
+    /* a second root with no document marker is libyaml's parser error,
+     * now carried with its words instead of the default arm */
+    struct Case {
+        const char* y;
+        uint32_t line, col;
+        const char* msg;
+    };
+    const Case cases[] = {
+        {"word1 # c\nword2\n", 2, 1, "did not find expected <document start>"},
+        {"---\n[1]\n[2]\n", 3, 1, "did not find expected <document start>"},
+        {"---\na: 1\n- x\n", 3, 1, "did not find expected key"},
+    };
+    for (const Case& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.y, strlen(c.y), &st);
+        EXPECT_EQ(doc, nullptr) << c.y;
+        EXPECT_EQ(st, YEPTRIS_ERROR_PARSE) << c.y;
+        EXPECT_EQ(yep_error_tls()->code, YEP_ERR_DOC_BOUNDARY) << c.y;
+        EXPECT_STREQ(yep_error_tls()->msg, c.msg) << c.y;
+        EXPECT_EQ(yep_error_tls()->line, c.line) << c.y;
+        EXPECT_EQ(yep_error_tls()->col, c.col) << c.y;
+        yeptris_document_free(doc);
+    }
+    /* the SUITE outweighs the oracle where they split (the conformance
+     * bar; ledger.txt's 7Z25 row): a bare document after "..." is a
+     * REAL document; libyaml rejects ("did not find expected
+     * <document start>") and the divergence stays carried. */
+    {
+        const char* y = "---\nscalar1\n...\nkey: value\n"; /* suite 7Z25 */
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(nullptr, nullptr);
+        EXPECT_EQ(yeptris_document_count(doc), (size_t)2) << y;
+        yeptris_document_free(doc);
+
+        const char* y2 = "---\na: 1\n...\na: 3\n"; /* the 7Z25 class */
+        st = YEPTRIS_OK;
+        doc = yeptris_parse(y2, strlen(y2), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(nullptr, nullptr);
+        EXPECT_EQ(yeptris_document_count(doc), (size_t)2) << y2;
+        yeptris_document_free(doc);
+
+        /* suite HWV9: a lone "..." is an empty stream, not a document */
+        const char* y3 = "...\n";
+        st = YEPTRIS_OK;
+        doc = yeptris_parse(y3, strlen(y3), &st);
+        EXPECT_EQ(doc, nullptr) << y3;
+        EXPECT_EQ(st, YEPTRIS_OK) << y3;
+    }
 }
 
 TEST(Parse, SiblingPairFlushesBufferedExplicitKey) {
@@ -2862,7 +3012,7 @@ TEST(Parse, PlainPrefixDocumentMarkersQuote) {
      * folded value STARTS with "--- " emitted plain — at line start it
      * re-reads as a document marker. The bare-marker check now covers
      * the prefix forms ("--- x", "... x"); libyaml quotes both. */
-    const char* ins[] = {"--- --- >\nlfoo ]\nin>\na  ]\nine3\n", "--- a: --- x\n", "k: ... x\n"};
+    const char* ins[] = {"--- --- >\nlfoo ]\nin>\na  ]\nine3\n", "---\na: --- x\n", "k: ... x\n"};
     for (const char* y : ins) {
         YeptrisStatus st = YEPTRIS_OK;
         YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
