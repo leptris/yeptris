@@ -29,6 +29,7 @@ set(YEPTRIS_SOURCES
     yeptris/dom/mapindex.c
     yeptris/dom/mutate.c
     yeptris/parse.c
+    yeptris/parse/stream_iter.c
     yeptris/build.c
     yeptris/events/capture.c
     yeptris/events/push.c

@@ -41,7 +41,7 @@ static YeptrisDocument parse_impl(const char* buf, size_t len, const YeptrisPars
  * entry, the engine and the direct-builder DOM, the fused block
  * runner (and validate/stream.c's event route, through the event
  * entry). */
-static const yep_resolver* resolver_for_schema(YeptrisSchema schema) {
+const yep_resolver* resolver_for_schema(YeptrisSchema schema) {
     switch (schema) {
     case YEPTRIS_SCHEMA_11_COMPAT:
         return yep_resolver_compat11();
