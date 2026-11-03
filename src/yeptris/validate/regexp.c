@@ -574,12 +574,12 @@ static int p_class(re_ctx* c) {
                      * the multi-byte whites and \p{...} letters beyond
                      * latin-1 are the documented bracket divergence) */
                     for (uint16_t rr = 0; rr < c->ucls_n[v]; rr++) {
-                        uint32_t lo = c->ucls[v][rr * 2];
-                        uint32_t hi = c->ucls[v][rr * 2 + 1];
-                        if (hi > 0xFF) {
-                            hi = 0xFF;
+                        uint32_t blo = c->ucls[v][rr * 2];
+                        uint32_t bhi = c->ucls[v][rr * 2 + 1];
+                        if (bhi > 0xFF) {
+                            bhi = 0xFF;
                         }
-                        for (uint32_t b = lo; b <= hi; b++) {
+                        for (uint32_t b = blo; b <= bhi; b++) {
                             cls_set(c, id, (unsigned)b);
                         }
                     }
@@ -1511,7 +1511,10 @@ static int re_compile(const char* pat, uint32_t pat_len, re_prog* out) {
     }
     memcpy(p.inst, c.inst, (size_t)c.inst_n * sizeof(re_inst));
     memcpy(p.cls, c.cls, (size_t)c.cls_n * 32);
-    memcpy(p.ucls, c.ucls, sizeof(p.ucls));
+    memcpy((void*)p.ucls, (const void*)c.ucls, sizeof(p.ucls)); /* MSVC C4090: the
+                                                                 * const-pointee array decays
+                                                                 * at the wrong level for
+                                                                 * void* */
     memcpy(p.ucls_n, c.ucls_n, sizeof(p.ucls_n));
     *out = p;
     return 0;
