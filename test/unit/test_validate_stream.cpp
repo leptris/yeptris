@@ -159,6 +159,14 @@ TEST(ValidateStream, DifferentialCorpus) {
         "<<: 1\n<<: 2\n",
         "b: !!binary not-base64!!\n",
         "b: !!binary |\n  aGVsbG8=\nj: !!timestamp junk\n",
+        /* tagged collections (#916's true tag ids): the FULL lane's
+         * kind wording and the deferred empty-collection path ride the
+         * event route's frames */
+        "t: !!timestamp [a]\n",
+        "t: !!timestamp {k: 1}\n",
+        "t: !!timestamp {}\nj: ok\n",
+        "t: !!str [a]\n",
+        "k: !!seq [1, 2]\nj: !!map {a: 1}\n",
         "s: !!bool [1]\n",
         "- !!set\n  ? a\n  : ~\n",
         "1: a\n'1': b\n",

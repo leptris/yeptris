@@ -2193,6 +2193,7 @@ TEST(ValidateRegistry, ArgumentGates) {
     yeptris_schema_registry_free(NULL);
     yeptris_schema_registry_free(reg);
     yeptris_schema_free(s);
+}
 
 // ---- the FULL 1.2 family (#906 slice 3) ---------------------------------
 
@@ -2300,6 +2301,70 @@ TEST(ValidateFull, BinaryPassthroughPolicy) {
     r = NULL;
     ASSERT_EQ(yeptris_validate("b: !!binary not-base64!!\n", strlen("b: !!binary not-base64!!\n"),
                                YEPTRIS_SCHEMA_12_FULL, &r),
+              YEPTRIS_OK);
+    free_report(r);
+}
+
+TEST(ValidateFull, TaggedCollectionsCarryTrueTagIds) {
+    // #916's emit_now fix lands under this lane: explicit tags resolve
+    // their id for COLLECTIONS too, so the kind checks read the true
+    // tag. Correct-kind tags are clean under every family (the old
+    // "explicit string tag on a ..." false positives are gone), and the
+    // FULL lane's timestamp kind-check names the kind.
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate("k: !!seq [1, 2]\nj: !!map {a: 1}\n",
+                               strlen("k: !!seq [1, 2]\nj: !!map {a: 1}\n"), YEPTRIS_SCHEMA_12_FULL,
+                               &r),
+              YEPTRIS_OK);
+    free_report(r);
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("k: !!seq [1, 2]\n", strlen("k: !!seq [1, 2]\n"),
+                               YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("k: !!map {a: 1}\n", strlen("k: !!map {a: 1}\n"),
+                               YEPTRIS_SCHEMA_12_JSON, &r),
+              YEPTRIS_OK);
+    free_report(r);
+
+    // a scalar-only type on a collection: the FULL lane's timestamp
+    // arm names the kind (sequence and mapping, the empty-collection
+    // deferred path included)
+    const yeptris_diagnostic* d =
+        validate_first("t: !!timestamp [a]\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    EXPECT_STREQ(d->detail, "explicit timestamp tag on a sequence");
+    free_report(r);
+    const yeptris_diagnostic* d2 =
+        validate_first("t: !!timestamp {k: 1}\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_STREQ(d2->detail, "explicit timestamp tag on a mapping");
+    free_report(r);
+    const yeptris_diagnostic* d3 =
+        validate_first("t: !!timestamp {}\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(d3, nullptr);
+    EXPECT_STREQ(d3->detail, "explicit timestamp tag on a mapping");
+    free_report(r);
+
+    // other scalar-type tags on collections read their true words too
+    const yeptris_diagnostic* d4 = validate_first("t: !!str [a]\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(d4, nullptr);
+    EXPECT_STREQ(d4->detail, "explicit string tag on a sequence");
+    free_report(r);
+
+    // core/json keep their lanes for tagged collections: !!timestamp is
+    // consumer-defined under core and json's wholesale rejection rides
+    // scalar-only facts
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("t: !!timestamp [a]\n", strlen("t: !!timestamp [a]\n"),
+                               YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("t: !!timestamp [a]\n", strlen("t: !!timestamp [a]\n"),
+                               YEPTRIS_SCHEMA_12_JSON, &r),
               YEPTRIS_OK);
     free_report(r);
 }
