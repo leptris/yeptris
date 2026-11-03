@@ -91,6 +91,50 @@ TEST(Emit, ExplicitDocStartOption) {
     yeptris_document_free(doc);
 }
 
+TEST(Emit, OldStructFieldsStayLive) {
+    /* the #909 lesson, pinned: EVERY option field reads behind its own
+     * offsetof gate — never the whole struct's sizeof. When best_indent
+     * /block_fold grew the struct to 24 bytes, a `size >= sizeof` gate
+     * orphaned the ORIGINAL fields for 16-byte callers (the Ruby
+     * binding): best_width fell back to 80 and canonical fell off. */
+    YeptrisStatus st = YEPTRIS_OK;
+    std::string src = "a: [";
+    for (int i = 0; i < 30; i++) {
+        src += i == 0 ? "1" : ", 1";
+    }
+    src += "]\n";
+    YeptrisDocument doc = yeptris_parse(src.data(), src.size(), &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(doc, nullptr);
+
+    /* the pre-#909 struct: size covers only size/canonical/best_width/
+     * explicit_doc_start — best_width=30 MUST still fold the flow */
+    yeptris_emit_options old_shape = {16, 0, 30, 0, 0, 0};
+    size_t len = 0;
+    char* out = yeptris_serialize_ex(doc, &old_shape, &len);
+    ASSERT_NE(out, nullptr);
+    {
+        const std::string text(out, len);
+        size_t longest = 0, start = 0;
+        for (size_t i = 0; i <= text.size(); i++) {
+            if (i == text.size() || text[i] == '\n') {
+                longest = longest > i - start ? longest : i - start;
+                start = i + 1;
+            }
+        }
+        EXPECT_LT(longest, 40u) << text; /* folded at ~30, not the 80 default */
+    }
+    free(out);
+
+    /* the full struct still folds (the versioned fields ride too) */
+    yeptris_emit_options full = {sizeof(yeptris_emit_options), 0, 30, 0, 4, 0};
+    out = yeptris_serialize_ex(doc, &full, &len);
+    ASSERT_NE(out, nullptr);
+    EXPECT_NE(std::string(out, len).find("\n    1"), std::string::npos);
+    free(out);
+    yeptris_document_free(doc);
+}
+
 TEST(Emit, FlowPreserved) {
     EXPECT_EQ(roundtrip("a: [1, 2, 3]\n"), "a: [1, 2, 3]\n");
     EXPECT_EQ(roundtrip("m: {x: 1, y: 2}\n"), "m: {x: 1, y: 2}\n");

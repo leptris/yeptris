@@ -11,12 +11,22 @@
 #include "../doc.h"
 #include "writer.h"
 
+/* Every field reads behind ITS OWN offsetof gate — never the whole
+ * struct's sizeof. The #909/#903 append grew sizeof(*opts) to 24, and
+ * a `size >= sizeof(*opts)` gate silently orphaned the ORIGINAL
+ * fields for callers compiled against the 16-byte struct (the Ruby
+ * binding): best_width fell back to 80 and canonical fell off. The
+ * versioning contract is per field: declared-present or default. */
 static int opts_canonical(const yeptris_emit_options* opts) {
-    return opts != NULL && opts->size >= sizeof(*opts) && opts->canonical;
+    return opts != NULL &&
+           opts->size >= (uint32_t)(offsetof(yeptris_emit_options, canonical) + sizeof(int)) &&
+           opts->canonical;
 }
 
 static int opts_width(const yeptris_emit_options* opts) {
-    if (opts == NULL || opts->size < sizeof(*opts) || opts->best_width <= 0) {
+    if (opts == NULL ||
+        opts->size < (uint32_t)(offsetof(yeptris_emit_options, best_width) + sizeof(int)) ||
+        opts->best_width <= 0) {
         return 80; /* libyaml best_width parity */
     }
     return opts->best_width;
