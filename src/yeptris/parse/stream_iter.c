@@ -337,6 +337,16 @@ YeptrisStatus yeptris_stream_iter_slice(const struct yeptris_stream_iter* it, si
     return YEPTRIS_OK;
 }
 
+YeptrisStatus yeptris_stream_iter_buffer(const struct yeptris_stream_iter* it, const char** buf,
+                                         size_t* len) {
+    if (it == NULL || buf == NULL || len == NULL) {
+        return YEPTRIS_ERROR_ARG;
+    }
+    *buf = it->buf;
+    *len = it->len;
+    return YEPTRIS_OK;
+}
+
 void yeptris_stream_iter_free(struct yeptris_stream_iter* it) {
     if (it == NULL) {
         return;
