@@ -1,21 +1,24 @@
-# carries.txt — expected failures for the JSON-Schema-Test-Suite driver (#885 item 2).
+#carries.txt — expected failures for the JSON - Schema - Test - Suite driver(#885 item 2).
 #
-# Format:  "file.json"                    — the whole file is carried
-#          "file.json :: NEEDLE"          — group OR test description contains NEEDLE
-#          "file.json :: GROUP :: TEST"   — group description contains GROUP and
-#                                            test description contains TEST
+#Format : "file.json"                    — the whole file is carried
+#"file.json :: NEEDLE"          — group OR test description contains NEEDLE
+#"file.json :: GROUP :: TEST"   — group description contains GROUP and
+#test description contains TEST
 #
-# Each carry is a DOCUMENTED divergence (MATRIX.md is the SSOT) — never a
-# fake pass: carried failures are counted separately in the summary, and a
-# carried case that starts passing prints UPASS so the stale carry gets
-# dropped. Re-derive this list from a run over /dev/null as the carries file.
+#Each carry is a DOCUMENTED divergence(MATRIX.md is the SSOT) — never a
+#fake pass : carried failures are counted separately in the summary, and a
+#carried case that starts passing prints UPASS so the stale carry gets
+#dropped.Re - derive this list from a run over / dev / null as the carries file.
 #
-# == remote-reference machinery: the reference resolution ride (the
-# 2020-12 sota sweep, part 1) landed the $id/$anchor/$dynamicAnchor
-# base-URI machinery — anchor.json and the self-contained dynamicRef
-# and ref groups pass uncarried. What remains carried: the suite's
-# HTTP fixtures (no network corpus is vendored) and one unevaluated*
-# interplay that waits for the annotation model.
+#== THE NO - NETWORK - CORPUS STANCE(MATRIX.md divergence family 1) : the
+#validator resolves references ONLY against the schema's own identifier
+#space — the resource map the compile - time crawl builds from the
+#schema's $id/$anchor/$dynamicAnchor keywords. A canonical URI outside
+#that space is DIAG_REF at the instance, never a fetch.Everything
+#still carried references a document OUTSIDE the schema : the suite's
+#HTTP fixtures(the upstream remotes / tree, not vendored) and the
+#draft 2020 - 12 metaschema(json - schema.org, plus its six meta/*
+# siblings). These 24 cases are the only carries in the whole suite.
 refRemote.json
 #
 # dynamicRef.json: the groups whose schemas reference the suite's HTTP
@@ -30,56 +33,17 @@ dynamicRef.json :: $ref and $dynamicAnchor are independent of order - $defs firs
 dynamicRef.json :: $ref and $dynamicAnchor are independent of order - $ref first :: correct extended schema
 dynamicRef.json :: $ref to $dynamicRef finds detached $dynamicAnchor :: number is valid
 #
-# the unevaluated* x $dynamicRef interplay: the annotation model ride
-#
-# unevaluatedItems — annotation plumbing (which sibling/branch evaluated
-# which array items) is out of the subset
-#
-# unevaluatedProperties — annotation plumbing (see above)
-#
-# not.json: annotations inside not (unevaluated* interplay) — carried with
-# the unevaluated family
-#
-# vocabulary.json: a $schema metaschema without the validation vocabulary
-# must un-assert minimum — vocabulary negotiation is out of the subset
+# vocabulary.json: vocabulary negotiation must read the $vocabulary of
+# the referenced metaschema, which is itself an external document
 vocabulary.json :: schema that uses custom metaschema with with no validation vocabulary :: no validation: invalid number, but it still validates
 #
-# defs.json: the metaschema $ref is remote
+# ref.json / defs.json: the draft 2020-12 metaschema target
+# (https://json-schema.org/draft/2020-12/schema — resolution needs the
+# metaschema and its meta/* sibling resources, all external)
+ref.json :: remote ref, containing refs itself :: remote ref valid
 defs.json :: validate definition against metaschema :: valid definition schema
 #
-# ref.json: only the remote metaschema target (no network corpus) and
-# the ref-creates-a-new-scope case (annotations do not cross the ref
-# boundary — the unevaluated ride lands it)
-ref.json :: remote ref, containing refs itself :: remote ref valid
-#
-# pattern: Unicode property escapes (\p{...}) need the u-flag machinery
-# the bounded kernel does not carry — the two letters-match cases diverge
-pattern.json :: pattern with Unicode property escape requires unicode mode :: ASCII letters match
-pattern.json :: pattern with Unicode property escape requires unicode mode :: Non-ASCII letters match
-#
-# patternProperties: the same \p{...} divergence on property names
-patternProperties.json :: patternProperties with Unicode property escape :: Unicode letter property name matches but value type is incorrect
-
-# == optional/ecmascript-regex.json — the bounded byte-oriented kernel diverges
-# from ECMA-262 Unicode semantics per case family: \c control escapes,
-# \d \w \s \D \W \S as ASCII-only classes (ECMA wants Unicode letters/digits/
-# whitespace), and \p{...} property escapes (u-flag semantics). Documented in
-# MATRIX.md; ASCII-semantics cases in the same groups pass and are not carried.
-ecmascript-regex.json :: ECMA 262 \\D matches everything but ascii digits :: NKO DIGIT ZERO matches (unlike e.g. Python)
-ecmascript-regex.json :: ECMA 262 \\D matches everything but ascii digits :: NKO DIGIT ZERO (as \\u escape) matches
-ecmascript-regex.json :: ECMA 262 \\W matches everything but ascii letters :: latin-1 e-acute matches (unlike e.g. Python)
-ecmascript-regex.json :: ECMA 262 \\s matches whitespace :: latin-1 non-breaking-space matches
-ecmascript-regex.json :: ECMA 262 \\s matches whitespace :: zero-width whitespace matches
-ecmascript-regex.json :: ECMA 262 \\s matches whitespace :: paragraph separator matches (line terminator)
-ecmascript-regex.json :: ECMA 262 \\s matches whitespace :: EM SPACE matches (Space_Separator)
-ecmascript-regex.json :: ECMA 262 \\S matches everything but whitespace :: Non-whitespace matches
-ecmascript-regex.json :: patterns always use unicode semantics with pattern :: ascii character in json string
-ecmascript-regex.json :: patterns always use unicode semantics with pattern :: literal unicode character in json string
-ecmascript-regex.json :: patterns always use unicode semantics with pattern :: unicode character in hex format in string
-ecmascript-regex.json :: pattern with non-ASCII digits :: ascii digits
-ecmascript-regex.json :: pattern with non-ASCII digits :: non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)
-ecmascript-regex.json :: patterns always use unicode semantics with patternProperties :: ascii character in json string
-ecmascript-regex.json :: patterns always use unicode semantics with patternProperties :: literal unicode character in json string
-ecmascript-regex.json :: patterns always use unicode semantics with patternProperties :: unicode character in hex format in string
-ecmascript-regex.json :: patternProperties with non-ASCII digits :: ascii digits
-ecmascript-regex.json :: patternProperties with non-ASCII digits :: non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)
+# optional/ecmascript-regex.json: ZERO carries — the code-point classes
+# (\p{Letter}, \p{digit}, Unicode \s, the \D/\W/\S complements, the
+# whole-code-point bracket and dot) land with the kernel's position-
+# aware VM; the optional suite passes 74/74 uncarried.

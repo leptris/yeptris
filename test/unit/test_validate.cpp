@@ -1484,6 +1484,40 @@ TEST(ValidateRegex, SearchSemantics) {
     EXPECT_EQ(yep_re_search("^\\cc$", (uint32_t)strlen("^\\cc$"), "\x03", 1), 1);
     EXPECT_EQ(yep_re_search("^\\cC$", (uint32_t)strlen("^\\cC$"), "x", 1), 0);
     EXPECT_EQ(yep_re_search("^[\\cA]$", (uint32_t)strlen("^[\\cA]$"), "\x01", 1), 1);
+    // the code-point classes: a class consumes a WHOLE UTF-8 code point,
+    // so an anchor can land after one (the suite's ecmascript-regex
+    // section passes 74/74 on these)
+    EXPECT_EQ(yep_re_search("^\\D$", (uint32_t)strlen("^\\D$"), "\xDF\x80", 2),
+              1); // NKO DIGIT ZERO
+    EXPECT_EQ(yep_re_search("^\\W$", (uint32_t)strlen("^\\W$"), "\xC3\xA9", 2), 1);     // e-acute
+    EXPECT_EQ(yep_re_search("^\\s$", (uint32_t)strlen("^\\s$"), "\xC2\xA0", 2), 1);     // NBSP
+    EXPECT_EQ(yep_re_search("^\\s$", (uint32_t)strlen("^\\s$"), "\xE2\x80\x83", 3), 1); // EM SPACE
+    EXPECT_EQ(yep_re_search("^\\s$", (uint32_t)strlen("^\\s$"), "\xEF\xBB\xBF", 3), 1); // ZWNBSP
+    EXPECT_EQ(yep_re_search("^\\S$", (uint32_t)strlen("^\\S$"), "\xE2\x80\x83", 3), 0);
+    EXPECT_EQ(yep_re_search("^\\S$", (uint32_t)strlen("^\\S$"), "\xE2\x80\x93", 3), 1); // en dash
+    EXPECT_EQ(yep_re_search("^\\d$", (uint32_t)strlen("^\\d$"), "\xE0\xA7\xA6", 3),
+              0); // Bengali 0: \d is ASCII
+    // the property escapes (exact canonical spellings; any other \p{...}
+    // name stays the Annex B identity escape)
+    EXPECT_EQ(yep_re_search("\\p{Letter}cole", (uint32_t)strlen("\\p{Letter}cole"),
+                            "l'\xC3\xA9"
+                            "cole",
+                            9),
+              1);
+    EXPECT_EQ(yep_re_search("^\\p{digit}+$", (uint32_t)strlen("^\\p{digit}+$"),
+                            "\xE0\xA7\xAA\xE0\xA7\xA8", 6),
+              1); // Bengali 4 2
+    EXPECT_EQ(yep_re_search("^\\p{digit}+$", (uint32_t)strlen("^\\p{digit}+$"), "-%#", 3), 0);
+    EXPECT_EQ(yep_re_search("\\p{Digit}", (uint32_t)strlen("\\p{Digit}"), "p{Digit}", 8), 1);
+    EXPECT_EQ(yep_re_search("\\p{Digit}", (uint32_t)strlen("\\p{Digit}"), "123", 3), 0);
+    // a negated bracket and the dot over a multi-byte code point
+    EXPECT_EQ(yep_re_search("^[^a]$", (uint32_t)strlen("^[^a]$"), "\xC3\xA9", 2), 1);
+    EXPECT_EQ(yep_re_search("^a.c$", (uint32_t)strlen("^a.c$"),
+                            "a\xC3\xA9"
+                            "c",
+                            4),
+              1);
+    EXPECT_EQ(yep_re_search("^[a-z]$", (uint32_t)strlen("^[a-z]$"), "\xC3\xA9", 2), 0);
     // the NFA is linear: the classic blowup pattern answers instantly
     const char* blowup = "aaaaaaaaaaaaaaaaaaaaaaaaaaaab";
     EXPECT_EQ(yep_re_search("(a+)+$", (uint32_t)strlen("(a+)+$"), blowup, (uint32_t)strlen(blowup)),
