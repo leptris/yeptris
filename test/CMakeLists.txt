@@ -502,6 +502,18 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-charset-glued-quote.bin
     )
 
+    # the r115 nightly's seed (crash-01361e26, the glued-?# family's
+    # accept/accept verdict: libyaml empties the key at the glued '#',
+    # yeptris's suite-pinned plain-'?' law keeps the run): the
+    # structural emptied-key classifier must claim it — the quote-out
+    # transform cannot (quoting freezes the fold, breaking libyaml's
+    # line structure) — without un-classifying r104-r108
+    add_test(
+        NAME fuzz-diff-r115-qflow-differ
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-differ.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
