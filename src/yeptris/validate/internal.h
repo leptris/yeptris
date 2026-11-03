@@ -66,6 +66,9 @@ typedef struct yep_vctx {
     void (*stage_put)(void* stage, const yeptris_diagnostic* d);
     void* stage;
     size_t staged;
+    /* the tag-driven registry (#906 slice 4): NULL = no bindings —
+     * the DOM route only (the event route keeps its lanes). */
+    const yeptris_schema_registry* reg;
 } yep_vctx;
 
 /* Offset of a node's first positioned byte (the value span of the node
@@ -299,6 +302,34 @@ yeptris_schema* yep_schema_compile_st(const char* bytes, size_t n, YeptrisStatus
  * face's ARG rejection. */
 int yep_validate_schema_family(YeptrisSchema schema, const struct yep_resolver** fam,
                                int* json_family);
+
+/* ---- the tag-driven schema hook (#906 slice 4) --------------------------- */
+
+/* The compiled schema's read-only evaluation view: everything the
+ * keyword walk reads, borrowed from the handle (the REGISTRY LAW
+ * applies — the handle must outlive every view taken from it). */
+typedef struct {
+    const yep_dom* dom;        /* the schema's retained tree */
+    uint32_t sroot;            /* its document-0 root */
+    const yep_re_cache* cache; /* retained pattern programs */
+    const js_resources* res;   /* the identifier map */
+} yep_schema_view;
+
+/* compile.c: fills *out from the handle. NULL handle fills zeros. */
+void yep_schema_view_of(const yeptris_schema* s, yep_schema_view* out);
+
+/* jsonschema.c: applies the bound schema's root to ONE instance
+ * subtree. `inst` is the CALLER'S walk context (the DOM route's
+ * yep_vctx) — its path prefix (the tag site), report, line index and
+ * guards are shared, so the subtree's misses land at the tag site's
+ * path + the schema's instance pointers with the offending node's
+ * position, and the cap law holds across the whole report. The
+ * context's scratch pointers (path buffer, line index) may have been
+ * reallocated on return — the caller frees them as before. Returns 0,
+ * -1 on OOM (ctx.oom set; the walk unwinds). */
+int yep_jsonschema_apply_subtree(const yep_dom* schema_dom, uint32_t schema_root, yep_vctx* inst,
+                                 uint32_t inst_root, const yep_re_cache* cache,
+                                 const js_resources* res);
 
 #ifdef __cplusplus
 }

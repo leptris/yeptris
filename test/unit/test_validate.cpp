@@ -19,6 +19,7 @@
 // JSON, string keys, enumerate-every-miss duplicate keys).
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <cstring>
 #include <string>
 
@@ -101,6 +102,41 @@ TEST(Validate, SeqMapTagsCheckTheNodeKind) {
     const yeptris_diagnostic* d2 = validate_first("- !!map [a]\n", YEPTRIS_SCHEMA_12_CORE, &r);
     ASSERT_NE(d2, nullptr);
     EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    free_report(r);
+}
+
+TEST(Validate, ExplicitCollectionTagsResolveTheirIds) {
+    // #906 slice 4's precondition: a collection event's tag id used to
+    // stay 0 ("str"), so EVERY tagged collection (even a correct !!map
+    // on a mapping) produced a false TAG_MISMATCH. The typing SSOT
+    // (emit_now) now resolves explicit tags for collections too; the
+    // event route reads the same field, so the #902 differential gate
+    // keeps both walks in lockstep.
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate("k: !!map {a: 1}\n", strlen("k: !!map {a: 1}\n"),
+                               YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+    ASSERT_EQ(yeptris_validate("k: !!seq [1, 2]\n", strlen("k: !!seq [1, 2]\n"),
+                               YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+    // a custom tag is consumer-defined: no family verdict either
+    ASSERT_EQ(yeptris_validate("k: !shape {a: 1}\n", strlen("k: !shape {a: 1}\n"),
+                               YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+
+    // a REAL contradiction keeps its mismatch, now with the right word
+    const yeptris_diagnostic* d = validate_first("k: !!map [1]\n", YEPTRIS_SCHEMA_12_CORE, &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    EXPECT_STREQ(d->detail, "explicit mapping tag on a sequence");
+    free_report(r);
+    d = validate_first("k: !!str [1]\n", YEPTRIS_SCHEMA_12_CORE, &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    EXPECT_STREQ(d->detail, "explicit string tag on a sequence");
     free_report(r);
 }
 
@@ -1794,4 +1830,271 @@ TEST(ValidateCompiledSchema, FreedHandleContract) {
     yeptris_schema* s2 = yeptris_schema_compile(schema, strlen(schema));
     ASSERT_NE(s2, nullptr);
     yeptris_schema_free(s2);
+}
+
+// ---- the tag-driven schema registry (#906 slice 4) ----------------------
+
+namespace {
+
+// Compiles a schema for the registry tests and asserts success.
+yeptris_schema* reg_compile(const char* bytes) {
+    yeptris_schema* s = yeptris_schema_compile(bytes, strlen(bytes));
+    EXPECT_NE(s, nullptr) << "registry test schema must compile";
+    return s;
+}
+
+// The full options struct carrying `reg`.
+yeptris_validate_options reg_opts(const yeptris_schema_registry* reg) {
+    yeptris_validate_options o;
+    memset(&o, 0, sizeof(o));
+    o.size = sizeof(o);
+    o.registry = reg;
+    return o;
+}
+
+} // namespace
+
+TEST(ValidateRegistry, RegisteredTagValidatesItsSubtreeWithTagSitePaths) {
+    yeptris_schema* shape =
+        reg_compile("{\"type\":\"object\",\"properties\":{\"w\":{\"type\":\"integer\"},"
+                    "\"name\":{\"type\":\"string\"}},\"required\":[\"w\"]}");
+    ASSERT_NE(shape, nullptr);
+    yeptris_schema_registry* reg = yeptris_schema_registry_new();
+    ASSERT_NE(reg, nullptr);
+    ASSERT_EQ(yeptris_schema_registry_register(reg, "!shape", 6, shape), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_schema_registry_lookup(reg, "!shape", 6), shape);
+    yeptris_validate_options opts = reg_opts(reg);
+
+    // a miss inside the bound subtree: path = the tag site + the
+    // schema's instance pointer; position = the offending node's
+    const char* src = "a: !shape\n  w: notanumber\n";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate_ex(src, strlen(src), YEPTRIS_SCHEMA_12_CORE, &opts, &r),
+              YEPTRIS_ERROR_SCHEMA);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    const yeptris_diagnostic* d = yeptris_validate_report_at(r, 0);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TYPE);
+    EXPECT_STREQ(d->path, "/a/w");
+    EXPECT_EQ(d->line, (uint32_t)2);
+    EXPECT_EQ(d->col, (uint32_t)6); /* "notanumber" starts at column 6 */
+    yeptris_validate_report_free(r);
+
+    // a miss at the bound subtree root: the tag site's path + the
+    // schema walk's own path (required names the MISSING LEAF)
+    const char* missing = "a: !shape\n  name: ok\n";
+    ASSERT_EQ(yeptris_validate_ex(missing, strlen(missing), YEPTRIS_SCHEMA_12_CORE, &opts, &r),
+              YEPTRIS_ERROR_SCHEMA);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    d = yeptris_validate_report_at(r, 0);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_REQUIRED);
+    EXPECT_STREQ(d->path, "/a/w");
+    yeptris_validate_report_free(r);
+
+    // the same shape validates clean when the document holds
+    const char* ok = "a: !shape\n  w: 3\n  name: tri\n";
+    ASSERT_EQ(yeptris_validate_ex(ok, strlen(ok), YEPTRIS_SCHEMA_12_CORE, &opts, &r), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    yeptris_validate_report_free(r);
+
+    // THE REGISTRY LAW's shape: registry first, then the schemas it
+    // borrowed (the borrowed handles stay the caller's to free)
+    yeptris_schema_registry_free(reg);
+    yeptris_schema_free(shape);
+}
+
+TEST(ValidateRegistry, UnregisteredTagsPassUntouched) {
+    yeptris_schema* shape = reg_compile("{\"type\":\"object\",\"required\":[\"w\"]}");
+    ASSERT_NE(shape, nullptr);
+    yeptris_schema_registry* reg = yeptris_schema_registry_new();
+    ASSERT_NE(reg, nullptr);
+    ASSERT_EQ(yeptris_schema_registry_register(reg, "!shape", 6, shape), YEPTRIS_OK);
+    yeptris_validate_options opts = reg_opts(reg);
+
+    // `!other` is not registered: no diagnostic, no lane
+    const char* other = "a: !other\n  w: 1\n";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate_ex(other, strlen(other), YEPTRIS_SCHEMA_12_CORE, &opts, &r),
+              YEPTRIS_OK);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    yeptris_validate_report_free(r);
+
+    // and with NO registry at all, `!shape` is an ordinary custom tag
+    const char* plain = "a: !shape\n  w: 1\n";
+    ASSERT_EQ(yeptris_validate_ex(plain, strlen(plain), YEPTRIS_SCHEMA_12_CORE, NULL, &r),
+              YEPTRIS_OK);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    yeptris_validate_report_free(r);
+
+    yeptris_schema_registry_free(reg);
+    yeptris_schema_free(shape);
+}
+
+TEST(ValidateRegistry, ReregisterReplacesAndTheTagBytesAreCopied) {
+    yeptris_schema* strict = reg_compile("{\"required\":[\"w\"]}");
+    yeptris_schema* lax = reg_compile("true");
+    ASSERT_NE(strict, nullptr);
+    ASSERT_NE(lax, nullptr);
+    yeptris_schema_registry* reg = yeptris_schema_registry_new();
+    ASSERT_NE(reg, nullptr);
+    ASSERT_EQ(yeptris_schema_registry_register(reg, "!shape", 6, strict), YEPTRIS_OK);
+    yeptris_validate_options opts = reg_opts(reg);
+
+    const char* src = "a: !shape\n  x: 1\n";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate_ex(src, strlen(src), YEPTRIS_SCHEMA_12_CORE, &opts, &r),
+              YEPTRIS_ERROR_SCHEMA);
+    yeptris_validate_report_free(r);
+
+    // re-registering the tag REPLACES the binding (last wins)
+    ASSERT_EQ(yeptris_schema_registry_register(reg, "!shape", 6, lax), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_schema_registry_lookup(reg, "!shape", 6), lax);
+    ASSERT_EQ(yeptris_validate_ex(src, strlen(src), YEPTRIS_SCHEMA_12_CORE, &opts, &r), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    yeptris_validate_report_free(r);
+
+    // the registered tag bytes are COPIED: the caller's buffer can die
+    char tmp[7] = "!shape";
+    ASSERT_EQ(yeptris_schema_registry_register(reg, tmp, 6, strict), YEPTRIS_OK);
+    memset(tmp, 0, sizeof(tmp));
+    EXPECT_EQ(yeptris_schema_registry_lookup(reg, "!shape", 6), strict);
+    ASSERT_EQ(yeptris_validate_ex(src, strlen(src), YEPTRIS_SCHEMA_12_CORE, &opts, &r),
+              YEPTRIS_ERROR_SCHEMA);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    EXPECT_EQ(yeptris_validate_report_at(r, 0)->code, (uint32_t)YEPTRIS_DIAG_REQUIRED);
+    yeptris_validate_report_free(r);
+
+    yeptris_schema_registry_free(reg);
+    yeptris_schema_free(strict);
+    yeptris_schema_free(lax);
+}
+
+TEST(ValidateRegistry, StreamAttributionComposesWithTheTagSite) {
+    // a multi-document stream prefixes the document index; the tag
+    // site extends it, the bound schema's pointers extend that
+    yeptris_schema* shape = reg_compile("{\"required\":[\"w\"]}");
+    ASSERT_NE(shape, nullptr);
+    yeptris_schema_registry* reg = yeptris_schema_registry_new();
+    ASSERT_NE(reg, nullptr);
+    ASSERT_EQ(yeptris_schema_registry_register(reg, "!shape", 6, shape), YEPTRIS_OK);
+    yeptris_validate_options opts = reg_opts(reg);
+
+    const char* src = "a: 1\n---\nb: !shape\n  x: 2\n";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate_ex(src, strlen(src), YEPTRIS_SCHEMA_12_CORE, &opts, &r),
+              YEPTRIS_ERROR_SCHEMA);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    const yeptris_diagnostic* d = yeptris_validate_report_at(r, 0);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_REQUIRED);
+    EXPECT_STREQ(d->path, "/1/b/w"); /* doc prefix + tag site + missing leaf */
+    yeptris_validate_report_free(r);
+
+    yeptris_schema_registry_free(reg);
+    yeptris_schema_free(shape);
+}
+
+TEST(ValidateRegistry, NestedBindingsCompose) {
+    // a node inside a bound subtree carrying its own registered tag is
+    // validated by BOTH schemas
+    yeptris_schema* outer = reg_compile("{\"type\":\"object\",\"required\":[\"k\"]}");
+    yeptris_schema* inner =
+        reg_compile("{\"type\":\"object\",\"properties\":{\"w\":{\"type\":\"string\"}}}");
+    ASSERT_NE(outer, nullptr);
+    ASSERT_NE(inner, nullptr);
+    yeptris_schema_registry* reg = yeptris_schema_registry_new();
+    ASSERT_NE(reg, nullptr);
+    ASSERT_EQ(yeptris_schema_registry_register(reg, "!shape", 6, outer), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_schema_registry_register(reg, "!extra", 6, inner), YEPTRIS_OK);
+    yeptris_validate_options opts = reg_opts(reg);
+
+    const char* src = "!shape\nk: !extra\n  w: 1\n"; /* 1 is not a string */
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate_ex(src, strlen(src), YEPTRIS_SCHEMA_12_CORE, &opts, &r),
+              YEPTRIS_ERROR_SCHEMA);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    const yeptris_diagnostic* d = yeptris_validate_report_at(r, 0);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TYPE);
+    EXPECT_STREQ(d->path, "/k/w"); /* the !extra site + the instance pointer */
+    yeptris_validate_report_free(r);
+
+    yeptris_schema_registry_free(reg);
+    yeptris_schema_free(outer);
+    yeptris_schema_free(inner);
+}
+
+TEST(ValidateRegistry, DocumentEntrySharesTheHook) {
+    yeptris_schema* shape = reg_compile("{\"required\":[\"w\"]}");
+    ASSERT_NE(shape, nullptr);
+    yeptris_schema_registry* reg = yeptris_schema_registry_new();
+    ASSERT_NE(reg, nullptr);
+    ASSERT_EQ(yeptris_schema_registry_register(reg, "!shape", 6, shape), YEPTRIS_OK);
+    yeptris_validate_options opts = reg_opts(reg);
+
+    const char* src = "a: !shape\n  x: 1\n";
+    YeptrisParseOptions popts;
+    memset(&popts, 0, sizeof(popts));
+    popts.schema = YEPTRIS_SCHEMA_12_CORE;
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument doc = yeptris_parse_ex(src, strlen(src), &popts, &st);
+    ASSERT_NE(doc, nullptr);
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate_document_ex(doc, YEPTRIS_SCHEMA_12_CORE, &opts, &r),
+              YEPTRIS_ERROR_SCHEMA);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    EXPECT_STREQ(yeptris_validate_report_at(r, 0)->path, "/a/w");
+    yeptris_validate_report_free(r);
+    yeptris_document_free(doc);
+
+    yeptris_schema_registry_free(reg);
+    yeptris_schema_free(shape);
+}
+
+TEST(ValidateRegistry, ShortOptionsStructCarriesNoRegistry) {
+    // the size-versioned options law: an older/shorter struct simply
+    // has no registry field — the face must not read past it
+    yeptris_schema* shape = reg_compile("{\"required\":[\"w\"]}");
+    ASSERT_NE(shape, nullptr);
+    yeptris_schema_registry* reg = yeptris_schema_registry_new();
+    ASSERT_NE(reg, nullptr);
+    ASSERT_EQ(yeptris_schema_registry_register(reg, "!shape", 6, shape), YEPTRIS_OK);
+
+    alignas(yeptris_validate_options) unsigned char raw[sizeof(uint32_t)];
+    uint32_t short_size = (uint32_t)offsetof(yeptris_validate_options, registry);
+    memcpy(raw, &short_size, sizeof(short_size));
+    const yeptris_validate_options* old = reinterpret_cast<const yeptris_validate_options*>(raw);
+
+    const char* src = "a: !shape\n  x: 1\n";
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate_ex(src, strlen(src), YEPTRIS_SCHEMA_12_CORE, old, &r), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    yeptris_validate_report_free(r);
+
+    yeptris_schema_registry_free(reg);
+    yeptris_schema_free(shape);
+}
+
+TEST(ValidateRegistry, ArgumentGates) {
+    yeptris_schema* s = reg_compile("true");
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(yeptris_schema_registry_register(NULL, "!x", 2, s), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(yeptris_schema_registry_register(NULL, NULL, 0, NULL), YEPTRIS_ERROR_ARG);
+
+    yeptris_schema_registry* reg = yeptris_schema_registry_new();
+    ASSERT_NE(reg, nullptr);
+    EXPECT_EQ(yeptris_schema_registry_register(reg, NULL, 2, s), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(yeptris_schema_registry_register(reg, "!x", 0, s), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(yeptris_schema_registry_register(reg, "!x", 2, NULL), YEPTRIS_ERROR_ARG);
+    EXPECT_EQ(yeptris_schema_registry_lookup(NULL, "!x", 2), nullptr);
+    EXPECT_EQ(yeptris_schema_registry_lookup(reg, NULL, 2), nullptr);
+    EXPECT_EQ(yeptris_schema_registry_lookup(reg, "!x", 0), nullptr);
+    // a NULL registry in the options is simply no bindings
+    yeptris_validate_options opts = reg_opts(NULL);
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate_ex("a: 1\n", 5, YEPTRIS_SCHEMA_12_CORE, &opts, &r), YEPTRIS_OK);
+    yeptris_validate_report_free(r);
+
+    // NULL free is a no-op, like every handle here
+    yeptris_schema_registry_free(NULL);
+    yeptris_schema_registry_free(reg);
+    yeptris_schema_free(s);
 }

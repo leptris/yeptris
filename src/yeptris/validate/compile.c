@@ -227,6 +227,23 @@ YEPTRIS_API yeptris_schema* yeptris_schema_compile(const char* bytes, size_t n) 
     return yep_schema_compile_st(bytes, n, &st); /* the error channel carries the why */
 }
 
+/* The tag-driven hook's read-only view (internal.h, #906 slice 4):
+ * everything the subtree walk reads, borrowed from the handle — the
+ * REGISTRY LAW keeps the handle alive underneath it. */
+void yep_schema_view_of(const yeptris_schema* s, yep_schema_view* out) {
+    if (out == NULL) {
+        return;
+    }
+    if (s == NULL) {
+        memset(out, 0, sizeof(*out));
+        return;
+    }
+    out->dom = s->dom;
+    out->sroot = s->sroot;
+    out->cache = s->cache;
+    out->res = s->res;
+}
+
 YEPTRIS_API void yeptris_schema_free(yeptris_schema* s) {
     if (s == NULL) {
         return;

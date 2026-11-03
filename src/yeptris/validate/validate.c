@@ -22,6 +22,7 @@
  * the caller's buffer beyond the call.
  */
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -681,6 +682,34 @@ static void check_json_scalar(yep_vctx* c, uint32_t id) {
 
 static void walk_family(yep_vctx* c, uint32_t id, const yep_resolver* fam, int json_family);
 
+/* The tag-driven schema hook (#906 slice 4): a node whose EXPLICIT tag
+ * matches a registry entry has its subtree validated against the bound
+ * compiled schema. The walk context carries the tag site's path — the
+ * subtree's misses extend it — and the shared report (one cap law).
+ * Unregistered tags pass untouched; tagged mapping KEYS never reach
+ * here (the walk checks keys in place, no instance path of their
+ * own). Registration is the only extension: this reads the registry,
+ * it never grows a schema branch (OCP). */
+static void check_tag_schema(yep_vctx* c, uint32_t id, const yep_dnode* n) {
+    if (c->oom || c->reg == NULL || n->tag.len == 0) {
+        return;
+    }
+    yep_view tv = yep_dom_view(c->dom, n->tag);
+    if (tv.p == NULL) {
+        return;
+    }
+    const yeptris_schema* bound = yeptris_schema_registry_lookup(c->reg, tv.p, tv.len);
+    if (bound == NULL) {
+        return; /* an unregistered tag is nobody's schema */
+    }
+    yep_schema_view v;
+    yep_schema_view_of(bound, &v);
+    if (v.dom == NULL) {
+        return;
+    }
+    yep_jsonschema_apply_subtree(v.dom, v.sroot, c, id, v.cache, v.res);
+}
+
 static void walk_children(yep_vctx* c, uint32_t first, const yep_resolver* fam, int json_family) {
     uint32_t ch = first;
     int guard = 0;
@@ -718,11 +747,13 @@ static void walk_family(yep_vctx* c, uint32_t id, const yep_resolver* fam, int j
         if (json_family) {
             check_json_scalar(c, id);
         }
+        check_tag_schema(c, id, n);
         break;
     case YEP_DOM_ALIAS:
         break; /* the target is validated at its own place */
     case YEP_DOM_SEQUENCE: {
         check_tag(c, id, fam, json_family);
+        check_tag_schema(c, id, n);
         size_t mark = c->path_len;
         uint32_t idx = 0;
         uint32_t ch = n->first_child;
@@ -741,6 +772,7 @@ static void walk_family(yep_vctx* c, uint32_t id, const yep_resolver* fam, int j
         check_tag(c, id, fam, json_family);
         size_t mark = c->path_len;
         check_duplicates(c, id);
+        check_tag_schema(c, id, n);
         uint32_t k = n->first_child;
         while (k != UINT32_MAX && !c->oom) {
             uint32_t v =
@@ -818,6 +850,7 @@ yeptris_validate_report* yep_validate_report_new(void) {
 
 /* The shared tail: walk every document of the DOM into a fresh report. */
 static YeptrisStatus validate_dom(yep_dom* dom, const yep_resolver* fam, int json_family,
+                                  const yeptris_schema_registry* reg,
                                   yeptris_validate_report** out) {
     const yep_allocator* sys = yep_system_allocator();
     yeptris_validate_report* r = yep_validate_report_new();
@@ -831,6 +864,7 @@ static YeptrisStatus validate_dom(yep_dom* dom, const yep_resolver* fam, int jso
     c.rep = r;
     c.input = dom->input_base;
     c.input_len = dom->input_len;
+    c.reg = reg;
 
     for (uint32_t i = 0; i < dom->dcount && !c.oom; i++) {
         c.path_len = 0; /* root-relative per document; a multi-document
@@ -873,8 +907,19 @@ int yep_validate_schema_family(YeptrisSchema schema, const yep_resolver** fam, i
     }
 }
 
-YEPTRIS_API YeptrisStatus yeptris_validate_document(YeptrisDocument doc, YeptrisSchema schema,
-                                                    yeptris_validate_report** out) {
+/* The options' registry field (size-versioned: an older/short struct
+ * simply carries no registry — the emit-options law). */
+static const yeptris_schema_registry* validate_registry(const yeptris_validate_options* opts) {
+    if (opts == NULL || opts->size < (uint32_t)(offsetof(yeptris_validate_options, registry) +
+                                                sizeof(opts->registry))) {
+        return NULL;
+    }
+    return opts->registry;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_validate_document_ex(YeptrisDocument doc, YeptrisSchema schema,
+                                                       const yeptris_validate_options* opts,
+                                                       yeptris_validate_report** out) {
     if (out == NULL) {
         return YEPTRIS_ERROR_ARG;
     }
@@ -899,11 +944,17 @@ YEPTRIS_API YeptrisStatus yeptris_validate_document(YeptrisDocument doc, Yeptris
         *out = r;
         return YEPTRIS_OK;
     }
-    return validate_dom(dom, fam, json_family, out);
+    return validate_dom(dom, fam, json_family, validate_registry(opts), out);
 }
 
-YEPTRIS_API YeptrisStatus yeptris_validate(const char* buf, size_t len, YeptrisSchema schema,
-                                           yeptris_validate_report** out) {
+YEPTRIS_API YeptrisStatus yeptris_validate_document(YeptrisDocument doc, YeptrisSchema schema,
+                                                    yeptris_validate_report** out) {
+    return yeptris_validate_document_ex(doc, schema, NULL, out);
+}
+
+YEPTRIS_API YeptrisStatus yeptris_validate_ex(const char* buf, size_t len, YeptrisSchema schema,
+                                              const yeptris_validate_options* opts,
+                                              yeptris_validate_report** out) {
     if (out == NULL || (buf == NULL && len != 0)) {
         return YEPTRIS_ERROR_ARG;
     }
@@ -915,21 +966,26 @@ YEPTRIS_API YeptrisStatus yeptris_validate(const char* buf, size_t len, YeptrisS
                       "schema %d is not a validation family", (int)schema);
         return YEPTRIS_ERROR_ARG;
     }
-    YeptrisParseOptions opts;
-    memset(&opts, 0, sizeof(opts));
-    opts.schema = schema; /* the parse resolves implicit types per family */
+    YeptrisParseOptions popts;
+    memset(&popts, 0, sizeof(popts));
+    popts.schema = schema; /* the parse resolves implicit types per family */
     YeptrisStatus st = YEPTRIS_OK;
-    YeptrisDocument doc = yeptris_parse_eager_ex(buf, len, &opts, &st);
+    YeptrisDocument doc = yeptris_parse_eager_ex(buf, len, &popts, &st);
     if (doc == NULL) {
         if (st == YEPTRIS_OK) {
             /* an empty stream: valid, empty report */
-            return yeptris_validate_document(NULL, schema, out);
+            return yeptris_validate_document_ex(NULL, schema, opts, out);
         }
         return st; /* the parse's own error */
     }
-    st = yeptris_validate_document(doc, schema, out);
+    st = yeptris_validate_document_ex(doc, schema, opts, out);
     yeptris_document_free(doc);
     return st;
+}
+
+YEPTRIS_API YeptrisStatus yeptris_validate(const char* buf, size_t len, YeptrisSchema schema,
+                                           yeptris_validate_report** out) {
+    return yeptris_validate_ex(buf, len, schema, NULL, out);
 }
 
 YEPTRIS_API YeptrisStatus yeptris_json_schema_validate(const char* schema, size_t schema_len,
