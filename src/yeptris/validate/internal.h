@@ -58,6 +58,14 @@ typedef struct yep_vctx {
     int fail_mark;
     int trial_fail;
     int ref_depth; /* consecutive $ref/$dynamicRef expansions */
+    /* the event route's staging hook (#902): when set, composed
+     * diagnostics join the OPEN mapping's stage (the flush replays
+     * [own tag][duplicates][pair content] so report order stays the
+     * DOM walk's); the cap counts the walk position (rep count +
+     * staged). NULL on the DOM route — the report path, unchanged. */
+    void (*stage_put)(void* stage, const yeptris_diagnostic* d);
+    void* stage;
+    size_t staged;
 } yep_vctx;
 
 /* Offset of a node's first positioned byte (the value span of the node
@@ -65,11 +73,66 @@ typedef struct yep_vctx {
  * everything reachable lives in the arena — line/col unknown). */
 uint32_t yep_validate_node_off(const yep_dom* d, uint32_t id);
 
+/* ---- the fact cores (shared by the DOM walk and the event route) -------
+ *
+ * The family checks read five facts per node: kind (yep_dom_kind),
+ * explicit-tag presence, the resolved tag id, the plainness law
+ * (PLAIN style or the implicit flag), and the value bytes. The DOM
+ * walk extracts them from yep_dnode; the event route (#902) extracts
+ * the same five from the engine's events — both call THESE cores, so
+ * a verdict change lands once and both routes move together. `off` is
+ * the caller's position fact (the DOM's node_off law / the event
+ * route's borrowed-view law); UINT32_MAX = unpositioned (line/col 0).
+ * A zero-length value decodes to {NULL, 0} (the yep_dom_view law). */
+
+/* The scalar tag law: explicit tag wins, then the resolver verdict for
+ * plain/implicit scalars, then str for quoted/block styles. */
+uint8_t yep_validate_tag_of(uint8_t tag_id, int has_tag, int plainish);
+
+/* Explicit-tag consistency (both families). */
+struct yep_resolver;
+void yep_check_tag_facts(yep_vctx* c, int kind, int has_tag, uint8_t tag_id, yep_view value,
+                         uint32_t off, const struct yep_resolver* fam, int json_family);
+
+/* json12: a plain scalar must match a JSON production; explicit
+ * non-JSON tags rejected. */
+void yep_check_json_scalar_facts(yep_vctx* c, int has_tag, uint8_t tag_id, int plainish,
+                                 yep_view value, uint32_t off);
+
+/* json12: a SCALAR mapping key's checks (the caller resolves aliases
+ * and non-scalar kinds first — the DOM wrapper keeps that recursion). */
+void yep_check_json_key_facts(yep_vctx* c, int has_tag, uint8_t tag_id, int plainish,
+                              yep_view value, uint32_t off);
+
+/* ---- the canonical digest law (spec 3.2.1.3) --------------------------- */
+
+/* The 64-bit fold primitive behind every canonical fingerprint. */
+uint64_t yep_validate_hash_mix(uint64_t h, uint64_t v);
+
+/* Seed constants of the canonical fold (validate.c's DOM hash and the
+ * event route's streaming fold must agree bit for bit). */
+#define YEP_VAL_DIGEST_SEQ_SEED 0x5EED51ULL  /* sequences: ordered fold */
+#define YEP_VAL_DIGEST_MAP_SEED 0x5EED4A9ULL /* mappings: XOR of pairs */
+#define YEP_VAL_DIGEST_PAIR_SEED 0x51D1ULL   /* one (key, value) pair */
+#define YEP_VAL_DIGEST_ALIAS 0xA11AULL       /* unbound alias fallback */
+#define YEP_VAL_DIGEST_SCALAR 0x5CA1AULL     /* scalar base (tag added) */
+
+/* The scalar arm of the canonical hash: base + tag, the numeric VALUE
+ * for int/float (the double bits), the raw bytes otherwise. */
+uint64_t yep_validate_scalar_digest(uint8_t tag, yep_view v);
+
 /* Emits one diagnostic at the current path. line/col resolve from
  * `off` through the lazy line index; 0/0 when unknown. Detail is
  * printf-composed into the bounded slot. Never fails the caller: the
  * report cap turns the last slot into the LIMIT sentinel. */
 void yep_validate_emit(yep_vctx* c, int code, uint32_t off, const char* detail_fmt, ...);
+
+/* The report-path writer (the cap law's one home): appends a RESOLVED
+ * diagnostic, or turns the last slot into the LIMIT sentinel once the
+ * report is full. The event route's flush replays its staged
+ * diagnostics through this — the compose time (and therefore the path
+ * and position) stays the walk's. */
+void yep_validate_report_put(yep_vctx* c, const yeptris_diagnostic* d);
 
 /* JSON-pointer path scratch: push an escaped segment / a decimal
  * index, pop to a mark. 0 ok, -1 OOM (ctx.oom set; the walk unwinds). */
@@ -228,6 +291,14 @@ yeptris_validate_report* yep_validate_report_new(void);
  * YEPTRIS_ERROR_MEMORY. */
 struct yeptris_schema;
 yeptris_schema* yep_schema_compile_st(const char* bytes, size_t n, YeptrisStatus* st);
+
+/* The validation-family selector shared by both routes (#902): CORE_12
+ * and JSON_12 resolve to their resolvers (json_family set for the
+ * strict lane); every other schema is a parse-compat resolver, not a
+ * family — 0 with the thread error channel set, exactly like the DOM
+ * face's ARG rejection. */
+int yep_validate_schema_family(YeptrisSchema schema, const struct yep_resolver** fam,
+                               int* json_family);
 
 #ifdef __cplusplus
 }
