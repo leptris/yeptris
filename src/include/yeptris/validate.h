@@ -153,22 +153,35 @@ YEPTRIS_API YeptrisStatus yeptris_validate(const char* buf, size_t len, YeptrisS
 YEPTRIS_API YeptrisStatus yeptris_validate_document(YeptrisDocument doc, YeptrisSchema schema,
                                                     yeptris_validate_report** out);
 
-/* JSON Schema draft 2020-12 subset (#882 slice 2; #885 item 2). `schema`
- * is parsed with the same engine (JSON is YAML flow); document 0 of the
- * stream is the schema. Keyword subset: type, enum, const, pattern,
- * minimum/maximum/exclusiveMinimum/exclusiveMaximum (numeric, 2020-12
- * form), multipleOf (libm-free quotient test), minLength/maxLength
- * (code points), minItems/maxItems, uniqueItems, contains (+ the
- * minContains/maxContains qualifiers), items (+ prefixItems; the
- * draft-07 array form rides as prefixItems), properties, required,
- * patternProperties, propertyNames, minProperties/maxProperties,
- * additionalProperties (bool or schema; excludes patternProperties
- * matches), dependentRequired, dependentSchemas, if/then/else,
- * allOf/anyOf/oneOf/not, $ref (LOCAL "#/..." pointers only — $defs and
- * definitions both resolve). Boolean schemas (`true`/`false`) apply.
- * Unknown keywords and known keywords with unreadable values are
- * ignored (2020-12). Instance types ride the core-schema resolution
- * (the YAML->JSON data model): "y" is boolean, 1.0 is integer.
+/* JSON Schema draft 2020-12 subset (#882 slice 2; #885 item 2; the
+ * 2020-12 sota sweep). `schema` is parsed with the same engine (JSON
+ * is YAML flow); document 0 of the stream is the schema. Keyword
+ * subset: type, enum, const, pattern, minimum, maximum,
+ * exclusiveMinimum, exclusiveMaximum (numeric, 2020-12 form),
+ * multipleOf (libm-free quotient test),
+ * minLength/maxLength (code points), minItems/maxItems, uniqueItems,
+ * contains (+ the minContains/maxContains qualifiers), items
+ * (+ prefixItems; the draft-07 array form rides as prefixItems),
+ * properties, required, patternProperties, propertyNames,
+ * minProperties/maxProperties, additionalProperties (bool or schema;
+ * excludes patternProperties matches), dependentRequired,
+ * dependentSchemas, if/then/else, allOf/anyOf/oneOf/not,
+ * unevaluatedProperties/unevaluatedItems (the 2020-12 annotation
+ * model: evaluations collect upward through the in-place applicators,
+ * a failed branch annotates nothing, and nothing crosses an
+ * instance-location boundary), $ref, $dynamicRef, boolean schemas.
+ * REFERENCES: $id base-URI composition (RFC 3986 path merge),
+ * $anchor/$dynamicAnchor plain-name fragments scoped to their nearest
+ * $id resource, JSON Pointer fragments with the percent layer
+ * (%25 -> '%', then ~0/~1), and $dynamicRef's runtime dynamic scope
+ * (the OUTERMOST schema resource in scope defining the anchor). No
+ * network: a reference resolves only against the schema's own
+ * identifier space — an external target (the metaschema, an HTTP
+ * fixture) is a DIAG_REF, never a fetch. Boolean schemas
+ * (`true`/`false`) apply. Unknown keywords and known keywords with
+ * unreadable values are ignored (2020-12). Instance types ride the
+ * core-schema resolution (the YAML->JSON data model): "y" is boolean,
+ * 1.0 is integer.
  *
  * Status: as yeptris_validate, plus YEPTRIS_ERROR_ARG when the schema
  * bytes hold no document, and YEPTRIS_ERROR_PARSE when they do not

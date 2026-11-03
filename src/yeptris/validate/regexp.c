@@ -223,6 +223,21 @@ static int p_escape(re_ctx* c, int* out) {
     case '0':
         *out = 0;
         return 0;
+    case 'c': {
+        /* ECMA-262 \cX: the control code of a letter (X & 0x1F). A
+         * non-letter after \c is the Annex B identity escape (the
+         * literal 'c' — the next byte parses on its own). */
+        if (c->pi < c->pn) {
+            char l = c->pat[c->pi];
+            if ((l >= 'A' && l <= 'Z') || (l >= 'a' && l <= 'z')) {
+                c->pi++;
+                *out = (unsigned char)(l & 0x1F);
+                return 0;
+            }
+        }
+        *out = (unsigned char)'c';
+        return 0;
+    }
     case 'x': {
         int v = p_hex(c, 2);
         if (v < 0) {

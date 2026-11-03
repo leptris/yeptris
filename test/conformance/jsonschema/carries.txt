@@ -65,8 +65,6 @@ patternProperties.json :: patternProperties with Unicode property escape :: Unic
 # \d \w \s \D \W \S as ASCII-only classes (ECMA wants Unicode letters/digits/
 # whitespace), and \p{...} property escapes (u-flag semantics). Documented in
 # MATRIX.md; ASCII-semantics cases in the same groups pass and are not carried.
-ecmascript-regex.json :: ECMA 262 regex escapes control codes with \\c and upper letter :: matches
-ecmascript-regex.json :: ECMA 262 regex escapes control codes with \\c and lower letter :: matches
 ecmascript-regex.json :: ECMA 262 \\D matches everything but ascii digits :: NKO DIGIT ZERO matches (unlike e.g. Python)
 ecmascript-regex.json :: ECMA 262 \\D matches everything but ascii digits :: NKO DIGIT ZERO (as \\u escape) matches
 ecmascript-regex.json :: ECMA 262 \\W matches everything but ascii letters :: latin-1 e-acute matches (unlike e.g. Python)
