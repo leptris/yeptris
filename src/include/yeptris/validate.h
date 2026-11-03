@@ -13,7 +13,18 @@
  *     list), mapping keys must be strings (a key resolving to a
  *     non-string production is KEY_NOT_STRING; a no-production plain
  *     key IS a string, per example 10.8), explicit non-JSON tags are
- *     rejected; core checks still run.
+ *     rejected; core checks still run. Under YEPTRIS_SCHEMA_12_FULL
+ *     the spec 10.4 "other schema" family applies — the core schema
+ *     "extended with additional tag resolution rules": untagged plains
+ *     also resolve RFC3339-era timestamps (spec example 2.22's
+ *     canonical/iso8601/spaced/date forms, classified by PyYAML's
+ *     timestamp regex as the practice oracle) and the merge/value
+ *     words, while explicit !!timestamp content must re-resolve
+ *     through the same classifier (TAG_MISMATCH otherwise). !!binary
+ *     rides as passthrough (base64 shaping is a construction concern);
+ *     core checks still run. The 1.1 numeric quirks (underscores,
+ *     sexagesimal, leading-0 octal, y/n booleans) stay with
+ *     11_COMPAT — full is spec-refereed, not psych-refereed.
  *
  *  2. JSON SCHEMA validation (`yeptris_json_schema_validate`): the
  *     schema arrives as bytes (parsed with the same engine), the
@@ -142,8 +153,9 @@ YEPTRIS_API void yeptris_validate_report_free(yeptris_validate_report* report);
 /* Parses `buf` (the same front door as yeptris_parse_ex: encodings,
  * BOM, NEL normalization) and validates every document of the stream
  * against `schema` — the strict lanes: explicit-tag consistency,
- * canonical-form key uniqueness, and (12_JSON) string keys over the
- * JSON productions. Paths are root-relative per document; a
+ * canonical-form key uniqueness, (12_JSON) string keys over the JSON
+ * productions, and (12_FULL) timestamp content against the full
+ * family's classifier. Paths are root-relative per document; a
  * multi-document stream prefixes them with the document index (see
  * STREAMS above), so diagnostics name their document. The parse's own
  * guards compose: a document past the engine's depth cap fails the
@@ -181,6 +193,8 @@ YEPTRIS_API YeptrisStatus yeptris_validate_document(YeptrisDocument doc, Yeptris
  *    them), so line/col/offset match bit for bit;
  *  - statuses: OK / SCHEMA / PARSE / DEPTH / ENCODING / MEMORY / ARG,
  *    byte-identical argument gates (NULL with length, 11_COMPAT).
+ *    All three families (12_CORE / 12_JSON / 12_FULL) ride both
+ *    routes with identical verdicts.
  *
  * The compiled JSON Schema lane (yeptris_schema_validate) keeps the
  * DOM route: its evaluator needs random access (uniqueItems, contains,

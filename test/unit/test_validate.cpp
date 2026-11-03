@@ -2193,4 +2193,164 @@ TEST(ValidateRegistry, ArgumentGates) {
     yeptris_schema_registry_free(NULL);
     yeptris_schema_registry_free(reg);
     yeptris_schema_free(s);
+
+// ---- the FULL 1.2 family (#906 slice 3) ---------------------------------
+
+TEST(ValidateFull, Spec22DocumentValidates) {
+    // spec example 2.22's four timestamp shapes (canonical / iso8601 /
+    // spaced / date), verbatim; the full family resolves them at parse
+    // and the walk finds nothing to diagnose
+    yeptris_validate_report* r = NULL;
+    const char* src = "canonical: 2001-12-15T02:59:43.1Z\n"
+                      "iso8601: 2001-12-14t21:59:43.10-05:00\n"
+                      "spaced: 2001-12-14 21:59:43.10 -5\n"
+                      "date: 2002-12-14\n";
+    ASSERT_EQ(yeptris_validate(src, strlen(src), YEPTRIS_SCHEMA_12_FULL, &r), YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    free_report(r);
+
+    // core accepts the document too — the divergence is in resolution
+    // (core types the plains str, full types them timestamp; the tag
+    // pins live in test_resolve), never in a core diagnostic
+    r = NULL;
+    ASSERT_EQ(yeptris_validate(src, strlen(src), YEPTRIS_SCHEMA_12_CORE, &r), YEPTRIS_OK);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    free_report(r);
+}
+
+TEST(ValidateFull, ExplicitTimestampConsistency) {
+    // the full family checks !!timestamp content through the SAME
+    // classifier the untagged plain form rides
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate("t: !!timestamp 2001-12-14\n", strlen("t: !!timestamp 2001-12-14\n"),
+                               YEPTRIS_SCHEMA_12_FULL, &r),
+              YEPTRIS_OK);
+    free_report(r);
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("t: !!timestamp 2001-12-14t21:59:43.10-05:00\n",
+                               strlen("t: !!timestamp 2001-12-14t21:59:43.10-05:00\n"),
+                               YEPTRIS_SCHEMA_12_FULL, &r),
+              YEPTRIS_OK);
+    free_report(r);
+
+    const yeptris_diagnostic* d =
+        validate_first("t: !!timestamp junk\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    EXPECT_STREQ(d->path, "/t");
+    EXPECT_STREQ(d->detail, "explicit timestamp tag on string content");
+    EXPECT_EQ(d->line, (uint32_t)1);
+    free_report(r);
+
+    // explicit tags type QUOTED scalars too (the !!int "42" law): a
+    // quoted timestamp is valid, a quoted non-timestamp is not
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("t: !!timestamp \"2001-12-14\"\n",
+                               strlen("t: !!timestamp \"2001-12-14\"\n"), YEPTRIS_SCHEMA_12_FULL,
+                               &r),
+              YEPTRIS_OK);
+    free_report(r);
+    const yeptris_diagnostic* dq =
+        validate_first("t: !!timestamp \"junk\"\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(dq, nullptr);
+    EXPECT_EQ(dq->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    EXPECT_STREQ(dq->detail, "explicit timestamp tag on string content");
+    free_report(r);
+
+    // the empty scalar resolves null: timestamp content it is not
+    const yeptris_diagnostic* de = validate_first("t: !!timestamp\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(de, nullptr);
+    EXPECT_EQ(de->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    EXPECT_STREQ(de->detail, "explicit timestamp tag on null content");
+    free_report(r);
+}
+
+TEST(ValidateFull, CoreLeavesTimestampPassthrough) {
+    // core has no timestamp type (spec 10.3), so !!timestamp is
+    // consumer-defined there: junk content rides — the deliberate
+    // suppression the full family lifts
+    yeptris_validate_report* r = NULL;
+    ASSERT_EQ(yeptris_validate("t: !!timestamp junk\n", strlen("t: !!timestamp junk\n"),
+                               YEPTRIS_SCHEMA_12_CORE, &r),
+              YEPTRIS_OK);
+    free_report(r);
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("\"made\": !!timestamp 2001-12-14\n",
+                               strlen("\"made\": !!timestamp 2001-12-14\n"), YEPTRIS_SCHEMA_12_CORE,
+                               &r),
+              YEPTRIS_OK);
+    free_report(r);
+}
+
+TEST(ValidateFull, BinaryPassthroughPolicy) {
+    // !!binary is never family-checked under any family: base64
+    // shaping is a CONSTRUCTION concern (PyYAML's constructor decodes;
+    // a schema resolver must not), so the tag rides as passthrough —
+    // including non-base64 content, which PyYAML's loader would reject
+    // at construction time (documented divergence)
+    yeptris_validate_report* r = NULL;
+    const char* spec = "picture: !!binary |\n"
+                       "  R0lGODlhDAAMAIQAAP//9/X\n"
+                       "  17unp5WZmZgAAAOfn515eXv\n"
+                       "  Pz7Y6OjuDg4J+fn5OTk6enp\n"
+                       "  56enmleECcgggoBADs=\n";
+    ASSERT_EQ(yeptris_validate(spec, strlen(spec), YEPTRIS_SCHEMA_12_FULL, &r), YEPTRIS_OK);
+    free_report(r);
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("b: !!binary not-base64!!\n", strlen("b: !!binary not-base64!!\n"),
+                               YEPTRIS_SCHEMA_12_FULL, &r),
+              YEPTRIS_OK);
+    free_report(r);
+}
+
+TEST(ValidateFull, TimestampCanonicalKeysAreByteLevel) {
+    // key uniqueness compares canonical form = tag + bytes: the SAME
+    // spelled timestamp is one key ...
+    yeptris_validate_report* r = NULL;
+    const yeptris_diagnostic* d =
+        validate_first("2002-12-14: a\n2002-12-14: b\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_DUPLICATE_KEY);
+    free_report(r);
+
+    // ... while two spellings of ONE datetime value stay distinct
+    // (byte-level canonical form; PyYAML's constructor makes them equal
+    // Python datetimes — documented divergence)
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("2001-12-15T02:59:43.1Z: a\n2001-12-15 02:59:43.10 Z: b\n",
+                               strlen("2001-12-15T02:59:43.1Z: a\n"
+                                      "2001-12-15 02:59:43.10 Z: b\n"),
+                               YEPTRIS_SCHEMA_12_FULL, &r),
+              YEPTRIS_OK);
+    free_report(r);
+}
+
+TEST(ValidateFull, CoreChecksStillRun) {
+    // the full family rides the core walk: tag consistency and key
+    // uniqueness keep their teeth
+    yeptris_validate_report* r = NULL;
+    const yeptris_diagnostic* d = validate_first("n: !!int abc\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    EXPECT_STREQ(d->detail, "explicit int tag on string content");
+    free_report(r);
+
+    const yeptris_diagnostic* d2 = validate_first("a: 1\na: 2\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_DUPLICATE_KEY);
+    free_report(r);
+
+    // the repository words resolve but stay ordinary family members:
+    // '=' and '<<' are distinct keys, and a repeated plain key is a
+    // duplicate exactly as under core
+    r = NULL;
+    ASSERT_EQ(
+        yeptris_validate("=: 1\n<<: 2\n", strlen("=: 1\n<<: 2\n"), YEPTRIS_SCHEMA_12_FULL, &r),
+        YEPTRIS_OK);
+    free_report(r);
+    const yeptris_diagnostic* d3 = validate_first("<<: 1\n<<: 2\n", YEPTRIS_SCHEMA_12_FULL, &r);
+    ASSERT_NE(d3, nullptr);
+    EXPECT_EQ(d3->code, (uint32_t)YEPTRIS_DIAG_DUPLICATE_KEY);
+    free_report(r);
 }

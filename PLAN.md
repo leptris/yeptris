@@ -150,6 +150,39 @@ One engine, three consumption models (the leptris quartet, adapted):
 Incremental feed carries full state across chunk boundaries: indent stack,
 flow depth, partial-scalar folding state, line/column counter.
 
+### 3.6b Validation (the leptris-XSD analog, #885)
+
+`src/yeptris/validate/` — validation lives nowhere else (MECE). The
+leptris-XSD shape: **compile → opaque schema handle** (`yeptris_schema_compile`
+owns a schema DOM + compiled pattern programs), instance validation walks
+the compiled model (`yeptris_schema_validate` — compile once / validate
+many), the whole report comes back as a flat diag array (every miss
+enumerated, never first-fail), one `yeptris_schema_free`.
+
+Dialects over one spine:
+
+| kind | what it checks | state |
+| --- | --- | --- |
+| `JSON12` | JSON Schema draft 2020-12 subset (+ the 2020-12 reference / unevaluated / annotation sweep) | live — official suite: 1298 cases |
+| `CORE_12` / `JSON_FAMILY_12` | YAML 1.2 family lanes: explicit-tag consistency, canonical key uniqueness (every miss), 12_JSON string-key demand; core never flags untagged plains (#898) | live |
+| `FULL_12` | the spec 10.4 "other schema" family (#906 slice 3): core typing + RFC3339-era timestamps (spec 2.22's canonical/iso8601/spaced/date forms; PyYAML's timestamp regex as the practice oracle) + the merge/value words; explicit `!!timestamp` content family-checked; `!!binary` rides as passthrough | live |
+| tag-driven schemas | user tag → schema binding | reserved (#906 slice 4) |
+
+- **Two routes, one fact core**: the DOM walk (`yeptris_validate`) and the
+  event route (`yeptris_validate_stream`, #902) call the same fact cores;
+  the differential gate pins identical diagnostics (code/path/detail/
+  line/col/offset) across every family.
+- **Truth-table law**: scalar resolution belongs to `resolve/` alone — the
+  family lanes consume its verdicts, never re-derive them. The FULL lane
+  re-asks the same classifier for explicit `!!timestamp` content, so the
+  plain and tagged forms cannot diverge.
+- **Streaming attribution** (#898): a validated multi-doc stream addresses
+  diagnostics as `/<doc>/path` (0-based doc index; line/col stay
+  input-absolute; single-doc streams keep bare pointers).
+- **Fuzz contract** (#899): untrusted bytes through compile → validate →
+  free must be crash-clean with statuses
+  OK/SCHEMA/PARSE/DEPTH/ENCODING/MEMORY/ARG only.
+
 ### 3.7 Emitter
 
 - **Exact sizing pre-pass**: per-node byte-cost table (style + escapes +

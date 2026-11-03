@@ -3,10 +3,12 @@
 // event-route diagnostics must equal the DOM route's EXACTLY (status,
 // count, and every diagnostic's code/path/detail/line/col/offset) —
 // both routes share the fact cores and the diag machinery, so this is
-// an identity gate, not a re-implementation. Plus the face's own
-// contract pins: the argument gates (byte-identical to
-// yeptris_validate's), the empty stream, report ownership, and the
-// issue's attribution shapes riding the event walk.
+// an identity gate, not a re-implementation. Every family rides it
+// (12_CORE / 12_JSON / 12_FULL — the full lane's timestamp checks
+// included, #906 slice 3). Plus the face's own contract pins: the
+// argument gates (byte-identical to yeptris_validate's), the empty
+// stream, report ownership, and the issue's attribution shapes riding
+// the event walk.
 #include <gtest/gtest.h>
 
 #include <cstring>
@@ -47,6 +49,7 @@ void pin_routes(const char* src, size_t len, YeptrisSchema schema) {
 void pin_routes_both_families(const char* src) {
     pin_routes(src, strlen(src), YEPTRIS_SCHEMA_12_CORE);
     pin_routes(src, strlen(src), YEPTRIS_SCHEMA_12_JSON);
+    pin_routes(src, strlen(src), YEPTRIS_SCHEMA_12_FULL);
 }
 
 // The corpus: every family-lane shape that orders the two walks —
@@ -141,6 +144,21 @@ TEST(ValidateStream, DifferentialCorpus) {
         "x: !!int 1\ny: !!int 2\nz: !!int bad\nw: !!int 4\n",
         "t: !!timestamp 2001-12-14\nc: !!binary aGVsbG8=\nm: !!merge x\nv: !!value y\nu: !!custom "
         "z\n",
+        /* the FULL family's timestamp surface (#906 slice 3): the spec
+         * 2.22 forms, explicit-tag misses, byte-level duplicate keys,
+         * the binary passthrough, the repository words */
+        "t: !!timestamp junk\n",
+        "t: !!timestamp 2001-12-15T02:59:43.1Z\nj: !!timestamp nope\n",
+        "t: !!timestamp \"2001-12-14\"\n",
+        "t: !!timestamp\n",
+        "canonical: 2001-12-15T02:59:43.1Z\niso8601: 2001-12-14t21:59:43.10-05:00\n"
+        "spaced: 2001-12-14 21:59:43.10 -5\ndate: 2002-12-14\n",
+        "2002-12-14: a\n2002-12-14: b\n",
+        "2001-12-15T02:59:43.1Z: a\n2001-12-15 02:59:43.10 Z: b\n",
+        "=: 1\n<<: 2\n",
+        "<<: 1\n<<: 2\n",
+        "b: !!binary not-base64!!\n",
+        "b: !!binary |\n  aGVsbG8=\nj: !!timestamp junk\n",
         "s: !!bool [1]\n",
         "- !!set\n  ? a\n  : ~\n",
         "1: a\n'1': b\n",
@@ -212,6 +230,7 @@ TEST(ValidateStream, DifferentialStatuses) {
     for (const std::string& s : corpus) {
         pin_routes(s.data(), s.size(), YEPTRIS_SCHEMA_12_CORE);
         pin_routes(s.data(), s.size(), YEPTRIS_SCHEMA_12_JSON);
+        pin_routes(s.data(), s.size(), YEPTRIS_SCHEMA_12_FULL);
     }
 }
 
@@ -334,6 +353,35 @@ TEST(ValidateStream, EncodedInputs) {
                                         'j',  0,    ':', 0, ' ', 0, '2', 0, '\n', 0};
     pin_routes((const char*)u16, sizeof(u16), YEPTRIS_SCHEMA_12_CORE);
     pin_routes((const char*)u16, sizeof(u16), YEPTRIS_SCHEMA_12_JSON);
+    pin_routes((const char*)u16, sizeof(u16), YEPTRIS_SCHEMA_12_FULL);
+}
+
+// The FULL family's own verdicts on the event route (#906 slice 3):
+// the timestamp integrity check lands through the shared fact core,
+// positioned at the content bytes like the DOM route, and the staged
+// order matches.
+TEST(ValidateStream, FullFamilyTimestampChecks) {
+    yeptris_validate_report* r = NULL;
+    const char* src = "t: !!timestamp junk\nok: !!timestamp 2001-12-14\n";
+    ASSERT_EQ(yeptris_validate_stream(src, strlen(src), YEPTRIS_SCHEMA_12_FULL, &r),
+              YEPTRIS_ERROR_SCHEMA);
+    ASSERT_NE(r, nullptr);
+    ASSERT_EQ(yeptris_validate_report_count(r), (size_t)1);
+    const yeptris_diagnostic* d = yeptris_validate_report_at(r, 0);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_TAG_MISMATCH);
+    EXPECT_STREQ(d->path, "/t");
+    EXPECT_STREQ(d->detail, "explicit timestamp tag on string content");
+    EXPECT_EQ(d->line, (uint32_t)1);
+    yeptris_validate_report_free(r);
+
+    // the spec 2.22 shapes are clean on this route too
+    r = NULL;
+    const char* spec = "canonical: 2001-12-15T02:59:43.1Z\nspaced: 2001-12-14 21:59:43.10 -5\n"
+                       "date: 2002-12-14\n";
+    ASSERT_EQ(yeptris_validate_stream(spec, strlen(spec), YEPTRIS_SCHEMA_12_FULL, &r), YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
+    yeptris_validate_report_free(r);
 }
 
 } // namespace

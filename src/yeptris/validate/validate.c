@@ -9,7 +9,13 @@
  *    key; strings byte-wise; collections structurally);
  *  - 12_JSON only: mapping keys must be string scalars; plain scalars
  *    must match a JSON production (spec 10.2.2's `*` -> Error row);
- *    explicit non-JSON tags rejected.
+ *    explicit non-JSON tags rejected;
+ *  - 12_FULL only: the core checks plus the full family's timestamp
+ *    type — explicit !!timestamp content must re-resolve through the
+ *    full12 classifier (spec 2.22's four forms), and untagged plains
+ *    resolve timestamps at parse time (the resolver, not this walk).
+ *    !!binary/!!merge/!!value/consumer tags ride as passthrough
+ *    (spec 10.4: arbitrary explicit tags never invalidate a schema).
  *
  * 11_COMPAT is the parse-compat resolver, not a validation family —
  * the entry rejects it (ARG).
@@ -583,8 +589,30 @@ void yep_check_tag_facts(yep_vctx* c, int kind, int has_tag, uint8_t tag_id, yep
         }
         return;
     }
-    /* timestamp/binary/merge/value/custom: consumer-defined under core;
-     * the JSON family rejects them wholesale (checked by the caller). */
+    if (want == YEPTRIS_TAG_TIMESTAMP && fam->timestamped) {
+        /* the FULL family: timestamp is a family type — the explicit
+         * tag asserts content the classifier accepts (the SAME
+         * classifier the untagged plain form rides, so the two cannot
+         * diverge). Core leaves the tag consumer-defined (spec 10.3's
+         * core schema has no timestamp); the JSON family rejects it
+         * wholesale (checked by the caller). */
+        if (kind != YEP_DOM_SCALAR) {
+            yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, off, "explicit timestamp tag on a %s",
+                              kind == YEP_DOM_SEQUENCE ? "sequence" : "mapping");
+            return;
+        }
+        uint8_t got = fam->resolve(fam->ctx, value.p != NULL ? value.p : "", value.len);
+        if (got != want) {
+            yep_validate_emit(c, YEPTRIS_DIAG_TAG_MISMATCH, off,
+                              "explicit timestamp tag on %s content", tag_word(got));
+        }
+        return;
+    }
+    /* binary/merge/value/custom: consumer-defined under every family
+     * (spec 10.4: arbitrary explicit tags ride). The binary
+     * PASSTHROUGH policy: !!binary is never family-checked — PyYAML's
+     * base64 decode is a CONSTRUCTION step, so resolution and this
+     * walk keep their hands off the shaping. */
 }
 
 static void check_tag(yep_vctx* c, uint32_t id, const yep_resolver* fam, int json_family) {
@@ -901,6 +929,10 @@ int yep_validate_schema_family(YeptrisSchema schema, const yep_resolver** fam, i
     case YEPTRIS_SCHEMA_12_JSON:
         *fam = yep_resolver_json12();
         *json_family = 1;
+        return 1;
+    case YEPTRIS_SCHEMA_12_FULL:
+        *fam = yep_resolver_full12();
+        *json_family = 0; /* full rides the core checks + timestamp */
         return 1;
     default:
         return 0;
