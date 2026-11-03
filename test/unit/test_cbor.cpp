@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <stdlib.h>
+
 #include <string>
 #include <vector>
 
@@ -1269,6 +1271,70 @@ TEST(CborSax, StrictFlagRidesOpts) {
     EXPECT_EQ(
         yeptris_cbor_decode_sax(bytes.data(), bytes.size(), YEPTRIS_CBOR_STRICT, &s2, nullptr, &st),
         YEPTRIS_ERROR_PARSE);
+}
+
+TEST(Cbor, SemanticTagChainCapsAreOneLaw) {
+    // the nightly's 23-nested-tags artifact: decode accepted the 23-link
+    // chain, encode's tags[16] refused — accepted-but-unencodable. ONE
+    // constant (YEP_CBOR_TAG_MAX_LINKS) now governs both ends.
+    auto chain = [](int n) {
+        std::string s;
+        for (int i = 0; i < n; i++) {
+            s += '\xc9';
+        }
+        s += "\x18\x18"; /* uint 24 */
+        return s;
+    };
+
+    // 23 links (the artifact): decode -> canonical encode -> re-decode,
+    // byte-identical round trip
+    auto b23 = chain(23);
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_cbor_decode(b23.data(), b23.size(), 0, &st);
+    ASSERT_NE(d, nullptr);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t n1 = 0;
+    uint8_t* enc = (uint8_t*)yeptris_cbor_encode(d, YEPTRIS_CBOR_CANONICAL, &n1);
+    ASSERT_NE(enc, nullptr);
+    EXPECT_EQ(n1, b23.size());
+    EXPECT_EQ(memcmp(enc, b23.data(), n1), 0);
+    YeptrisStatus st2 = YEPTRIS_OK;
+    YeptrisDocument d2 = yeptris_cbor_decode(enc, n1, 0, &st2);
+    ASSERT_NE(d2, nullptr);
+    size_t n2 = 0;
+    uint8_t* enc2 = (uint8_t*)yeptris_cbor_encode(d2, YEPTRIS_CBOR_CANONICAL, &n2);
+    ASSERT_NE(enc2, nullptr);
+    EXPECT_EQ(n2, n1);
+    EXPECT_EQ(memcmp(enc, enc2, n1), 0);
+    yeptris_document_free(d2);
+    free(enc2);
+    free(enc);
+    yeptris_document_free(d);
+
+    // exactly 64 links: the shared cap's inclusive edge round-trips
+    auto b64 = chain(64);
+    st = YEPTRIS_OK;
+    d = yeptris_cbor_decode(b64.data(), b64.size(), 0, &st);
+    ASSERT_NE(d, nullptr);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    enc = (uint8_t*)yeptris_cbor_encode(d, YEPTRIS_CBOR_CANONICAL, &n1);
+    ASSERT_NE(enc, nullptr);
+    EXPECT_EQ(n1, b64.size());
+    free(enc);
+    yeptris_document_free(d);
+
+    // 65 links: decode rejects PARSE (the link-count cap), never a
+    // silent accept the encoder would refuse
+    auto b65 = chain(65);
+    st = YEPTRIS_OK;
+    d = yeptris_cbor_decode(b65.data(), b65.size(), 0, &st);
+    EXPECT_EQ(d, nullptr);
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    const uint32_t* line = nullptr;
+    (void)line;
+    const char* msg = yeptris_last_error(nullptr, nullptr);
+    ASSERT_NE(msg, nullptr);
+    EXPECT_NE(strstr(msg, "64 links"), nullptr);
 }
 
 } // namespace
