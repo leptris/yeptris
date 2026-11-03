@@ -25,6 +25,7 @@ extern "C" {
 #define YEP_ERROR_X(X)                                                                             \
     X(YEP_ERR_NONE, "no error")                                                                    \
     X(YEP_ERR_UNEXPECTED, "unexpected parser state")                                               \
+    X(YEP_ERR_DOC_BOUNDARY, "invalid content at a document boundary")                              \
     X(YEP_ERR_MEMORY, "out of memory")                                                             \
     X(YEP_ERR_DEPTH, "nesting depth exceeds the limit")                                            \
     X(YEP_ERR_ENCODING, "ill-formed or unsupported character encoding")                            \

@@ -26,6 +26,7 @@ struct Snap {
 struct Stream {
     std::vector<Snap> recs;
     YeptrisStatus status = YEPTRIS_OK;
+    uint32_t err_line = 0, err_col = 0; /* the status's carried position */
 };
 
 Snap snap_one(const YeptrisEventRecord* r, const char* arena) {
@@ -50,6 +51,9 @@ Stream whole(const std::string& in) {
         return st;
     }
     st.status = yeptris_recorder_feed(rec, in.data(), in.size(), 1);
+    if (st.status != YEPTRIS_OK) {
+        yeptris_recorder_status(rec, &st.err_line, &st.err_col);
+    }
     size_t n = 0, alen = 0;
     const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
     const char* arena = yeptris_recorder_arena(rec, &alen);
@@ -78,11 +82,15 @@ Stream stepped_fixed(const std::string& in, size_t chunk) {
             st.recs.push_back(snap_one(&rs[k], arena));
         }
         if (st.status != YEPTRIS_OK) {
+            yeptris_recorder_status(rec, &st.err_line, &st.err_col);
             yeptris_recorder_free(rec);
             return st;
         }
     }
     st.status = yeptris_recorder_feed(rec, "", 0, 1);
+    if (st.status != YEPTRIS_OK) {
+        yeptris_recorder_status(rec, &st.err_line, &st.err_col);
+    }
     size_t n = 0, alen = 0;
     const YeptrisEventRecord* rs = yeptris_recorder_records(rec, &n);
     const char* arena = yeptris_recorder_arena(rec, &alen);
@@ -127,7 +135,7 @@ TEST(Stepping, MultiDocumentByteByByte) {
 TEST(Stepping, DocumentsClosedIncrementally) {
     /* by the time the chunk holding the second --- is fed, doc1's
      * records are already drained — the streaming property */
-    const std::string in = "--- a: 1\n--- b: 2\n--- c: 3\n";
+    const std::string in = "---\na: 1\n---\nb: 2\n---\nc: 3\n";
     YeptrisRecorder rec = yeptris_recorder_new();
     ASSERT_NE(rec, nullptr);
     /* doc1's closing --- has not arrived: nothing to drain */
@@ -166,7 +174,7 @@ TEST(Stepping, PlainApostropheThenMultilineQuote) {
 }
 
 TEST(Stepping, DoubledQuoteEscape) {
-    expect_identical_all_splits("a: 'it''s\n--- fine\nok'\n--- d2: 1\n");
+    expect_identical_all_splits("a: 'it''s\n--- fine\nok'\n---\nd2: 1\n");
 }
 
 TEST(Stepping, FlowSpansMarkerLine) {
@@ -190,7 +198,7 @@ TEST(Stepping, BlockHeaderLookalikeKeyDoesNotHideFlow) {
 }
 
 TEST(Stepping, CommentWithQuotesAndMarkers) {
-    expect_identical_all_splits("# don't --- split here\n# 'quoted'\n--- a: 1\n--- b: 2\n");
+    expect_identical_all_splits("# don't --- split here\n# 'quoted'\n---\na: 1\n---\nb: 2\n");
 }
 
 TEST(Stepping, ColumnZeroComment) {
@@ -252,14 +260,14 @@ TEST(Stepping, SequenceDashesAreNotMarkers) {
 
 TEST(Stepping, LinesAreStreamAbsolute) {
     /* doc2's events must carry whole-buffer line numbers */
-    Stream w = whole("a: 1\n# c\n\n--- b: 2\n");
+    Stream w = whole("a: 1\n# c\n\n---\nb: 2\n");
     ASSERT_EQ(w.status, YEPTRIS_OK);
     ASSERT_EQ(w.recs.size(), 14u); /* two documents, one stream */
     EXPECT_EQ(w.recs[3].line, 1u); /* key a */
     EXPECT_EQ(w.recs[3].val, "a");
-    EXPECT_EQ(w.recs[9].line, 4u); /* key b: whole-buffer line */
+    EXPECT_EQ(w.recs[9].line, 5u); /* key b: whole-buffer line */
     EXPECT_EQ(w.recs[9].val, "b");
-    Stream c = stepped_fixed("a: 1\n# c\n\n--- b: 2\n", 3);
+    Stream c = stepped_fixed("a: 1\n# c\n\n---\nb: 2\n", 3);
     ASSERT_EQ(c.status, YEPTRIS_OK);
     ASSERT_EQ(c.recs.size(), w.recs.size());
     for (size_t i = 0; i < w.recs.size(); i++) {
@@ -353,4 +361,51 @@ TEST(Stepping, FlowQMapMarkerCutStaysInside) {
     expect_identical(in, 13);
     expect_identical(in, 17);
     expect_identical(in, 1);
+}
+
+TEST(Stepping, DocumentBoundaryLawIsSplitIdentical) {
+    /* issue #900: the marker-line law and the second-root diagnostic
+     * must read identically whatever the feed split — status AND the
+     * carried line:col and message, whole-buffer vs byte-fed (the
+     * #839/#845 transport law). The rejecting rows are the issue's. */
+    const char* streams[] = {
+        "--- a: 1\na: 3\n",
+        "--- a: 1\nhello\n",
+        "--- a: 1\n- x\n",
+        "--- a: 1\n--- a: 2\n--- a: 3\n",
+        "--- a: 1\n--- a: 2\na: 3\n",
+        "--- a: 1\n...\na: 3\n",
+        "--- - x\n",
+        "--- ? a\n: b\n",
+        "word1 # c\nword2\n",
+        "---\n[1]\n[2]\n",
+        /* the accepted boundary laws ride the same identity gate */
+        "a: 1\nb: 2\n",
+        "---\na: 1\n---\na: 2\na: 3\n",
+        "---\nscalar1\n...\nkey: value\n",
+        "---\na: 1\n...\na: 3\n",
+    };
+    for (const char* s : streams) {
+        std::string in(s);
+        Stream w = whole(in);
+        std::string wmsg =
+            w.status == YEPTRIS_OK ? std::string() : yeptris_last_error(nullptr, nullptr);
+        for (size_t chunk = 1; chunk <= in.size() + 1; chunk++) {
+            Stream c = stepped_fixed(in, chunk);
+            ASSERT_EQ(w.status, c.status) << s << " chunk=" << chunk;
+            if (w.status != YEPTRIS_OK) {
+                EXPECT_EQ(w.err_line, c.err_line) << s << " chunk=" << chunk;
+                EXPECT_EQ(w.err_col, c.err_col) << s << " chunk=" << chunk;
+                EXPECT_EQ(wmsg, std::string(yeptris_last_error(nullptr, nullptr)))
+                    << s << " chunk=" << chunk;
+            }
+            ASSERT_EQ(w.recs.size(), c.recs.size()) << s << " chunk=" << chunk;
+            for (size_t i = 0; i < w.recs.size(); i++) {
+                EXPECT_EQ(w.recs[i].type, c.recs[i].type) << s << " record " << i;
+                EXPECT_EQ(w.recs[i].val, c.recs[i].val) << s << " record " << i;
+                EXPECT_EQ(w.recs[i].line, c.recs[i].line) << s << " record " << i;
+                EXPECT_EQ(w.recs[i].col, c.recs[i].col) << s << " record " << i;
+            }
+        }
+    }
 }
