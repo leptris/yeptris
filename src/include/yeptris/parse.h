@@ -103,6 +103,15 @@ YEPTRIS_API YeptrisStatus yeptris_stream_iter_status(const yeptris_stream_iter* 
 YEPTRIS_API YeptrisStatus yeptris_stream_iter_slice(const yeptris_stream_iter* it, size_t* off,
                                                     size_t* len);
 
+/* The iterator's ACTIVE buffer (the caller's bytes, or the post-gate
+ * owned copy after a BOM strip / UTF-16-32 transcode / NEL-LS-PS
+ * normalization) and its length. `yeptris_stream_iter_slice`'s offsets
+ * index THIS buffer — hosts copy their frame bytes out of here
+ * (ctypes.string_at / Rust slice / TS Buffer) and re-parse them through
+ * their own drain. Borrowed: valid until yeptris_stream_iter_free. */
+YEPTRIS_API YeptrisStatus yeptris_stream_iter_buffer(const yeptris_stream_iter* it,
+                                                     const char** buf, size_t* len);
+
 YEPTRIS_API void yeptris_stream_iter_free(yeptris_stream_iter* it);
 
 #ifdef __cplusplus

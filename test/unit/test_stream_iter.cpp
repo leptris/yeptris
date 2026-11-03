@@ -218,5 +218,14 @@ TEST(StreamIter, SliceServesTheLastSuccessfulFrame) {
     EXPECT_EQ(doc, nullptr);
     EXPECT_EQ(yeptris_stream_iter_slice(it, &off, &len), YEPTRIS_ERROR_ARG);
     EXPECT_EQ(yeptris_stream_iter_slice(nullptr, &off, &len), YEPTRIS_ERROR_ARG);
+
+    /* the buffer accessor: the slice indexes THIS space (the caller's
+     * bytes here — no gate rewrite happened) */
+    const char* bp = nullptr;
+    size_t bl = 0;
+    EXPECT_EQ(yeptris_stream_iter_buffer(it, &bp, &bl), YEPTRIS_OK);
+    EXPECT_EQ(bp, src);
+    EXPECT_EQ(bl, strlen(src));
+    EXPECT_EQ(yeptris_stream_iter_buffer(nullptr, &bp, &bl), YEPTRIS_ERROR_ARG);
     yeptris_stream_iter_free(it);
 }
