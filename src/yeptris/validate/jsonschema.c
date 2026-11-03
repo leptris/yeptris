@@ -1,5 +1,5 @@
 /* jsonschema.c — the JSON Schema draft 2020-12 keyword subset
- * (#882 slice 2; #885 item 2 sweep).
+ * (#882 slice 2; #885 item 2 sweep; the 2020-12 sota sweep).
  *
  * The schema and the target are both parsed with the same engine; the
  * walk applies the schema tree to the instance tree and emits
@@ -14,23 +14,42 @@
  * patternProperties matches), dependentRequired, dependentSchemas,
  * if/then/else (the if-schema rides a suppressed probe), items
  * (+ prefixItems; the draft-07 array form rides as prefixItems),
- * allOf/anyOf/oneOf/not, $ref (LOCAL "#/..." pointers — $defs and
- * definitions both resolve), boolean schemas. Unknown keywords, and
- * known keywords whose values cannot be read, are IGNORED (2020-12's
- * posture) — an unreadable constraint never guesses. Carried out of
- * the subset (documented in test/conformance/jsonschema/MATRIX.md):
- * unevaluatedItems/unevaluatedProperties (annotation plumbing),
- * $anchor/$id/$dynamicRef (pointer/base-URI machinery), remote $ref,
- * contentMediaType/contentSchema (annotation-only in 2020-12).
+ * allOf/anyOf/oneOf/not, $ref, $dynamicRef (see below), boolean
+ * schemas. Unknown keywords, and known keywords whose values cannot
+ * be read, are IGNORED (2020-12's posture) — an unreadable constraint
+ * never guesses.
+ *
+ * REFERENCES (the sota sweep): resolution rides the compiled schema's
+ * identifier map (resources.c): $id base-URI composition (RFC 3986
+ * path merge, fragment-free canonical forms), $anchor and
+ * $dynamicAnchor plain-name fragments scoped to their nearest $id
+ * resource, JSON Pointer fragments with the percent-encoding layer
+ * (%25 -> '%', then ~0/~1), and $ref targets anywhere in the schema's
+ * own identifier space. No network: a target outside that space is
+ * unresolvable (DIAG_REF), never fetched. $dynamicRef rides the
+ * draft's runtime dynamic scope (core spec 8.2.3.2 + appendix C): a
+ * plain-name fragment that statically resolves to a $dynamicAnchor is
+ * replaced by the identically-named $dynamicAnchor of the OUTERMOST
+ * schema resource in the dynamic scope — the stack of resources
+ * entered during evaluation; probes (anyOf/oneOf/not/if trials) enter
+ * no scope, exactly as their annotations are discarded.
+ *
+ * Carried out of the subset (documented in
+ * test/conformance/jsonschema/MATRIX.md): unevaluatedItems/
+ * unevaluatedProperties (annotation plumbing), remote targets (the
+ * metaschema and the suite's HTTP fixtures — no network corpus is
+ * vendored), contentMediaType/contentSchema (annotation-only in
+ * 2020-12).
  *
  * Instance types ride the core-schema resolution (the YAML->JSON data
  * model): "y" is boolean, 1.0 is integer (2020-12: zero fractional
  * part), floats and ints are both numbers.
  *
  * Guards: the walk depth is the DOM's own parse-bounded depth; a
- * consecutive-$ref chain (schema-only cycles that consume no instance
- * structure) caps at 64 expansions and reports DIAG_REF. Every array
- * is bounded; allocation failure flags the context and unwinds.
+ * consecutive-$ref/$dynamicRef chain (schema-only cycles that consume
+ * no instance structure) caps at 64 expansions and reports DIAG_REF.
+ * Every array is bounded; allocation failure flags the context and
+ * unwinds.
  */
 
 #include <stdio.h>
@@ -54,6 +73,14 @@ typedef struct {
     /* the compiled schema's retained pattern programs (NULL: the
      * one-shot face — every search compiles fresh, identical verdicts) */
     const yep_re_cache* cache;
+    /* the compiled schema's identifier map (NULL: only bare "#/..."
+     * pointers against the document root resolve) */
+    const js_resources* res;
+    /* the dynamic scope: resource indices, outermost first — pushed
+     * as evaluation enters each schema object's resource (dedup'd
+     * against the top), popped on exit; probes push nothing */
+    uint32_t scope[YEP_JS_MAX_SCOPE];
+    int scope_n;
 } js_ctx;
 
 /* ---- schema-side facts -------------------------------------------------- */
@@ -271,7 +298,8 @@ static void check_dependent_required(js_ctx* j, uint32_t dr_id, uint32_t inst_id
 static void check_dependent_schemas(js_ctx* j, uint32_t ds_id, uint32_t inst_id, int depth);
 
 /* A suppressed probe: does `schema_id` hold at `inst_id`? Diagnostics
- * during the trial are swallowed. */
+ * during the trial are swallowed (and the trial enters no dynamic
+ * scope — its anchors are as discarded as its annotations). */
 static int js_holds(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) {
     int save = j->v.trial_hit;
     j->v.trial_hit = 0;
@@ -283,28 +311,35 @@ static int js_holds(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) 
     return !hit;
 }
 
-/* Local "#/..." pointer resolution against the schema document. */
-static int resolve_ref(js_ctx* j, const char* p, uint32_t plen, uint32_t* out) {
-    if (plen == 0 || p[0] != '#') {
-        return 0; /* remote/anchor forms are out of the subset */
-    }
-    uint32_t cur = j->sroot;
-    size_t i = 1;
-    if (i >= plen || p[i] != '/') {
-        *out = cur; /* "#" alone is the root */
-        return i == plen;
-    }
+/* ---- reference resolution ------------------------------------------------ */
+
+/* JSON Pointer walk from `start` with the URI percent layer decoded
+ * before the ~0/~1 escapes (%25 -> '%', then the RFC 6901 unescape).
+ * `p` spans the raw fragment text ("/$defs/foo"); the loop consumes a
+ * '/' before each token. */
+static int pointer_walk(js_ctx* j, uint32_t start, const char* p, size_t plen, uint32_t* out) {
+    uint32_t cur = start;
+    size_t i = 0;
     int tokens = 0;
     while (i < plen) {
         if (p[i] != '/') {
             return 0;
         }
         i++;
-        char token[128];
+        char token[256];
         size_t tl = 0;
         while (i < plen && p[i] != '/') {
             char b = p[i];
-            if (b == '~' && i + 1 < plen && (p[i + 1] == '0' || p[i + 1] == '1')) {
+            if (b == '%' && i + 2 < plen) {
+                int hi = (p[i + 1] >= '0' && p[i + 1] <= '9') ? p[i + 1] - '0'
+                                                              : ((p[i + 1] | 0x20) - 'a' + 10);
+                int lo = (p[i + 2] >= '0' && p[i + 2] <= '9') ? p[i + 2] - '0'
+                                                              : ((p[i + 2] | 0x20) - 'a' + 10);
+                if ((unsigned)hi < 16 && (unsigned)lo < 16) {
+                    b = (char)((hi << 4) | lo);
+                    i += 2;
+                }
+            } else if (b == '~' && i + 1 < plen && (p[i + 1] == '0' || p[i + 1] == '1')) {
                 b = p[i + 1] == '0' ? '~' : '/';
                 i++;
             } else if (b == '~') {
@@ -370,6 +405,125 @@ static int resolve_ref(js_ctx* j, const char* p, uint32_t plen, uint32_t* out) {
     }
     *out = cur;
     return cur != UINT32_MAX;
+}
+
+/* The plain-name anchor lookup: canonical base URI + '#' + name. When
+ * `dynamic` and the static anchor is a $dynamicAnchor, the draft's
+ * runtime rule applies (core spec 8.2.3.2): the OUTERMOST schema
+ * resource in the dynamic scope defining an identically-named
+ * $dynamicAnchor wins; with nothing in scope, the static target
+ * stands (the behavior is "$ref-like" — the bookending requirement is
+ * the schema author's). */
+static int anchor_lookup(js_ctx* j, const char* base, const char* name, size_t nl, int dynamic,
+                         uint32_t* out) {
+    if (j->res == NULL) {
+        return 0;
+    }
+    char key[YEP_JS_URI_MAX];
+    size_t bn = strlen(base);
+    if (bn + 1 + nl + 1 > sizeof(key)) {
+        return 0;
+    }
+    memcpy(key, base, bn);
+    key[bn] = '#';
+    memcpy(key + bn + 1, name, nl);
+    key[bn + 1 + nl] = '\0';
+    uint32_t node = 0;
+    uint8_t dyn = 0;
+    if (!js_anchor_find(j->res, key, bn + 1 + nl, &node, &dyn)) {
+        return 0;
+    }
+    if (dynamic && dyn == 1) {
+        uint32_t found = UINT32_MAX;
+        for (int i = 0; i < j->scope_n && found == UINT32_MAX; i++) {
+            uint32_t anode = 0;
+            if (js_anchor_dynamic_in_res(j->res, j->scope[i], name, nl, &anode)) {
+                found = anode;
+            }
+        }
+        if (found != UINT32_MAX) {
+            *out = found;
+            return 1;
+        }
+    }
+    *out = node;
+    return 1;
+}
+
+/* Resolves the URI-reference at `site` (the schema object carrying
+ * $ref/$dynamicRef) against the site's compiled base. `dynamic`
+ * enables the $dynamicRef runtime scope. 1 + *out, 0 unresolvable. */
+static int resolve_ref_ext(js_ctx* j, uint32_t site, const char* rp, uint32_t rl, int dynamic,
+                           uint32_t* out) {
+    const char* base = "";
+    uint32_t base_root = j->sroot;
+    if (j->res != NULL) {
+        js_refsite_find(j->res, site, &base, &base_root);
+    }
+    if (rl == 0) {
+        *out = base_root; /* "" : the base resource root */
+        return 1;
+    }
+    if (rp[0] == '#') {
+        const char* frag = rp + 1;
+        size_t fl = rl - 1;
+        if (fl == 0) {
+            *out = base_root; /* "#" : the base resource root */
+            return 1;
+        }
+        if (frag[0] == '/') {
+            return pointer_walk(j, base_root, frag, fl, out);
+        }
+        return anchor_lookup(j, base, frag, fl, dynamic, out);
+    }
+    /* a URI-reference with its own (possibly empty) fragment */
+    const char* hash = memchr(rp, '#', rl);
+    size_t ul = hash != NULL ? (size_t)(hash - rp) : rl;
+    char canon[YEP_JS_URI_MAX];
+    if (js_uri_resolve(base, rp, ul, canon, sizeof(canon)) != 0) {
+        return 0;
+    }
+    if (hash == NULL) {
+        /* no fragment: the resource root itself */
+        uint32_t ri = 0;
+        if (j->res != NULL && js_res_find(j->res, canon, &ri)) {
+            *out = j->res->res[ri].root;
+            return 1;
+        }
+        if (strcmp(canon, base) == 0) {
+            *out = base_root;
+            return 1;
+        }
+        return 0; /* outside the schema's identifier space: never fetched */
+    }
+    const char* frag = hash + 1;
+    size_t fl = (size_t)(rp + rl - frag);
+    if (frag[0] == '/') {
+        uint32_t start = UINT32_MAX;
+        uint32_t ri = 0;
+        if (j->res != NULL && js_res_find(j->res, canon, &ri)) {
+            start = j->res->res[ri].root;
+        } else if (strcmp(canon, base) == 0) {
+            start = base_root;
+        }
+        if (start == UINT32_MAX) {
+            return 0;
+        }
+        return pointer_walk(j, start, frag, fl, out);
+    }
+    if (fl == 0) {
+        uint32_t ri = 0;
+        if (j->res != NULL && js_res_find(j->res, canon, &ri)) {
+            *out = j->res->res[ri].root;
+            return 1;
+        }
+        if (strcmp(canon, base) == 0) {
+            *out = base_root;
+            return 1;
+        }
+        return 0;
+    }
+    return anchor_lookup(j, canon, frag, fl, dynamic, out);
 }
 
 /* uniqueItems: canonical hash buckets, canonical equality inside a
@@ -490,7 +644,36 @@ static int schema_word(const js_ctx* j, uint32_t id, const char** p, uint32_t* l
     return 1;
 }
 
+static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth);
+
+/* The dynamic scope: entering a schema object whose resource differs
+ * from the current top pushes that resource (outermost first); probes
+ * (suppress > 0) enter no scope — their anchors are as discarded as
+ * their annotations. 1 pushed, 0 not. */
+static int js_scope_push(js_ctx* j, uint32_t schema_id) {
+    if (j->res == NULL || j->v.suppress > 0 || schema_id >= j->res->rindex_n) {
+        return 0;
+    }
+    uint32_t ri = j->res->rindex[schema_id];
+    if (ri == UINT32_MAX || j->scope_n >= YEP_JS_MAX_SCOPE) {
+        return 0;
+    }
+    if (j->scope_n > 0 && j->scope[j->scope_n - 1] == ri) {
+        return 0;
+    }
+    j->scope[j->scope_n++] = ri;
+    return 1;
+}
+
 static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) {
+    int pushed = js_scope_push(j, schema_id);
+    js_apply_body(j, schema_id, inst_id, depth);
+    if (pushed) {
+        j->scope_n--;
+    }
+}
+
+static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) {
     if (j->v.oom) {
         return;
     }
@@ -520,32 +703,45 @@ static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth)
         return; /* true (or anything unreadable) constrains nothing */
     }
 
-    /* $ref composes with its siblings (2020-12); the chain guard kills
-     * schema-only cycles that consume no instance structure */
-    uint32_t ref_val;
-    if (kw_get(j, schema_id, "$ref", &ref_val) && ref_val != UINT32_MAX) {
-        const char* rp = NULL;
-        uint32_t rl = 0;
-        if (schema_word(j, ref_val, &rp, &rl)) {
-            if (++j->v.ref_depth > JS_MAX_REF_CHAIN) {
-                yep_validate_emit(&j->v, YEPTRIS_DIAG_REF, yep_validate_node_off(j->v.dom, inst_id),
-                                  "$ref chain exceeds %d (a cycle?)", JS_MAX_REF_CHAIN);
-                j->v.ref_depth = 0;
-                return;
+    /* $ref / $dynamicRef compose with their siblings (2020-12); the
+     * chain guard kills schema-only cycles that consume no instance
+     * structure */
+    {
+        int is_dyn = 0;
+        uint32_t ref_val = UINT32_MAX;
+        if (!kw_get(j, schema_id, "$ref", &ref_val) || ref_val == UINT32_MAX) {
+            is_dyn = 1;
+            if (!kw_get(j, schema_id, "$dynamicRef", &ref_val) || ref_val == UINT32_MAX) {
+                is_dyn = 0;
+                ref_val = UINT32_MAX;
             }
-            uint32_t target = UINT32_MAX;
-            if (!resolve_ref(j, rp, rl, &target)) {
-                yep_validate_emit(&j->v, YEPTRIS_DIAG_REF, yep_validate_node_off(j->v.dom, inst_id),
-                                  "$ref \"%.*s\" does not resolve", (int)(rl > 64 ? 64 : rl), rp);
+        }
+        if (ref_val != UINT32_MAX) {
+            const char* rp = NULL;
+            uint32_t rl = 0;
+            if (schema_word(j, ref_val, &rp, &rl)) {
+                if (++j->v.ref_depth > JS_MAX_REF_CHAIN) {
+                    yep_validate_emit(&j->v, YEPTRIS_DIAG_REF,
+                                      yep_validate_node_off(j->v.dom, inst_id),
+                                      "$ref chain exceeds %d (a cycle?)", JS_MAX_REF_CHAIN);
+                    j->v.ref_depth = 0;
+                    return;
+                }
+                uint32_t target = UINT32_MAX;
+                if (!resolve_ref_ext(j, schema_id, rp, rl, is_dyn, &target)) {
+                    yep_validate_emit(
+                        &j->v, YEPTRIS_DIAG_REF, yep_validate_node_off(j->v.dom, inst_id),
+                        "$ref \"%.*s\" does not resolve", (int)(rl > 64 ? 64 : rl), rp);
+                    j->v.ref_depth = 0;
+                    return;
+                }
+                js_apply(j, target, inst_id, depth);
                 j->v.ref_depth = 0;
-                return;
             }
-            js_apply(j, target, inst_id, depth);
+            /* an unreadable $ref value: ignored like any unknown keyword */
+        } else {
             j->v.ref_depth = 0;
         }
-        /* an unreadable $ref value: ignored like any unknown keyword */
-    } else {
-        j->v.ref_depth = 0;
     }
 
     /* type: a single word or a list of words */
@@ -1365,12 +1561,13 @@ static int js_validate_doc(js_ctx* j, uint32_t inst_root) {
  * pattern cache (the declarations are internal.h's — the shared SSOT). */
 int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const yep_dom* instance_dom,
                        const uint32_t* doc_roots, uint32_t doc_count, yeptris_validate_report* rep,
-                       const yep_re_cache* cache) {
+                       const yep_re_cache* cache, const js_resources* res) {
     js_ctx j;
     memset(&j, 0, sizeof(j));
     j.sd = schema_dom;
     j.sroot = schema_root;
     j.cache = cache;
+    j.res = res;
     j.v.dom = instance_dom;
     j.v.rep = rep;
     j.v.input = instance_dom->input_base;

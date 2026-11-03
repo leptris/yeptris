@@ -10,11 +10,29 @@
 # carried case that starts passing prints UPASS so the stale carry gets
 # dropped. Re-derive this list from a run over /dev/null as the carries file.
 #
-# == remote-reference machinery (base URIs, $id, URN targets, $anchor,
-# $dynamicRef) — the $ref subset resolves LOCAL "#/..." pointers only
-anchor.json
-dynamicRef.json
+# == remote-reference machinery: the reference resolution ride (the
+# 2020-12 sota sweep, part 1) landed the $id/$anchor/$dynamicAnchor
+# base-URI machinery — anchor.json and the self-contained dynamicRef
+# and ref groups pass uncarried. What remains carried: the suite's
+# HTTP fixtures (no network corpus is vendored) and one unevaluated*
+# interplay that waits for the annotation model.
 refRemote.json
+#
+# dynamicRef.json: the groups whose schemas reference the suite's HTTP
+# fixture documents (tree.json, extendible-dynamic-ref.json,
+# detached-dynamicref.json under http://localhost:1234/) — the remotes
+# tree is not vendored, so the reference has no target to resolve to;
+# the expected-invalid cases in the same groups pass on the
+# unresolvable-ref verdict and are NOT carried
+dynamicRef.json :: strict-tree schema, guards against misspelled properties :: instance with correct field
+dynamicRef.json :: tests for implementation dynamic anchor and reference link :: correct extended schema
+dynamicRef.json :: $ref and $dynamicAnchor are independent of order - $defs first :: correct extended schema
+dynamicRef.json :: $ref and $dynamicAnchor are independent of order - $ref first :: correct extended schema
+dynamicRef.json :: $ref to $dynamicRef finds detached $dynamicAnchor :: number is valid
+#
+# the unevaluated* x $dynamicRef interplay: the annotation model ride
+unevaluatedItems.json :: unevaluatedItems with $dynamicRef :: with unevaluated items
+unevaluatedProperties.json :: unevaluatedProperties with $dynamicRef :: with unevaluated properties
 #
 # unevaluatedItems — annotation plumbing (which sibling/branch evaluated
 # which array items) is out of the subset
@@ -32,7 +50,6 @@ unevaluatedItems.json :: unevaluatedItems with if/then/else :: when if doesn't m
 unevaluatedItems.json :: unevaluatedItems with boolean schemas :: with unevaluated items
 unevaluatedItems.json :: unevaluatedItems with $ref :: with unevaluated items
 unevaluatedItems.json :: unevaluatedItems before $ref :: with unevaluated items
-unevaluatedItems.json :: unevaluatedItems with $dynamicRef :: with no unevaluated items
 unevaluatedItems.json :: unevaluatedItems can't see inside cousins :: always fails
 unevaluatedItems.json :: item is evaluated in an uncle schema to unevaluatedItems :: uncle keyword evaluation is not significant
 unevaluatedItems.json :: unevaluatedItems depends on adjacent contains :: contains passes, second item is not evaluated
@@ -68,7 +85,6 @@ unevaluatedProperties.json :: unevaluatedProperties with dependentSchemas :: wit
 unevaluatedProperties.json :: unevaluatedProperties with boolean schemas :: with unevaluated properties
 unevaluatedProperties.json :: unevaluatedProperties with $ref :: with unevaluated properties
 unevaluatedProperties.json :: unevaluatedProperties before $ref :: with unevaluated properties
-unevaluatedProperties.json :: unevaluatedProperties with $dynamicRef :: with no unevaluated properties
 unevaluatedProperties.json :: unevaluatedProperties can't see inside cousins :: always fails
 unevaluatedProperties.json :: unevaluatedProperties can't see inside cousins (reverse order) :: always fails
 unevaluatedProperties.json :: nested unevaluatedProperties, outer true, inner false, properties outside :: with no nested unevaluated properties
@@ -105,27 +121,11 @@ vocabulary.json :: schema that uses custom metaschema with with no validation vo
 # defs.json: the metaschema $ref is remote
 defs.json :: validate definition against metaschema :: valid definition schema
 #
-# ref.json: pointer percent-encoding, $id/relative-URI scoping, URN base
-# URIs, and remote targets — the $ref subset is LOCAL "#/..." only
-ref.json :: escaped pointer ref :: percent valid
+# ref.json: only the remote metaschema target (no network corpus) and
+# the ref-creates-a-new-scope case (annotations do not cross the ref
+# boundary — the unevaluated ride lands it)
 ref.json :: remote ref, containing refs itself :: remote ref valid
-ref.json :: Recursive references between schemas :: valid tree
-ref.json :: refs with quote :: object with numbers is valid
 ref.json :: ref creates new scope when adjacent to keywords :: referenced subschema doesn't see annotations from properties
-ref.json :: refs with relative uris and defs :: valid on both fields
-ref.json :: relative refs with absolute uris and defs :: valid on both fields
-ref.json :: $id must be resolved against nearest parent, not just immediate parent :: number is valid
-ref.json :: order of evaluation: $id and $ref :: data is valid against first definition
-ref.json :: order of evaluation: $id and $anchor and $ref :: data is valid against first definition
-ref.json :: order of evaluation: $id and $ref on nested schema :: data is valid against nested sibling
-ref.json :: simple URN base URI with $ref via the URN :: valid under the URN IDed schema
-ref.json :: URN base URI with URN and JSON pointer ref :: a string is valid
-ref.json :: URN base URI with URN and anchor ref :: a string is valid
-ref.json :: URN ref with nested pointer ref :: a string is valid
-ref.json :: ref to if :: an integer is valid
-ref.json :: ref to then :: an integer is valid
-ref.json :: ref to else :: an integer is valid
-ref.json :: ref with absolute-path-reference :: a string is valid
 #
 # pattern: Unicode property escapes (\p{...}) need the u-flag machinery
 # the bounded kernel does not carry — the two letters-match cases diverge

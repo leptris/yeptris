@@ -114,13 +114,95 @@ uint64_t yep_validate_node_hash(const yep_dom* d, uint32_t id, int depth);
 int yep_validate_node_equal(const yep_dom* da, uint32_t a, const yep_dom* db, uint32_t b,
                             int depth);
 
+/* ---- the schema identifier map (resources.c) ----------------------------- */
+
+/* Bounded identifier tables: an identifier past a cap (or a URI over
+ * the length cap) is not registered — the reference then fails to
+ * resolve at validation (DIAG_REF), exactly like any other unknown
+ * target. Nothing loops, nothing guesses. */
+#define YEP_JS_MAX_RESOURCES 1024
+#define YEP_JS_MAX_ANCHORS 1024
+#define YEP_JS_MAX_REFSITES 8192
+#define YEP_JS_URI_MAX 512
+#define YEP_JS_MAX_SCOPE 256 /* the runtime dynamic-scope stack */
+
+/* One schema RESOURCE: a canonical (fragment-free) URI naming the
+ * schema object that established it with "$id" — pointer fragments
+ * walk from that node. The document root is resource 0 (the empty
+ * base "" when the schema has no "$id"). */
+typedef struct {
+    char* uri;
+    uint32_t root;
+} js_resource;
+
+/* A plain-name fragment: canonical URI + '#' + name -> the node.
+ * `dynamic` distinguishes "$dynamicAnchor" (the $dynamicRef
+ * extension points) from "$anchor". `res` is the owning resource
+ * index (anchors belong to the resource of their nearest "$id"). */
+typedef struct {
+    char* key;
+    uint32_t node;
+    uint32_t res;
+    uint8_t dynamic;
+} js_anchor;
+
+/* A "$ref"/"$dynamicRef" site: the canonical base URI it resolves
+ * against, and that base resource's root (where fragment-only
+ * pointers start walking). */
+typedef struct {
+    uint32_t site;
+    char* base;
+    uint32_t base_root;
+} js_refsite;
+
+/* The compiled schema's identifier map (built once by the crawl at
+ * compile time, read-only afterwards — the document law). Everything
+ * it owns dies with yep_js_resources_free. */
+typedef struct {
+    js_resource* res;
+    uint32_t res_n;
+    js_anchor* anc;
+    uint32_t anc_n;
+    js_refsite* site;
+    uint32_t site_n;
+    uint32_t* rindex; /* node id -> owning resource index (UINT32_MAX unvisited) */
+    uint32_t rindex_n;
+} js_resources;
+
+/* The constructor: one bounded DFS over the schema DOM collecting
+ * every $id/$anchor/$dynamicAnchor and $ref/$dynamicRef site. NULL on
+ * allocation failure. */
+js_resources* yep_js_resources_crawl(const yep_dom* d, uint32_t root);
+void yep_js_resources_free(js_resources* r);
+
+/* Lookups (linear over the bounded tables): resource by canonical
+ * URI; anchor by key (URI + '#' + name); a resource's DYNAMIC anchor
+ * by plain name (the dynamic-scope search's per-resource probe); a
+ * ref site's base. Each returns 1 found, 0 absent. */
+int js_res_find(const js_resources* r, const char* uri, uint32_t* idx_out);
+int js_anchor_find(const js_resources* r, const char* key, size_t key_len, uint32_t* node_out,
+                   uint8_t* dyn_out);
+int js_anchor_dynamic_in_res(const js_resources* r, uint32_t res_idx, const char* name,
+                             size_t name_len, uint32_t* node_out);
+int js_refsite_find(const js_resources* r, uint32_t site_node, const char** base,
+                    uint32_t* base_root);
+
+/* URI-reference resolution (RFC 3986 section 5.2, the exercised
+ * subset: schemes, authorities, path merge with dot-segment removal,
+ * query carry). Produces the canonical fragment-free form. 0 ok, -1
+ * overlong (out holds ""). */
+int js_uri_resolve(const char* base, const char* ref, size_t ref_len, char* out, size_t cap);
+
 /* jsonschema.c's driver: applies the schema tree (its own DOM) to
  * every instance document root, emitting into `rep`. `cache` is the
  * compiled schema's retained pattern programs (NULL: none — the
- * one-shot face). Returns 0, -1 on OOM. */
+ * one-shot face). `res` is the compiled schema's identifier map (the
+ * resources/anchors/ref-site bases the reference machinery resolves
+ * through; NULL: none — every reference beyond a bare "#/..." pointer
+ * stays unresolvable). Returns 0, -1 on OOM. */
 int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const yep_dom* instance_dom,
                        const uint32_t* doc_roots, uint32_t doc_count, yeptris_validate_report* rep,
-                       const yep_re_cache* cache);
+                       const yep_re_cache* cache, const js_resources* res);
 
 /* The report constructor (validate.c owns the report machinery): a
  * fresh empty report, NULL on allocation failure. */
