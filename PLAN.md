@@ -154,35 +154,46 @@ flow depth, partial-scalar folding state, line/column counter.
 
 `src/yeptris/validate/` — validation lives nowhere else (MECE). The
 leptris-XSD shape: **compile → opaque schema handle** (`yeptris_schema_compile`
-owns a schema DOM + compiled pattern programs), instance validation walks
-the compiled model (`yeptris_schema_validate` — compile once / validate
-many), the whole report comes back as a flat diag array (every miss
-enumerated, never first-fail), one `yeptris_schema_free`.
+owns a schema DOM + compiled pattern programs; accessors only), instance
+validation walks the compiled model (`yeptris_schema_validate` — compile once /
+validate many), the whole report comes back as a flat diag array
+(`yeptris_diagnostic {code, path, keyword, expected, got, line, col}`,
+400-byte frozen layout; every miss enumerated, never first-fail), one
+`yeptris_schema_free`.
 
-Dialects over one spine:
+Dialects over one spine (the XSD/DTD/RNG/SCH quartet's analogs):
 
 | kind | what it checks | state |
 | --- | --- | --- |
-| `JSON12` | JSON Schema draft 2020-12 subset (+ the 2020-12 reference / unevaluated / annotation sweep) | live — official suite: 1298 cases |
-| `CORE_12` / `JSON_FAMILY_12` | YAML 1.2 family lanes: explicit-tag consistency, canonical key uniqueness (every miss), 12_JSON string-key demand; core never flags untagged plains (#898) | live |
-| `FULL_12` | the spec 10.4 "other schema" family (#906 slice 3): core typing + RFC3339-era timestamps (spec 2.22's canonical/iso8601/spaced/date forms; PyYAML's timestamp regex as the practice oracle) + the merge/value words; explicit `!!timestamp` content family-checked; `!!binary` rides as passthrough | live |
-| tag-driven schemas | user tag → compiled-schema binding: the registry over the family walk; unregistered tags pass untouched (#906 slice 4) | live |
-| structured output | the report rendered to JSON Schema's published BASIC output shape (#906 slice 5) | live |
+| `JSON12` | JSON Schema draft 2020-12 subset: reference resolution ($id/$anchor/$dynamicRef dynamic scope, RFC 3986, no-fetch law) + the unevaluated* annotation model (#912); the IETF WG draft tracked with 14 normative deltas, zero evaluator changes (#914) | official suite: 1298 cases — 1274 pass / 24 carried (all one documented policy family: no external fetches), optional ecmascript-regex 74/74 |
+| `CORE_12` / `JSON_FAMILY_12` | YAML 1.2 family lanes: explicit-tag consistency, canonical key uniqueness (every miss), 12_JSON string-key demand; implicit no-production plains are strings per spec example 10.8 (#898, #908); core never flags untagged plains | live |
+| `12_FULL` | core + the yaml.org carried-forward set: RFC3339 timestamps on untagged plains (spec 2.22's four shapes, PyYAML-oracle classifier), explicit !!binary passthrough (#918) | live |
+| tag-driven schemas | user tag → compiled-schema registry, subtree walk with tag-site attribution (#916); registry borrows its schemas | live |
+| structured output | the published Recommended Output meta-schema, BASIC shape, deterministic byte-pinned transform (#916) | live |
 
-- **Two routes, one fact core**: the DOM walk (`yeptris_validate`) and the
-  event route (`yeptris_validate_stream`, #902) call the same fact cores;
-  the differential gate pins identical diagnostics (code/path/detail/
-  line/col/offset) across every family.
-- **Truth-table law**: scalar resolution belongs to `resolve/` alone — the
-  family lanes consume its verdicts, never re-derive them. The FULL lane
-  re-asks the same classifier for explicit `!!timestamp` content, so the
-  plain and tagged forms cannot diverge.
 - **Streaming attribution** (#898): a validated multi-doc stream addresses
-  diagnostics as `/<doc>/path` (0-based doc index; line/col stay
-  input-absolute; single-doc streams keep bare pointers).
-- **Fuzz contract** (#899): untrusted bytes through compile → validate →
+  diagnostics as `/\<doc\>/path` (0-based doc index; line/col stay
+  input-absolute; single-doc streams keep bare pointers so the suite's paths
+  and existing consumers are unchanged). One shared seam
+  (`yep_validate_doc_prefix`) behind both walks.
+- **The event route is live (#913)**: `yeptris_validate_stream` rides the
+  DOM route's exact parse into a streaming state machine — no node tree.
+  The family checks are fact cores (tag/key/scalar + canonical digests)
+  both walks drive; the routes cannot diverge by construction (294-run
+  differential, every field compared). The compiled JSON Schema lane keeps
+  the DOM route (random-access evaluator).
+- **Truth-table law**: scalar resolution belongs to `resolve/` alone — the
+  family lanes consume its verdicts, never re-derive them.
+- **Fuzz contract** (#899, #907): untrusted bytes through compile → validate →
   free must be crash-clean with statuses
-  OK/SCHEMA/PARSE/DEPTH/ENCODING/MEMORY/ARG only.
+  OK/SCHEMA/PARSE/DEPTH/ENCODING/MEMORY/ARG only; `fuzz_schema_compile`
+  rides the nightly beside the instance walker.
+- **Binding faces**: ruby `validate/valid?/load(validate:, json_schema:)`
+  (yeptris-ruby#361), py `validate/is_valid/compile_schema/load(json_schema=)`
+  (yeptris-py#165), ts `validate/isValid/compileSchema` + the sync variants
+  (yeptris-ts#24) — diagnostics surface as structured objects
+  (path array + keyword + line/col), never raw pointers. The registry and
+  output faces are C-side; their binding surfaces ride the next trains.
 
 ### 3.7 Emitter
 
