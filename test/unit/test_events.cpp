@@ -291,6 +291,34 @@ TEST(Events, CompatRecorderAcceptsMultiLineFlow) {
     yeptris_recorder_free(core);
 }
 
+/* py#166: a collection's explicit tag text rides the record's
+ * tag_off/tag_len (an arena slice) in the recorder — the FFI loaders
+ * re-tag containers (!!set -> Python set, !!omap -> pairs) from the
+ * record stream alone, with no second drain. The event itself already
+ * carried the tag for every model; this pins the recorded form. */
+TEST(Events, CollectionTagTextSurvivesTheRecorder) {
+    const char* in = "!!set {a, b}\n";
+    YeptrisRecorder r = yeptris_recorder_new_ex(YEPTRIS_SCHEMA_11_COMPAT);
+    ASSERT_EQ(yeptris_recorder_feed(r, in, strlen(in), 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* recs = yeptris_recorder_records(r, &n);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(r, &alen);
+    int map_starts = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (recs[i].type == YEPTRIS_EV_MAPPING_START) {
+            map_starts++;
+            ASSERT_EQ(recs[i].tag_len, strlen("tag:yaml.org,2002:set"));
+            EXPECT_EQ(memcmp(arena + recs[i].tag_off, "tag:yaml.org,2002:set", recs[i].tag_len),
+                      0);
+        } else {
+            EXPECT_EQ(recs[i].tag_len, 0u);
+        }
+    }
+    EXPECT_EQ(map_starts, 1);
+    yeptris_recorder_free(r);
+}
+
 /* ---- audit round 5: the cross-model mark law and the encoding gates ---- */
 
 namespace {

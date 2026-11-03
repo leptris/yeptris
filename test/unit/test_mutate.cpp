@@ -547,6 +547,98 @@ TEST(ValueStream, ColumnarDrainMatchesRecords) {
     yeptris_value_free_columns(&e);
 }
 
+TEST(ValueStream, CollectionTagTextRidesTheOpens) {
+    /* py#166: an explicitly-tagged collection carries its tag TEXT on
+     * the open's off/len (an arena slice) in the struct drain — the
+     * py loader constructs !!set as a Python set and !!omap as pairs
+     * from the drained stream alone. Untagged containers keep off/len
+     * 0, so the hot path pays no arena write. */
+    const char* set_doc = "!!set {a, b}\n";
+    YeptrisValue* vals = NULL;
+    size_t n = 0;
+    char* arena = NULL;
+    size_t alen = 0;
+    ASSERT_EQ(
+        yeptris_value_drain(set_doc, strlen(set_doc), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n, &arena,
+                            &alen),
+        YEPTRIS_OK);
+    ASSERT_GE(n, 2u);
+    ASSERT_EQ(vals[1].kind, YEP_V_MAP_OPEN);
+    ASSERT_EQ(vals[1].len, strlen("tag:yaml.org,2002:set"));
+    EXPECT_EQ(memcmp(arena + vals[1].off, "tag:yaml.org,2002:set", vals[1].len), 0);
+    yeptris_value_free(vals, arena);
+
+    /* the omap tag rides the SEQ_OPEN; the inner single-pair maps and
+     * the outer map stay untagged (block form, under a key) */
+    const char* omap_doc = "k: !!omap\n  - p: 1\n";
+    vals = NULL;
+    arena = NULL;
+    ASSERT_EQ(
+        yeptris_value_drain(omap_doc, strlen(omap_doc), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n, &arena,
+                            &alen),
+        YEPTRIS_OK);
+    int seq_opens = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (vals[i].kind == YEP_V_SEQ_OPEN) {
+            seq_opens++;
+            ASSERT_EQ(vals[i].len, strlen("tag:yaml.org,2002:omap"));
+            EXPECT_EQ(memcmp(arena + vals[i].off, "tag:yaml.org,2002:omap", vals[i].len), 0);
+        } else if (vals[i].kind == YEP_V_MAP_OPEN) {
+            EXPECT_EQ(vals[i].len, 0u) << i;
+        }
+    }
+    EXPECT_EQ(seq_opens, 1);
+    yeptris_value_free(vals, arena);
+
+    /* untagged containers keep the zeros — including a flow span big
+     * enough to route past the fused kernel */
+    std::string wide = "s: [";
+    for (int i = 0; i < 12; i++) {
+        wide += "word, ";
+    }
+    wide += "end]\n";
+    vals = NULL;
+    arena = NULL;
+    ASSERT_EQ(yeptris_value_drain(wide.data(), wide.size(), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n,
+                                  &arena, &alen),
+              YEPTRIS_OK);
+    for (size_t i = 0; i < n; i++) {
+        if (vals[i].kind == YEP_V_SEQ_OPEN || vals[i].kind == YEP_V_MAP_OPEN) {
+            EXPECT_EQ(vals[i].off, 0u) << i;
+            EXPECT_EQ(vals[i].len, 0u) << i;
+        }
+    }
+    yeptris_value_free(vals, arena);
+}
+
+TEST(ValueStream, ColumnarTagTextMatchesRecords) {
+    /* the columnar projection keeps the opens' tag spans faithful to
+     * the record stream (column i == record i, spans included) */
+    const char* y = "!!set {a, b}\n";
+    YeptrisValue* vals = NULL;
+    size_t n = 0;
+    char* arena = NULL;
+    size_t alen = 0;
+    ASSERT_EQ(yeptris_value_drain(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, &vals, &n, &arena, &alen),
+              YEPTRIS_OK);
+    YeptrisValueColumns cols;
+    ASSERT_EQ(yeptris_value_drain_columns(y, strlen(y), YEPTRIS_SCHEMA_11_COMPAT, &cols),
+              YEPTRIS_OK);
+    ASSERT_EQ(cols.count, n);
+    ASSERT_EQ(cols.arena_len, alen);
+    EXPECT_TRUE(memcmp(cols.arena, arena, alen) == 0);
+    for (size_t i = 0; i < n; i++) {
+        EXPECT_EQ(cols.offs[i], vals[i].off) << i;
+        EXPECT_EQ(cols.lens[i], vals[i].len) << i;
+        if (vals[i].kind == YEP_V_MAP_OPEN) {
+            ASSERT_EQ(cols.lens[i], strlen("tag:yaml.org,2002:set"));
+            EXPECT_EQ(memcmp(cols.arena + cols.offs[i], "tag:yaml.org,2002:set", cols.lens[i]), 0);
+        }
+    }
+    yeptris_value_free(vals, arena);
+    yeptris_value_free_columns(&cols);
+}
+
 TEST(Mutate, AnchorGrowthKeepsTheMutationTables) {
     /* audit 2026-10-31: dom_anchor_set's growth path freed mut_att /
      * mut_depth - tables it does NOT own (dom_mut_grow allocates,
