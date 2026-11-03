@@ -68,8 +68,8 @@ jobs:
         run: |
           MINS="${{ github.event.inputs.minutes || '60' }}"
           SECS=$((MINS * 60))
-          SIXTH=$((SECS / 6))
-          echo "YEP_FUZZ_SECS=$SIXTH" >> "$GITHUB_ENV"
+          SHARE=$((SECS / 9))
+          echo "YEP_FUZZ_SECS=$SHARE" >> "$GITHUB_ENV"
 
       # ASan-instrumented parser frames are ~8 KB per nesting level, so the
       # 1000-level depth guard needs more than the runner's 8 MB soft
@@ -107,6 +107,12 @@ jobs:
       # under test/fuzz/corpus/schema_compile
       - name: fuzz_schema_compile
         run: ulimit -s 32768 || true; ./build/test/fuzz_schema_compile_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 test/fuzz/corpus/schema_compile
+
+      # the validation instance walk (#882/#901): untrusted INSTANCE
+      # bytes against compiled schemas — the checked-in seeds under
+      # test/fuzz/corpus/validate
+      - name: fuzz_validate
+        run: ulimit -s 32768 || true; ./build/test/fuzz_validate_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 test/fuzz/corpus/validate
 
       - name: Retain crash artifacts
         if: failure()
