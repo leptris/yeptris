@@ -180,9 +180,10 @@ size_t yep_validate_doc_prefix(yep_vctx* c, int qualified, uint32_t index) {
 
 void yep_validate_emit(yep_vctx* c, int code, uint32_t off, const char* detail_fmt, ...) {
     if (c->suppress > 0) {
-        c->trial_hit = 1; /* a probe (anyOf/oneOf/not): swallow and mark */
+        c->trial_fail++; /* a probe (anyOf/oneOf/not/if): swallow, fail its own extent */
         return;
     }
+    c->fail_mark++; /* the application that owns this extent is invalid */
     yeptris_validate_report* r = c->rep;
     if (r->count >= YEP_VALIDATE_MAX_DIAGS) {
         /* the cap: the LAST slot becomes the LIMIT sentinel */

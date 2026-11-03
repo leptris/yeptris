@@ -937,6 +937,224 @@ TEST(ValidateJsonSchema, DynamicRefScopeIsLeftAndProbesEnterNone) {
     free_report(r);
 }
 
+TEST(ValidateJsonSchema, UnevaluatedPropertiesReadsEveryApplicatorFamily) {
+    yeptris_validate_report* r = NULL;
+    // adjacent keywords: properties, patternProperties, additionalProperties
+    ASSERT_EQ(js_first("{\"properties\":{\"foo\":true},\"unevaluatedProperties\":false}",
+                       "{foo: 1}\n", &r),
+              nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d =
+        js_first("{\"properties\":{\"foo\":true},\"unevaluatedProperties\":false}",
+                 "{foo: 1, bar: 2}\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_UNEVALUATED_PROPERTY);
+    EXPECT_STREQ(d->path, "/bar");
+    free_report(r);
+
+    ASSERT_EQ(js_first("{\"patternProperties\":{\"^f\":true},\"unevaluatedProperties\":false}",
+                       "{foo: 1}\n", &r),
+              nullptr);
+    free_report(r);
+    ASSERT_EQ(js_first("{\"properties\":{\"foo\":true},\"additionalProperties\":true,"
+                       "\"unevaluatedProperties\":false}",
+                       "{foo: 1, bar: 2}\n", &r),
+              nullptr);
+    free_report(r);
+    // additionalProperties false still flags its keys itself
+    const yeptris_diagnostic* d2 = js_first(
+        "{\"additionalProperties\":false,\"unevaluatedProperties\":false}", "{bar: 2}\n", &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_ADDITIONAL_PROPERTY);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, UnevaluatedAnnotationsFlowThroughApplicators) {
+    yeptris_validate_report* r = NULL;
+    // allOf branches share the location: the sibling branch's properties count
+    ASSERT_EQ(js_first("{\"properties\":{\"foo\":true},\"allOf\":[{\"properties\":{\"bar\":true}}],"
+                       "\"unevaluatedProperties\":false}",
+                       "{foo: 1, bar: 2}\n", &r),
+              nullptr);
+    free_report(r);
+    // oneOf: only the SINGLE successful branch's annotations flow
+    ASSERT_EQ(js_first("{\"properties\":{\"foo\":true},"
+                       "\"oneOf\":[{\"properties\":{\"bar\":true},\"required\":[\"bar\"]},"
+                       "{\"properties\":{\"baz\":true},\"required\":[\"baz\"]}],"
+                       "\"unevaluatedProperties\":false}",
+                       "{foo: 1, bar: 2}\n", &r),
+              nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d =
+        js_first("{\"properties\":{\"foo\":true},"
+                 "\"oneOf\":[{\"properties\":{\"bar\":true},\"required\":[\"bar\"]},"
+                 "{\"properties\":{\"baz\":true},\"required\":[\"baz\"]}],"
+                 "\"unevaluatedProperties\":false}",
+                 "{foo: 1, bar: 2, quux: 3}\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_UNEVALUATED_PROPERTY);
+    free_report(r);
+    // anyOf: failed branches annotate nothing (a failed branch's properties
+    // must NOT mask the unevaluated flag)
+    ASSERT_EQ(
+        js_first("{\"properties\":{\"foo\":true},"
+                 "\"anyOf\":[{\"properties\":{\"baz\":{\"const\":\"baz\"}},\"required\":[\"baz\"]},"
+                 "{\"properties\":{\"bar\":{\"const\":\"bar\"}},\"required\":[\"bar\"]}],"
+                 "\"unevaluatedProperties\":false}",
+                 "{foo: 1, bar: \"bar\"}\n", &r),
+        nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d2 =
+        js_first("{\"properties\":{\"foo\":true},"
+                 "\"anyOf\":[{\"properties\":{\"baz\":{\"const\":\"baz\"}},\"required\":[\"baz\"]},"
+                 "{\"properties\":{\"bar\":{\"const\":\"bar\"}},\"required\":[\"bar\"]}],"
+                 "\"unevaluatedProperties\":false}",
+                 "{foo: 1, bar: \"bar\", quux: 3}\n", &r);
+    ASSERT_NE(d2, nullptr);
+    EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_UNEVALUATED_PROPERTY);
+    free_report(r);
+    // if/then/else: the taken branch annotates; a FAILED if-probe does not
+    ASSERT_EQ(
+        js_first(
+            "{\"if\":{\"properties\":{\"foo\":{\"const\":\"then\"}},\"required\":[\"foo\"]},"
+            "\"then\":{\"properties\":{\"bar\":true}},\"else\":{\"properties\":{\"baz\":true}},"
+            "\"unevaluatedProperties\":false}",
+            "{foo: \"then\", bar: 1}\n", &r),
+        nullptr);
+    free_report(r);
+    ASSERT_EQ(
+        js_first(
+            "{\"if\":{\"properties\":{\"foo\":{\"const\":\"then\"}},\"required\":[\"foo\"]},"
+            "\"then\":{\"properties\":{\"bar\":true}},\"else\":{\"properties\":{\"baz\":true}},"
+            "\"unevaluatedProperties\":false}",
+            "{baz: 1}\n", &r),
+        nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d3 =
+        js_first("{\"if\":{\"properties\":{\"foo\":{\"const\":\"then\"}},\"required\":[\"foo\"]},"
+                 "\"then\":{\"properties\":{\"bar\":true}},\"unevaluatedProperties\":false}",
+                 "{foo: \"else\", bar: 1}\n", &r);
+    ASSERT_NE(d3, nullptr); /* the failed if's annotation is dropped */
+    free_report(r);
+    // $ref targets annotate their site's location; a ref creates a NEW
+    // scope: the site's sibling annotations do not cross the boundary
+    ASSERT_EQ(js_first("{\"$ref\":\"#/$defs/bar\",\"properties\":{\"foo\":true},"
+                       "\"unevaluatedProperties\":false,"
+                       "\"$defs\":{\"bar\":{\"properties\":{\"bar\":true}}}}",
+                       "{foo: 1, bar: 2}\n", &r),
+              nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d4 = js_first("{\"$ref\":\"#/$defs/a\",\"properties\":{\"foo\":true},"
+                                            "\"unevaluatedProperties\":false,"
+                                            "\"$defs\":{\"a\":{\"unevaluatedProperties\":false}}}",
+                                            "{foo: 1}\n", &r);
+    ASSERT_NE(d4, nullptr);
+    EXPECT_EQ(d4->code, (uint32_t)YEPTRIS_DIAG_UNEVALUATED_PROPERTY);
+    free_report(r);
+    // dependentSchemas annotate when their trigger key is present
+    ASSERT_EQ(js_first("{\"properties\":{\"foo\":true},"
+                       "\"dependentSchemas\":{\"foo\":{\"properties\":{\"bar\":true}}},"
+                       "\"unevaluatedProperties\":false}",
+                       "{foo: 1, bar: 2}\n", &r),
+              nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d5 =
+        js_first("{\"properties\":{\"foo\":true},"
+                 "\"dependentSchemas\":{\"foo\":{\"properties\":{\"bar\":true}}},"
+                 "\"unevaluatedProperties\":false}",
+                 "{baz: 1}\n", &r);
+    ASSERT_NE(d5, nullptr);
+    free_report(r);
+    // annotations do not cross cousins: the unevaluated keyword only reads
+    // ITS OWN schema object's collected set
+    const yeptris_diagnostic* d6 =
+        js_first("{\"allOf\":[{\"properties\":{\"foo\":true}},{\"unevaluatedProperties\":false}]}",
+                 "{foo: 1}\n", &r);
+    ASSERT_NE(d6, nullptr);
+    free_report(r);
+    // a single cyclic ref composes: the recursion consumes instance
+    // structure, so the guard never fires
+    ASSERT_EQ(js_first("{\"properties\":{\"x\":{\"$ref\":\"#\"}},\"unevaluatedProperties\":false}",
+                       "{x: {x: {}}}\n", &r),
+              nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d7 =
+        js_first("{\"properties\":{\"x\":{\"$ref\":\"#\"}},\"unevaluatedProperties\":false}",
+                 "{x: {x: {}, y: {}}}\n", &r);
+    ASSERT_NE(d7, nullptr);
+    EXPECT_EQ(d7->code, (uint32_t)YEPTRIS_DIAG_UNEVALUATED_PROPERTY);
+    free_report(r);
+    // `not` collects internally (its unevaluated* sees the sibling anyOf
+    // branch's annotations) but never annotates outward
+    ASSERT_EQ(js_first("{\"not\":{\"anyOf\":[true,{\"properties\":{\"foo\":true}}],"
+                       "\"unevaluatedProperties\":false}}",
+                       "{bar: 1}\n", &r),
+              nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d8 =
+        js_first("{\"not\":{\"anyOf\":[true,{\"properties\":{\"foo\":true}}],"
+                 "\"unevaluatedProperties\":false}}",
+                 "{foo: 1}\n", &r);
+    ASSERT_NE(d8, nullptr);
+    free_report(r);
+}
+
+TEST(ValidateJsonSchema, UnevaluatedItemsReadsItemsAndContains) {
+    yeptris_validate_report* r = NULL;
+    // prefixItems + items evaluate their indices
+    ASSERT_EQ(
+        js_first(
+            "{\"prefixItems\":[{\"type\":\"string\"}],\"items\":true,\"unevaluatedItems\":false}",
+            "[\"foo\", 42]\n", &r),
+        nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d =
+        js_first("{\"prefixItems\":[{\"type\":\"string\"}],\"unevaluatedItems\":false}",
+                 "[\"foo\", 42]\n", &r);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_UNEVALUATED_ITEM);
+    EXPECT_STREQ(d->path, "/1");
+    free_report(r);
+    // contains annotates the MATCHING indices while it holds; with
+    // minContains 0 and no matches it annotates nothing
+    ASSERT_EQ(js_first("{\"prefixItems\":[true],\"contains\":{\"type\":\"string\"},"
+                       "\"unevaluatedItems\":false}",
+                       "[1, \"foo\"]\n", &r),
+              nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d2 =
+        js_first("{\"prefixItems\":[true],\"contains\":{\"type\":\"string\"},"
+                 "\"unevaluatedItems\":false}",
+                 "[1, 2, \"foo\"]\n", &r);
+    ASSERT_NE(d2, nullptr);
+    free_report(r);
+    // items evaluates what it applied: unevaluatedItems never runs
+    ASSERT_EQ(
+        js_first("{\"items\":{\"type\":\"string\"},\"unevaluatedItems\":{\"type\":\"boolean\"}}",
+                 "[\"a\", \"b\"]\n", &r),
+        nullptr);
+    free_report(r);
+    const yeptris_diagnostic* d3 =
+        js_first("{\"items\":{\"type\":\"string\"},\"unevaluatedItems\":{\"type\":\"boolean\"}}",
+                 "[\"a\", 5]\n", &r);
+    ASSERT_NE(d3, nullptr);
+    EXPECT_EQ(d3->code, (uint32_t)YEPTRIS_DIAG_TYPE);
+    free_report(r);
+    // annotations do not cross cousins
+    const yeptris_diagnostic* d4 = js_first(
+        "{\"allOf\":[{\"prefixItems\":[true]},{\"unevaluatedItems\":false}]}", "[1]\n", &r);
+    ASSERT_NE(d4, nullptr);
+    free_report(r);
+    // instance-location discipline: an annotation made at /0/1 is not an
+    // annotation at /1
+    const yeptris_diagnostic* d5 =
+        js_first("{\"prefixItems\":[{\"prefixItems\":[true,{\"type\":\"string\"}]}],"
+                 "\"unevaluatedItems\":false}",
+                 "[[\"foo\", \"bar\"], \"bar\"]\n", &r);
+    ASSERT_NE(d5, nullptr);
+    free_report(r);
+}
+
 TEST(ValidateJsonSchema, BooleanSchemasAndUnknownKeywords) {
     yeptris_validate_report* r = NULL;
     ASSERT_EQ(js_first("true", "\"anything\"\n", &r), nullptr);

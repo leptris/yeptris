@@ -45,10 +45,19 @@ typedef struct yep_vctx {
     size_t path_len, path_cap;
     int depth; /* the walk's nesting guard (never exceeds the DOM's) */
     int oom;   /* an allocation failed: stop diagnosing */
-    /* JSON Schema trial suppression (anyOf/oneOf/not probes) */
+    /* JSON Schema trial suppression (anyOf/oneOf/not probes): emits
+     * inside a probe never reach the report and never touch
+     * fail_mark — the probe's own validity is ITS trial_fail delta
+     * (zero delta = held), the enclosing application's is its
+     * fail_mark delta */
     int suppress;
-    int trial_hit;
-    int ref_depth; /* consecutive $ref expansions */
+    /* the walks' invalid-application counters: every emit increments
+     * exactly one of them (suppressed -> trial_fail, otherwise
+     * fail_mark), so an application's validity is one comparison (the
+     * unevaluated* annotation model reads fail_mark) */
+    int fail_mark;
+    int trial_fail;
+    int ref_depth; /* consecutive $ref/$dynamicRef expansions */
 } yep_vctx;
 
 /* Offset of a node's first positioned byte (the value span of the node

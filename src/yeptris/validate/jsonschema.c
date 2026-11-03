@@ -14,10 +14,31 @@
  * patternProperties matches), dependentRequired, dependentSchemas,
  * if/then/else (the if-schema rides a suppressed probe), items
  * (+ prefixItems; the draft-07 array form rides as prefixItems),
- * allOf/anyOf/oneOf/not, $ref, $dynamicRef (see below), boolean
+ * allOf/anyOf/oneOf/not, unevaluatedProperties/unevaluatedItems (the
+ * annotation model, below), $ref, $dynamicRef (below), boolean
  * schemas. Unknown keywords, and known keywords whose values cannot
  * be read, are IGNORED (2020-12's posture) — an unreadable constraint
  * never guesses.
+ *
+ * THE ANNOTATION MODEL (2020-12's unevaluated*): every application of
+ * a schema object to an instance location returns (a) its validity —
+ * one fail_mark comparison around the application, unsuppressed emits
+ * increment the mark — and (b) the properties/items it EVALUATED.
+ * Annotations collect upward only: a schema object's set is its own
+ * adjacent keywords' appends (properties, patternProperties,
+ * additionalProperties, contains, items, prefixItems,
+ * unevaluatedProperties/unevaluatedItems themselves) plus whatever its
+ * in-place applicators brought back (allOf branches always;
+ * anyOf/oneOf SUCCESSFUL branches only — a failed branch's annotations
+ * are released; the if-probe when it holds, plus the branch taken;
+ * $ref/$dynamicRef targets; dependentSchemas when triggered). `not`
+ * and the probes never annotate outward. Applications to CHILD
+ * locations (properties' values, items, propertyNames' keys, the
+ * unevaluated* subschemas) release their sets — an annotation never
+ * crosses an instance-location boundary. unevaluatedProperties /
+ * unevaluatedItems run LAST in their schema object, whatever the
+ * document order, and flag the properties/items absent from the
+ * collected set.
  *
  * REFERENCES (the sota sweep): resolution rides the compiled schema's
  * identifier map (resources.c): $id base-URI composition (RFC 3986
@@ -35,8 +56,7 @@
  * no scope, exactly as their annotations are discarded.
  *
  * Carried out of the subset (documented in
- * test/conformance/jsonschema/MATRIX.md): unevaluatedItems/
- * unevaluatedProperties (annotation plumbing), remote targets (the
+ * test/conformance/jsonschema/MATRIX.md): remote targets (the
  * metaschema and the suite's HTTP fixtures — no network corpus is
  * vendored), contentMediaType/contentSchema (annotation-only in
  * 2020-12).
@@ -65,6 +85,18 @@
 #define JS_MAX_REF_CHAIN 64
 #define JS_MAX_TOKENS 256
 #define JS_MAX_UNIQUE 4096 /* uniqueItems' hash table cap; over: O(n^2) probe */
+#define JS_MAX_EVALS 16384 /* the annotation arena's entry cap; over: OOM */
+
+/* One application's result: validity plus the annotation window it
+ * owns — [pmark, plen) of the evaluated-property key-node arena and
+ * [imark, ilen) of the evaluated-item index arena. Absorbing a result
+ * into the caller's set is a NO-OP (the window simply stays); dropping
+ * it is two assignments (the release). Zero-copy in both directions. */
+typedef struct {
+    int valid;
+    size_t pmark, plen;
+    size_t imark, ilen;
+} js_eval;
 
 typedef struct {
     yep_vctx v;        /* instance-side context (path, report, guards) */
@@ -81,6 +113,12 @@ typedef struct {
      * against the top), popped on exit; probes push nothing */
     uint32_t scope[YEP_JS_MAX_SCOPE];
     int scope_n;
+    /* the annotation arenas: evaluated property KEY node ids and item
+     * indices, appended during the walk, released per application */
+    uint32_t* ep;
+    size_t ep_len, ep_cap;
+    uint32_t* ei;
+    size_t ei_len, ei_cap;
 } js_ctx;
 
 /* ---- schema-side facts -------------------------------------------------- */
@@ -287,28 +325,134 @@ static uint32_t inst_find_key(const yep_dom* d, uint32_t map_id, const char* nam
     return UINT32_MAX;
 }
 
+/* ---- the annotation arenas ---------------------------------------------- */
+
+/* Appends an evaluated property key node; -1 over cap (the walk's OOM
+ * flag fires — bounded memory is the law, never a silent guess). */
+static int ep_append(js_ctx* j, uint32_t key_node) {
+    if (j->ep_len == j->ep_cap) {
+        const yep_allocator* sys = yep_system_allocator();
+        size_t ncap = j->ep_cap ? j->ep_cap * 2 : 64;
+        uint32_t* np = yep_alloc(sys, ncap * sizeof(uint32_t));
+        if (np == NULL) {
+            j->v.oom = 1;
+            return -1;
+        }
+        if (j->ep != NULL) {
+            memcpy(np, j->ep, j->ep_len * sizeof(uint32_t));
+            yep_free(sys, j->ep);
+        }
+        j->ep = np;
+        j->ep_cap = ncap;
+    }
+    if (j->ep_len >= JS_MAX_EVALS) {
+        j->v.oom = 1;
+        return -1;
+    }
+    j->ep[j->ep_len++] = key_node;
+    return 0;
+}
+
+static int ei_append(js_ctx* j, uint32_t index) {
+    if (j->ei_len == j->ei_cap) {
+        const yep_allocator* sys = yep_system_allocator();
+        size_t ncap = j->ei_cap ? j->ei_cap * 2 : 64;
+        uint32_t* np = yep_alloc(sys, ncap * sizeof(uint32_t));
+        if (np == NULL) {
+            j->v.oom = 1;
+            return -1;
+        }
+        if (j->ei != NULL) {
+            memcpy(np, j->ei, j->ei_len * sizeof(uint32_t));
+            yep_free(sys, j->ei);
+        }
+        j->ei = np;
+        j->ei_cap = ncap;
+    }
+    if (j->ei_len >= JS_MAX_EVALS) {
+        j->v.oom = 1;
+        return -1;
+    }
+    j->ei[j->ei_len++] = index;
+    return 0;
+}
+
+/* 1 when key_node's name is in the window [pmark, ep_len). */
+static int eval_has_prop(const js_ctx* j, size_t pmark, uint32_t key_node) {
+    const yep_dnode* kn = yep_dom_node(j->v.dom, key_node);
+    if (kn == NULL) {
+        return 0;
+    }
+    yep_view kv = yep_dom_view(j->v.dom, kn->value);
+    for (size_t i = pmark; i < j->ep_len; i++) {
+        const yep_dnode* en = yep_dom_node(j->v.dom, j->ep[i]);
+        if (en == NULL) {
+            continue;
+        }
+        yep_view ev = yep_dom_view(j->v.dom, en->value);
+        if (ev.len == kv.len && (kv.len == 0 || memcmp(ev.p, kv.p, kv.len) == 0)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int eval_has_item(const js_ctx* j, size_t imark, uint32_t index) {
+    for (size_t i = imark; i < j->ei_len; i++) {
+        if (j->ei[i] == index) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* ---- the walk ----------------------------------------------------------- */
 
-static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth);
+static js_eval js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth);
+static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth, size_t pmark,
+                          size_t imark);
 
 /* the object-keyword walkers (defined after js_apply) */
 static void check_pattern_properties(js_ctx* j, uint32_t pp_id, uint32_t inst_id, int depth);
 static void check_property_names(js_ctx* j, uint32_t pn_id, uint32_t inst_id, int depth);
 static void check_dependent_required(js_ctx* j, uint32_t dr_id, uint32_t inst_id, int depth);
 static void check_dependent_schemas(js_ctx* j, uint32_t ds_id, uint32_t inst_id, int depth);
+static void check_unevaluated_properties(js_ctx* j, uint32_t upv, int upf, uint32_t inst_id,
+                                         int depth, size_t pmark);
+static void check_unevaluated_items(js_ctx* j, uint32_t uv, int uf, uint32_t inst_id, int depth,
+                                    size_t imark);
+
+/* Applies a schema to a CHILD instance location: the child's own
+ * annotations stay at the child (released here) — an annotation never
+ * crosses an instance-location boundary. */
+static void js_apply_child(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) {
+    size_t pm = j->ep_len, im = j->ei_len;
+    js_apply(j, schema_id, inst_id, depth);
+    j->ep_len = pm;
+    j->ei_len = im;
+}
 
 /* A suppressed probe: does `schema_id` hold at `inst_id`? Diagnostics
  * during the trial are swallowed (and the trial enters no dynamic
- * scope — its anchors are as discarded as its annotations). */
-static int js_holds(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) {
-    int save = j->v.trial_hit;
-    j->v.trial_hit = 0;
+ * scope — its anchors are as discarded as its annotations). The
+ * probe's validity is its OWN trial_fail delta — a suppressed emit
+ * never touches the enclosing application's fail_mark. The CALLER
+ * decides the window's fate: absorbed when the probe's annotations
+ * feed the parent (a held if / a matching anyOf branch), released
+ * otherwise. */
+static js_eval js_probe(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) {
+    int tf = j->v.trial_fail;
     j->v.suppress++;
-    js_apply(j, schema_id, inst_id, depth);
+    js_eval r = js_apply(j, schema_id, inst_id, depth);
     j->v.suppress--;
-    int hit = j->v.trial_hit;
-    j->v.trial_hit = save;
-    return !hit;
+    /* the extent's own delta only: nested probes restored their share,
+     * so what remains is what THIS trial swallowed directly */
+    int my = j->v.trial_fail - tf;
+    j->v.trial_fail = tf;
+    if (my != 0) {
+        r.valid = 0;
+    }
+    return r;
 }
 
 /* ---- reference resolution ------------------------------------------------ */
@@ -590,17 +734,18 @@ static void check_unique(js_ctx* j, uint32_t seq_id, uint32_t inst_off) {
 /* The instance's string length in code points (2020-12 minLength/
  * maxLength). 0 when the instance is not a string. */
 static int inst_str_len(const yep_dom* d, uint32_t id, uint32_t* out) {
-    const yep_dnode* n = yep_dom_node(d, id);
+    const yep_dom* dd = d;
+    const yep_dnode* n = yep_dom_node(dd, id);
     if (n == NULL) {
         return 0;
     }
     if (n->kind == YEP_DOM_ALIAS) {
-        return n->target != UINT32_MAX && inst_str_len(d, n->target, out);
+        return n->target != UINT32_MAX && inst_str_len(dd, n->target, out);
     }
     if (n->kind != YEP_DOM_SCALAR || yep_validate_scalar_tag(n) != YEPTRIS_TAG_STR) {
         return 0;
     }
-    yep_view v = yep_dom_view(d, n->value);
+    yep_view v = yep_dom_view(dd, n->value);
     uint32_t chars = 0;
     for (uint32_t i = 0; i < v.len; i++) {
         chars += ((((unsigned char)v.p[i]) & 0xC0) != 0x80);
@@ -644,7 +789,16 @@ static int schema_word(const js_ctx* j, uint32_t id, const char** p, uint32_t* l
     return 1;
 }
 
-static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth);
+/* Copies a bounded name for diagnostics/detail text: the copied
+ * length (the caller pushes paths with it — keys may hold NULs). */
+static size_t name_copy(char* buf, size_t cap, const char* p, size_t len) {
+    size_t cl = len < cap - 1 ? len : cap - 1;
+    if (cl > 0 && p != NULL) {
+        memcpy(buf, p, cl);
+    }
+    buf[cl] = '\0';
+    return cl;
+}
 
 /* The dynamic scope: entering a schema object whose resource differs
  * from the current top pushes that resource (outermost first); probes
@@ -665,15 +819,27 @@ static int js_scope_push(js_ctx* j, uint32_t schema_id) {
     return 1;
 }
 
-static void js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) {
+/* One application: brackets the body with the validity mark and the
+ * annotation-window marks, pushes the dynamic scope, and hands the
+ * whole window to the caller (absorb = keep, drop = release). */
+static js_eval js_apply(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) {
     int pushed = js_scope_push(j, schema_id);
-    js_apply_body(j, schema_id, inst_id, depth);
+    int fm = j->v.fail_mark;
+    js_eval r;
+    r.pmark = j->ep_len;
+    r.imark = j->ei_len;
+    js_apply_body(j, schema_id, inst_id, depth, r.pmark, r.imark);
+    r.valid = (fm == j->v.fail_mark && !j->v.oom);
+    r.plen = j->ep_len;
+    r.ilen = j->ei_len;
     if (pushed) {
         j->scope_n--;
     }
+    return r;
 }
 
-static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth) {
+static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int depth, size_t pmark,
+                          size_t imark) {
     if (j->v.oom) {
         return;
     }
@@ -705,7 +871,8 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
 
     /* $ref / $dynamicRef compose with their siblings (2020-12); the
      * chain guard kills schema-only cycles that consume no instance
-     * structure */
+     * structure. Same-location application: the target's annotations
+     * are absorbed into this object's set. */
     {
         int is_dyn = 0;
         uint32_t ref_val = UINT32_MAX;
@@ -735,7 +902,7 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                     j->v.ref_depth = 0;
                     return;
                 }
-                js_apply(j, target, inst_id, depth);
+                js_apply(j, target, inst_id, depth); /* absorbed */
                 j->v.ref_depth = 0;
             }
             /* an unreadable $ref value: ignored like any unknown keyword */
@@ -958,7 +1125,9 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
             /* contains: count the items the schema holds on (suppressed
              * probes), then the minContains/maxContains qualifiers
              * (defaults: at least one; no maximum). min/maxContains
-             * without contains are annotations — ignored. */
+             * without contains are annotations — ignored. The matching
+             * indices are this object's ANNOTATION — kept when contains
+             * holds, released when it fails. */
             uint32_t ctv;
             if (kw_get(j, schema_id, "contains", &ctv) && ctv != UINT32_MAX) {
                 int ctf = 0;
@@ -971,8 +1140,12 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                         uint32_t ni = yep_dom_node(j->v.dom, ich)
                                           ? yep_dom_node(j->v.dom, ich)->next_sibling
                                           : UINT32_MAX;
-                        if (js_holds(j, ctv, ich, depth)) {
+                        js_eval pr = js_probe(j, ctv, ich, depth);
+                        j->ep_len = pr.pmark; /* the item probe annotates nothing outward */
+                        j->ei_len = pr.imark;
+                        if (pr.valid) {
                             matches++;
+                            ei_append(j, i);
                         }
                         ich = ni;
                     }
@@ -993,12 +1166,14 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                         }
                     }
                     if ((double)matches < minc) {
+                        j->ei_len = imark; /* a failed contains annotates nothing */
                         yep_validate_emit(
                             &j->v, have_minc ? YEPTRIS_DIAG_MIN_CONTAINS : YEPTRIS_DIAG_CONTAINS,
                             yep_validate_node_off(j->v.dom, inst_id),
                             "%u of %u items match the contains schema (need %g)", matches, cnt,
                             minc);
                     } else if (maxc >= 0.0 && (double)matches > maxc) {
+                        j->ei_len = imark;
                         yep_validate_emit(&j->v, YEPTRIS_DIAG_MAX_CONTAINS,
                                           yep_validate_node_off(j->v.dom, inst_id),
                                           "%u of %u items match the contains schema (max %g)",
@@ -1023,9 +1198,10 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                                           : UINT32_MAX;
                         size_t mark = j->v.path_len;
                         if (yep_validate_path_push_index(&j->v, i) == 0) {
-                            js_apply(j, ch, ich, depth);
+                            js_apply_child(j, ch, ich, depth);
                             yep_validate_path_pop(&j->v, mark);
                         }
+                        ei_append(j, i);
                         prefix++;
                         i++;
                         ch = ns;
@@ -1050,9 +1226,10 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                                           : UINT32_MAX;
                         size_t mark = j->v.path_len;
                         if (yep_validate_path_push_index(&j->v, i) == 0) {
-                            js_apply(j, ch, ich, depth);
+                            js_apply_child(j, ch, ich, depth);
                             yep_validate_path_pop(&j->v, mark);
                         }
+                        ei_append(j, i);
                         i++;
                         ch = ns;
                         ich = ni;
@@ -1071,9 +1248,10 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                                           : UINT32_MAX;
                         size_t mark = j->v.path_len;
                         if (yep_validate_path_push_index(&j->v, i) == 0) {
-                            js_apply(j, pv, ich, depth);
+                            js_apply_child(j, pv, ich, depth);
                             yep_validate_path_pop(&j->v, mark);
                         }
+                        ei_append(j, i);
                         ich = ni;
                     }
                 }
@@ -1081,7 +1259,10 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
         }
     }
 
-    /* allOf / anyOf / oneOf / not */
+    /* allOf / anyOf / oneOf / not: same-location applicators — a
+     * branch's annotations join this object's set when the branch
+     * holds (allOf unconditionally: its verdict is this object's), a
+     * failed probe's window is released, `not` never annotates. */
     {
         uint32_t cv;
         if (kw_get(j, schema_id, "allOf", &cv) && cv != UINT32_MAX) {
@@ -1090,7 +1271,7 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                 uint32_t ch = cn->first_child;
                 while (ch != UINT32_MAX) {
                     uint32_t nc = snode(j, ch) ? snode(j, ch)->next_sibling : UINT32_MAX;
-                    js_apply(j, ch, inst_id, depth);
+                    js_apply(j, ch, inst_id, depth); /* absorbed */
                     ch = nc;
                 }
             }
@@ -1103,8 +1284,12 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                 uint32_t ch = cn->first_child;
                 while (ch != UINT32_MAX) {
                     branches++;
-                    if (!any && js_holds(j, ch, inst_id, depth)) {
-                        any = 1;
+                    js_eval br = js_probe(j, ch, inst_id, depth);
+                    if (br.valid) {
+                        any = 1; /* absorbed: the held branch annotates */
+                    } else {
+                        j->ep_len = br.pmark;
+                        j->ei_len = br.imark;
                     }
                     ch = snode(j, ch) ? snode(j, ch)->next_sibling : UINT32_MAX;
                 }
@@ -1123,12 +1308,18 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                 uint32_t ch = cn->first_child;
                 while (ch != UINT32_MAX) {
                     branches++;
-                    if (js_holds(j, ch, inst_id, depth)) {
-                        matches++;
+                    js_eval br = js_probe(j, ch, inst_id, depth);
+                    if (br.valid) {
+                        matches++; /* absorbed */
+                    } else {
+                        j->ep_len = br.pmark;
+                        j->ei_len = br.imark;
                     }
                     ch = snode(j, ch) ? snode(j, ch)->next_sibling : UINT32_MAX;
                 }
                 if (matches != 1) {
+                    j->ep_len = pmark; /* no single branch: no annotations */
+                    j->ei_len = imark;
                     yep_validate_emit(&j->v, YEPTRIS_DIAG_ONE_OF,
                                       yep_validate_node_off(j->v.dom, inst_id),
                                       "%u of the %u oneOf branches matched (exactly one "
@@ -1138,7 +1329,10 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
             }
         }
         if (kw_get(j, schema_id, "not", &cv) && cv != UINT32_MAX) {
-            if (js_holds(j, cv, inst_id, depth)) {
+            js_eval nr = js_probe(j, cv, inst_id, depth);
+            j->ep_len = nr.pmark; /* the not-schema never annotates outward */
+            j->ei_len = nr.imark;
+            if (nr.valid) {
                 yep_validate_emit(&j->v, YEPTRIS_DIAG_NOT, yep_validate_node_off(j->v.dom, inst_id),
                                   "the not-schema matched");
             }
@@ -1146,7 +1340,10 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
     }
 
     /* if/then/else: the if-schema rides a suppressed probe; exactly one
-     * of then/else applies. An unreadable if (or then/else) is ignored. */
+     * of then/else applies. A HOLDING if annotates (the probe's window
+     * is absorbed); a failed one is released. then/else are
+     * same-location applications — absorbed. An unreadable if (or
+     * then/else) is ignored. */
     {
         uint32_t ifv;
         if (kw_get(j, schema_id, "if", &ifv) && ifv != UINT32_MAX) {
@@ -1156,12 +1353,17 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                 int tf = 0, ef = 0;
                 int have_t = kw_schema(j, schema_id, "then", &tv, &tf);
                 int have_e = kw_schema(j, schema_id, "else", &ev, &ef);
-                if (js_holds(j, ifv, inst_id, depth)) {
+                js_eval ir = js_probe(j, ifv, inst_id, depth);
+                if (ir.valid) { /* absorbed: the if's annotations count */
                     if (have_t) {
                         js_apply(j, tv, inst_id, depth);
                     }
-                } else if (have_e) {
-                    js_apply(j, ev, inst_id, depth);
+                } else {
+                    j->ep_len = ir.pmark;
+                    j->ei_len = ir.imark;
+                    if (have_e) {
+                        js_apply(j, ev, inst_id, depth);
+                    }
                 }
             }
         }
@@ -1220,7 +1422,8 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                     }
                 }
             }
-            /* properties walk (values through their schemas) */
+            /* properties walk (values through their schemas): the
+             * PRESENT keys are this object's annotation */
             if (have_props) {
                 const yep_dnode* pn = snode(j, props);
                 uint32_t k = pn->first_child;
@@ -1243,9 +1446,10 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                                     size_t mark = j->v.path_len;
                                     if (yep_validate_path_push(&j->v, kv.p != NULL ? kv.p : "",
                                                                kv.len) == 0) {
-                                        js_apply(j, v, cv, depth);
+                                        js_apply_child(j, v, cv, depth);
                                         yep_validate_path_pop(&j->v, mark);
                                     }
+                                    ep_append(j, ck);
                                     break;
                                 }
                             }
@@ -1262,7 +1466,8 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
             if (pp_id != UINT32_MAX) {
                 check_pattern_properties(j, pp_id, inst_id, depth);
             }
-            /* propertyNames: the schema applies to each KEY string */
+            /* propertyNames: the schema applies to each KEY string
+             * (a different instance location: annotates nothing here) */
             {
                 uint32_t pnv;
                 if (kw_get(j, schema_id, "propertyNames", &pnv) && pnv != UINT32_MAX) {
@@ -1300,15 +1505,16 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                 }
             }
             /* dependentSchemas: when the named key is present, its
-             * schema applies to the whole object (walked directly, like
-             * allOf: the inner diagnostics carry the failure) */
+             * schema applies to the whole object (same location: the
+             * inner annotations join this object's set) */
             {
                 uint32_t dsv;
                 if (kw_get(j, schema_id, "dependentSchemas", &dsv) && dsv != UINT32_MAX) {
                     check_dependent_schemas(j, dsv, inst_id, depth);
                 }
             }
-            /* additionalProperties: the keys properties does not name */
+            /* additionalProperties: the keys properties does not name —
+             * the keys it APPLIED to are this object's annotation */
             uint32_t ap;
             int af = 0;
             if (kw_schema(j, schema_id, "additionalProperties", &ap, &af)) {
@@ -1325,15 +1531,16 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                             uint32_t pk = snode(j, props)->first_child;
                             while (pk != UINT32_MAX && !known) {
                                 const yep_dnode* pkn = snode(j, pk);
-                                uint32_t pv =
+                                uint32_t pv2 =
                                     snode(j, pk) ? snode(j, pk)->next_sibling : UINT32_MAX;
                                 if (pkn != NULL && pkn->kind == YEP_DOM_SCALAR) {
                                     yep_view pw = yep_dom_view(j->sd, pkn->value);
                                     known = pw.len == kv.len &&
                                             (kv.len == 0 || memcmp(pw.p, kv.p, kv.len) == 0);
                                 }
-                                pk = pv != UINT32_MAX && snode(j, pv) ? snode(j, pv)->next_sibling
-                                                                      : UINT32_MAX;
+                                pk = pv2 != UINT32_MAX && snode(j, pv2)
+                                         ? snode(j, pv2)->next_sibling
+                                         : UINT32_MAX;
                             }
                         }
                         /* patternProperties matches take the key out of
@@ -1343,7 +1550,7 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                             uint32_t pk = pnm->first_child;
                             while (pk != UINT32_MAX && !known) {
                                 const yep_dnode* pkn = snode(j, pk);
-                                uint32_t pv =
+                                uint32_t pv2 =
                                     snode(j, pk) ? snode(j, pk)->next_sibling : UINT32_MAX;
                                 const char* pat = NULL;
                                 uint32_t pl = 0;
@@ -1353,8 +1560,9 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                                                         kv.len) == 1) {
                                     known = 1;
                                 }
-                                pk = pv != UINT32_MAX && snode(j, pv) ? snode(j, pv)->next_sibling
-                                                                      : UINT32_MAX;
+                                pk = pv2 != UINT32_MAX && snode(j, pv2)
+                                         ? snode(j, pv2)->next_sibling
+                                         : UINT32_MAX;
                             }
                         }
                         if (!known) {
@@ -1371,9 +1579,10 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
                             } else {
                                 size_t mark = j->v.path_len;
                                 if (yep_validate_path_push(&j->v, namebuf, cl) == 0) {
-                                    js_apply(j, ap, v, depth);
+                                    js_apply_child(j, ap, v, depth);
                                     yep_validate_path_pop(&j->v, mark);
                                 }
+                                ep_append(j, k);
                             }
                         }
                     }
@@ -1384,24 +1593,29 @@ static void js_apply_body(js_ctx* j, uint32_t schema_id, uint32_t inst_id, int d
             }
         }
     }
+
+    /* the unevaluated* keywords ride LAST in their schema object,
+     * whatever the document order: their verdict reads every sibling
+     * keyword's and every in-place applicator's annotations for THIS
+     * location — [pmark, ep_len) / [imark, ei_len) */
+    {
+        uint32_t uv;
+        int uf = 0;
+        if (kw_schema(j, schema_id, "unevaluatedProperties", &uv, &uf)) {
+            check_unevaluated_properties(j, uv, uf, inst_id, depth, pmark);
+        }
+        if (kw_schema(j, schema_id, "unevaluatedItems", &uv, &uf)) {
+            check_unevaluated_items(j, uv, uf, inst_id, depth, imark);
+        }
+    }
 }
 
 /* ---- the object-keyword walkers ------------------------------------------ */
 
-/* Copies a bounded name for diagnostics/detail text: the copied
- * length (the caller pushes paths with it — keys may hold NULs). */
-static size_t name_copy(char* buf, size_t cap, const char* p, size_t len) {
-    size_t cl = len < cap - 1 ? len : cap - 1;
-    if (cl > 0 && p != NULL) {
-        memcpy(buf, p, cl);
-    }
-    buf[cl] = '\0';
-    return cl;
-}
-
 /* patternProperties: pattern -> schema over the KEY strings; every
  * matching pattern applies its schema to the key's value (a false
- * schema rides js_apply's FALSE_SCHEMA diagnostic). */
+ * schema rides js_apply's FALSE_SCHEMA diagnostic). The matched keys
+ * are this object's annotation. */
 static void check_pattern_properties(js_ctx* j, uint32_t pp_id, uint32_t inst_id, int depth) {
     const yep_dom* d = j->v.dom;
     const yep_dnode* pnm = snode(j, pp_id);
@@ -1432,9 +1646,10 @@ static void check_pattern_properties(js_ctx* j, uint32_t pp_id, uint32_t inst_id
                     size_t cl = name_copy(namebuf, sizeof(namebuf), kv.p, kv.len);
                     size_t mark = j->v.path_len;
                     if (yep_validate_path_push(&j->v, namebuf, cl) == 0) {
-                        js_apply(j, pv, v, depth);
+                        js_apply_child(j, pv, v, depth);
                         yep_validate_path_pop(&j->v, mark);
                     }
+                    ep_append(j, k);
                 }
                 pk = np;
             }
@@ -1463,7 +1678,7 @@ static void check_property_names(js_ctx* j, uint32_t pn_id, uint32_t inst_id, in
             size_t cl = name_copy(namebuf, sizeof(namebuf), kv.p, kv.len);
             size_t mark = j->v.path_len;
             if (yep_validate_path_push(&j->v, namebuf, cl) == 0) {
-                js_apply(j, pn_id, k, depth);
+                js_apply_child(j, pn_id, k, depth);
                 yep_validate_path_pop(&j->v, mark);
             }
         }
@@ -1523,7 +1738,8 @@ static void check_dependent_required(js_ctx* j, uint32_t dr_id, uint32_t inst_id
 }
 
 /* dependentSchemas: when the named key is present, its schema applies
- * to the whole object. */
+ * to the whole object (same location: its annotations join this
+ * object's set). */
 static void check_dependent_schemas(js_ctx* j, uint32_t ds_id, uint32_t inst_id, int depth) {
     const yep_dom* d = j->v.dom;
     const yep_dnode* dm = snode(j, ds_id);
@@ -1538,10 +1754,87 @@ static void check_dependent_schemas(js_ctx* j, uint32_t ds_id, uint32_t inst_id,
         if (skn != NULL && skn->kind == YEP_DOM_SCALAR && sv != UINT32_MAX) {
             yep_view trig = yep_dom_view(j->sd, skn->value);
             if (trig.p != NULL && inst_find_key(d, inst_id, trig.p, trig.len, NULL) != UINT32_MAX) {
-                js_apply(j, sv, inst_id, depth);
+                js_apply(j, sv, inst_id, depth); /* absorbed */
             }
         }
         sk = ns;
+    }
+}
+
+/* unevaluatedProperties: the keys no sibling keyword and no in-place
+ * applicator evaluated — [pmark, ep_len). A false schema flags each
+ * one; a readable schema is APPLIED to the value (the applied keys
+ * then annotate, so a nested unevaluatedProperties:true marks every
+ * property evaluated for the parent). */
+static void check_unevaluated_properties(js_ctx* j, uint32_t upv, int upf, uint32_t inst_id,
+                                         int depth, size_t pmark) {
+    const yep_dom* d = j->v.dom;
+    const yep_dnode* n = yep_dom_node(d, inst_id);
+    if (n == NULL || n->kind != YEP_DOM_MAPPING) {
+        return;
+    }
+    uint32_t k = n->first_child;
+    while (k != UINT32_MAX && !j->v.oom) {
+        uint32_t v = yep_dom_node(d, k) ? yep_dom_node(d, k)->next_sibling : UINT32_MAX;
+        uint32_t nk =
+            v != UINT32_MAX && yep_dom_node(d, v) ? yep_dom_node(d, v)->next_sibling : UINT32_MAX;
+        const yep_dnode* kn = yep_dom_node(d, k);
+        if (kn != NULL && kn->kind == YEP_DOM_SCALAR && !eval_has_prop(j, pmark, k)) {
+            yep_view kv = yep_dom_view(d, kn->value);
+            char namebuf[64];
+            size_t cl = name_copy(namebuf, sizeof(namebuf), kv.p, kv.len);
+            if (upf) {
+                size_t mark = j->v.path_len;
+                int pushed = yep_validate_path_push(&j->v, namebuf, cl);
+                yep_validate_emit(&j->v, YEPTRIS_DIAG_UNEVALUATED_PROPERTY,
+                                  yep_validate_node_off(d, k), "property \"%s\" is not evaluated",
+                                  namebuf);
+                if (pushed == 0) {
+                    yep_validate_path_pop(&j->v, mark);
+                }
+            } else {
+                size_t mark = j->v.path_len;
+                if (yep_validate_path_push(&j->v, namebuf, cl) == 0) {
+                    js_apply_child(j, upv, v, depth);
+                    yep_validate_path_pop(&j->v, mark);
+                }
+                ep_append(j, k); /* the applied property now counts as evaluated */
+            }
+        }
+        k = nk;
+    }
+}
+
+/* unevaluatedItems: the mirror over array indices ([imark, ei_len)). */
+static void check_unevaluated_items(js_ctx* j, uint32_t uv, int uf, uint32_t inst_id, int depth,
+                                    size_t imark) {
+    const yep_dom* d = j->v.dom;
+    const yep_dnode* n = yep_dom_node(d, inst_id);
+    if (n == NULL || n->kind != YEP_DOM_SEQUENCE) {
+        return;
+    }
+    uint32_t ich = n->first_child;
+    for (uint32_t i = 0; ich != UINT32_MAX && !j->v.oom; i++) {
+        uint32_t ni = yep_dom_node(d, ich) ? yep_dom_node(d, ich)->next_sibling : UINT32_MAX;
+        if (!eval_has_item(j, imark, i)) {
+            if (uf) {
+                size_t mark = j->v.path_len;
+                int pushed = yep_validate_path_push_index(&j->v, i);
+                yep_validate_emit(&j->v, YEPTRIS_DIAG_UNEVALUATED_ITEM,
+                                  yep_validate_node_off(d, ich), "item %u is not evaluated", i);
+                if (pushed == 0) {
+                    yep_validate_path_pop(&j->v, mark);
+                }
+            } else {
+                size_t mark = j->v.path_len;
+                if (yep_validate_path_push_index(&j->v, i) == 0) {
+                    js_apply_child(j, uv, ich, depth);
+                    yep_validate_path_pop(&j->v, mark);
+                }
+                ei_append(j, i);
+            }
+        }
+        ich = ni;
     }
 }
 
@@ -1557,8 +1850,9 @@ static int js_validate_doc(js_ctx* j, uint32_t inst_root) {
 /* The public entries live in validate.c/compile.c (yeptris_json_schema_
  * validate compiles+validates+frees through the compiled handle; the
  * compiled face drives this seam per instance stream): they parse the
- * sides, build the report and hand over the schema DOM + the retained
- * pattern cache (the declarations are internal.h's — the shared SSOT). */
+ * sides, build the report and hand over the schema DOM, the retained
+ * pattern cache and the identifier map (the declarations are
+ * internal.h's — the shared SSOT). */
 int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const yep_dom* instance_dom,
                        const uint32_t* doc_roots, uint32_t doc_count, yeptris_validate_report* rep,
                        const yep_re_cache* cache, const js_resources* res) {
@@ -1572,6 +1866,7 @@ int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const ye
     j.v.rep = rep;
     j.v.input = instance_dom->input_base;
     j.v.input_len = instance_dom->input_len;
+    int rc = 0;
     for (uint32_t i = 0; i < doc_count; i++) {
         j.v.path_len = 0;
         /* the stream face's document attribution: a multi-document
@@ -1580,14 +1875,17 @@ int yep_jsonschema_run(const yep_dom* schema_dom, uint32_t schema_root, const ye
         js_validate_doc(&j, doc_roots[i]);
         yep_validate_path_pop(&j.v, mark);
         if (j.v.oom) {
-            yep_free(yep_system_allocator(), j.v.line_off);
-            yep_free(yep_system_allocator(), j.v.path);
-            return -1;
+            rc = -1;
+            break;
         }
     }
-    /* the walk's scratch (the lazy line index, the path buffer) dies
-     * here: the report carries only finished diagnostics */
-    yep_free(yep_system_allocator(), j.v.line_off);
-    yep_free(yep_system_allocator(), j.v.path);
-    return 0;
+    /* the walk's scratch (the lazy line index, the path buffer, the
+     * annotation arenas) dies here: the report carries only finished
+     * diagnostics */
+    const yep_allocator* sys = yep_system_allocator();
+    yep_free(sys, j.v.line_off);
+    yep_free(sys, j.v.path);
+    yep_free(sys, j.ep);
+    yep_free(sys, j.ei);
+    return rc;
 }
