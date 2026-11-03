@@ -24,7 +24,14 @@ extern "C" {
 #endif
 
 /* Emission options (13B). Versioned by size: initialize with
- * {sizeof(yeptris_emit_options)} so future fields stay optional. */
+ * {sizeof(yeptris_emit_options)} so future fields stay optional.
+ *
+ * Deliberately omitted: a flowLevel knob (libyaml's best_width +
+ * default_flow_style interplay). The engine's style chooser is
+ * recorded-style driven — flow is whatever the document recorded
+ * (plus the fixed canonical/JSON forms) — so there is no "switch to
+ * flow past level N" decision to expose; revisit only if a binding
+ * face actually needs PyYAML's default_flow_style mapping. */
 typedef struct yeptris_emit_options {
     uint32_t size;          /* sizeof(yeptris_emit_options) */
     int canonical;          /* fixed form: flow collections, quoted strings,
