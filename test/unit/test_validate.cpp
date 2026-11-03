@@ -1478,6 +1478,12 @@ TEST(ValidateRegex, SearchSemantics) {
     // word boundary
     EXPECT_EQ(yep_re_search("\\bcat\\b", (uint32_t)strlen("\\bcat\\b"), "a cat sat", 9), 1);
     EXPECT_EQ(yep_re_search("\\bcat\\b", (uint32_t)strlen("\\bcat\\b"), "scatter", 7), 0);
+    // ECMA-262 \cX control escapes (X & 0x1F); a non-letter after \c is
+    // the Annex B identity escape
+    EXPECT_EQ(yep_re_search("^\\cC$", (uint32_t)strlen("^\\cC$"), "\x03", 1), 1);
+    EXPECT_EQ(yep_re_search("^\\cc$", (uint32_t)strlen("^\\cc$"), "\x03", 1), 1);
+    EXPECT_EQ(yep_re_search("^\\cC$", (uint32_t)strlen("^\\cC$"), "x", 1), 0);
+    EXPECT_EQ(yep_re_search("^[\\cA]$", (uint32_t)strlen("^[\\cA]$"), "\x01", 1), 1);
     // the NFA is linear: the classic blowup pattern answers instantly
     const char* blowup = "aaaaaaaaaaaaaaaaaaaaaaaaaaaab";
     EXPECT_EQ(yep_re_search("(a+)+$", (uint32_t)strlen("(a+)+$"), blowup, (uint32_t)strlen(blowup)),
