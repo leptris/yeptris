@@ -695,10 +695,14 @@ YEPTRIS_API YeptrisTagId yeptris_node_tag_id(YeptrisNode handle) {
     if (n == NULL) {
         return YEPTRIS_TAG_CUSTOM;
     }
-    if (n->kind == YEPTRIS_NODE_SEQUENCE) {
+    /* the INTERNAL kind space here (#904 item 6): n->kind is the
+     * dom's yep_dom_kind — the public YEPTRIS_NODE_* constants ride
+     * the same values today only by coincidence, and the boundary
+     * conversion is yeptris_node_kind's switch alone */
+    if (n->kind == YEP_DOM_SEQUENCE) {
         return YEPTRIS_TAG_SEQ;
     }
-    if (n->kind == YEPTRIS_NODE_MAPPING) {
+    if (n->kind == YEP_DOM_MAPPING) {
         return YEPTRIS_TAG_MAP;
     }
     return (YeptrisTagId)n->tag_id;
@@ -847,7 +851,8 @@ YEPTRIS_API size_t yeptris_node_map_count(YeptrisNode handle) {
 YEPTRIS_API int yeptris_node_map_at(YeptrisNode handle, size_t index, YeptrisNode* key,
                                     YeptrisNode* value) {
     const yep_dnode* n = node_of(handle);
-    if (n == NULL || n->kind != YEPTRIS_NODE_MAPPING || index >= n->count / 2) {
+    /* the internal kind space (#904 item 6, see yeptris_node_tag_id) */
+    if (n == NULL || n->kind != YEP_DOM_MAPPING || index >= n->count / 2) {
         return -1;
     }
     yeptris_node* h = (yeptris_node*)handle;

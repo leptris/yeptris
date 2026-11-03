@@ -3227,3 +3227,31 @@ silently stopped taking members would show NO delta (the ledger's law #3);
 The serialbench block-heavy gen h2h was 1.44x behind ryml — this slice is
 that gap, modulo the wave. Gates: 621/621, both 693-file walks, ASan 0
 leaks, snapshots byte-identical.
+
+### 2026-11-03 — sc_route's flow-indicator scan vs the stopset kernel (MEASURED SKIP, #904 item 4)
+
+The audit asked whether `sc_route`'s per-byte flow-indicator switch
+(13 members: `,[]{}"\''!&*:?`) should ride `yep_text_stopset_find_scalar`
+(the SIMD class kernel). Both variants built and raced on the harness
+(`--emit-shape flow-json`, quick corpus, Apple silicon under a
+concurrently loaded machine — wall-clock spread reflects that).
+
+| variant | flow-json emit samples (MB/s) | median |
+|---|---|---|
+| per-byte switch (shipped) | 142.11, 145.27, 145.71, 148.19 | **145.5** |
+| stopset kernel | 130.35, 134.38, 149.96, 153.97 | **142.2** |
+
+- The sample sets STRADDLE: the stopset arm's four samples span
+  130–154 and its median lands BELOW the switch's — the true delta is
+  not separable from machine load (parallel bench/build sessions on
+  the same box during the race). No win above the noise floor.
+- Under the ~5% bar for touching the hot derive path regardless of
+  which side of zero the point estimate sits.
+- The arm only runs for `w->in_flow` scalars: every other emit shape
+  is byte-identical by construction; flow-json is the upper bound of
+  the effect (every scalar rides the arm).
+- Kept the per-byte switch; sc_route carries a comment pointing here.
+  The stopset variant remains a one-arm swap if the flow lane ever
+  re-opens (the 13-char bitmap builds via `yep_stopset_init`; 2
+  nibble groups, vector kernels engage) — re-measure on an IDLE
+  machine, interleaved A/B, before judging.

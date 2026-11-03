@@ -154,7 +154,7 @@ target_compile_definitions(fuzz_transcode PRIVATE YEP_FUZZ_STANDALONE)
 yeptris_set_warnings(fuzz_transcode)
 yeptris_set_warnings(fuzz_roundtrip)
 
-# the two Marshal wire readers (emit/writer.c + cbor/from_marshal.c):
+# the two Marshal wire readers (marshal/to_json.c + cbor/from_marshal.c):
 # the 2026-10 audit found the format's readers un-fuzzed
 add_executable(fuzz_marshal fuzz/fuzz_marshal.c)
 target_link_libraries(fuzz_marshal PRIVATE yeptris_static)

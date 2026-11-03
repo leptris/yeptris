@@ -87,6 +87,15 @@ typedef struct yep_emitter {
 /* One pass over the document set. dry=1 counts exactly. */
 size_t yep_emit_run(yep_emitter* em, int dry);
 
+/* The write primitives, shared with the marshal reader
+ * (marshal/to_json.c — the move keeps ONE writer engine; #904 item 5).
+ * Internal: never in a public header. */
+void wr_col_update(yep_writer* w, const char* p, uint32_t n);
+void wr_reserve(yep_writer* w, size_t need);
+void wr_put(yep_writer* w, const char* p, uint32_t n);
+void wr_byte(yep_writer* w, char c);
+void emit_dq_json(yep_writer* w, const char* p, uint32_t n);
+
 /* Compact single-line JSON (internal entries for the json-c compat
  * layer's to_json_string forms). pretty selects json-c's
  * JSON_C_TO_STRING_PRETTY layout: newline + 2-space indent per

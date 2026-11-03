@@ -4886,8 +4886,8 @@ void yep_engine_destroy(yep_engine* e) {
     }
     if (e->step != NULL) {
         yep_stepstate* st = e->step;
-        free(st->buf);
-        free(st);
+        yep_free(e->sys, st->buf);
+        yep_free(e->sys, st);
         e->step = NULL;
     }
     yep_nametab_free(&e->anchors);
@@ -5349,10 +5349,17 @@ int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, con
         return -1;
     }
     if (e->step == NULL) {
-        e->step = calloc(1, sizeof(yep_stepstate));
+        /* the step state rides the ENGINE's allocator (#904 item 3):
+         * the raw calloc bypassed e->sys, so the fail-injection harness
+         * (test_alloc_fail's counting allocator) could never reach the
+         * streaming route's allocations — and the memory law
+         * (allocator.h: nothing outside memory/ calls malloc directly)
+         * does not stop at the engine's own struct */
+        e->step = yep_alloc(e->sys, sizeof(yep_stepstate));
         if (e->step == NULL) {
             return -1;
         }
+        memset(e->step, 0, sizeof(yep_stepstate));
     }
     yep_stepstate* st = e->step;
     st->tok_start = 1; /* the buffer starts at a line start */
@@ -5366,9 +5373,16 @@ int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, con
             while (cap < st->len + len) {
                 cap *= 2;
             }
-            char* nb = realloc(st->buf, cap);
+            /* the pending buffer grows through e->sys too: the
+             * allocator has no realloc, so growth is alloc + copy +
+             * free (the arena.c pattern) */
+            char* nb = yep_alloc(e->sys, cap);
             if (nb == NULL) {
                 return -1;
+            }
+            if (st->buf != NULL) {
+                memcpy(nb, st->buf, st->len);
+                yep_free(e->sys, st->buf);
             }
             st->buf = nb;
             st->cap = cap;
@@ -5429,8 +5443,8 @@ int yep_engine_step(yep_engine* e, const char* chunk, size_t len, int final, con
     /* final: parse everything that remains and close the stream */
     e->line_base = st->line_base;
     int rc = engine_run_impl(e, st->buf, st->len, sink, !st->started, 1);
-    free(st->buf);
-    free(st);
+    yep_free(e->sys, st->buf);
+    yep_free(e->sys, st);
     e->step = NULL;
     e->line_base = 0;
     return rc;

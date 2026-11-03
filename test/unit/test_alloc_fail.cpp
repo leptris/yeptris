@@ -14,6 +14,7 @@
 #include <yeptris.h>
 
 extern "C" {
+#include "doc.h"
 #include "dom/dom.h"
 #include "events/capture.h"
 #include "memory/allocator.h"
@@ -224,5 +225,136 @@ TEST(AllocFail, OomNeverReadsAsParseOrSilentSuccess) {
             }
             yep_engine_destroy(eng);
         }
+    }
+}
+
+/* #904 item 3: the streaming step route's allocations (the step state
+ * and its pending buffer) ride the ENGINE's allocator since the raw
+ * calloc/realloc fix — so this sweep now reaches them (before, the
+ * injection could never fire on the step route's own state). The
+ * contract is unchanged: a failure reads as a nonzero step with a
+ * MEMORY code (or clean, when the capture sink rides the same
+ * allocator), never a crash, and the teardown stays clean. */
+TEST(AllocFail, StepRouteInjectable) {
+    static const char* kChunk1 = "root:\n  - one\n  - two\n";
+    static const char* kChunk2 = "tail: value\n";
+    for (size_t every = 1; every <= 24; every++) {
+        fail_ctx ctx = {every, every, 0, 0};
+        yep_allocator a = {fail_alloc, fail_free, &ctx};
+        yep_engine* eng = yep_engine_create(&a);
+        if (eng == NULL) {
+            SUCCEED();
+            continue;
+        }
+        yep_rec_store store;
+        yep_rec_init(&store);
+        yep_sink sink = {};
+        sink.on_event = yep_rec_on_event;
+        sink.ctx = &store;
+        /* the ROUTING pin: the step state (and its pending buffer) must
+         * be ATTEMPTED through the engine's allocator — a failed
+         * attempt still counts, so the assertion holds on both arms */
+        size_t attempts_before = ctx.attempts;
+        /* the same feed twice through the step state: the first feed
+         * grows the pending buffer from bare, the second rides the
+         * existing one — both growth arms injectable */
+        int rc1 = yep_engine_step(eng, kChunk1, strlen(kChunk1), 0, &sink);
+        int rc2 = yep_engine_step(eng, kChunk2, strlen(kChunk2), 1, &sink);
+        EXPECT_GT(ctx.attempts, attempts_before)
+            << "every=" << every << ": the step state bypassed the engine allocator";
+        for (int rc : {rc1, rc2}) {
+            if (rc != 0) {
+                const yep_error* err = yep_engine_error(eng);
+                ASSERT_NE(err, nullptr);
+                EXPECT_TRUE(err->code == YEP_ERR_MEMORY || err->code == YEP_ERR_NONE ||
+                            err->code == YEP_ERR_UNDEFINED_ALIAS)
+                    << "every=" << every << " code=" << yep_error_string(err->code);
+            }
+        }
+        yep_rec_free(&store);
+        yep_engine_destroy(eng); /* ASAN/valgrind verify the teardown */
+    }
+}
+
+/* #904 item 3: the emitter's SCRATCH (sc_dec, the streaming window)
+ * rides the document's allocator now — this sweep reaches it. The
+ * emitted bytes' buffer stays system-malloc (the host's free() owns
+ * it), so an emitter-side scratch failure reads as a clean NULL/0,
+ * never a crash, never a half-flushed document. */
+namespace {
+
+int stream_noop_sink(void*, const char*, size_t) {
+    return 0;
+}
+
+} // namespace
+
+TEST(AllocFail, EmitScratchInjectable) {
+    for (size_t every = 1; every <= 24; every++) {
+        fail_ctx ctx = {every, every, 0, 0};
+        yep_allocator a = {fail_alloc, fail_free, &ctx};
+        yep_dom* dom = yep_dom_create(&a);
+        if (dom == NULL) {
+            continue;
+        }
+        yep_engine* eng = yep_engine_create(&a);
+        if (eng == NULL) {
+            yep_dom_destroy(dom);
+            continue;
+        }
+        yep_sink sink = {};
+        sink.on_event = yep_dom_on_event;
+        sink.ctx = dom;
+        sink.compose = 1;
+        if (yep_engine_run(eng, kDoc, strlen(kDoc), &sink) != 0 || dom->ncount == 0) {
+            /* the parse itself failed mid-injection: nothing to emit */
+            yep_dom_destroy(dom);
+            yep_engine_destroy(eng);
+            continue;
+        }
+        /* the hand-built document shell (parse.c's eager ctor shape):
+         * dom set eagerly, no tape, an initialized materialization
+         * lock — serialize's lazy choke point needs the mutex */
+        yeptris_document* doc = (yeptris_document*)yep_alloc(&a, sizeof(*doc));
+        if (doc == NULL) { /* the shell itself failed: clean skip */
+            yep_dom_destroy(dom);
+            yep_engine_destroy(eng);
+            continue;
+        }
+        memset(doc, 0, sizeof(*doc));
+        yep_mutex_init(&doc->lazy_mu);
+        doc->dom = dom;
+        doc->sys = &a;
+        doc->input = kDoc;
+
+        /* the ROUTING pin: the scratch routes must ATTEMPT their
+         * allocations through the document's allocator — the attempts
+         * counter moves even when nothing fails here. serialize_ex's
+         * growable route has NO doc-allocator scratch (its buffer is
+         * the returned one), so it is checked for the clean contract
+         * only. */
+        size_t attempts_before = ctx.attempts;
+        char tmp[4096];
+        size_t wrote = yeptris_serialize_into((YeptrisDocument)doc, tmp, sizeof tmp);
+        (void)wrote; /* the byte count, or 0 on a scratch failure: both clean */
+        EXPECT_GT(ctx.attempts, attempts_before)
+            << "every=" << every << ": sc_dec bypassed the doc allocator";
+        attempts_before = ctx.attempts;
+        size_t total = yeptris_serialize_stream((YeptrisDocument)doc, NULL, stream_noop_sink, NULL);
+        (void)total; /* 0 (a scratch failure) or the byte count: both clean */
+        EXPECT_GT(ctx.attempts, attempts_before)
+            << "every=" << every << ": the stream window bypassed the doc allocator";
+
+        size_t len = 0;
+        char* out = yeptris_serialize((YeptrisDocument)doc, &len);
+        if (out != NULL) {
+            EXPECT_GT(len, 0u) << "every=" << every;
+            free(out);
+        }
+
+        yep_mutex_destroy(&doc->lazy_mu);
+        yep_free(&a, doc);
+        yep_dom_destroy(dom);
+        yep_engine_destroy(eng);
     }
 }
