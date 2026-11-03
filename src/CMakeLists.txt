@@ -49,6 +49,7 @@ set(YEPTRIS_SOURCES
     yeptris/validate/resources.c
     yeptris/validate/jsonschema.c
     yeptris/validate/registry.c
+    yeptris/validate/output.c
     yeptris/validate/stream.c
     yeptris/tape.c
     yeptris/plan.c

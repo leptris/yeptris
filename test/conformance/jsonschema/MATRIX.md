@@ -222,3 +222,23 @@ Skipped optional directories (not vendored): `optional/format/`
    NUL-terminated, so `%s` walked past the buffer. Every emit in the sweep
    copies into a bounded buffer before composing; the suite and the pins
    run ASan-clean (`YEPTRIS_ENABLE_ASAN` build, same matrix numbers).
+
+## The structured output face (#906 slice 5)
+
+`output/schema.json` is the published JSON Schema 2020-12 output
+meta-schema, fetched verbatim from
+https://json-schema.org/draft/2020-12/output/schema (2026-11-03). It is
+the referee for `yeptris_validate_report_write`'s bytes: the output
+test validates the transform's output against it through our own
+validator.
+
+`output/spec-12-4-4-basic.json` is the byte-for-byte expectation derived
+from the core specification's section 12.4.4 (Verbose) example: the
+same schema and instance, flattened to the published BASIC shape the
+flat report can faithfully produce — one root output unit plus one
+error unit per diagnostic. The walk's `additionalProperties` law reports
+the object's instance path and names the property in the error text
+(the spec example's inner unit carries `/disallowedProp` directly); the
+error wording is our own, as section 12.3.4 allows. DETAILED/VERBOSE
+(the schema-structured hierarchies) are not derivable from a flat
+report and are deliberately not faked.
