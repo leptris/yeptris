@@ -2059,7 +2059,21 @@ static int yd_flow_anchor_colon_divergence(const uint8_t* data, size_t size, con
  * as the value) — libyaml is behind the suite. Carry: truncate every
  * quote-free '&' name run at its first out-of-set byte and require
  * libyaml's dump of the truncation to equal yeptris's dump of the
- * original — the divergence is then exactly the charset law. */
+ * original — the divergence is then exactly the charset law.
+ *
+ * A '&'/'*' GLUED INSIDE a tag shorthand run is not a name run at all:
+ * "!!i&a:" is ONE tag in BOTH engines (the suffix is ns-uri-char, and
+ * '&'/':' are URI bytes — the r108 artifact's first line, crash-
+ * 54b5b756). The blind split cut the tag URI instead ("!!i&a :") and
+ * the corrupted copy no longer parsed, so the verify's early return
+ * skipped the r95 solo retries and the alias split — the actual
+ * divergence, "*a:" naming "a:" (2SXE) vs libyaml's ':' separator —
+ * never got its legs. The same run also swallows a GLUED apostrophe:
+ * both charsets keep '\'' inside the suffix ("!a'b: c" is one tag in
+ * both engines; '"' is not a URI byte, so a glued double quote still
+ * opens its scalar). Law: a byte reached while the current GLUED props
+ * run has carried a '!' is tag-URI content — '&'/'*' gate no name run
+ * and '\'' opens no quote; only a blank/break ends the run. */
 static int yd_anchor_byte_in_libyaml_set(unsigned char n) {
     return (n >= '0' && n <= '9') || (n >= 'A' && n <= 'Z') || (n >= 'a' && n <= 'z') || n == '_' ||
            n == '-';
@@ -2221,6 +2235,8 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     size_t line_first = (size_t)-1;
     int line_pending = 0;
     int in_props_name = 0;
+    int tag_run = 0; /* the current glued props run carried a '!': a
+                      * '&'/'*' inside it is tag-URI content (r108) */
     int bs_open = 0; /* a |/> block-scalar body: every byte is text */
     size_t bs_col = 0;
     for (size_t i = 0; i < size; i++) {
@@ -2236,6 +2252,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             node_pos = (plain_open || bs_open) ? 0 : 1;
             only_dash = 1;
             prev = '\n';
+            tag_run = 0;
             i += mbl_ - 1; /* the loop's own i++ lands past the sequence */
             continue;
         }
@@ -2280,7 +2297,8 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             prev = (char)c;
             continue;
         }
-        if ((c == '\'' || c == '"') && (word_led || prop_word) && !plain_open) {
+        if ((c == '\'' || c == '"') && (word_led || prop_word) && !plain_open &&
+            !(c == '\'' && tag_run)) {
             /* !plain_open: a blank inside an open plain does not start
              * a new token ("&gboo :- 4f\";\ \"P&g..." -- the eager
              * open went phantom, swallowed the NEXT line's '&' and the
@@ -2301,6 +2319,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             word_led = 0;
             saw_prop = 1;
             in_props_name = 1;
+            if (c == '!') {
+                tag_run = 1;
+            }
         } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '-' || c == '?') {
             /* blanks keep saw_prop: the props run continues */
             /* ':' does NOT arm a word start: a quote GLUED to the
@@ -2311,6 +2332,9 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
              * SEPARATED colon re-arms through the blank. */
             word_led = 1;
             prop_word = 0;
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                tag_run = 0; /* a separator ends the glued props run */
+            }
             if ((c == '-' || c == '?') && i + 1 < size && data[i + 1] != ' ' &&
                 data[i + 1] != '\t' && data[i + 1] != '\n' && data[i + 1] != '\r' && !plain_open &&
                 (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
@@ -2380,7 +2404,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             plain_open = 0;
             continue;
         }
-        if ((c == '&' || c == '*') && !plain_open && (node_pos || saw_prop)) {
+        if ((c == '&' || c == '*') && !plain_open && (node_pos || saw_prop) && !tag_run) {
             /* '*' joins the family (the nightly's round 54,
              * crash-17654f5b: the ALIAS name rides libyaml's charset
              * law exactly like an anchor's -- "*a:" names "a:" in
@@ -2388,7 +2412,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
              * the key separator; the split reconciles both) */
             amps++;
         }
-        if ((c == '&' || c == '*') && !gate && !plain_open && (node_pos || saw_prop)) {
+        if ((c == '&' || c == '*') && !gate && !plain_open && (node_pos || saw_prop) && !tag_run) {
             size_t j = i + 1;
             while (j < size && data[j] != ' ' && data[j] != '\t' && data[j] != '\n' &&
                    data[j] != '\r' && yd_mb_break_len(data, size, j) == 0) {
@@ -2485,6 +2509,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     size_t line_first2 = (size_t)-1;
     int line_pending2 = 0;
     int in_props_name2 = 0;
+    int tag_run2 = 0; /* the gate's r108 tag-URI law again */
     int bs_open2 = 0;
     size_t bs_col2 = 0;
     for (size_t i = 0; i < size;) {
@@ -2502,6 +2527,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             node_pos2 = (plain_open2 || bs_open2) ? 0 : 1;
             only_dash2 = 1;
             prev = '\n';
+            tag_run2 = 0;
             continue;
         }
         if (c == '\n' || c == '\r') {
@@ -2545,7 +2571,8 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             i++;
             continue;
         }
-        if ((c == '\'' || c == '"') && (word_led2 || prop_word2) && !plain_open2) {
+        if ((c == '\'' || c == '"') && (word_led2 || prop_word2) && !plain_open2 &&
+            !(c == '\'' && tag_run2)) {
             /* the gate's mid-plain law again (the nightly's round 68) */
             quote = c;
             sub[o++] = (char)c;
@@ -2561,10 +2588,16 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             word_led2 = 0;
             saw_prop2 = 1;
             in_props_name2 = 1; /* the gate's '*' props-run law again */
+            if (c == '!') {
+                tag_run2 = 1;
+            }
         } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '-' || c == '?') {
             /* the gate's ':' law again (crash-7fe697be) */
             word_led2 = 1;
             prop_word2 = 0;
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                tag_run2 = 0; /* a separator ends the glued props run */
+            }
             if ((c == '-' || c == '?') && i + 1 < size && data[i + 1] != ' ' &&
                 data[i + 1] != '\t' && data[i + 1] != '\n' && data[i + 1] != '\r' && !plain_open2 &&
                 (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
@@ -2620,7 +2653,7 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             plain_open2 = 0;
             continue;
         }
-        if ((c == '&' || c == '*') && !plain_open2 && (node_pos2 || saw_prop2)) {
+        if ((c == '&' || c == '*') && !plain_open2 && (node_pos2 || saw_prop2) && !tag_run2) {
             /* the '*' twin of the '&' split (the round-54 alias-name
              * composition -- see the gate walk) */
             sub[o++] = (char)c;
