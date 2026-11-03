@@ -104,17 +104,20 @@ TEST(Validate, SeqMapTagsCheckTheNodeKind) {
     free_report(r);
 }
 
-TEST(Validate, JsonFamilyFlagsPlainNonProductionScalars) {
-    // spec 10.2.2: a plain scalar matching no JSON production is the
-    // Error row — under 12_JSON, not under 12_CORE (str default). The
-    // key is quoted so the VALUE diagnostic is the one observed.
+TEST(Validate, JsonFamilyResolvesPlainNonProductionScalarsAsStrings) {
+    // spec 10.2's example 10.8 resolves plain scalars matching no JSON
+    // production as STRINGS — keys ("A null", "Booleans") and values
+    // (the "Invalid" list: True/Null/0o7/0x3A/+12.3) alike. The table's
+    // "should consider them to be an error" note governs JSON-file
+    // processing warnings, not family validity; the walk's teeth are
+    // the string-key demand (next test) and explicit non-JSON tags.
     yeptris_validate_report* r = NULL;
-    const yeptris_diagnostic* d = validate_first("\"name\": hello\n", YEPTRIS_SCHEMA_12_JSON, &r);
-    ASSERT_NE(d, nullptr);
-    EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
-    EXPECT_STREQ(d->path, "/name");
+    ASSERT_EQ(yeptris_validate("\"name\": hello\n", strlen("\"name\": hello\n"),
+                               YEPTRIS_SCHEMA_12_JSON, &r),
+              YEPTRIS_OK);
     free_report(r);
 
+    // under 12_CORE this is the str default; same verdict
     r = NULL;
     ASSERT_EQ(
         yeptris_validate("name: hello\n", strlen("name: hello\n"), YEPTRIS_SCHEMA_12_CORE, &r),
@@ -128,12 +131,29 @@ TEST(Validate, JsonFamilyFlagsPlainNonProductionScalars) {
               YEPTRIS_OK);
     free_report(r);
 
-    // an unquoted plain KEY matches no production either (the Error row
-    // applies to keys): the key diagnostic rides the mapping's path
-    const yeptris_diagnostic* dk = validate_first("y: \"v\"\n", YEPTRIS_SCHEMA_12_JSON, &r);
-    ASSERT_NE(dk, nullptr);
-    EXPECT_EQ(dk->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
-    EXPECT_STREQ(dk->path, "");
+    // the family is still stricter than core where a production DOES
+    // match: 0o7 stays a string under 12_JSON (no radix production)
+    // while core resolves it int — the divergence is in resolution,
+    // not in a diagnostic
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("\"name\": [ 0o7, +12.3, True ]\n",
+                               strlen("\"name\": [ 0o7, +12.3, True ]\n"), YEPTRIS_SCHEMA_12_JSON,
+                               &r),
+              YEPTRIS_OK);
+    free_report(r);
+
+    // the spec's own 10.8 example document, verbatim shape: valid
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("A null: null\nBooleans: [ true, false ]\n"
+                               "Integers: [ 0, -0, 3, -19 ]\n"
+                               "Floats: [ 0., -0.0, 12e03, -2E+05 ]\n"
+                               "Invalid: [ True, Null, 0o7, 0x3A, +12.3 ]\n",
+                               strlen("A null: null\nBooleans: [ true, false ]\n"
+                                      "Integers: [ 0, -0, 3, -19 ]\n"
+                                      "Floats: [ 0., -0.0, 12e03, -2E+05 ]\n"
+                                      "Invalid: [ True, Null, 0o7, 0x3A, +12.3 ]\n"),
+                               YEPTRIS_SCHEMA_12_JSON, &r),
+              YEPTRIS_OK);
     free_report(r);
 }
 
@@ -156,9 +176,12 @@ TEST(Validate, JsonFamilyFlagsNonStringKeysButAcceptsStringOnes) {
     ASSERT_NE(d2, nullptr);
     EXPECT_EQ(d2->code, (uint32_t)YEPTRIS_DIAG_KEY_NOT_STRING);
     free_report(r);
-    const yeptris_diagnostic* d3 = validate_first("~: \"v\"\n", YEPTRIS_SCHEMA_12_JSON, &r);
-    ASSERT_NE(d3, nullptr);
-    EXPECT_EQ(d3->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE); /* ~ matches no production */
+    // `~` matches no JSON production: as a KEY that makes it a string
+    // (same example-10.8 law); only keys resolving to non-string
+    // productions fail
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("~: \"v\"\n", strlen("~: \"v\"\n"), YEPTRIS_SCHEMA_12_JSON, &r),
+              YEPTRIS_OK);
     free_report(r);
     const yeptris_diagnostic* d4 = validate_first("null: \"v\"\n", YEPTRIS_SCHEMA_12_JSON, &r);
     ASSERT_NE(d4, nullptr);
@@ -286,13 +309,12 @@ TEST(Validate, DuplicateKeysEnumerateEveryMiss) {
 
 TEST(Validate, StrictLaneResolvabilityPerFamily) {
     // the mission's named case: `0o7` is a CORE int production but
-    // matches no JSON production — the strict JSON lane rejects it,
-    // the core lane accepts it as the int it resolves to
+    // matches no JSON production — the strict JSON lane resolves it as
+    // the STRING it is (example 10.8), so the divergence from core is
+    // in RESOLUTION (core says int), not in a diagnostic
     yeptris_validate_report* r = NULL;
-    const yeptris_diagnostic* dj = validate_first("\"k\": 0o7\n", YEPTRIS_SCHEMA_12_JSON, &r);
-    ASSERT_NE(dj, nullptr);
-    EXPECT_EQ(dj->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
-    EXPECT_STREQ(dj->path, "/k");
+    ASSERT_EQ(yeptris_validate("\"k\": 0o7\n", strlen("\"k\": 0o7\n"), YEPTRIS_SCHEMA_12_JSON, &r),
+              YEPTRIS_OK);
     free_report(r);
 
     r = NULL;
@@ -300,11 +322,11 @@ TEST(Validate, StrictLaneResolvabilityPerFamily) {
               YEPTRIS_OK);
     free_report(r);
 
-    // hex: core-resolvable, no JSON production
+    // hex: same law — 12_JSON resolves it a string, core resolves int
     r = NULL;
-    const yeptris_diagnostic* dh = validate_first("\"k\": 0x1F\n", YEPTRIS_SCHEMA_12_JSON, &r);
-    ASSERT_NE(dh, nullptr);
-    EXPECT_EQ(dh->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
+    ASSERT_EQ(
+        yeptris_validate("\"k\": 0x1F\n", strlen("\"k\": 0x1F\n"), YEPTRIS_SCHEMA_12_JSON, &r),
+        YEPTRIS_OK);
     free_report(r);
 
     // the core lane's str default: `yes`/`no` are plain strings under
@@ -392,15 +414,25 @@ TEST(Validate, StreamDiagsCarryTheDocumentIndex) {
 }
 
 TEST(Validate, StreamsWithEmptyDocumentsAttributeThem) {
-    // the empty middle document is a plain empty scalar: clean under
-    // core, the Error row under the strict JSON family — and the miss
-    // is unpositioned (no line/col) but still attributed to document 1
+    // the empty middle document rides an explicit non-JSON tag here
+    // (implicit empty plains are strings under 12_JSON since example
+    // 10.8): the miss is unpositioned (no line/col) but still
+    // attributed to document 1
     yeptris_validate_report* r = NULL;
-    const yeptris_diagnostic* d = validate_first("--- 1\n---\n--- 3\n", YEPTRIS_SCHEMA_12_JSON, &r);
+    const yeptris_diagnostic* d =
+        validate_first("--- 1\n--- !!timestamp\n--- 3\n", YEPTRIS_SCHEMA_12_JSON, &r);
     ASSERT_NE(d, nullptr);
     EXPECT_EQ(d->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
     EXPECT_STREQ(d->path, "/1");
     EXPECT_EQ(d->line, (uint32_t)0);
+    free_report(r);
+
+    // the untagged empty document is a no-production plain scalar: a
+    // string under 12_JSON (example 10.8), clean under core
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("--- 1\n---\n--- 3\n", strlen("--- 1\n---\n--- 3\n"),
+                               YEPTRIS_SCHEMA_12_JSON, &r),
+              YEPTRIS_OK);
     free_report(r);
 
     r = NULL;
@@ -461,14 +493,13 @@ TEST(Validate, EmptyAndEdgeInputs) {
     EXPECT_EQ(yeptris_validate_report_count(r), (size_t)0);
     free_report(r);
 
-    // a bare `---` document is an empty plain scalar: fine under core,
-    // the Error row under the strict JSON family
+    // a bare `---` document is an empty plain scalar: a no-production
+    // plain is a string under BOTH families (example 10.8) — clean
     r = NULL;
     ASSERT_EQ(yeptris_validate("---\n", 4, YEPTRIS_SCHEMA_12_CORE, &r), YEPTRIS_OK);
     free_report(r);
-    const yeptris_diagnostic* de = validate_first("---\n", YEPTRIS_SCHEMA_12_JSON, &r);
-    ASSERT_NE(de, nullptr);
-    EXPECT_EQ(de->code, (uint32_t)YEPTRIS_DIAG_NON_JSON_TYPE);
+    r = NULL;
+    ASSERT_EQ(yeptris_validate("---\n", 4, YEPTRIS_SCHEMA_12_JSON, &r), YEPTRIS_OK);
     free_report(r);
 
     // NULL with a nonzero length is an argument error
