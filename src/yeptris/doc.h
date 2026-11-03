@@ -78,4 +78,9 @@ YeptrisStatus yep_parse_events(const char* buf, size_t len, YeptrisSchema schema
 }
 #endif
 
+/* The typing SSOT's one switch (parse.c owns it; the stream iterator
+ * and any future bytes->document route select through it too). */
+struct yep_resolver; /* resolve/resolver.h's fwd — doc.h stays leaf */
+const struct yep_resolver* resolver_for_schema(YeptrisSchema schema);
+
 #endif /* YEP_DOC_H */
