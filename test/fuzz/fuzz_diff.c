@@ -1036,6 +1036,87 @@ static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const cha
  * meaning-preserving) AND libyaml's reading of the rewrite must land
  * on that same dump (the divergence was exactly the law above). A run
  * that cannot be quoted ('"' or '\\' inside) declines. */
+/* The accept/accept verdict of the glued-?# family (the r115 nightly,
+ * crash-01361e26): with a continuation line after the run, libyaml's
+ * KEY-token-plus-comment-glue reading does not reject — it EMPTIES the
+ * key (the glued '#' opens a comment; the pair rides with a null key)
+ * while yeptris's suite-pinned plain-'?' law keeps the run as the key
+ * text. The quote-out transform cannot verify this variant (quoting
+ * freezes the fold, so the rewrite breaks the line structure in
+ * libyaml), so the claim is structural: the glued-?# marker at flow
+ * depth, both engines accepted, the event skeletons match line-for-
+ * line, and every differing pair is a yeptris '?'-led VAL against a
+ * libyaml EMPTY one — the emptied-key signature and nothing else. */
+static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const char* ydump,
+                                      const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size == 0 || size > 8192) {
+        return 0;
+    }
+    /* pass 1: the marker — a glued "?#" at flow depth, outside quotes */
+    int depth = 0;
+    int quote = 0;
+    int hits = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\') {
+                i++;
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            continue;
+        }
+        if (c == '\'') {
+            quote = '\'';
+        } else if (c == '"') {
+            quote = '"';
+        } else if (c == '[' || c == '{') {
+            depth++;
+        } else if (c == ']' || c == '}') {
+            depth--;
+        } else if (c == '?' && depth > 0 && i + 1 < size && data[i + 1] == '#') {
+            hits++;
+        }
+    }
+    if (hits == 0) {
+        return 0;
+    }
+    /* pass 2: line-wise walk of both dumps — same line count, and every
+     * difference is yeptris's "=VAL : ?..." against libyaml's "=VAL : "
+     * (the emptied key) */
+    const char* y = ydump;
+    const char* l = ldump;
+    int diffs = 0;
+    for (;;) {
+        const char* yn = strchr(y, '\n');
+        const char* ln = strchr(l, '\n');
+        size_t yl = yn != NULL ? (size_t)(yn - y) : strlen(y);
+        size_t ll = ln != NULL ? (size_t)(ln - l) : strlen(l);
+        if (yn == NULL && ln == NULL && yl == 0 && ll == 0) {
+            break; /* both exhausted: the skeletons matched throughout */
+        }
+        if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
+            /* a difference: the emptied-key shape or nothing */
+            const char* val_prefix = "=VAL : ";
+            const size_t vp = strlen(val_prefix);
+            int y_val = yl > vp && strncmp(y, val_prefix, vp) == 0;
+            int l_empty_val = strncmp(l, val_prefix, vp) == 0 && ll == vp;
+            if (!(y_val && l_empty_val && y[vp] == '?')) {
+                return 0;
+            }
+            diffs++;
+        }
+        if (yn == NULL || ln == NULL) {
+            break;
+        }
+        y = yn + 1;
+        l = ln + 1;
+    }
+    return diffs > 0;
+}
+
 static int yd_qflow_glued_hash_split(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL || size == 0 || size > 8192) {
         return 0;
@@ -3452,9 +3533,19 @@ static void probe_one(const uint8_t* data, size_t size) {
     /* the glued-comment x flow-'?' split ("{?#}", the PR #894 session's
      * second candidate): libyaml's KEY-token-plus-comment-glue reading
      * REJECTS what yeptris's suite-pinned plain-'?' law accepts — a
-     * documented split, classified by the quote-out transform */
-    if (!known && v == YD_YEPTRIS_ONLY) {
+     * documented split, classified by the quote-out transform. The
+     * r115 nightly crash-01361e26 caught the family's OTHER verdict:
+     * with a ` .:` continuation after the run, libyaml does not reject
+     * — it EMPTIES the key (the glued '#' opens a comment; the pair
+     * rides with a null key) — an accept/accept YD_DIFFER the old
+     * YEPTRIS_ONLY-only consult never reached. The quote-out transform
+     * classifies both verdicts: quoting the run reproduces yeptris's
+     * reading in BOTH engines. */
+    if (!known && (v == YD_YEPTRIS_ONLY || v == YD_DIFFER)) {
         known = yd_qflow_glued_hash_split(data, size, ydump);
+        if (!known && v == YD_DIFFER) {
+            known = yd_qflow_glued_hash_differ(data, size, ydump, ldump);
+        }
     }
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
