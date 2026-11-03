@@ -166,7 +166,8 @@ Dialects over one spine:
 | `JSON12` | JSON Schema draft 2020-12 subset (+ the 2020-12 reference / unevaluated / annotation sweep) | live — official suite: 1298 cases |
 | `CORE_12` / `JSON_FAMILY_12` | YAML 1.2 family lanes: explicit-tag consistency, canonical key uniqueness (every miss), 12_JSON string-key demand; core never flags untagged plains (#898) | live |
 | `FULL_12` | the spec 10.4 "other schema" family (#906 slice 3): core typing + RFC3339-era timestamps (spec 2.22's canonical/iso8601/spaced/date forms; PyYAML's timestamp regex as the practice oracle) + the merge/value words; explicit `!!timestamp` content family-checked; `!!binary` rides as passthrough | live |
-| tag-driven schemas | user tag → schema binding | reserved (#906 slice 4) |
+| tag-driven schemas | user tag → compiled-schema binding: the registry over the family walk; unregistered tags pass untouched (#906 slice 4) | live |
+| structured output | the report rendered to JSON Schema's published BASIC output shape (#906 slice 5) | live |
 
 - **Two routes, one fact core**: the DOM walk (`yeptris_validate`) and the
   event route (`yeptris_validate_stream`, #902) call the same fact cores;
