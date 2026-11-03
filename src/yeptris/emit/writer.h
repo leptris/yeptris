@@ -38,7 +38,12 @@ typedef struct yep_writer {
     const char* json_indent;                    /* json_pretty indent unit; NULL = 2 spaces */
     int json_indent_len;                        /* json_pretty unit byte length */
     int best_width;                             /* 13B: 0 = default 80; flow lines wrap after a
-                                                 * value past this width */
+                                                 * value past this width; with block_fold it is
+                                                 * also the block scalar fold column (#903) */
+    int indent;                                 /* #903: block indent per level (2..9, default
+                                                 * 2): nested map content and seq item columns */
+    int block_fold;                             /* #903: plain/quoted block scalars fold at
+                                                 * best_width (libyaml's plain-fold walk) */
     int col;                                    /* current output column (wr_* maintains) */
     const char* sv_input;                       /* compact-view decode bases (dom regions) */
     const char* sv_arena;
