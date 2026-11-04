@@ -574,6 +574,15 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/permuted-gray-r121.bin
     )
 
+    # the r122 nightly's seed (crash-b1d3d17a's sibling): a TRAILING
+    # NEL — a break at end-of-input is not a fold, so libyaml's dump
+    # drops it entirely where yeptris keeps the raw C2 85
+    add_test(
+        NAME fuzz-diff-r122-plain-nel-eof
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-eof-r122.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
