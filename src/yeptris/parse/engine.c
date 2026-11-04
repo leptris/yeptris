@@ -4335,6 +4335,13 @@ typedef struct yep_norm_ctx {
     unsigned char prev; /* the last consumed byte (valid when started):
                          * the '#' and line-start tests peek p[i - 1],
                          * which at a resumed buffer is carried state */
+    unsigned char bb;   /* the byte immediately before the last FOLDED
+                         * break (0 = not armed): the r133 law — a
+                         * tok_start armed by a fold whose before-break
+                         * byte was plain content is a continuation
+                         * line, and its "!<" must not open a verbatim
+                         * tag (cleared wherever an indicator arms the
+                         * slot instead) */
 } yep_norm_ctx;
 
 typedef struct yep_norm_tok {
@@ -4482,6 +4489,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         t.n = 2;
         t.fold_off = 0;
         t.fold_len = 2;
+        c->bb = (i > 0) ? (unsigned char)p[i - 1] : '\n';
         norm_break_arms(c);
         return t;
     }
@@ -4489,6 +4497,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         t.n = 3;
         t.fold_off = 0;
         t.fold_len = 3;
+        c->bb = (i > 0) ? (unsigned char)p[i - 1] : '\n';
         norm_break_arms(c);
         return t;
     }
@@ -4631,9 +4640,20 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
     if (c->tok_start) {
         c->at_break = 0; /* any content byte ends the line-start state */
         if (ch == '!' && i + 1 < len && p[i + 1] == '<') {
-            c->in_verbatim = 1;
-            t.n = 2;
-            return t;
+            /* the r133 law: a tok_start armed by a FOLDED break whose
+             * before-break byte was plain content is a continuation
+             * line — its "!<" is plain content, not props; only a
+             * new-node position (an indicator like ':' armed the slot)
+             * opens a verbatim tag. Unconditioned, the continuation's
+             * "!<" opened a phantom verbatim that swallowed the rest
+             * of the input: later NELs rode unnormalized and the plain
+             * fold emitted raw lead-stripped 0x85 into the value. */
+            int bb_plain = c->bb != 0 && !strchr("&*!-?:,[]{}#%'\"|> \t\n\r", c->bb);
+            if (!bb_plain) {
+                c->in_verbatim = 1;
+                t.n = 2;
+                return t;
+            }
         }
         c->word_led = (ch == '&' || ch == '*' || ch == '!' || ch == '-' || ch == '?' || ch == ':' ||
                        ch == ',' || ch == '[' || ch == '{' || ch == ']' || ch == '}');
@@ -4670,6 +4690,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
          * quote, the NormLsPs pins). */
         if (c->in_flow > 0) {
             c->tok_start = 1;
+            c->bb = 0; /* the slot was armed by an indicator, not a fold */
         }
     } else if (ch == ':') {
         /* the separator law (#833's own predicate): a ':' arms the
@@ -4680,9 +4701,11 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         if (i + 1 >= len || p[i + 1] == ' ' || p[i + 1] == '\t' || p[i + 1] == '\n' ||
             p[i + 1] == '\r') {
             c->tok_start = 1;
+            c->bb = 0; /* the slot was armed by an indicator, not a fold */
         }
     } else if (ch == ']' || ch == '}') {
         c->tok_start = 1;
+        c->bb = 0; /* the slot was armed by an indicator, not a fold */
     }
     return t;
 }
