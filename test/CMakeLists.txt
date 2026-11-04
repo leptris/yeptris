@@ -536,6 +536,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-split-r117.bin
     )
 
+    # the r118 nightly's seed (crash-8b31932e): NEL (U+0085) inside a
+    # plain scalar — libyaml (1.1) folds it to the break space, the
+    # 1.2 break set keeps it as raw content (the quoted twin is the
+    # round-47 carry; this is the plain shape)
+    add_test(
+        NAME fuzz-diff-r118-plain-nel-fold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-fold-r118.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
