@@ -683,6 +683,19 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-tail-anchored-key-r132.bin
     )
 
+    # the r133 nightly's seed (#951): a plain continuation line whose
+    # "!<" opened a PHANTOM verbatim tag in the break normalizer -- the
+    # tok_start armed by the folded NEL carried no memory of the
+    # before-break byte, so the continuation's "!<" read as props and
+    # every following NEL rode unnormalized (raw 0x85 into the scalar).
+    # The bb gate keys the open on the byte before the fold: plain
+    # content blocks it, an indicator (':') keeps it.
+    add_test(
+        NAME fuzz-diff-r133-phantom-verbatim
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-phantom-verbatim-r133.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
