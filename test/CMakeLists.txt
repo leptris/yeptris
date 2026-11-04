@@ -635,6 +635,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-lone-run-r128.bin
     )
 
+    # the r129 nightly's seed: a 2938-byte mutation soup (anchor-charset
+    # x tag-run x digit-run compositions, hundreds of splits) riding the
+    # EXACT-BYTES gray claim -- permutation beyond the transform caps is
+    # not soundly generalizable
+    add_test(
+        NAME fuzz-diff-r129-soup-gray
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r129.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
