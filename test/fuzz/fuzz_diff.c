@@ -1083,12 +1083,17 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
     if (hits == 0) {
         return 0;
     }
-    /* pass 2: line-wise walk of both dumps — same line count, and every
-     * difference is yeptris's "=VAL : ?..." against libyaml's "=VAL : "
-     * (the emptied key) */
+    /* pass 2: line-wise walk of both dumps — same skeleton, every
+     * difference is yeptris's "=VAL : ?..." against libyaml's
+     * "=VAL : " (the emptied key). The r116 tail composition adds a
+     * second shape: libyaml empties strictly MORE, so it may
+     * interleave EXTRA empty "=VAL : " lines the yeptris skeleton
+     * does not have (the streams re-align at the next real event) —
+     * skip those libyaml-only empties, never yeptris's lines. */
     const char* y = ydump;
     const char* l = ldump;
     int diffs = 0;
+    int skips = 0;
     for (;;) {
         const char* yn = strchr(y, '\n');
         const char* ln = strchr(l, '\n');
@@ -1097,16 +1102,51 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
         if (yn == NULL && ln == NULL && yl == 0 && ll == 0) {
             break; /* both exhausted: the skeletons matched throughout */
         }
+        const char* val_prefix = "=VAL : ";
+        const size_t vp = strlen(val_prefix);
+        int y_val = yl > vp && strncmp(y, val_prefix, vp) == 0;
+        int l_empty_val = strncmp(l, val_prefix, vp) == 0 && ll == vp;
         if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
-            /* a difference: the emptied-key shape or nothing */
-            const char* val_prefix = "=VAL : ";
-            const size_t vp = strlen(val_prefix);
-            int y_val = yl > vp && strncmp(y, val_prefix, vp) == 0;
-            int l_empty_val = strncmp(l, val_prefix, vp) == 0 && ll == vp;
-            if (!(y_val && l_empty_val && y[vp] == '?')) {
+            if (y_val && l_empty_val) {
+                /* the emptied-key pair: libyaml emptied the plain
+                 * yeptris kept (any content — the r116 family's keys
+                 * ride '?#'- and '+`'-shaped plains alike); pass 1
+                 * already pinned the glued-'?'# marker */
+                diffs++;
+            } else if (strncmp(y, val_prefix, vp) == 0 && yl == vp &&
+                       (strncmp(l, val_prefix, vp) == 0 || l[0] == '-')) {
+                /* a YEPTRIS-only extra EMPTY pair: yeptris's skeleton
+                 * carries one more empty member than libyaml's at the
+                 * tail composition (r116: yeptris parses a trailing
+                 * empty entry libyaml does not) — skip yeptris's,
+                 * never libyaml's */
+                if (++skips > 64) {
+                    return 0;
+                }
+                diffs++;
+                if (yn == NULL) {
+                    break;
+                }
+                y = yn + 1;
+                continue;
+            } else if (l_empty_val && (yl == 0 || strncmp(y, val_prefix, vp) == 0 || y[0] == '-')) {
+                /* a libyaml-only extra emptied pair: re-align on
+                 * libyaml's next line without consuming yeptris's */
+                if (++skips > 64) {
+                    return 0;
+                }
+                diffs++;
+                if (ln == NULL) {
+                    if (!(yl == 0 && yn == NULL)) {
+                        return 0; /* libyaml ended, yeptris still has lines */
+                    }
+                    break;
+                }
+                l = ln + 1;
+                continue;
+            } else {
                 return 0;
             }
-            diffs++;
         }
         if (yn == NULL || ln == NULL) {
             break;
