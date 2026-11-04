@@ -1378,6 +1378,53 @@ static int yd_nel_break_divergence(const uint8_t* data, size_t size, const char*
     return diffs > 0;
 }
 
+/* True when the difference is the plain-context NEL fold law (the
+ * r118 nightly's crash-8b31932e): libyaml (1.1) folds NEL (U+0085)
+ * to a fold space inside plain scalars while the 1.2 break set keeps
+ * it as raw content (C2 85) — the QUOTED twin was already carried
+ * (yd_nel_break_divergence); this is the plain shape. Same gate as
+ * the LS/PS plain family with byte set C2 85. */
+static int yd_dump_eq_mod_nel_fold(const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    const char* a = ydump;
+    const char* b = ldump;
+    int subs = 0;
+    while (*a != '\0' || *b != '\0') {
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 && b[0] == ' ') {
+            a += 2;
+            b += 1;
+            subs++;
+            continue;
+        }
+        if (*a != *b) {
+            return 0;
+        }
+        a++;
+        b++;
+    }
+    return subs > 0;
+}
+
+static int yd_plain_nel_fold_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                        const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    int has = 0;
+    for (size_t i = 0; i + 1 < size; i++) {
+        if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+            has = 1;
+            break;
+        }
+    }
+    if (!has) {
+        return 0;
+    }
+    return yd_dump_eq_mod_nel_fold(ydump, ldump);
+}
+
 static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL) {
         return 0;
@@ -3601,6 +3648,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_clip_breakless_divergence(data, size, ydump) ||
          yd_ps_space_divergence(data, size, ydump, ldump) ||
          yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
+         yd_plain_nel_fold_divergence(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
          yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
          yd_anchor_absorb_divergence(ydump, ldump) || yd_anchor_keymap_splice(ydump, ldump) ||
