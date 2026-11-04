@@ -547,9 +547,7 @@ if(YEPTRIS_LIBYAML_ROOT)
     )
 
     # the r119 nightly's mutated seed (crash-4aa4023b): RUNS of NEL —
-    # libyaml folds k>=2 consecutive NELs into ONE escaped break
-    # ("
-" in the dump) where yeptris keeps every raw C2 85
+    # libyaml folds k>=2 consecutive NELs into ONE escaped break (a backslash-n pair in the dump) while yeptris keeps every raw C2 85
     add_test(
         NAME fuzz-diff-r119-plain-nel-run
         COMMAND fuzz_diff
