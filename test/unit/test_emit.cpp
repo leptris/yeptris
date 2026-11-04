@@ -675,7 +675,7 @@ TEST(EmitJson, TypedValuesAreJsonValid937) {
         {"--- 0x1F\n", 1, "31"},
         {"--- 0o7\n", 1, "\"0o7\""}, /* 0o is not a compat form */
         {"--- 0b101\n", 1, "5"},
-        {"--- 01\n", 1, "1"},  /* compat spells leading-0 octal */
+        {"--- 01\n", 1, "1"}, /* compat spells leading-0 octal */
         {"--- 010\n", 1, "8"},
         {"--- 1_000\n", 1, "1000"},
         {"--- 1,000\n", 1, "1000"},
@@ -732,13 +732,12 @@ TEST(EmitCanonical, TypedValuesKeepYamlSpelling937) {
         int schema;
         const char* want;
     } cases[] = {
-        {"--- y\n", 1, "---\ntrue\n"},           /* was false */
-        {"--- yes\n", 1, "---\ntrue\n"},         /* was false */
-        {"--- on\n", 1, "---\ntrue\n"},          /* was false */
-        {"--- TRUE\n", 1, "---\ntrue\n"},
-        {"--- off\n", 1, "---\nfalse\n"},
-        {"--- 0x1F\n", 0, "---\n0x1F\n"},        /* YAML keeps the source spelling */
-        {"--- .inf\n", 0, "---\n.inf\n"},        /* YAML keeps the word */
+        {"--- y\n", 1, "---\ntrue\n"},   /* was false */
+        {"--- yes\n", 1, "---\ntrue\n"}, /* was false */
+        {"--- on\n", 1, "---\ntrue\n"},  /* was false */
+        {"--- TRUE\n", 1, "---\ntrue\n"}, {"--- off\n", 1, "---\nfalse\n"},
+        {"--- 0x1F\n", 0, "---\n0x1F\n"}, /* YAML keeps the source spelling */
+        {"--- .inf\n", 0, "---\n.inf\n"}, /* YAML keeps the word */
         {"--- true\n", 0, "---\ntrue\n"},
     };
     for (const auto& c : cases) {
@@ -769,7 +768,6 @@ TEST(EmitCanonical, TypedValuesKeepYamlSpelling937) {
         free(out2);
     }
 }
-
 
 TEST(EmitCanonical, OptionsVersioning) {
     yeptris_emit_options opts = {4, 1, 0, 0, 0, 0}; /* too small: the option fields are unread */
