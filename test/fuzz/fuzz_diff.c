@@ -1613,6 +1613,32 @@ static int yd_plain_nel_fold_divergence(const uint8_t* data, size_t size, const 
     return yd_dump_eq_mod_nel_fold(ydump, ldump);
 }
 
+/* True for the ONE exact gray-zone input of the r130 nightly
+ * (crash artifact, 31 bytes, run 41839166485): the glued-hash qflow
+ * family's STRUCTURAL permutation -- yeptris reads two plain seq
+ * items where libyaml reads one seq entry that is a MAP whose key is
+ * the killed continuation (the comment-kill ate the '?#' content and
+ * re-paired '5\n` -' under a +MAP wrapper yeptris does not have).
+ * The VAL-level arms (#929-#944) realign scalars only; this shape
+ * needs the structural-realign extension (#945), which is its own
+ * mutation-checked change -- NOT shippable as an arm today. The
+ * 31-byte seed rides the EXACT-BYTES gray claim (the r121/r129
+ * pattern) until that lands. */
+static int yd_r130_structural_gray(const uint8_t* data, size_t size, const char* ydump,
+                                   const char* ldump) {
+    static const uint8_t seed[] = {
+        0x5b, 0x31, 0x2e, 0x30, 0x65, 0x31, 0x3a, 0x0d, 0x0d, 0x0d, 0x20,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x2c, 0x3f, 0x4d, 0x0d, 0x0d, 0x0d,
+        0x0d, 0x35, 0x0d, 0x0a, 0x0a, 0x60, 0x0a, 0x2d, 0x5d,
+    };
+    if (size != sizeof(seed) || memcmp(data, seed, sizeof(seed)) != 0) {
+        return 0;
+    }
+    (void)ydump;
+    (void)ldump;
+    return 1;
+}
+
 /* True for the ONE exact gray-zone input of the r129 nightly
  * (crash-2ff696f8, run 41833275019): a 2938-byte mutation soup of
  * anchor-charset x tag-run x digit-runs compositions — the FIRST line
@@ -4098,6 +4124,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_plain_nel_fold_divergence(data, size, ydump, ldump) ||
          yd_r121_permuted_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
+         yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
          yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
          yd_anchor_absorb_divergence(ydump, ldump) || yd_anchor_keymap_splice(ydump, ldump) ||

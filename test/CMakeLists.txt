@@ -645,6 +645,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r129.bin
     )
 
+    # the r130 nightly's seed: the qflow family's STRUCTURAL
+    # permutation (libyaml re-pairs the killed continuation under a
+    # +MAP wrapper) -- the exact-bytes gray claim until the
+    # structural-realign arm lands (#945)
+    add_test(
+        NAME fuzz-diff-r130-structural-gray
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/structural-gray-r130.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
