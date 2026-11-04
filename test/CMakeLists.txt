@@ -729,6 +729,22 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-qbang-wrapper-r136.bin
     )
 
+    # the r137 nightly's seed: the r121 permutation family's TAIL
+    # COMPOSITION -- a 997-byte glued-'?' x glued-'#' x tag-URI x CR-run
+    # soup whose first ~31 members realign through the arm chain's
+    # bounded skips, then libyaml's comment-glue law eats every remaining
+    # '?#'-led member as a comment and CLOSES the map 28 pairs before
+    # yeptris (the suite-pinned plain-'?' law rides all 59 pairs to the
+    # '}'). A yeptris-only tail of any size would generalize member-count
+    # skew -- the exact signature of genuine member-drop bugs -- so the
+    # prefix-minimal artifact rides the EXACT-BYTES gray claim (the
+    # r121/r129 pattern), not an arm.
+    add_test(
+        NAME fuzz-diff-r137-soup-gray
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r137.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
