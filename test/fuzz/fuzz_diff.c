@@ -1105,7 +1105,9 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
         const char* val_prefix = "=VAL : ";
         const size_t vp = strlen(val_prefix);
         int y_val = yl > vp && strncmp(y, val_prefix, vp) == 0;
-        int l_empty_val = strncmp(l, val_prefix, vp) == 0 && ll == vp;
+        int l_val = strncmp(l, val_prefix, vp) == 0;
+        int l_empty_val = l_val && ll == vp;
+        int y_empty_val = strncmp(y, val_prefix, vp) == 0 && yl == vp;
         if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
             if (y_val && l_empty_val) {
                 /* the emptied-key pair: libyaml emptied the plain
@@ -1113,8 +1115,43 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                  * ride '?#'- and '+`'-shaped plains alike); pass 1
                  * already pinned the glued-'?'# marker */
                 diffs++;
-            } else if (strncmp(y, val_prefix, vp) == 0 && yl == vp &&
-                       (strncmp(l, val_prefix, vp) == 0 || l[0] == '-')) {
+            } else if (y_val && l_val && ll > vp && ll <= yl &&
+                       memcmp(y + (yl - (ll - vp)), l + vp, ll - vp) == 0) {
+                /* the SPLIT pair (r117): libyaml's glued-# comment-kill
+                 * splits a multi-line plain yeptris folds — its
+                 * continuation scalar's content is a SUFFIX of
+                 * yeptris's single folded scalar. Consume both; the
+                 * split shape is bounded (8 per stream). */
+                if (++skips > 8 + 64) {
+                    return 0;
+                }
+                diffs++;
+                if (yn == NULL || ln == NULL) {
+                    break;
+                }
+                y = yn + 1;
+                l = ln + 1;
+                continue;
+            } else if (l_val && (y_empty_val || yl == 0 || y[0] == '-')) {
+                /* an L-ONLY extra val of ANY content (r117): libyaml's
+                 * glued-# comment-kill SPLITS a plain yeptris folds —
+                 * the continuation line becomes its own scalar in
+                 * libyaml's reading. Skip libyaml's line; yeptris's
+                 * content/closer lines must still pair downstream
+                 * (content-vs-content differences still bail). */
+                if (++skips > 64) {
+                    return 0;
+                }
+                diffs++;
+                if (ln == NULL) {
+                    if (!(yl == 0 && yn == NULL)) {
+                        return 0;
+                    }
+                    break;
+                }
+                l = ln + 1;
+                continue;
+            } else if (y_empty_val && (l_val || l[0] == '-')) {
                 /* a YEPTRIS-only extra EMPTY pair: yeptris's skeleton
                  * carries one more empty member than libyaml's at the
                  * tail composition (r116: yeptris parses a trailing

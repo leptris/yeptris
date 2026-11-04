@@ -526,6 +526,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-differ-r116.bin
     )
 
+    # the r117 nightly's mutated seed (crash-383474ba): libyaml's
+    # glued-# comment-kill SPLITS a multi-line plain yeptris folds —
+    # the continuation line becomes its own scalar whose content is a
+    # suffix of yeptris's single folded scalar
+    add_test(
+        NAME fuzz-diff-r117-qflow-split
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-split-r117.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
