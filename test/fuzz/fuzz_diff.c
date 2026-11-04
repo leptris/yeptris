@@ -1151,6 +1151,23 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 }
                 l = ln + 1;
                 continue;
+            } else if (y_val && l[0] == '-') {
+                /* a YEPTRIS-only extra CONTENT member at the close
+                 * (r120): libyaml's comment-kill consumed the tail
+                 * entry ENTIRELY (no emptied key, straight to the
+                 * closer) while yeptris's suite-pinned plain-'?' law
+                 * keeps it as content — skip yeptris's line so the
+                 * closers re-align. Family-gated by pass 1; bounded
+                 * by the shared skip cap. */
+                if (++skips > 64) {
+                    return 0;
+                }
+                diffs++;
+                if (yn == NULL) {
+                    break;
+                }
+                y = yn + 1;
+                continue;
             } else if (y_empty_val && (l_val || l[0] == '-')) {
                 /* a YEPTRIS-only extra EMPTY pair: yeptris's skeleton
                  * carries one more empty member than libyaml's at the

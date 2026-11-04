@@ -554,6 +554,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-run-r119.bin
     )
 
+    # the r120 nightly's seed (crash-b1d3d17a): the glued-# family's
+    # tail-member shape — libyaml's comment-kill consumes the tail
+    # entry entirely (straight to the closer) while yeptris keeps it
+    # as content per the suite-pinned plain-'?' law
+    add_test(
+        NAME fuzz-diff-r120-qflow-tail-member
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-tail-member-r120.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
