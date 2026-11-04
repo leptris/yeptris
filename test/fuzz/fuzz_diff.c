@@ -2753,15 +2753,21 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                              data[i + 1] == '\n' || data[i + 1] == '\r')) {
                 plain_open = 0;             /* a key colon ends the riding plain */
                 coll_col = (int)line_first; /* the mapping's indent is the key's column */
-            } else if (c == ':' && flowd == 0 && !bs_open && i + 1 < size && data[i + 1] != ' ' &&
-                       data[i + 1] != '\t' && data[i + 1] != '\n' && data[i + 1] != '\r') {
+            } else if (c == ':' && flowd == 0 && !bs_open && !tag_run && i + 1 < size &&
+                       data[i + 1] != ' ' && data[i + 1] != '\t' && data[i + 1] != '\n' &&
+                       data[i + 1] != '\r') {
                 /* a colon-led plain opens here (the HM87 riding colon:
                  * "&k :`c ..." -- libyaml truncates the anchor at ':'
                  * and the residual ':`c {...' IS the plain). Without
                  * this the walk kept plain_open closed and a later
                  * mid-plain '&' rode as props -- the split corrupted
                  * the scalar's bytes and the carry declined its own
-                 * family (the nightly's round 51, crash-098e7549). */
+                 * family (the nightly's round 51, crash-098e7549).
+                 * NOT inside a !-led run: those bytes are tag-URI
+                 * content in both engines (r108) -- "!*a:'" glued a
+                 * plain that swallowed the next line's alias and the
+                 * carry declined its own family (the nightly's round
+                 * 123, crash-r123). */
                 plain_open = 1;
             }
             if (c != '-') {
@@ -3027,9 +3033,11 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                              data[i + 1] == '\n' || data[i + 1] == '\r')) {
                 plain_open2 = 0;
                 coll_col2 = (int)line_first2;
-            } else if (c == ':' && flowd2 == 0 && !bs_open2 && i + 1 < size && data[i + 1] != ' ' &&
-                       data[i + 1] != '\t' && data[i + 1] != '\n' && data[i + 1] != '\r') {
-                plain_open2 = 1; /* the gate's colon-led plain law again */
+            } else if (c == ':' && flowd2 == 0 && !bs_open2 && !tag_run2 && i + 1 < size &&
+                       data[i + 1] != ' ' && data[i + 1] != '\t' && data[i + 1] != '\n' &&
+                       data[i + 1] != '\r') {
+                plain_open2 = 1; /* the gate's colon-led plain law again
+                                    (the r123 !-run guard rides it) */
             }
             if (c != '-') {
                 only_dash2 = 0;

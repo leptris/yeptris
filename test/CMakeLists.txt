@@ -583,6 +583,17 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-eof-r122.bin
     )
 
+    # the r123 nightly's seed: a ':' inside a glued !-run is tag-URI
+    # content (r108) -- the colon-led plain law opened a phantom plain
+    # that swallowed the next line's alias, and the r54 alias-charset
+    # family's split never armed; the classifier now guards the law on
+    # tag_run (both walks) and the split reconciles the skeletons
+    add_test(
+        NAME fuzz-diff-r123-tag-run-colon
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/tag-run-colon-alias-r123.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
