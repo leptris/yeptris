@@ -615,6 +615,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-alias-realign-r125.bin
     )
 
+    # the r127 nightly's seed: the killed-content residue can be
+    # '#'-less (the kill sat on a later line of the composed plain) --
+    # the killed-key arm is content-agnostic; the skeleton must still
+    # fully re-align or the claim fails
+    add_test(
+        NAME fuzz-diff-r127-hash-killed-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-hash-killed-key-r127.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

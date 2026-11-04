@@ -1208,15 +1208,20 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 }
                 y = yn + 1;
                 continue;
-            } else if (y_val && l_val && memchr(y + vp, '#', yl - vp) != NULL) {
-                /* a YEPTRIS-only CONTENT val whose text carries the
-                 * glued '#' (r124): libyaml's comment-kill ate the run
-                 * ENTIRELY mid-stream (no emptied pair, no closer) —
-                 * its survived continuation pairs downstream; skip
-                 * yeptris's killed-content line (the r120 closer law,
-                 * mid-stream). Family-gated by pass 1; the '#' gate
-                 * keeps ordinary content-vs-content drifts bailing;
-                 * bounded by the shared skip cap. */
+            } else if (y_val && l_val) {
+                /* a YEPTRIS-only CONTENT val against libyaml's other
+                 * content (r124/r127): libyaml's comment-kill ate the
+                 * run ENTIRELY (no emptied pair survives) and its
+                 * survived continuation pairs downstream. The residue's
+                 * text can carry the glued '#' (r124: "?##|") or not
+                 * (r127: "`|" -- the kill sat on a LATER line of the
+                 * composed plain), so the arm is content-agnostic:
+                 * skip yeptris's killed-content line and let the walk
+                 * re-pair libyaml's line downstream. Family-gated by
+                 * pass 1; the claim only stands if the WHOLE skeleton
+                 * re-aligns (a leftover libyaml line fails it); the
+                 * more specific arms (suffix-split, emptied pairs)
+                 * still win first; bounded by the shared skip cap. */
                 if (++skips > 64) {
                     return 0;
                 }
