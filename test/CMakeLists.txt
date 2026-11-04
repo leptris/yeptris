@@ -714,6 +714,21 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-r135-qbang-twin.bin
     )
 
+    # the r136 nightly's seed: the glued-?! TAIL WRAPPER -- libyaml's
+    # flow-'?' KEY-token law fires on ANY follower, so the glued '?'
+    # opens an explicit-key map and the glued '!' rides as its invisible
+    # non-specific tag (the blanks after the fold carry it away); '-8'
+    # becomes the key, the value empty. yeptris's suite-pinned plain-'?'
+    # law keeps '?! -8' ONE plain scalar (the break folds). The pass-1
+    # marker now scores '?!' beside '?#'; the r130/r131 structural arm
+    # consumes the wrapper + banks the closer, the L-only vals and the
+    # empty VAL re-align -- the arm chain claimed it unchanged.
+    add_test(
+        NAME fuzz-diff-r136-qbang-wrapper
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-qbang-wrapper-r136.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
