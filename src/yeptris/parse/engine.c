@@ -149,6 +149,7 @@ struct yep_engine {
     uint32_t ev_buf_n, ev_buf_cap;
     uint32_t ev_scopes; /* active entry-buffer scopes */
     char* norm_buf;
+    size_t norm_buf_len; /* norm_buf's byte length (NULL when no copy) */
     unsigned char* enc_buf;
     /* owned UTF-16/32 transcode scratch (run-owned) */ /* owned input copy with exotic breaks
                                                            normalized */
@@ -4235,6 +4236,22 @@ yep_pool* yep_engine_detach_pool(yep_engine* e) {
     return p;
 }
 
+char* yep_engine_detach_norm_buf(yep_engine* e, size_t* len_out) {
+    if (e == NULL) {
+        if (len_out != NULL) {
+            *len_out = 0;
+        }
+        return NULL;
+    }
+    char* b = e->norm_buf;
+    if (len_out != NULL) {
+        *len_out = e->norm_buf_len;
+    }
+    e->norm_buf = NULL;
+    e->norm_buf_len = 0;
+    return b;
+}
+
 void yep_engine_prepare(yep_engine* e, const yep_text_stats* st) {
     if (e == NULL || st == NULL) {
         return;
@@ -4845,6 +4862,7 @@ static const char* e_normalize_breaks(yep_engine* e, const char* p, size_t len, 
         return p;
     }
     e->norm_buf = out;
+    e->norm_buf_len = out ? *out_len : 0;
     return out;
 }
 
@@ -5535,6 +5553,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     }
     yep_free(e->sys, e->norm_buf);
     e->norm_buf = NULL;
+    e->norm_buf_len = 0;
     /* enc_buf is NOT reset here: yep_engine_run's front-end may have
      * transcoded THIS call's input into it microseconds ago -- buf
      * points into it, and freeing it before the break-normalize scan
