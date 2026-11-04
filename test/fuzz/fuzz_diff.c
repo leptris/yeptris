@@ -1109,6 +1109,18 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
         int l_val = strncmp(l, val_prefix, vp) == 0;
         int l_empty_val = l_val && ll == vp;
         int y_empty_val = strncmp(y, val_prefix, vp) == 0 && yl == vp;
+        /* the shared-opener tell (r132, #949): when yeptris's next line
+         * IS libyaml's current '+'-line, that opener belongs to a member
+         * BOTH walks carry — only yeptris's killed VAL steps aside. Any
+         * other next line means a libyaml-only wrapper (the r130
+         * structural shape) and the arm below consumes both. */
+        int y_killed_shared_opener = 0;
+        if (y_val && l[0] == '+' && yn != NULL) {
+            const char* y2 = yn + 1;
+            const char* y2n = strchr(y2, '\n');
+            size_t y2l = y2n != NULL ? (size_t)(y2n - y2) : strlen(y2);
+            y_killed_shared_opener = (y2l == ll && memcmp(y2, l, y2l) == 0);
+        }
         if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
             if (y_val && l_empty_val) {
                 /* the emptied-key pair: libyaml emptied the plain
@@ -1151,6 +1163,22 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                     break;
                 }
                 l = ln + 1;
+                continue;
+            } else if (y_val && l[0] == '+' && y_killed_shared_opener) {
+                /* a SHARED-opener skip (r132, #949): libyaml's +MAP opens
+                 * the NEXT member both walks carry — yeptris's killed
+                 * '?#'-led entry was a scalar (the plain-'?' law keeps it
+                 * as content) while libyaml comment-killed the run and
+                 * moved on. Only yeptris's line is consumed; the opener
+                 * pairs with yeptris's own on the very next step. The
+                 * libyaml-ONLY wrapper (r130) takes the structural arm
+                 * below. Family-gated by pass 1; bounded by the shared
+                 * skip cap. */
+                if (++skips > 64) {
+                    return 0;
+                }
+                diffs++;
+                y = yn + 1;
                 continue;
             } else if (y_val && l[0] == '+') {
                 /* a STRUCTURAL realign (r130/r131, #945): libyaml's

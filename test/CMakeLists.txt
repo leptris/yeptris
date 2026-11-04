@@ -666,6 +666,23 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/structural-gray-r131.bin
     )
 
+    # the r132 nightly's seeds (#949): the glued-? x glued-# COMPOSITION
+    # -- the entry kill (libyaml comment-kills the ?#-led seq entry whose
+    # next member BOTH walks open; only yeptris's VAL steps aside via the
+    # shared-opener tell) and the tail wrapper (libyaml's glued-? opens
+    # an explicit-key map around the anchored-empty key, claimed by the
+    # structural arm). yeptris correct per the plain-'?' and kill laws.
+    add_test(
+        NAME fuzz-diff-r132-qcomp-shared-opener
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-shared-opener-r132.bin
+    )
+    add_test(
+        NAME fuzz-diff-r132-qcomp-tail-anchored-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-tail-anchored-key-r132.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
