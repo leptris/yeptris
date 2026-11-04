@@ -1392,9 +1392,25 @@ static int yd_dump_eq_mod_nel_fold(const char* ydump, const char* ldump) {
     const char* b = ldump;
     int subs = 0;
     while (*a != '\0' || *b != '\0') {
-        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 && b[0] == ' ') {
-            a += 2;
-            b += 1;
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 &&
+            (b[0] == ' ' || (b[0] == '\\' && b[1] == 'n'))) {
+            /* a RUN of k consecutive NELs in yeptris's raw-keeping
+             * dump maps to libyaml's single fold artifact: one space
+             * for k == 1, one escaped break "\n" for k >= 2 (the
+             * fold's empty-line collapse; the r119 mutated seed's
+             * doubled NELs) */
+            int k = 0;
+            while ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85) {
+                a += 2;
+                k++;
+            }
+            if (k == 1 && b[0] == ' ') {
+                b += 1;
+            } else if (b[0] == '\\' && b[1] == 'n') {
+                b += 2;
+            } else {
+                return 0;
+            }
             subs++;
             continue;
         }

@@ -546,6 +546,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-fold-r118.bin
     )
 
+    # the r119 nightly's mutated seed (crash-4aa4023b): RUNS of NEL —
+    # libyaml folds k>=2 consecutive NELs into ONE escaped break
+    # ("
+" in the dump) where yeptris keeps every raw C2 85
+    add_test(
+        NAME fuzz-diff-r119-plain-nel-run
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-run-r119.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
