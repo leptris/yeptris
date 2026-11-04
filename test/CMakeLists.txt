@@ -594,6 +594,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/tag-run-colon-alias-r123.bin
     )
 
+    # the r124 nightly's seed: the glued-# comment-kill ate the run
+    # ENTIRELY mid-stream (no emptied pair survives) -- yeptris's
+    # killed-content keys ride '#'-bearing vals the walk skips so the
+    # survived continuation re-pairs downstream
+    add_test(
+        NAME fuzz-diff-r124-hash-killed-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-hash-killed-key-r124.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

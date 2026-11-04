@@ -1168,6 +1168,24 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 }
                 y = yn + 1;
                 continue;
+            } else if (y_val && l_val && memchr(y + vp, '#', yl - vp) != NULL) {
+                /* a YEPTRIS-only CONTENT val whose text carries the
+                 * glued '#' (r124): libyaml's comment-kill ate the run
+                 * ENTIRELY mid-stream (no emptied pair, no closer) —
+                 * its survived continuation pairs downstream; skip
+                 * yeptris's killed-content line (the r120 closer law,
+                 * mid-stream). Family-gated by pass 1; the '#' gate
+                 * keeps ordinary content-vs-content drifts bailing;
+                 * bounded by the shared skip cap. */
+                if (++skips > 64) {
+                    return 0;
+                }
+                diffs++;
+                if (yn == NULL) {
+                    break;
+                }
+                y = yn + 1;
+                continue;
             } else if (y_empty_val && (l_val || l[0] == '-')) {
                 /* a YEPTRIS-only extra EMPTY pair: yeptris's skeleton
                  * carries one more empty member than libyaml's at the
