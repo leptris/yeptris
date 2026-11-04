@@ -539,7 +539,33 @@ static void emit_literal(yep_writer* w, const yep_dnode* n, int parent_col) {
 /* Canonical scalar (13B): typed words and numbers plain, everything
  * else double-quoted; floats re-print through the shortest printer so
  * canonical output is a fixed point (parse of canonical re-prints
- * identically — the byte-stability gate). */
+ * identically — the byte-stability gate). The DOM stores only the tag
+ * + source text, so the typed arms re-derive the VALUE from the
+ * resolver's own tables (#937): the bool table decides true/false
+ * (the old length guess spelled every non-4-char true-word false), the
+ * int decode spells JSON-unspellable forms (0x1F/0o7) in decimal, and
+ * the inf/nan words ride quoted in JSON mode (no JSON infinity). */
+static int json_int_token(const char* p, uint32_t n) {
+    /* the strict JSON int token: -?(0|[1-9][0-9]*) — leading zeros
+     * and a '+' are YAML-spellable but not JSON (those decode) */
+    uint32_t i = 0;
+    if (i < n && p[0] == '-') {
+        i = 1;
+    }
+    if (i >= n) {
+        return 0;
+    }
+    if (p[i] == '0') {
+        return i + 1 == n;
+    }
+    for (uint32_t k = i; k < n; k++) {
+        if (p[k] < '0' || p[k] > '9') {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
     yep_view vdec = wv(w, n->value);
     const char* p = (const char*)vdec.p;
@@ -553,17 +579,24 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
                 wr_put(w, "~", 1);
             }
             return;
-        case YEPTRIS_TAG_BOOL:
-            if (len == 4) { /* true/TRUE/True/null-ish variants */
-                wr_put(w, (p[0] == 't' || p[0] == 'T') ? "true" : "null", 4);
-            } else { /* false family (5 chars) */
-                wr_put(w, "false", 5);
+        case YEPTRIS_TAG_BOOL: {
+            int bv = yep_tag_bool_value(p, len);
+            if (bv < 0) {
+                break; /* not a bool word: quoted (the resolver only
+                          tags the table's words; defense) */
             }
+            wr_put(w, bv ? "true" : "false", bv ? 4u : 5u);
             return;
+        }
         case YEPTRIS_TAG_FLOAT: {
             const char* word = yep_tag_float_word(p, len);
             if (word != NULL) {
-                wr_put(w, word, (uint32_t)strlen(word));
+                uint32_t wl = (uint32_t)strlen(word);
+                if (w->json) {
+                    emit_dq_json(w, word, wl);
+                } else {
+                    wr_put(w, word, wl);
+                }
                 return;
             }
             char buf[40];
@@ -584,8 +617,23 @@ static void emit_canonical_scalar(yep_writer* w, const yep_dnode* n) {
             break; /* unparseable view: fall through to quoting */
         }
         case YEPTRIS_TAG_INT:
-            wr_put(w, p, len);
-            return;
+            if (!w->json || json_int_token(p, len)) {
+                /* YAML keeps the source text (stable, lossless); JSON
+                 * keeps JSON-number-shaped text (big ints stay exact) */
+                wr_put(w, p, len);
+                return;
+            }
+            {
+                int compat = w->resolver == yep_resolver_compat11();
+                int64_t v;
+                if (yep_tag_int64(p, len, compat, &v) == 0) {
+                    char buf[24];
+                    int nl = snprintf(buf, sizeof buf, "%lld", (long long)v);
+                    wr_put(w, buf, (uint32_t)nl);
+                    return;
+                }
+            }
+            break; /* undecodable int text: quoted keeps JSON valid */
         default:
             break;
         }

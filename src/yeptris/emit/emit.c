@@ -112,6 +112,7 @@ YEPTRIS_API size_t yeptris_serialize_into_ex(YeptrisDocument handle,
     em.w.col = 0;
     em.w.sv_input = handle ? ((const yeptris_document*)handle)->dom->input_base : NULL;
     em.w.sv_arena = handle ? ((const yeptris_document*)handle)->dom->str : NULL;
+    em.w.resolver = handle ? ((const yeptris_document*)handle)->dom->resolver : NULL;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -181,6 +182,7 @@ YEPTRIS_API size_t yeptris_serialize_into_trusted(YeptrisDocument handle,
     em.w.col = 0;
     em.w.sv_input = ((const yeptris_document*)handle)->dom->input_base;
     em.w.sv_arena = ((const yeptris_document*)handle)->dom->str;
+    em.w.resolver = ((const yeptris_document*)handle)->dom->resolver;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -249,6 +251,7 @@ YEPTRIS_API char* yeptris_serialize_ex(YeptrisDocument handle, const yeptris_emi
     em.w.col = 0;
     em.w.sv_input = handle ? ((const yeptris_document*)handle)->dom->input_base : NULL;
     em.w.sv_arena = handle ? ((const yeptris_document*)handle)->dom->str : NULL;
+    em.w.resolver = handle ? ((const yeptris_document*)handle)->dom->resolver : NULL;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -390,6 +393,7 @@ YEPTRIS_API char* yeptris_serialize_json(YeptrisDocument handle, size_t* len) {
     em.w.col = 0;
     em.w.sv_input = handle ? ((const yeptris_document*)handle)->dom->input_base : NULL;
     em.w.sv_arena = handle ? ((const yeptris_document*)handle)->dom->str : NULL;
+    em.w.resolver = handle ? ((const yeptris_document*)handle)->dom->resolver : NULL;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -434,6 +438,7 @@ YEPTRIS_API char* yeptris_serialize_json_ex(YeptrisDocument handle, size_t* len,
     em.w.col = 0;
     em.w.sv_input = handle ? ((const yeptris_document*)handle)->dom->input_base : NULL;
     em.w.sv_arena = handle ? ((const yeptris_document*)handle)->dom->str : NULL;
+    em.w.resolver = handle ? ((const yeptris_document*)handle)->dom->resolver : NULL;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -480,6 +485,7 @@ char* yep_serialize_json_compact(const yeptris_document* doc, size_t* len) {
     em.w.col = 0;
     em.w.sv_input = doc->dom->input_base;
     em.w.sv_arena = doc->dom->str;
+    em.w.resolver = doc->dom->resolver;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -528,6 +534,7 @@ char* yep_serialize_json_pretty_ex(const yeptris_document* doc, size_t* len, con
     em.w.col = 0;
     em.w.sv_input = doc->dom->input_base;
     em.w.sv_arena = doc->dom->str;
+    em.w.resolver = doc->dom->resolver;
     em.w.sink = NULL;
     em.w.watermark = 0;
     em.w.sink_aborted = 0;
@@ -604,6 +611,7 @@ YEPTRIS_API size_t yeptris_serialize_stream(YeptrisDocument handle,
     em.w.col = 0;
     em.w.sv_input = handle ? ((const yeptris_document*)handle)->dom->input_base : NULL;
     em.w.sv_arena = handle ? ((const yeptris_document*)handle)->dom->str : NULL;
+    em.w.resolver = handle ? ((const yeptris_document*)handle)->dom->resolver : NULL;
     em.w.sink = sink;
     em.w.sink_ctx = ctx;
     em.w.watermark = YEP_EMIT_WATERMARK;

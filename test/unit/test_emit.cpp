@@ -654,6 +654,123 @@ TEST(EmitJson, UnserializableCompactStaysNull) {
     yeptris_document_free(d);
 }
 
+TEST(EmitJson, TypedValuesAreJsonValid937) {
+    /* #937: the canonical JSON arm printed from tag_id + source text —
+     * core hex/octal ints kept their source spelling (not a JSON
+     * token), compat's 1/3/2-char true-words were length-guessed
+     * false, and the inf/nan words rode raw. Every frame the ts/py
+     * load doors JSON.parse must be valid JSON and value-true. */
+    struct {
+        const char* in;
+        int schema; /* 0 = 12_CORE, 1 = 11_COMPAT */
+        const char* want;
+    } cases[] = {
+        {"--- 0x1F\n", 0, "31"},
+        {"--- -0x10\n", 0, "-16"},
+        {"--- 0o7\n", 0, "7"},
+        {"--- 0b101\n", 0, "\"0b101\""}, /* 0b is not a core form: a string, quoted */
+        {"--- 01\n", 0, "1"},            /* core spells leading-0 decimal */
+        {"--- 010\n", 0, "10"},
+        {"--- +5\n", 0, "5"}, /* '+' is not a JSON token: decode */
+        {"--- 0x1F\n", 1, "31"},
+        {"--- 0o7\n", 1, "\"0o7\""}, /* 0o is not a compat form */
+        {"--- 0b101\n", 1, "5"},
+        {"--- 01\n", 1, "1"},  /* compat spells leading-0 octal */
+        {"--- 010\n", 1, "8"},
+        {"--- 1_000\n", 1, "1000"},
+        {"--- 1,000\n", 1, "1000"},
+        {"--- 1:30\n", 1, "90"}, /* sexagesimal */
+        {"--- .inf\n", 0, "\".inf\""},
+        {"--- -.Inf\n", 0, "\"-.inf\""},
+        {"--- .NAN\n", 0, "\".nan\""},
+        {"--- y\n", 1, "true"},
+        {"--- Y\n", 1, "true"},
+        {"--- yes\n", 1, "true"},
+        {"--- Yes\n", 1, "true"},
+        {"--- on\n", 1, "true"},
+        {"--- ON\n", 1, "true"},
+        {"--- n\n", 1, "false"},
+        {"--- no\n", 1, "false"},
+        {"--- off\n", 1, "false"},
+        {"--- OFF\n", 1, "false"},
+        {"--- true\n", 0, "true"},
+        {"--- FALSE\n", 0, "false"},
+        {"--- TRUE\n", 1, "true"},
+    };
+    for (const auto& c : cases) {
+        YeptrisParseOptions opts;
+        memset(&opts, 0, sizeof(opts));
+        opts.schema = (YeptrisSchema)c.schema;
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse_ex(c.in, strlen(c.in), &opts, &st);
+        ASSERT_NE(d, nullptr) << "input [" << c.in << "]";
+        size_t len = 0;
+        char* out = yeptris_serialize_json(d, &len);
+        yeptris_document_free(d);
+        ASSERT_NE(out, nullptr) << "input [" << c.in << "]";
+        EXPECT_EQ(std::string(out, len), c.want) << "input [" << c.in << "]";
+        /* the JSON shape is a fixed point: parse(json) re-emits */
+        YeptrisDocument d2 = yeptris_parse(out, len, &st);
+        ASSERT_NE(d2, nullptr) << "reparse [" << c.in << "]";
+        size_t len2 = 0;
+        char* out2 = yeptris_serialize_json(d2, &len2);
+        yeptris_document_free(d2);
+        ASSERT_NE(out2, nullptr);
+        EXPECT_EQ(std::string(out2, len2), c.want) << "reparse [" << c.in << "]";
+        free(out);
+        free(out2);
+    }
+}
+
+TEST(EmitCanonical, TypedValuesKeepYamlSpelling937) {
+    /* the YAML canonical route keeps its own laws: the bool VALUE is
+     * now correct (compat 'y' prints true — it was length-guessed
+     * false), while int source text and the inf/nan words stay
+     * (stable, lossless YAML spellings) */
+    struct {
+        const char* in;
+        int schema;
+        const char* want;
+    } cases[] = {
+        {"--- y\n", 1, "---\ntrue\n"},           /* was false */
+        {"--- yes\n", 1, "---\ntrue\n"},         /* was false */
+        {"--- on\n", 1, "---\ntrue\n"},          /* was false */
+        {"--- TRUE\n", 1, "---\ntrue\n"},
+        {"--- off\n", 1, "---\nfalse\n"},
+        {"--- 0x1F\n", 0, "---\n0x1F\n"},        /* YAML keeps the source spelling */
+        {"--- .inf\n", 0, "---\n.inf\n"},        /* YAML keeps the word */
+        {"--- true\n", 0, "---\ntrue\n"},
+    };
+    for (const auto& c : cases) {
+        YeptrisParseOptions opts;
+        memset(&opts, 0, sizeof(opts));
+        opts.schema = (YeptrisSchema)c.schema;
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument d = yeptris_parse_ex(c.in, strlen(c.in), &opts, &st);
+        ASSERT_NE(d, nullptr) << "input [" << c.in << "]";
+        yeptris_emit_options eopts;
+        memset(&eopts, 0, sizeof(eopts));
+        eopts.size = (uint32_t)sizeof(eopts);
+        eopts.canonical = 1;
+        size_t len = 0;
+        char* out = yeptris_serialize_ex(d, &eopts, &len);
+        yeptris_document_free(d);
+        ASSERT_NE(out, nullptr) << "input [" << c.in << "]";
+        EXPECT_EQ(std::string(out, len), c.want) << "input [" << c.in << "]";
+        /* the fixed point holds: canonical re-prints identically */
+        YeptrisDocument d2 = yeptris_parse_ex(out, len, &opts, &st);
+        ASSERT_NE(d2, nullptr) << "reparse [" << c.in << "]";
+        size_t len2 = 0;
+        char* out2 = yeptris_serialize_ex(d2, &eopts, &len2);
+        yeptris_document_free(d2);
+        ASSERT_NE(out2, nullptr);
+        EXPECT_EQ(std::string(out2, len2), c.want) << "reparse [" << c.in << "]";
+        free(out);
+        free(out2);
+    }
+}
+
+
 TEST(EmitCanonical, OptionsVersioning) {
     yeptris_emit_options opts = {4, 1, 0, 0, 0, 0}; /* too small: the option fields are unread */
     YeptrisStatus st = YEPTRIS_OK;
