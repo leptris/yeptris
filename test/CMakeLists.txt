@@ -514,6 +514,18 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-differ.bin
     )
 
+    # the r116 nightly's seed (crash-e55e36dc: the glued-?#/#| family
+    # with TAB-bearing plain keys — accept/accept-equal on NEON, a
+    # YD_DIFFER the classifiers do not claim on x86): the pin rides
+    # green where the engines agree and dumps both event streams
+    # (then aborts) where the AVX2 lane's verdict differs — the CI
+    # ubuntu legs are the referee for the platform-dependent carve.
+    add_test(
+        NAME fuzz-diff-r116-qflow-x86-differ
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-differ-r116.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
