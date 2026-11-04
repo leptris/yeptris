@@ -1472,23 +1472,82 @@ static int yd_dump_eq_mod_nel_fold(const char* ydump, const char* ldump) {
     const char* b = ldump;
     int subs = 0;
     while (*a != '\0' || *b != '\0') {
-        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 &&
-            (b[0] == ' ' || (b[0] == '\\' && b[1] == 'n'))) {
-            /* a RUN of k consecutive NELs in yeptris's raw-keeping
-             * dump maps to libyaml's single fold artifact: one space
-             * for k == 1, one escaped break "\n" for k >= 2 (the
-             * fold's empty-line collapse; the r119 mutated seed's
-             * doubled NELs) */
+        if ((unsigned char)a[0] == 0x85 && (a == ydump || (unsigned char)a[-1] < 0x80)) {
+            /* a LONE raw 0x85 byte (the r128 nightly's seed): not a
+             * UTF-8 continuation (the lead-byte guard — E3 85 9B's
+             * 0x85 rides its lead), so yeptris keeps it as the raw
+             * NEL spelling while libyaml's IS_BREAK treats it as a
+             * break and the fold eats the run ENTIRELY at these
+             * boundaries (the r122 EOF-vanish law, mid-stream) —
+             * skip yeptris's lone run, b unchanged */
+            int lone = 0;
+            while ((unsigned char)a[0] == 0x85) {
+                a++;
+                lone++;
+            }
+            subs += lone > 0 ? 1 : 0;
+            continue;
+        }
+        if (a[0] == '\\' && a[1] == 'N') {
+            /* a RUN of k escaped NELs in yeptris's dump maps to
+             * libyaml's fold artifact: one space for k == 1, (k-1)
+             * escaped breaks for k >= 2 (libyaml's 1.1 fold keeps
+             * N-1 literal breaks -- the r128 nightly's seed: lone raw
+             * 0x85 bytes and C2 85 pairs alike ride yeptris's \N
+             * escape, and the r119 walk under-consumed k>2 runs) */
             int k = 0;
-            while ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85) {
+            while (a[0] == '\\' && a[1] == 'N') {
                 a += 2;
                 k++;
             }
             if (k == 1 && b[0] == ' ') {
                 b += 1;
             } else if (b[0] == '\\' && b[1] == 'n') {
-                b += 2;
+                for (int e = 0; e < k - 1; e++) {
+                    if (b[0] == '\\' && b[1] == 'n') {
+                        b += 2;
+                    } else {
+                        return 0;
+                    }
+                }
             } else {
+                return 0;
+            }
+            subs++;
+            continue;
+        }
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85) {
+            /* a RUN of k consecutive NEL pairs in yeptris's dump maps
+             * to libyaml's fold artifact: one space for k == 1, (k-1)
+             * escaped breaks for k >= 2 (the fold's empty-line
+             * collapse; the r119 doubled seed, the r128 triple). NO
+             * artifact at all is the EOF law: a TRAILING pure-NEL run
+             * (or a run whose remainder matches byte-exact) vanishes
+             * — a break at the boundary is not a fold (r122). */
+            int k = 0;
+            const char* p = a;
+            while ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0x85) {
+                p += 2;
+                k++;
+            }
+            if (k == 1 && b[0] == ' ') {
+                b += 1;
+                a = p;
+            } else if (b[0] == '\\' && b[1] == 'n') {
+                for (int e = 0; e < k - 1; e++) {
+                    if (b[0] == '\\' && b[1] == 'n') {
+                        b += 2;
+                    } else {
+                        return 0;
+                    }
+                }
+                a = p;
+            } else {
+                /* the EOF/remainder law (r122): the run vanishes */
+                if (p[0] == '\0' || strcmp(p, b) == 0) {
+                    subs++;
+                    break;
+                }
                 return 0;
             }
             subs++;
@@ -1536,9 +1595,15 @@ static int yd_plain_nel_fold_divergence(const uint8_t* data, size_t size, const 
         return 0;
     }
     int has = 0;
-    for (size_t i = 0; i + 1 < size; i++) {
-        if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
-            has = 1;
+    for (size_t i = 0; i < size; i++) {
+        if (i + 1 < size && (unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+            has = 1; /* the UTF-8 NEL pair */
+            break;
+        }
+        if ((unsigned char)data[i] == 0x85 && (i == 0 || (unsigned char)data[i - 1] != 0xC2)) {
+            has = 1; /* a LONE raw 0x85 byte (the r128 nightly's seed:
+                      * yeptris treats it as the same break and its
+                      * emitter escapes both spellings as \N) */
             break;
         }
     }

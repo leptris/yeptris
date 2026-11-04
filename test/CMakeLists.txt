@@ -625,6 +625,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-hash-killed-key-r127.bin
     )
 
+    # the r128 nightly's seed: LONE raw 0x85 bytes (not C2 85 pairs)
+    # -- yeptris keeps them raw where libyaml's fold maps singles to
+    # spaces, k-runs to k-1 escaped breaks, and eats runs entirely at
+    # fold boundaries; the walk also under-consumed k>2 escaped runs
+    add_test(
+        NAME fuzz-diff-r128-nel-lone-run
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-lone-run-r128.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
