@@ -1084,12 +1084,22 @@ static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const cha
  * depth, both engines accepted, the event skeletons match line-for-
  * line, and every differing pair is a yeptris '?'-led VAL against a
  * libyaml EMPTY one — the emptied-key signature and nothing else. */
+/* The r136 nightly's tail wrapper: the GLUED pair is "?!" — libyaml's
+ * flow-'?' KEY-token law fires on ANY follower, so the '?' opens an
+ * explicit-key map and the glued '!' rides as its non-specific tag
+ * (invisible in the dump: the blanks after the fold carry it away);
+ * the continuation ("-8") becomes the KEY and the pair's value is
+ * empty. yeptris's suite-pinned plain-'?' law keeps "?!" ONE plain
+ * scalar (the \n folds). The structural arm (r130/r131) claims the
+ * wrapper, the L-only vals and the banked closer re-align. */
 static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const char* ydump,
                                       const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0 || size > 8192) {
         return 0;
     }
-    /* pass 1: the marker — a glued "?#" at flow depth, outside quotes */
+    /* pass 1: the marker — a glued "?#"/"?!" at flow depth, outside
+     * quotes (the r136 twin: libyaml's KEY-token law fires on ANY
+     * follower, so a glued '!' shapes the same explicit-key family) */
     int depth = 0;
     int quote = 0;
     int hits = 0;
@@ -1113,7 +1123,8 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
             depth++;
         } else if (c == ']' || c == '}') {
             depth--;
-        } else if (c == '?' && depth > 0 && i + 1 < size && data[i + 1] == '#') {
+        } else if (c == '?' && depth > 0 && i + 1 < size &&
+                   (data[i + 1] == '#' || data[i + 1] == '!')) {
             hits++;
         }
     }
