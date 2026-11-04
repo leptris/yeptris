@@ -1151,6 +1151,46 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 }
                 l = ln + 1;
                 continue;
+            } else if (y_val && l[0] == '=' && strncmp(l, "=ALI", 4) == 0) {
+                /* an ALIAS realign (r125): both skeletons carry the
+                 * alias at the same EVENT position, but yeptris's
+                 * suite-pinned plain-'?' law keeps extra '#'-bearing
+                 * pairs BEFORE it that libyaml's kill emptied away.
+                 * Skip yeptris's VALs until its own =ALI line; the two
+                 * alias lines must then match byte-exact (only VALs
+                 * may sit between; anything else bails). Family-gated
+                 * by pass 1; bounded by the shared skip cap. */
+                int skipped = 0;
+                for (;;) {
+                    if (++skips > 64 || skipped > 16) {
+                        return 0;
+                    }
+                    diffs++;
+                    if (yn == NULL) {
+                        return 0; /* yeptris ran out before its alias */
+                    }
+                    y = yn + 1;
+                    yn = strchr(y, '\n');
+                    yl = yn != NULL ? (size_t)(yn - y) : strlen(y);
+                    if (yl > 5 && strncmp(y, "=ALI ", 5) == 0) {
+                        break;
+                    }
+                    if (strncmp(y, val_prefix, vp) != 0) {
+                        return 0; /* only VALs (any content) may sit
+                                     before the alias */
+                    }
+                    skipped++;
+                }
+                /* the realigned alias pair must agree byte-exact */
+                if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
+                    return 0;
+                }
+                if (yn == NULL || ln == NULL) {
+                    break;
+                }
+                y = yn + 1;
+                l = ln + 1;
+                continue;
             } else if (y_val && l[0] == '-') {
                 /* a YEPTRIS-only extra CONTENT member at the close
                  * (r120): libyaml's comment-kill consumed the tail

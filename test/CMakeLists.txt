@@ -604,6 +604,17 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-hash-killed-key-r124.bin
     )
 
+    # the r125 nightly's seed: both skeletons carry the alias at the
+    # same EVENT position, but yeptris's plain-'?' pairs sit BEFORE it
+    # where libyaml's kill emptied them away -- the walk skips yeptris's
+    # VALs (VALs only) until its own =ALI line, which must match
+    # byte-exact
+    add_test(
+        NAME fuzz-diff-r125-alias-realign
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-alias-realign-r125.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
