@@ -1094,6 +1094,7 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
     const char* l = ldump;
     int diffs = 0;
     int skips = 0;
+    int struct_skips = 0; /* the structural permutation's owed closers */
     for (;;) {
         const char* yn = strchr(y, '\n');
         const char* ln = strchr(l, '\n');
@@ -1142,6 +1143,46 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 if (++skips > 64) {
                     return 0;
                 }
+                diffs++;
+                if (ln == NULL) {
+                    if (!(yl == 0 && yn == NULL)) {
+                        return 0;
+                    }
+                    break;
+                }
+                l = ln + 1;
+                continue;
+            } else if (y_val && l[0] == '+') {
+                /* a STRUCTURAL realign (r130/r131, #945): libyaml's
+                 * comment-kill ate the '?#' content and re-paired the
+                 * continuation as the key of a NEW collection it opens
+                 * where yeptris's plain-'?' law keeps seq items. Skip
+                 * yeptris's killed VAL and libyaml's opener line (pure
+                 * structure); the inner key then pairs via the suffix
+                 * rule, and the extra closer re-aligns at
+                 * struct_skips (below). Family-gated by pass 1;
+                 * bounded by the shared skip cap. */
+                if (++skips > 64) {
+                    return 0;
+                }
+                struct_skips++;
+                diffs += 2;
+                if (yn == NULL || ln == NULL) {
+                    return 0;
+                }
+                y = yn + 1;
+                l = ln + 1;
+                continue;
+            } else if (y[0] == '-' && l[0] == '-' && struct_skips > 0 &&
+                       strncmp(y, l, yl < ll ? yl : ll) != 0) {
+                /* the structural permutation's extra CLOSER: libyaml's
+                 * skipped opener owes one closer — consume libyaml's
+                 * line so the skeletons re-align. yeptris's closer is
+                 * NOT consumed (its collection closes later). */
+                if (++skips > 64) {
+                    return 0;
+                }
+                struct_skips--;
                 diffs++;
                 if (ln == NULL) {
                     if (!(yl == 0 && yn == NULL)) {

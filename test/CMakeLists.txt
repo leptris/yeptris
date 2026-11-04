@@ -655,6 +655,17 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/structural-gray-r130.bin
     )
 
+    # the r131 nightly's seed: a NEAR-TWIN of r130's structural shape
+    # (30 vs 31 bytes) -- the exact-bytes pattern bled per-mutation, so
+    # the STRUCTURAL-REALIGN ARM (#945) landed instead: skip yeptris's
+    # killed VAL + libyaml's opener line; the owed closer re-aligns at
+    # struct_skips
+    add_test(
+        NAME fuzz-diff-r131-structural-arm
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/structural-gray-r131.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
