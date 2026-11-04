@@ -6,6 +6,19 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **the stream iterator exposes its framing contract (#927, #921)** — the tolerant per-document iterator's slice offsets index the POST-GATE buffer space (a BOM strip, a UTF-16/32 transcode, or NEL/LS/PS normalization move the bytes into the iterator's owned copy), so hosts that materialize through their own value route need the pair together: `yeptris_stream_iter_slice` (added with the tolerant iterator) reports the last successful document's offset+length, and the two new accessors complete the contract — `yeptris_stream_iter_buffer` hands out the ACTIVE buffer those offsets index into (borrowed, valid until free; the caller's bytes when no gate rewrote them), and the slice accessor's contract is spelled on the header. The Python/Rust/TS drains copy frame bytes out of the buffer and re-parse them through their own drain: scanner-accurate frames, one typing SSOT, no DOM walk.
+
+### Fixed
+
+- **the comparator carries the nightly's two residual divergence families (#929–#935, rounds r116–r122)** — seven fuzz_diff artifacts, two families, all comparator-side (no engine bug found; yeptris correct per the suite-pinned plain-'?' law and the 1.2 break law):
+  - **the glued-`#` qflow family (r116/r117/r120, #929/#930/#933)** — libyaml's comment-kill at a glued `#` empties flow keys or splits values where yeptris keeps the run as content; `yd_qflow_glued_hash_differ` grew to the content-agnostic emptied-key pair, the suffix-verified SPLIT pair (capped 8 skips), the L-only val skip, the yeptris-only empty skip, and the yeptris-only content-member-at-closer skip under one shared 64-skip budget. The r121 permuted-member gray input rides as an EXACT-BYTES claim (#934) — the 120-byte seed is pinned verbatim because the permutation is not soundly generalizable.
+  - **the plain-NEL fold family (r118/r119/r122, #931/#932/#935)** — raw U+0085 breaks: libyaml (1.1) folds a single NEL to a space and keeps k≥2 runs as k-1 literal breaks where yeptris (1.2) folds all; `yd_dump_eq_mod_nel_fold` walks the input's NEL runs and aligns all three fold boundaries — the mid-content space, the run's one escaped break, and the EOF break that vanishes instead of folding.
+  - Each carry: bounded classifier rule + the decoded artifact and its minimal as corpus seeds + a ctest pin (r116–r122 all green, prior pins un-un-classified).
+
 ## [0.6.60] - 2026-11-03
 
 ### Added
