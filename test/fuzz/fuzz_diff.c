@@ -339,6 +339,43 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             j++;
             continue;
         }
+        /* the TAG-riding key twin (r135): libyaml's flow-'?' KEY token
+         * eats the '?' AND its props — a glued '!' tag plus the blanks
+         * after it ride NO dump byte (tags are invisible; the
+         * separator blanks fold away) — so its key content is
+         * yeptris's suite-pinned plain minus that leading run
+         * ("{?!\tx,-}" -> libyaml key "x", yeptris key "?!\tx"). The
+         * r135 soup pairs this shape BESIDE a pure '?' twin, and the
+         * composition declines the r58 drop-'?' rewrite's byte-strict
+         * verify, so the walk must pair it structurally. The consumed
+         * run's dump shape is bounded: '?' then '!'s, spaces and
+         * escaped blanks (tab/break) — anything else in the gap is
+         * NOT this family and declines. */
+        if (lens[i] >= 7 && strncmp(lines[i], "=VAL : ", 7) == 0 && ylens[j] > lens[i] &&
+            strncmp(ylines[j], "=VAL : ?", 8) == 0 &&
+            memcmp(ylines[j] + ylens[j] - (lens[i] - 7), lines[i] + 7, lens[i] - 7) == 0) {
+            size_t mlen = ylens[j] - lens[i]; /* the consumed run, dump bytes */
+            size_t mend = 7 + mlen;           /* one past the run */
+            int run_ok = 1;
+            for (size_t m = 8; m < mend; m++) {
+                char mc = ylines[j][m];
+                if (mc == '!' || mc == ' ') {
+                    continue;
+                }
+                if (mc == '\\' && m + 1 < mend &&
+                    (ylines[j][m + 1] == 't' || ylines[j][m + 1] == 'r' ||
+                     ylines[j][m + 1] == 'n')) {
+                    m++;
+                    continue;
+                }
+                run_ok = 0;
+                break;
+            }
+            if (run_ok) {
+                j++;
+                continue;
+            }
+        }
         /* the VALUE-position colon rider ("[?[] :b]", the nightly's
          * round 46): after an explicit key's value, libyaml consumes
          * the leading ':' of a plain-first ":b" as the pair separator

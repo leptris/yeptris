@@ -696,6 +696,24 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-phantom-verbatim-r133.bin
     )
 
+    # the r135 nightly's seeds: the flow-'?' KEY-token law's TAG-RIDING
+    # twin -- libyaml eats the '?' AND its glued '!' tag plus the blanks
+    # after it (none ride the dump), yeptris's suite-pinned plain keeps
+    # the whole run as key content; the soup pairs that shape beside a
+    # pure '?' twin, which declines the drop-'?' rewrite's byte-strict
+    # verify -- the qflow walk's bounded tag-riding arm ('?' then '!'s,
+    # spaces, escaped blanks; suffix-exact) carries both
+    add_test(
+        NAME fuzz-diff-r135-qbang-soup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-r135-qbang-soup.bin
+    )
+    add_test(
+        NAME fuzz-diff-r135-qbang-twin
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-r135-qbang-twin.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
