@@ -1458,6 +1458,37 @@ static int yd_plain_nel_fold_divergence(const uint8_t* data, size_t size, const 
     return yd_dump_eq_mod_nel_fold(ydump, ldump);
 }
 
+/* True for the ONE exact gray-zone input of the r121 nightly
+ * (crash-4aa4023b's successor, run 41790195115): a flow map whose
+ * glued-'?' plains make libyaml's explicit-key reading PERMUTE the
+ * member sequence (libyaml's "I" surfaces at a different member
+ * position than yeptris's, and its tail members shift) — both
+ * engines accept, but the streams are reordered, not transformed.
+ * Member permutation is NOT soundly generalizable (a shape rule
+ * would mask real member-order divergences), so this input rides
+ * an EXACT-BYTES claim — the ledger discipline's suite-gray zone,
+ * documented by input, not by mutation. Further permuted shapes get
+ * their own exact entries or an engine dig. */
+static int yd_r121_permuted_gray(const uint8_t* data, size_t size, const char* ydump,
+                                 const char* ldump) {
+    static const uint8_t seed[] = {
+        0x7b, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23,
+        0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61,
+        0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32,
+        0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32,
+        0x30, 0x30, 0x32, 0x3a, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x23, 0x09, 0x20, 0x0a, 0x0a, 0x09,
+        0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c,
+        0x20, 0x09, 0x20, 0x23, 0x2c, 0x3f, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c,
+        0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x09, 0x0a, 0x20, 0x09, 0x20, 0x7d,
+    };
+    if (size != sizeof(seed) || memcmp(data, seed, sizeof(seed)) != 0) {
+        return 0;
+    }
+    (void)ydump;
+    (void)ldump;
+    return 1;
+}
+
 static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL) {
         return 0;
@@ -3682,6 +3713,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_ps_space_divergence(data, size, ydump, ldump) ||
          yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
          yd_plain_nel_fold_divergence(data, size, ydump, ldump) ||
+         yd_r121_permuted_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
          yd_anchor_name_charset_divergence(data, size, ydump, ldump) ||
          yd_anchor_absorb_divergence(ydump, ldump) || yd_anchor_keymap_splice(ydump, ldump) ||

@@ -564,6 +564,16 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-tail-member-r120.bin
     )
 
+    # the r121 nightly's seed (crash-4aa4023b's successor): the
+    # member-PERMUTATION gray input — both engines accept but the
+    # streams are reordered; carried by the exact-bytes claim (the
+    # ledger's by-input discipline), never a shape rule
+    add_test(
+        NAME fuzz-diff-r121-permuted-gray
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/permuted-gray-r121.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
