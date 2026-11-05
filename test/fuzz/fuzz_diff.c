@@ -171,20 +171,53 @@ static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
     if (strcmp(stripped, ldump) == 0) {
         return 1;
     }
-    /* the value-vanishes twin (the nightly's crash-dbbc083c, two
-     * content BOMs): libyaml strips BOTH BOM bytes and emits an EMPTY
-     * stream, so the scalar line is GONE from its dump -- drop
-     * yeptris's whole scalar line too and compare. */
     const char* line = stripped + (size_t)(val - ydump);
     while (line > stripped && line[-1] != '\n') {
         line--; /* back to the scalar line's start */
     }
-    const char* lend = strchr(line, '\n');
-    if (lend == NULL) {
-        lend = line + strlen(line);
-    } else {
-        lend++;
+    const char* nl = strchr(line, '\n');
+    size_t linelen = nl ? (size_t)(nl - line) : strlen(line);
+    const char* lend = nl ? nl + 1 : line + linelen;
+    /* the anchored-key twin (the nightly's round 154, crash-97fad546,
+     * run 42115966505, main 2386dcf6): the content BOM rides INSIDE
+     * yeptris's KEY ("<BOM>&U:"), so the '&' that follows is plain
+     * CONTENT there -- while libyaml strips the column-0 BOM too (its
+     * scan_to_next_token skips a BOM at mark column 0: the
+     * encoding-mark law is not stream-position-bound), so its residual
+     * "&U" is an ANCHORED EMPTY SCALAR -- props, not content. The
+     * plain strip above cannot reach it: after the strip yeptris's
+     * line reads "=VAL : &U" (content) while libyaml's reads
+     * "=VAL : &U " (props + separator blank, empty value) -- and the
+     * line-start removal probes decline as well, because the BOM-less
+     * residual "&U:" is itself the r76 anchor-keymap shape (yeptris's
+     * 1.2 grammar rides the ':' into the anchor name; libyaml's 1.1
+     * set cuts at it and opens a map), so the removal is not pure.
+     * The composition claim: file yeptris's stripped residual into
+     * libyaml's prop form -- insert the one separator blank -- and
+     * compare. Fires only when the residual is a bare "&name" (one
+     * token, no blank in it), so the claim stays byte-pinned. */
+    if (linelen > 7 && line[7] == '&' && memchr(line + 7, ' ', linelen - 7) == NULL) {
+        char anchored[8192];
+        size_t ahead = (size_t)(line - stripped);
+        size_t atail = nl ? strlen(nl) : 0; /* from the line's break on */
+        if (ahead + linelen + 1 + atail + 1 < sizeof(anchored)) {
+            memcpy(anchored, stripped, ahead);
+            memcpy(anchored + ahead, line, linelen);
+            anchored[ahead + linelen] = ' '; /* the props separator blank */
+            if (nl != NULL) {
+                memcpy(anchored + ahead + linelen + 1, nl, atail + 1);
+            } else {
+                anchored[ahead + linelen + 1] = '\0';
+            }
+            if (strcmp(anchored, ldump) == 0) {
+                return 1;
+            }
+        }
     }
+    /* the value-vanishes twin (the nightly's crash-dbbc083c, two
+     * content BOMs): libyaml strips BOTH BOM bytes and emits an EMPTY
+     * stream, so the scalar line is GONE from its dump -- drop
+     * yeptris's whole scalar line too and compare. */
     char dropped[8192];
     size_t head2 = (size_t)(line - stripped);
     size_t tail = strlen(lend);
