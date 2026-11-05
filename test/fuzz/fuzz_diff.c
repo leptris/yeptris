@@ -1433,7 +1433,35 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                  * and the shared skip cap still bounds the total; a
                  * wrapper whose interior carries yeptris-unknown
                  * content declines (the KEY must be the killed
-                 * member's residue). */
+                 * member's residue).
+                 *
+                 * The r148 ANCHORED-KEY twin (crash-9b423bc7, run
+                 * 42043432048, main 99803f9a) declined that gate on a
+                 * rendering technicality: libyaml's comment-glue law
+                 * consumed the glued '?##' through the KEY token and
+                 * re-paired the pending KEY with the continuation's
+                 * ANCHOR — the wrapper's KEY event then renders
+                 * PROPS-ONLY ("=VAL : &m ": the anchor name rides the
+                 * props region, the value is empty), while yeptris's
+                 * plain-'?' law keeps "?## &m" ONE plain folded across
+                 * the break (the anchor spelling is mid-plain CONTENT
+                 * there). The suffix compare ran on the UNstripped
+                 * region and was shifted by exactly one byte: libyaml
+                 * "&m " (props + the render's separator blank) against
+                 * yeptris " &m" (fold space + the name), so the
+                 * legitimate shape declined and the walk died at the
+                 * second wrapper's opener. A plain-styled line cannot
+                 * end in a blank as content (plain scalars strip
+                 * trailing blanks), so a trailing blank marks the
+                 * render's separator and the region MINUS it is the
+                 * props — the same suffix/pairs_next compares ride the
+                 * stripped region. The prefix check pins the plain
+                 * style: a quoted key's content MAY end in a blank,
+                 * and there the region is content, not props. The
+                 * byte-exact residue gate is unchanged (the anchor
+                 * spelling must be yeptris's kept plain's tail); the
+                 * fixed four-line block, the !pairs_next guard and the
+                 * shared skip cap are unchanged. */
                 if (ll == 4 && memcmp(l, "+MAP", 4) == 0 && yn != NULL && ln != NULL) {
                     const char* l1 = ln + 1;
                     const char* l1n = strchr(l1, '\n');
@@ -1446,6 +1474,18 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                         l1l > vp && kl <= yl - vp && memcmp(y + yl - kl, l1 + vp, kl) == 0;
                     int pairs_next = y2l > vp && y2l - vp >= kl &&
                                      memcmp(y2 + (y2l - vp) - kl, l1 + vp, kl) == 0;
+                    if (!key_suffix && l1l > vp + 1 && memcmp(l1, val_prefix, vp) == 0 &&
+                        l1[l1l - 1] == ' ') {
+                        /* the r148 props-only KEY: the trailing blank
+                         * is the render's separator (a plain cannot
+                         * end in a blank); the props region rides the
+                         * same compares one byte shorter */
+                        size_t kp = kl - 1;
+                        key_suffix =
+                            kp > 0 && kp <= yl - vp && memcmp(y + yl - kp, l1 + vp, kp) == 0;
+                        pairs_next = y2l > vp && y2l - vp >= kp &&
+                                     memcmp(y2 + (y2l - vp) - kp, l1 + vp, kp) == 0;
+                    }
                     if (key_suffix && !pairs_next && l1n != NULL) {
                         const char* l2 = l1n + 1;
                         const char* l2n = strchr(l2, '\n');
