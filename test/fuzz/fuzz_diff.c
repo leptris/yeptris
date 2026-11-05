@@ -1314,6 +1314,67 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                  * rule, and the extra closer re-aligns at
                  * struct_skips (below). Family-gated by pass 1;
                  * bounded by the shared skip cap. */
+                /* The r143 WRAPPER RIDE (crash-d4f874ee.., run
+                 * 41975575045, main 531ad570): the r132 composition's
+                 * '+#'-bearing wrapper variant, DOUBLED. With '+' the
+                 * '#' no longer glues to the '?' ("?+#"), so libyaml's
+                 * post-'?'-token comment-glue never fires — but the
+                 * KEY-token law still opens an explicit-key wrapper
+                 * and the run rides INTO it as the KEY's REAL content
+                 * ("=VAL : +# &m-7"): the wrapper is a salvage block
+                 * (+MAP / content KEY / empty VAL / -MAP) per killed
+                 * member, where yeptris's plain-'?' law keeps the
+                 * member as one plain. When such wrappers DOUBLE, the
+                 * line-wise pairing dies: the structural arm consumes
+                 * member 1 + wrapper 1's opener, member 2 then pairs
+                 * against wrapper 1's KEY (the y-killed arm below) and
+                 * wrapper 2's opener finds yeptris's closer — no arm.
+                 * The ride claims the WHOLE wrapper when it is the
+                 * well-formed block — a bare "+MAP" opener, a content
+                 * KEY that is a non-empty SUFFIX of yeptris's killed
+                 * member (the run minus the leading '?'), an empty
+                 * "=VAL : " (the salvaged null), the bare "-MAP"
+                 * close — and the KEY does NOT suffix-pair yeptris's
+                 * next surviving member (that shape stays with the
+                 * r130 line-wise path and its suffix rule; the r132
+                 * comment-glue wrapper's KEY carries the fold-space
+                 * and never suffix-pairs, so it keeps the old path).
+                 * Bounded: the ride is the fixed four-line block (any
+                 * other shape declines into the line-wise arms below)
+                 * and the shared skip cap still bounds the total; a
+                 * wrapper whose interior carries yeptris-unknown
+                 * content declines (the KEY must be the killed
+                 * member's residue). */
+                if (ll == 4 && memcmp(l, "+MAP", 4) == 0 && yn != NULL && ln != NULL) {
+                    const char* l1 = ln + 1;
+                    const char* l1n = strchr(l1, '\n');
+                    const char* y2 = yn + 1;
+                    const char* y2n = strchr(y2, '\n');
+                    size_t l1l = l1n != NULL ? (size_t)(l1n - l1) : strlen(l1);
+                    size_t y2l = y2n != NULL ? (size_t)(y2n - y2) : strlen(y2);
+                    size_t kl = l1l > vp ? l1l - vp : 0;
+                    int key_suffix =
+                        l1l > vp && kl <= yl - vp && memcmp(y + yl - kl, l1 + vp, kl) == 0;
+                    int pairs_next = y2l > vp && y2l - vp >= kl &&
+                                     memcmp(y2 + (y2l - vp) - kl, l1 + vp, kl) == 0;
+                    if (key_suffix && !pairs_next && l1n != NULL) {
+                        const char* l2 = l1n + 1;
+                        const char* l2n = strchr(l2, '\n');
+                        size_t l2l = l2n != NULL ? (size_t)(l2n - l2) : strlen(l2);
+                        const char* l3 = l2n != NULL ? l2n + 1 : l2 + l2l;
+                        if (l2l == vp && memcmp(l2, val_prefix, vp) == 0 &&
+                            memcmp(l3, "-MAP", 4) == 0 && (l3[4] == '\n' || l3[4] == '\0')) {
+                            skips += 3;
+                            if (skips > 64) {
+                                return 0;
+                            }
+                            diffs += 5;
+                            y = yn + 1;
+                            l = l3[4] == '\0' ? l3 + 4 : l3 + 5;
+                            continue;
+                        }
+                    }
+                }
                 if (++skips > 64) {
                     return 0;
                 }

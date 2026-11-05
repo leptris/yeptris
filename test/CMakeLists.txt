@@ -859,6 +859,29 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-tail-r142.bin
     )
 
+    # the r143 nightly's seed (crash-d4f874ee.., run 41975575045, main
+    # 531ad570): the r132 composition's '+#'-bearing wrapper variant,
+    # DOUBLED ("?+#\r\n&m-7" and "?+#\r\n&m-"). With '+' the '#' no
+    # longer glues to the '?' -- libyaml's post-'?'-token comment-glue
+    # never fires, but its KEY-token law still opens an explicit-key
+    # wrapper whose KEY carries the run as REAL content ("=VAL : +#
+    # &m-7") -- a salvage block (+MAP / content KEY / empty VAL / -MAP)
+    # per killed member where yeptris's suite-pinned plain-'?' law keeps
+    # one plain. DOUBLED, the line-wise pairing dies (member 2 pairs
+    # against wrapper 1's KEY; wrapper 2's opener finds yeptris's
+    # closer). The structural arm's WRAPPER RIDE claims the well-formed
+    # block when its KEY is a non-empty suffix of yeptris's killed
+    # member and does not suffix-pair the next surviving member (the
+    # r130 suffix-pair shape keeps the line-wise path; the r132
+    # comment-glue KEY carries a fold-space and never suffixes).
+    # Bounded: the fixed four-line block, shared skip cap;
+    # prefix-minimal at the full 82 bytes.
+    add_test(
+        NAME fuzz-diff-r143-qplus-wrapper
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-qplus-wrapper-r143.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
