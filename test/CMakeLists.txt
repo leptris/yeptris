@@ -882,6 +882,27 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-qplus-wrapper-r143.bin
     )
 
+    # the r144 nightly's seed (crash-fe4ea5a7, run 41995393016, main
+    # 21088fcb): the soup family's ALIAS-SWALLOW RE-PAIRING -- libyaml's
+    # comment-glue swallows the killed members THROUGH the "\t*L:"
+    # alias-bearing explicit-key head and RE-PAIRS the pending KEY token
+    # with the next content ("( `", the swallowed member's VALUE), so
+    # yeptris's "=ALI *L" event has no counterpart AT ITS POSITION while
+    # the same alias line rides libyaml's dump LATER (the second "\t*L:"
+    # member) -- pair ordering/re-pairing, not the member-count skew the
+    # r138-r141 exact-bytes claims carry (those shapes have NO libyaml
+    # alias at all). The r125 alias-realign arm spends libyaml's twin on
+    # yeptris's FIRST alias, leaving the second unexplained against the
+    # re-paired content; the ALIAS-SWALLOW RESIDUE arm rides it gated on
+    # the alias surviving libyaml's dump elsewhere (a genuine alias-drop
+    # declines and still aborts). Family-gated (glued ?#), bounded by the
+    # shared skip cap; prefix-minimal at the full 36 bytes.
+    add_test(
+        NAME fuzz-diff-r144-alias-repair
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-alias-r144.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
