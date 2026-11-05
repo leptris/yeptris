@@ -1049,6 +1049,41 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-repaired-key-r149.bin
     )
 
+    # the r150 nightly's seed (crash-4d640bc4, run 42072059847, main
+    # b4d6671f): the soup family interleaving the glue members with
+    # plain fold runs mixing LS/PS (U+2029) into the LF/CR breaks
+    # ("?\r/\n\r\r<PS> 50:" keys). yeptris is suite-correct on both
+    # families — the plain-'?' law keeps the glued '?##'-led members
+    # (the r132-r149 arm chain), and the #638 b-char algebra folds the
+    # PS into the break run where libyaml's READ_LINE joins the raw
+    # triple as content (the r104 forced ADDITIVE form: libyaml's
+    # scalar is yeptris's with the raw triple INSERTED, "/\n\n50" vs
+    # "/\n\n<PS>50"). But the glue walk had no arm for the fold pair
+    # and brute-forced past it with the generic content-agnostic skips
+    # — FOUR shared-cap skips per site (yeptris's key, its surviving
+    # value, both of libyaml's lines) — and this soup's 6 fold sites +
+    # 10 glue members burned 66 skips past the fixed 64, the walk dying
+    # at the second-to-last wrapper's opener with every difference
+    # law-explained. The LS/PS-fold PAIR arm now consumes both lines as
+    # ONE paired diff (the emptied-key arm's pattern: both pointers
+    # advance, bounded by construction, no cap needed) under the
+    # byte-exact +3-length relation with the triple pinned by memcmp —
+    # no wildcards; the family gate (pass 1) and the full-exhaustion
+    # claim law are unchanged. The structure-tail negative (",?#z: {q:
+    # 1}" spliced mid-stream) still aborts — post-fix the walk declines
+    # at the spliced member itself (skips=2, a DECLINE, not the cap).
+    # Post-fix the battery converges: 30 mutants (20 single-byte flips
+    # + 10 multi-byte ins/sub/del), 0 DIFFER-aborts (10 pre-fix DIFFERs
+    # all classify; the 20 raw-byte YEPTRIS-ONLY-ACCEPTs are the
+    # suite-gray libyaml-rejects family, pre/post identical). The
+    # 269-file corpus walk is byte-identical pre/post (30 historical
+    # aborts).
+    add_test(
+        NAME fuzz-diff-r150-lsps-fold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-lsps-fold-r150.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
