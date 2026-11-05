@@ -1112,6 +1112,52 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-lsps-fold-r150.bin
     )
 
+    # the r152 nightly's seed (crash-6689bee7, run 42095444821, main
+    # 115ac2de): the soup family's RE-PAIRED-VALUE composition -- a
+    # 66-byte doubled flow-map soup ("{?#?,`|,% \n:\t{" ... "}") whose
+    # nested map hangs on member 3 in yeptris's reading and on the
+    # EMPTIED member 1 in libyaml's. yeptris's suite-pinned plain-'?'
+    # law keeps every glued-'?' run as content: member 1 "?#?" + empty
+    # value, member 2 "`|" + empty, member 3 "%" whose VALUE is the
+    # nested map, then ":#|G" and "<" pairs -- 22 event lines. libyaml's
+    # comment-glue law (the flow-'?' KEY token fires on ANY follower;
+    # the post-token skip eats a glued '#' as a comment to the break)
+    # empties the killed run THROUGH the key token and RE-PAIRES the
+    # pending KEY with the member's nested flow map -- the r148/r149
+    # re-pairing law on the VALUE side: its member 1 renders as the
+    # emptied key with the nested +MAP as its VALUE -- 16 event lines.
+    # The walk's emptied-key arm pairs member 1's key, and the first
+    # unexplained state is yeptris's EMPTY value line against libyaml's
+    # +MAP: the r132 shared-opener arm demands y_val (the residue's
+    # current line is empty, yl == vp exactly), the r130 structural arm
+    # consumes libyaml's opener WITH yeptris's line (the inner bodies
+    # then mis-pair -- yeptris's own +MAP grazes a libyaml VAL and no
+    # arm fires), and the r116 extra-empty arm declines on l[0] == '+'.
+    # The RE-PAIRED-VALUE ride carries it: yeptris's kept residue VALs
+    # (the current line plus up to 15 further =VAL lines; only kept
+    # -content scalars may sit between -- a structure line or an =ALI
+    # in the run declines, the r144 survival gate stays the alias's
+    # only path) step aside until yeptris's OWN byte-exact copy of
+    # libyaml's 4-byte opener; libyaml's opener is NOT consumed -- the
+    # twin pairs as an equal line, the inner bodies pair through the
+    # existing arms, and the maps' closers pair 1:1 (no struct_skips
+    # owed; a nesting skew surfaces as an unexplained closer and
+    # bails). Family-gated by pass 1 (the glued ?# marker); bounded by
+    # the per-site run cap (16, the r125 alias arm's precedent) and the
+    # shared skip cap; the claim stands only on full exhaustion (the
+    # walk's law). The prefix bisect found no shorter diverging cut
+    # (the artifact is prefix-minimal at 66 bytes). Post-fix the battery
+    # converges: 30 mutants (20 single-byte flips + 10 multi-byte
+    # ins/sub/del) -- 15 classify green, 15 are the suite-gray
+    # YEPTRIS-ONLY-ACCEPT family, pre/post byte-identical -- and the
+    # 271-file corpus walk is byte-identical pre/post (30 historical
+    # aborts).
+    add_test(
+        NAME fuzz-diff-r152-repaired-value
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-repaired-value-r152.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
