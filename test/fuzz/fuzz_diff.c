@@ -2738,6 +2738,59 @@ static int yd_r141_soup_gray(const uint8_t* data, size_t size, const char* ydump
     return 1;
 }
 
+/* True for the ONE exact gray-zone input of the r151 nightly
+ * (crash-a3c7e5d7, run 42085146127, main 3e7bedf1): a 65-byte flow-map
+ * soup -- the r138 soup's ONE-BYTE-DELETION SIBLING (the pinned seed's
+ * first member drops its second '?', so the head plain reads
+ * "?##|#|+`" instead of "?#?#|#|+`"; every other byte identical). The
+ * r138 mutation battery flipped bytes; a DELETION inside the doubled
+ * '?' head was outside its neighborhood, and the exact-bytes r138
+ * claim is byte-scoped, so the mutant re-aborted. Both engines accept;
+ * the streams differ beyond every arm's reach. yeptris's suite-pinned
+ * plain-'?' law (HM87/652Z) keeps every run as content and the "\t*L"
+ * as an ALIAS event -- 8 pairs (seven VAL-keyed, one ALI-keyed) ride
+ * to the closing '}'. libyaml's comment-glue law (the flow-'?' KEY
+ * token fires on ANY follower and the post-token skip eats a glued
+ * '#' as a comment to the break, with no preceding-whitespace
+ * requirement) empties every member but the final '<' -- 4 pairs
+ * (seven empties around the '<') -- and its SECOND run's comment
+ * swallows the "\t*L:" explicit key THROUGH the alias: yeptris emits
+ * an =ALI event libyaml has no counterpart for at all. The walk's
+ * emptied-key arm pairs members 1-3 one-to-one (their value lines
+ * pair as equals), then the first unexplained line is yeptris's
+ * "=ALI *L" against libyaml's "=VAL : <" -- mid-stream, so the r142
+ * terminal-tail arm never reaches (its gate demands libyaml's
+ * closers-only remainder), and the r144 residue arm declines (its
+ * survival gate demands the alias line ride libyaml's dump ELSEWHERE;
+ * here the comment-glue swallowed it entirely). An 'yeptris =ALI vs
+ * libyaml anything' arm would mask genuine alias-drop bugs (an
+ * event-kind divergence, not content), and every completing skeleton
+ * composition needs a 9-line yeptris-only tail AFTER libyaml's '-MAP'
+ * closes -- member-count skew, the exact signature of genuine
+ * member-drop bugs the r137/r138 verdicts ruled unsound to generalize
+ * and the r144 verdict re-affirmed ("the r138-r141 shapes carry NO
+ * libyaml alias at all and keep their exact-bytes claims"). The
+ * bisect over every prefix found no shorter diverging cut (the
+ * artifact is prefix-minimal at 65 bytes), so the input rides the
+ * EXACT-BYTES gray claim -- the ledger discipline's suite-gray zone,
+ * documented by input, not by mutation. Further alias-swallow shapes
+ * get their own entries or an engine dig. */
+static int yd_r151_soup_gray(const uint8_t* data, size_t size, const char* ydump,
+                             const char* ldump) {
+    static const uint8_t seed[] = {0x7b, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09,
+                                   0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c,
+                                   0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a, 0x4c, 0x3a, 0x09, 0x20,
+                                   0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x0a, 0x3a,
+                                   0x09, 0x20, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c, 0x2b,
+                                   0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    if (size != sizeof(seed) || memcmp(data, seed, sizeof(seed)) != 0) {
+        return 0;
+    }
+    (void)ydump;
+    (void)ldump;
+    return 1;
+}
+
 static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL) {
         return 0;
@@ -4976,6 +5029,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r139_soup_gray(data, size, ydump, ldump) ||
          yd_r140_soup_gray(data, size, ydump, ldump) ||
          yd_r141_soup_gray(data, size, ydump, ldump) ||
+         yd_r151_soup_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||

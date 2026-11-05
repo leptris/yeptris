@@ -839,6 +839,34 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r141.bin
     )
 
+    # the r151 nightly's seed (crash-a3c7e5d7, run 42085146127, main
+    # 3e7bedf1): the alias-swallow TAIL COMPOSITION's ONE-BYTE-DELETION
+    # SIBLING -- the r138 soup with the first member's second '?' dropped
+    # ("?#?#|#|+`" -> "?##|#|+`"), 65 bytes, every other byte identical
+    # (the r138 battery flipped bytes; a DELETION inside the doubled '?'
+    # head sat outside its neighborhood). yeptris's suite-pinned plain-'?'
+    # law rides 8 pairs (one ALI-keyed) to the '}'; libyaml's comment-glue
+    # law empties every member but the final '<' -- 4 pairs -- and swallows
+    # the "\t*L:" explicit key THROUGH the alias, so yeptris's '=ALI *L'
+    # has NO libyaml counterpart at all. The walk's emptied-key arm pairs
+    # members 1-3 one-to-one, then dies mid-stream at yeptris's '=ALI *L'
+    # against libyaml's '=VAL : <': the r142 terminal-tail arm never
+    # reaches (libyaml still rides '<'), the r144 residue arm declines
+    # (the alias survives NOWHERE in libyaml's dump), and an 'yeptris =ALI
+    # vs libyaml anything' arm would mask genuine alias-drop bugs while
+    # every completing skeleton composition needs a yeptris-only tail
+    # after libyaml's '-MAP' closes (member-count skew -- the exact
+    # signature of genuine member-drop bugs, ruled unsound to generalize
+    # by the r137/r138 verdicts and re-affirmed by r144). The bisect over
+    # every prefix found no shorter diverging cut; the prefix-minimal
+    # artifact rides the EXACT-BYTES gray claim (the
+    # r121/r129/r137/r138/r139/r140/r141 pattern), not an arm.
+    add_test(
+        NAME fuzz-diff-r151-soup-gray
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r151.bin
+    )
+
     # the r142 nightly's seed (crash-9c3fb9f1, run 41961599250, main
     # 68f74daa): the soup family's TERMINAL TAIL COMPOSITION -- the walk
     # dies only on the yeptris-only tail once libyaml's skeleton is
