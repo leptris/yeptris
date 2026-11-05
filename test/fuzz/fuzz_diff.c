@@ -1092,6 +1092,81 @@ static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const cha
  * empty. yeptris's suite-pinned plain-'?' law keeps "?!" ONE plain
  * scalar (the \n folds). The structural arm (r130/r131) claims the
  * wrapper, the L-only vals and the banked closer re-align. */
+/* The r142 walk's TERMINAL-TAIL pre-scan: true when the member skew is
+ * strictly terminal — libyaml's skeleton is exhausted except its
+ * closers (EVERY remaining line is -MAP/-SEQ/-STR) and yeptris's
+ * remaining lines are 1..64 kept-content member lines (=VAL/=ALI)
+ * followed by EXACTLY libyaml's closer lines (the close counts pair,
+ * byte for byte). *ride receives the skipped content-line count. Any
+ * structure in yeptris's remainder, any non-closer line in libyaml's,
+ * a close-count mismatch, or content running to end-of-stream without
+ * a close declines — the walk's existing arms take the state and a
+ * genuine divergence still bails. */
+static int yd_qgh_terminal_tail(const char* y, const char* l, int* ride) {
+    /* pass 1: libyaml's remainder is closers only */
+    int nclosers = 0;
+    for (const char* p = l; *p != '\0';) {
+        const char* e = strchr(p, '\n');
+        size_t n = e != NULL ? (size_t)(e - p) : strlen(p);
+        if (!(n == 4 && (memcmp(p, "-MAP", 4) == 0 || memcmp(p, "-SEQ", 4) == 0 ||
+                         memcmp(p, "-STR", 4) == 0))) {
+            return 0;
+        }
+        nclosers++;
+        if (e == NULL) {
+            break;
+        }
+        p = e + 1;
+    }
+    if (nclosers == 0) {
+        return 0;
+    }
+    /* pass 2: yeptris's remainder = kept-content members then the
+     * closers verbatim; the ride is capped at the shared 64 constant */
+    int content = 0;
+    const char* p = y;
+    for (;;) {
+        const char* e = strchr(p, '\n');
+        size_t n = e != NULL ? (size_t)(e - p) : strlen(p);
+        if (n > 5 && (memcmp(p, "=VAL ", 5) == 0 || memcmp(p, "=ALI ", 5) == 0)) {
+            if (++content > 64) {
+                return 0;
+            }
+            if (e == NULL) {
+                return 0; /* content to end-of-stream: no close follows */
+            }
+            p = e + 1;
+            continue;
+        }
+        break;
+    }
+    if (content == 0) {
+        return 0;
+    }
+    /* pass 3: the closer suffix pairs line for line, and yeptris ends
+     * exactly where libyaml does */
+    const char* q = l;
+    while (*q != '\0') {
+        const char* le = strchr(q, '\n');
+        size_t ln = le != NULL ? (size_t)(le - q) : strlen(q);
+        if (*p == '\0') {
+            return 0; /* yeptris ran out with libyaml closers left */
+        }
+        const char* ye = strchr(p, '\n');
+        size_t yn = ye != NULL ? (size_t)(ye - p) : strlen(p);
+        if (yn != ln || memcmp(p, q, yn) != 0) {
+            return 0;
+        }
+        p = ye != NULL ? ye + 1 : p + yn;
+        q = le != NULL ? le + 1 : q + ln;
+    }
+    if (*p != '\0') {
+        return 0; /* yeptris carries lines beyond libyaml's closers */
+    }
+    *ride = content;
+    return 1;
+}
+
 static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const char* ydump,
                                       const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0 || size > 8192) {
@@ -1143,6 +1218,7 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
     int diffs = 0;
     int skips = 0;
     int struct_skips = 0; /* the structural permutation's owed closers */
+    int ride = 0;         /* the terminal-tail arm's skipped content count */
     for (;;) {
         const char* yn = strchr(y, '\n');
         const char* ln = strchr(l, '\n');
@@ -1307,6 +1383,57 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 }
                 y = yn + 1;
                 l = ln + 1;
+                continue;
+            } else if ((strncmp(y, "=VAL ", 5) == 0 || strncmp(y, "=ALI ", 5) == 0) &&
+                       l[0] == '-' &&
+                       (strncmp(l, "-MAP", 4) == 0 || strncmp(l, "-SEQ", 4) == 0 ||
+                        strncmp(l, "-STR", 4) == 0) &&
+                       yd_qgh_terminal_tail(y, l, &ride)) {
+                /* the TERMINAL-TAIL arm (r142, crash-9c3fb9f1, run
+                 * 41961599250, main 68f74daa): SIX consecutive nightly
+                 * rounds walked the r137 soup's mutation neighborhood
+                 * (r137 #959, r138 crash-7c2930ee, r139 crash-52aaaf3a,
+                 * r140 crash-0ff20316, r141 crash-d4f874ee, r142
+                 * crash-9c3fb9f1) and every catch was the SAME law-
+                 * driven shape -- yeptris suite-correct (the plain-'?'
+                 * law keeps the glued-'?' runs as content), libyaml's
+                 * comment-glue law emptying/killing members -- with the
+                 * walk dying only on the yeptris-only TAIL once
+                 * libyaml's skeleton was spent. The exact-bytes pins
+                 * the five earlier rounds rode never converge (the
+                 * nightly flips one byte per round: a new red forever),
+                 * so the terminal tail rides here under strict gates.
+                 * (1) family-gated by pass 1 (the glued ?#/?! marker),
+                 * unchanged. (2) TERMINAL only: libyaml's remaining
+                 * lines are its closers (-MAP/-SEQ/-STR) and nothing
+                 * else, and yeptris's remaining lines are 1..64
+                 * kept-content member lines (=VAL/=ALI) followed by
+                 * EXACTLY libyaml's closer lines -- the skew is
+                 * strictly terminal, never mid-stream. (3) any
+                 * structure in yeptris's tail (a +MAP/+SEQ/+STR opener,
+                 * an extra/missing closer, a -DOC) declines and the
+                 * pre-existing arms take the state -- a tail that opens
+                 * structure is a REAL divergence, not a kept-content
+                 * ride. Mid-stream member drops stay caught: a member
+                 * libyaml loses while its skeleton still carries
+                 * members leaves non-closer lines in its remainder
+                 * (gate 2 declines, the walk bails -- the negative
+                 * composition "{a: 1, ?#b: {x: 2}, c: 3}" aborts:
+                 * yeptris keeps the killed member's nested map
+                 * mid-stream), and the drops the FIRST arms pair
+                 * (emptied-key, suffix-split, L-only, shared-opener,
+                 * structural, closer-bank, alias, r120, r124/r127)
+                 * never reach this branch. (4) bounded by construction,
+                 * no new unbounded rule: the arm is a one-shot consumer
+                 * (it exhausts both streams, so it cannot loop) and the
+                 * ride is capped at the shared 64 constant; diffs are
+                 * counted and the claim stands only on full exhaustion
+                 * (the walk's law). The r137-r141 exact-bytes pins stay
+                 * pinned (consults are OR'd; the pins test exit 0, not
+                 * which rule claims). */
+                diffs += ride;
+                y += strlen(y);
+                l += strlen(l);
                 continue;
             } else if (y_val && l[0] == '-') {
                 /* a YEPTRIS-only extra CONTENT member at the close
