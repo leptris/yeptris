@@ -1167,6 +1167,31 @@ static int yd_qgh_terminal_tail(const char* y, const char* l, int* ride) {
     return 1;
 }
 
+/* True when the =ALI line (y, yl bytes) appears as a LINE anywhere in
+ * libyaml's dump — the alias-swallow law's SURVIVAL gate (the r144
+ * nightly, crash-fe4ea5a7): libyaml's comment-glue swallowed the
+ * killed member THROUGH its alias-bearing explicit-key head and
+ * re-paired the pending KEY token with the next content, so yeptris's
+ * alias event has no counterpart AT ITS POSITION — but the same alias
+ * line rides libyaml's dump elsewhere, re-positioned by the re-pairing
+ * rather than dropped. A genuine alias-drop (libyaml never emits the
+ * alias — the r138-r141 shapes) declines and the divergence still
+ * aborts. */
+static int yd_qgh_alias_survives(const char* ldump, const char* y, size_t yl) {
+    for (const char* q = ldump; *q != '\0';) {
+        const char* qn = strchr(q, '\n');
+        size_t ql = qn != NULL ? (size_t)(qn - q) : strlen(q);
+        if (ql == yl && memcmp(q, y, yl) == 0) {
+            return 1;
+        }
+        if (qn == NULL) {
+            break;
+        }
+        q = qn + 1;
+    }
+    return 0;
+}
+
 static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const char* ydump,
                                       const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0 || size > 8192) {
@@ -1495,6 +1520,37 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 diffs += ride;
                 y += strlen(y);
                 l += strlen(l);
+                continue;
+            } else if (strncmp(y, "=ALI ", 5) == 0 && l_val &&
+                       yd_qgh_alias_survives(ldump, y, yl)) {
+                /* an ALIAS-SWALLOW RESIDUE (r144, crash-fe4ea5a7, run
+                 * 41995393016, main 21088fcb): libyaml's comment-glue
+                 * swallowed the killed member THROUGH its alias-bearing
+                 * explicit-key head and RE-PAIRED the pending KEY token
+                 * with the next content, so yeptris's "=ALI" event has
+                 * no counterpart AT ITS POSITION — and the r125
+                 * alias-realign arm has already spent libyaml's twin
+                 * alias on the earlier one (the doubled "*L" pairing:
+                 * the realign pairs yeptris's first alias with
+                 * libyaml's only one, leaving the second unexplained
+                 * against the re-paired content). The r138-r141 ruling
+                 * stands: a bare 'yeptris =ALI vs libyaml anything'
+                 * arm would mask genuine alias-drop bugs — the ride is
+                 * gated on the same alias line surviving libyaml's dump
+                 * ELSEWHERE (re-positioned by the re-pairing, not
+                 * dropped; the r138-r141 shapes carry NO libyaml alias
+                 * at all and keep their exact-bytes claims). Family-
+                 * gated by pass 1; bounded by the shared skip cap; the
+                 * claim still stands only if the WHOLE skeleton
+                 * re-aligns. */
+                if (++skips > 64) {
+                    return 0;
+                }
+                diffs++;
+                if (yn == NULL) {
+                    return 0;
+                }
+                y = yn + 1;
                 continue;
             } else if (y_val && l[0] == '-') {
                 /* a YEPTRIS-only extra CONTENT member at the close
