@@ -1503,6 +1503,67 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                             continue;
                         }
                     }
+                    if (!key_suffix && kl > 0 && y2l > vp && l1n != NULL) {
+                        /* the r149 RE-PAIRED-KEY ride (crash-96123edf,
+                         * run 42061122149, main a7cb5ae3): the r148
+                         * ANCHORED-KEY shape riding CR breaks. libyaml's
+                         * post-'?'-token comment-glue ate the glued
+                         * '?##' THROUGH the CR and re-paired the pending
+                         * KEY token with the NEXT member's plain tail —
+                         * the r144 re-pairing law, now on the KEY event:
+                         * the wrapper's KEY renders plain-content
+                         * ("=VAL : b:inary", the run minus the killed
+                         * head) where yeptris's plain-'?' law keeps BOTH
+                         * members (the killed head "?##|" AND the folded
+                         * tail ":binary b:inary" whose content ENDS with
+                         * the KEY). The r143 ride declined (its gate
+                         * demands the KEY be the killed member's own
+                         * residue) and the r130 line-wise path then let
+                         * the wrapper's own empty VAL and closer graze
+                         * the FOLLOWING members — the emptied-key arm
+                         * ate member 3, the r120 close arm ate member 4
+                         * — dying at the second wrapper's opener with
+                         * no arm. When the wrapper is the well-formed
+                         * salvage block AND its KEY (stripped of the
+                         * r148 render separator when props-only) is a
+                         * byte-exact SUFFIX of yeptris's next surviving
+                         * member's content — the re-paired residue; an
+                         * invented key declines — while carrying NONE
+                         * of the killed member's own tail (key_suffix
+                         * already declined), the wrapper plus both
+                         * members rides WHOLE: leaving either the VAL
+                         * or the closer for the line-wise arms resumes
+                         * the grazing. This supersedes the r143
+                         * pairs-next routing for the re-paired form
+                         * (there the line-wise path resolves; here it
+                         * demonstrably dies). Bounded: the fixed
+                         * four-line block (any other shape declines
+                         * into the line-wise arms), the byte-exact
+                         * suffix pin, and the shared skip cap; the
+                         * claim stands only on full exhaustion (the
+                         * walk's law). */
+                        size_t kq = kl;
+                        if (l1[l1l - 1] == ' ' && kl > 1) {
+                            kq = kl - 1; /* the r148 render separator */
+                        }
+                        if (kq <= y2l - vp && memcmp(y2 + y2l - kq, l1 + vp, kq) == 0) {
+                            const char* l2 = l1n + 1;
+                            const char* l2n = strchr(l2, '\n');
+                            size_t l2l = l2n != NULL ? (size_t)(l2n - l2) : strlen(l2);
+                            const char* l3 = l2n != NULL ? l2n + 1 : l2 + l2l;
+                            if (l2l == vp && memcmp(l2, val_prefix, vp) == 0 &&
+                                memcmp(l3, "-MAP", 4) == 0 && (l3[4] == '\n' || l3[4] == '\0')) {
+                                skips += 4;
+                                if (skips > 64) {
+                                    return 0;
+                                }
+                                diffs += 6;
+                                y = y2n != NULL ? y2n + 1 : y2 + y2l;
+                                l = l3[4] == '\0' ? l3 + 4 : l3 + 5;
+                                continue;
+                            }
+                        }
+                    }
                 }
                 if (++skips > 64) {
                     return 0;

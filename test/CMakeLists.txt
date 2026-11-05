@@ -1016,6 +1016,39 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-anchored-key-r148.bin
     )
 
+    # the r149 nightly's seed (crash-96123edf, run 42061122149, main
+    # a7cb5ae3): the r148 ANCHORED-KEY shape riding CR breaks, plus one
+    # new law: the FIRST wrapper's KEY is the RE-PAIRED plain tail.
+    # libyaml's post-'?'-token comment-glue ate the glued '?##' THROUGH
+    # the CR and re-paired the pending KEY token with the NEXT member's
+    # plain ("b:inary" — the r144 re-pairing law, now on the KEY event),
+    # so the wrapper's KEY renders plain-content where yeptris's
+    # suite-pinned plain-'?' law (HM87/652Z) keeps BOTH members: the
+    # killed head "?##|" AND the folded tail ":binary b:inary" whose
+    # content ENDS with the KEY. The r143/r148 wrapper ride declined
+    # (its gate demands the KEY be the killed member's own residue) and
+    # the r130 line-wise path let the wrapper's own empty VAL and
+    # closer graze the FOLLOWING members — the emptied-key arm ate
+    # member 3, the r120 close arm ate member 4 — dying at the second
+    # wrapper's opener ("-SEQ" vs "+MAP"). The re-paired-KEY ride now
+    # claims the whole wrapper plus both members when the KEY (stripped
+    # of the r148 render separator when props-only) is a byte-exact
+    # SUFFIX of yeptris's next surviving member's content — an invented
+    # key declines — while carrying none of the killed member's tail;
+    # the fixed four-line block and the shared skip cap are unchanged.
+    # The two trailing &m wrappers then ride the existing r148 ride.
+    # Post-fix the battery converges: 30 mutants (20 single-byte flips
+    # + 10 multi-byte ins/sub/del), 0 DIFFER-aborts (7 pre-fix DIFFERs
+    # all classify; the 21 raw-byte YEPTRIS-ONLY-ACCEPTs are the
+    # suite-gray libyaml-rejects family, pre/post identical). The
+    # 268-file corpus walk is byte-identical pre/post (30 historical
+    # aborts).
+    add_test(
+        NAME fuzz-diff-r149-repaired-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-repaired-key-r149.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
