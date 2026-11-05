@@ -1198,6 +1198,26 @@ static int yd_qgh_alias_survives(const char* ldump, const char* y, size_t yl) {
     return 0;
 }
 
+/* True when libyaml's scalar content is yeptris's with exactly ONE raw
+ * LS/PS triple inserted byte-exact — the #638 law's ADDITIVE reading
+ * (the r104 forced form: libyaml joins the LS/PS verbatim where
+ * yeptris's b-char algebra folds the break run, so libyaml is never
+ * SHORTER than yeptris at a PS site; the blank run after the triple is
+ * dropped by both engines' fold). Bounded: length pins one triple, the
+ * two memcmps pin the position — no wildcards. */
+static int yd_qgh_lsps_additive(const char* y, size_t yn, const char* l, size_t ln) {
+    if (ln != yn + 3) {
+        return 0;
+    }
+    for (size_t i = 0; i + 3 <= ln; i++) {
+        if ((unsigned char)l[i] == 0xE2 && (unsigned char)l[i + 1] == 0x80 &&
+            ((unsigned char)l[i + 2] == 0xA8 || (unsigned char)l[i + 2] == 0xA9)) {
+            return memcmp(l, y, i) == 0 && memcmp(l + i + 3, y + i, yn - i) == 0;
+        }
+    }
+    return 0;
+}
+
 static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const char* ydump,
                                       const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0 || size > 8192) {
@@ -1358,6 +1378,33 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 y = yn + 1;
                 l = ln + 1;
                 continue;
+            } else if (y_val && l_val && yd_qgh_lsps_additive(y + vp, yl - vp, l + vp, ll - vp)) {
+                /* the LS/PS-fold PAIR (r150, crash-4d640bc4, run
+                 * 42072059847, main b4d6671f): the soup interleaves the
+                 * glue family with plain fold runs mixing LS/PS into
+                 * the LF/CR breaks ("?\r/\n\r\r<PS> 50:"). At such a
+                 * site libyaml joins the raw triple as content and
+                 * folds only its LF/CR count (its READ_LINE law) while
+                 * yeptris's b-char algebra folds the run — the #638
+                 * relation, in the r104 forced ADDITIVE form:
+                 * libyaml's scalar is yeptris's with the raw triple
+                 * INSERTED ("=VAL : /\n\n50" vs "=VAL :
+                 * /\n\n<PS>50"). The generic arms brute-forced this
+                 * pair before — skip yeptris's key, skip its surviving
+                 * value, skip both of libyaml's lines — FOUR shared-cap
+                 * skips per site, and the r150 soup's 6 fold sites +
+                 * 10 glue members outran the fixed 64 (66 skips; the
+                 * walk died at the second-to-last wrapper's opener with
+                 * every difference law-explained). The pair is a PAIRED
+                 * difference, not a skip: consume both lines as one
+                 * diff (the emptied-key arm's pattern — both pointers
+                 * advance, so the walk stays bounded by construction,
+                 * no cap needed). Family-gated by pass 1; byte-exact
+                 * relation (no wildcards; libyaml-only extra triples
+                 * past one decline into the generic arms); the claim
+                 * still stands only on full exhaustion (the walk's
+                 * law). */
+                diffs++;
             } else if (l_val && (y_empty_val || yl == 0 || y[0] == '-')) {
                 /* an L-ONLY extra val of ANY content (r117): libyaml's
                  * glued-# comment-kill SPLITS a plain yeptris folds —
