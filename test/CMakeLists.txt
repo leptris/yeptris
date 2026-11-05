@@ -1158,6 +1158,48 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-repaired-value-r152.bin
     )
 
+    # the r153 nightly's seed (crash-aad3f269, run 42106098158, main
+    # efcf0e5c): the soup family's TRIPLE-WRAPPER priority composition
+    # -- a 149-byte prefix-minimal flow seq ("[11.0e@:\r\r ,?##|,..."
+    # "... ,?+#\r\n&m-7\r\r ,?+#\r\n&m7\r\r ,?+#\r\n&m-]") stacking
+    # THREE '?+#\n&m<N>' wrappers after '?##'-glue members. yeptris's
+    # suite-pinned plain-'?' law keeps every wrapper run as ONE plain
+    # ("=VAL : ?+# &m-7", the fold riding the break) and every glue
+    # member as a scalar; libyaml's flow-'?' KEY-token law opens an
+    # explicit-key salvage block per wrapper (+MAP / content KEY =
+    # the run minus the leading '?' / empty VAL / -MAP) while its
+    # comment-glue law swallows the glue members THROUGH the comma
+    # ("?##|,?" dies to the break). The walk died on the PRIORITY of
+    # two claims, not on a missing one: the r132 shared-opener arm's
+    # opener byte-equality tell (yeptris's own next member happens to
+    # open with the same "+MAP" line libyaml's wrapper opens with)
+    # preempted the r143 wrapper ride at the FIRST wrapper, only
+    # yeptris's killed scalar stepped aside, and every later pairing
+    # ran one member off -- the byte walk grazed shape-equal blocks
+    # (r124/r127 skips on both sides) until it died at the THIRD
+    # wrapper's opener against yeptris's closer with no arm. The
+    # refinement: the byte-exact-verified rides are attempted FIRST
+    # inside the structural branch and the bare shared-opener skip is
+    # their FALLBACK -- the ride's KEY (yeptris's killed member minus
+    # the leading '?'), empty VAL and bare close pin the whole block,
+    # which is strictly stronger evidence than one compared line; the
+    # r132 shape (no wrapper block, the opener IS the next member's)
+    # never satisfies the ride gates, so the prior routing is
+    # unchanged where their claims stood. The prefix bisect found no
+    # shorter diverging cut (the artifact is prefix-minimal at 149
+    # bytes). Post-fix the battery converges: 30 mutants (20
+    # single-byte flips + 10 multi-byte ins/sub/del) -- 11 DIFFER
+    # mutants classify green, 19 stay in the suite-gray
+    # YEPTRIS-ONLY-ACCEPT family, pre/post byte-identical, zero
+    # regressions; a 300-flip sweep adds zero pre-green/post-abort
+    # regressions and zero verdict flips -- and the 272-file corpus
+    # walk is byte-identical pre/post (30 historical aborts).
+    add_test(
+        NAME fuzz-diff-r153-wrapper-priority
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-wrapper-priority-r153.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
