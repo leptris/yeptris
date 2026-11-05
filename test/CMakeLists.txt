@@ -1200,6 +1200,46 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-wrapper-priority-r153.bin
     )
 
+    # the r154 nightly's seed (crash-97fad546, run 42115966505, main
+    # 2386dcf6): the double-BOM ANCHORED-KEY composition -- 9 bytes
+    # "BOM BOM '&U:'" (EF BB BF x2 then an anchored key), minimal by
+    # byte-deletion ('&' and ':' are load-bearing; every BOM-corrupting
+    # deletion moves the input to the invalid-UTF-8 split family).
+    # yeptris strips the encoding mark and keeps the second BOM as
+    # CONTENT (the catch-121 law: one mark stripped, content BOMs
+    # ride), so the plain key scans "BOM&U" with the '&' mid-token --
+    # a map forms at column 0. libyaml strips the second BOM too (its
+    # scan_to_next_token skips a BOM at mark column 0: the
+    # encoding-mark law is not stream-position-bound), so its residual
+    # "&U" is an ANCHORED EMPTY SCALAR -- props, not content. The BOM
+    # classifiers both declined: yd_bom_content_divergence's strip
+    # leaves "=VAL : &U" (content) vs libyaml's "=VAL : &U " (props +
+    # separator blank), and yd_bom_line_start_divergence's removal
+    # probes are not pure -- the BOM-less residual "&U:" is itself the
+    # r76 anchor-keymap shape (yeptris's 1.2 grammar rides the ':' into
+    # the anchor name; libyaml's 1.1 set cuts at it and opens a map).
+    # The twin: after the catch-121 strip, file yeptris's residual into
+    # libyaml's prop form -- insert the one separator blank before the
+    # line's break -- and compare; fires only when the residual is a
+    # bare "&name" (one token, no blank in it), so the claim stays
+    # byte-pinned. No engine violates its own law: yeptris never
+    # double-strips, libyaml never keeps a column-0 BOM -- the
+    # composition is the documented 1.1-vs-1.2 BOM-position divergence.
+    # Post-fix the battery converges: 30 mutants (20 single-byte flips
+    # + 10 multi-byte ins/sub/del) -- 3 benign classify green, 27 stay
+    # in the suite-gray YEPTRIS-ONLY-ACCEPT family (the invalid-UTF-8
+    # splits), zero verdict flips; 10 targeted family variants (long
+    # anchor names, with-value, seq-sibling, three-BOM) all classify,
+    # and the split-tail siblings (a column-0 sibling dedents libyaml's
+    # BOM-shifted map indent and it rejects mid-stream) hold the same
+    # YEPTRIS-ONLY-ACCEPT verdict pre/post; the 273-file corpus walk is
+    # byte-identical pre/post (30 historical aborts).
+    add_test(
+        NAME fuzz-diff-r154-bom-anchored-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-anchored-key-r154.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
