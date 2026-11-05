@@ -930,6 +930,35 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-midplain-quote-r145.bin
     )
 
+    # the r146 nightly's seed (crash-50405bba, run 42013806681, main
+    # 22e2b1ac): the soup family under libFuzzer's REAL multi-byte
+    # mutation operators -- the r137 seed with a 1-byte URI insertion
+    # ("tag:ytag:yaml.org" -> "tag:ytag:yam2l.org") PLUS a 730-byte
+    # splice of its own soup content (997 -> 1728 bytes). The r137
+    # exact-bytes claim cannot match, and the walk dies on the
+    # TERMINAL TAIL the #971 arm shipped with a FIXED 64-content ride
+    # cap: the splice doubles the member count, yeptris's kept-content
+    # tail carries 96 members to libyaml's closers, the cap declines,
+    # and the per-line arms run out of shared skip budget (96 lines
+    # against ~5 headroom). The TERMINAL-TAIL arm's ride cap now rides
+    # the classifier's own input bound (every kept-content member
+    # consumed >=1 input byte, so ride <= size is provable; size <=
+    # 8192 is already gated at entry). The load-bearing gates are
+    # unchanged: terminality (libyaml's remainder closers-only), a
+    # kept-content-only yeptris remainder (=VAL/=ALI, no structure),
+    # the byte-exact closer suffix, one-shot exhaustion; the
+    # structure-tail negative (",?#z: {q: 1}" planted in this
+    # artifact's tail region) still aborts. The #971 convergence claim
+    # is upgraded with the artifact: its 20/20 uniform single-byte
+    # flips never exercised the insertion/splice operators this catch
+    # rode; post-fix, 20 single-byte flips PLUS 20 multi-byte
+    # insertions/substitutions/deletions of the r137 seed all classify.
+    add_test(
+        NAME fuzz-diff-r146-splice-tail
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-splice-tail-r146.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

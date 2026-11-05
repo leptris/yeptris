@@ -1095,14 +1095,20 @@ static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const cha
 /* The r142 walk's TERMINAL-TAIL pre-scan: true when the member skew is
  * strictly terminal — libyaml's skeleton is exhausted except its
  * closers (EVERY remaining line is -MAP/-SEQ/-STR) and yeptris's
- * remaining lines are 1..64 kept-content member lines (=VAL/=ALI)
+ * remaining lines are 1..cap kept-content member lines (=VAL/=ALI)
  * followed by EXACTLY libyaml's closer lines (the close counts pair,
- * byte for byte). *ride receives the skipped content-line count. Any
- * structure in yeptris's remainder, any non-closer line in libyaml's,
- * a close-count mismatch, or content running to end-of-stream without
+ * byte for byte). *ride receives the skipped content-line count. The
+ * cap is the classifier's own input bound, not a constant: every
+ * kept-content member consumed at least one input byte, so
+ * ride <= size is provable — the r146 nightly (crash-50405bba, run
+ * 42013806681, main 22e2b1ac) spliced 730 soup bytes into the r137
+ * seed and its legitimately terminal tail carries 96 kept-content
+ * members, past the fixed 64 this gate shipped with. Any structure in
+ * yeptris's remainder, any non-closer line in libyaml's, a
+ * close-count mismatch, or content running to end-of-stream without
  * a close declines — the walk's existing arms take the state and a
  * genuine divergence still bails. */
-static int yd_qgh_terminal_tail(const char* y, const char* l, int* ride) {
+static int yd_qgh_terminal_tail(const char* y, const char* l, int cap, int* ride) {
     /* pass 1: libyaml's remainder is closers only */
     int nclosers = 0;
     for (const char* p = l; *p != '\0';) {
@@ -1122,14 +1128,14 @@ static int yd_qgh_terminal_tail(const char* y, const char* l, int* ride) {
         return 0;
     }
     /* pass 2: yeptris's remainder = kept-content members then the
-     * closers verbatim; the ride is capped at the shared 64 constant */
+     * closers verbatim; the ride is capped by the input bound */
     int content = 0;
     const char* p = y;
     for (;;) {
         const char* e = strchr(p, '\n');
         size_t n = e != NULL ? (size_t)(e - p) : strlen(p);
         if (n > 5 && (memcmp(p, "=VAL ", 5) == 0 || memcmp(p, "=ALI ", 5) == 0)) {
-            if (++content > 64) {
+            if (++content > cap) {
                 return 0;
             }
             if (e == NULL) {
@@ -1532,7 +1538,7 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                        l[0] == '-' &&
                        (strncmp(l, "-MAP", 4) == 0 || strncmp(l, "-SEQ", 4) == 0 ||
                         strncmp(l, "-STR", 4) == 0) &&
-                       yd_qgh_terminal_tail(y, l, &ride)) {
+                       yd_qgh_terminal_tail(y, l, (int)size, &ride)) {
                 /* the TERMINAL-TAIL arm (r142, crash-9c3fb9f1, run
                  * 41961599250, main 68f74daa): SIX consecutive nightly
                  * rounds walked the r137 soup's mutation neighborhood
@@ -1550,7 +1556,7 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                  * (1) family-gated by pass 1 (the glued ?#/?! marker),
                  * unchanged. (2) TERMINAL only: libyaml's remaining
                  * lines are its closers (-MAP/-SEQ/-STR) and nothing
-                 * else, and yeptris's remaining lines are 1..64
+                 * else, and yeptris's remaining lines are 1..cap
                  * kept-content member lines (=VAL/=ALI) followed by
                  * EXACTLY libyaml's closer lines -- the skew is
                  * strictly terminal, never mid-stream. (3) any
@@ -1570,11 +1576,20 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                  * never reach this branch. (4) bounded by construction,
                  * no new unbounded rule: the arm is a one-shot consumer
                  * (it exhausts both streams, so it cannot loop) and the
-                 * ride is capped at the shared 64 constant; diffs are
-                 * counted and the claim stands only on full exhaustion
-                 * (the walk's law). The r137-r141 exact-bytes pins stay
-                 * pinned (consults are OR'd; the pins test exit 0, not
-                 * which rule claims). */
+                 * ride is capped by the classifier's own input bound
+                 * (every kept-content member consumed at least one
+                 * input byte, so ride <= size is provable). The fixed
+                 * shared-64 cap this arm shipped with declined the
+                 * r146 nightly's legitimately terminal tail
+                 * (crash-50405bba, run 42013806681, main 22e2b1ac): a
+                 * 730-byte soup splice (997 -> 1728 bytes) rides 96
+                 * kept-content members to libyaml's closers, past any
+                 * fixed constant -- the cap rides the input, the
+                 * terminality/closer-suffix gates stay load-bearing;
+                 * diffs are counted and the claim stands only on full
+                 * exhaustion (the walk's law). The r137-r141
+                 * exact-bytes pins stay pinned (consults are OR'd; the
+                 * pins test exit 0, not which rule claims). */
                 diffs += ride;
                 y += strlen(y);
                 l += strlen(l);
