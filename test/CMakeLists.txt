@@ -745,6 +745,25 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r137.bin
     )
 
+    # the r138 nightly's seed: the alias-swallow TAIL COMPOSITION -- a
+    # 66-byte glued-'?' x glued-'#' x lone-backtick x explicit-key-alias
+    # soup. yeptris's suite-pinned plain-'?' law rides 8 pairs (one
+    # ALI-keyed) to the '}'; libyaml's comment-glue law empties every
+    # member but the final '<' (4 pairs) and its second run's comment
+    # swallows the '\t*L:' explicit key THROUGH the alias -- yeptris
+    # emits an =ALI libyaml has no counterpart for, and every completing
+    # skeleton composition needs a yeptris-only tail after libyaml's
+    # '-MAP' closes (member-count skew -- the exact signature of genuine
+    # member-drop bugs, ruled unsound to generalize by the r137
+    # verdict). An 'yeptris =ALI vs libyaml anything' arm would mask
+    # genuine alias-drop bugs, so the prefix-minimal artifact rides the
+    # EXACT-BYTES gray claim (the r121/r129/r137 pattern), not an arm.
+    add_test(
+        NAME fuzz-diff-r138-soup-gray
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r138.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
