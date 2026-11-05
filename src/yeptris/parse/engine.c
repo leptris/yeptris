@@ -4748,7 +4748,18 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
     } else if (ch == ']' || ch == '}') {
         c->tok_start = 1;
         c->bb = 0; /* the slot was armed by an indicator, not a fold */
-        c->plain_open = 0;
+        if (c->in_flow > 0) {
+            c->plain_open = 0;
+        }
+        /* block context keeps the fact: a plain cannot start with
+         * ']' / '}' (c-indicator), so reaching this byte with the value
+         * word open means it is INTERIOR content (the catch-85 law's
+         * indicator twin) — the r155 law. The unconditional clear let
+         * the next fold-armed "!<" open a phantom verbatim (the r147
+         * gate's blind-spot twin: the ']' byte also blanks bb_plain —
+         * it is in the bb indicator set — so both gate inputs said
+         * "new node") and the NELs after it rode unnormalized raw into
+         * the plain fold ("(999999;!<1]" +NEL+ "!<" +NEL+ "¥" +NEL^2). */
     }
     /* the r147 law: a non-indicator content byte begins/continues a
      * plain scalar VALUE word — the fact survives breaks (breaks only
