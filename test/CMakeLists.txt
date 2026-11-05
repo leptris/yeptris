@@ -959,6 +959,29 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-splice-tail-r146.bin
     )
 
+    # the r147 nightly's seed (run 42029425465, main 9144fdf7): the
+    # #836/#951 phantom-verbatim class's THIRD arming shape, past the
+    # r133 bb gate. The root plain's "-  " line ends LF + NEL; the
+    # fold arms bb='\n' (the break run's own tail, in the r133
+    # indicator set), so the continuation's "!<" opened the phantom
+    # verbatim and every later NEL rode unnormalized -- and the plain
+    # piece's multibyte check probes only the FIRST C2/E2 lead, so the
+    # yen-sign lead (C2 A5, not a break) SHIELDED the NELs behind it:
+    # raw C2 85 rode into the value where libyaml's READ_LINE spells
+    # NEL -> LF and folds. The r147 law carries plain_open (a plain
+    # scalar VALUE word in progress: set by non-indicator content
+    # bytes, preserved across breaks, cleared at the indicator-armed
+    # slots and document markers) -- a fold-armed tok_start over an
+    # open plain is a continuation line whose "!<" is content, never
+    # props. The legal props forms ("key: <NEL>!<a>", "- <NEL>!<a>")
+    # keep their opens byte-identically (plain_open is 0 there). The
+    # value post-fix folds to libyaml's exactly.
+    add_test(
+        NAME fuzz-diff-r147-plain-open-phantom
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-phantom-verbatim-r147.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

@@ -4343,22 +4343,32 @@ typedef struct yep_norm_ctx {
     int at_break;
     int bs_open;
     int bs_content;
-    uint32_t bs_indent; /* the header line's indent; (uint32_t)-1 = the
-                         * doc-inline root rule (markers only) */
-    uint8_t started;    /* at least one byte consumed: the walk's i == 0
-                         * clauses are stream-start, not buffer-start —
-                         * the chunked route resumes mid-stream at a ---
-                         * cut, and the carried context must say so */
-    unsigned char prev; /* the last consumed byte (valid when started):
-                         * the '#' and line-start tests peek p[i - 1],
-                         * which at a resumed buffer is carried state */
-    unsigned char bb;   /* the byte immediately before the last FOLDED
-                         * break (0 = not armed): the r133 law — a
-                         * tok_start armed by a fold whose before-break
-                         * byte was plain content is a continuation
-                         * line, and its "!<" must not open a verbatim
-                         * tag (cleared wherever an indicator arms the
-                         * slot instead) */
+    uint32_t bs_indent;       /* the header line's indent; (uint32_t)-1 = the
+                               * doc-inline root rule (markers only) */
+    uint8_t started;          /* at least one byte consumed: the walk's i == 0
+                               * clauses are stream-start, not buffer-start —
+                               * the chunked route resumes mid-stream at a ---
+                               * cut, and the carried context must say so */
+    unsigned char prev;       /* the last consumed byte (valid when started):
+                               * the '#' and line-start tests peek p[i - 1],
+                               * which at a resumed buffer is carried state */
+    unsigned char bb;         /* the byte immediately before the last FOLDED
+                               * break (0 = not armed): the r133 law — a
+                               * tok_start armed by a fold whose before-break
+                               * byte was plain content is a continuation
+                               * line, and its "!<" must not open a verbatim
+                               * tag (cleared wherever an indicator arms the
+                               * slot instead) */
+    unsigned char plain_open; /* a plain scalar VALUE word is in
+                               * progress (set by every non-indicator content
+                               * byte, preserved across breaks): the r147
+                               * law — the bb gate's single-byte slice misses
+                               * the run-tail shapes ("-  \n<NEL>!" arms
+                               * bb='\n', in the indicator set), so the open
+                               * keys on the value-in-progress fact: a
+                               * fold-armed tok_start over an open plain is a
+                               * continuation line whose "!<" is content,
+                               * never props */
 } yep_norm_ctx;
 
 typedef struct yep_norm_tok {
@@ -4642,6 +4652,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             c->bs_open = 1;
             c->bs_indent = (uint32_t)-1;
             c->bs_content = 0;
+            c->plain_open = 0; /* the marker is a document boundary */
             size_t e = i;
             while (e < len && p[e] != '\n') {
                 e++;
@@ -4650,7 +4661,10 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             c->at_break = (e < len);
             return t;
         }
-        t.n = 3; /* the marker rides; the line's tail processes normally */
+        t.n = 3;           /* the marker rides; the line's tail processes normally */
+        c->plain_open = 0; /* a document boundary: the next node's
+                            * props position must not inherit the
+                            * previous document's open plain */
         return t;
     }
 
@@ -4664,9 +4678,17 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
              * opens a verbatim tag. Unconditioned, the continuation's
              * "!<" opened a phantom verbatim that swallowed the rest
              * of the input: later NELs rode unnormalized and the plain
-             * fold emitted raw lead-stripped 0x85 into the value. */
+             * fold emitted raw lead-stripped 0x85 into the value. The
+             * r147 law extends the gate to the run-tail shapes the
+             * single-byte bb probe misses ("-  \n<NEL>!" arms bb='\n',
+             * in the indicator set; "key: <NEL><NEL>!" arms bb=0x85,
+             * outside it — both while a plain VALUE is in progress,
+             * which plain_open carries): a plain value word open
+             * across the fold means the line is a continuation, and
+             * libyaml's 1.1 read folds the same NELs to newlines
+             * (READ_LINE spells NEL -> LF, the fold law joins). */
             int bb_plain = c->bb != 0 && !strchr("&*!-?:,[]{}#%'\"|> \t\n\r", c->bb);
-            if (!bb_plain) {
+            if (!bb_plain && !c->plain_open) {
                 c->in_verbatim = 1;
                 t.n = 2;
                 return t;
@@ -4694,6 +4716,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
          * half; the comma half landed in #836 itself). */
         c->tok_start = 1;
         c->in_flow++;
+        c->plain_open = 0; /* the slot was armed by an indicator */
     } else if (ch == ',') {
         /* flow separators glue the next token — THE COMMA IN FLOW
          * ONLY. The unconditioned arm let a BLOCK plain's interior
@@ -4708,6 +4731,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         if (c->in_flow > 0) {
             c->tok_start = 1;
             c->bb = 0; /* the slot was armed by an indicator, not a fold */
+            c->plain_open = 0;
         }
     } else if (ch == ':') {
         /* the separator law (#833's own predicate): a ':' arms the
@@ -4719,10 +4743,19 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             p[i + 1] == '\r') {
             c->tok_start = 1;
             c->bb = 0; /* the slot was armed by an indicator, not a fold */
+            c->plain_open = 0;
         }
     } else if (ch == ']' || ch == '}') {
         c->tok_start = 1;
         c->bb = 0; /* the slot was armed by an indicator, not a fold */
+        c->plain_open = 0;
+    }
+    /* the r147 law: a non-indicator content byte begins/continues a
+     * plain scalar VALUE word — the fact survives breaks (breaks only
+     * arm tok_start), so a later fold-armed "!<" reads it (indicator
+     * bytes leave the fact to their own arm above) */
+    if (!strchr("&*!-?:,[]{}#%'\"|>", ch)) {
+        c->plain_open = 1;
     }
     return t;
 }
