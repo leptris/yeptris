@@ -1240,6 +1240,35 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-anchored-key-r154.bin
     )
 
+    # the r155 nightly's seed (run 42124396552, main 24f78376): the
+    # #836/#951 phantom-verbatim class's FOURTH arming shape, past the
+    # r133 bb gate and the r147 plain_open fact. The root plain
+    # "(999999;!<1]" contains a mid-word ']' -- in block context that is
+    # plain CONTENT (a plain cannot start with a c-indicator), but the
+    # ']' / '}' branch cleared plain_open unconditionally while arming
+    # the token slot. The following NEL fold then re-armed tok_start
+    # with bb=']' -- itself in the r133 indicator set, so bb_plain = 0
+    # and plain_open = 0 -- and the continuation's "!<" opened the
+    # phantom verbatim tag. No '>' exists in the input, so the NELs
+    # after it rode unnormalized into the normalized buffer; the plain
+    # piece's first-lead-only multibyte probe then folded the first
+    # raw NEL but let the yen-shielded runs behind it ride, and the
+    # value diverged from libyaml's fold exactly at the "¥" + break
+    # (yeptris "¥<NEL><NEL>9999" vs libyaml "¥\n9999").
+    # The r155 law: the clear is a FLOW closer's act -- in flow, ']'/'}'
+    # genuinely end the node; in block, a plain_open value word makes
+    # the byte interior content and the fact rides (the catch-85 law's
+    # indicator twin). The legal flow forms keep their clears
+    # byte-identically, and the block props forms ("key: <NEL>!<a>")
+    # keep their opens (plain_open is 0 there). Post-fix the value
+    # folds to libyaml's exactly at the NEL sites and the composed
+    # PS-fold tail classifies through the carried arms.
+    add_test(
+        NAME fuzz-diff-r155-plain-open-bracket-phantom
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-phantom-verbatim-r155.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
