@@ -839,6 +839,26 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r141.bin
     )
 
+    # the r142 nightly's seed (crash-9c3fb9f1, run 41961599250, main
+    # 68f74daa): the soup family's TERMINAL TAIL COMPOSITION -- the walk
+    # dies only on the yeptris-only tail once libyaml's skeleton is
+    # spent (six consecutive nightly rounds r137-r141 rode exact-bytes
+    # pins, one byte flip per round: a new red forever). The
+    # TERMINAL-TAIL arm (#949 family, the strategic round) rides it:
+    # libyaml's remaining lines are closers only, yeptris's tail is
+    # kept-content members (=VAL/=ALI, <=64) followed by libyaml's
+    # closers verbatim; any structure in the tail declines, and a
+    # genuine mid-stream member drop still aborts (the negative
+    # composition "{a: 1, b: {c: 2, ?#d: [x, y],}, e: 5}" -- libyaml
+    # loses member d and its nested seq mid-stream with (e: 5) riding
+    # after in BOTH streams -- aborts at the walk level with the arm in
+    # place). The r137-r141 pins stay pinned; consults are OR'd.
+    add_test(
+        NAME fuzz-diff-r142-soup-tail
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-tail-r142.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
