@@ -1388,7 +1388,12 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
          * IS libyaml's current '+'-line, that opener belongs to a member
          * BOTH walks carry — only yeptris's killed VAL steps aside. Any
          * other next line means a libyaml-only wrapper (the r130
-         * structural shape) and the arm below consumes both. */
+         * structural shape) and the arm consumes both. The r153
+         * refinement: the tell gates the structural arm's FALLBACK skip
+         * only — the byte-exact wrapper rides are attempted first, since
+         * a verifying ride proves the block is the explicit-key salvage,
+         * not the next member (one compared line is weaker evidence than
+         * the rides' whole-block residue pin). */
         int y_killed_shared_opener = 0;
         if (y_val && l[0] == '+' && yn != NULL) {
             const char* y2 = yn + 1;
@@ -1466,22 +1471,6 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 }
                 l = ln + 1;
                 continue;
-            } else if (y_val && l[0] == '+' && y_killed_shared_opener) {
-                /* a SHARED-opener skip (r132, #949): libyaml's +MAP opens
-                 * the NEXT member both walks carry — yeptris's killed
-                 * '?#'-led entry was a scalar (the plain-'?' law keeps it
-                 * as content) while libyaml comment-killed the run and
-                 * moved on. Only yeptris's line is consumed; the opener
-                 * pairs with yeptris's own on the very next step. The
-                 * libyaml-ONLY wrapper (r130) takes the structural arm
-                 * below. Family-gated by pass 1; bounded by the shared
-                 * skip cap. */
-                if (++skips > 64) {
-                    return 0;
-                }
-                diffs++;
-                y = yn + 1;
-                continue;
             } else if (y_val && l[0] == '+') {
                 /* a STRUCTURAL realign (r130/r131, #945): libyaml's
                  * comment-kill ate the '?#' content and re-paired the
@@ -1492,6 +1481,34 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                  * rule, and the extra closer re-aligns at
                  * struct_skips (below). Family-gated by pass 1;
                  * bounded by the shared skip cap. */
+                /* The r153 PRIORITY refinement (crash-aad3f269, run
+                 * 42106098158, main efcf0e5c): the r132 shared-opener
+                 * arm used to be consulted BEFORE this branch on the
+                 * strength of its opener byte-equality tell — but that
+                 * tell is WEAK evidence next to the rides' byte-exact
+                 * wrapper verification. The r153 soup stacks THREE
+                 * '?+#\n&m<N>' wrappers after '?##'-glue members in one
+                 * flow seq; at the FIRST wrapper yeptris's own next
+                 * member happens to open with the same "+MAP" line
+                 * libyaml's wrapper opens with, the tell fired, only
+                 * yeptris's killed scalar stepped aside, and every
+                 * later pairing ran one member off — the byte walk
+                 * grazed through shape-equal blocks (r124/r127 skips on
+                 * both sides) until it died at the THIRD wrapper's
+                 * opener against yeptris's closer with no arm. The
+                 * wrapper ride is the correct claim there: its KEY is
+                 * byte-exact yeptris's killed member minus the leading
+                 * '?' (the explicit-key law's direct residue), the VAL
+                 * is the salvaged null, the close is bare — verified
+                 * evidence, where the tell is one compared line. So the
+                 * rides are attempted FIRST (below, unchanged gates)
+                 * and the bare shared-opener skip is the FALLBACK when
+                 * they decline — the r132 shape (libyaml comment-killed
+                 * the entry whole, its +MAP IS yeptris's next member's
+                 * opener, no wrapper block) never satisfies the ride
+                 * gates (the KEY would have to be the killed entry's
+                 * residue and the VAL empty), so the r132/r949 pins'
+                 * routing is unchanged where their claims stood. */
                 /* The r143 WRAPPER RIDE (crash-d4f874ee.., run
                  * 41975575045, main 531ad570): the r132 composition's
                  * '+#'-bearing wrapper variant, DOUBLED. With '+' the
@@ -1653,6 +1670,26 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                             }
                         }
                     }
+                }
+                if (y_killed_shared_opener) {
+                    /* the SHARED-opener skip (r132, #949), the rides'
+                     * FALLBACK: libyaml's +MAP opens the NEXT member
+                     * both walks carry — yeptris's killed '?#'-led
+                     * entry was a scalar (the plain-'?' law keeps it
+                     * as content) while libyaml comment-killed the run
+                     * and moved on. Only yeptris's line is consumed;
+                     * the opener pairs with yeptris's own on the very
+                     * next step. Rides first (the r153 priority
+                     * refinement above): when a wrapper gate verifies,
+                     * the block is libyaml's explicit-key salvage, not
+                     * the next member. Bounded by the shared skip
+                     * cap. */
+                    if (++skips > 64) {
+                        return 0;
+                    }
+                    diffs++;
+                    y = yn + 1;
+                    continue;
                 }
                 if (++skips > 64) {
                     return 0;
