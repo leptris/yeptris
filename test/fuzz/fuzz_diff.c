@@ -1199,10 +1199,24 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
     }
     /* pass 1: the marker — a glued "?#"/"?!" at flow depth, outside
      * quotes (the r136 twin: libyaml's KEY-token law fires on ANY
-     * follower, so a glued '!' shapes the same explicit-key family) */
+     * follower, so a glued '!' shapes the same explicit-key family).
+     * "Outside quotes" tracks the plain-run law (the r145 nightly,
+     * run 42003383477, main 417fab59): a quote GLUED to an active
+     * plain run is CONTENT in both engines (the catch-85 word-start
+     * law — "- [trueWft?\",?##..." pins "=VAL : trueWft?\"" on BOTH
+     * sides), so the naive tracker's phantom quote (opened mid-plain,
+     * never closed) swallowed the rest of the input and the glued '?#'
+     * after the ',' never scored. A quote opens only where a node can
+     * start: not inside a plain run, after a separated indicator
+     * (props/value position), or after a node boundary. Wordy bytes
+     * (and the fold blanks inside a run) keep the run active; flow
+     * plains fold across breaks, block lines end at theirs; a
+     * blank-led comment ends the node and rides to the break (the
+     * anchor arm's law). */
     int depth = 0;
     int quote = 0;
     int hits = 0;
+    int plain = 0; /* a plain run is active: glued quotes are content */
     for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
         if (quote != 0) {
@@ -1216,15 +1230,59 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
             continue;
         }
         if (c == '\'') {
-            quote = '\'';
+            if (!plain) {
+                quote = '\'';
+            }
         } else if (c == '"') {
-            quote = '"';
+            if (!plain) {
+                quote = '"';
+            }
+        } else if (c == '#' && (i == 0 || data[i - 1] == ' ' || data[i - 1] == '\t' ||
+                                data[i - 1] == '\n' || data[i - 1] == '\r')) {
+            /* a blank-led comment swallows the line; the node ended
+             * and nothing inside it opens a quote or scores */
+            plain = 0;
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                i++;
+            }
+            if (i < size) {
+                i--; /* the break rides the loop's own advance */
+            }
         } else if (c == '[' || c == '{') {
             depth++;
+            plain = 0;
         } else if (c == ']' || c == '}') {
             depth--;
-        } else if (c == '?' && depth > 0 && i + 1 < size &&
-                   (data[i + 1] == '#' || data[i + 1] == '!')) {
+            plain = 0;
+        } else if (c == ',') {
+            plain = 0;
+        } else if (c == '\n' || c == '\r') {
+            if (c == '\r' && i + 1 < size && data[i + 1] == '\n') {
+                i++;
+            }
+            if (depth == 0) {
+                plain = 0; /* block lines: each line is a fresh node */
+            }
+            /* a flow plain folds across its break: the run rides */
+        } else if (c == ' ' || c == '\t') {
+            /* fold blanks ride the plain run */
+        } else if (c == ':' || c == '?' || (c == '-' && depth == 0) || c == '&' || c == '*' ||
+                   c == '!') {
+            /* separated, the indicator ends the run (a props/value
+             * position where a quoted node can start); glued, it is
+             * plain-first content (the HM87 plain-'?' law) — in flow
+             * a '-' is plain-first regardless ("- " folds on) */
+            unsigned char f = i + 1 < size ? data[i + 1] : ' ';
+            if (f == ' ' || f == '\t' || f == '\n' || f == '\r' || f == ',' || f == '[' ||
+                f == ']' || f == '{' || f == '}') {
+                plain = 0;
+            } else {
+                plain = 1;
+            }
+        } else {
+            plain = 1;
+        }
+        if (c == '?' && depth > 0 && i + 1 < size && (data[i + 1] == '#' || data[i + 1] == '!')) {
             hits++;
         }
     }

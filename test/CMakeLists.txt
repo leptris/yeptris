@@ -903,6 +903,33 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-alias-r144.bin
     )
 
+    # the r145 nightly's seed (crash-ca766c70, run 42003383477, main
+    # 417fab59): the glued-?# composition behind a MID-PLAIN QUOTE --
+    # "- [trueWft?\",?##...,\n ]" carries a lone '"' glued to the
+    # trueWft? plain, and both engines pin it as CONTENT ("=VAL :
+    # trueWft?\"" on BOTH sides, the catch-85 word-start law), but the
+    # marker's naive quote tracker opened a phantom quote there that
+    # never closes, so the glued '?#' after the ',' never scored and
+    # the whole r132-r144 arm chain sat behind a dead gate. The pass-1
+    # marker now tracks the PLAIN RUN: a quote opens only where a node
+    # can start (not mid-plain, after a separated indicator/props
+    # position, after a flow boundary); fold blanks ride, flow plains
+    # fold across breaks, block lines end at theirs, a blank-led
+    # comment ends the node. The existing arms claim the composition
+    # unchanged (structural skip + closer bank -> emptied-key ->
+    # L-only empty -> closer bank; libyaml's comment-glue law empties
+    # the rest of the line into a +MAP/empty/empty/-MAP wrapper where
+    # yeptris keeps the ?#- and `|-shaped members). No arm or cap
+    # changed; the genuine alias-drop negative composed with the same
+    # phantom-quote shape still aborts. Bounded by every existing cap;
+    # prefix-minimal at the full 37 bytes (the ] closer is
+    # load-bearing).
+    add_test(
+        NAME fuzz-diff-r145-midplain-quote
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-midplain-quote-r145.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
