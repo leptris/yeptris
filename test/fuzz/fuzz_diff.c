@@ -1218,6 +1218,46 @@ static int yd_qgh_lsps_additive(const char* y, size_t yn, const char* l, size_t 
     return 0;
 }
 
+/* True when yeptris's kept residue — the CURRENT =VAL line plus up to
+ * 15 further =VAL lines — leads to yeptris's OWN byte-exact copy of
+ * libyaml's 4-byte structure opener (+MAP/+SEQ/+STR), the re-paired
+ * key's nested collection (the r152 ride's gate; the arm's commentary
+ * below carries the law). Only kept-content scalar residue may sit
+ * between: a structure line or an =ALI in the run declines (the r144
+ * survival gate stays the alias's only path). *y_twin receives the
+ * twin line's pointer (libyaml's opener pairs against it as an equal
+ * line on the walk's next step) and *run_out the consumed line count
+ * (>= 1: the current line is always part of the run). */
+static int yd_qgh_repair_ride(const char* y, const char* l, size_t ll, const char** y_twin,
+                              int* run_out) {
+    if (ll != 4 ||
+        (memcmp(l, "+MAP", 4) != 0 && memcmp(l, "+SEQ", 4) != 0 && memcmp(l, "+STR", 4) != 0)) {
+        return 0;
+    }
+    int run = 0;
+    const char* p = y;
+    for (;;) {
+        const char* e = strchr(p, '\n');
+        size_t n = e != NULL ? (size_t)(e - p) : strlen(p);
+        if (n == 4 && memcmp(p, l, 4) == 0) {
+            *y_twin = p;
+            *run_out = run;
+            return 1;
+        }
+        if (n <= 5 || memcmp(p, "=VAL ", 5) != 0) {
+            return 0; /* only kept-content scalar residue may sit between */
+        }
+        if (++run > 16) {
+            return 0; /* the per-site residue cap (the r125 alias arm's
+                       * precedent) */
+        }
+        if (e == NULL) {
+            return 0; /* yeptris ran out before its twin opener */
+        }
+        p = e + 1;
+    }
+}
+
 static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const char* ydump,
                                       const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0 || size > 8192) {
@@ -1326,8 +1366,10 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
     const char* l = ldump;
     int diffs = 0;
     int skips = 0;
-    int struct_skips = 0; /* the structural permutation's owed closers */
-    int ride = 0;         /* the terminal-tail arm's skipped content count */
+    int struct_skips = 0;     /* the structural permutation's owed closers */
+    int ride = 0;             /* the terminal-tail arm's skipped content count */
+    const char* ytwin = NULL; /* the re-paired-value ride's twin opener */
+    int ride_run = 0;         /* the re-paired-value ride's consumed count */
     for (;;) {
         const char* yn = strchr(y, '\n');
         const char* ln = strchr(l, '\n');
@@ -1622,6 +1664,47 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 }
                 y = yn + 1;
                 l = ln + 1;
+                continue;
+            } else if (y_empty_val && yd_qgh_repair_ride(y, l, ll, &ytwin, &ride_run)) {
+                /* the RE-PAIRED-VALUE ride (r152, crash-6689bee7, run
+                 * 42095444821, main 115ac2de): libyaml's comment-glue law
+                 * consumed the glued '?#' through the KEY token and
+                 * RE-PAIRED the pending KEY with the member's nested flow
+                 * map -- the r148/r149 re-pairing law on the VALUE side:
+                 * libyaml's member renders as the EMPTIED key ("=VAL : ")
+                 * with the nested +MAP as its VALUE, while yeptris's
+                 * suite-pinned plain-'?' law keeps the killed run's
+                 * residue entries BEFORE its own nested map opens (member
+                 * 1's empty value, member 2's pair, member 3's key). The
+                 * emptied-key arm pairs member 1's key, and the first
+                 * unexplained state is yeptris's EMPTY value line against
+                 * libyaml's +MAP: the r132 shared-opener arm demands
+                 * y_val (the residue's current line is empty, yl == vp
+                 * exactly), the r130 structural arm consumes libyaml's
+                 * opener WITH yeptris's line (the inner bodies then
+                 * mis-pair -- yeptris's own +MAP grazes a libyaml VAL and
+                 * no arm fires), and the r116 extra-empty arm declines on
+                 * l[0] == '+'. The ride: yeptris's kept residue VALs (the
+                 * current line plus up to 15 further =VAL lines; ONLY
+                 * kept-content scalars may sit between -- a structure
+                 * line or an =ALI in the run declines, the r144 survival
+                 * gate stays the alias's only path) step aside until
+                 * yeptris's OWN byte-exact copy of libyaml's 4-byte
+                 * opener; libyaml's opener is NOT consumed -- the twin
+                 * pairs as an equal line on the next step, the inner
+                 * bodies pair through the existing arms, and the maps'
+                 * closers pair 1:1 (no struct_skips owed; a nesting skew
+                 * surfaces as an unexplained closer and bails). Family-
+                 * gated by pass 1; bounded by the per-site run cap (16,
+                 * the r125 alias arm's precedent) and the shared skip
+                 * cap; the claim stands only on full exhaustion (the
+                 * walk's law). */
+                skips += ride_run;
+                if (skips > 64) {
+                    return 0;
+                }
+                diffs += ride_run;
+                y = ytwin;
                 continue;
             } else if (y[0] == '-' && l[0] == '-' && struct_skips > 0 &&
                        strncmp(y, l, yl < ll ? yl : ll) != 0) {
