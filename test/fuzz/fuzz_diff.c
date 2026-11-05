@@ -2188,6 +2188,49 @@ static int yd_r139_soup_gray(const uint8_t* data, size_t size, const char* ydump
     return 1;
 }
 
+/* True for the ONE exact gray-zone input of the r140 nightly
+ * (crash-0ff20316, run 41947883642, main 38983124): a 33-byte flow-map
+ * soup -- the r139 soup's SIBLING (the same glued-'?' head and
+ * "\t*L:" explicit-key alias pair; the '+' and the first backtick of
+ * the r139 backtick pair dropped, so the head plain folds clean and
+ * ONE lone backtick plain rides before the alias), closed with '}'.
+ * Both engines accept; the streams differ beyond every arm's reach.
+ * yeptris's suite-pinned plain-'?' law (HM87/652Z) keeps every run as
+ * content and the "\t*L" as an ALIAS event -- 4 pairs (three
+ * VAL-keyed, one ALI-keyed) ride to the closing '}'. libyaml's
+ * comment-glue law (the flow-'?' KEY token fires on ANY follower and
+ * the post-token skip eats a glued '#' as a comment to the break,
+ * with no preceding-whitespace requirement) empties the head pair and
+ * swallows EVERYTHING from the lone-backtick plain THROUGH the
+ * "\t*L:" alias to the tail -- the stream closes after ONE emptied
+ * pair. The walk's emptied-key arm pairs member 1, the r120 tail arm
+ * and the yeptris-only empty skip consume the lone-backtick pair,
+ * then the first unexplained line is yeptris's "=ALI *L" against
+ * libyaml's "-MAP": an 'yeptris =ALI vs libyaml anything' arm would
+ * mask genuine alias-drop bugs (an event-kind divergence, not
+ * content), and every completing skeleton composition needs a
+ * yeptris-only tail AFTER libyaml's '-MAP' closes -- member-count
+ * skew, the exact signature of genuine member-drop bugs the
+ * r137/r138/r139 verdicts ruled unsound to generalize. The bisect
+ * over every prefix found no shorter diverging cut (the artifact is
+ * prefix-minimal at 33 bytes), so the input rides the EXACT-BYTES
+ * gray claim -- the ledger discipline's suite-gray zone, documented
+ * by input, not by mutation. Further alias-swallow shapes get their
+ * own entries or an engine dig. */
+static int yd_r140_soup_gray(const uint8_t* data, size_t size, const char* ydump,
+                             const char* ldump) {
+    static const uint8_t seed[] = {0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x20,
+                                   0x09, 0x20, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a,
+                                   0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23,
+                                   0x70, 0x70, 0x0a, 0x09, 0x20, 0x7d};
+    if (size != sizeof(seed) || memcmp(data, seed, sizeof(seed)) != 0) {
+        return 0;
+    }
+    (void)ydump;
+    (void)ldump;
+    return 1;
+}
+
 static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL) {
         return 0;
@@ -4424,6 +4467,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r137_soup_gray(data, size, ydump, ldump) ||
          yd_r138_soup_gray(data, size, ydump, ldump) ||
          yd_r139_soup_gray(data, size, ydump, ldump) ||
+         yd_r140_soup_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||

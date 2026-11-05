@@ -788,6 +788,31 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r139.bin
     )
 
+    # the r140 nightly's seed: the alias-swallow TAIL COMPOSITION's
+    # SIBLING -- a 33-byte cut of the r139 soup (the same glued-'?'
+    # head and '\t*L:' explicit-key alias pair; the '+' and the first
+    # backtick of the r139 backtick pair dropped, so the head plain
+    # folds clean and ONE lone backtick plain rides before the alias).
+    # yeptris's suite-pinned plain-'?' law rides 4 pairs (one
+    # ALI-keyed) to the '}'; libyaml's comment-glue law empties the
+    # head pair and swallows EVERYTHING from the lone-backtick plain
+    # THROUGH the '\t*L:' alias to the tail -- the stream closes after
+    # ONE emptied pair. The bisect over every prefix found no shorter
+    # diverging cut, and the first unexplained walk line is yeptris's
+    # '=ALI *L' against libyaml's '-MAP': an 'yeptris =ALI vs libyaml
+    # anything' arm would mask genuine alias-drop bugs, and every
+    # completing skeleton composition needs a yeptris-only tail after
+    # libyaml's '-MAP' closes (member-count skew -- the exact signature
+    # of genuine member-drop bugs, ruled unsound to generalize by the
+    # r137/r138/r139 verdicts). The prefix-minimal artifact rides the
+    # EXACT-BYTES gray claim (the r121/r129/r137/r138/r139 pattern),
+    # not an arm.
+    add_test(
+        NAME fuzz-diff-r140-soup-gray
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-gray-r140.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
