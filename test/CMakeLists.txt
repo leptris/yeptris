@@ -982,6 +982,40 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-phantom-verbatim-r147.bin
     )
 
+    # the r148 nightly's seed (crash-9b423bc7, run 42043432048, main
+    # 99803f9a): the soup family's &m-ANCHORED-KEY wrapper. The r132
+    # comment-glue law consumed the glued '?##' through libyaml's KEY
+    # token and re-paired the pending KEY with the continuation's
+    # ANCHOR, so each killed member rides a salvage wrapper whose KEY
+    # event renders PROPS-ONLY ("=VAL : &m " — anchor in the props
+    # region, empty value) where yeptris's suite-pinned plain-'?' law
+    # (HM87/652Z) keeps "?## &m" ONE plain folded across the break.
+    # The r143 wrapper ride declined the shape on a rendering
+    # technicality: its KEY-suffix gate compared the UNstripped region
+    # ("&m ", props + the render's separator blank) against yeptris's
+    # tail (" &m", fold space + the name) — shifted by exactly that
+    # byte — so the walk died at the SECOND wrapper's opener ("-SEQ"
+    # vs "+MAP" past the shared skip budget). The ride's gate now
+    # strips one trailing blank from a plain-styled KEY line (a plain
+    # cannot end in a blank as content; the prefix check pins the
+    # style against quoted keys whose content MAY end in a blank) and
+    # the same suffix/pairs_next compares ride the stripped props
+    # region. The byte-exact residue gate, the four-line block, the
+    # !pairs_next routing and the shared skip cap are unchanged. The
+    # artifact composes the whole r132-r147 arm chain: three '?##|'
+    # members ride the shared-opener skips, the PS-fold key drift
+    # ("/\n\n51" vs "/\n\n<PS>51") rides the r124 content-agnostic
+    # skips, and both &m wrappers ride the extended ride. Post-fix the
+    # battery converges: 30 mutants (20 single-byte flips + 10
+    # multi-byte ins/sub/del), 0 DIFFER-aborts (7 pre-fix DIFFERs all
+    # classify; the 21 raw-byte splits are the suite-gray libyaml-
+    # rejects family, pre/post identical).
+    add_test(
+        NAME fuzz-diff-r148-anchored-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-anchored-key-r148.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
