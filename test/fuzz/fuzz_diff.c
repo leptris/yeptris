@@ -1967,6 +1967,76 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                             }
                         }
                     }
+                    if (!key_suffix && l1l == vp && l1n != NULL) {
+                        /* the r167 MID-STREAM EMPTY-KEY wrapper ride
+                         * (crash-a6a61def8116bbde86fc61dff1ac018afd3b0fed,
+                         * run 42211827282, main d6b6098): the r136
+                         * tail-wrapper shape ("?!": libyaml's flow-'?'
+                         * KEY-token law opens an explicit-key salvage
+                         * map and the glued '!' rides it as the
+                         * non-specific tag, invisible in the dump),
+                         * now TWO wrappers IN A ROW with members still
+                         * behind them -- "[=,?!,?!\n,8]" renders four
+                         * yeptris members against two empty-key
+                         * wrappers plus the trailing "=VAL : 8". The
+                         * r143/r149 rides decline: their gates demand
+                         * the KEY carry CONTENT (a non-empty suffix of
+                         * yeptris's killed member or of the next
+                         * surviving one -- kl > 0), and here the tag
+                         * rode the key AWAY ("=VAL : " exactly). The
+                         * r130 line-wise path then over-consumes:
+                         * member 2 pairs wrapper 1's opener (the
+                         * structural skip), wrapper 1's emptied key
+                         * and value GRAZE members 3 and 4 through the
+                         * emptied-key arm (yeptris's "=VAL : 8" is a
+                         * val and libyaml's line is an empty val --
+                         * the arm's empties-strictly-more reading
+                         * fires), the closer bank eats wrapper 1's
+                         * "-MAP", and wrapper 2's opener faces
+                         * yeptris's "-SEQ" closer with no arm (the
+                         * r132 shared-opener tell wants yeptris's next
+                         * line to BE the opener; the r142 terminal-
+                         * tail gate wants libyaml's remainder
+                         * closers-only -- both decline, the skew is
+                         * mid-stream by construction). The ride claims
+                         * the WHOLE wrapper when it is the byte-pinned
+                         * empty block -- a bare "+MAP", the KEY
+                         * exactly "=VAL : " (the tag-emptied key; the
+                         * r148 props-strip variant needs l1l > vp+1
+                         * and declines), the salvaged null "=VAL : "
+                         * as the value, the bare "-MAP" close -- and
+                         * yeptris's killed member is glue-LED (its
+                         * content opens with the '?' plus the glued
+                         * '#' or '!' -- the pass-1 marker's own byte
+                         * pair AT the member, the r163 family pin in
+                         * its lead form: libyaml's KEY law fires only
+                         * on '?'-led members, and a content-bearing
+                         * key never satisfies the byte-pinned empty
+                         * block, so a wrapper claimed here is that
+                         * member's salvage by construction). Each
+                         * wrapper is the fixed four-line block (any
+                         * other shape declines into the line-wise arms
+                         * below); both pointers advance every claim,
+                         * and the shared skip cap still bounds the
+                         * total; the claim stands only on full
+                         * exhaustion (the walk's law). */
+                        const char* l2 = l1n + 1;
+                        const char* l2n = strchr(l2, '\n');
+                        size_t l2l = l2n != NULL ? (size_t)(l2n - l2) : strlen(l2);
+                        const char* l3 = l2n != NULL ? l2n + 1 : l2 + l2l;
+                        if (l2l == vp && memcmp(l2, val_prefix, vp) == 0 &&
+                            memcmp(l3, "-MAP", 4) == 0 && (l3[4] == '\n' || l3[4] == '\0') &&
+                            yl > vp + 1 && y[vp] == '?' && (y[vp + 1] == '#' || y[vp + 1] == '!')) {
+                            skips += 3;
+                            if (skips > 64) {
+                                return 0;
+                            }
+                            diffs += 5;
+                            y = yn + 1;
+                            l = l3[4] == '\0' ? l3 + 4 : l3 + 5;
+                            continue;
+                        }
+                    }
                 }
                 if (y_killed_shared_opener) {
                     /* the SHARED-opener skip (r132, #949), the rides'

@@ -1732,6 +1732,36 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-lsps-fold-r166.bin
     )
 
+    # the r167 nightly's seed
+    # (crash-a6a61def8116bbde86fc61dff1ac018afd3b0fed, run 42211827282,
+    # main d6b6098): 13 bytes, "[=,?!,?!\n,8]" -- TWO mid-stream '?!'
+    # members followed by a trailing "8" member in one flow seq. The
+    # r136 tail-wrapper shape MID-STREAM, doubled: libyaml's flow-'?'
+    # KEY-token law opens an explicit-key salvage map per member and
+    # the glued '!' rides it as the non-specific tag, so each '?!'
+    # renders the four-line empty block (+MAP / "=VAL : " / "=VAL : " /
+    # -MAP -- the tag rode the key away, the pair's value is the
+    # salvaged null) while yeptris's suite-pinned plain-'?' law keeps
+    # each glued run ONE plain member ("?!" -- the r135 tag-riding law;
+    # the break folds). Both engines agree member 1 ("="), member 4
+    # ("8") and the skeletons around them. The r143/r149 wrapper rides
+    # decline (their gates demand the KEY carry content -- kl > 0) and
+    # the r130 line-wise path over-consumes: wrapper 1's opener eats
+    # member 2, wrapper 1's emptied key and value GRAZE members 3 and
+    # 4 through the emptied-key arm, the closer bank eats its "-MAP",
+    # and wrapper 2's opener faces yeptris's "-SEQ" closer with no arm
+    # (mid-stream, so the r142 terminal-tail gate declines too). The
+    # r167 ride: the structural arm claims the WHOLE wrapper when it is
+    # the byte-pinned empty block and yeptris's killed member is
+    # glue-LED (its content opens with '?' plus the glued '#' or '!' --
+    # the pass-1 marker's own byte pair at the member). Both pointers
+    # advance every claim; the claim stands only on full exhaustion.
+    add_test(
+        NAME fuzz-diff-r167-qbang-mid-wrapper
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-qbang-mid-wrapper-r167.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
