@@ -3192,7 +3192,11 @@ static int yd_plain_nel_lsps_fold_divergence(const uint8_t* data, size_t size, c
  * spaces BETWEEN its literal breaks while yeptris keeps them, so the
  * run's exit may carry space<->break pairs followed by the surplus
  * spaces: yeptris's spaces libyaml ate as the continuation's
- * indentation, or libyaml's fold spaces with no yeptris counterpart).
+ * indentation, or libyaml's fold spaces with no yeptris counterpart),
+ * or yeptris's CLIP BREAK with no counterpart (the r175 nightly: the
+ * 1.2 scalar keeps its final LF as the trailing clip break while
+ * libyaml's trailing-break accounting absorbed that LF into the NEL
+ * region it collapsed).
  * Beyond the section the dumps must be byte-identical (the frames,
  * the other scalars).
  * The plain family never reaches here (yeptris's emitter escapes its
@@ -3278,13 +3282,19 @@ static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, con
              * to k space<->break PAIRS (one-for-one, both pointers
              * advancing) and the surplus spaces -- yeptris's spaces
              * libyaml ate as the continuation's indentation, or
-             * libyaml's fold spaces with no yeptris counterpart. Every
-             * arm fires within a total budget of k steps (the run's
-             * own length: the claim cannot outrun the run) and every
-             * iteration advances at least one pointer; the walk past
-             * the section stays byte-bound (the loop above and the
-             * law below), so the section can never swallow arbitrary
-             * divergence -- a dropped member's frame bytes cannot ride. */
+             * libyaml's fold spaces with no yeptris counterpart -- or,
+             * the r175 clip-break surplus, yeptris's escaped break
+             * with no b counterpart: the 1.2 scalar keeps its final LF
+             * as the trailing (clip) break while libyaml's trailing
+             * break accounting absorbed that LF into the NEL region it
+             * collapsed (the (k-1) collapse already consumed its one
+             * surviving break). Every arm fires within a total budget
+             * of k steps (the run's own length: the claim cannot
+             * outrun the run) and every iteration advances at least
+             * one pointer; the walk past the section stays byte-bound
+             * (the loop above and the law below), so the section can
+             * never swallow arbitrary divergence -- a dropped member's
+             * frame bytes cannot ride. */
             {
                 int steps = 0;
                 while (steps < k) {
@@ -3295,6 +3305,9 @@ static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, con
                         a += 1; /* libyaml ate the space as the continuation's indent */
                     } else if (b[0] == ' ') {
                         b += 1; /* libyaml's fold space, no yeptris counterpart */
+                    } else if (a[0] == '\\' && a[1] == 'n' && !(b[0] == '\\' && b[1] == 'n')) {
+                        a += 2; /* the r175 clip-break surplus: yeptris's
+                                 * escaped break, libyaml's value spent */
                     } else {
                         break;
                     }
