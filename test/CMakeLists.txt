@@ -1547,6 +1547,65 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-lsps-substituted-r162.bin
     )
 
+    # the r163 nightly's seed (run 42177815461, main ec8fc99): 26 bytes
+    # "0a 0d 7b 31 3a 0d 0d 0d 0a 09 20 2c 3f 23 23 0d 0d 0d 0d 2a 35
+    # 0d 0a 0a 7d 0a" -- a flow map whose member 1 is the empty pair
+    # "1:" and whose member 2 is the glued "?##" run followed by the
+    # CR CR CR CR break run and "*5", then the close. Both engines
+    # accept; the member-2 KEY line differs:
+    #   yeptris "=VAL : ?##\n\n\n*5"
+    #   libyaml "=ALI *5"
+    # (yeptris's suite-pinned plain-'?' law keeps the glued run ONE
+    # plain folded across the breaks and the '*' is ns-plain-char
+    # CONTENT there -- the indicator exclusions bind only
+    # ns-plain-first, so mid-plain '*' is content in BOTH engines:
+    # "{x<CR>*5}" agrees byte-exact, the alias-vs-content split only
+    # exists on the glue path. libyaml's post-'?'-token comment-glue
+    # law consumed the glued '?##' THROUGH its flow-KEY token and
+    # swallowed the break run, so "*5" became an ALIAS token re-paired
+    # with the pending KEY. The fold itself is shared algebra: the
+    # b-l-trimmed reading renders a break followed by k empty lines as
+    # k escaped breaks with no fold space -- "{a:<CR>x4 b}" agrees
+    # byte-exact -- so nothing NEW is engine-suspicious.) The soup
+    # family's alias-swallow composition in the REVERSE orientation of
+    # the r138-r141 gray claims: HERE libyaml carries the =ALI and
+    # yeptris the kept content. Neither existing arm covers the pair:
+    # the r125 alias-realign arm demands yeptris carry its OWN =ALI
+    # downstream (yeptris never emits one -- the spelling rode into
+    # the kept plain) and declined at yeptris's -MAP, and the r144
+    # survival arm is not consulted at all (yeptris's line is a VAL).
+    # The extension adds ONE pair arm to the soup walk BEFORE the r125
+    # branch: libyaml's full alias rendering must be yeptris's kept
+    # content's byte-exact SUFFIX (name non-empty, no wildcards -- at
+    # a node start yeptris emits =ALI itself and the line pairs
+    # equal, so a content CARRYING the spelling is the direct
+    # observation that the '*' was mid-plain by construction; the
+    # r138-r141 masking concern does not apply -- libyaml's alias is
+    # never dropped, it is right there), and the kept content must
+    # carry the glue fingerprint LOCALLY (a glued "?#"/"?!" inside the
+    # pre-spelling prefix -- the plain-'?' law's own marker, keeping
+    # the arm family-bound rather than any suffix-match). The pair
+    # consumes BOTH lines as one diff (the emptied-key arm's pattern:
+    # both pointers advance, bounded by construction, no cap; the
+    # claim stands only on full exhaustion). The doubled alias
+    # ("*5*6": yeptris's tail "*5*6" is not libyaml's "=ALI *5" tail)
+    # declines into the r125 arm and keeps aborting BY DESIGN, as does
+    # the '?!' twin (libyaml's tag path, a different family with no
+    # adjudicated reading) and a genuine mid-stream member drop
+    # composed with the shape. Post-fix the battery converges: 42
+    # mutants (20 single-byte flips + 10 multi-byte ins/sub/del + 12
+    # targeted family variants and controls) classify (13) or hold
+    # identical verdicts pre/post (29), zero regressions; the corpus
+    # walk is byte-identical pre/post on the shared 282 files (30
+    # historical aborts) with the new seed riding green (283 post);
+    # leaks --atExit clean on the seed.
+    add_test(
+        NAME fuzz-diff-r163-alias-content-tail
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-alias-content-tail-r163.bin
+    )
+
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
