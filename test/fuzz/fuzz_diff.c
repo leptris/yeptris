@@ -1315,6 +1315,20 @@ static int yd_qgh_alias_survives(const char* ldump, const char* y, size_t yl) {
     return 0;
 }
 
+/* True when the region carries the glue family's fingerprint: a '?'
+ * immediately followed by '#' or '!' (the plain-'?' law's glued run,
+ * the pass-1 marker's own byte pair). The r163 alias-tail pair pins the
+ * marker INSIDE yeptris's kept content so the ride stays family-local
+ * rather than any suffix-match. */
+static int yd_qgh_glue_marked(const char* s, size_t n) {
+    for (size_t i = 0; i + 1 < n; i++) {
+        if (s[i] == '?' && (s[i + 1] == '#' || s[i + 1] == '!')) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* True when libyaml's scalar content is yeptris's with exactly ONE raw
  * LS/PS triple inserted byte-exact — the #638 law's ADDITIVE reading
  * (the r104 forced form: libyaml joins the LS/PS verbatim where
@@ -1937,6 +1951,59 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 }
                 l = ln + 1;
                 continue;
+            } else if (y_val && ll > 5 && strncmp(l, "=ALI ", 5) == 0 && ll - 5 <= yl - vp &&
+                       memcmp(y + yl - (ll - 5), l + 5, ll - 5) == 0 &&
+                       yd_qgh_glue_marked(y + vp, yl - vp - (ll - 5))) {
+                /* the ALIAS-AS-CONTENT-TAIL pair (r163, run
+                 * 42177815461, main ec8fc99): the soup family's
+                 * alias-swallow composition in the REVERSE orientation
+                 * of the r138-r141 gray claims -- HERE libyaml carries
+                 * the =ALI and yeptris carries the kept content.
+                 * libyaml's post-'?'-token comment-glue law consumed
+                 * the glued '?##' THROUGH its flow-KEY token and
+                 * swallowed the CR break run, so the "*5" that follows
+                 * became an ALIAS token re-paired with the pending KEY
+                 * ("=ALI *5"); yeptris's suite-pinned plain-'?' law
+                 * keeps the glued run ONE plain folded across the
+                 * breaks, and the '*' is ns-plain-char CONTENT there
+                 * (the indicator exclusions bind only ns-plain-first,
+                 * spec 6.6 -- a mid-plain '*' is content in BOTH
+                 * engines: "{x<CR>*5}" agrees byte-exact, so the
+                 * alias-vs-content split only exists on the glue
+                 * path). The fold itself is shared algebra (the
+                 * b-l-trimmed reading: a break followed by k empty
+                 * lines renders k escaped breaks, no fold space --
+                 * "{a:<CR><CR><CR><CR>b}" agrees byte-exact), so
+                 * nothing NEW is engine-suspicious. The r125
+                 * alias-realign arm declines (it demands yeptris carry
+                 * its OWN =ALI downstream; yeptris never emits one
+                 * here -- the spelling rode into the kept plain), the
+                 * r144 survival arm is not consulted (yeptris's line
+                 * is a VAL, and libyaml's dump carries exactly one
+                 * alias), and the walk died at the pair with no arm.
+                 * The ride is the REVERSE of the r144 gate's reading:
+                 * libyaml's alias is never dropped (it is right
+                 * there), so the r138-r141 "yeptris =ALI vs libyaml
+                 * anything" masking concern does not apply; and
+                 * yeptris's kept content CARRYING the spelling as its
+                 * byte-exact tail is the direct observation that the
+                 * '*' was mid-plain by construction (at a node start
+                 * yeptris emits =ALI itself and the line pairs
+                 * equal). The pair consumes BOTH lines as one diff
+                 * (the emptied-key arm's pattern -- both pointers
+                 * advance, bounded by construction, no cap). Gates:
+                 * libyaml's full alias rendering is yeptris's
+                 * content's byte-exact SUFFIX (the name rides the
+                 * fold, no wildcards), the name is non-empty, and the
+                 * kept content carries the glue fingerprint LOCALLY
+                 * (a glued "?#"/"?!" inside the pre-spelling prefix --
+                 * the plain-'?' law's own marker, keeping the arm
+                 * family-bound; a doubled alias whose surviving name
+                 * is not the content's tail declines into r125 and
+                 * keeps aborting BY DESIGN). Family-gated by pass 1;
+                 * the claim still stands only on full exhaustion (the
+                 * walk's law). */
+                diffs++;
             } else if (y_val && l[0] == '=' && strncmp(l, "=ALI", 4) == 0) {
                 /* an ALIAS realign (r125): both skeletons carry the
                  * alias at the same EVENT position, but yeptris's
