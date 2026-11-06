@@ -1990,6 +1990,58 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-rekey-dist5-r172.bin
     )
 
+    # the r173 nightly's seed (run 42283551985, main 1e6cb19, crash
+    # d2bcd9d9): the RUN-FOLD CONTINUATION sibling of the r160/r161
+    # block-content law -- 27 bytes: a folded-block-scalar header, then
+    # the content line " !<[!p", then TWICE the line " !<" + two U+0085
+    # NEL pairs + a trailing space. Both engines accept; the values
+    # differ at the first run (the byte-exact dumps, verified by the
+    # lldb argument read): yeptris "=VAL : !<[!p !<NN  !<NN \n" -- the
+    # pairs stay CONTENT (the 1.2 block-scalar break set is LF/CR/CRLF
+    # only, spec 8.1), the content line's trailing space is kept AND
+    # the fold space is emitted, so TWO spaces ride behind the run --
+    # vs libyaml "=VAL : !<[!p !<\n\n !<\n": its 1.1 IS_BREAK splits
+    # the line at the NELs, its empty-line scan eats the spaces BETWEEN
+    # its literal breaks (3 breaks with a space between -> (n-1)=2
+    # escaped breaks), and the continuation's space strips. The suite
+    # sides with yeptris (1.2 content) -- a carry. The r160 arm
+    # DECLINES this member: at the first run it consumes the (k-1)
+    # collapse + ONE space<->break pair, then yeptris's SURPLUS fold
+    # space faces libyaml's " !<" outside any run (the space-surplus
+    # arm sits behind the space<->break continue and the loop-top
+    # byte-equality check kills it first). The extension generalizes
+    # the run's-exit re-alignment into a bounded continuation: up to k
+    # space<->break PAIRS (one-for-one, both pointers advancing)
+    # followed by the surplus spaces -- yeptris's spaces libyaml ate as
+    # the continuation's indentation, or libyaml's fold spaces with no
+    # yeptris counterpart -- every arm firing within a total budget of
+    # k steps (the run's own length: the claim cannot outrun the run)
+    # and every iteration advancing at least one pointer; the walk past
+    # the section stays byte-bound, so a dropped member's frame bytes
+    # cannot ride (probed byte-exact: the seed accepts, a dropped tail
+    # frame byte / changed tail frame / any post-section divergence
+    # rejects). The r161 terminal-tail end-anchor stays binding above
+    # the extension, untouched -- every ride ends at it with
+    # byte-identical remainders (the second run of the seed and of the
+    # k=3/k=4 ladder, the glue twins, the flips). The corrupted staged
+    # copy of the artifact (an earlier printf had inserted a backslash
+    # at offset 4, " !\[!p") is a DIFFERENT parse -- it agrees on both
+    # engines and stays agreeing pre/post; the REAL nightly artifact
+    # bytes are canonical. Post-fix the battery converges: 50 mutants
+    # (20 single-byte flips + 10 multi-byte ins/sub/del + 20 targeted
+    # family variants and controls) classify or hold identical verdicts
+    # pre/post (7 rides: the seed, two flips that glue/rename the
+    # content, the deletion twin, the k=3/k=4 run ladder and the
+    # dedent twin whose dumps are byte-identical to the seed's), zero
+    # regressions; the corpus walk is byte-identical pre/post on the
+    # shared 292 files (30 historical aborts) with the new seed riding
+    # green (293 post); leaks --atExit clean on the seed.
+    add_test(
+        NAME fuzz-diff-r173-block-nel-run-fold-continuation
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-run-fold-continuation-r173.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
