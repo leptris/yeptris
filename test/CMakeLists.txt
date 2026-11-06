@@ -1496,6 +1496,57 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-block-nel-content-r161.bin
     )
 
+    # the r162 nightly's seed (run 42171805647, main cf17954): 33 bytes
+    # "5b 31 31 0d e2 80 a9 20 37 2e 74 61 67 0d 20 2c 3f 23 23 7c 2c
+    # 3f 0d 32 30 30 3a 0a 20 20 6d 2c 5d" -- a flow seq whose member 1
+    # carries the break run "11<CR><PS> 7.tag" INSIDE its plain fold,
+    # followed by the r116 soup: the glued "?##|" member (libyaml's
+    # post-'?'-token comment-glue law eats "?##|,?" whole), the explicit
+    # "?<CR>200:<LF>  m" map, and the close. Both engines accept; two
+    # dump lines differ:
+    #   yeptris "=VAL : 11 7.tag" / "=VAL : ?##|" then +MAP 200 m -MAP
+    #   libyaml "=VAL : 11<PS>7.tag" then +MAP 200 m -MAP
+    # (yeptris folds CR+PS+blank to ONE blank, libyaml joins the PS raw
+    # and eats CR + blank -- the #638 READ_LINE law; libyaml's kill
+    # leaves its map opening where yeptris keeps the killed member THEN
+    # its map -- the r132 shared-opener shape). Neither arm's gate
+    # covers the FIRST difference: the r150 pair arm accepts the
+    # INSERTED triple (delta exactly 3, yeptris's text byte-identical
+    # around it), but here yeptris's own fold blank IS the site --
+    # libyaml's content is yeptris's with the blank REPLACED by the
+    # triple, a delta of 2 -- so the additive gate declines, the
+    # content-agnostic skip eats yeptris's side, and the walk dies one
+    # step later at libyaml's surviving line against yeptris's map
+    # opener with no arm. The generic lsps fold walk (r56) owns the
+    # substitution law but not the soup; the soup walk owns the soup but
+    # not the substitution -- the composition needed both. The extension
+    # adds ONE pair form to the r150 branch: yd_qgh_lsps_substituted
+    # walks the member pair position-wise (equal bytes advance both, a
+    # yeptris blank facing a raw LS/PS triple advances 1/3 as one site,
+    # anything else declines; at least one site, both contents consumed,
+    # pointers never rewind), consuming BOTH lines as one diff -- the
+    # members are the same event on both sides, so the walk stays
+    # bounded by construction (the r150 pattern). Engine side is
+    # law-clean on both deltas: yeptris's fold is the #638 adjudicated
+    # 1.2 reading, and its "?<CR>200:m" explicit-key map across the CR
+    # break is the #713 carried flow-? law (libyaml agrees on the map
+    # body 200:m; only the kill differs). Nothing NEW is
+    # engine-suspicious. The double-triple run (yeptris folds to one
+    # blank, libyaml joins 2 triples) has no adjudicated reading and
+    # keeps aborting BY DESIGN, as does the genuine mid-stream member
+    # drop composed with the same shape. Post-fix the battery
+    # converges: 41 mutants (20 single-byte flips + 10 multi-byte
+    # ins/sub/del + 11 targeted family variants and controls) classify
+    # (8) or hold identical verdicts pre/post (33), zero regressions;
+    # the corpus walk is byte-identical pre/post on the shared 281 files
+    # (30 historical aborts) with the new seed riding green (282 post);
+    # leaks --atExit clean on the seed.
+    add_test(
+        NAME fuzz-diff-r162-lsps-substituted
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-lsps-substituted-r162.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

@@ -1335,6 +1335,53 @@ static int yd_qgh_lsps_additive(const char* y, size_t yn, const char* l, size_t 
     return 0;
 }
 
+/* True when libyaml's scalar content is yeptris's with yeptris's
+ * fold-site blank REPLACED by raw LS/PS triples — the #638 law's
+ * SUBSTITUTED reading, in the soup walk's paired form (the r56
+ * plain-LS/PS law: yeptris (1.2) folds an LS/PS break to ONE blank
+ * while libyaml's READ_LINE joins the triple raw and folds only its
+ * LF/CR count, so the blanks around the joined triple are gone — at
+ * the site yeptris renders the blank libyaml renders the triple). The
+ * r150 ADDITIVE arm accepts only the INSERTED form (one triple into
+ * otherwise identical text); the r162 nightly's member (run
+ * 42171805647, main cf17954) carries the break run "11<CR><PS> 7.tag"
+ * INSIDE its killed member's fold — yeptris folds the run to one blank
+ * ("11 7.tag"), libyaml joins the PS and eats CR + blank
+ * ("11<PS>7.tag", delta 2) — the additive length pin declines, the
+ * generic content-agnostic skip consumed yeptris's side, and the walk
+ * died at libyaml's surviving line against yeptris's map opener. Here
+ * the pair consumes BOTH lines as one diff (the r150 pattern): the
+ * members are the same event on both sides, so the walk stays bounded
+ * by construction. Position-wise walk: equal bytes advance both, a
+ * yeptris blank facing a raw triple advances 1/3 (a site), anything
+ * else declines; at least one site, both contents fully consumed.
+ * Bounded: the pointers never rewind, so the walk terminates; no
+ * wildcards (multi-triple runs where yeptris folds to one blank and
+ * libyaml joins n triples decline — the n>1 shape has no adjudicated
+ * reading yet). */
+static int yd_qgh_lsps_substituted(const char* y, size_t yn, const char* l, size_t ln) {
+    size_t yi = 0;
+    size_t li = 0;
+    int sites = 0;
+    while (yi < yn || li < ln) {
+        if (yi < yn && li < ln && y[yi] == l[li]) {
+            yi++;
+            li++;
+            continue;
+        }
+        if (yi < yn && y[yi] == ' ' && li + 3 <= ln && (unsigned char)l[li] == 0xE2 &&
+            (unsigned char)l[li + 1] == 0x80 &&
+            ((unsigned char)l[li + 2] == 0xA8 || (unsigned char)l[li + 2] == 0xA9)) {
+            yi++;
+            li += 3;
+            sites++;
+            continue;
+        }
+        return 0;
+    }
+    return sites > 0;
+}
+
 /* True when yeptris's kept residue — the CURRENT =VAL line plus up to
  * 15 further =VAL lines — leads to yeptris's OWN byte-exact copy of
  * libyaml's 4-byte structure opener (+MAP/+SEQ/+STR), the re-paired
@@ -1542,7 +1589,9 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 y = yn + 1;
                 l = ln + 1;
                 continue;
-            } else if (y_val && l_val && yd_qgh_lsps_additive(y + vp, yl - vp, l + vp, ll - vp)) {
+            } else if (y_val && l_val &&
+                       (yd_qgh_lsps_additive(y + vp, yl - vp, l + vp, ll - vp) ||
+                        yd_qgh_lsps_substituted(y + vp, yl - vp, l + vp, ll - vp))) {
                 /* the LS/PS-fold PAIR (r150, crash-4d640bc4, run
                  * 42072059847, main b4d6671f): the soup interleaves the
                  * glue family with plain fold runs mixing LS/PS into
@@ -1568,6 +1617,15 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                  * past one decline into the generic arms); the claim
                  * still stands only on full exhaustion (the walk's
                  * law). */
+                /* The r162 SUBSTITUTED sibling: the break run INSIDE
+                 * the killed member's own fold ("11<CR><PS> 7.tag")
+                 * renders yeptris one blank where libyaml joins the raw
+                 * triple and eats CR + blank — yeptris's blank IS
+                 * libyaml's triple at the site (the r56 plain law's
+                 * paired form), a delta of 2 the additive length pin
+                 * declines. yd_qgh_lsps_substituted (above) walks the
+                 * pair position-wise; both lines still advance
+                 * together, so the pair stays bounded by construction. */
                 diffs++;
             } else if (l_val && (y_empty_val || yl == 0 || y[0] == '-')) {
                 /* an L-ONLY extra val of ANY content (r117): libyaml's
