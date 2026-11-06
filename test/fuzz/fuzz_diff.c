@@ -210,6 +210,54 @@ static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
             }
         }
     }
+    /* the folded-break-RUN head twin (the nightly's round 165, crash-
+     * 2e1d2b72, run 42193562130, main 57f2e4b): the space form's
+     * BLANK-LINE sibling. The r165 shape adds ONE NEL unit to the r159
+     * artifact -- UTF-16BE mark, U+0085, U+FEFF, U+0085, U+0085, then
+     * "a..." -- so the THIRD NEL makes a BLANK LINE between the FEFF
+     * content and 'a', and the plain-NEL fold law renders an escaped
+     * BREAK, not the space (k == 1 behind the content folds to one
+     * space, k >= 2 collapses to k-1 escaped breaks -- the r118/r119/
+     * r122/r128 artifact law), so the space gate declines: after the
+     * one-BOM strip the residual opens with the two-byte "\n" escape.
+     * libyaml's side is unchanged: its column-0 BOM skip (the r154
+     * law) puts the whole NEL run back in leading position and leading
+     * breaks are consumed WHOLE -- no artifact for the blank line
+     * either. The composition claim: strip the BOM AND the run of
+     * escaped breaks behind it -- the run is exactly "content BOM +
+     * the breaks that folded", one escape per blank line, and
+     * libyaml's reading is the same plain with the BOM gone and the
+     * breaks returned to leading (consumed whole). Fires only when the
+     * residual opens with a maximal run of the two-byte "\n" escape
+     * followed by non-space content on the same dump line, and only on
+     * an exact dump match, so the claim stays byte-pinned; the dumps
+     * escape every real newline as that two-byte form, a run can only
+     * be the fold's blank-line renders (trailing breaks strip -- the
+     * r122 law -- so a run is never a value's tail), and a space is
+     * never a continuation's head content (its indent is consumed), so
+     * the pair can only be the fold. Encoding- and break-symmetric:
+     * the UTF-16LE twin and the LS/PS/mixed members classify through
+     * the same dump-level relation (LS/PS normalize to the same
+     * escaped breaks in yeptris and stay leading in libyaml). */
+    if (rest[0] == '\\' && rest[1] == 'n') {
+        const char* q = rest;
+        while (q[0] == '\\' && q[1] == 'n') {
+            q += 2;
+        }
+        if (q[0] != '\0' && q[0] != ' ') {
+            char folded[8192];
+            size_t rlen = strlen(rest);
+            size_t cut = (size_t)(q - rest);
+            if (head + rlen - cut < sizeof(folded)) {
+                memcpy(folded, stripped, head); /* "=VAL : " */
+                memcpy(folded + head, q, rlen - cut);
+                folded[head + rlen - cut] = '\0';
+                if (strcmp(folded, ldump) == 0) {
+                    return 1;
+                }
+            }
+        }
+    }
     const char* line = stripped + (size_t)(val - ydump);
     while (line > stripped && line[-1] != '\n') {
         line--; /* back to the scalar line's start */
