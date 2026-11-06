@@ -3186,12 +3186,15 @@ static int yd_plain_nel_lsps_fold_divergence(const uint8_t* data, size_t size, c
  * The dump relation, walked with the two artifacts the split can
  * leave: at each run of k NEL pairs in yeptris's dump, libyaml's dump
  * may carry up to (k-1) escaped breaks (the multi-break collapse),
- * then exactly ONE byte of re-alignment -- yeptris's verbatim content
- * space against libyaml's break artifact (the literal/only-line
- * shape), yeptris's space that libyaml ate as the continuation's
- * indent (the double-NEL fold shape), or libyaml's fold space with no
- * yeptris counterpart (the glue-between-content shape). Beyond that
- * the dumps must be byte-identical (the frames, the other scalars).
+ * then a bounded re-alignment section -- ONE byte when the dumps
+ * simply agree (the literal/only-line shape), or up to k steps of the
+ * r173 run-fold continuation (libyaml's empty-line scan eats the
+ * spaces BETWEEN its literal breaks while yeptris keeps them, so the
+ * run's exit may carry space<->break pairs followed by the surplus
+ * spaces: yeptris's spaces libyaml ate as the continuation's
+ * indentation, or libyaml's fold spaces with no yeptris counterpart).
+ * Beyond the section the dumps must be byte-identical (the frames,
+ * the other scalars).
  * The plain family never reaches here (yeptris's emitter escapes its
  * plain NELs as \N, so no C2 85 run exists in its dump), and the
  * quoted twin owns its own signature -- the run branch fires only on
@@ -3261,26 +3264,46 @@ static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, con
                     break;
                 }
             }
-            /* exactly one re-alignment byte after the run */
+            /* the re-alignment after the run: one byte when the dumps
+             * simply agree, else the bounded r173 continuation */
             if (*a == *b) {
                 subs++;
                 continue;
             }
-            if (a[0] == ' ' && b[0] == '\\' && b[1] == 'n') {
-                a += 1; /* yeptris's verbatim space is libyaml's break */
-                b += 2;
-                subs++;
-                continue;
-            }
-            if (a[0] == ' ') {
-                a += 1; /* libyaml ate the space as the continuation's indent */
-                subs++;
-                continue;
-            }
-            if (b[0] == ' ') {
-                b += 1; /* libyaml's fold space, no yeptris counterpart */
-                subs++;
-                continue;
+            /* the r173 run-fold continuation: libyaml's empty-line scan
+             * eats the spaces BETWEEN its literal breaks (a space-only
+             * continuation line folds into the break stream) while
+             * yeptris keeps them (the content line's kept trailing
+             * space + the fold space), so the run's exit may carry up
+             * to k space<->break PAIRS (one-for-one, both pointers
+             * advancing) and the surplus spaces -- yeptris's spaces
+             * libyaml ate as the continuation's indentation, or
+             * libyaml's fold spaces with no yeptris counterpart. Every
+             * arm fires within a total budget of k steps (the run's
+             * own length: the claim cannot outrun the run) and every
+             * iteration advances at least one pointer; the walk past
+             * the section stays byte-bound (the loop above and the
+             * law below), so the section can never swallow arbitrary
+             * divergence -- a dropped member's frame bytes cannot ride. */
+            {
+                int steps = 0;
+                while (steps < k) {
+                    if (a[0] == ' ' && b[0] == '\\' && b[1] == 'n') {
+                        a += 1; /* yeptris's verbatim space is libyaml's break */
+                        b += 2;
+                    } else if (a[0] == ' ') {
+                        a += 1; /* libyaml ate the space as the continuation's indent */
+                    } else if (b[0] == ' ') {
+                        b += 1; /* libyaml's fold space, no yeptris counterpart */
+                    } else {
+                        break;
+                    }
+                    steps++;
+                    subs++;
+                }
+                if (steps > 0) {
+                    continue;
+                }
             }
             return 0;
         }
