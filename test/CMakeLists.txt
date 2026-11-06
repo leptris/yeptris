@@ -1269,6 +1269,44 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-phantom-verbatim-r155.bin
     )
 
+    # the r156 nightly's seed (crash-3adc7533, run 42132975720, main
+    # 821b27e7): the double-BOM ANCHORED-KEY PROP-SPLIT composition --
+    # 10 bytes "BOM BOM '&U:#'" (the r154 9-byte form with a '#'
+    # GLUED after the ':'), minimal by byte-deletion ('&' and ':' are
+    # load-bearing; deleting the '#' reaches the r154 twin and every
+    # BOM-corrupting deletion moves the input to the invalid-UTF-8
+    # split family). yeptris strips the encoding mark and keeps the
+    # second BOM as CONTENT (the catch-121 law: one mark stripped,
+    # content BOMs ride), so the plain scans "BOM&U:#" -- one glued
+    # run (the catch-85 law: the ':' has no blank follower and the
+    # glued '#' opens no comment). libyaml strips the second BOM too
+    # (its scan_to_next_token skips a BOM at mark column 0), and its
+    # anchor scan consumes the MAXIMAL run of 1.1 anchor-set bytes and
+    # cuts at the ':' -- so its residual files as props "&U" plus the
+    # one separator blank plus ":#" riding as plain CONTENT. The r154
+    # twin declines: its separator blank lands at the LINE's end for
+    # an empty value ("&U:# ") instead of at the charset cut ("&U
+    # :#"). The twin: after the catch-121 strip, file yeptris's
+    # residual into libyaml's prop form at the 1.1 anchor-name cut --
+    # the separator blank goes AFTER the name, preserving the glued
+    # tail byte-for-byte -- and compare; fires only on an exact dump
+    # match, so the claim stays byte-pinned. The r154 bare form is the
+    # tail-empty special case this law degenerates to (and the r154
+    # arm stays byte-pinned ahead of it). No engine violates its own
+    # law: yeptris never double-strips, libyaml never keeps a
+    # column-0 BOM, and the blank position is the documented 1.1
+    # anchor-name cut (the r76 law). Post-fix the battery converges:
+    # 42 mutants (20 single-byte flips + 10 multi-byte ins/sub/del +
+    # 12 targeted family variants) -- 12 classify green (the 6 family
+    # DIFFER members ride the prop-split arm), 30 hold identical
+    # suite-gray verdicts, zero regressions; the 275-file corpus walk
+    # is byte-identical pre/post (30 historical aborts).
+    add_test(
+        NAME fuzz-diff-r156-bom-anchored-key-prop-split
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-anchored-key-prop-split-r156.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

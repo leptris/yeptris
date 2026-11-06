@@ -140,6 +140,10 @@ static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const 
     return known;
 }
 
+/* the 1.1 anchor-name charset (alnum + '_' + '-', defined below with
+ * the charset-split arms): the PROP-SPLIT twin's cut position */
+static int yd_anchor_byte_in_libyaml_set(unsigned char n);
+
 static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
@@ -211,6 +215,51 @@ static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
             }
             if (strcmp(anchored, ldump) == 0) {
                 return 1;
+            }
+        }
+    }
+    /* the anchored-key PROP-SPLIT twin (the nightly's round 156,
+     * crash-3adc7533, run 42132975720, main 821b27e7): the r156 shape
+     * "BOM BOM '&U:#'" -- the r154 9-byte form with a '#' GLUED after
+     * the ':' -- declines the bare-residual twin above: yeptris's
+     * stripped residual "&U:#" is one glued run, but libyaml's is not
+     * props-plus-empty. Its anchor scan consumes the MAXIMAL run of
+     * 1.1 anchor-set bytes (yd_anchor_byte_in_libyaml_set) and cuts
+     * at the ':', so its dump files the residual as props "&U" plus
+     * the one separator blank plus ":#" riding as plain CONTENT on
+     * both sides (the catch-85 law: the ':' has no blank follower and
+     * the glued '#' opens no comment). The composition claim: file
+     * yeptris's stripped residual into libyaml's prop form at the
+     * 1.1-charset cut -- the separator blank goes AFTER the name,
+     * preserving the glued tail byte-for-byte. No engine violates its
+     * own law: yeptris never double-strips (catch-121), libyaml never
+     * keeps a column-0 BOM, and the blank position is the documented
+     * 1.1 anchor-name cut (the r76 law). Fires only on an exact dump
+     * match, so the claim stays byte-pinned; the r154 bare form is
+     * the tail-empty special case this law degenerates to. */
+    if (linelen > 7 && line[7] == '&' && memchr(line + 7, ' ', linelen - 7) == NULL) {
+        size_t k = 0;
+        while (8 + k < linelen && yd_anchor_byte_in_libyaml_set((unsigned char)line[8 + k])) {
+            k++;
+        }
+        if (k > 0) {
+            char split[8192];
+            size_t ahead = (size_t)(line - stripped);
+            size_t atail = nl ? strlen(nl) : 0; /* from the line's break on */
+            if (ahead + linelen + 1 + atail + 1 < sizeof(split)) {
+                memcpy(split, stripped, ahead);     /* lines before the scalar */
+                memcpy(split + ahead, line, 8 + k); /* "=VAL : &" + the name */
+                split[ahead + 8 + k] = ' ';         /* the props separator blank at
+                                                       the 1.1-charset cut */
+                memcpy(split + ahead + 8 + k + 1, line + 8 + k, linelen - 8 - k);
+                if (nl != NULL) {
+                    memcpy(split + ahead + linelen + 1, nl, atail + 1);
+                } else {
+                    split[ahead + linelen + 1] = '\0';
+                }
+                if (strcmp(split, ldump) == 0) {
+                    return 1;
+                }
             }
         }
     }
