@@ -1346,6 +1346,40 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-decl-alias-collapse-r157.bin
     )
 
+    # the r158 nightly's seed (crash-f0be7ede11bfeff3e9010eefcd933b50f1d112bb,
+    # run 42147730364, main a77532d): the LITERAL-BLOCK LS x BREAKLESS-EOF
+    # CLIP COMPOSITION -- 14 bytes "|", two space-blank lines, an
+    # LS-only line, then " - m" ending at EOF with no break.
+    # yeptris's value is LF LF LF LF "- m" LF (the #638 posture rewrites
+    # the LS to a break, the blank lines' spaces strip per l-empty, and
+    # clip chomping keeps the trailing break at breakless EOF -- the
+    # r140 suite carry L24T#2); libyaml's is LF LF <raw LS> LF "- m"
+    # (its READ_LINE joins the LS triple verbatim, scanner.c
+    # LS|PS->LS|PS, and drops the breakless-EOF clip break). Each
+    # adjudicated family classifies its own members alone -- an LS twin
+    # with a final break rides the yd_dump_eq_mod_lsps_fold replace
+    # reading, a breakless twin without an LS rides the
+    # yd_clip_breakless_divergence exact-equality transform -- but the
+    # composition bails both: the walk rejects the value-trailing clip
+    # escape it cannot absorb, and the clip arm's strcmp sees the raw
+    # triple it cannot strip. No engine violates its own law: both
+    # strip the blank lines' spaces, and both deltas are documented
+    # carries. The new arm composes the two adjudicated transforms in
+    # the clip arm's own direction: append the break libyaml drops,
+    # re-dump libyaml on that, require the exact lsps-walk relation
+    # against yeptris's original dump -- a byte-bounded dump-shaped
+    # relation, not an input-pinned gray. Post-fix the battery
+    # converges: 35 mutants (20 single-byte flips + 10 multi-byte
+    # ins/sub/del + 5 targeted family variants: PS/NEL twins, the
+    # plain-LF control, a double-LS run, LS mid-content) classify or
+    # hold identical verdicts pre/post, zero regressions; the 277-file
+    # corpus walk is byte-identical pre/post (30 historical aborts).
+    add_test(
+        NAME fuzz-diff-r158-lsps-breakless-clip-composition
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/literal-ls-clip-breakless-r158.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

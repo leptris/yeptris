@@ -3802,6 +3802,70 @@ static int yd_plain_lsps_fold_divergence(const uint8_t* data, size_t size, const
     return yd_dump_eq_mod_lsps_fold(ydump, ldump);
 }
 
+/* True when the difference is the COMPOSITION of the two adjudicated
+ * break carries: an LS/PS raw-join site riding WITH the breakless-EOF
+ * clip break. Each family classifies its own members alone -- the LS
+ * twin with a final break rides yd_dump_eq_mod_lsps_fold's replace
+ * reading (the r104/r105 law: yeptris's b-char algebra spells the
+ * break \n where libyaml's READ_LINE joins the raw triple), and the
+ * breakless twin without an LS rides yd_clip_breakless_divergence's
+ * exact-equality transform (the r140 L24T#2 law) -- but the
+ * composition (the r158 nightly's seed, crash-f0be7ede, run
+ * 42147730364, main a77532d: 14 bytes "|", two space-blank lines, an
+ * LS-only line, then " - m" ending at EOF with no break -- a literal
+ * block whose leading-break run holds an LS-only line) bails both:
+ * the walk rejects the value-trailing clip escape it cannot absorb
+ * (libyaml's dump is exactly one \n escape short at the value tail),
+ * and the clip arm's strcmp sees the raw triple it cannot strip. The
+ * engine side is law-clean on both deltas: the #638 posture rewrites
+ * LS/PS to LF while libyaml keeps the triple verbatim
+ * (scanner.c READ_LINE LS|PS->LS|PS), and clip chomping keeps the
+ * trailing break at breakless EOF (the suite's L24T#2 pin); both
+ * engines strip the blank lines' spaces per l-empty (no space rides
+ * in either dump -- the breaks are yeptris LF LF LF LF "- m" LF vs
+ * libyaml LF LF LS LF "- m"). The transform composes the two
+ * adjudicated deltas in the clip arm's own direction: append the one
+ * break libyaml drops, re-dump libyaml on THAT, and require the
+ * exact lsps-walk relation against yeptris's original dump -- so the
+ * claim stays byte-bounded (a dump-shaped relation, not an
+ * input-pinned gray). Gates mirror each family's own precondition
+ * (a raw LS/PS triple in the data + a breakless final byte), so the
+ * pure members keep riding their own arms unchanged. */
+static int yd_lsps_breakless_clip_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                             const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size == 0 || size > 8192 || data[size - 1] == '\n' ||
+        data[size - 1] == '\r') {
+        return 0; /* the breakless-EOF precondition (the clip arm's own) */
+    }
+    int need = 0;
+    for (size_t i = 0; i + 2 < size; i++) {
+        if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            need = 1;
+            break;
+        }
+    }
+    if (!need) {
+        return 0; /* the lsps raw-join precondition (the plain arm's own) */
+    }
+    char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    memcpy(sub, data, size);
+    sub[size] = '\n';
+    int ok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, size + 1, &ok2);
+    free(sub);
+    if (ldump2 == NULL || !ok2) {
+        free(ldump2);
+        return 0;
+    }
+    int known = yd_dump_eq_mod_lsps_fold(ydump, ldump2);
+    free(ldump2);
+    return known;
+}
+
 /* True when the difference is the flow-anchor-colon family: inside a
  * flow collection libyaml reads "&name:" as an anchored empty key
  * ("[&a: x]" -> {a-anchored empty => x}) while yeptris's designed
@@ -5271,6 +5335,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_clip_breakless_divergence(data, size, ydump) ||
          yd_ps_space_divergence(data, size, ydump, ldump) ||
          yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
+         yd_lsps_breakless_clip_divergence(data, size, ydump, ldump) ||
          yd_plain_nel_fold_divergence(data, size, ydump, ldump) ||
          yd_r121_permuted_gray(data, size, ydump, ldump) ||
          yd_r137_soup_gray(data, size, ydump, ldump) ||
