@@ -1671,6 +1671,36 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-lsps-foldcount-r164.bin
     )
 
+    # the r165 nightly's seed
+    # (crash-2e1d2b7299811a9945807abc77c3873f63375a75, run 42193562130,
+    # main 57f2e4b): the r159 shape with ONE MORE NEL unit -- 16 bytes,
+    # the BE mark, U+0085, U+FEFF, U+0085, U+0085, then "a", U+2629,
+    # U+4662. The THIRD NEL makes a BLANK LINE between the FEFF content
+    # and 'a', so the plain-NEL fold law renders an escaped BREAK, not
+    # the r159 fold space (k == 1 behind the content folds to one
+    # space, k >= 2 collapses to k-1 escaped breaks). Both engines
+    # strip the leading NEL; yeptris keeps the mid-plain FEFF as
+    # CONTENT (the catch-121 law) so the break run renders
+    # "=VAL : <BOM>\na..." while libyaml skips the column-0 BOM (the
+    # r154 law) and the whole NEL run stays leading -- consumed whole,
+    # no artifact for the blank line either. The r159 space gate
+    # declines (the residual opens with the two-byte "\n" escape, not a
+    # space) and the r154/r156 anchored twins decline (the residual is
+    # not an anchored key). The twin: strip the BOM AND the maximal run
+    # of "\n" escapes behind it -- exactly "content BOM + the breaks
+    # that folded" -- and compare; fires only with non-space content
+    # behind the run and on an exact dump match, so the claim stays
+    # byte-pinned (a run is never a value's tail -- trailing breaks
+    # strip, the r122 law -- and a space is never a continuation's head
+    # content). Encoding- and break-symmetric: the UTF-16LE twin and
+    # the LS/PS/mixed members classify through the same dump-level
+    # relation. No existing arm is weakened.
+    add_test(
+        NAME fuzz-diff-r165-bom-fold-break-head
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-nel-fold-breaks-r165.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
