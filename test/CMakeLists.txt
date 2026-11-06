@@ -2092,6 +2092,61 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-collapse-double-head-r174.bin
     )
 
+    # the r175 nightly's seed (run 42304338744, main 3552e51, crash
+    # 1fff0dca): the FOLD-PREFIX + CLIP-BREAK-SURPLUS sibling of the
+    # r160/r161/r173 block-content law -- 14 bytes: a folded-block-scalar
+    # header, the content line " ! ", then the line " !<" + two U+0085
+    # NEL pairs + the final LF. Both engines accept; the values differ
+    # at the run's exit (the byte-exact dumps, captured by the
+    # pipe-through-xxd method): yeptris "=VAL : !  !<NN\n" -- the pairs
+    # stay CONTENT (the 1.2 block-scalar break set is LF/CR/CRLF only,
+    # spec 8.1), the fold space rides behind the content line's kept
+    # trailing space, and the scalar's final LF stays as the trailing
+    # (clip) break -- vs libyaml "=VAL : !  !<\n": its 1.1 IS_BREAK
+    # splits the content line at the NELs, and its trailing-break
+    # accounting absorbs the final LF into the NEL region it collapses
+    # (k NEL breaks + the final LF -> (k-1) collapsed -> clip-trimmed
+    # to the single break the (k-1) loop consumes). The suite sides
+    # with yeptris -- a carry (the r160 law verdict stands; the
+    # engine-side reading is spec-8.1 correct on the composed form).
+    # The r173 continuation DECLINES this member: after the collapse,
+    # yeptris's clip break faces libyaml's end-of-value and every
+    # continuation flavor (space<->break pair / surplus yeptris space /
+    # surplus libyaml space) requires a space on one side -- steps=0,
+    # decline (pinned by a Python sim transcribing the arm verbatim).
+    # The refinement adds the fourth flavor INSIDE the same budget-k
+    # loop: yeptris's escaped break with no b counterpart fires like
+    # the surplus spaces; the r161 terminal-tail end-anchor above
+    # stays binding and untouched (it still fires first for its
+    # SP+break tail with byte-identical remainders), a b-side escaped
+    # break never satisfies the new branch (a longer libyaml tail
+    # still declines), and the walk past the section stays byte-bound
+    # -- a dropped member's frame bytes cannot ride. Minimality: every
+    # single-byte deletion changes the verdict (agreements, lone-lead
+    # accept/reject splits, or same-law siblings); the prefix ladder
+    # 1-9 and 11 agree (the k=1 bare tail rides the main loop's byte
+    # equality), divergence onset at the full pair structure; the
+    # " !NN"-glued twin (no verbatim) normalizes to LF and coincides
+    # with libyaml -- an agreeing control by two different routes.
+    # Post-fix the battery converges: 56 members (20 single-byte flips
+    # + 10 multi-byte ins/sub/del + 25 targeted family variants and
+    # controls) classify or hold identical verdicts pre/post -- 9
+    # rides: the seed, the glue flip, the k=3/k=4 ladder, the
+    # run-without-fold-prefix twin, the two-' ! '-lines twin, the
+    # glued-single-line twin, the dedent twin, the breakless twin
+    # (dumps byte-identical to the seed's); the surplus-space member
+    # stays red at budget k=2 (documented), the lone-lead-byte /
+    # no-lead-sp / seq-composition negatives stay red (accept/reject
+    # splits and a different-law multi-line literal-fold sibling);
+    # zero regressions. The corpus walk is byte-identical pre/post on
+    # the shared 294 files (30 historical aborts) with the new seed
+    # riding green (295 post); leaks --atExit clean on the seed.
+    add_test(
+        NAME fuzz-diff-r175-block-nel-clip-break-surplus
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-content-prec-line-r175.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
