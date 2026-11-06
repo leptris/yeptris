@@ -2455,7 +2455,13 @@ static int yd_plain_nel_fold_divergence(const uint8_t* data, size_t size, const 
  * The plain family never reaches here (yeptris's emitter escapes its
  * plain NELs as \N, so no C2 85 run exists in its dump), and the
  * quoted twin owns its own signature -- the run branch fires only on
- * raw content pairs. */
+ * raw content pairs. The r161 sibling adds the TERMINAL tail: the
+ * content line ends right behind the run, yeptris "SP + \n" (content
+ * space + the clip break, the r140 breakless law's break when the
+ * final LF is gone) against libyaml's single escaped break (its kept
+ * leading break; the blank continuation's space was eaten as its
+ * indentation and that line's break dropped) -- accepted only when
+ * the remainders behind both escaped breaks are byte-identical. */
 static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, const char* ydump,
                                            const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
@@ -2483,6 +2489,29 @@ static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, con
                 k++;
             }
             a = p;
+            /* the r161 terminal tail (the sibling whose " text9" word
+             * the nightly's mutation walk deleted): the content line
+             * ENDS right behind the NEL run -- yeptris's tail is the
+             * content space + the clip break ("SP + \\n"), libyaml's
+             * tail is ONE escaped break (its kept leading break; the
+             * blank continuation line's space was eaten as its
+             * indentation and the line's break dropped at the scan
+             * loop's exit). Accept only when the remainders behind
+             * BOTH escaped breaks are byte-identical (the value frame
+             * ends the same way on both engines), which binds the
+             * check completely -- it can never swallow arbitrary
+             * divergence past the scalar. Fires before the (k-1)
+             * collapse so every run length k >= 1 rides the same law;
+             * the literal twin of the r160 shape (content behind the
+             * space) misses it (its byte behind the space is not the
+             * escape) and keeps the existing branches. */
+            if (a[0] == ' ' && a[1] == '\\' && a[2] == 'n' && b[0] == '\\' && b[1] == 'n' &&
+                strcmp(a + 3, b + 2) == 0) {
+                a += 3;
+                b += 2;
+                subs++;
+                continue;
+            }
             /* libyaml's multi-break collapse: k breaks leave (k-1)
              * literal breaks in a folded scalar's value */
             for (int e = 0; e < k - 1; e++) {
