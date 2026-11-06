@@ -2432,6 +2432,98 @@ static int yd_plain_nel_fold_divergence(const uint8_t* data, size_t size, const 
     return yd_dump_eq_mod_nel_fold(ydump, ldump);
 }
 
+/* True when the difference is the BLOCK-SCALAR NEL CONTENT law (the
+ * r160 nightly's seed): inside block-scalar content the 1.2 break set
+ * is LF/CR/CRLF ONLY (spec 8.1 -- a block scalar's lines break only
+ * at b-break), so yeptris keeps the NEL (C2 85) as CONTENT bytes; the
+ * 1.1 reader (libyaml) counts NEL as a break there too (its IS_BREAK),
+ * splitting the content line and folding/stripping around the split:
+ * in a folded scalar a lone NEL break folds to the fold space and k
+ * consecutive NEL breaks collapse to (k-1) literal breaks (the plain
+ * arm's artifact law), in a literal scalar every NEL break stays a
+ * literal break, and each break eats the continuation line's indent.
+ * The suite sides with yeptris (1.2 content), so this is a carry.
+ * The dump relation, walked with the two artifacts the split can
+ * leave: at each run of k NEL pairs in yeptris's dump, libyaml's dump
+ * may carry up to (k-1) escaped breaks (the multi-break collapse),
+ * then exactly ONE byte of re-alignment -- yeptris's verbatim content
+ * space against libyaml's break artifact (the literal/only-line
+ * shape), yeptris's space that libyaml ate as the continuation's
+ * indent (the double-NEL fold shape), or libyaml's fold space with no
+ * yeptris counterpart (the glue-between-content shape). Beyond that
+ * the dumps must be byte-identical (the frames, the other scalars).
+ * The plain family never reaches here (yeptris's emitter escapes its
+ * plain NELs as \N, so no C2 85 run exists in its dump), and the
+ * quoted twin owns its own signature -- the run branch fires only on
+ * raw content pairs. */
+static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                           const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    int has = 0;
+    for (size_t i = 0; i + 1 < size; i++) {
+        if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+            has = 1; /* the UTF-8 NEL pair */
+            break;
+        }
+    }
+    if (!has) {
+        return 0;
+    }
+    const char* a = ydump;
+    const char* b = ldump;
+    int subs = 0;
+    while (*a != '\0' || *b != '\0') {
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85) {
+            int k = 0;
+            const char* p = a;
+            while ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0x85) {
+                p += 2;
+                k++;
+            }
+            a = p;
+            /* libyaml's multi-break collapse: k breaks leave (k-1)
+             * literal breaks in a folded scalar's value */
+            for (int e = 0; e < k - 1; e++) {
+                if (b[0] == '\\' && b[1] == 'n') {
+                    b += 2;
+                } else {
+                    break;
+                }
+            }
+            /* exactly one re-alignment byte after the run */
+            if (*a == *b) {
+                subs++;
+                continue;
+            }
+            if (a[0] == ' ' && b[0] == '\\' && b[1] == 'n') {
+                a += 1; /* yeptris's verbatim space is libyaml's break */
+                b += 2;
+                subs++;
+                continue;
+            }
+            if (a[0] == ' ') {
+                a += 1; /* libyaml ate the space as the continuation's indent */
+                subs++;
+                continue;
+            }
+            if (b[0] == ' ') {
+                b += 1; /* libyaml's fold space, no yeptris counterpart */
+                subs++;
+                continue;
+            }
+            return 0;
+        }
+        if (*a != *b) {
+            return 0;
+        }
+        a++;
+        b++;
+    }
+    return subs > 0;
+}
+
 /* True for the ONE exact gray-zone input of the r130 nightly
  * (crash artifact, 31 bytes, run 41839166485): the glued-hash qflow
  * family's STRUCTURAL permutation -- yeptris reads two plain seq
@@ -5372,6 +5464,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
          yd_lsps_breakless_clip_divergence(data, size, ydump, ldump) ||
          yd_plain_nel_fold_divergence(data, size, ydump, ldump) ||
+         yd_block_nel_content_divergence(data, size, ydump, ldump) ||
          yd_r121_permuted_gray(data, size, ydump, ldump) ||
          yd_r137_soup_gray(data, size, ydump, ldump) ||
          yd_r138_soup_gray(data, size, ydump, ldump) ||
