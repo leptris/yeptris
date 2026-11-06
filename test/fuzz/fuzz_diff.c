@@ -1396,6 +1396,53 @@ static int yd_qgh_lsps_substituted(const char* y, size_t yn, const char* l, size
     return sites > 0;
 }
 
+/* True when libyaml's scalar content is yeptris's with one 2-byte "\\n"
+ * ESCAPE replaced by the raw LS/PS triple -- the #638 law's fold-count
+ * form, third outcome (the r164 nightly, crash-bf69aeae, run
+ * 42184829386, main 66f9218): the soup's break run CR LF CR CR PS SP
+ * folds in yeptris's b-char algebra to FOUR breaks (LS/PS are breaks in
+ * 1.2) rendered as three escaped breaks ("=VAL : /\n\n\n51"), while
+ * libyaml's READ_LINE folds only the CR/LF count and joins the PS RAW
+ * ("=VAL : /\n\n<PS>51") -- the same relation as the r150 ADDITIVE arm
+ * (libyaml = yeptris + triple, yeptris folds the run to NOTHING) and
+ * the r162 SUBSTITUTED arm (yeptris folds it to ONE BLANK), now with
+ * yeptris folding it to ONE ESCAPED BREAK: the delta is +1 per site,
+ * neither length pin matches, the generic content-agnostic skip then
+ * consumed yeptris's side AND libyaml's side (four shared-cap skips per
+ * site), and the r164 soup's five fold sites + its glue members
+ * outran the fixed 64 (65 skips; the walk died at the l-only arm with
+ * every difference law-explained). Position-wise walk: equal bytes
+ * advance both, a yeptris "\\n" ESCAPE (backslash + n) facing the raw
+ * triple advances 2/3 (a site), anything else declines; at least one
+ * site, both contents fully consumed. Bounded: the pointers never
+ * rewind, so the walk terminates; each site is byte-pinned (no
+ * wildcards); the pair consumes BOTH lines as one diff (the r150
+ * pattern -- both pointers advance, so the walk stays bounded by
+ * construction, no cap needed). */
+static int yd_qgh_lsps_escbreak(const char* y, size_t yn, const char* l, size_t ln) {
+    size_t yi = 0;
+    size_t li = 0;
+    int sites = 0;
+    while (yi < yn || li < ln) {
+        if (yi + 1 < yn && li + 2 < ln && (unsigned char)y[yi] == '\\' &&
+            (unsigned char)y[yi + 1] == 'n' && (unsigned char)l[li] == 0xE2 &&
+            (unsigned char)l[li + 1] == 0x80 &&
+            ((unsigned char)l[li + 2] == 0xA8 || (unsigned char)l[li + 2] == 0xA9)) {
+            yi += 2;
+            li += 3;
+            sites++;
+            continue;
+        }
+        if (yi < yn && li < ln && y[yi] == l[li]) {
+            yi++;
+            li++;
+            continue;
+        }
+        return 0;
+    }
+    return sites > 0;
+}
+
 /* True when yeptris's kept residue — the CURRENT =VAL line plus up to
  * 15 further =VAL lines — leads to yeptris's OWN byte-exact copy of
  * libyaml's 4-byte structure opener (+MAP/+SEQ/+STR), the re-paired
@@ -1605,7 +1652,8 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 continue;
             } else if (y_val && l_val &&
                        (yd_qgh_lsps_additive(y + vp, yl - vp, l + vp, ll - vp) ||
-                        yd_qgh_lsps_substituted(y + vp, yl - vp, l + vp, ll - vp))) {
+                        yd_qgh_lsps_substituted(y + vp, yl - vp, l + vp, ll - vp) ||
+                        yd_qgh_lsps_escbreak(y + vp, yl - vp, l + vp, ll - vp))) {
                 /* the LS/PS-fold PAIR (r150, crash-4d640bc4, run
                  * 42072059847, main b4d6671f): the soup interleaves the
                  * glue family with plain fold runs mixing LS/PS into
@@ -1639,7 +1687,19 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                  * paired form), a delta of 2 the additive length pin
                  * declines. yd_qgh_lsps_substituted (above) walks the
                  * pair position-wise; both lines still advance
-                 * together, so the pair stays bounded by construction. */
+                 * together, so the pair stays bounded by construction.
+                 * The r164 fold-count sibling (crash-bf69aeae, run
+                 * 42184829386, main 66f9218): the soup's break run
+                 * CR LF CR CR PS SP renders yeptris THREE escaped
+                 * breaks where libyaml joins the PS raw and folds only
+                 * the CR/LF count — yeptris's "\n" ESCAPE is libyaml's
+                 * triple at the site, a delta of +1 neither earlier
+                 * pin matches; yd_qgh_lsps_escbreak (above) walks the
+                 * pair position-wise (byte-pinned sites, no
+                 * wildcards). Five such sites plus the glue members
+                 * burned 65 skips through the generic arms — past the
+                 * shared 64 — with every difference law-explained;
+                 * the paired arm needs no cap (both pointers advance). */
                 diffs++;
             } else if (l_val && (y_empty_val || yl == 0 || y[0] == '-')) {
                 /* an L-ONLY extra val of ANY content (r117): libyaml's

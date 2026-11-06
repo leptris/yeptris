@@ -1605,6 +1605,72 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-alias-content-tail-r163.bin
     )
 
+    # the r164 nightly's seed (crash-bf69aeae0017e8d09f029795f0285f757864b481,
+    # run 42184829386, main 66f9218): 1198 bytes "5b 31 31 20 2c 3f 23
+    # 23 7c 2c 3f 0d 2f 0a 0d 0d e2 80 a9 20 35 30 3a 0d ..." -- the
+    # LARGEST soup artifact yet, a flow seq packed with repeated
+    # members: '?##|'-led killed members, libyaml salvage maps
+    # ("/<LF><LF><PS>50"/"1.0e17.tag", "211"/empty, "2002:binary"/empty),
+    # the '?####|' double-glue shape, '?## &m' props members (the r148
+    # props-stripped KEY), '2002:binaryg:yamlaml.org' run tails, a
+    # '&m'-anchored wrapper, a 'y---|' tail, break runs folding to
+    # LF-LF-LF escapes. Prefix truncation does not shrink it (every
+    # proper prefix classifies -- the death is skip DENSITY at stream
+    # end, so the whole composition is the minimal form). The walk
+    # re-aligns through nearly all of it: the first raw mismatch (line
+    # 3, yeptris "=VAL : ?##|" vs libyaml "+MAP") rides the r132
+    # shared-opener tell, the salvage maps pair through the emptied-key
+    # and r143/r148 wrapper-ride arms, the r150 additive sites pair,
+    # and the walk dies at skips=65 > 64 on the r117 l-only arm with
+    # every difference law-explained. The burn is a THIRD fold-count
+    # form of the #638 LS/PS pair relation beside the r150 ADDITIVE
+    # (libyaml = yeptris + one raw triple, yeptris folds the run to
+    # nothing) and the r162 SUBSTITUTED (yeptris folds it to one
+    # blank) outcomes: the soup's break run CR LF CR CR PS SP ("?
+    # <CR>/<LF><CR><CR><PS> 51:") is FOUR breaks in yeptris's b-char
+    # algebra (LS/PS are breaks in 1.2) rendered as THREE escaped
+    # breaks ("=VAL : /\n\n\n51") while libyaml's READ_LINE folds only
+    # the CR/LF count and joins the PS RAW ("=VAL : /\n\n<PS>51") --
+    # yeptris's 2-byte "\n" ESCAPE is libyaml's 3-byte triple at the
+    # site, a delta of +1 neither earlier pin matches. Both engines
+    # stand on their own documented laws (#638 / READ_LINE), the
+    # structure ("51:" splitting key/value, the member count) agrees
+    # byte-exact, and nothing NEW is engine-suspicious; the generic
+    # arms then spent FOUR shared-cap skips per site (r124/r127 on
+    # yeptris's line + l-only on libyaml's) and five such sites plus
+    # the glue members outran the fixed 64. The extension adds
+    # yd_qgh_lsps_escbreak to the r150/r162 pair arm's OR: a
+    # position-wise walk where equal bytes advance both, a yeptris
+    # "\n" escape facing the raw LS/PS triple advances 2/3 (a site,
+    # byte-pinned -- backslash+n vs E2 80 A8/A9, no wildcards),
+    # anything else declines, at least one site, both contents fully
+    # consumed. The pair consumes BOTH lines as one diff (both
+    # pointers advance, bounded by construction, no cap needed; the
+    # pointers never rewind, so the walk terminates). No existing arm
+    # or cap is weakened: the skips the paired arm no longer spends
+    # stay available to the shapes that still need them. The
+    # candidates that did NOT contribute are pinned benign: the
+    # '?####|' double-glue scores pass 1 (the first '?' faces '#') and
+    # rides the shared-opener tell; the '?## &m' member rides the
+    # r143/r148 props-only KEY wrapper ride; glue-member scaling alone
+    # never binds the cap. The genuine mid-stream member drop composed
+    # with the shape ("[?##|,<escbreak-member>?##{x: 2},z]") keeps
+    # aborting (the terminal-tail gate declines: structure
+    # mid-stream), as does the one-escape-vs-two-triples decline
+    # control and the '?!'/'LS-twin' family variants with no
+    # adjudicated reading. Post-fix the battery converges: 45 mutants
+    # (20 single-byte flips + 10 multi-byte ins/sub/del + 15 targeted
+    # family variants and controls) classify (9) or hold identical
+    # verdicts pre/post (36), zero regressions; the corpus walk is
+    # byte-identical pre/post on the shared 283 files (30 historical
+    # aborts) with the new seed riding green (284 post); leaks
+    # --atExit clean on the seed.
+    add_test(
+        NAME fuzz-diff-r164-lsps-foldcount
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/soup-lsps-foldcount-r164.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
