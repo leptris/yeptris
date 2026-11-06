@@ -2993,6 +2993,53 @@ static int yd_r151_soup_gray(const uint8_t* data, size_t size, const char* ydump
     return 1;
 }
 
+/* True for the ONE exact gray-zone input of the r157 nightly
+ * (crash-7319c8e328d7c72cb876fe062de9991e21d9e71a, run 42139600292,
+ * main a017a870): 12 bytes "&a:o:\\n  *a:\\n", prefix-minimal (prefixes
+ * 0-10 agree; the trailing break is load-bearing -- prefix 10 agrees).
+ * Both engines accept; the streams differ 1 event vs 9. yeptris's
+ * suite-pinned riding laws (2SXE: "&a: key" anchors "a:" and "*a:"
+ * names "a:"; W5VH keeps colons inside names) consume BOTH lines whole:
+ * line 1 "&a:o:" is an anchor declaration whose name rides the colons
+ * to the break -- no blank, no value indicator, a props-only line whose
+ * anchor PENDS; line 2 "  *a:" is an alias whose name rides the colon,
+ * so no value indicator ever opens a map and the document collapses to
+ * ONE root alias event carrying the pended anchor as props (the raw
+ * event probe: ALIAS value "a:", anchor "a:o:"). The alias names a
+ * never-defined target ("a:" vs the defined "a:o:") -- the event route
+ * emits ANY alias name by design (the compose split: DOM composers
+ * reject undefined targets, event consumers carry every alias like
+ * libyaml's parser, which likewise never validates; the suite pins no
+ * undefined-alias error). libyaml's 1.1 laws compose the other way:
+ * IS_ALPHA cuts the anchor at the first colon ("a" -- the r142/r76
+ * law), the residual ":o:" re-lexes as plain ":o" with the final colon
+ * riding as the value token, so line 1 becomes the anchored KEY of a
+ * root map; line 2's alias "a" (the r54 cut) plus its own EOL colon
+ * opens a NESTED map with the alias as key and an empty plain value --
+ * the 9-event form. The charset-split twin declines both orientations:
+ * libyaml(split) == yeptris(original) needs libyaml to read the single
+ * root alias (impossible -- its cut always re-opens the map), and the
+ * reversed orientation gates yeptris(original) to the one-alias
+ * signature, which is exactly the 'yeptris =ALI vs libyaml anything'
+ * mask the r137/r138/r139 verdicts ruled unsound for event-kind
+ * divergences (a genuine alias-drop bug would ride the same
+ * signature). The composition rides the EXACT-BYTES gray claim --
+ * documented by input, not by mutation. Family siblings (the
+ * no-indent/1-space/"&a::" DIFFER members, the empty-cut/tab-indent/
+ * defined-alias libyaml-reject members) get their own entries or an
+ * engine dig. */
+static int yd_r157_root_alias_gray(const uint8_t* data, size_t size, const char* ydump,
+                                   const char* ldump) {
+    static const uint8_t seed[] = {0x26, 0x61, 0x3a, 0x6f, 0x3a, 0x0a,
+                                   0x20, 0x20, 0x2a, 0x61, 0x3a, 0x0a};
+    if (size != sizeof(seed) || memcmp(data, seed, sizeof(seed)) != 0) {
+        return 0;
+    }
+    (void)ydump;
+    (void)ldump;
+    return 1;
+}
+
 static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL) {
         return 0;
@@ -5232,6 +5279,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r140_soup_gray(data, size, ydump, ldump) ||
          yd_r141_soup_gray(data, size, ydump, ldump) ||
          yd_r151_soup_gray(data, size, ydump, ldump) ||
+         yd_r157_root_alias_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||

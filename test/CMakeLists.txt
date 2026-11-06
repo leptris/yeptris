@@ -1307,6 +1307,45 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-anchored-key-prop-split-r156.bin
     )
 
+    # the r157 nightly's seed (crash-7319c8e328d7c72cb876fe062de9991e21d9e71a,
+    # run 42139600292, main a017a870): the whole-line ANCHOR-DECL x
+    # COLON-RIDING ALIAS ROOT COLLAPSE -- 12 bytes "&a:o:\n  *a:\n",
+    # prefix-minimal (prefixes 0-10 agree; the trailing break is
+    # load-bearing). yeptris's suite-pinned riding laws (2SXE: "&a: key"
+    # anchors "a:" and "*a:" names "a:"; W5VH keeps colons inside names)
+    # consume both lines whole: line 1 is a props-only anchor declaration
+    # whose name rides the colons to the break (the anchor pends), line 2
+    # an alias whose name rides the colon -- no value indicator ever
+    # opens a map, and the document collapses to ONE root alias event
+    # carrying the pended anchor as props. The alias names a
+    # never-defined target ("a:" vs the defined "a:o:") -- the event
+    # route emits ANY alias name by design (the compose split: DOM
+    # composers reject undefined targets, event consumers carry every
+    # alias like libyaml's parser; the suite pins no undefined-alias
+    # error). libyaml's 1.1 laws compose the other way: IS_ALPHA cuts
+    # the anchor at the first colon (the r142/r76 law), the residual
+    # ":o:" re-lexes as plain ":o" with the final colon riding as the
+    # value token (line 1 = the anchored KEY of a root map), and line
+    # 2's alias "a" (the r54 cut) plus its own EOL colon opens a NESTED
+    # map with the alias as key and an empty plain value -- the 9-event
+    # form. The charset-split twin declines both orientations: forward
+    # needs libyaml to read the single root alias (impossible), and the
+    # reversed orientation gates yeptris(original) to the one-alias
+    # signature -- the 'yeptris =ALI vs libyaml anything' mask the
+    # r137/r138/r139 verdicts ruled unsound for event-kind divergences.
+    # The composition rides the EXACT-BYTES gray claim; family siblings
+    # (no-indent/1-space/"&a::" DIFFER members, empty-cut/tab-indent/
+    # defined-alias libyaml-reject members) get their own entries or an
+    # engine dig. Post-fix the battery converges: 32 mutants (20
+    # single-byte flips + 10 multi-byte ins/sub/del + 2 targeted) hold
+    # identical verdicts pre/post, zero regressions; the 276-file corpus
+    # walk is byte-identical pre/post (30 historical aborts).
+    add_test(
+        NAME fuzz-diff-r157-anchor-decl-alias-collapse
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-decl-alias-collapse-r157.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
