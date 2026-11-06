@@ -1926,6 +1926,70 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-header-comment-nel-r171.bin
     )
 
+    # the r172 nightly's seed
+    # (crash-6dcd3a2343fe26ff8c4fbed84831a3ccd421c62b, run 42274633465,
+    # main 93fd25d): 57 bytes "[11.0e ,?##|,:|,:bi.0e ,?##|,:|,:bYMA
+    # y<CR> bnaary<CR><CR> ,?#<LF>&m,]" -- the soup family's re-pairing
+    # at KEY distance FIVE. libyaml's post-'?'-token comment-glue law
+    # (the '#' at token start comments to the NEXT break) ate the glued
+    # '?##' run THROUGH FIVE members -- the killed member's tail
+    # "?##|", then ":|", ":bi.0e", the DOUBLED "?##|", and ":|" whole
+    # (the whole run to the first CR is one libyaml line; the doubled
+    # glue pair and the "YMA y" interior are incidental: any break-free
+    # bytes ride the comment invisibly) -- and re-paired the pending
+    # KEY token with the CR-folded continuation ("bnaary"; the trailing
+    # "\r\r ,"'s blank line and comma end the plain). Wrapper 1 renders
+    # (+MAP / "=VAL : bnaary" / "=VAL : " / -MAP) whose KEY is the
+    # byte-exact SUFFIX of yeptris's member at distance 5 (yeptris's
+    # suite-pinned laws keep every glued run as content -- a '#'
+    # comments only behind a blank -- and fold the CR run into the same
+    # member's head ":bYMA y bnaary"); wrapper 2 then pairs through the
+    # EXISTING r149 ride (its props-only "&m " KEY is the kept "?# &m"
+    # member's own tail, the r168 tail pattern). The r143/r149/r167/
+    # r168 rides decline (distances 0/1/2 own their gates; the KEY
+    # carries content; the comment consumed four members WHOLE), and
+    # the line-wise path mis-pairs to the r168 commentary's death one
+    # wrapper deeper: the structural skip burns the owed closer on
+    # wrapper 1's own "-MAP", r124/r127 graze the eaten members against
+    # wrapper 1's KEY, the r117 split arm consumes the suffix member
+    # (its content ends with the KEY byte-exact), the emptied-key arm
+    # eats the trailing member against wrapper 1's salvaged null, and
+    # the closer bank eats "-MAP" -- wrapper 2's opener then faces
+    # yeptris's "-SEQ" with struct_skips spent and no arm. The r172
+    # ride generalizes the family's law to distance k: the ride claims
+    # the killed member plus the eaten run when the killed member is
+    # glue-led (the r167 lead-form pin), EVERY member between is a
+    # kept-content PLAIN VAL (the comment's bytes are invisible in an
+    # event dump, the r124/r127 content-agnostic precedent), the member
+    # at distance k is a kept-content plain VAL whose content ENDS with
+    # the wrapper's KEY byte-exact (the r148 render separator stripped
+    # -- the direct observation that the KEY's bytes are the kept
+    # plain's own tail, not an invented key), and the wrapper is the
+    # well-formed salvage block -- consulted only after r143/r149/r168
+    # declined (code order: distances 0/1/2 stay theirs, the shapes
+    # stay disjoint). Bounded: the fixed four-line block, the
+    # byte-exact suffix pin, both pointers advancing every claim, and
+    # the shared skip cap charging the wrapper's four lines plus one
+    # per consumed member (monotone in k -- the comma-separated
+    # distance-56/61 twins abort BY DESIGN past the cap, the
+    # distance-50 twin rides under it); a non-content member between
+    # (the empty-val twin) declines and keeps aborting; the claim
+    # stands only on full exhaustion (the walk's law). Minimality: all
+    # 57 prefixes agree (the flow ']' is load-bearing by construction),
+    # and every single-byte deletion lands green or a different-family
+    # red (the RAW artifact is pinned). Post-fix the battery converges:
+    # 51 mutants (20 single-byte flips + 10 multi-byte ins/sub/del + 21
+    # targeted family variants, cap twins and controls) classify (15)
+    # or hold identical verdicts pre/post (36), zero regressions; the
+    # corpus walk is byte-identical pre/post on the shared 291 files
+    # (30 historical aborts) with the new seed riding green (292 post);
+    # leaks --atExit clean on the seed.
+    add_test(
+        NAME fuzz-diff-r172-rekey-distance5
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-rekey-dist5-r172.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)

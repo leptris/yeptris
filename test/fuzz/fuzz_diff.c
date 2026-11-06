@@ -2132,6 +2132,120 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                             }
                         }
                     }
+                    if (!key_suffix && kl > 0 && l1n != NULL && y2n != NULL) {
+                        /* the r172 DISTANCE-k RE-PAIRED-KEY ride
+                         * (crash-6dcd3a2343fe26ff8c4fbed84831a3ccd421c62b,
+                         * run 42274633465, main 93fd25d): the r168
+                         * re-pairing law at KEY distance k. libyaml's
+                         * post-'?'-token comment-glue ate the glued '?##'
+                         * run THROUGH FIVE members -- "[11.0e ,?##|,:|,
+                         * :bi.0e ,?##|,:|,:bYMA y<CR> bnaary<CR><CR>
+                         * ,?#<LF>&m,]": the killed member's tail, then
+                         * ":|", ":bi.0e", the DOUBLED "?##|", and ":|"
+                         * whole (the '#' at token start comments to the
+                         * NEXT break, and the whole run to the first CR
+                         * is one libyaml line -- the doubled glue pair
+                         * and the "YMA y" interior are incidental: any
+                         * break-free bytes ride the comment invisibly),
+                         * and re-paired the pending KEY token with the
+                         * CR-folded continuation ("bnaary"; the trailing
+                         * "\r\r ,"'s blank line and comma end the plain).
+                         * Wrapper 1 renders (+MAP / "=VAL : bnaary" /
+                         * "=VAL : " / -MAP) whose KEY is the byte-exact
+                         * SUFFIX of yeptris's member at distance FIVE
+                         * (yeptris's suite-pinned laws keep every glued
+                         * run as content -- a '#' comments only behind a
+                         * blank -- and fold the CR run into the same
+                         * member's head ":bYMA y bnaary"); wrapper 2 then
+                         * pairs through the EXISTING r149 ride (its
+                         * props-only "&m " KEY is the kept "?# &m"
+                         * member's own tail, the r168 tail pattern). The
+                         * ride family's distances: r143 owns 0 (the
+                         * killed member's own residue), r149 owns 1, r168
+                         * owns 2 -- this gate owns k >= 3, consulted only
+                         * after all three declined (code order, the
+                         * shapes stay disjoint). The walk pre-fix: the
+                         * structural skip burns the owed closer on
+                         * wrapper 1's own "-MAP", r124/r127 graze the
+                         * eaten members against wrapper 1's KEY, the
+                         * r117 split arm consumes the suffix member (its
+                         * content ends with the KEY byte-exact), the
+                         * emptied-key arm eats the trailing member
+                         * against wrapper 1's salvaged null, and the
+                         * closer bank eats "-MAP" -- wrapper 2's opener
+                         * then faces yeptris's "-SEQ" with struct_skips
+                         * spent and no arm (the r168 commentary's death,
+                         * one wrapper deeper). The ride claims the killed
+                         * member plus the eaten run when: the killed
+                         * member is glue-led (the r167 lead-form family
+                         * pin -- libyaml's KEY law fires only on
+                         * '?'-led members), EVERY member between is a
+                         * kept-content PLAIN VAL (the comment's bytes are
+                         * invisible in an event dump, the r124/r127
+                         * content-agnostic precedent; an empty val or a
+                         * structure line declines), the member at
+                         * distance k is a kept-content plain VAL whose
+                         * content ENDS with the wrapper's KEY byte-exact
+                         * (the r148 render separator stripped -- the
+                         * direct observation that the KEY's bytes are the
+                         * kept plain's own tail, not an invented key), and
+                         * the wrapper is the well-formed salvage block
+                         * (opener / content KEY / "=VAL : " null / bare
+                         * "-MAP"). Bounded: the fixed four-line block,
+                         * the byte-exact suffix pin, both pointers
+                         * advance every claim, and the shared skip cap
+                         * charges the wrapper's four lines plus one per
+                         * consumed member (monotone in k, so a long ride
+                         * past the cap aborts BY DESIGN -- the
+                         * distance-61 twin does). The claim stands only
+                         * on full exhaustion (the walk's law). */
+                        size_t kq = kl;
+                        if (l1[l1l - 1] == ' ' && kl > 1) {
+                            kq = kl - 1; /* the r148 render separator */
+                        }
+                        if (kq > 0 && yl > vp + 1 && y[vp] == '?' &&
+                            (y[vp + 1] == '#' || y[vp + 1] == '!')) {
+                            const char* yk = y2;
+                            const char* ykn = y2n;
+                            int dist = 1;
+                            int hit = 0;
+                            for (;;) {
+                                size_t ykl = ykn != NULL ? (size_t)(ykn - yk) : strlen(yk);
+                                if (ykl <= vp || memcmp(yk, val_prefix, vp) != 0) {
+                                    break; /* only kept-content plain VALs
+                                              may sit in the eaten run */
+                                }
+                                if (ykl - vp >= kq && memcmp(yk + ykl - kq, l1 + vp, kq) == 0) {
+                                    hit = dist > 2; /* 1/2 stay r149/r168's */
+                                    break;
+                                }
+                                if (ykn == NULL) {
+                                    break;
+                                }
+                                yk = ykn + 1;
+                                ykn = strchr(yk, '\n');
+                                dist++;
+                            }
+                            if (hit) {
+                                const char* l2 = l1n + 1;
+                                const char* l2n = strchr(l2, '\n');
+                                size_t l2l = l2n != NULL ? (size_t)(l2n - l2) : strlen(l2);
+                                const char* l3 = l2n != NULL ? l2n + 1 : l2 + l2l;
+                                if (l2l == vp && memcmp(l2, val_prefix, vp) == 0 &&
+                                    memcmp(l3, "-MAP", 4) == 0 &&
+                                    (l3[4] == '\n' || l3[4] == '\0')) {
+                                    skips += 4 + dist;
+                                    if (skips > 64) {
+                                        return 0;
+                                    }
+                                    diffs += 4 + dist;
+                                    y = yk;
+                                    l = l3[4] == '\0' ? l3 + 4 : l3 + 5;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                 }
                 if (y_killed_shared_opener) {
                     /* the SHARED-opener skip (r132, #949), the rides'
