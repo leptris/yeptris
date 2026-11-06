@@ -2665,6 +2665,234 @@ static int yd_plain_nel_fold_divergence(const uint8_t* data, size_t size, const 
     return yd_dump_eq_mod_nel_fold(ydump, ldump);
 }
 
+/* The composed walk behind the r166 arm: the yd_fold_walk run law
+ * (LS/PS raw-join sites) and the r118 NEL k-law (raw-NEL content
+ * sites) over ONE aligned walk. Backtracks on the additive/replacive
+ * LS reading (the r90 lesson) with the NEL arms live inside the
+ * recursion; pointers never rewind past a consumed site. */
+static int yd_nel_lsps_walk(const char* ydump, size_t y, const char* ldump, size_t l, int depth,
+                            int diffs) {
+    while (1) {
+        /* the NEL k-law first (the r118 arm's byte-set branches): a
+         * maximal run of raw C2 85 pairs in yeptris's dump */
+        if ((unsigned char)ydump[y] == 0xC2 && (unsigned char)ydump[y + 1] == 0x85) {
+            int k = 0;
+            const char* p = ydump + y;
+            while ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0x85) {
+                p += 2;
+                k++;
+            }
+            if (k == 1 && ldump[l] == ' ') {
+                y += 2;
+                l += 1;
+                diffs++;
+                continue;
+            }
+            if (k >= 2 && ldump[l] == '\\' && ldump[l + 1] == 'n') {
+                int e = 0;
+                while (e < k - 1 && ldump[l] == '\\' && ldump[l + 1] == 'n') {
+                    l += 2;
+                    e++;
+                }
+                if (e != k - 1) {
+                    return 0;
+                }
+                y = (size_t)(p - ydump);
+                diffs++;
+                continue;
+            }
+            /* the r122 trailing-run law: the run vanishes at the
+             * boundary -- accept only when yeptris's remainder behind
+             * the run is empty and libyaml's dump is spent too, or
+             * both remainders are byte-identical */
+            if (p[0] == '\0' && ldump[l] == '\0') {
+                return diffs + 1 > 0;
+            }
+            if (p[0] != '\0' && strcmp(p, ldump + l) == 0) {
+                return 1;
+            }
+            return 0;
+        }
+        /* lone raw 0x85 bytes under the lead-byte guard (the r128
+         * spelling of the same break) */
+        if ((unsigned char)ydump[y] == 0x85 && (y == 0 || (unsigned char)ydump[y - 1] < 0x80)) {
+            int lone = 0;
+            while ((unsigned char)ydump[y] == 0x85) {
+                y++;
+                lone++;
+            }
+            (void)lone;
+            diffs++;
+            continue;
+        }
+        /* the \N escape spelling (the r119/r128 emitter form): a
+         * maximal \N run maps to the same artifact as the raw pair
+         * run */
+        if (ydump[y] == '\\' && ydump[y + 1] == 'N') {
+            int k = 0;
+            while (ydump[y] == '\\' && ydump[y + 1] == 'N') {
+                y += 2;
+                k++;
+            }
+            if (k == 1 && ldump[l] == ' ') {
+                l += 1;
+            } else if (ldump[l] == '\\' && ldump[l + 1] == 'n') {
+                int e = 0;
+                while (e < k - 1 && ldump[l] == '\\' && ldump[l + 1] == 'n') {
+                    l += 2;
+                    e++;
+                }
+                if (e != k - 1) {
+                    return 0;
+                }
+            } else {
+                return 0;
+            }
+            diffs++;
+            continue;
+        }
+        /* the shared prefix: equal bytes advance both (the r164
+         * discipline). BEFORE the l-side triple law -- the seed's
+         * content carries a raw U+20A9 (E2 82 A9) whose E2 lead must
+         * not be mistaken for a break triple */
+        if (ydump[y] == ldump[l]) {
+            if (ydump[y] == '\0') {
+                return diffs > 0;
+            }
+            y++;
+            l++;
+            continue;
+        }
+        /* libyaml's raw LS/PS triple facing yeptris's escaped fold
+         * (the r72/r86/r104 run law, additive vs replacive) */
+        if ((unsigned char)ldump[l] == 0xE2) {
+            unsigned char lb1 = (unsigned char)ldump[l + 1];
+            int l_triple = 0;
+            if (lb1 == 0x80) {
+                unsigned char lb2 = (unsigned char)ldump[l + 2];
+                l_triple = lb2 == 0xA8 || lb2 == 0xA9;
+            }
+            if (l_triple && ydump[y] == '\\' && ydump[y + 1] == 'n') {
+                /* run-scoped: count yeptris's escapes and libyaml's
+                 * triples+escapes behind the site */
+                size_t y2 = y;
+                size_t l3 = l + 3;
+                size_t ly = 0;
+                size_t yy = 0;
+                for (;;) {
+                    if (ldump[l3] == '\\' && ldump[l3 + 1] == 'n') {
+                        ly++;
+                        l3 += 2;
+                    } else if ((unsigned char)ldump[l3] == 0xE2 &&
+                               (unsigned char)ldump[l3 + 1] == 0x80 &&
+                               ((unsigned char)ldump[l3 + 2] == 0xA8 ||
+                                (unsigned char)ldump[l3 + 2] == 0xA9)) {
+                        l3 += 3;
+                    } else {
+                        break;
+                    }
+                }
+                while (ydump[y2] == '\\' && ydump[y2 + 1] == 'n') {
+                    yy++;
+                    y2 += 2;
+                }
+                if (ly == yy) {
+                    /* additive: the triple rides alone -- yeptris's
+                     * escapes pair with libyaml's escapes behind it */
+                    y = y2;
+                    l = l3;
+                    diffs++;
+                    continue;
+                }
+                if (ly == yy - 1) {
+                    /* replace: this break IS the raw triple */
+                    y = y2;
+                    l = l3;
+                    diffs++;
+                    continue;
+                }
+                if (depth < 8 && yd_nel_lsps_walk(ydump, y, ldump, l + 3, depth + 1, diffs + 1)) {
+                    return 1;
+                }
+                y += 2;
+                l += 3;
+                diffs++;
+                continue;
+            }
+            if (l_triple && ydump[y] == ' ') {
+                /* the r56 plain law: yeptris's fold-space is
+                 * libyaml's raw triple */
+                y += 1;
+                l += 3;
+                diffs++;
+                continue;
+            }
+            return 0;
+        }
+        return 0;
+    }
+}
+
+/* True when the difference is the COMPOSITION of the two adjudicated
+ * plain break carries inside ONE scalar (the r166 nightly's seed,
+ * crash-095dea85d20a4b6687f4539f98dba8eae8df87d4, run 42202493551,
+ * main a6d4b41): a root plain packed with break runs whose LS/PS
+ * raw-join sites (the yd_dump_eq_mod_lsps_fold family -- libyaml's
+ * READ_LINE joins an LS/PS break RAW into the content and folds the
+ * trailing LF/CR run behind it in FULL, so yeptris's escaped folds
+ * ride additively or replacement-wise beside the raw triple -- the
+ * r56/r72/r86/r104 laws) INTERLEAVE with raw-NEL content sites (the
+ * yd_dump_eq_mod_nel_fold family -- yeptris keeps the 1.2 non-break
+ * NEL as raw content while libyaml folds it, k == 1 to one fold
+ * space and k >= 2 to k-1 escaped breaks -- the r118/r119/r122/r128
+ * laws). Each family classifies its own members ALONE and both
+ * decline the seed: the first mismatch is an LS site (dump offset
+ * 29: yeptris's "[{" + "\n\n" against libyaml's "[{" + raw LS +
+ * "\n\n") and the NEL walk has no LS arm ('\\' vs 0xE2 on its first
+ * divergent byte); the LS walk in turn dies at the first NEL site
+ * (offset 73: yeptris's raw C2 85 C2 85 against libyaml's one
+ * escaped break -- 0xC2 vs '\\', no NEL arm). The r158 lesson (two
+ * adjudicated carries composing in one input), applied to walks
+ * instead of transforms: ONE walk carries both site kinds. The
+ * relation is byte-pinned per the r164 discipline: equal bytes
+ * advance both pointers; an l-side LS/PS triple rides the
+ * fold-walk's run law (additive first, backtrack to replace -- the
+ * r90 lesson, depth-capped); a yeptris fold space facing the triple
+ * is the r56 plain law; a yeptris NEL run (raw C2 85 pairs, lone
+ * 0x85 bytes under the lead-byte guard, or \N escapes) rides the
+ * r118 k-law with the r122 trailing-run vanish; anything else
+ * declines; pointers never rewind. Gated on BOTH byte families in
+ * the input, and ordered behind the single-family arms in
+ * probe_one, so every existing member still reaches its own
+ * (untouched) arm first. */
+static int yd_plain_nel_lsps_fold_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                             const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    int has_nel = 0;
+    int has_lsps = 0;
+    for (size_t i = 0; i < size; i++) {
+        if (i + 1 < size && (unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+            has_nel = 1; /* the UTF-8 NEL pair */
+        }
+        if ((unsigned char)data[i] == 0x85 && (i == 0 || (unsigned char)data[i - 1] != 0xC2)) {
+            has_nel = 1; /* a lone raw 0x85 byte */
+        }
+        if (i + 2 < size && (unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            has_lsps = 1; /* the LS/PS triple */
+        }
+        if (has_nel && has_lsps) {
+            break;
+        }
+    }
+    if (!has_nel || !has_lsps) {
+        return 0;
+    }
+    return yd_nel_lsps_walk(ydump, 0, ldump, 0, 0, 0);
+}
+
 /* True when the difference is the BLOCK-SCALAR NEL CONTENT law (the
  * r160 nightly's seed): inside block-scalar content the 1.2 break set
  * is LF/CR/CRLF ONLY (spec 8.1 -- a block scalar's lines break only
@@ -5726,6 +5954,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_plain_lsps_fold_divergence(data, size, ydump, ldump) ||
          yd_lsps_breakless_clip_divergence(data, size, ydump, ldump) ||
          yd_plain_nel_fold_divergence(data, size, ydump, ldump) ||
+         yd_plain_nel_lsps_fold_divergence(data, size, ydump, ldump) ||
          yd_block_nel_content_divergence(data, size, ydump, ldump) ||
          yd_r121_permuted_gray(data, size, ydump, ldump) ||
          yd_r137_soup_gray(data, size, ydump, ldump) ||

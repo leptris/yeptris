@@ -1701,6 +1701,37 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-nel-fold-breaks-r165.bin
     )
 
+    # the r166 nightly's seed
+    # (crash-095dea85d20a4b6687f4539f98dba8eae8df87d4, run
+    # 42202493551, main a6d4b41): a 490-byte root plain packed with
+    # break runs (NEL pairs, LS triples, CR, LF) where the LS/PS
+    # raw-join sites (libyaml's READ_LINE joins the LS/PS break RAW
+    # and folds the trailing LF/CR run in FULL -- the
+    # yd_dump_eq_mod_lsps_fold family, r56/r72/r86/r104) INTERLEAVE
+    # with raw-NEL content sites (yeptris keeps the 1.2 non-break NEL
+    # as raw content while libyaml folds it, k == 1 to one fold space
+    # and k >= 2 to k-1 escaped breaks -- the yd_dump_eq_mod_nel_fold
+    # family, r118/r119/r122/r128). First mismatch at dump offset 29
+    # ("[{" + two escaped folds vs "[" + the raw LS triple + the same
+    # two escaped folds): the NEL walk dies on its first divergent
+    # byte (backslash vs 0xE2, no LS arm); the LS walk dies at the
+    # first NEL site (0xC2 vs backslash, no NEL arm). The r158 lesson
+    # applied to walks: ONE composed walk carries both site kinds --
+    # equal bytes advance both pointers, an LS/PS triple rides the
+    # fold-walk's run law (additive first, backtrack to replace,
+    # depth-capped, the r90 lesson), a fold space facing the triple
+    # is the r56 plain law, a NEL run (raw pairs, lone 0x85 bytes
+    # under the lead-byte guard, \N escapes) rides the r118 k-law
+    # with the r122 trailing-run vanish, anything else declines,
+    # pointers never rewind. Gated on BOTH byte families in the input
+    # and ordered behind the single-family arms, so every existing
+    # member still reaches its own (untouched) arm first.
+    add_test(
+        NAME fuzz-diff-r166-plain-nel-lsps-fold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-lsps-fold-r166.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
