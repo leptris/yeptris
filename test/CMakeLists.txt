@@ -1848,6 +1848,42 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-yen-ride-r169.bin
     )
 
+    # the r170 nightly's seed
+    # (crash-d0c77945da7d71eeb449137e49f26840c558d175, run 42241061657,
+    # main fbb7232): the r157 root-alias collapse's NO-INDENT SIBLING --
+    # 10 bytes "&a:o:\n*a:\n", byte-identical to the r157 seed with the
+    # two-space indent deleted (the r157 pin's family list named this
+    # member; the r151 precedent gives deletion siblings of exact-bytes
+    # claims their own entries). Both engines accept; the streams differ
+    # one root alias (5 events) vs libyaml's 9-event map form. yeptris's
+    # riding laws are unchanged on post-r169 main (raw-event probe:
+    # ALIAS value "a:", anchor "a:o:" -- the pended anchor riding as
+    # props, the alias name riding the colon); libyaml's 1.1 cut re-opens
+    # the map at the root (line 1 = anchored ":o" key + empty value,
+    # line 2 = alias-keyed nested map + empty value). The charset-split
+    # twin declines both orientations exactly as r157's (libyaml can
+    # never read the single root alias; the reversed orientation gates
+    # yeptris to the one-alias signature -- the 'yeptris =ALI vs libyaml
+    # anything' mask the r137/r138/r139 verdicts ruled unsound for
+    # event-kind divergences), so the composition rides the EXACT-BYTES
+    # gray claim. Minimality: prefixes 0-8 agree; prefix 9 diverges
+    # IDENTICALLY (the trailing break is NOT load-bearing here, unlike
+    # the r157 seed -- the breakless twin stays unclaimed beside the
+    # pinned cut); the 'o'-deletion "&a::" member keeps the skeleton
+    # walk (its own entry), the name/colon deletions land in the
+    # libyaml-reject split members. The 50-mutant battery converges:
+    # the artifact classifies; the r157 indented seed stays green; the
+    # breakless/"&a::"/indent/defined-alias siblings and the split
+    # members hold identical verdicts pre/post, zero regressions; the
+    # corpus walk is byte-identical pre/post on the shared files (30
+    # historical aborts) with the new seed riding green; leaks --atExit
+    # clean on the seed.
+    add_test(
+        NAME fuzz-diff-r170-root-alias-collapse-noindent
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-decl-alias-collapse-r170.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
