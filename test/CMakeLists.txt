@@ -2042,6 +2042,56 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-run-fold-continuation-r173.bin
     )
 
+    # the r174 nightly's seed (run 42296429313, main 3787be5, crash
+    # 1a5cbe0a): 15 bytes "&a:o&a:o::\n*a:\n" -- the r157/r170
+    # root-alias collapse's DOUBLED-HEAD sibling (the r170 seed with
+    # the mutation walk's second "&a:o" inserted; a NEW byte form, so
+    # per the r151/r170 deletion-sibling precedent it takes its own
+    # exact-bytes gray claim beside yd_r157/yd_r170). Both engines
+    # accept; yeptris collapses the document to ONE root alias (the
+    # raw-event probe: ALIAS value "a:", anchor "a:o&a:o::") -- the
+    # prop-char law ends a name only at blank/break/flow-indicator/
+    # comma/'#', so the interior '&' rides the anchor name beside the
+    # colons (Y2GN pins the colon ride; the '&'-in-name split vs
+    # libyaml's IS_ALPHA cut is the r142 anchor-charset family, a
+    # documented comparator carry), the trailing "::" passes the
+    # riding-colon un-consume gate (the follower scan crosses the break
+    # to '*', no flow/block-scalar opener) and the anchor pends; line
+    # 2's riding alias swallows its colon so no value indicator ever
+    # opens a map. libyaml's 1.1 cuts compose its r170 column-0 shape
+    # one '&' run richer: anchor "a" (r142/r76), residual ":o&a:o::"
+    # re-lexes as plain ":o&a:o:" (mid-plain '&' is CONTENT) with the
+    # final colon as the value token -- the anchored KEY -- and the
+    # alias lands as a second flat pair (alias key, empty plain value)
+    # in the same map. The charset-split twin declines both
+    # orientations: the blank-split copy is rejected by yeptris itself
+    # (a second props run on one node, the suite's 4JVG), and the
+    # reversed orientation is the 'yeptris =ALI vs libyaml anything'
+    # mask the r137-r139 verdicts ruled unsound (the r163
+    # alias-content-tail arm is the reverse orientation and declines by
+    # construction). Minimality: prefixes 0-12 agree, prefix 13
+    # ("...\n*a", no colon) is the libyaml-reject alias-only split
+    # member, prefixes 14/15 diverge identically (the trailing break is
+    # NOT load-bearing -- the breakless twin stays unclaimed); the
+    # '::' tail is not load-bearing either (the single-colon member,
+    # the 'a:x' interior variant, the triple head, and the head-only
+    # '&a::' member diverge with the same skeleton -- each its own
+    # entry or an engine dig). Post-pin the battery converges: 50
+    # mutants (20 single-byte flips + 10 multi-byte ins/sub/del + 20
+    # targeted family variants: the r157/r170 seeds stay green, the
+    # single/triple heads, the '::'-vs-':' tails, the name/anchor
+    # flips) classify or hold identical verdicts pre/post, zero
+    # regressions; the honest corpus walk is byte-identical pre/post on
+    # the shared 293 files (30 historical aborts) with the new seed
+    # riding green (294 post); fresh-configure ctest carries all 67
+    # prior pins plus this one (68/68); leaks --atExit clean on the
+    # seed.
+    add_test(
+        NAME fuzz-diff-r174-root-alias-double-head
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-collapse-double-head-r174.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)

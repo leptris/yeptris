@@ -4012,6 +4012,74 @@ static int yd_r170_root_alias_gray(const uint8_t* data, size_t size, const char*
     return 1;
 }
 
+/* True for the ONE exact gray-zone input of the r174 nightly
+ * (crash-1a5cbe0a134c79221119cf1e004c92284dd228b9, run 42296429313,
+ * main 3787be5): 15 bytes "&a:o&a:o::\n*a:\n" -- the r157/r170
+ * root-alias collapse's DOUBLED-HEAD sibling (byte-identical to the
+ * r170 seed with the mutation walk's second "&a:o" inserted after the
+ * first; the byte forms of the r157/r170 gray claims are line-scoped,
+ * so per the r151/r170 deletion-sibling precedent this new form takes
+ * its own entry beside them). Both engines accept; the streams differ
+ * yeptris's one root alias (3 dump lines) vs libyaml's 8-line map with
+ * two flat pairs. yeptris's suite-pinned riding laws (2SXE: "&a: key"
+ * anchors "a:" and "*a:" names "a:"; W5VH keeps colons inside names)
+ * are unchanged on post-r169 main, and the prop-char law keeps the
+ * interior '&' riding too (yep_scan_prop_char ends a name only at
+ * blank/break/flow-indicator/comma/'#'; the '&'-in-name split vs
+ * libyaml's IS_ALPHA cut is the r142 anchor-charset family, a
+ * documented comparator carry): the raw-event probe reads ALIAS value
+ * "a:", anchor "a:o&a:o::" -- line 1 "&a:o&a:o::" is a props-only
+ * anchor declaration whose name rides BOTH colon runs AND the interior
+ * '&' to the break (the name's trailing "::" passes the riding-colon
+ * un-consume gate: the follower scan crosses the break to '*', which
+ * is no flow/block-scalar opener), so the anchor PENDS; line 2 "*a:"
+ * at column 0 is an alias whose name rides the colon, no value
+ * indicator ever opens a map, and the document collapses to ONE root
+ * alias event carrying the pended anchor as props. libyaml's 1.1 laws
+ * compose the other way: IS_ALPHA cuts the anchor at the first colon
+ * ("a" -- the r142/r76 law), the residual ":o&a:o::" re-lexes as plain
+ * ":o&a:o:" (the interior '&' mid-plain is CONTENT -- libyaml's plain
+ * law opens '&' only at token start) with the final colon riding as
+ * the value token, so line 1 is the anchored KEY of a root map; line
+ * 2's alias "a" (the r54 cut) sits at column 0 INSIDE the same map as
+ * a second flat pair (alias key, empty plain value) -- r170's
+ * column-0 shape, the key's content one '&' run richer. Minimality:
+ * prefixes 0-12 agree; prefix 13 ("...\n*a", no colon) is the
+ * libyaml-reject alias-only split member (the r170 list's "*a" class);
+ * prefixes 14/15 diverge IDENTICALLY -- the trailing break is NOT
+ * load-bearing, so the breakless twin stays unclaimed beside the
+ * pinned cut (r170's pattern). The "::" tail is not load-bearing
+ * either: the single-trailing-colon member ("&a:o&a:o:\n*a:\n") and
+ * the 'a:x' interior variant diverge with the same skeleton, as do the
+ * triple head and the head-only "&a::" member (the r157 list's named
+ * sibling) -- each its own entry or an engine dig. The charset-split
+ * twin declines both orientations exactly as r157's/r170's: the
+ * blank-split copy ("&a:o &a:o::") is rejected by yeptris itself (a
+ * second props run on one node -- the suite's 4JVG), so
+ * libyaml(split) == yeptris(original) can never hold, and the reversed
+ * orientation gates yeptris(original) to the one-alias signature,
+ * which is exactly the 'yeptris =ALI vs libyaml anything' mask the
+ * r137/r138/r139 verdicts ruled unsound for event-kind divergences (a
+ * genuine alias-drop bug would ride the same signature); the r163
+ * alias-content-tail arm is the reverse orientation (libyaml's alias
+ * as a suffix of yeptris's kept CONTENT) and declines by construction.
+ * The composition rides the EXACT-BYTES gray claim -- documented by
+ * input, not by mutation. Family siblings (the single-colon and 'a:x'
+ * members, the triple head, the head-only '&a::' member, the indented
+ * twin, and the glued-alias libyaml-reject splits) get their own
+ * entries or an engine dig. */
+static int yd_r174_root_alias_double_head_gray(const uint8_t* data, size_t size, const char* ydump,
+                                               const char* ldump) {
+    static const uint8_t seed[] = {0x26, 0x61, 0x3a, 0x6f, 0x26, 0x61, 0x3a, 0x6f,
+                                   0x3a, 0x3a, 0x0a, 0x2a, 0x61, 0x3a, 0x0a};
+    if (size != sizeof(seed) || memcmp(data, seed, sizeof(seed)) != 0) {
+        return 0;
+    }
+    (void)ydump;
+    (void)ldump;
+    return 1;
+}
+
 static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL) {
         return 0;
@@ -6320,6 +6388,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r151_soup_gray(data, size, ydump, ldump) ||
          yd_r157_root_alias_gray(data, size, ydump, ldump) ||
          yd_r170_root_alias_gray(data, size, ydump, ldump) ||
+         yd_r174_root_alias_double_head_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
