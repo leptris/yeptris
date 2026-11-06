@@ -1884,6 +1884,48 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-decl-alias-collapse-r170.bin
     )
 
+    # the r171 nightly's seed (crash-0500383c2a886aef6c49d3e3d15a383a18b
+    # 0d7ce, run 42249881864, main 7a78020): 8 bytes "3e 20 23 3c c2 85
+    # 20 74" -- a folded-block-scalar header whose line ends at the
+    # comment's NEL ("> #<" + U+0085 + " t", no trailing break). The
+    # normalizer's header token swallowed the tail to '\n' only (no
+    # '\n' exists in the input), so the NEL rode unnormalized to the
+    # engine, whose comment skip then ate " #<"+NEL+" t" whole: yeptris
+    # emitted an EMPTY value where libyaml's IS_BREAKZ comment law ends
+    # the line at the NEL and reads the content line " t" as "t". An
+    # ENGINE BUG (an internal-law inconsistency), not a carry: yeptris's
+    # own #638 posture folds NEL EVERYWHERE outside quoted regions (its
+    # in_comment arm folds NEL; step_scan's comment arms fold
+    # NEL/LS/PS), and the header line is OUTSIDE the block-content
+    # area, so the r160 content-NEL law (content NELs stay content)
+    # never applied. The controls settle it: the ASCII twins
+    # ("> #x\n t" breakless and with the break) agree byte-exact on
+    # both engines (nothing arms without the multibyte break), the LF
+    # twin agrees, and the divergence reproduces with the '<' deleted,
+    # with a bare '#' comment, on the literal twin, and on the PS/LS
+    # twins (all three multibyte breaks ride the same arm). The fix
+    # ends the header token at ANY fold break (norm_next_fold_break:
+    # '\n', lone '\r'/CRLF, NEL, LS/PS), folding it into the token so
+    # the copy splices the '\n', and arms the break state so the next
+    # line rides the bs branch from its own indent; the streaming twin
+    # ends the header line the same way (its line-start gate now honors
+    # at_break, the one-shot walk's own law). Minimality: every
+    # artifact byte is load-bearing per the deletion battery (the
+    # comment, the NEL, the space, the 't'; the '<' is the nightly's
+    # shape). Post-fix the artifact classifies (yeptris "t\n" per the
+    # suite's breakless-EOF clip law vs libyaml's bare "t" -- the
+    # carried r140 arm), the family twins (literal, PS, LS, no-'<',
+    # bare-'#') classify with it, and the r160 content seed stays
+    # green. The 50-mutant battery converges with zero regressions and
+    # zero verdict-class flips; the corpus walk is byte-identical
+    # pre/post on the shared files (the historical aborts) with the new
+    # seed riding green; leaks --atExit clean on the seed.
+    add_test(
+        NAME fuzz-diff-r171-block-header-comment-nel
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-header-comment-nel-r171.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
