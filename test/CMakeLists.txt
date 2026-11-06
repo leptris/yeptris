@@ -1380,6 +1380,30 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/literal-ls-clip-breakless-r158.bin
     )
 
+    # the r159 nightly's seed (crash-daa73e2d5be6fba79aac719149250a32012641d7,
+    # run 42154482223, main 7b55b9a): the UTF-16 COLUMN-0 BOM x PLAIN-NEL
+    # FOLD composition -- 16 bytes, the BE mark, U+0085, U+FEFF, U+0085,
+    # then "a", U+2D29, U+4600, U+4562. Both engines strip the leading NEL
+    # as a plain's leading break; yeptris keeps the mid-plain FEFF as
+    # CONTENT (the catch-121 law: one mark stripped, content BOMs ride) so
+    # the second NEL folds to ONE space (the plain-NEL fold law), while
+    # libyaml skips the column-0 BOM (its scan_to_next_token, the r154
+    # law) and the NEL stays leading -- consumed whole, no fold artifact.
+    # yeptris "=VAL : <BOM> a..." vs libyaml "=VAL : a...". The r154/r156
+    # twins decline (the residual is not an anchored key) and the
+    # line-start removal probes decline (a UTF-16 NEL unit is never a
+    # byte-level line start, so no byte-space removal is pure). The twin:
+    # strip the BOM AND the one fold space behind it -- the pair is
+    # exactly "content BOM + the break that folded" (a space is never a
+    # plain's head content in either engine) -- and compare; fires only on
+    # an exact dump match, so the claim stays byte-pinned. The UTF-16LE
+    # twin classifies through the same dump-level relation.
+    add_test(
+        NAME fuzz-diff-r159-bom-fold-space-head
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-nel-fold-bom-r159.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

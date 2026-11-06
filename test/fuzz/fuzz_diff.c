@@ -175,6 +175,41 @@ static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
     if (strcmp(stripped, ldump) == 0) {
         return 1;
     }
+    /* the folded-break head twin (the nightly's round 159, crash-daa73e2d,
+     * run 42154482223, main 7b55b9a): the content BOM riding a plain's
+     * FIRST LINE with the following break folding. The r159 shape --
+     * UTF-16BE mark, U+0085, U+FEFF, U+0085, then "a..." -- strips the
+     * leading NEL as a plain's leading break on BOTH sides; yeptris keeps
+     * the column-0 FEFF as CONTENT (the catch-121 law) so the next NEL
+     * folds to ONE space (the plain-NEL fold law), while libyaml skips
+     * the column-0 BOM (its scan_to_next_token, the r154 law) and the
+     * NEL stays LEADING -- consumed with no fold artifact. The plain
+     * strip above declines: the fold space survives it ("=VAL : <BOM> a"
+     * strips to "=VAL :  a", two spaces, vs libyaml's one), and the
+     * line-start removal probes decline too -- a UTF-16 NEL unit is
+     * never a byte-level '\n', so no byte-space removal is pure. The
+     * composition claim: strip the BOM AND the one fold space behind it
+     * -- the pair is exactly "content BOM + the break that folded", and
+     * libyaml's reading is the same plain with the BOM gone and the
+     * break returned to leading (consumed whole). Fires only when the
+     * residual opens with ONE space followed by content on the same
+     * dump line, and only on an exact dump match, so the claim stays
+     * byte-pinned; a space is never a plain's head content in either
+     * engine (leading whitespace is consumed), so the pair can only be
+     * the fold. Encoding-symmetric: the UTF-16LE twin classifies
+     * through the same dump-level relation. */
+    if (rest[0] == ' ' && rest[1] != '\0' && rest[1] != ' ' && rest[1] != '\n') {
+        char folded[8192];
+        size_t rlen = strlen(rest);
+        if (head + rlen < sizeof(folded)) {
+            memcpy(folded, stripped, head); /* "=VAL : " */
+            memcpy(folded + head, rest + 1, rlen - 1);
+            folded[head + rlen - 1] = '\0';
+            if (strcmp(folded, ldump) == 0) {
+                return 1;
+            }
+        }
+    }
     const char* line = stripped + (size_t)(val - ydump);
     while (line > stripped && line[-1] != '\n') {
         line--; /* back to the scalar line's start */
