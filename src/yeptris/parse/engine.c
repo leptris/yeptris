@@ -4332,6 +4332,7 @@ const yep_stopset yep_norm_break_leads = {
  * headers). Verified against libyaml by the NormLsPs pins and the
  * fuzz-diff LS/PS comparator. */
 static int step_bs_header(const char* p, size_t len, size_t i);
+static size_t norm_next_fold_break(const char* p, size_t len, size_t i, size_t* br_len);
 
 typedef struct yep_norm_ctx {
     int quote; /* 0 none, else the opening quote char */
@@ -4633,12 +4634,29 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             c->bs_open = 1;
             c->bs_indent = ind;
             c->bs_content = 0;
-            size_t e = i;
-            while (e < len && p[e] != '\n') {
-                e++;
+            /* the header line ends at ANY fold break: the tail past
+             * the indicators (usually the comment) is OUTSIDE the
+             * block-content area, so the #638 fold law governs it — a
+             * NEL/LS/PS there ends the header line and the next line
+             * rides the bs branch from its own indent (the r171
+             * nightly: the '\n'-only scan swallowed " #<"+NEL+" t"
+             * whole, the NEL rode unnormalized to the engine, whose
+             * comment skip then ate the content line — empty where
+             * libyaml's IS_BREAKZ comment law reads "t") */
+            size_t br_len = 0;
+            size_t e = norm_next_fold_break(p, len, i, &br_len);
+            if (br_len > 0) {
+                t.n = (e + br_len) - i;
+                t.fold_off = (int)(e - i); /* the break FOLDS: the copy
+                                            * splices the '\n' (a
+                                            * plain-consumed multibyte
+                                            * break would ride raw) */
+                t.fold_len = (int)br_len;
+                c->at_break = 1;
+            } else {
+                t.n = len - i;
+                c->at_break = 0;
             }
-            t.n = (e < len) ? (e - i + 1) : (len - i);
-            c->at_break = (e < len);
             return t;
         }
         /* not a header ("| : [" is a mapping key): fall through */
@@ -4665,12 +4683,20 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             c->bs_indent = (uint32_t)-1;
             c->bs_content = 0;
             c->plain_open = 0; /* the marker is a document boundary */
-            size_t e = i;
-            while (e < len && p[e] != '\n') {
-                e++;
+            /* the marker line's tail ends at any fold break (the same
+             * law as the plain header above -- the comment tail is
+             * outside the content area) */
+            size_t br_len = 0;
+            size_t e = norm_next_fold_break(p, len, i, &br_len);
+            if (br_len > 0) {
+                t.n = (e + br_len) - i;
+                t.fold_off = (int)(e - i); /* the break folds (the header twin) */
+                t.fold_len = (int)br_len;
+                c->at_break = 1;
+            } else {
+                t.n = len - i;
+                c->at_break = 0;
             }
-            t.n = (e < len) ? (e - i + 1) : (len - i);
-            c->at_break = (e < len);
             return t;
         }
         t.n = 3;           /* the marker rides; the line's tail processes normally */
@@ -5091,6 +5117,41 @@ void yep_engine_destroy(yep_engine* e) {
  * that flow to the depth cap, chunked cut and errored at 2:1).
  * Returns 1 valid, 0 definitely not a header, -1 truncated (the tail
  * may still complete a valid header). */
+
+/* The next FOLD break at or after i under the #638 fold law outside
+ * quotes ('\n', lone '\r' / CRLF, NEL, LS/PS): returns its start
+ * offset and stores its consumed length, or returns 0 with *br_len 0
+ * when the tail holds none. A truncated multibyte lead at the end
+ * reads as "none": the one-shot walk runs on validated complete input
+ * (a dangling lead never arrives), and the streaming scanner holds the
+ * header line for the bytes that may still complete it. */
+static size_t norm_next_fold_break(const char* p, size_t len, size_t i, size_t* br_len) {
+    size_t e = i;
+    *br_len = 0;
+    while (e < len) {
+        unsigned char ec = (unsigned char)p[e];
+        if (ec == '\n') {
+            *br_len = 1;
+            return e;
+        }
+        if (ec == '\r') {
+            *br_len = (e + 1 < len && p[e + 1] == '\n') ? 2 : 1;
+            return e;
+        }
+        if (ec == 0xC2 && e + 1 < len && (unsigned char)p[e + 1] == 0x85) {
+            *br_len = 2;
+            return e;
+        }
+        if (ec == 0xE2 && e + 2 < len && (unsigned char)p[e + 1] == 0x80 &&
+            ((unsigned char)p[e + 2] & 0xFE) == 0xA8) {
+            *br_len = 3;
+            return e;
+        }
+        e++;
+    }
+    return 0;
+}
+
 static int step_bs_header(const char* p, size_t len, size_t i) {
     size_t k = i + 1;
     int chomp = 0, indent = 0, space = 0;
@@ -5284,6 +5345,12 @@ static size_t step_scan(yep_stepstate* st) {
              * ate the '---' marker, chunked errored on the unterminated
              * prefix — the nightly's run 38534965021) */
             st->tok_start = (st->in_flow > 0) ? 1 : st->word_led;
+            /* the one-shot walk's law: the first post-break byte
+             * clears the line-start fact — spaces included, or an
+             * INDENTED "  ---" (a plain/seq position) read as a
+             * col-0 marker through the line-start gate and the cut
+             * landed inside the line (the r171 gate twin) */
+            st->at_break = 0;
             continue;
         }
         if (st->tok_start) {
@@ -5360,7 +5427,11 @@ static size_t step_scan(yep_stepstate* st) {
         }
         if (st->in_flow == 0) {
             char prev = i > 0 ? p[i - 1] : '\n';
-            if (prev != '\n' && prev != '\r') {
+            if (prev != '\n' && prev != '\r' && !st->at_break) {
+                /* the one-shot walk's line_start law honors at_break
+                 * (-- the mb-break arms arm it); the prev-only check
+                 * missed every line that opens after a NEL/LS/PS, so
+                 * the ride-along never fired there (the r171 twin) */
                 continue;
             }
             /* Block scalars: once a '>' / '|' header is seen, its
@@ -5436,15 +5507,26 @@ static size_t step_scan(yep_stepstate* st) {
                     }
                     st->bs_open = 1;
                     st->bs_indent = ind;
-                    size_t e = i;
-                    while (e < st->len && p[e] != '\n') {
-                        e++;
-                    }
-                    if (e >= st->len) {
+                    /* the header line ends at ANY fold break (the
+                     * one-shot walk's law, norm_next_fold_break): the
+                     * tail past the indicators is outside the
+                     * block-content area, so the #638 fold law
+                     * governs it. The break arms' state rides here
+                     * too — at_break opens the content line's
+                     * ride-along through the line-start gate (the
+                     * r171 nightly: the '\n'-only scan never
+                     * completed a NEL-terminated header line and
+                     * held the window at the '>' forever) */
+                    size_t br_len = 0;
+                    size_t e = norm_next_fold_break(p, st->len, i, &br_len);
+                    if (br_len == 0) {
                         hold = i; /* an incomplete header line */
                         break;
                     }
-                    i = e;
+                    st->tok_start = 1;
+                    st->word_led = 0;
+                    st->at_break = 1;
+                    i = e + br_len - 1; /* the loop's i++ lands past the break */
                     continue;
                 }
                 /* Not a header ("| : [" is a mapping key): fall through

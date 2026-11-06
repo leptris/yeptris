@@ -7487,3 +7487,116 @@ TEST(Parse, PlainHexScalarStaysScalar863) {
     EXPECT_EQ(val(sha), "0524fe42951adc3a7eb870e32f0920313c71f170c859b5f770d82b4ee111e970");
     yeptris_document_free(d);
 }
+
+TEST(Parse, BlockHeaderCommentTailFoldEndsTheLine) {
+    /* the r171 nightly (run 42249881864, main 7a78020,
+     * crash-0500383c2a886aef6c49d3e3d15a383a18b0d7ce): 8 bytes
+     * "> #<\xc2\x85 t" (no trailing break) -- a folded-block-scalar
+     * header whose line ends at the comment's NEL. The normalizer's
+     * header token swallowed the tail to '\n' only (no '\n' exists),
+     * so the NEL rode unnormalized to the engine, whose comment skip
+     * then ate " #<"+NEL+" t" whole: an EMPTY value where libyaml's
+     * IS_BREAKZ comment law ends the line at the NEL and reads the
+     * content line " t" as "t". The header line is OUTSIDE the
+     * block-content area, so the #638 fold law governs its tail
+     * (NEL/LS/PS fold, ending the line); the r160 CONTENT law
+     * (content NELs stay content) is untouched -- the last case pins
+     * it. yeptris's breakless-EOF clip keeps the synthesized break
+     * (the suite law, r140), where libyaml stays bare "t" -- the
+     * carried fuzz-diff arm classifies that residual. */
+    const struct {
+        const char* in;
+        const char* want;
+    } cases[] = {
+        {"> #<\xc2\x85 t", "t\n"},     /* the artifact (NEL tail) */
+        {"> #x\xc2\x85 t", "t\n"},     /* the '<' is not load-bearing */
+        {"> #<\xe2\x80\xa9 t", "t\n"}, /* PS tail */
+        {"> #<\xe2\x80\xa8 t", "t\n"}, /* LS tail */
+        {"| #<\xc2\x85 t", "t\n"},     /* the literal twin */
+        {"> #<\r t", "t\n"},           /* a lone-CR tail ends the line too */
+        {"> #x\n t", "t\n"},           /* the ASCII control, unchanged */
+        {"> #<\n t", "t\n"},           /* the LF twin, unchanged */
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.in, strlen(c.in), &st);
+        ASSERT_NE(doc, nullptr) << "status " << (int)st << " for " << c.in;
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(yeptris_node_kind(root), YEPTRIS_NODE_SCALAR) << c.in;
+        EXPECT_EQ(val(root), c.want) << c.in;
+        yeptris_document_free(doc);
+    }
+    /* the r160 law is untouched: a NEL INSIDE the content line stays
+     * content (the full C2 85 pair rides the value verbatim) */
+    {
+        const char* in = ">\n !<\xc2\x85 text9\n\n";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(in, strlen(in), &st);
+        ASSERT_NE(doc, nullptr) << "status " << (int)st;
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(val(root), "!<\xc2\x85 text9\n");
+        yeptris_document_free(doc);
+    }
+    /* chunk identity: the artifact parses to the same value at every
+     * two-cut chunking (the streaming header arm ends the line at the
+     * NEL too, so the ride-along opens on the content line) */
+    {
+        const char* y = "> #<\xc2\x85 t";
+        size_t ylen = strlen(y);
+        auto run = [](const char* buf, size_t len, size_t cut1, size_t cut2) {
+            YeptrisRecorder rec = yeptris_recorder_new();
+            std::vector<std::string> vals;
+            YeptrisStatus st = YEPTRIS_OK;
+            auto collect = [&vals](YeptrisRecorder r) {
+                size_t n = 0;
+                const YeptrisEventRecord* rs = yeptris_recorder_records(r, &n);
+                size_t alen = 0;
+                const char* arena = yeptris_recorder_arena(r, &alen);
+                (void)alen;
+                for (size_t i = 0; i < n; i++) {
+                    if (rs[i].type == YEPTRIS_EV_SCALAR) {
+                        vals.emplace_back(arena + rs[i].value_off, rs[i].value_len);
+                    }
+                }
+            };
+            st = yeptris_recorder_feed(rec, buf, cut1, 0);
+            if (st == YEPTRIS_OK) {
+                collect(rec);
+            }
+            if (st == YEPTRIS_OK && cut2 > cut1) {
+                st = yeptris_recorder_feed(rec, buf + cut1, cut2 - cut1, 0);
+                if (st == YEPTRIS_OK) {
+                    collect(rec);
+                }
+            }
+            if (st == YEPTRIS_OK && len > cut2) {
+                st = yeptris_recorder_feed(rec, buf + cut2, len - cut2, 0);
+                if (st == YEPTRIS_OK) {
+                    collect(rec);
+                }
+            }
+            if (st == YEPTRIS_OK) {
+                st = yeptris_recorder_feed(rec, "", 0, 1);
+                if (st == YEPTRIS_OK) {
+                    collect(rec);
+                }
+            }
+            if (st != YEPTRIS_OK) {
+                vals.emplace_back("<error>");
+            }
+            yeptris_recorder_free(rec);
+            return vals;
+        };
+        std::vector<std::string> whole = run(y, ylen, ylen, ylen);
+        ASSERT_EQ(whole.size(), 1u);
+        EXPECT_EQ(whole[0], "t\n");
+        for (size_t cut1 = 1; cut1 < ylen; cut1++) {
+            for (size_t cut2 = cut1; cut2 < ylen; cut2++) {
+                std::vector<std::string> got = run(y, ylen, cut1, cut2);
+                EXPECT_EQ(got, whole) << "cuts " << cut1 << "," << cut2;
+            }
+        }
+    }
+}
