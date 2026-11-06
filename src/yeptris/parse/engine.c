@@ -4369,6 +4369,18 @@ typedef struct yep_norm_ctx {
                                * fold-armed tok_start over an open plain is a
                                * continuation line whose "!<" is content,
                                * never props */
+    int phantom_flow;         /* openers armed by the glued ':'-twin
+                               * ("a:{b]" — the #836-accepted prev==':'
+                               * clause) alone: libyaml keeps those bytes
+                               * INTERIOR to the plain (no flow collection
+                               * exists), so their depth must never arm the
+                               * r155 real-flow clear on ']' / '}' — the
+                               * walk's in_flow is monotone and the phantom
+                               * opens inflate it, which defeated the
+                               * "block context keeps the fact" law (the
+                               * r169 nightly: the ']' cleared plain_open
+                               * through the phantom and the next fold's
+                               * "!<" opened a never-closed verbatim) */
 } yep_norm_ctx;
 
 typedef struct yep_norm_tok {
@@ -4714,7 +4726,15 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
          * fold rendered one fold-SPACE per break instead of the n-1
          * newline tally (the r98 nightly — the #836 phantom's flow
          * half; the comma half landed in #836 itself). */
+        int phantom = !c->tok_start; /* the glued ':'-twin alone (the
+                                      * #836-accepted prev==':' state):
+                                      * libyaml keeps the opener interior
+                                      * to the plain, so its depth rides
+                                      * phantom_flow, never the real count */
         c->tok_start = 1;
+        if (phantom) {
+            c->phantom_flow++;
+        }
         c->in_flow++;
         c->plain_open = 0; /* the slot was armed by an indicator */
     } else if (ch == ',') {
@@ -4748,7 +4768,7 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
     } else if (ch == ']' || ch == '}') {
         c->tok_start = 1;
         c->bb = 0; /* the slot was armed by an indicator, not a fold */
-        if (c->in_flow > 0) {
+        if (c->in_flow > c->phantom_flow) {
             c->plain_open = 0;
         }
         /* block context keeps the fact: a plain cannot start with
@@ -4759,7 +4779,12 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
          * gate's blind-spot twin: the ']' byte also blanks bb_plain —
          * it is in the bb indicator set — so both gate inputs said
          * "new node") and the NELs after it rode unnormalized raw into
-         * the plain fold ("(999999;!<1]" +NEL+ "!<" +NEL+ "¥" +NEL^2). */
+         * the plain fold ("(999999;!<1]" +NEL+ "!<" +NEL+ "¥" +NEL^2).
+         * The clear keys on REAL flow (in_flow above the phantom
+         * depth): the glued ':'-twin's phantom opens inflate in_flow
+         * without any flow collection existing in libyaml's read, and
+         * the inflated count defeated the law on a plain's interior ']'
+         * ("a:{b]" +NEL — the r169 nightly's fifth arming shape). */
     }
     /* the r147 law: a non-indicator content byte begins/continues a
      * plain scalar VALUE word — the fact survives breaks (breaks only

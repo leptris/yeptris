@@ -689,18 +689,33 @@ yep_span yep_scan_plain(const char* p, size_t len, size_t pos, int flow) {
         size_t at = (hit < 0) ? len : i + (size_t)hit;
         /* a multibyte break inside the piece ends it like an EOL: the
          * byte stopset cannot see NEL/LS/PS, and the continuation
-         * would ride across the break into the next line's tokens */
-        if (at > i) {
-            const char* lead = (const char*)memchr(p + i, 0xC2, at - i);
-            const char* lead2 = (const char*)memchr(p + i, 0xE2, at - i);
+         * would ride across the break into the next line's tokens.
+         * EVERY lead byte in the piece must be tested: the first lead
+         * can be an ordinary multibyte character (the r169 yen U+00A5
+         * leading a NEL run) while a later one is a break — testing
+         * the first lead only declined the check there and rode the
+         * break raw into the scalar (the false-lead ride, the r74
+         * plain-ends-at-NEL law defeated by the lead's own position). */
+        int mb_broken = 0;
+        for (size_t scan = i; at > scan;) {
+            const char* lead = (const char*)memchr(p + scan, 0xC2, at - scan);
+            const char* lead2 = (const char*)memchr(p + scan, 0xE2, at - scan);
             const char* first =
                 (lead && lead2) ? (lead < lead2 ? lead : lead2) : (lead ? lead : lead2);
-            if (first != NULL && yep_scan_mb_break_len(p, len, (size_t)(first - p)) > 0) {
-                at = (size_t)(first - p);
-                i = at;
-                s.term = YEP_TERM_EOL;
+            if (first == NULL) {
                 break;
             }
+            if (yep_scan_mb_break_len(p, len, (size_t)(first - p)) > 0) {
+                at = (size_t)(first - p);
+                mb_broken = 1;
+                break;
+            }
+            scan = (size_t)(first - p) + 1; /* a false lead: advance past it */
+        }
+        if (mb_broken) {
+            i = at;
+            s.term = YEP_TERM_EOL;
+            break;
         }
         unsigned char c = (at < len) ? (unsigned char)p[at] : 0;
 
