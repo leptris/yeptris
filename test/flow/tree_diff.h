@@ -38,15 +38,21 @@ static char* slurp(const char* path, size_t* len) {
     return buf;
 }
 
-static int str_eq(const yep_dom* d, yep_sview a, yep_sview b) {
+/* Decoded-byte compare: each side's view resolves in its OWN document's
+ * space (arena offsets are only meaningful against their own arena —
+ * the dom.h law "the gates compare decoded views, not arena
+ * placement"). Resolving both sides against one document poisoned the
+ * verdict whenever the two runs' arena streams disagreed on placement
+ * (the r171 copy-path layout straddle, PR #1042's CI). */
+static int str_eq(const yep_dom* da, yep_sview a, const yep_dom* db, yep_sview b) {
     if (a.len != b.len) {
         return 0;
     }
     if (a.len == 0) {
         return 1;
     }
-    yep_view va = yep_dom_view(d, a);
-    yep_view vb = yep_dom_view(d, b);
+    yep_view va = yep_dom_view(da, a);
+    yep_view vb = yep_dom_view(db, b);
     return va.p != NULL && vb.p != NULL && memcmp(va.p, vb.p, va.len) == 0;
 }
 
@@ -84,10 +90,10 @@ static int node_eq(const yep_dom* a, const yep_dom* b, uint32_t ra, uint32_t rb)
             eq = 0;
             break;
         }
-        if (!str_eq(a, x->value, y->value) || !str_eq(a, x->tag, y->tag) ||
-            !str_eq(a, x->anchor, y->anchor)) {
+        if (!str_eq(a, x->value, b, y->value) || !str_eq(a, x->tag, b, y->tag) ||
+            !str_eq(a, x->anchor, b, y->anchor)) {
             yep_view xv = yep_dom_view(a, x->value);
-            yep_view yv = yep_dom_view(a, y->value);
+            yep_view yv = yep_dom_view(b, y->value);
             fprintf(stderr, "DIFF str a=%u b=%u vlen %u/%u v=%.*s|%.*s anc %u/%u\n", pr.a, pr.b,
                     xv.len, yv.len, (int)xv.len, xv.p ? (const char*)xv.p : "", (int)yv.len,
                     yv.p ? (const char*)yv.p : "", x->anchor.len, y->anchor.len);
