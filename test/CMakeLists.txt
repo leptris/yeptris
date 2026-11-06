@@ -1404,6 +1404,52 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-nel-fold-bom-r159.bin
     )
 
+    # the r160 nightly's seed (run 42160225920, main 6aa80d7): the
+    # FOLDED-BLOCK NEL-CONTENT law -- 15 bytes "3e 0a 20 21 3c c2 85
+    # 20 74 65 78 74 39 0a 0a": a folded-block-scalar header, then the
+    # content line " !<" + U+0085 (NEL) + " text9", then the empty
+    # clip line. Both engines accept; the values differ at the NEL:
+    # yeptris "=VAL : !<\xc2\x85 text9\n" (the FULL two-byte pair kept
+    # as CONTENT -- inside block-scalar content the 1.2 break set is
+    # LF/CR/CRLF only, spec 8.1, so the multi-byte breaks are content)
+    # vs libyaml "=VAL : !< text9\n" (its 1.1 IS_BREAK counts the NEL
+    # as a break INSIDE the block scalar, splitting the content line;
+    # the lone break folds to the fold space and the continuation's
+    # indent space strips). The suite sides with yeptris (1.2
+    # content), so this is a carry -- NOT the phantom-verbatim class:
+    # the value bytes are the full C2 85 pair (no lead-stripped 0x85),
+    # and the ASCII-only control (">" + " !< text9", no NEL) agrees
+    # byte-exact on both engines, so nothing arms. The plain-NEL fold
+    # arm declines (yeptris's value keeps a content space behind the
+    # pair where its k==1 fold law maps the pair onto libyaml's one
+    # space, leaving a ' '-vs-'t' mismatch); the quoted twin's
+    # ' '-vs-'\n' signature does not fire (the position aligns
+    # space-for-space). The new block-content arm walks the dump pair
+    # with libyaml's two split artifacts: up to (k-1) escaped breaks
+    # per NEL run (the multi-break collapse, the plain arm's law) and
+    # exactly one re-alignment byte behind the run -- yeptris's
+    # verbatim space against libyaml's break artifact (the literal
+    # twin), yeptris's space that libyaml ate as the continuation's
+    # indent (the double-NEL twin), or libyaml's fold space with no
+    # yeptris counterpart (the glue shape). Beyond that the dumps must
+    # be byte-identical. The LS/PS twins agree on both engines (the
+    # front end normalizes LS/PS, only NEL stays content). The
+    # structural member of the family (the NEL-induced dedent: a
+    # 2-space content line whose NEL break makes libyaml's next line a
+    # dedent that ends the block early) stays UNCLAIMED by design --
+    # claiming it needs a loose "tail may vanish" relation; it holds
+    # identical verdicts pre/post. Post-fix the battery converges: 35
+    # mutants (20 single-byte flips + 10 multi-byte ins/sub/del + 5+10
+    # targeted family variants and controls) classify or hold identical
+    # verdicts pre/post, zero regressions; the corpus walk is
+    # byte-identical pre/post on the shared 279 files (30 historical
+    # aborts) with the new seed riding green (280 post).
+    add_test(
+        NAME fuzz-diff-r160-block-nel-content
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-block-nel-content-r160.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
