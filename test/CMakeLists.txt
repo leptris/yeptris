@@ -1816,6 +1816,38 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qcomp-rekey-dist2-r168.bin
     )
 
+    # the r169 nightly's seed
+    # (crash-03fc7cd6b847d0ac23175a4a3fc1135d8e0fd836, run 42227304538,
+    # main bf2db8d): a 168-byte root plain whose NEL fold sites hide
+    # behind FALSE LEADS -- yep_scan_plain's multibyte-break check
+    # tested only the FIRST C2/E2 lead byte of each piece; when that
+    # lead was an ordinary character (the U+00A5 yen) the check
+    # declined and NEVER examined later leads, so a NEL run after the
+    # yen rode RAW into the plain (the r74 plain-ends-at-NEL law
+    # defeated by the lead's own position; "a:{b]" +NEL+ "!<" +yen+
+    # NEL^2 + "b" carried raw c2 85 c2 85 where libyaml folds the
+    # break). The composed twin (the fifth phantom-verbatim arming
+    # shape) rode the normalizer: the glued ':'-twin's PHANTOM flow
+    # open ("a:{b]" -- the #836-accepted prev==':' state) inflated the
+    # walk's monotone in_flow, the interior ']' then hit the r155
+    # clear's in_flow>0 arm and cleared plain_open, and the next
+    # fold-armed "!<" (bb=']' blanks bb_plain too) opened a
+    # never-closed verbatim that swallowed the rest of the input's
+    # NELs unnormalized. The fixes: scan_plain loops the lead check
+    # over EVERY lead in the piece (a false lead advances to the next
+    # lead and re-tests), and the normalizer tracks the phantom depth
+    # separately -- the r155 clear keys on REAL flow (in_flow above the
+    # phantom count), so block-context ']' / '}' keep the plain_open
+    # fact. Post-fix the repro's value folds byte-for-byte with
+    # libyaml at the NEL sites and the artifact classifies. The unit
+    # probes pin the law both ways: yen+NEL^2 ends the span at the
+    # NEL, and a plain yen WORD with no NELs is untouched.
+    add_test(
+        NAME fuzz-diff-r169-plain-nel-yen-ride
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/plain-nel-yen-ride-r169.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
