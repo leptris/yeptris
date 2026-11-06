@@ -1450,6 +1450,52 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-block-nel-content-r160.bin
     )
 
+    # the r161 nightly's seed (run 42166243287, main 32b62a9): the
+    # TERMINAL-TAIL sibling of the r160 block-content law -- 9 bytes
+    # "3e 0a 20 21 3c c2 85 20 0a": the same folded header and " !<" +
+    # U+0085 (NEL) content line, with the mutation walk's deleted
+    # " text9" word leaving the content space TERMINAL: " !<" + NEL +
+    # " " then the single clip break. Both engines accept; the tails
+    # differ (byte-exact dumps, terminal rendering stripped):
+    # yeptris "=VAL : !<\xc2\x85 \n" -- NEL stays CONTENT (the 1.2
+    # block-scalar break set is LF/CR/CRLF only, spec 8.1), the space
+    # stays content, the clip break escapes as \n -- vs libyaml
+    # "=VAL : !<\n": its 1.1 IS_BREAK splits the line at the NEL and
+    # its scan keeps the NEL break as the value's ONLY break (clip
+    # joins leading_break; the blank continuation line's space was
+    # eaten as indentation and that line's break is dropped at the
+    # scan loop's exit). The suite sides with yeptris (1.2 content) --
+    # a carry; nothing NEW is engine-suspicious (yeptris's clip keeps
+    # exactly one trailing break, and the breakless-EOF member rides
+    # the documented r140 clip law). The r160 arm DECLINES this member:
+    # its "space is libyaml's break" branch eats libyaml's escaped
+    # break -- but that break is libyaml's CLIP break here, so
+    # yeptris's own escaped clip break strands behind it and the walk
+    # bails. The extension adds ONE bound branch at the NEL run: the
+    # TERMINAL tail -- yeptris "SP + \n" against libyaml's single
+    # escaped break -- is accepted only when the remainders behind
+    # BOTH escaped breaks are byte-identical (the value frames end the
+    # same way), so it can never swallow arbitrary divergence past the
+    # scalar; it fires before the (k-1) collapse so every run length
+    # k >= 1 rides the same law (the literal twin and the k=2/k=3 runs
+    # classify with it), and the r160 shapes keep their branches (the
+    # r160 seed and its content-bearing twins miss the tail check: the
+    # byte behind their space is not the escape). The indent-0 twin is
+    # a SPLIT (libyaml rejects an indent-0 block scalar), not a DIFFER
+    # -- it holds identical pre/post. Post-fix the battery converges:
+    # 47 mutants (20 single-byte flips + 10 multi-byte ins/sub/del +
+    # 17 targeted family variants and controls) classify (5: the
+    # literal twin, the k=2/k=3 runs, the breakless-EOF member and one
+    # deletion mutant) or hold identical verdicts pre/post (42), zero
+    # regressions; the corpus walk is byte-identical pre/post on the
+    # shared 280 files (30 historical aborts) with the new seed riding
+    # green (281 post); leaks --atExit clean on the seed.
+    add_test(
+        NAME fuzz-diff-r161-block-nel-terminal-tail
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-block-nel-content-r161.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
