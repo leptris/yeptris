@@ -1707,6 +1707,14 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
 }
 
 static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size) {
+    /* the shared skip cap (r180): the frame pass scales with the input
+     * size -- every skip consumes dump lines, so the walk stays
+     * line-bounded by construction; the constant 64 stayed under the
+     * r180 artifact's ~80 law-explained skips (47 killed members + the
+     * empty-member frames + the SPLIT pairs), a density the frame pass
+     * exists to own. Frame 0 keeps the classic 64 (its path predates
+     * r178 and must not shift). */
+    const int skip_cap = 64 + (frame ? size / 8 : 0);
     if (ydump == NULL || ldump == NULL) {
         return 0;
     }
@@ -1725,6 +1733,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
     int ride = 0;             /* the terminal-tail arm's skipped content count */
     const char* ytwin = NULL; /* the re-paired-value ride's twin opener */
     int ride_run = 0;         /* the re-paired-value ride's consumed count */
+    int frame_run = 0;        /* the r180 comment-run neighbor frames remaining */
     for (;;) {
         const char* yn = strchr(y, '\n');
         const char* ln = strchr(l, '\n');
@@ -1764,12 +1773,16 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
          * its current line belongs to a LATER member; the frame skip
          * consumes exactly the two lines (content + empty) and keeps
          * libyaml's line for the downstream pairing. */
+        int y_marker_frame = frame && y_val && yn != NULL && yd_qgh_glue_marked(y + vp, yl - vp);
         int y_killed_frame = 0;
-        if (frame && y_val && yn != NULL && yd_qgh_glue_marked(y + vp, yl - vp)) {
+        int y_double_empty_frame = 0;
+        if (y_marker_frame || (frame && frame_run > 0 && (y_val || y_empty_val) && yn != NULL)) {
             const char* y2 = yn + 1;
             const char* y2n = strchr(y2, '\n');
             size_t y2l = y2n != NULL ? (size_t)(y2n - y2) : strlen(y2);
-            y_killed_frame = (y2l == vp && memcmp(y2, val_prefix, vp) == 0);
+            y_killed_frame = (y_val && y2l == vp && memcmp(y2, val_prefix, vp) == 0);
+            y_double_empty_frame =
+                (frame_run > 0 && y_empty_val && y2l == vp && memcmp(y2, val_prefix, vp) == 0);
         }
         if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
             if (y_val && l_empty_val) {
@@ -1778,6 +1791,49 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * ride '?#'- and '+`'-shaped plains alike); pass 1
                  * already pinned the glued-'?'# marker */
                 diffs++;
+            } else if (frame && y_marker_frame && y_val && l_val && y_killed_frame) {
+                /* the MARKER-FRAME PRIORITY (r180, run 42336246527, main
+                 * 8619d71, crash-d6d32ef7): when libyaml's current line
+                 * suffix-matches the marker member's content, the r117
+                 * SPLIT reading and the member-kill reading are BOTH
+                 * live -- libyaml's post-'?'-token comment-glue kills the
+                 * marker member WHOLE and its line is a LATER member's
+                 * residue, whose content may coincidentally suffix-match
+                 * the killed plain's tail (the r180 soup's "?#g" vs the
+                 * surviving "g": libyaml's KEY token ate the '?', the
+                 * glued '#' commented "#g,2," to the CR -- BOTH the
+                 * marker AND its line-neighbor "2" died, while "g"
+                 * survived and BOTH engines carry it downstream). SPLIT
+                 * would consume libyaml's surviving member as a phantom
+                 * continuation, strand yeptris's own "g" member one-off,
+                 * and burn the shared cap to its 64 decline. When the
+                 * frame tell holds (the glue fingerprint locally, the
+                 * next yeptris line the exact empty val), the kill
+                 * reading is the family's own law and wins BEFORE the
+                 * suffix reading: consume the killed member's frame
+                 * (marker + partner), keep libyaml's line, and let the
+                 * walk re-pair the survivors from here. A true split
+                 * whose tail then mis-aligns declines into the claim's
+                 * own terminal law (full exhaustion) -- a false priority
+                 * can never PASS, only leave the DIFFER visible. Same
+                 * bounded consumption as the frame skip (ONE shared-cap
+                 * count, both y-lines consumed, libyaml's kept). */
+                skips += 1;
+                if (skips > skip_cap) {
+                    return 0;
+                }
+                frame_run = 16; /* the comment run's neighbor budget */
+                diffs += 2;
+                if (yn == NULL) {
+                    return 0;
+                }
+                y = yn + 1;
+                yn = strchr(y, '\n');
+                if (yn == NULL) {
+                    break;
+                }
+                y = yn + 1;
+                continue;
             } else if (y_val && l_val && ll > vp && ll <= yl &&
                        memcmp(y + (yl - (ll - vp)), l + vp, ll - vp) == 0) {
                 /* the SPLIT pair (r117): libyaml's glued-# comment-kill
@@ -1785,7 +1841,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * continuation scalar's content is a SUFFIX of
                  * yeptris's single folded scalar. Consume both; the
                  * split shape is bounded (8 per stream). */
-                if (++skips > 8 + 64) {
+                if (++skips > 8 + skip_cap) {
                     return 0;
                 }
                 diffs++;
@@ -1846,7 +1902,34 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * shared 64 — with every difference law-explained;
                  * the paired arm needs no cap (both pointers advance). */
                 diffs++;
-            } else if (frame && y_val && l_val && y_killed_frame) {
+            } else if (frame && (y_val || y_double_empty_frame) && l_val &&
+                       (y_killed_frame || y_double_empty_frame)) {
+                /* the KILLED-MEMBER FRAME skip (r178, run 42322793822; the
+                 * r180 NEIGHBOR extension, run 42336246527, main 8619d71,
+                 * crash-d6d32ef7): the marker frame above now also carries
+                 * the marker's COMMENT-RUN NEIGHBORS -- libyaml's comment
+                 * after the glued '?#' KEY token runs to the NEXT BREAK, so
+                 * the members BETWEEN the marker and that break die WHOLE
+                 * in libyaml's reading (the r180 89-byte soup: "?#,0,\r"
+                 * kills the marker AND "0"; "?#,=,\n" kills marker AND
+                 * "=") with no counterpart at their positions. A neighbor
+                 * carries no LOCAL fingerprint (the glue rode the marker
+                 * upstream), so the r178 gate declined it and every
+                 * neighbor cost TWO shared-cap skips (the y-only content
+                 * skip plus the L-only partner skip) -- the 89-byte soup's
+                 * five killed members rode 9 skips through generic arms
+                 * while the artifact's 30-member runs outran the fixed 64
+                 * in BOTH walk passes. The neighbor frame rides the same
+                 * member shape byte-exact (content VAL whose next line is
+                 * the exact empty val, libyaml's line kept for the
+                 * downstream pairing) and is granted ONLY by a marker
+                 * frame just before it (frame_run, refilled by every
+                 * marker frame, capped at 16 -- the r125 precedent; the
+                 * comment cannot cross a break, so the run is
+                 * line-local by construction). Family-gated by pass 1;
+                 * the frame pass only (the r178 routing); ONE skip per
+                 * frame (the r178 economics); the claim still stands only
+                 * on full exhaustion of BOTH skeletons (the walk's law). */
                 /* the KILLED-MEMBER FRAME skip (r178, run 42322793822,
                  * main 68700ce, crash-4663982f): libyaml's comment-glue
                  * law ate the marker member WHOLE (its KEY token fires on
@@ -1878,9 +1961,49 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * still stands only on full exhaustion of BOTH
                  * skeletons (the walk's law). */
                 skips += 1;
-                if (skips > 64) {
+                if (skips > skip_cap) {
                     return 0;
                 }
+                if (y_marker_frame) {
+                    frame_run = 16; /* the comment run's neighbor budget */
+                } else if (frame_run > 0) {
+                    frame_run--; /* one neighbor frame per claim */
+                }
+                diffs += 2;
+                if (yn == NULL) {
+                    return 0;
+                }
+                y = yn + 1;
+                yn = strchr(y, '\n');
+                if (yn == NULL) {
+                    break;
+                }
+                y = yn + 1;
+                continue;
+            } else if (frame && frame_run > 0 && y_empty_val && l_val && yn != NULL) {
+                /* the DOUBLE-EMPTY frame (r180): the run-granted form for
+                 * the member whose BOTH lines are empty -- the bare-'?'
+                 * explicit-key member ("?,": libyaml's flow-'?' law makes
+                 * it a KEY token, and the marker's glued '#' comment ate
+                 * the token's tail to the break, so libyaml carries NO
+                 * member while yeptris's suite-pinned plain-'?' law keeps
+                 * the explicit-key member as {null: null} -- two empty
+                 * lines) and its comment-swallowed empty siblings. The
+                 * r116 y-only-empty skip declines here BY DESIGN: the
+                 * pair it leaves runs one member off (the earlier L-only
+                 * arm would eat libyaml's SURVIVOR, and every later
+                 * pairing runs one member off -- the r178 frame-skip
+                 * rationale verbatim). The frame consumes the member's
+                 * two empty lines and KEEPS libyaml's line for the
+                 * downstream survivor pairing -- the same keep-l
+                 * economics the content frames above ride. ONE skip per
+                 * frame (decrementing the run); the claim still stands
+                 * only on full exhaustion (the walk's law). */
+                skips += 1;
+                if (skips > skip_cap) {
+                    return 0;
+                }
+                frame_run--;
                 diffs += 2;
                 if (yn == NULL) {
                     return 0;
@@ -1899,7 +2022,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * libyaml's reading. Skip libyaml's line; yeptris's
                  * content/closer lines must still pair downstream
                  * (content-vs-content differences still bail). */
-                if (++skips > 64) {
+                if (++skips > skip_cap) {
                     return 0;
                 }
                 diffs++;
@@ -2040,7 +2163,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                         if (l2l == vp && memcmp(l2, val_prefix, vp) == 0 &&
                             memcmp(l3, "-MAP", 4) == 0 && (l3[4] == '\n' || l3[4] == '\0')) {
                             skips += 3;
-                            if (skips > 64) {
+                            if (skips > skip_cap) {
                                 return 0;
                             }
                             diffs += 5;
@@ -2100,7 +2223,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                             if (l2l == vp && memcmp(l2, val_prefix, vp) == 0 &&
                                 memcmp(l3, "-MAP", 4) == 0 && (l3[4] == '\n' || l3[4] == '\0')) {
                                 skips += 4;
-                                if (skips > 64) {
+                                if (skips > skip_cap) {
                                     return 0;
                                 }
                                 diffs += 6;
@@ -2171,7 +2294,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                             memcmp(l3, "-MAP", 4) == 0 && (l3[4] == '\n' || l3[4] == '\0') &&
                             yl > vp + 1 && y[vp] == '?' && (y[vp + 1] == '#' || y[vp + 1] == '!')) {
                             skips += 3;
-                            if (skips > 64) {
+                            if (skips > skip_cap) {
                                 return 0;
                             }
                             diffs += 5;
@@ -2265,7 +2388,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                             if (l2l == vp && memcmp(l2, val_prefix, vp) == 0 &&
                                 memcmp(l3, "-MAP", 4) == 0 && (l3[4] == '\n' || l3[4] == '\0')) {
                                 skips += 4;
-                                if (skips > 64) {
+                                if (skips > skip_cap) {
                                     return 0;
                                 }
                                 diffs += 6;
@@ -2378,7 +2501,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                                     memcmp(l3, "-MAP", 4) == 0 &&
                                     (l3[4] == '\n' || l3[4] == '\0')) {
                                     skips += 4 + dist;
-                                    if (skips > 64) {
+                                    if (skips > skip_cap) {
                                         return 0;
                                     }
                                     diffs += 4 + dist;
@@ -2403,14 +2526,14 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                      * the block is libyaml's explicit-key salvage, not
                      * the next member. Bounded by the shared skip
                      * cap. */
-                    if (++skips > 64) {
+                    if (++skips > skip_cap) {
                         return 0;
                     }
                     diffs++;
                     y = yn + 1;
                     continue;
                 }
-                if (++skips > 64) {
+                if (++skips > skip_cap) {
                     return 0;
                 }
                 struct_skips++;
@@ -2456,7 +2579,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * cap; the claim stands only on full exhaustion (the
                  * walk's law). */
                 skips += ride_run;
-                if (skips > 64) {
+                if (skips > skip_cap) {
                     return 0;
                 }
                 diffs += ride_run;
@@ -2468,7 +2591,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * skipped opener owes one closer — consume libyaml's
                  * line so the skeletons re-align. yeptris's closer is
                  * NOT consumed (its collection closes later). */
-                if (++skips > 64) {
+                if (++skips > skip_cap) {
                     return 0;
                 }
                 struct_skips--;
@@ -2593,12 +2716,12 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * by pass 1; bounded by the shared skip cap. */
                 int skipped = 0;
                 for (;;) {
-                    if (++skips > 64 || skipped > 16) {
+                    if (++skips > skip_cap || skipped > 16) {
                         return 0;
                     }
                     diffs++;
                     if (yn == NULL) {
-                        return 0; /* yeptris ran out before its alias */
+                        return 0;
                     }
                     y = yn + 1;
                     yn = strchr(y, '\n');
@@ -2704,7 +2827,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * gated by pass 1; bounded by the shared skip cap; the
                  * claim still stands only if the WHOLE skeleton
                  * re-aligns. */
-                if (++skips > 64) {
+                if (++skips > skip_cap) {
                     return 0;
                 }
                 diffs++;
@@ -2721,7 +2844,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * keeps it as content — skip yeptris's line so the
                  * closers re-align. Family-gated by pass 1; bounded
                  * by the shared skip cap. */
-                if (++skips > 64) {
+                if (++skips > skip_cap) {
                     return 0;
                 }
                 diffs++;
@@ -2744,7 +2867,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * re-aligns (a leftover libyaml line fails it); the
                  * more specific arms (suffix-split, emptied pairs)
                  * still win first; bounded by the shared skip cap. */
-                if (++skips > 64) {
+                if (++skips > skip_cap) {
                     return 0;
                 }
                 diffs++;
@@ -2759,7 +2882,7 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * tail composition (r116: yeptris parses a trailing
                  * empty entry libyaml does not) — skip yeptris's,
                  * never libyaml's */
-                if (++skips > 64) {
+                if (++skips > skip_cap) {
                     return 0;
                 }
                 diffs++;
@@ -2778,13 +2901,13 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * yeptris's re-positioned alias -- the alias itself
                  * must still pair byte-exact downstream (the equal
                  * path or the r179 cut arm) or the claim dies. */
-                if (++skips > 64) {
+                if (++skips > skip_cap) {
                     return 0;
                 }
                 diffs++;
                 if (ln == NULL) {
                     if (!(yl == 0 && yn == NULL)) {
-                        return 0; /* libyaml ended, yeptris still has lines */
+                        return 0;
                     }
                     break;
                 }
