@@ -2468,6 +2468,47 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-colonhead-r182.bin
     )
 
+    # r183 (run 42386647198, main 9e4cbe1, crash-0732517306d80ae0f1163934edb5f99005bcfca0):
+    # the 20-byte "[-1.0<PS> 7.tag<CR> ,?.]" is the flow-? glued-follower
+    # family's SEQUENCE orientation, a fresh finding (A/B: pre-r182
+    # fdbf503 fails the artifact identically -- not an r182 regression;
+    # the r182 arm is an exact-bytes root-alias gray entry, unrelated).
+    # The first member is a multi-line flow plain folding over PS then
+    # CR ("-1.0 7.tag", identical on both sides); the trailing ",?.]"
+    # is where the engines split: libyaml's 1.1 law makes a KEY token
+    # for a flow '?' with ANY follower (scanner.c fetch_next_token's
+    # "flow_level ||" arm), so '.' becomes the key of a single-pair
+    # mapping the enclosing SEQUENCE wraps as a nested member
+    # (+MAP =VAL : . =VAL : -MAP); yeptris's suite-pinned plain reading
+    # (HM87/652Z: a flow '?' with a non-space follower rides as plain
+    # content) keeps "?." ONE plain scalar member. The r71 drop-'?'
+    # spell cannot reproduce that reading -- in a MAPPING the dropped
+    # '?' leaves the follower a key-position plain (libyaml's same
+    # pair), but in a SEQUENCE it degrades to a plain member and the
+    # nested pair vanishes, which is exactly why every earlier arm's
+    # verify declined this orientation. The new arm spells the pair
+    # explicitly -- "{run: }" -- which both engines read as the nested
+    # pair libyaml produced, with an LS/PS-normalized verify fallback
+    # (libyaml's dump keeps the mid-plain U+2029 raw while yeptris
+    # folds it; normalizing LS/PS/NEL/CR -> LF on both sides is
+    # meaning-preserving and the triple compare arbitrates). The
+    # two-break prefix is the gate's composition ingredient: the
+    # single-break twin "[a<CR> ,?.]" rides the pre-existing arms, so
+    # the entry pins the artifact byte-exactly. Post-fix battery: the
+    # artifact classifies known; 50 paired mutants (20 single-byte
+    # flips, 10 span deletions, 20 targeted) -- 0 regressions, 22
+    # newly carried (the map-context/?:/alias/tag follower siblings
+    # stay unclaimed beside the pinned cut, all pre-diverged);
+    # corpus walk exit-0 pre/post on all six harness corpora, walk
+    # outputs identical (normalized; the parse delta is the r182
+    # seed's +1 file, cross-checked); fresh ctest carries all 76
+    # prior pins plus this one (77/77); leaks --atExit clean.
+    add_test(
+        NAME fuzz-diff-r183-flow-seq-question-pair
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-question-pair-r183.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
