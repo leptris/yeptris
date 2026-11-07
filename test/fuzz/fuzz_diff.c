@@ -2155,6 +2155,97 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                         pairs_next = y2l > vp && y2l - vp >= kp &&
                                      memcmp(y2 + (y2l - vp) - kp, l1 + vp, kp) == 0;
                     }
+                    if (frame && yl > vp + 1 && y[vp] == '?' &&
+                        (y[vp + 1] == '#' || y[vp + 1] == '!')) {
+                        /* the SHARED-BLOCK ride (r181, run 42341337776,
+                         * main 225ccd4, crash-0d856bdb): the comment-run
+                         * kill STRADDLING a collection boundary. libyaml's
+                         * post-'?'-token comment-glue law (the '#' at
+                         * token scan position comments to the NEXT break)
+                         * ate the glue-led member's tail together with
+                         * the members that follow it on the same line,
+                         * while yeptris's suite-pinned plain-first-'?'
+                         * law keeps every glued run as content (a '#'
+                         * comments only behind a blank, the HM87/r85
+                         * law) -- so yeptris carries a run of KEPT
+                         * members that libyaml has none of, and
+                         * libyaml's current line is the OPENER of a
+                         * collection BOTH skeletons carry downstream
+                         * (the r181 soup: "?#,?##|,?\r/\nm,..." -- the
+                         * '?#' and '?##|' members die whole in libyaml's
+                         * reading while the '/\nm' map is a member BOTH
+                         * engines keep; the 12-byte minimality twin
+                         * "[2,?#,?|,?\r]" is the same straddle against
+                         * the trailing "?," member's own empty-key map).
+                         * Every earlier route mis-pairs there: the
+                         * wrapper rides read the block as a killed
+                         * member's SALVAGE and consume it (the r167
+                         * empty-wrapper gate holds on the twin's own
+                         * {null: null} block too), the r132 shared-opener
+                         * tell demands yeptris's IMMEDIATE next line be
+                         * the opener (here the killed run's residue VALs
+                         * sit between), and the bare structural skip
+                         * then eats libyaml's opener of the SHARED block
+                         * while yeptris's own copy is still pending --
+                         * the walk dies at yeptris's opener against
+                         * libyaml's body VAL with no arm. The ride is
+                         * the r152 RE-PAIRED-VALUE pattern on the
+                         * content side, pinned to the WHOLE block:
+                         * yeptris's glue-led member plus its kept
+                         * residue (only =VAL lines may sit between, the
+                         * r144 survival gate's shape, the r152 per-site
+                         * cap of 16) step aside until yeptris's OWN
+                         * byte-exact copy of the full four-line block --
+                         * opener, KEY line, the salvaged null, the bare
+                         * closer -- the direct observation that the
+                         * block is SHARED, not a salvage (where yeptris
+                         * carries no such block the reading stays with
+                         * the rides below; an invented twin declines --
+                         * the r167 seed's skeletons carry no +MAP at
+                         * all and the r148 soup's downstream block KEY
+                         * differs, so both keep their exact routes).
+                         * libyaml's opener is NOT consumed: it pairs as
+                         * an equal line on the walk's next step. Frame
+                         * pass only (the r178 routing: frame 0's routes
+                         * predate the frame machinery and must not
+                         * shift); the glue-led lead pin is the r167
+                         * family's own (libyaml's KEY law fires only on
+                         * '?'-led members); bounded by the run cap and
+                         * the shared skip cap; the claim stands only on
+                         * full exhaustion of BOTH skeletons (the walk's
+                         * law). */
+                        const char* l2b = l1n != NULL ? l1n + 1 : NULL;
+                        const char* l2n2 = l2b != NULL ? strchr(l2b, '\n') : NULL;
+                        const char* l3b = l2n2 != NULL ? l2n2 + 1 : NULL;
+                        if (l2n2 != NULL && l3b != NULL && l2n2 - l2b == (ptrdiff_t)vp &&
+                            memcmp(l2b, val_prefix, vp) == 0 && memcmp(l3b, "-MAP", 4) == 0 &&
+                            (l3b[4] == '\n' || l3b[4] == '\0')) {
+                            const char* twin = NULL;
+                            int run = 0;
+                            if (yd_qgh_repair_ride(y, l, ll, &twin, &run)) {
+                                const char* tb = strchr(twin, '\n');
+                                const char* t1 = tb != NULL ? tb + 1 : NULL;
+                                const char* t1n = t1 != NULL ? strchr(t1, '\n') : NULL;
+                                const char* t2b = t1n != NULL ? t1n + 1 : NULL;
+                                const char* t2n2 = t2b != NULL ? strchr(t2b, '\n') : NULL;
+                                const char* t3b = t2n2 != NULL ? t2n2 + 1 : NULL;
+                                if (t1n != NULL && t2n2 != NULL && t3b != NULL &&
+                                    (size_t)(t1n - t1) == l1l && memcmp(t1, l1, l1l) == 0 &&
+                                    (size_t)(t2n2 - t2b) == vp &&
+                                    memcmp(t2b, val_prefix, vp) == 0 &&
+                                    memcmp(t3b, "-MAP", 4) == 0 &&
+                                    (t3b[4] == '\n' || t3b[4] == '\0')) {
+                                    skips += run;
+                                    if (skips > skip_cap) {
+                                        return 0;
+                                    }
+                                    diffs += run;
+                                    y = twin;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                     if (key_suffix && !pairs_next && l1n != NULL) {
                         const char* l2 = l1n + 1;
                         const char* l2n = strchr(l2, '\n');

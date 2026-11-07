@@ -2398,6 +2398,46 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-comment-run-r180.bin
     )
 
+    # r181 (run 42341337776, main 225ccd4, crash-0d856bdbeef74a848e253f4382fdafe6be4b86fd):
+    # the 240-byte soup ("[-123.123fo\r..." -- ?#-glued members, CR/LF
+    # breaks, LS fold triples, &m-anchored empties) is the comment-run
+    # kill STRADDLING a collection boundary. libyaml's post-'?'-token
+    # comment-glue law (the '#' at token scan position comments to the
+    # NEXT break) ate the glue-led member's tail together with the
+    # members following it on the same line, while yeptris's
+    # suite-pinned plain-first-'?' law keeps every glued run as content
+    # (a '#' comments only behind a blank, the HM87/r85 law) -- so
+    # yeptris carries a run of KEPT members that libyaml has none of,
+    # and libyaml's current line is the OPENER of a collection BOTH
+    # skeletons carry downstream. Every earlier route mis-pairs there:
+    # the wrapper rides read the block as a killed member's SALVAGE and
+    # consume it, the r132 shared-opener tell demands yeptris's
+    # IMMEDIATE next line be the opener (the killed run's residue VALs
+    # sit between), and the bare structural skip then eats libyaml's
+    # opener of the SHARED block while yeptris's own copy is still
+    # pending -- the walk died at yeptris's opener against libyaml's
+    # body VAL with no arm in BOTH walk passes. The carry: the
+    # SHARED-BLOCK ride (the r152 RE-PAIRED-VALUE pattern on the
+    # content side, pinned to the WHOLE four-line block) -- yeptris's
+    # glue-led member plus its kept residue (=VAL lines only, the r152
+    # per-site cap of 16) step aside until yeptris's OWN byte-exact
+    # copy of opener + KEY + salvaged null + bare closer; libyaml's
+    # opener is NOT consumed and pairs as an equal line on the next
+    # step. Frame pass only (the r178 routing); the glue-led lead pin
+    # is the r167 family's own; bounded by the run cap and the shared
+    # skip cap. Post-fix battery: the artifact and the 12-byte
+    # minimality twin "[2,?#,?|,?\r]" classify known; 50 paired
+    # mutants (32 single-byte flips, 10 span deletions, 8 targeted) --
+    # 0 regressions, 30 carried, 17 red in both (the documented gray
+    # zone), 3 pass in both; corpus walk byte-identical pre/post on
+    # all six harness corpora; fresh ctest carries all 74 prior pins
+    # plus this one (75/75); leaks --atExit clean.
+    add_test(
+        NAME fuzz-diff-r181-qflow-glued-hash-shared-block
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-shared-block-r181.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
