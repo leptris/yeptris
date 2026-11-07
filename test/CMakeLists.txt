@@ -2271,6 +2271,53 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-fold-suppression-r177.bin
     )
 
+    # the r178 nightly's seed (run 42322793822, main 68700ce, crash
+    # 4663982fe3724e68041f75726a42a80cb3dc27c2): the GLUED-HASH family's
+    # plain-first-'?' x alias-tail composition -- 9 bytes, minimal (every
+    # single-byte deletion changes the verdict): "{?#\n,?*L}". Both
+    # engines accept; the streams differ at the second member: yeptris
+    # "=VAL : ?*L" (the suite-pinned plain-'?' law -- '?' followed by the
+    # ns-plain-safe '*' is a legal plain FIRST char, so "?*L" is ONE
+    # plain) vs libyaml "=ALI *L" (its flow-KEY token fires on the '?'
+    # unconditionally and the '*' re-lexes as an ALIAS). The first member
+    # rides the emptied-key pair ("?#\n" -- the glued '#' opens libyaml's
+    # comment to the line end), but the alias pair declined everywhere:
+    # the r163 alias-as-content-tail arm demands the glue fingerprint
+    # LOCALLY in the pre-spelling prefix (a glued "?#"/"?!" inside it),
+    # and here the prefix is exactly the one '?' byte -- the marker lives
+    # in the OTHER member -- so r163 declined and the r125 alias-realign
+    # arm bailed (yeptris never emits its own =ALI). The r163 gate gains
+    # the plain-first-'?' form byte-tight (prefix length pinned to 1,
+    # byte pinned to '?', the alias spelling still the content's
+    # byte-exact suffix, libyaml's alias PRESENT so the r138-r141
+    # alias-drop masking cannot apply, family-gated by pass 1). The
+    # 58-byte artifact rides the second refinement: libyaml's
+    # comment-glue ate the marker member ("?#?#|##|#|") WHOLE, and the
+    # plain r124/r127 y-only skip leaves its EMPTY value line to
+    # mis-pair -- the L-only arm then eats libyaml's residue and every
+    # later pairing runs one member off (death at yeptris's empty vs
+    # libyaml's "=ALI *L"). The KILLED-MEMBER FRAME skip consumes both
+    # lines of the marker member (the glue-marked content VAL plus its
+    # exact "=VAL : " partner -- the frame tell pins the shape
+    # byte-exact) and KEEPS libyaml's line, so the fold-tail residue "z"
+    # suffix-pairs yeptris's next surviving member "` z" through the
+    # existing r117 SPLIT arm; the alias then rides the widened r163
+    # form at the third member. One skip count per frame (the r146 soup
+    # rides 96 kept-content members past the shared 64 -- a per-line
+    # count outruns the cap mid-stream). Post-fix battery: the seed, the
+    # 58-byte artifact, the "?*d" alias-name sibling and the r146
+    # terminal-tail soup all classify known; the single-byte-flip
+    # neighborhood is SPLIT-dominated (libyaml rejects the flipped
+    # followers -- the documented suite-gray zone); corpus walk
+    # byte-identical pre/post on all six harness corpora; fresh ctest
+    # carries all 71 prior pins plus this one (72/72); leaks --atExit
+    # clean.
+    add_test(
+        NAME fuzz-diff-r178-qflow-glued-hash-plain-question-alias
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-plain-question-alias-r178.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

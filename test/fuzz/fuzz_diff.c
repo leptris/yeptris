@@ -1531,6 +1531,18 @@ static int yd_qgh_repair_ride(const char* y, const char* l, size_t ll, const cha
     }
 }
 
+static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size);
+
+/* The family entry: the ORIGINAL walk first (frame 0 -- every member
+ * that rode before r178 keeps its exact path: the killed-member frame
+ * skip consumes TWO lines where the r124/r127 skip consumes one, and on
+ * shapes the single-line route finishes the frame route can strand the
+ * walk one member off -- the battery's backtick-comma flip is the
+ * witness). Only when that declines does the frame-enabled walk run --
+ * the r178 composition's member-whole swallow fires there, on shapes
+ * the original walk already rejected. Both routes are bounded by the
+ * same shared skip cap and both claim only on full exhaustion (the
+ * walk's law). */
 static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const char* ydump,
                                       const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0 || size > 8192) {
@@ -1628,6 +1640,16 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
     if (hits == 0) {
         return 0;
     }
+    if (yd_qgh_differ_walk(ydump, ldump, 0, (int)size)) {
+        return 1;
+    }
+    return yd_qgh_differ_walk(ydump, ldump, 1, (int)size);
+}
+
+static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
     /* pass 2: line-wise walk of both dumps — same skeleton, every
      * difference is yeptris's "=VAL : ?..." against libyaml's
      * "=VAL : " (the emptied key). The r116 tail composition adds a
@@ -1673,6 +1695,21 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
             const char* y2n = strchr(y2, '\n');
             size_t y2l = y2n != NULL ? (size_t)(y2n - y2) : strlen(y2);
             y_killed_shared_opener = (y2l == ll && memcmp(y2, l, y2l) == 0);
+        }
+        /* the killed-member frame tell (r178): yeptris's next line is
+         * the EMPTY val — the salvaged null this content member pairs
+         * with — and the content carries the glue fingerprint LOCALLY
+         * (a glued "?#"/"?!" inside it: this IS the pass-1 marker's
+         * member). libyaml's comment-glue ate such a member whole, so
+         * its current line belongs to a LATER member; the frame skip
+         * consumes exactly the two lines (content + empty) and keeps
+         * libyaml's line for the downstream pairing. */
+        int y_killed_frame = 0;
+        if (frame && y_val && yn != NULL && yd_qgh_glue_marked(y + vp, yl - vp)) {
+            const char* y2 = yn + 1;
+            const char* y2n = strchr(y2, '\n');
+            size_t y2l = y2n != NULL ? (size_t)(y2n - y2) : strlen(y2);
+            y_killed_frame = (y2l == vp && memcmp(y2, val_prefix, vp) == 0);
         }
         if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
             if (y_val && l_empty_val) {
@@ -1749,6 +1786,52 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                  * shared 64 — with every difference law-explained;
                  * the paired arm needs no cap (both pointers advance). */
                 diffs++;
+            } else if (frame && y_val && l_val && y_killed_frame) {
+                /* the KILLED-MEMBER FRAME skip (r178, run 42322793822,
+                 * main 68700ce, crash-4663982f): libyaml's comment-glue
+                 * law ate the marker member WHOLE (its KEY token fires on
+                 * the flow '?', the glued '#' opens a comment that runs
+                 * to the line end), so the member has no libyaml
+                 * counterpart AT ITS POSITION -- and libyaml's current
+                 * line is a LATER member's residue (the r178 soup's
+                 * "=VAL : z", the fold tail of yeptris's NEXT member
+                 * "` z"). The plain y-only skip (r124/r127) cannot take
+                 * this pair alone: it leaves the killed member's EMPTY
+                 * value line to pair against libyaml's residue, the
+                 * L-only arm then eats libyaml's line, and every later
+                 * pairing runs ONE MEMBER OFF (the r178 58-byte artifact
+                 * died at yeptris's empty vs libyaml's "=ALI *L" with no
+                 * arm). The frame skip consumes BOTH lines of the killed
+                 * member -- the marker-bearing content VAL plus its
+                 * EMPTY partner (the frame tell above pins the shape
+                 * byte-exact: next line is exactly "=VAL : ") -- and
+                 * KEEPS libyaml's line, so the residue suffix-pairs
+                 * yeptris's next surviving member through the existing
+                 * r117 SPLIT arm. Byte-tight: the content carries the
+                 * glue fingerprint locally (the pass-1 marker's own
+                 * member), the partner is the exact empty val, no
+                 * wildcards; family-gated by pass 1; bounded by the
+                 * shared skip cap (ONE count per frame -- the unit is
+                 * the member frame, not its two lines: the r146 soup
+                 * rides 96 kept-content members past the shared 64, and
+                 * a per-line count outruns it mid-stream); the claim
+                 * still stands only on full exhaustion of BOTH
+                 * skeletons (the walk's law). */
+                skips += 1;
+                if (skips > 64) {
+                    return 0;
+                }
+                diffs += 2;
+                if (yn == NULL) {
+                    return 0;
+                }
+                y = yn + 1;
+                yn = strchr(y, '\n');
+                if (yn == NULL) {
+                    break;
+                }
+                y = yn + 1;
+                continue;
             } else if (l_val && (y_empty_val || yl == 0 || y[0] == '-')) {
                 /* an L-ONLY extra val of ANY content (r117): libyaml's
                  * glued-# comment-kill SPLITS a plain yeptris folds —
@@ -2340,7 +2423,22 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
                 continue;
             } else if (y_val && ll > 5 && strncmp(l, "=ALI ", 5) == 0 && ll - 5 <= yl - vp &&
                        memcmp(y + yl - (ll - 5), l + 5, ll - 5) == 0 &&
-                       yd_qgh_glue_marked(y + vp, yl - vp - (ll - 5))) {
+                       (yd_qgh_glue_marked(y + vp, yl - vp - (ll - 5)) ||
+                        /* the r178 PLAIN-FIRST-'?' form: the pre-spelling
+                         * prefix is exactly the ONE '?' byte -- yeptris's
+                         * suite-pinned plain-'?' law keeps "?*name" ONE
+                         * plain ('*' is ns-plain-safe there, so the '?' is
+                         * a legal plain FIRST char) while libyaml's
+                         * flow-KEY token consumes the '?' and re-pairs the
+                         * '*' as an alias. Byte-tight: prefix length
+                         * pinned to 1, byte pinned to '?'; the alias is
+                         * PRESENT on libyaml's side (the r138-r141
+                         * alias-drop masking concern cannot apply), and
+                         * the family gate stays pass 1 (the marker lives
+                         * in another member of the same stream -- in the
+                         * r178 seed, the emptied "?#" member the walk
+                         * paired one step earlier). */
+                        (yl - vp - (ll - 5) == 1 && y[vp] == '?'))) {
                 /* the ALIAS-AS-CONTENT-TAIL pair (r163, run
                  * 42177815461, main ec8fc99): the soup family's
                  * alias-swallow composition in the REVERSE orientation
