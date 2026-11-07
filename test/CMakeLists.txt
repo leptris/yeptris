@@ -2147,6 +2147,71 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-content-prec-line-r175.bin
     )
 
+    # the r176 nightly's seed (run 42311445947, main 9748e6d, crash
+    # 2611c5939bcf8ee920ec74b2a81cf0622833a70c): the CONTENT-AFTER-RUN
+    # + BREAKLESS-EOF composition of the r160/r161/r173/r175
+    # block-content law -- 13 bytes: a folded-block-scalar header, then
+    # ONE content line " !<" + one U+0085 NEL pair + " text9", ending
+    # at EOF with NO trailing break. Both engines accept; the values
+    # differ at the tail (the byte-exact dumps, captured by the
+    # pipe-through-xxd method): yeptris "=VAL : !<NN text9\n" -- the
+    # pair stays CONTENT (the 1.2 block-scalar break set is LF/CR/CRLF
+    # only, spec 8.1), the fold space rides behind it, and the r140
+    # breakless-EOF clip law appends the trailing break -- vs libyaml
+    # "=VAL : !< text9" (bare): its 1.1 IS_BREAK folds the NEL into
+    # the fold space and its breakless tail drops the break entirely.
+    # The suite sides with yeptris on BOTH carries (the r160 law
+    # verdict stands; the engine-side reading is spec-8.1 + L24T#2
+    # correct on the composed form), so this is a carry of two
+    # adjudicated verdicts composing in one input -- the r158 lesson.
+    # The existing arms decline the composition: the r158
+    # composed-transform arm's data gate owns the LS/PS TRIPLE only
+    # (E2 80 A8/A9 -- the PS/LS twins of this exact shape ride it and
+    # are green), and the block-NEL walk's section arms all live
+    # BEHIND the run: the run's exit agrees byte-for-byte (the fold
+    # space), the walk past it stays byte-bound, and the divergence
+    # (yeptris's trailing "\n" escape vs libyaml's frame LF) hits the
+    # strict main-loop law with no surplus arm -- the r175 surplus
+    # flavor sits INSIDE the bounded continuation, which only fires
+    # when the byte right behind the run mismatches. The refinement
+    # composes the two deltas in the clip arm's own direction (the
+    # r158 arm's shape, the yd_clip_breakless_divergence move): the
+    # family walk is extracted verbatim (yd_block_nel_walk) and the
+    # arm, after that walk DECLINED the original dumps and only on a
+    # breakless final byte (the clip precondition; the 8192 cap
+    # bounds the re-dump), appends the ONE break libyaml drops to a
+    # copy of libyaml's input, re-dumps libyaml on THAT, and requires
+    # the exact same byte-bounded walk against yeptris's original
+    # dump. No existing arm weakened, no budget changed: the r161
+    # terminal-tail branch still fires first, the pure members keep
+    # their branches, and the LS/PS composition stays with the r158
+    # arm (the families keep their own walks). Minimality: every
+    # single-byte deletion changes the verdict (header/`!`/`<`
+    # deletions land in already-owned families; the indent deletion
+    # is the root-block col-0 sibling; the lead-byte deletions are
+    # libyaml error shapes; every text-tail deletion is a same-law
+    # member that rides post-fix). Post-fix the battery converges:
+    # 61 members (20 single-byte flips + 10 multi-byte ins/sub/del +
+    # 30 targeted family variants and controls) classify or hold
+    # identical verdicts pre/post -- 9 rides: the seed, the literal-`|`
+    # twin, the k=2 folded and literal twins, the k=3 ladder member,
+    # the map-value twin, the two-words-after-run member, and the
+    # two tail-byte deletions; the red set is byte-identical
+    # pre/post (the indent-0 continuation siblings -- libyaml's
+    # NEL-split line model ends the scalar early -- the lone-lead
+    # error shapes, the deeper-indent/seq-entry geometry splits);
+    # zero regressions. The corpus walk is byte-identical pre/post on
+    # the shared 295 files (30 historical aborts) with the new seed
+    # riding green (296 post); fresh-configure ctest carries all 69
+    # prior pins plus this one (70/70); leaks --atExit clean on the
+    # seed.
+    add_test(
+        NAME fuzz-diff-r176-block-nel-breakless-clip
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-breakless-clip-r176.bin
+    )
+
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
