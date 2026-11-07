@@ -1949,6 +1949,381 @@ static int yd_r187_glued_hash_plain_pair_divergence(const uint8_t* data, size_t 
     return known;
 }
 
+/* True when the verdict is the r187 glued-flow-'?#' comment family's
+ * MULTI-LINE-FOLLOWER member spelled with the plain-continuation law
+ * (the r190 nightly, run 42420197746, main 0fd2ff4, crash-
+ * bf009b5896e99d9c8aca7b26a7ad86a7e613e7f9, 32772 bytes; the 33-byte
+ * delta twin "[1<LS/PS x4>,?#,:\rg<CR>",?#<LS/PS x2>]" shows it bare).
+ * libyaml's 1.1 law (the family's carried quirk) makes the flow '?'
+ * a KEY token whatever follows and the glued '#' a boundary comment;
+ * the pending explicit-KEY context then admits the post-break plain
+ * follower -- and the follower run here does not stop at the line
+ * break: scan_plain_scalar's continuation folds the break into a
+ * space and rides the NEXT line's quote as mid-plain content ("g<CR>
+ * \"" reads "g \"" in both engines -- a quote does not end a plain
+ * run, r187's token-start tracker could not model this and opened a
+ * quoted scalar instead, so the SECOND hit (",?#" riding an LS/PS
+ * terminator with an empty tail) hid inside the phantom quote span).
+ * yeptris's suite-pinned HM87 law keeps "?#" as a plain member and
+ * reads the ':' implied-key map itself. The r187 spell restores the
+ * explicit '?' where the tail rides ("?#...<break>" -> "? "), and for
+ * the EMPTY tail (breaks only before the close, the family's second
+ * member: libyaml lands the empty-key/empty-value pair) the brace
+ * spell "{? }" -- both engines read "{? }" as the explicit empty-key
+ * pair, where "? <exotic break>]" errors in yeptris (the explicit '?'
+ * followed by an LS/PS break, a fresh reading its LF twin does not
+ * share). The finder is r187's with three teach-ins: the comment
+ * terminator scan learns NEL/LS/PS (multibyte, continuation-checked,
+ * the r189/yep_scan_mb_break_len law), the tail-break counter counts
+ * them too, and the walk tracks plain continuation (breaks do not end
+ * a plain run -- a quote only opens a scalar when the run is closed).
+ * Gates: at least one hit must carry a NEW-SHAPE feature (an exotic
+ * terminator, or a tail that folds across a break absorbing a quote),
+ * else the shape is r185/r187 turf; size bounded by the r186 gate.
+ * The byte-strict double verify against libyaml's ORIGINAL dump
+ * (both engines must read the rewrite exactly as libyaml read the
+ * original) arbitrates, with the CR/LS/PS/NEL-normalized triple as
+ * the fallback (the r183/r185/r187 pattern -- the artifact rides one:
+ * its members carry raw LS/PS in scalar content where yeptris folds
+ * to LF). */
+static int yd_r190_glued_hash_multiline_follower_divergence(const uint8_t* data, size_t size,
+                                                            const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 5 || size > 262144) {
+        return 0;
+    }
+    char* sub = malloc(size * 2 + 16); /* each hit turns "?#..." into "? " or "{? }" */
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t subn = 0;
+    int quote = 0;
+    /* token-start tracking: a quote only OPENS a scalar at a token
+     * start (after '[', '{', ',', ':', a blank, a break, or a close)
+     * -- and only when no plain run is open across the break */
+    int scalar_start = 1;
+    /* plain continuation: a break does not end a plain run (the
+     * libyaml fold law); only the flow boundaries and quote closes do */
+    int plain = 0;
+    /* the frame-kind stack: 1 = sequence, 2 = mapping */
+    int frames[64];
+    int depth = 0;
+    int hits = 0;
+    int shaped = 0; /* at least one NEW-SHAPE feature seen */
+    /* multibyte break length at i: 2 = CRLF/NEL, 3 = LS/PS, 1 = LF/CR
+     * alone, 0 = not a break (a dangling lead rides as content) */
+#define YD_R190_BREAK_LEN(d, n, i)                                                                 \
+    ((d)[i] == '\n'   ? 1                                                                          \
+     : (d)[i] == '\r' ? (((i) + 1 < (n)) && (d)[(i) + 1] == '\n' ? 2 : 1)                          \
+     : ((d)[i] == 0xC2 && (i) + 1 < (n) && (d)[(i) + 1] == 0x85) ? 2                               \
+     : ((d)[i] == 0xE2 && (i) + 2 < (n) && (d)[(i) + 1] == 0x80 &&                                 \
+        ((d)[(i) + 2] == 0xA8 || (d)[(i) + 2] == 0xA9))                                            \
+         ? 3                                                                                       \
+         : 0)
+    for (size_t i = 0; i < size;) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            sub[subn++] = (char)c;
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+                scalar_start = 0;
+                plain = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                sub[subn++] = (char)data[++i];
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+                scalar_start = 0;
+                plain = 0;
+            }
+            i++;
+            continue;
+        }
+        int blen = YD_R190_BREAK_LEN(data, size, i);
+        if (blen > 0) {
+            /* a break is a line boundary: the token position refreshes,
+             * but an open plain run RIDES it (the fold law) */
+            scalar_start = 1;
+            for (int b = 0; b < blen; b++) {
+                sub[subn++] = (char)data[i + (size_t)b];
+            }
+            i += (size_t)blen;
+            continue;
+        }
+        if (c == ' ' || c == '\t') {
+            scalar_start = 1;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if ((c == '\'' || c == '"') && scalar_start && !plain) {
+            quote = c;
+            scalar_start = 0;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '[' || c == '{') {
+            if (depth < 64) {
+                frames[depth] = (c == '[') ? 1 : 2;
+            }
+            depth++;
+            scalar_start = 1;
+            plain = 0;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            if (depth > 0) {
+                depth--;
+            }
+            scalar_start = 1;
+            plain = 0;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == ',' || c == ':') {
+            scalar_start = 1;
+            plain = 0;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '?' && scalar_start && depth > 0 && depth <= 64 && frames[depth - 1] == 1 &&
+            i + 1 < size && data[i + 1] != '?' &&
+            (data[i + 1] == '#' ||
+             !(data[i + 1] == ' ' || data[i + 1] == '\t' || data[i + 1] == ',' ||
+               data[i + 1] == ':' || data[i + 1] == ']' || data[i + 1] == '}' ||
+               data[i + 1] == '"' || data[i + 1] == '\'' || data[i + 1] == '[' ||
+               data[i + 1] == '{' || data[i + 1] == '&' || data[i + 1] == '*' ||
+               data[i + 1] == '!' || data[i + 1] == '|' || data[i + 1] == '>' ||
+               data[i + 1] == '%' || data[i + 1] == '@' || data[i + 1] == '`'))) {
+            if (data[i + 1] != '#' && YD_R190_BREAK_LEN(data, size, i + 1) == 0) {
+                /* KIND 2 -- the r183 flow-SEQ explicit-key shape
+                 * ("?<plain run>" is KEY token + the run as the keyless
+                 * pair's key), reached here because r183 declined: its
+                 * same-line run law cannot ride the fold. Spell r183's
+                 * brace form over the break-riding run; the verify
+                 * arbitrates. */
+                size_t j = i + 1;
+                int breaks = 0;
+                int clean = 1;
+                while (j < size) {
+                    unsigned char d = data[j];
+                    if (d == ',' || d == ']') {
+                        break;
+                    }
+                    if (d == '[' || d == '{' || d == '}' || d == '\\' || d == ':' || d == '?') {
+                        clean = 0;
+                        break;
+                    }
+                    if (d == '#' && (j == i + 1 || data[j - 1] == ' ' || data[j - 1] == '\t')) {
+                        clean = 0; /* a comment at the run's head declines */
+                        break;
+                    }
+                    int db = YD_R190_BREAK_LEN(data, size, j);
+                    if (db > 0) {
+                        if (++breaks > 8) {
+                            clean = 0;
+                            break;
+                        }
+                        j += (size_t)db;
+                        continue;
+                    }
+                    j++;
+                }
+                if (clean && j < size) {
+                    shaped = shaped || breaks > 0;
+                    /* the spell deletes nothing and restores the
+                     * explicit '?': the break-riding run keeps riding
+                     * as the keyless pair's key (the brace form cannot
+                     * carry a multi-line key: libyaml's simple-key law
+                     * rejects it outright, the r187 law) */
+                    sub[subn++] = '?';
+                    sub[subn++] = ' ';
+                    i = i + 1; /* the glued follower rides from its head */
+                    hits++;
+                    scalar_start = 0;
+                    plain = 1;
+                    continue;
+                }
+                scalar_start = 0;
+                plain = 1;
+                sub[subn++] = (char)c;
+                i++;
+                continue;
+            }
+            /* KIND 1 -- the boundary comment swallows from the '#' to
+             * the line break (LF/CR/NEL/LS/PS); without a break the
+             * whole-tail kill belongs to the other arms' spells */
+            size_t k = i + 1;
+            int exotic = 0;
+            while (k < size) {
+                int kb = YD_R190_BREAK_LEN(data, size, k);
+                if (kb == 2 && data[k] == 0xC2) {
+                    exotic = 1;
+                } else if (kb == 3) {
+                    exotic = 1;
+                }
+                if (kb > 0) {
+                    break;
+                }
+                k++;
+            }
+            if (k < size) {
+                int tblen = YD_R190_BREAK_LEN(data, size, k);
+                size_t next = k + (size_t)tblen;
+                /* the tail scan rides the plain continuation: breaks
+                 * do not end it, quotes mid-run are content, ':'s
+                 * bind values; nested flow declines; at most 8 folds */
+                size_t j = next;
+                int breaks = 0;
+                int clean = 1;
+                int rode_quote = 0;
+                int rode_content = 0;
+                while (j < size) {
+                    unsigned char d = data[j];
+                    if (d == ',' || d == ']') {
+                        break;
+                    }
+                    if (d == '[' || d == '{' || d == '}') {
+                        clean = 0; /* nested flow inside the tail declines */
+                        break;
+                    }
+                    int db = YD_R190_BREAK_LEN(data, size, j);
+                    if (db > 0) {
+                        if (++breaks > 8) {
+                            clean = 0;
+                            break;
+                        }
+                        j += (size_t)db;
+                        continue;
+                    }
+                    if (d == '#' && (j == next || data[j - 1] == ' ' || data[j - 1] == '\t')) {
+                        /* a comment at the run's head ends it */
+                        clean = 0;
+                        break;
+                    }
+                    if ((d == '\'' || d == '"') && !rode_content) {
+                        /* a quote AT the token start opens a scalar:
+                         * the run ends conservatively */
+                        clean = 0;
+                        break;
+                    }
+                    if (d == '\'' || d == '"') {
+                        rode_quote = 1; /* mid-plain content (the fold law) */
+                    }
+                    rode_content = 1;
+                    j++;
+                }
+                if (clean && j < size) {
+                    shaped = shaped || exotic || rode_quote || breaks > 0;
+                    if (j == next) {
+                        /* the EMPTY tail: libyaml lands the explicit
+                         * empty-key pair from the pending KEY; spell
+                         * the brace form both engines read as it */
+                        sub[subn++] = '{';
+                        sub[subn++] = '?';
+                        sub[subn++] = ' ';
+                        sub[subn++] = '}';
+                    } else {
+                        /* the spell deletes the swallowed span and
+                         * leaves the explicit '?': the post-break tail
+                         * rides untouched, and the verify arbitrates */
+                        sub[subn++] = '?';
+                        sub[subn++] = ' ';
+                    }
+                    i = next;
+                    hits++;
+                    scalar_start = 1;
+                    plain = 0;
+                    continue;
+                }
+            }
+        }
+        scalar_start = 0; /* any other content char ends the token */
+        plain = 1;
+        sub[subn++] = (char)c;
+        i++;
+    }
+    if (hits == 0 || !shaped) {
+        free(sub);
+        return 0;
+    }
+    int yok2 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, subn, &yok2);
+    int lok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, subn, &lok2);
+    int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
+                 strcmp(ldump2, ldump) == 0);
+    free(ydump2);
+    free(ldump2);
+    if (known) {
+        free(sub);
+        return 1;
+    }
+    /* the break-normalization fallback (the r183/r185/r187 pattern):
+     * the artifact's members carry raw LS/PS in scalar content where
+     * yeptris follows the fold law, so the byte-strict compare can
+     * never hold. Normalize every break (CR/LS/PS/NEL -> LF) on BOTH
+     * sides and demand the triple: both engines read the normalized
+     * rewrite identically AND libyaml reads the normalized original
+     * identically too. Anything else declines. */
+    int has_break = 0;
+    for (size_t i = 0; i < size && !has_break; i++) {
+        if (YD_R190_BREAK_LEN(data, size, i) > 1) {
+            has_break = 1;
+            i += 0;
+        }
+    }
+    if (!has_break) {
+        free(sub);
+        return 0;
+    }
+    char* nsub = malloc(subn * 3 + 1);
+    char* norig = malloc(size * 3 + 1);
+    if (nsub == NULL || norig == NULL) {
+        free(nsub);
+        free(norig);
+        free(sub);
+        return 0;
+    }
+    size_t ns = 0;
+    for (size_t i = 0; i < subn;) {
+        int nb = YD_R190_BREAK_LEN((const uint8_t*)sub, subn, i);
+        if (nb > 0) {
+            nsub[ns++] = '\n';
+            i += (size_t)nb;
+        } else {
+            nsub[ns++] = sub[i++];
+        }
+    }
+    size_t no = 0;
+    for (size_t i = 0; i < size;) {
+        int nb = YD_R190_BREAK_LEN(data, size, i);
+        if (nb > 0) {
+            norig[no++] = '\n';
+            i += (size_t)nb;
+        } else {
+            norig[no++] = (char)data[i++];
+        }
+    }
+    int yok3 = 0, lok3 = 0, lok4 = 0;
+    char* ydump3 = yd_sem_dump(nsub, ns, &yok3);
+    char* ldump3 = yd_libyaml_dump(nsub, ns, &lok3);
+    char* ldump4 = yd_libyaml_dump(norig, no, &lok4);
+    known = (yok3 && lok3 && lok4 && ydump3 != NULL && ldump3 != NULL && ldump4 != NULL &&
+             strcmp(ydump3, ldump3) == 0 && strcmp(ydump3, ldump4) == 0);
+    free(ydump3);
+    free(ldump3);
+    free(ldump4);
+    free(nsub);
+    free(norig);
+    free(sub);
+    return known;
+#undef YD_R190_BREAK_LEN
+}
+
 static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
                                      const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0) {
@@ -7781,6 +8156,10 @@ static void probe_one(const uint8_t* data, size_t size) {
                 known = yd_r185_glued_hash_comment_cr_divergence(data, size, ydump, ldump);
                 if (!known) {
                     known = yd_r187_glued_hash_plain_pair_divergence(data, size, ydump, ldump);
+                    if (!known) {
+                        known = yd_r190_glued_hash_multiline_follower_divergence(data, size, ydump,
+                                                                                 ldump);
+                    }
                 }
             }
         }

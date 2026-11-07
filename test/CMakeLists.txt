@@ -2704,6 +2704,71 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-block-nel-header-r189.bin
     )
 
+    # the r190 round (run 42420197746, main 0fd2ff4, crash-
+    # bf009b5896e99d9c8aca7b26a7ad86a7e613e7f9): the 32772-byte glued-
+    # '#' soup ("[11 ,?##|,?\r/..." with CR/LF/NEL/LS/PS breaks through-
+    # out) is the glued-flow-'?#' comment family's MULTI-LINE-FOLLOWER
+    # member, a fresh finding (A/B: the parent 31373b2 aborts
+    # identically -- the fresh r189 NEL/LS/PS terminator modeling in
+    # yd_root_block_content_divergence is exonerated; the escalation
+    # clause does not fire, yeptris's reading is the suite-pinned HM87
+    # one). libyaml's 1.1 law makes the flow '?' a KEY token whatever
+    # follows and the glued '#' a boundary comment, and the pending
+    # explicit-KEY context then admits the post-break plain follower --
+    # which here does NOT stop at the line break: scan_plain_scalar's
+    # continuation folds the break and rides the NEXT line's quote as
+    # mid-plain content ("g\r\"" reads "g \"" in both engines), so
+    # r187's token-start tracker -- which opens a quoted scalar at the
+    # break-refreshed token position -- hid the family's SECOND member
+    # (",?#" riding an LS/PS terminator with an empty tail) inside the
+    # phantom quote span, and the artifact carries 921 '?#' hits plus
+    # the r183 flow-'?' explicit-key shape ("?g", whose run rides a
+    # break, so r183 declines). The new arm is r187's finder with three
+    # teach-ins: the comment terminator scan learns NEL/LS/PS
+    # (multibyte, continuation-checked, the r189/yep_scan_mb_break_len
+    # law), the walk tracks plain continuation (a break does not end a
+    # plain run; a quote only opens a scalar when the run is closed),
+    # and a second hit kind spells the r183 flow-'?' shape over
+    # break-riding runs. The spells restore the explicit '?' ("?#...
+    # <break>" -> "? " with the tail riding untouched; a "?<plain>"
+    # run -> "? " likewise; libyaml's KEY token stays word-for-word,
+    # yeptris flips to the explicit-key reading) -- the brace form
+    # "{? }" ONLY for the empty-tail member (breaks only before the
+    # close, where libyaml lands the empty-key pair and the bare
+    # "? <exotic break>]" errors in yeptris; the brace form must not
+    # carry a multi-line key: libyaml's simple-key law rejects it
+    # outright, the r187 law). Gates: at least one hit must carry a
+    # NEW-SHAPE feature (an exotic terminator, a quote absorbed
+    # mid-plain, or a break-riding run) else the shape is
+    # r183/r185/r187 turf; size bounded by the r186 gate (262144 --
+    # the artifact is 32772 bytes, so the family's old 8192 transform
+    # gate is superseded here). The byte-strict double verify against
+    # libyaml's ORIGINAL dump arbitrates, with the
+    # CR/LS/PS/NEL-normalized triple as the fallback (the artifact
+    # rides one: its members carry raw LS/PS in scalar content where
+    # yeptris follows the fold law). Minimizer drift documented: the
+    # unconstrained deletion minimizer reaches a 5-byte SPLIT-family
+    # twin ("[|,?]", yeptris-only-accept -- a different, uncarried
+    # family), so the minimizer was re-run verdict-constrained
+    # (DIFFER-only) to the 33-byte DIFFER twin
+    # "[1<LS/PS x4>,?#,:\rg\r\"",?<LS/PS x2>]", which this arm
+    # carries byte-exactly; the true artifact is seeded intact.
+    # Battery: artifact pre-fix exit 134 / post-fix exit 0; 56-mutant
+    # paired battery (seeded flips/deletions/truncations/targeted
+    # PS/CR/quote/?#-span ops/chunk deletions/chaos) -- 0 regressions,
+    # 32 newly claimed, 13 still-abort unchanged, 11 both-pass;
+    # corpus walk exit-0 pre/post on the six lf corpora, outputs
+    # identical modulo libFuzzer's volatile seed/rss lines (parse 308,
+    # feed 64, roundtrip 2, marshal 18, cbor 102, validate 5; the
+    # ulimit -s 32768 for the 205KB nested-flow seed); fresh ctest -R
+    # fuzz-diff carries all 82 prior pins plus this one (83/83);
+    # leaks --atExit clean; clang-format 18 clean.
+    add_test(
+        NAME fuzz-diff-r190-glued-hash-multiline-follower
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-multiline-follower-r190.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
