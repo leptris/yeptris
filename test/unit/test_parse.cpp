@@ -3893,6 +3893,52 @@ TEST(Parse, UnicodeBreaksNormalizeLookalikesStay) {
         yeptris_document_free(doc);
     }
 }
+TEST(Parse, CrBeforeExoticBreakKeepsBothBreaks) {
+    /* the r188 nightly (run 42410383201, main 42c22b2, crash-
+     * 9804dfee0001eb3191e6833a692bec5efda96e53): the break normalizer
+     * rewrote NEL/LS/PS to '\n' without looking at the preceding byte,
+     * so a lone raw CR riding just before a rewrite fused with the
+     * replacement into a phantom CRLF pair -- the readers count CR LF
+     * as ONE break while the input's CR + NEL were TWO, and the plain
+     * fold's (n-1) newline tally halved (";!\r<NEL>\r;\r" read
+     * ";!\n;" where libyaml and the spec fold ";!\n\n;"). The copy now
+     * rewrites that CR to '\n' as well: both are one break, and LF LF
+     * keeps the pair's count wherever the fold law counts breaks. The
+     * continuations sit indented: a block plain ends at column 0 (the
+     * key's floor), so the col-0 twins are parse errors in BOTH
+     * engines and fold nothing. */
+    struct {
+        const char* y;
+        const char* want;
+    } cases[] = {
+        {"k: a\r\xC2\x85\r  b\n", "a\n\nb"},     /* CR NEL CR: three breaks */
+        {"k: a\r\xE2\x80\xA8\r  b\n", "a\n\nb"}, /* CR LS CR: three breaks */
+        {"k: \"a\r\xC2\x85\r  b\"\n", "a\n\nb"}, /* the pair inside a quoted fold */
+        {"k: a\r\r"
+         "\xC2\x85"
+         "  b\n",
+         "a\n\nb"}, /* CR CR NEL: four bytes, three breaks */
+    };
+    for (const auto& c : cases) {
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(c.y, strlen(c.y), &st);
+        ASSERT_NE(doc, nullptr) << "input=" << c.y << " err=" << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(map_str(root, "k"), c.want) << c.y;
+        yeptris_document_free(doc);
+    }
+    { /* the artifact itself: a bare root scalar riding CR NEL CR */
+        const char* y = ";!\r\xC2\x85\r;\r";
+        YeptrisStatus st;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+        YeptrisNode root = yeptris_document_root(doc, 0);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(val(root), ";!\n\n;");
+        yeptris_document_free(doc);
+    }
+}
 TEST(Parse, KeptRawUnicodeBreaksRideTheEngineRoute) {
     /* A mid-plain quote fools the quote-aware break normalizer: the
      * PS survives raw inside what it believes is a quoted region, and

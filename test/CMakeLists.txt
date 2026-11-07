@@ -2636,6 +2636,42 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-plain-pair-r187.bin
     )
 
+    # the r188 round (run 42410383201, main 42c22b2, crash-
+    # 9804dfee0001eb3191e6833a692bec5efda96e53): the 8-byte
+    # ";!<CR><NEL><CR>;<CR>" is a genuine ENGINE bug in the break
+    # normalizer's rewrite, not a comparator carry (the escalation
+    # clause fires; the A/B against the parent 4865289 aborts
+    # identically, so the r187 arm is exonerated). The NEL/LS/PS ->
+    # '\n' copy did not look at the preceding byte: a lone raw CR
+    # riding just before the rewrite fused with the replacement into a
+    # phantom CRLF pair, and the byte readers count CR LF as ONE break
+    # (SKIP_LINE's pair law) where the input's CR + NEL were TWO — the
+    # plain fold's (n-1) newline tally halved (";!\r<NEL>\r;\r" read
+    # ";!\n;" where libyaml and the spec fold ";!\n\n;"; the
+    # minimal form "a\r<NEL>\rb" shows it bare). The r47
+    # space-vs-'\n' NEL arm covered the single-break residue, so the
+    # family hid until the run grew a THIRD break around the pair.
+    # The fix rewrites the whole trailing run of raw CRs to '\n'
+    # before the replacement lands: one CR is one break, LFs never
+    # pair with each other, and a shallower rewrite would just move
+    # the phantom pair one byte left ("a\r\r<NEL>" -> "a\r\n\n"
+    # re-pairs on the first CR; the run makes it "a\n\n\n", breaks
+    # in, breaks out). Both engines then read the artifact
+    # ";!\n\n;". Battery: artifact pre-fix exit 134 / post-fix 0;
+    # 50-mutant paired battery (targeted CR/NEL/LS/PS forms + random
+    # flips/insertions/deletions) -- 0 regressions, 20 newly agreeing,
+    # 8 fail-both unchanged (prior comparator carries), 22 both-pass;
+    # corpus walk exit-0 pre/post on all six harness corpora plus
+    # schema_compile, outputs identical (parse 307, feed 65, roundtrip
+    # 2, marshal 18, cbor 102, validate 5, schema_compile 13); fresh
+    # ctest carries all 80 prior pins plus this one (81/81); leaks
+    # --atExit clean; clang-format clean.
+    add_test(
+        NAME fuzz-diff-r188-cr-exotic-phantom-pair
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/norm-cr-exotic-phantom-pair-r188.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
