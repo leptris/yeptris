@@ -2438,6 +2438,36 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-shared-block-r181.bin
     )
 
+    # r182 (run 42345850260, main fdbf503, crash-1482cdc94456ff989f9db92f6b0dd224b4b72cda):
+    # the 11-byte soup "&a::\n  *a:\n" is the r157/r170/r174 root-alias
+    # collapse's "&a::" INDENTED member (the r157 seed with the head's 'o'
+    # deleted; the r157/r170 lists name the member, r174's names the
+    # indented twin -- the r151/r170 deletion-sibling precedent gives it
+    # its own entry). yeptris's suite-pinned riding laws (2SXE/W5VH:
+    # colons ride anchor/alias names) compose line 1 "&a::" into a
+    # props-only pended anchor and line 2 "  *a:" into a colon-riding
+    # alias name, so no value indicator ever opens a map and the
+    # document collapses to ONE root alias (+STR /=ALI *a: /-STR);
+    # libyaml's 1.1 IS_ALPHA cut re-lexes the residual "::" as plain ":"
+    # with the final colon riding as the value token, making line 1 the
+    # anchored KEY of a root map and line 2's alias the key of a NESTED
+    # map with an empty plain value -- the 9-event form. The prefix chain
+    # diverges from the head-only "&a::" member on (the r174 list's
+    # named sibling), so the entry pins the artifact byte-exactly; the
+    # breakless/no-indent/onecolon/colonless-head/1-space siblings stay
+    # unclaimed beside the pinned cut. A/B: pre-r181 8619d71 fails the
+    # artifact identically -- a fresh finding, not an r181 regression.
+    # Post-fix battery: the artifact classifies known; 50 paired mutants
+    # (20 single-byte flips, 10 span deletions, 20 targeted) -- 0
+    # regressions; corpus walk exit-0 pre/post on all six harness
+    # corpora, walk outputs identical (normalized); fresh ctest carries
+    # all 75 prior pins plus this one (76/76); leaks --atExit clean.
+    add_test(
+        NAME fuzz-diff-r182-root-alias-colonhead
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-colonhead-r182.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
