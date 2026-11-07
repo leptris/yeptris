@@ -4933,6 +4933,24 @@ static char* norm_breaks_run(const yep_allocator* sys, const char* p, size_t len
         } else {
             memcpy(out + o, p + j, (size_t)t.fold_off);
             o += (size_t)t.fold_off;
+            /* A raw CR copied just before this rewrite must not pair
+             * with the replacement '\n' into a phantom CRLF: the byte
+             * readers count CR LF as ONE break (SKIP_LINE's pair law)
+             * while the input's CR + NEL/LS/PS were TWO — the rewrite
+             * silently halved the fold's break tally (";!\r<NEL>\r;\r"
+             * read ";!\\n;" where the (n-1) newline law says
+             * ";!\\n\\n;", the r188 nightly). Rewrite the WHOLE
+             * trailing run of raw CRs to '\n' — one CR is one break,
+             * and only the run's last byte could ever touch the
+             * replacement, but a shallower rewrite would just move the
+             * phantom pair one byte left ("a\r\r<NEL>" -> "a\r\n\n"
+             * re-pairs on the first CR; the run makes it "a\n\n\n",
+             * four breaks in, four breaks out). LFs never pair with
+             * each other, so the run's count survives everywhere the
+             * fold law counts breaks. */
+            for (size_t t2 = o; t2 > 0 && out[t2 - 1] == '\r'; t2--) {
+                out[t2 - 1] = '\n';
+            }
             out[o++] = '\n';
             memcpy(out + o, p + j + t.fold_off + t.fold_len,
                    t.n - (size_t)t.fold_off - (size_t)t.fold_len);
