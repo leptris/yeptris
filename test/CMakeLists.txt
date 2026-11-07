@@ -2508,6 +2508,49 @@ if(YEPTRIS_LIBYAML_ROOT)
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-question-pair-r183.bin
     )
+    # r185 (run 42392584152, main 3c87d4a, crash-187062ddd3ac7c5035c0183d3bf7dce08a24cf29):
+    # the 52-byte "[11.0e ,1.0e ,?<U+0503>,:<CR>&binary<CR>, ?<U+0503>,:<CR>&binary<CR>, (?,]"
+    # is the glued-hash family's COMMENT-CR PAIR orientation, a fresh
+    # finding (A/B: post 3c87d4a, mid f01c0e0 -- the r183 arm -- and pre
+    # 9e4cbe1 -- the r182 main -- ALL abort identically; the #1077 tape
+    # perf cut is exonerated twice over, its walk_lenient_fused is not
+    # even linked into this harness, so the escalation clause does not
+    # fire). libyaml's 1.1 KEY-token law makes the flow '?' a KEY token
+    # whatever follows, and the scanner's next-token loop then treats
+    # the GLUED '#' as a boundary comment: the comment swallows
+    # "?<U+0503>,:" up to the CR and the CR exposes the next line's node
+    # as the keyless pair's key -- a plain run rides as {i: <empty>}, an
+    # anchor rides as the anchored empty scalar {&binary<empty>: <empty>}.
+    # yeptris's suite-pinned plain reading keeps "?#..." ONE plain
+    # member and binds the bare ':' pair to the post-break run as its
+    # VALUE, with the map persisting across the ',' -- the r132 walk
+    # cannot pair the shapes because its emptied-key law expects
+    # libyaml to keep LESS content, while this orientation PROMOTES the
+    # follower into the key slot yeptris leaves null. The new arm
+    # spells the swallowed span into the explicit single-pair map --
+    # '?' + comment-through-break + follower becomes "{follower: }",
+    # with the anchor spell riding TWO separators ("{ &binary : }") --
+    # yeptris's wider anchor-name charset (the r142/r179 law) swallows
+    # a ':' glued to the name. The finder only fires on a '?' glued to
+    # '#' at flow depth in a SEQUENCE frame whose comment span reaches
+    # a line break and whose post-break follower starts a same-line
+    # plain run or an anchor-then-boundary empty ride; the byte-strict
+    # double verify against libyaml's ORIGINAL dump (both engines must
+    # read the rewrite exactly as libyaml read the original)
+    # arbitrates, with the CR/LS/PS/NEL-normalized triple as the
+    # fallback. Post-fix battery: the artifact and its 12-byte
+    # delta-minimized twin "[1,?#,:<CR>i,?]" classify known; 587
+    # mutants (single-byte flips, span deletions, targeted follower/
+    # break variants over both forms) -- 0 regressions; corpus walk
+    # exit-0 pre/post on all six harness corpora, walk outputs
+    # identical (normalized; the parse delta is this seed's +1 file,
+    # cross-checked); fresh ctest carries all 77 prior pins plus this
+    # one (78/78); leaks --atExit clean.
+    add_test(
+        NAME fuzz-diff-r185-glued-hash-comment-cr-pair
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-hash-comment-cr-pair-r185.bin
+    )
 
 
 
