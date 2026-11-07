@@ -2552,6 +2552,37 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-hash-comment-cr-pair-r185.bin
     )
 
+    # the r186 round (run 42399477506, main 7bb0f69, crash-cc801571):
+    # the nightly's fuzzer grew a qflow glued-hash soup PAST the arm
+    # bank's shared 8192-byte cap (8984 bytes; the nightly sets no
+    # -max_len, so len_control rides the seed corpus's own maximum).
+    # The composition itself is fully adjudicated — the killed-member
+    # frames ride the r132 shared-opener tell, the multi-line plain key
+    # riding the '?'-KEY + glued-comment law carries the r150/r162/r164
+    # LS/PS fold pairs ("?##|,?\r/\n\r\r<PS> 50:" — libyaml joins the
+    # raw triple where yeptris's b-char algebra folds the run) — and
+    # the frame-1 walk exhausts BOTH skeletons byte-exact once the
+    # size gate lets it run. The carry is the gate alone:
+    # yd_qflow_glued_hash_differ is allocation-free end to end (pass-1
+    # marker scan + line-wise walk on the ORIGINAL dumps), so its gate
+    # moves above the corpus maximum (262144) where the family's
+    # transform arms keep their shared 8192. Regression triage: the
+    # parent commit 3c87d4a aborts on the artifact identically (fresh
+    # cap finding, not an r185-arm regression). Post-fix battery: the
+    # artifact classifies known (exit 0); the byte-exact 20-byte
+    # delta-minimized twin "[:inary\r\r ,?##\r\n&m,]" is the split
+    # family's own shape (YEPTRIS-ONLY, the r132 consult's verdict);
+    # 60 mutants (single-byte flips, span deletions, cap-boundary
+    # truncations) -- 0 regressions; corpus walk exit-0 pre/post on all
+    # six harness corpora, walk outputs identical (the parse delta is
+    # this seed's +1 file, cross-checked); fresh ctest carries all 78
+    # prior pins plus this one (79/79); leaks --atExit clean.
+    add_test(
+        NAME fuzz-diff-r186-qflow-glued-hash-soup-sizegate
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-soup-sizegate-r186.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
