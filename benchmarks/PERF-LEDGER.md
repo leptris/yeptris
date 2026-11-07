@@ -3255,3 +3255,83 @@ concurrently loaded machine — wall-clock spread reflects that).
   re-opens (the 13-char bitmap builds via `yep_stopset_init`; 2
   nibble groups, vector kernels engage) — re-measure on an IDLE
   machine, interleaved A/B, before judging.
+
+## 2026-11-08 — TODO.max-perf/07: the lenient entry's whole-pass residuals (1.63x, ships); mask consumption closed by bound
+
+Item 07 re-audited on the current corpus: json-doc is 14.1 MB /
+~2.8M records at entries=200000 (the verdict-eight budget math rode a
+2.9 MB corpus). Every number below is the current shape, M1 Max
+NEON, the bench_matrix h2h instrument (same-run, interleaved,
+median of rounds).
+
+Baseline (origin/main 9e4cbe1): tape_lenient 490.59 MB/s = 0.49x
+simdjson (~1.0 GB/s). The drop vs the ledgered 0.66x (2026-09-19
+(iii)) is route fat that landed on top of the interleaved walk
+(#349) since:
+
+- the '\n\t' col-0 continuation sweep (b97f147) ran a two-compare
+  byte loop over the WHOLE span on every lenient parse (the
+  profile: 13% of json-doc, ~1 byte/cycle over 14.1 MB);
+- yep_tape_long_simple_key's full-tape re-walk (#739) still ran on
+  every CLEAN document: the walk settles the verdict only when a
+  >1024 candidate appears, so clean docs (every bench corpus) kept
+  paying the 16% re-walk the item exists to kill;
+- the lenient entry's gate_scan (0.85 ms measured) STAYS: it routes
+  non-ASCII to the strict lane (the lenient walk's cl=0 accepts hi
+  bytes into spans), so it is routing, not reject-path material.
+
+Cuts shipped (tape.c, the lenient fused walk's ldone):
+
+1. The sweep rides memchr — a '\n'-hit vector pass instead of the
+   byte loop — and is skipped on the clean_only lane entirely: its
+   byte guarantees (LWS stops on a tab, the string c0 sweeps and
+   the tail reject one) prove no '\n\t' pair can exist on an
+   accepted span.
+2. The >1024 simple-key verdict settles at ldone when no key
+   crossed the raw cap (chars <= bytes closes the char budget), so
+   the post-parse re-walk never runs on clean documents.
+
+Gates: 859/859 ctest (incl. tape-diff: pins + the 2M fuzz parity +
+lenient containment + corpus; the Y79Y#4 tab-defer pin green);
+leaks --atExit clean on the lenient driver and tape_diff.
+
+Numbers (bench_matrix --full --seed 42, h2h section):
+
+| route | before | after | ratio |
+|---|---|---|---|
+| tape_lenient json-doc | 490.59 (0.49x) | 798.38 (0.78x) | 1.63x |
+| parse_json DOM json-doc | 503.48 (0.50x) | 865.47 (0.84x) | 1.72x |
+| parse_json_tape json-doc | 854.24 (0.84x) | 856.56 (0.83x) | flat (sanity: the strict lane paid neither pass) |
+| tape_lenient json-users | 614.09 (0.43x) | 1094.03 (0.76x) | 1.78x |
+
+Interleaved micro-driver A/B (80 iters x 3 rounds, medians): 2.30 s
+vs 1.40 s. Profile attribution before the cuts (sample, lenient
+driver): walk incl. the tab sweep 79%, long-key re-walk 16%,
+madvise (free path) 4%.
+
+Cut 2 (mask consumption) CLOSED DEAD by measurement bound, without
+the walk build — the bound pins it from both sides on this corpus:
+
+- stage 1 measured (json_stage1_masks, NEON): 3.44 ms on json-doc
+  (3907 MB/s); the idx variant 7.52 ms (1791 MB/s) — the idx-array
+  emission IS verdict-eight's -32%, and the masks variant saves
+  only that emission.
+- the mask walk cannot skip the content arms: strings still close
+  via quote_scan/SWAR, numbers still run the charset scan, and gap
+  verification is a correctness requirement ("12ab" must reject
+  structurally; a stray byte between tokens must not hide), so it
+  re-scans exactly the bytes LWS scanned.
+- post-cut budget: the walk is ~16.3 ms and parity needs the WHOLE
+  route at <= ~14.1 ms. stage 1 alone (3.44 ms) plus the
+  content-bound walk (~12-13 ms with positioning at zero — an
+  impossible floor) already straddles parity; at a realistic
+  positioning share the mask route lands ~17 ms, at or above the
+  byte walk it replaces. Corroborated by the two ledgered
+  measurements it generalizes: the two-stage idx walk (-32%,
+  verdict eight) and the SWAR ws-skip (3x, 2026-09-18).
+
+Standing: lenient tape 0.78x simdjson on json-doc (was 0.49x). The
+remaining gap is the walk's per-token arms (the flat-sample block),
+not positioning or passes — item 07's premise (stage 1 + bit
+iteration reaches parity) is closed; the lever moves to item 06's
+codegen shape arms and the NEON string/number kernels.
