@@ -1420,6 +1420,282 @@ static int yd_r183_flow_seq_question_divergence(const uint8_t* data, size_t size
     return known;
 }
 
+/* True when the verdict is the COMMENT-CR PAIR of the glued flow '?#'
+ * family (the r185 nightly, run 42392584152, main 3c87d4a, crash-
+ * 187062ddd3ac: the 52-byte
+ * "[11.0e ,1.0e ,?#Ô,:
+&binary
+, ?#Ô,:
+&binary
+, (?,]").
+ * libyaml's 1.1 KEY-token law (the qflow family's carried quirk) makes
+ * the flow '?' a KEY token whatever follows, and the scanner's
+ * next-token loop then treats the GLUED '#' as a boundary comment: the
+ * comment swallows "...Ô,:" up to the CR, and the CR exposes the
+ * NEXT line's node as the keyless pair's key — a plain run ("i") rides
+ * as the key node {i: <empty>}, an anchor ("&binary") rides as the
+ * anchored empty scalar {&binary<empty>: <empty>}. yeptris's
+ * suite-pinned plain reading keeps "?#..." ONE plain member (the
+ * HM87 law: '#' mid-plain after a non-blank is content) and binds the
+ * bare ':' pair to the post-break run as its VALUE — with the map
+ * persisting across the ','. The r132 walk cannot pair the shapes:
+ * its emptied-key law expects libyaml to keep LESS content, while
+ * here libyaml's pair PROMOTES the follower to the key slot yeptris
+ * leaves null. The preserving spell rewrites the swallowed span into
+ * the EXPLICIT single-pair map — "?" + comment-through-break + follower
+ * becomes "{follower: }" — which both engines read as exactly the pair
+ * libyaml produced. The finder only fires on a '?' glued to '#' at
+ * flow depth whose innermost frame is a SEQUENCE, whose comment span
+ * reaches a line break, and whose post-break follower starts a
+ * same-line plain run (terminated by ',' / ']' / EOF) or an
+ * anchor-then-boundary empty ride; quoted and other indicator
+ * followers decline. The byte-strict verify against libyaml's
+ * ORIGINAL dump arbitrates, with the CR/LS/PS/NEL-normalized triple as
+ * the fallback (the artifact rides one: the rewrite leaves the
+ * inter-member CRs, and both engines' plains fold them alike). */
+static int yd_r185_glued_hash_comment_cr_divergence(const uint8_t* data, size_t size,
+                                                    const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 5 || size > 8192) {
+        return 0;
+    }
+    char* sub = malloc(size * 4 + 4); /* each hit turns "?#...\n run" into "{run: }" */
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t subn = 0;
+    int quote = 0;
+    /* the frame-kind stack: 1 = sequence, 2 = mapping */
+    int frames[64];
+    int depth = 0;
+    int hits = 0;
+    for (size_t i = 0; i < size;) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            sub[subn++] = (char)c;
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                sub[subn++] = (char)data[++i];
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            i++;
+            continue;
+        }
+        if (c == '\'') {
+            quote = '\'';
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '"') {
+            quote = '"';
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '[' || c == '{') {
+            if (depth < 64) {
+                frames[depth] = (c == '[') ? 1 : 2;
+            }
+            depth++;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            if (depth > 0) {
+                depth--;
+            }
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '?' && depth > 0 && depth <= 64 && frames[depth - 1] == 1 && i + 1 < size &&
+            data[i + 1] == '#') {
+            /* the boundary comment swallows from the '#' to the line
+             * break; without a break the whole-tail kill belongs to the
+             * other arms' spells */
+            size_t k = i + 1;
+            while (k < size && data[k] != '\n' && data[k] != '\r') {
+                k++;
+            }
+            if (k < size) {
+                size_t brk = k;
+                size_t next = k + 1;
+                if (data[k] == '\r' && next < size && data[next] == '\n') {
+                    next++;
+                }
+                /* the follower must start the pair's key node: a
+                 * plain-safe run, or an anchor riding an empty scalar
+                 * to its boundary */
+                size_t j = next;
+                int anchor = (j < size && data[j] == '&');
+                int clean = 1;
+                if (anchor) {
+                    j++;
+                    if (j >= size ||
+                        !((data[j] >= 'a' && data[j] <= 'z') ||
+                          (data[j] >= 'A' && data[j] <= 'Z') ||
+                          (data[j] >= '0' && data[j] <= '9') || data[j] == '_' || data[j] == '-')) {
+                        clean = 0;
+                    }
+                    while (clean && j < size) {
+                        unsigned char d = data[j];
+                        if ((d >= 'a' && d <= 'z') || (d >= 'A' && d <= 'Z') ||
+                            (d >= '0' && d <= '9') || d == '_' || d == '-') {
+                            j++;
+                            continue;
+                        }
+                        if (d == '\n' || d == '\r' || d == ',' || d == ']') {
+                            break;
+                        }
+                        clean = 0; /* content after the anchor declines */
+                        break;
+                    }
+                } else if (j < size && data[j] != ',' && data[j] != ']') {
+                    unsigned char f = data[j];
+                    if (f == ' ' || f == '\t' || f == ':' || f == '}' || f == '"' || f == '\'' ||
+                        f == '[' || f == '{' || f == '#' || f == '&' || f == '*' || f == '!' ||
+                        f == '|' || f == '>' || f == '%' || f == '@' || f == '`' || f == '?') {
+                        clean = 0;
+                    }
+                    while (clean && j < size) {
+                        unsigned char d = data[j];
+                        if (d == ',' || d == ']') {
+                            break;
+                        }
+                        if (d == '}' || d == '\n' || d == '\r' || d == '[' || d == '{' ||
+                            d == '"' || d == '\'' || d == '\\' || d == ':' || d == '?' ||
+                            d == '#') {
+                            clean = 0;
+                            break;
+                        }
+                        j++;
+                    }
+                } else {
+                    clean = 0; /* an empty follower declines */
+                }
+                if (clean) {
+                    /* the anchor spell rides TWO separators: yeptris's
+                     * wider anchor-name charset (the r142/r179 law)
+                     * swallows a ':' GLUED to the name, so "&binary :"
+                     * is the form both engines read as the anchored
+                     * empty key; the plain spell needs none */
+                    sub[subn++] = '{';
+                    if (anchor) {
+                        sub[subn++] = ' ';
+                    }
+                    memcpy(sub + subn, data + next, j - next);
+                    subn += j - next;
+                    if (anchor) {
+                        sub[subn++] = ' ';
+                    }
+                    sub[subn++] = ':';
+                    sub[subn++] = ' ';
+                    sub[subn++] = '}';
+                    i = j;
+                    hits++;
+                    continue;
+                }
+            }
+        }
+        sub[subn++] = (char)c;
+        i++;
+    }
+    if (hits == 0) {
+        free(sub);
+        return 0;
+    }
+    int yok2 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, subn, &yok2);
+    int lok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, subn, &lok2);
+    int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
+                 strcmp(ldump2, ldump) == 0);
+    free(ydump2);
+    free(ldump2);
+    if (known) {
+        free(sub);
+        return 1;
+    }
+    /* the break-normalization fallback (the r183 pattern): the
+     * artifact's inter-member CRs survive the rewrite, and a plain's
+     * fold law (one break -> a space) can shift the rendered dumps.
+     * Normalize every break (CR/LS/PS/NEL -> LF) on BOTH sides and
+     * demand the triple: both engines read the normalized rewrite
+     * identically AND libyaml reads the normalized original
+     * identically too. Anything else declines. */
+    int has_break = 0;
+    for (size_t i = 0; i + 2 < size && !has_break; i++) {
+        if (data[i] == 0xE2 && data[i + 1] == 0x80 &&
+            (data[i + 2] == 0xA8 || data[i + 2] == 0xA9)) {
+            has_break = 1;
+        } else if (data[i] == 0xC2 && data[i + 1] == 0x85) {
+            has_break = 1;
+        } else if (data[i] == '\r') {
+            has_break = 1;
+        }
+    }
+    if (!has_break) {
+        free(sub);
+        return 0;
+    }
+    char* nsub = malloc(subn * 3 + 1);
+    char* norig = malloc(size * 3 + 1);
+    if (nsub == NULL || norig == NULL) {
+        free(nsub);
+        free(norig);
+        free(sub);
+        return 0;
+    }
+    size_t ns = 0;
+    for (size_t i = 0; i < subn; i++) {
+        if (sub[i] == '\r') {
+            nsub[ns++] = '\n';
+        } else if ((unsigned char)sub[i] == 0xE2 && i + 2 < subn &&
+                   (unsigned char)sub[i + 1] == 0x80 &&
+                   ((unsigned char)sub[i + 2] == 0xA8 || (unsigned char)sub[i + 2] == 0xA9)) {
+            nsub[ns++] = '\n';
+            i += 2;
+        } else if ((unsigned char)sub[i] == 0xC2 && i + 1 < subn &&
+                   (unsigned char)sub[i + 1] == 0x85) {
+            nsub[ns++] = '\n';
+            i += 1;
+        } else {
+            nsub[ns++] = sub[i];
+        }
+    }
+    size_t no = 0;
+    for (size_t i = 0; i < size; i++) {
+        if (data[i] == '\r') {
+            norig[no++] = '\n';
+        } else if (data[i] == 0xE2 && i + 2 < size && data[i + 1] == 0x80 &&
+                   (data[i + 2] == 0xA8 || data[i + 2] == 0xA9)) {
+            norig[no++] = '\n';
+            i += 2;
+        } else if (data[i] == 0xC2 && i + 1 < size && data[i + 1] == 0x85) {
+            norig[no++] = '\n';
+            i += 1;
+        } else {
+            norig[no++] = (char)data[i];
+        }
+    }
+    int yok3 = 0, lok3 = 0, lok4 = 0;
+    char* ydump3 = yd_sem_dump(nsub, ns, &yok3);
+    char* ldump3 = yd_libyaml_dump(nsub, ns, &lok3);
+    char* ldump4 = yd_libyaml_dump(norig, no, &lok4);
+    known = (yok3 && lok3 && lok4 && ydump3 != NULL && ldump3 != NULL && ldump4 != NULL &&
+             strcmp(ydump3, ldump3) == 0 && strcmp(ydump3, ldump4) == 0);
+    free(ydump3);
+    free(ldump3);
+    free(ldump4);
+    free(nsub);
+    free(norig);
+    free(sub);
+    return known;
+}
+
 static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
                                      const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0) {
@@ -7215,6 +7491,9 @@ static void probe_one(const uint8_t* data, size_t size) {
         known = yd_qflow_glued_hash_split(data, size, ydump);
         if (!known && v == YD_DIFFER) {
             known = yd_qflow_glued_hash_differ(data, size, ydump, ldump);
+            if (!known) {
+                known = yd_r185_glued_hash_comment_cr_divergence(data, size, ydump, ldump);
+            }
         }
     }
 #ifdef YEP_FUZZ_STANDALONE
