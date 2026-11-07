@@ -1531,6 +1531,66 @@ static int yd_qgh_repair_ride(const char* y, const char* l, size_t ll, const cha
     }
 }
 
+/* The ALIAS-CHARSET-CUT pair (r179): true when yeptris's "=ALI <name>"
+ * line is the r142/r76 IS_ALPHA composition -- libyaml's scan_anchor cut
+ * the SAME alias at the first byte outside [0-9A-Za-z_-] (here the ':'),
+ * freeing that byte for its VALUE token and the tail for a plain value --
+ * with every observation byte-exact: libyaml's name is a proper PREFIX
+ * of yeptris's, the cut byte is exactly ':', every libyaml-side name
+ * byte is in libyaml's own anchor charset (the cut position), libyaml's
+ * NEXT line is "=VAL : " plus the exact eaten suffix, and yeptris's NEXT
+ * line is the exact empty val (the value the eaten tail swallowed). On
+ * success BOTH skeletons advance past the pair (two lines each). */
+static int yd_qgh_alias_cut_pair(const char* y, size_t yl, const char* l, size_t ll,
+                                 const char** y_next, const char** l_next) {
+    /* the rendering is "=ALI " + the '*' marker + the name: names start
+     * at +6 on BOTH sides, and the '*' itself is outside libyaml's
+     * charset, so the pins align on the name bytes, never +5 */
+    if (yl <= 6 || ll <= 6 || yl <= ll + 1 || memcmp(y, "=ALI ", 5) != 0 ||
+        memcmp(l, "=ALI ", 5) != 0 || y[5] != '*' || l[5] != '*') {
+        return 0;
+    }
+    size_t nl = ll - 6; /* libyaml's cut name */
+    if (nl == 0 || memcmp(y + 6, l + 6, nl) != 0) {
+        return 0;
+    }
+    for (size_t i = 0; i < nl; i++) {
+        if (!yd_anchor_byte_in_libyaml_set((unsigned char)l[6 + i])) {
+            return 0; /* every kept byte is in libyaml's own charset */
+        }
+    }
+    if (y[6 + nl] != ':') {
+        return 0; /* the cut byte is exactly the VALUE indicator */
+    }
+    size_t cl = yl - 6 - nl - 1; /* the eaten suffix after the colon */
+    if (cl == 0) {
+        return 0;
+    }
+    const char* yn = strchr(y, '\n');
+    const char* ln = strchr(l, '\n');
+    if (yn == NULL || ln == NULL) {
+        return 0;
+    }
+    const char* y2 = yn + 1;
+    const char* l2 = ln + 1;
+    const char* y2n = strchr(y2, '\n');
+    const char* l2n = strchr(l2, '\n');
+    size_t y2l = y2n != NULL ? (size_t)(y2n - y2) : strlen(y2);
+    size_t l2l = l2n != NULL ? (size_t)(l2n - l2) : strlen(l2);
+    const char* val_prefix = "=VAL : ";
+    const size_t vp = strlen(val_prefix);
+    if (y2l != vp || memcmp(y2, val_prefix, vp) != 0) {
+        return 0; /* yeptris's value was eaten EMPTY */
+    }
+    if (l2l != vp + cl || memcmp(l2, val_prefix, vp) != 0 ||
+        memcmp(l2 + vp, y + 6 + nl + 1, cl) != 0) {
+        return 0; /* libyaml's value IS the eaten suffix */
+    }
+    *y_next = y2n + 1;
+    *l_next = l2n + 1;
+    return 1;
+}
+
 static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size);
 
 /* The family entry: the ORIGINAL walk first (frame 0 -- every member
@@ -2489,6 +2549,39 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * the claim still stands only on full exhaustion (the
                  * walk's law). */
                 diffs++;
+            } else if (yd_qgh_alias_cut_pair(y, yl, l, ll, &y, &l)) {
+                /* the ALIAS-CHARSET-CUT pair (r179, run 42331311239,
+                 * main e201a69, crash-0b3aacc6): the r142/r76 IS_ALPHA
+                 * charset law COMPOSED into the glue family. libyaml's
+                 * scan_anchor cuts an alias name at the first byte
+                 * outside [0-9A-Za-z_-] -- here the ':' gluing the
+                 * member's own value indicator -- freeing that byte for
+                 * its VALUE token and the tail for a plain value, while
+                 * yeptris follows the spec's ns-anchor-char (c-flow
+                 * indicators and white excluded only), so ONE run
+                 * "*L:( }" renders yeptris "=ALI *L:(" with the value
+                 * eaten EMPTY and libyaml "=ALI *L" + "=VAL : (". The
+                 * walk pre-fix died twice with no arm: yeptris's
+                 * extended alias first faced libyaml's salvaged null
+                 * (the r116 l-only skip demands a VAL/empty/'-' y-line;
+                 * the widened gate below takes that state), then the
+                 * extended alias faced libyaml's cut alias (the r125
+                 * realign demands a y-VAL; the r163 tail arm demands
+                 * libyaml's alias be a suffix of yeptris's VAL content;
+                 * r144 demands the exact line survive libyaml's dump).
+                 * The carry is the direct observation, byte-exact end
+                 * to end (the helper's pins: proper-prefix name, ':'
+                 * cut byte, libyaml-charset kept bytes, libyaml's next
+                 * line "=VAL : " plus the exact eaten suffix, yeptris's
+                 * next line the exact empty val) -- an invented name or
+                 * a genuine yeptris alias-charset bug leaves one of the
+                 * pins unsatisfied and the arm declines. Family-gated by
+                 * pass 1 (the walk only runs inside the family); both
+                 * pointers advance two lines (bounded by construction,
+                 * the paired-arm pattern); the claim still stands only
+                 * on full exhaustion (the walk's law). */
+                diffs += 2;
+                continue;
             } else if (y_val && l[0] == '=' && strncmp(l, "=ALI", 4) == 0) {
                 /* an ALIAS realign (r125): both skeletons carry the
                  * alias at the same EVENT position, but yeptris's
@@ -2675,9 +2768,16 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                 }
                 y = yn + 1;
                 continue;
-            } else if (l_empty_val && (yl == 0 || strncmp(y, val_prefix, vp) == 0 || y[0] == '-')) {
+            } else if (l_empty_val && (yl == 0 || strncmp(y, val_prefix, vp) == 0 || y[0] == '-' ||
+                                       strncmp(y, "=ALI ", 5) == 0)) {
                 /* a libyaml-only extra emptied pair: re-align on
-                 * libyaml's next line without consuming yeptris's */
+                 * libyaml's next line without consuming yeptris's. The
+                 * r179 extension adds the yeptris "=ALI " case: the
+                 * glue family's salvaged null (libyaml's re-paired KEY
+                 * carries an EMPTY value) may sit directly before
+                 * yeptris's re-positioned alias -- the alias itself
+                 * must still pair byte-exact downstream (the equal
+                 * path or the r179 cut arm) or the claim dies. */
                 if (++skips > 64) {
                     return 0;
                 }

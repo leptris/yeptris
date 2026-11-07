@@ -2318,6 +2318,48 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-plain-question-alias-r178.bin
     )
 
+    # r179 (run 42331311239, main e201a69, crash-0b3aacc6b8fea8fe8861224e5406e0301f3220fd):
+    # "{?#??\t*L:\n( `,*L:(}" (19 bytes, every single-byte deletion
+    # changes the verdict) is the r142/r76 IS_ALPHA charset law COMPOSED
+    # into the glue family. libyaml's scan_anchor cuts the alias name at
+    # the first byte outside [0-9A-Za-z_-] -- here the ':' gluing the
+    # member's own value indicator -- freeing that byte for its VALUE
+    # token and the tail for a plain value, while yeptris follows the
+    # spec's ns-anchor-char (c-flow indicators and white excluded only),
+    # so ONE run "*L:( }" renders yeptris "=ALI *L:(" with the value
+    # eaten EMPTY and libyaml "=ALI *L" + "=VAL : (". The glue side
+    # supplies the framing: the pass-1 "?#" marker, libyaml's
+    # comment-glue eating the first member whole (its KEY token fires on
+    # the '?', the glued '#' comments to the line end), and yeptris's
+    # surviving value pairing libyaml's re-paired key byte-exact. The
+    # walk pre-fix died twice with no arm: yeptris's extended alias
+    # faced libyaml's salvaged null (the r116 l-only skip demanded a
+    # VAL/empty/'-' y-line), then the extended alias faced libyaml's cut
+    # alias (r125 demands a y-VAL, r163 demands libyaml's alias be a
+    # suffix of yeptris's VAL content, r144 demands the exact line
+    # survive libyaml's dump). The carry: the r179 ALIAS-CHARSET-CUT
+    # pair -- byte-exact end to end (proper-prefix name, ':' cut byte,
+    # libyaml-charset kept bytes, libyaml's next line "=VAL : " plus the
+    # exact eaten suffix, yeptris's next line the exact empty val) -- and
+    # the r116 l-only-empty gate widened to accept a yeptris "=ALI " line
+    # (the salvaged null may sit directly before the re-positioned alias;
+    # the alias itself must still pair byte-exact downstream or the
+    # claim dies). Post-fix battery: the 25-byte artifact and this seed
+    # classify known; 39 paired mutants pre/post -- 0 regressions, 14
+    # carried (the artifact, the seed, the "?!" marker flavor, value and
+    # multi-byte compositions), 19 red in both (the documented gray
+    # zone: the colon-less "("-cut sibling keeps aborting BY DESIGN --
+    # its cut byte carries no VALUE token, so libyaml re-lexes the tail
+    # as an EXTRA key and the member counts diverge); corpus walk
+    # byte-identical pre/post on all six harness corpora (parse = 298
+    # with r178's accounted seed); fresh ctest carries all 72 prior pins
+    # plus this one (73/73); leaks --atExit clean.
+    add_test(
+        NAME fuzz-diff-r179-qflow-glued-hash-alias-charset-cut
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-alias-charset-cut-r179.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
