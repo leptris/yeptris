@@ -3208,20 +3208,34 @@ static int yd_plain_nel_lsps_fold_divergence(const uint8_t* data, size_t size, c
  * final LF is gone) against libyaml's single escaped break (its kept
  * leading break; the blank continuation's space was eaten as its
  * indentation and that line's break dropped) -- accepted only when
- * the remainders behind both escaped breaks are byte-identical. */
-static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, const char* ydump,
-                                           const char* ldump) {
+ * the remainders behind both escaped breaks are byte-identical.
+ * The r176 nightly adds the COMPOSED tail (the r158 lesson, two
+ * adjudicated carries composing in one input): content AFTER the run
+ * with a breakless final line -- yeptris's value rides on past the
+ * fold space (k == 1) or the kept break (the literal/k >= 2 shapes)
+ * and ends with the CLIP BREAK the r140 law appends at breakless EOF,
+ * while libyaml's breakless tail has no escaped break at all. The
+ * walk's section arms all live behind the run: when the run's exit
+ * agrees (the seed's fold space) or is absorbed by the bounded
+ * continuation (the literal twin's space<->break pair), the remaining
+ * divergence is yeptris's trailing escape vs libyaml's frame LF in
+ * the byte-bound main loop, where no surplus arm exists. The
+ * transform composes the two adjudicated deltas in the clip arm's own
+ * direction (yd_clip_breakless_divergence's move, the r158 arm's
+ * shape): append the ONE break libyaml drops to a copy of libyaml's
+ * input, re-dump libyaml on THAT, and require the exact same walk
+ * against yeptris's original dump -- the restored break makes
+ * libyaml's tail carry the escaped break yeptris's clip law keeps,
+ * and the byte-bounded walk (k-capped section, no rewinds, identical
+ * remainders past the scalar) owns the whole relation. Fires only
+ * after the walk declined the original dumps and only on a breakless
+ * final byte (the clip arm's own precondition), so every existing
+ * member keeps riding its branch unchanged; the LS/PS twins of the
+ * same composition stay with the r158 arm, whose data gate owns the
+ * triple (the r171 law made the normalization uniform, but the
+ * families keep their own walks). */
+static int yd_block_nel_walk(const char* ydump, const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
-        return 0;
-    }
-    int has = 0;
-    for (size_t i = 0; i + 1 < size; i++) {
-        if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
-            has = 1; /* the UTF-8 NEL pair */
-            break;
-        }
-    }
-    if (!has) {
         return 0;
     }
     const char* a = ydump;
@@ -3327,6 +3341,56 @@ static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, con
         b++;
     }
     return subs > 0;
+}
+
+/* True when the difference is the BLOCK-SCALAR NEL CONTENT law (the
+ * r160 nightly's seed) -- the family walk above -- composed, when that
+ * walk declines on a breakless final line, with the r140 clip carry
+ * via the transform below. */
+static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                           const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    int has = 0;
+    for (size_t i = 0; i + 1 < size; i++) {
+        if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+            has = 1; /* the UTF-8 NEL pair */
+            break;
+        }
+    }
+    if (!has) {
+        return 0;
+    }
+    if (yd_block_nel_walk(ydump, ldump)) {
+        return 1;
+    }
+    /* the r176 composed transform (the clip arm's move, the r158
+     * arm's shape): append the ONE break libyaml drops at breakless
+     * EOF, re-dump libyaml on THAT, and require the exact walk
+     * against yeptris's original dump. Gates mirror the clip arm's
+     * own precondition (a breakless final byte; the 8192 cap bounds
+     * the re-dump), and the original walk ran first, so every
+     * existing member keeps riding its branch unchanged. */
+    if (size == 0 || size > 8192 || data[size - 1] == '\n' || data[size - 1] == '\r') {
+        return 0;
+    }
+    char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    memcpy(sub, data, size);
+    sub[size] = '\n';
+    int ok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, size + 1, &ok2);
+    free(sub);
+    if (ldump2 == NULL || !ok2) {
+        free(ldump2);
+        return 0;
+    }
+    int known = yd_block_nel_walk(ydump, ldump2);
+    free(ldump2);
+    return known;
 }
 
 /* True for the ONE exact gray-zone input of the r130 nightly
