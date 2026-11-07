@@ -5754,15 +5754,36 @@ static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
         /* a lone \r (or the \r of a CRLF pair) ends the line too — the
          * header law must see the '|' clean of the terminator (the
          * nightly's round 19, catch 165: "|\r\n##" read the header as
-         * "|\r" and never entered block mode) */
-        while (i < size && data[i] != '\n' && data[i] != '\r') {
+         * "|\r" and never entered block mode). The r189 nightly adds
+         * the Unicode break spellings: a NEL/LS/PS-terminated header
+         * ("> \u{85}# t", crash-aece9943) is the SAME col-0-content
+         * divergence — yeptris normalizes the exotic break to LF (the
+         * #638 walk folds NEL everywhere) and then takes the col-0
+         * line as content exactly like its LF twin, while libyaml's
+         * reader ends the header at the raw NEL/LS/PS into the same
+         * floor-1 empty scalar — but the LF/CR-only walk saw one
+         * unterminated line and never entered block mode. A dangling
+         * multibyte lead without its continuation rides as content
+         * (the yep_scan_mb_break_len law). */
+        while (i < size && data[i] != '\n' && data[i] != '\r' &&
+               !(data[i] == 0xC2 && i + 1 < size && data[i + 1] == 0x85) &&
+               !(data[i] == 0xE2 && i + 2 < size && data[i + 1] == 0x80 &&
+                 ((unsigned char)data[i + 2] & 0xFE) == 0xA8)) {
             i++;
         }
         size_t le = i;
         int has_nl = i < size;
         size_t br = 0;
         if (has_nl) {
-            br = (data[i] == '\r' && i + 1 < size && data[i + 1] == '\n') ? 2 : 1;
+            if (data[i] == '\r') {
+                br = (i + 1 < size && data[i + 1] == '\n') ? 2 : 1;
+            } else if (data[i] == 0xC2) {
+                br = 2; /* the NEL pair (the while clause guarantees it) */
+            } else if (data[i] == 0xE2) {
+                br = 3; /* LS or PS (the while clause guarantees it) */
+            } else {
+                br = 1; /* LF */
+            }
         }
         int root_marker = 0;
         if (le - ls >= 3 && data[ls] == '-' && data[ls + 1] == '-' && data[ls + 2] == '-') {

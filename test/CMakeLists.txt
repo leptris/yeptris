@@ -2672,6 +2672,38 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/norm-cr-exotic-phantom-pair-r188.bin
     )
 
+    # the r189 round (run 42415431809, main 31373b2, crash-
+    # aece9943b9918db235388f7c0b5b0c42ee442102): the 7-byte
+    # "> <NEL># t" is the r19 root-block-content carry spelled with a
+    # Unicode break as the header's terminator. The A/B against the
+    # parent 12bfeda aborts identically (and the input has no raw CR,
+    # so the fresh r188 phantom-CR fix is untouched) -- a fresh
+    # gate-widening, not an engine regression. yeptris normalizes the
+    # NEL to LF (the #638 walk folds NEL everywhere outside quotes) and
+    # then takes the col-0 '# t' line as content exactly like its LF
+    # twin ("> \n# t", which rides this arm since r19), while libyaml's
+    # reader ends the header at the raw NEL into the same floor-1 empty
+    # scalar (scanner.c:3031 floors the auto-detect at 1). The arm's
+    # line walk modeled only LF/CR terminators, saw ONE unterminated
+    # line, and never entered block mode. The widening teaches the walk
+    # the NEL/LS/PS terminators (a dangling multibyte lead rides as
+    # content, the yep_scan_mb_break_len law), and the LS twin
+    # ("> <LS># t") rides the same widened path. Battery: artifact
+    # pre-fix exit 134 / post-fix 0; 90-mutant paired battery (all
+    # flips/deletions + targeted NEL/LS/PS/CR/insert forms + seeded
+    # random) -- 0 regressions, 36 newly riding, 21 fail-both unchanged,
+    # 33 both-pass; corpus walk exit-0 pre/post byte-identical on all
+    # seven lf corpora (parse 307, feed 64, roundtrip 1, marshal 17,
+    # cbor 101, validate 4, schema_compile 12, the nightly's
+    # ulimit -s 32768 for the 205KB nested-flow seed); fresh ctest
+    # -R fuzz-diff carries all 81 prior pins plus this one (82/82);
+    # leaks --atExit clean; clang-format 18 clean.
+    add_test(
+        NAME fuzz-diff-r189-root-block-nel-header
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-block-nel-header-r189.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
