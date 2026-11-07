@@ -2360,6 +2360,44 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-alias-charset-cut-r179.bin
     )
 
+    # r180 (run 42336246527, main 8619d71, crash-d6d32ef72a558f283275477dd0e9203349ba83f2):
+    # the 1728-byte soup ("{?. ,?ml?. ..." -- ?#-glued members separated
+    # by CR/LF runs) is the r178 KILLED-MEMBER FRAME skip composed at
+    # soup DENSITY. libyaml's post-'?'-token comment-glue law kills the
+    # marker member AND ITS SAME-LINE NEIGHBORS whole (the comment after
+    # the KEY token runs to the NEXT BREAK, so "?#,0,<CR>" kills the
+    # marker AND "0"; "?#,=,<LF>" kills marker AND "="), while yeptris's
+    # suite-pinned laws keep every member. The r178 frame skip covered
+    # only the marker itself (its fingerprint pin is LOCAL), so every
+    # neighbor cost TWO shared-cap skips (the y-only content skip plus
+    # the L-only partner skip) and the bare-'?' explicit-key member ate
+    # libyaml's SURVIVORS through the L-only arm -- the artifact's
+    # ~47-member runs outran the shared 64 in BOTH walk passes. The
+    # carry: the marker frame's run grant (frame_run, refilled by every
+    # marker frame, capped at 16 -- the comment cannot cross a break, so
+    # the run is line-local by construction) carries the NEIGHBOR
+    # frames (content + exact empty partner, keep-l, ONE skip each),
+    # the DOUBLE-EMPTY frames (the bare-'?' {null: null} member -- the
+    # r116 y-only-empty skip would leave the pair one member off), and
+    # the MARKER-FRAME PRIORITY over the r117 SPLIT reading (libyaml's
+    # surviving later member may suffix-match the killed plain's tail --
+    # "?#g" vs "g" -- and the split reading would strand yeptris's own
+    # survivor; a false priority can only leave the DIFFER visible, the
+    # claim still dies on non-exhaustion); the shared skip cap scales
+    # for the frame pass (64 + size/8 -- the walk is line-bounded by
+    # construction, frame 0 keeps the classic 64). Post-fix battery:
+    # the artifact, the 89-byte and 193-byte minimals classify known;
+    # 46 paired mutants -- 0 regressions, 16 carried, 31 red in both
+    # (the documented gray zone); corpus walk byte-identical pre/post
+    # on all six harness corpora (parse = 299 with r179's accounted
+    # seed); fresh ctest carries all 73 prior pins plus this one
+    # (74/74); leaks --atExit clean.
+    add_test(
+        NAME fuzz-diff-r180-qflow-glued-hash-comment-run
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-comment-run-r180.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
