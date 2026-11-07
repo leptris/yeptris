@@ -2211,6 +2211,66 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-breakless-clip-r176.bin
     )
 
+    # the r177 nightly's seed (run 42316995946, main 0494937, crash
+    # dfe2e81ec239a0c55f247b032d0a116b889bdcdb): the FOLD-SUPPRESSION
+    # flavor of the r160/r161/r173/r175/r176 block-content law -- 13
+    # bytes: a folded-block-scalar header, then ONE content line
+    # " !<" + one U+0085 NEL pair + a trailing space, a blank-ish
+    # continuation line, then a second content line " !<". Both
+    # engines accept; the values differ at the first fold boundary
+    # (the byte-exact dumps, captured by the pipe-through-xxd
+    # method): yeptris "=VAL : !<NN  !<\n" -- the pair stays CONTENT
+    # (the 1.2 block-scalar break set is LF/CR/CRLF only, spec 8.1),
+    # and the fold keeps BOTH the line's trailing space and the fold
+    # space -- vs libyaml "=VAL : !<\n !<\n": its 1.1 IS_BREAK turns
+    # the NEL into the line break and its fold writes the space only
+    # when the boundary carries no blank-line breaks (scanner.c's
+    # `*trailing_breaks.start == '\0'` gate), so the suppressed fold
+    # space and the blank line's break collapse into ONE escaped
+    # break. The suite sides with yeptris (the r160 law verdict
+    # stands; the engine-side reading is spec-8.1 correct), so this
+    # is a carry of the adjudicated law's fourth mechanism. The
+    # existing arms decline the composition: the r173 continuation's
+    # budget-k exit carries one space<->break pair, but the
+    # suppression adds a SECOND yeptris space (the fold space) with
+    # no libyaml counterpart, so the byte-walk behind the run
+    # misaligns by one space. The refinement makes the family entry
+    # two-phase: the ORIGINAL budget-k walk first (every member that
+    # rode before r177 keeps its exact path -- the continuation is
+    # greedy with no lookahead, and the doubled budget alone flipped
+    # the r173 seed's more-indented-line sibling from ridden to
+    # aborting), then only on a decline the budget-2k retry, whose
+    # extra surplus steps absorb the suppressed-fold space. The
+    # bound stays byte-tight: mult*k steps (mult 2 = k alignments
+    # plus k suppressed-fold/eaten-indent surpluses -- the claim
+    # cannot outrun the run), every iteration advances at least one
+    # pointer, content equality is still enforced behind every run.
+    # Minimality: every single-byte deletion changes the verdict
+    # (the header/indent deletions land in the root-block col-0
+    # sibling; the lead-byte deletions are the r128 lone-spelling
+    # shapes; the content-tail deletions are same-law members that
+    # ride post-fix via the retry or the r176 composed transform).
+    # Post-fix the battery converges: 60 members (20 single-byte
+    # flips + 10 multi-byte ins/sub/del + 30 targeted family
+    # variants and controls) classify or hold identical verdicts
+    # pre/post -- 10 rides: the seed, the 2-line/3-line real
+    # compositions, the lf-only-tail member, the map-value twin,
+    # the indent-2 twin, the CR twin, the minimal 2-line shape, and
+    # the flip/del mutants inside the second run's frame; the red
+    # set is byte-identical pre/post (the seq-entry geometry --
+    # libyaml-only error -- the lone-lead error shapes, the
+    # same-line two-words-after-run r176 negative, the deeper
+    # frame flips); zero regressions. The corpus walk is
+    # byte-identical pre/post on all six harness corpora (parse 297
+    # runs, feed 65, roundtrip 2, marshal 18, cbor 102, validate 5);
+    # fresh ctest carries all 70 prior pins plus this one (71/71);
+    # leaks --atExit clean on the artifact and the seed.
+    add_test(
+        NAME fuzz-diff-r177-block-nel-fold-suppression
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-fold-suppression-r177.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

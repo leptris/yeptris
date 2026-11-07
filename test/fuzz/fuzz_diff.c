@@ -3234,7 +3234,7 @@ static int yd_plain_nel_lsps_fold_divergence(const uint8_t* data, size_t size, c
  * same composition stay with the r158 arm, whose data gate owns the
  * triple (the r171 law made the normalization uniform, but the
  * families keep their own walks). */
-static int yd_block_nel_walk(const char* ydump, const char* ldump) {
+static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
     }
@@ -3302,16 +3302,27 @@ static int yd_block_nel_walk(const char* ydump, const char* ldump) {
              * as the trailing (clip) break while libyaml's trailing
              * break accounting absorbed that LF into the NEL region it
              * collapsed (the (k-1) collapse already consumed its one
-             * surviving break). Every arm fires within a total budget
-             * of k steps (the run's own length: the claim cannot
-             * outrun the run) and every iteration advances at least
-             * one pointer; the walk past the section stays byte-bound
-             * (the loop above and the law below), so the section can
-             * never swallow arbitrary divergence -- a dropped member's
-             * frame bytes cannot ride. */
+             * surviving break). The r177 fold-suppression flavor adds
+             * a SECOND surplus space per emitted break: libyaml's fold
+             * writes the space only when the boundary carries no
+             * blank-line breaks (scanner.c's `*trailing_breaks.start ==
+             * '\0'` gate -- a content line ending in a NEL break
+             * followed by a blank-ish continuation line drops the fold
+             * space and emits the blank break), while yeptris keeps
+             * BOTH the line's trailing space and its fold space, so a
+             * gap's exit is pairs + surplus + the suppressed fold
+             * space. Every arm fires within a total budget of mult*k
+             * steps (mult 1 = the r173 law: k alignments; mult 2 = the
+             * r177 fold-suppression retry: k alignments plus k
+             * suppressed-fold/eaten-indent surpluses -- the claim
+             * cannot outrun the run), every iteration advances at
+             * least one pointer, and the walk past the section stays
+             * byte-bound (the loop above and the law below), so the
+             * section can never swallow arbitrary divergence -- a
+             * dropped member's frame bytes cannot ride. */
             {
                 int steps = 0;
-                while (steps < k) {
+                while (steps < mult * k) {
                     if (a[0] == ' ' && b[0] == '\\' && b[1] == 'n') {
                         a += 1; /* yeptris's verbatim space is libyaml's break */
                         b += 2;
@@ -3341,6 +3352,22 @@ static int yd_block_nel_walk(const char* ydump, const char* ldump) {
         b++;
     }
     return subs > 0;
+}
+
+/* The family entry: the ORIGINAL budget-k walk first -- every member
+ * that rode before r177 keeps its exact path (the continuation is
+ * greedy with no lookahead, so a wider first-pass budget would eat a
+ * verbatim-aligned space a member's byte-walk needs: the doubled
+ * budget alone flipped the r173 seed's more-indented-line sibling
+ * from ridden to aborting). Only when that declines does the r177
+ * budget-2k retry run -- the fold-suppression flavor's extra
+ * suppressed-fold step fires there, on shapes the original walk
+ * already rejected. */
+static int yd_block_nel_walk(const char* ydump, const char* ldump) {
+    if (yd_block_nel_walk_mult(ydump, ldump, 1)) {
+        return 1;
+    }
+    return yd_block_nel_walk_mult(ydump, ldump, 2);
 }
 
 /* True when the difference is the BLOCK-SCALAR NEL CONTENT law (the
