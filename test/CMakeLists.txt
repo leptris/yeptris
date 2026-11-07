@@ -2583,6 +2583,59 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-soup-sizegate-r186.bin
     )
 
+    # the r187 round (run 42404973005, main 4865289, crash-
+    # d5a609db0f966ebae750560b629652d9042284f0): the 52-byte
+    # "[11n.0e ,?##|,:|,:binary<CR>b's'<LF>        bravo: 0x788,]" is
+    # the glued-hash family's FOLDED-PLAIN-PAIR orientation, a fresh
+    # finding (A/B: pre b9a511f and post 4865289 abort identically --
+    # the artifact is 52 bytes, far under the family's shared 8192
+    # transform gate, so the r186 size-gate widening is exonerated; the
+    # escalation clause does not fire, yeptris's reading is the
+    # strict-1.2 one). libyaml's 1.1 KEY-token law makes the flow '?'
+    # a KEY token whatever follows, and the scanner's next-token loop
+    # then treats the GLUED '#' as a boundary comment: the comment
+    # swallows "...##|,:|,:binary" up to the CR, and the pending
+    # explicit KEY context then admits what the simple-key law forbids
+    # elsewhere -- the post-break MULTI-LINE PLAIN follower folds
+    # ("b's'<LF>        bravo" turns "b's' bravo", the apostrophes
+    # riding as mid-plain content) and binds ": 0x788" as its value,
+    # one keyless pair. yeptris's suite-pinned HM87 law ('#' mid-plain
+    # after a non-blank is content) keeps "11n.0e", "?##|", ":|" as
+    # members and reads ":binary b's' bravo: 0x788" as its own pair.
+    # The r185 arm keeps its follower same-line and colon-free, so this
+    # orientation declines there; deletion mutants also reach the
+    # EMPTY-COLON twin "[?#,|,:y<CR>:]" (the bare ':' completes the
+    # keyless pair with an empty key and value). The new arm's
+    # preserving spell deletes the swallowed span and RESTORES the
+    # explicit '?': "?#...<break>" turns "? " with the post-break tail
+    # riding untouched -- libyaml keeps its KEY context (the
+    # "{k: v}" brace form cannot carry the multi-line key: libyaml's
+    # simple-key law rejects it outright) and both engines then read
+    # the tail identically. The finder fires on a '?' glued to '#' at
+    # flow depth in a SEQUENCE frame whose comment span reaches a line
+    # break and whose post-break tail is bracket-free (plain/quoted
+    # content, ':'s binding values, at most 8 fold breaks) closed by
+    # ',' or ']'; the quote tracker only OPENS a scalar at a token
+    # start (a quote mid-word is plain content in both engines), and
+    # the byte-strict double verify against libyaml's ORIGINAL dump
+    # (both engines must read the rewrite exactly as libyaml read the
+    # original) arbitrates, with the CR/LS/PS/NEL-normalized triple as
+    # the fallback. Post-fix battery: the artifact and the 11-byte
+    # delta-minimized twin classify known (exit 0); 80 mutants
+    # (single-byte flips, byte deletions, targeted span deletions,
+    # truncations, random deletions/chaos) -- 0 regressions, 39 newly
+    # claimed, 0 still-differ; 19-form control table (split siblings,
+    # spell rewrites, brace-declines) -- verdicts unchanged; corpus
+    # walk exit-0 pre/post on all six harness corpora, walk outputs
+    # identical (the parse delta is this seed's +1 file, cross-
+    # checked); fresh ctest carries all 79 prior pins plus this one
+    # (80/80); leaks --atExit clean.
+    add_test(
+        NAME fuzz-diff-r187-glued-hash-plain-pair
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-plain-pair-r187.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
