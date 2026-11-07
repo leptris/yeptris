@@ -2098,7 +2098,19 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
  * walk's law). */
 static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const char* ydump,
                                       const char* ldump) {
-    if (ydump == NULL || ldump == NULL || size == 0 || size > 8192) {
+    /* the size gate is this arm's OWN (the family's other arms keep the
+     * shared 8192 where their transforms allocate): the r186 nightly
+     * (run 42399477506, main 7bb0f69, crash-cc801571) landed a 8984-byte
+     * soup of the family the walk already carries — the killed-member
+     * frames, the SPLIT pairs and the r150/r162/r164 LS/PS fold pairs
+     * all verify line-wise on the ORIGINAL dumps with no transform
+     * buffer — so the arm path is allocation-free end to end and the
+     * gate binds nothing but the scan. The fuzzer's len_control grows
+     * inputs past the fixed caps (no -max_len on the nightly legs), so
+     * the bound rides above the corpus maximum (the seed corpus's own
+     * largest file pins libFuzzer's default -max_len at ~205k) and the
+     * walk's own line budget does the bounding. */
+    if (ydump == NULL || ldump == NULL || size == 0 || size > 262144) {
         return 0;
     }
     /* pass 1: the marker — a glued "?#"/"?!" at flow depth, outside
