@@ -3409,3 +3409,71 @@ engine; flat root chains reuse the slot and stay stable. Anchored
 same-column pendings still ride the engine (correct, slower — rare
 shape). The route-split invisibility law applies to any future edit
 here: assert the route, not just the bytes.
+
+## 2026-11-09 — item 04, the anchor definition lane: the premise was contention; the find is a law break
+
+The board item carried "anchor-heavy's deficit is nametab_set 8.4% +
+e_alias 4.8%" (the 2026-09-27 referee profile, dev NEON, non-LTO).
+This slice re-derived the lane from scratch on a calm M1 Max and the
+premise did not survive: the 8.4% reading was box-contention
+inflation. Calm-box sample (RelWithDebInfo, non-LTO, the same bench
+corpus): `yep_nametab_set` 345/3955 = 8.7% under load 14+ drops to
+139/3364 = 4.1% under load ~6 — and the wall clock never moved,
+because the 1 MB slots table is L2-resident on Apple silicon (probes
+cost ~L2 latency, not DRAM), and Release+LTO CSEs the prefix/hash
+double-decode the non-LTO profile shows.
+
+What was measured (interleaved A/B, same binaries, --shape
+anchor-heavy, min/median of rounds):
+
+- **The 2-slot alias memo: MEASURED DEAD (-2.5%, reverted).** The
+  anchor-heavy corpus alternates `*def0` with fresh `*xN` aliases, so
+  a second memo slot looked free (~13k of 26k table gets removed).
+  Move-to-front-on-MISS evicts the stable slot (insert order, not
+  recency); a true LRU-2 (promote on hit) fixes the policy but its
+  two word-compares per alias plus the define-side invalidation
+  compares eat exactly what the removed gets save. A wash at best;
+  the simpler single slot stays.
+- **The reserve at 50% load: MEASURED DEAD on wall (reverted).**
+  Probing at 61% load costs ~3.8 slots/insert; at 30% it is ~1.5.
+  The probe share halved in-profile (345 -> 139 samples), wall flat
+  at BOTH scales (40k anchors: 159 vs 160 MB/s; 200k anchors, table
+  8-16 MB beyond L2: 133 vs 134 MB/s), and the memory price is a cap
+  step (+1 MB peak on anchor-heavy, 16.4x -> ~17x peak/input). An
+  unjustified trade — keep the 70% target for BOTH reserve and
+  growth; revisit only if a corpus with a >L2 table ever shows the
+  wall moving.
+- **Kept (free):** the memo hit test rides `yep_view_eq`'s inline
+  word loop instead of a libc `memcmp` call (the ledger's own 18A
+  precedent), and `yep_engine_prepare` pre-fits the placed flags from
+  the input's '&' ceiling (one alloc; the 10-step doubling chain's
+  realloc+copy+memset leaves the profile — `__bzero` 48 -> 6 samples).
+
+**The find: the repeat-alias memo served STALE ordinals across a
+same-document anchor redefinition.** `a: &x 1 / b: *x / c: &x 2 /
+d: *x` bound `d` to node-a (the FIRST definition) while
+anchor_define's own law is last-definition-wins (libyaml's loader
+rejects duplicate anchors outright; yeptris accepts, so last-wins is
+the documented contract). Two faces: the wrong bind, and the memoized
+ordinal ALSO skips the unplaced check (an alias to a redefined-but-
+unplaced anchor would be accepted where the re-parse law rejects).
+The memo is invalidated in `anchor_define` exactly when the name being
+defined is the memo's (one word compare — the common case, other
+names' memo entries survive). Pinned by
+`Parse.AliasAfterRedefinitionBindsLastDefinition` and
+`Parse.AliasMemoSurvivesAnchorAlternation` (the alternation corpus,
+both lanes bound exactly).
+
+Verdict for item 04: the DEFINITION lane is not anchor-heavy's wall —
+on calm silicon the whole anchor-specific share (nametab 4% + alias
+4% + props ~1%) is L2-resident table compute interleaved into the
+parse dependency chain, and no table-side cut moves wall time. The
+board's "follow the DATA" law applies: the deficit vs ryml lives in
+the SHARED small-line lanes (line_facts 11%, yt_on_block_pair 11%,
+scan_shape 8%, e_classified 7% — items 02/03/09's territory, not to
+be carved twice). Item 04's remaining open question is therefore not
+the table but the per-line cycle — and the honest next lever there is
+owned by 02/03. Gates: 891/891 ctest (corpora fetched), 787/787
+ASan+UBSan, leaks clean (test_unit, fuzz_diff, bench_matrix),
+clang-format 18, no new warnings; DOM sweep unharmed (deep-nesting
+1028-1060 MB/s, all shapes within the run-drift band).

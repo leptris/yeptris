@@ -53,6 +53,14 @@ typedef struct {
     uint8_t kind;
 } yep_frame;
 
+/* One repeat-alias memo slot: the name is an input-relative span
+ * (alias names are always raw input views), so at+len re-derive it. */
+typedef struct e_alias_slot {
+    uint32_t at;  /* offset of the name inside e->p */
+    uint32_t len; /* 0 = slot empty */
+    uint32_t ord; /* the ordinal the nametab answered */
+} e_alias_slot;
+
 struct yep_engine {
     const yep_allocator* sys;
     yep_pool* pool; /* finish pool: folded/escaped scalar content */
@@ -89,10 +97,13 @@ struct yep_engine {
                              * 38541356075) */
     uint32_t anchor_placed_cap;
     /* repeat-alias memo (TODO.restructure/71): offset/len/ordinal of
-     * the last alias resolved — hit by memcmp, not by the table */
-    uint32_t alias_memo_at;
-    uint32_t alias_memo_len;
-    uint32_t alias_memo_ord;
+     * the last alias resolved — a hit answers by an input-span word
+     * compare (yep_view_eq; no libc call), not by the table.
+     * anchor_define drops the slot when the name being (re)defined is
+     * the memo's: the table's last-definition-wins overwrite would
+     * otherwise leave the memo serving a STALE ordinal (and skip the
+     * new ordinal's unplaced check). */
+    e_alias_slot alias_memo;
     /* the line-facts memo (TODO.restructure/76): one kernel pass per
      * line feeds both the line info and the shape */
     yep_line_facts facts_cache;
@@ -426,17 +437,17 @@ static uint32_t anchor_id_of(yep_engine* e, yep_view name) {
      * the same alias thousands of times in a row; the memo answers
      * those with one input compare, skipping the hash + a likely
      * cache-missing probe into the (multi-MB, reserved) slots table. */
-    if (e->alias_memo_len == name.len && e->alias_memo_len != 0 &&
-        memcmp(e->p + e->alias_memo_at, name.p, name.len) == 0) {
-        return e->alias_memo_ord;
+    if (e->alias_memo.len == name.len && name.len != 0 &&
+        yep_view_eq((yep_view){e->p + e->alias_memo.at, name.len}, name)) {
+        return e->alias_memo.ord;
     }
     uint32_t id = yep_nametab_get(&e->anchors, name);
     if (id == YEP_NAMETAB_NIL) {
         return 0;
     }
-    e->alias_memo_at = (uint32_t)(name.p - e->p);
-    e->alias_memo_len = name.len;
-    e->alias_memo_ord = id;
+    e->alias_memo.at = (uint32_t)(name.p - e->p);
+    e->alias_memo.len = name.len;
+    e->alias_memo.ord = id;
     return id;
 }
 
@@ -448,30 +459,48 @@ static void e_anchor_mark(yep_engine* e, uint32_t id) {
     }
 }
 
+/* Grows the per-ordinal placed flags so flags[id-1] is writable.
+ * Returns 0 only on allocation failure (table unchanged). */
+static int anchor_placed_fit(yep_engine* e, uint32_t id) {
+    if (id <= e->anchor_placed_cap) {
+        return 1;
+    }
+    uint32_t cap = e->anchor_placed_cap ? e->anchor_placed_cap : 64;
+    while (cap < id) {
+        cap *= 2;
+    }
+    uint8_t* nb = yep_alloc(e->sys, cap);
+    if (nb == NULL) {
+        return 0;
+    }
+    if (e->anchor_placed != NULL) {
+        memcpy(nb, e->anchor_placed, e->anchor_placed_cap);
+        yep_free(e->sys, e->anchor_placed);
+    }
+    memset(nb + e->anchor_placed_cap, 0, cap - e->anchor_placed_cap);
+    e->anchor_placed = nb;
+    e->anchor_placed_cap = cap;
+    return 1;
+}
+
 static uint32_t anchor_define(yep_engine* e, yep_view name) {
     /* Last definition wins (libyaml parity); OOM leaves the anchor
      * undefined so its alias errors. The VALUE is the anchor's 1-based
      * ordinal — sinks key on it and skip the name hash entirely. */
     uint32_t id = ++e->anchor_serial;
-    if (id > e->anchor_placed_cap) {
-        uint32_t cap = e->anchor_placed_cap ? e->anchor_placed_cap : 64;
-        while (cap < id) {
-            cap *= 2;
-        }
-        uint8_t* nb = yep_alloc(e->sys, cap);
-        if (nb == NULL) {
-            e->anchor_serial--;
-            return 0; /* OOM: the anchor stays undefined, its alias errors */
-        }
-        if (e->anchor_placed != NULL) {
-            memcpy(nb, e->anchor_placed, e->anchor_placed_cap);
-            yep_free(e->sys, e->anchor_placed);
-        }
-        memset(nb + e->anchor_placed_cap, 0, cap - e->anchor_placed_cap);
-        e->anchor_placed = nb;
-        e->anchor_placed_cap = cap;
+    if (!anchor_placed_fit(e, id)) {
+        e->anchor_serial--;
+        return 0; /* OOM: the anchor stays undefined, its alias errors */
     }
     yep_nametab_set(&e->anchors, name, id);
+    /* A (re)definition changes the ordinal the table answers for THIS
+     * name: a memo still naming it would serve the OLD ordinal
+     * (violating last-definition-wins) and skip the new ordinal's
+     * unplaced check. */
+    if (e->alias_memo.len == name.len && name.len != 0 &&
+        yep_view_eq((yep_view){e->p + e->alias_memo.at, name.len}, name)) {
+        e->alias_memo.len = 0;
+    }
     return id;
 }
 
@@ -4301,6 +4330,13 @@ void yep_engine_prepare(yep_engine* e, const yep_text_stats* st) {
     }
     if (st->amp > 0) {
         yep_nametab_reserve(&e->anchors, (uint32_t)st->amp);
+        /* every definition bumps the serial exactly once and '&' marks
+         * every definition, so amp is the serial's exact ceiling: the
+         * placed flags pre-fit here and the parse never pays the
+         * doubling chain (alloc + copy + memset per growth). Best
+         * effort — anchor_define's growth stays as the fallback for
+         * engines driven without prepare. */
+        anchor_placed_fit(e, (uint32_t)st->amp + 1);
     }
 }
 
@@ -5841,7 +5877,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     if (e->anchor_placed != NULL) {
         memset(e->anchor_placed, 0, e->anchor_placed_cap);
     }
-    e->alias_memo_len = 0;
+    e->alias_memo.len = 0;
     e->tagmap_n = 0;
     e->saw_yaml = 0;
     e->doc_begin = (size_t)-1;
@@ -6076,11 +6112,11 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 if (e->anchor_placed != NULL) {
                     memset(e->anchor_placed, 0, e->anchor_placed_cap);
                 }
-                e->alias_memo_len = 0; /* so are anchors */
-                e->alias_memo_len = 0; /* and the repeat-alias memo: doc 1's
-                                        * "*ORIGIN" memoized the ordinal and doc 2's
-                                        * identical name answered from it ACROSS the
-                                        * boundary (the nightly's run 38266487549) */
+                /* so are anchors — and the repeat-alias memo: doc 1's
+                 * "*ORIGIN" memoized the ordinal and doc 2's identical
+                 * name answered from it ACROSS the boundary (the
+                 * nightly's run 38266487549) */
+                e->alias_memo.len = 0;
             }
             e_event_init(&ev, YEP_EV_DOCUMENT_START);
             ev.style = 1; /* explicit marker */
@@ -6167,7 +6203,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
                 if (e->anchor_placed != NULL) {
                     memset(e->anchor_placed, 0, e->anchor_placed_cap);
                 }
-                e->alias_memo_len = 0;
+                e->alias_memo.len = 0;
                 if (emit_now(e, &ev) != 0) {
                     return -2;
                 }
@@ -6406,7 +6442,7 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
         if (e->anchor_placed != NULL) {
             memset(e->anchor_placed, 0, e->anchor_placed_cap);
         }
-        e->alias_memo_len = 0;
+        e->alias_memo.len = 0;
     }
     if (emit_end) {
         e_event_init(&ev, YEP_EV_STREAM_END);
