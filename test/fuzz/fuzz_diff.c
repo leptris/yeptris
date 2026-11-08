@@ -5353,7 +5353,18 @@ static int yd_block_nel_walk(const char* ydump, const char* ldump) {
 /* True when the difference is the BLOCK-SCALAR NEL CONTENT law (the
  * r160 nightly's seed) -- the family walk above -- composed, when that
  * walk declines on a breakless final line, with the r140 clip carry
- * via the transform below. */
+ * via the transform below. The r202 nightly (crash-ac0d873d, run
+ * 42472937638, main 4a16549; 23-byte min "|\\n \\n \\n<LS>\\n \\n \\n<LS>\\n\\n - m")
+ * adds the LS/PS carriers to the gate: the artifact is a literal block
+ * scalar whose content carries raw U+2028 with NO NEL byte anywhere,
+ * so the NEL-only scan declined before the walk could speak -- yet the
+ * deltas are the family's own: the r197 raw-keep tolerance in the walk
+ * consumes each yeptris-spelled-\\n vs libyaml-raw-triple window
+ * byte-wise wherever it sits, and the r176 transform owns the
+ * breakless trailing break. A/B against the pre-r201 parent 0b67393
+ * aborts identically (fresh finding, not an engine regression). The
+ * walk stays byte-bound and requires subs > 0, so an admitted input
+ * can only ride on the documented deltas. */
 static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, const char* ydump,
                                            const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
@@ -5363,6 +5374,14 @@ static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, con
     for (size_t i = 0; i + 1 < size; i++) {
         if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
             has = 1; /* the UTF-8 NEL pair */
+            break;
+        }
+        /* the r202 carrier: the raw LS/PS triple (the gate's NEL-only
+         * scan declined the literal-block LS artifact before the walk
+         * could speak; the tail keeps full 2-byte NEL coverage) */
+        if (i + 2 < size && (unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            has = 1;
             break;
         }
     }
