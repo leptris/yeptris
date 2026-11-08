@@ -3178,6 +3178,35 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-alias-restart-fold-r200.bin
     )
 
+    # the r201 round (run 42469831950, main 904ce9a, crash-
+    # d1b11cbf81d831c2857fb048fb29a037df43dace): a FRESH find, not an
+    # r200 regression (A/B: the 26-byte artifact aborts on BOTH the
+    # pre-r200 0b67393 build and the post-r200 main build -- r200 touched
+    # only the differ harness), fired on SEED-CORPUS replay at MS: 0 in
+    # fuzz_roundtrip. The caught shape is the emit-side EMPTY-ROOT-NEL
+    # family: the doc-end marker followed by a break-only tail
+    # (">\n! \n !<aaa: bbb\n...\n<NEL><NEL>" -- the NELs become the
+    # second document's break-only plain content, a PLAIN-empty root)
+    # serialized the empty root as NOTHING after the "---" marker, while
+    # every other empty-root spelling (the bare "---" doc close: an
+    # ANY-styled implicit scalar; the re-parse of that bare form: same)
+    # rendered "" -- so serialize(parse(serialize(x))) flipped the doc
+    # to the quoted form and the bytes diverged on round two. Engine fix
+    # in emit_node (writer.c): a document-root empty scalar rides the
+    # quoted form like libyaml's "--- ''"; the #290 value law ("k:"
+    # emits nothing) is untouched -- the arm gates on parent_col < 0
+    # (the root sentinel), non-canonical/non-JSON, scalar kind, style
+    # ANY-or-PLAIN, zero length. Minimality: the greedy deletion
+    # minimizer rides the pre-fix oracle to the 15-byte
+    # ">\n! !<\n...\n<NEL><NEL>" (every further deletion changes the
+    # class); the pinned seed is the TRUE 26-byte artifact. 107-mutant
+    # paired battery: 0 regressions (the 26 mutants that abort pre-fix
+    # are all clean post-fix -- same family members).
+    add_test(
+        NAME fuzz-roundtrip-r201-empty-root-nel-doc
+        COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

@@ -1650,6 +1650,24 @@ static void emit_node(yep_emitter* em, uint32_t id, int parent_col, int as_key) 
     }
     emit_tag(w, n);
     emit_anchor_ex(em, n);
+    if (parent_col < 0 && !w->canonical && !w->json && n->kind == 0 && n->style <= 1) {
+        /* A DOCUMENT-ROOT empty scalar rides the quoted form: libyaml
+         * renders "--- ''" and never a bare marker with nothing after
+         * it. A plain-empty root emitted as NOTHING (the value law of
+         * issue #290, "k:" — kept below for non-root contexts) sheds
+         * the root node entirely; the re-parse of that stream produced
+         * an ANY-styled empty root whose render is "" — and the bytes
+         * diverged on round two (the nightly's r201 fuzz_roundtrip
+         * byte-instability catch, ">\n! \n !<aaa: bbb\n...\n<NEL><NEL>",
+         * whose second document's break-only content parses to a
+         * plain-empty root). Quoting the root's emptiness makes every
+         * empty-root spelling converge on the same fixpoint bytes. */
+        yep_view vdec = wv(w, n->value);
+        if (vdec.len == 0) {
+            emit_dq(w, (const char*)vdec.p, vdec.len);
+            return;
+        }
+    }
     if (parent_col < 0) {
         parent_col = 0; /* root scalar: block body at column 2 */
     }
