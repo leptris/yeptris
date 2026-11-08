@@ -3041,6 +3041,44 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-alias-cut-valued-r196.bin
     )
 
+    # the r197 round (run 42453001309, main b2fdddd, crash-
+    # 03377781d85315161195672dfa01431810e65868): a FRESH find, not an
+    # r196 regression (A/B: the 23-byte artifact "> #<11<CR><PS>
+    # 700:<LF>  m<NEL> t" aborts on BOTH the pre-fix 6341eb4 build and
+    # the post-fix main build -- the r196 alias-cut-valued arm never
+    # touches this input). The caught shape is the r160 BLOCK-NEL
+    # CONTENT law composed with the #638/r158 LS-PS RAW-KEEP law: a
+    # root folded scalar whose header line ends at a CR, followed by a
+    # PS-only leading line and a content line holding a raw NEL. Both
+    # sides are law-clean: yeptris (1.2) normalizes the PS break to LF
+    # (the r195 every-break-spelling law) and keeps the NEL as CONTENT
+    # (spec 8.1 b-break is LF/CR/CRLF only), adding the clip break at
+    # breakless EOF (the suite's L24T#2 pin); libyaml's block reader
+    # keeps the PS triple RAW into the leading breaks (scanner.c
+    # READ_LINE's LS|PS->LS|PS branch) while its IS_BREAK eats the NEL
+    # as a break (1.1 legacy) and drops the trailing break. The two
+    # walks each own one delta and bail on the other: the block-NEL
+    # walk's byte-bound main loop died on the PS head delta before the
+    # NEL run was ever reached, and the r158 lsps walk has no arm for
+    # the NEL polarity (yeptris RAW where libyaml spells \n). The carry
+    # adds the LS/PS raw-keep tolerance to yd_block_nel_walk_mult's
+    # main loop: yeptris's spelled \n is libyaml's raw LS/PS triple --
+    # a 2-vs-3-byte window firing only on the documented delta --
+    # after which the existing NEL run branch plus the r176 append-LF
+    # transform own the whole relation. An invented tolerance or a
+    # genuine engine bug leaves a pin unsatisfied and the bail stands.
+    # Battery: artifact pre-fix exit 134 / post-fix exit 0 on BOTH
+    # commits' binaries; the r194/r195/r196 seeds exit 0; 50-mutant
+    # paired battery -- 0 regressions (16 fixed); six corpus walks
+    # exit-0 pre/post with logs identical (parse count +1 rides the
+    # r196 seed's absence on the pre-fix commit); ctest fuzz-diff pins
+    # all green; leaks --atExit clean; clang-format 18 clean.
+    add_test(
+        NAME fuzz-diff-r197-block-nel-lsps
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-lsps-r197.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
