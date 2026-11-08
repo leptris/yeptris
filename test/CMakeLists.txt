@@ -2918,6 +2918,50 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/glued-question-quote-r193.bin
     )
 
+    # the r194 round (run 42440637478, main f8400d2, crash-
+    # 0aba386e78291e98e4703acc2e541eb5a57e4628): a FRESH finding in the
+    # roundtrip harness (A/B by changed-file evidence: 6eec12e..f8400d2
+    # touches only test/fuzz/fuzz_diff.c, its pins, and docs -- the
+    # roundtrip binary links none of it, so the r193 arm is exonerated;
+    # the artifact aborts identically on the pristine 4ed66fa build).
+    # 27 bytes ">\n ! \n !<aaa: bbb\n...\n<NEL><NEL>\n": the break
+    # normalizer's token-space arm consumed a fold line's leading
+    # indent spaces one byte at a time (the at_break stays armed), the
+    # block-scalar content arm then counted the line's indent from the
+    # FIRST NON-SPACE byte, read ind=0 for the one-space-indented line,
+    # and the dedent rule (ind <= bs_indent) ended the fold
+    # mid-content; the next byte lexed as a token and the line's "!<"
+    # armed a phantom verbatim whose breaks-ride-raw law left the whole
+    # tail unnormalized -- the raw NEL run classified as one content
+    # line and the framing walk spawned a phantom empty PLAIN second
+    # document libyaml never emits (the comparator's second "=VAL :").
+    # The empty plain root emitted zero bytes (the #290 null
+    # rendering), re-parsed as style-ANY, and the next pass rendered
+    # "" -- 26 -> 29 bytes, the roundtrip trap. The fix reads the
+    # block-scalar content arm BEFORE the token-space arm in
+    # norm_step: the fold line consumes wholesale FROM the leading
+    # space with its true indent, the fold survives to the col-0
+    # marker, the NEL tail folds (libyaml parity: one document), and
+    # the roundtrip is byte-stable. The r160 content-NEL law is
+    # untouched (interior content pairs ride the value verbatim; the
+    # pin at test_parse.cpp passes unchanged). Battery: artifact
+    # pre-fix exit 133 / post-fix exit 0 on the standalone harness and
+    # a DIFFER-then-parity flip on fuzz_diff; 52-mutant paired battery
+    # (27 single-byte flips, 10 span deletions, 15 targeted
+    # verbatim/NEL-family forms) -- 0 regressions, 16 newly claimed,
+    # 36 both-pass, 0 both-abort; corpus walks exit-0 pre/post on the
+    # six lf corpora with logs identical modulo libFuzzer's volatile
+    # lines (parse 313, feed 65, roundtrip 2, marshal 18, cbor 102,
+    # validate 5; ulimit -s 32768); full ctest 867/870 with only the
+    # pre-existing local conformance/json-suite failures (identical on
+    # the pristine baseline); leaks --atExit clean; clang-format 18
+    # clean.
+    add_test(
+        NAME fuzz-diff-r194-fold-bang-verbatim-nel-tail
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/fold-bang-verbatim-nel-tail-r194.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

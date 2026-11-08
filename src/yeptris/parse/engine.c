@@ -4551,19 +4551,22 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         c->at_break = 0;
         return t;
     }
-    if (ch == ' ' || ch == '\t') {
-        /* a value position survives spaces in block context ("k: 'x'"
-         * opens; the plain continuation "a 'b'" does not — its word
-         * did not begin with an indicator) */
-        c->tok_start = (c->in_flow > 0) ? 1 : (c->word_led || c->tok_start);
-        return t;
-    }
-
     int line_start = (!c->started || c->at_break || c->prev == '\n' || c->prev == '\r');
 
     /* block scalars: inside the fold no quote opens and every break
      * keeps its fold; the region ends at a col-0 marker, a %-line
-     * after content, or a dedent to the header line's indent */
+     * after content, or a dedent to the header line's indent. It runs
+     * BEFORE the token-space arm: a fold line's leading spaces are its
+     * INDENT, and the space arm consumed them one byte at a time (the
+     * at_break stays armed) so the indent walk below counted from the
+     * FIRST NON-SPACE byte — a one-space-indented content line read
+     * ind=0, the dedent rule (ind <= bs_indent) ended the fold
+     * mid-content, and the byte lexed as a token: "!<" armed a phantom
+     * verbatim whose breaks-ride-raw law left the whole tail
+     * unnormalized, the raw NEL run classified as one content line,
+     * and the framing walk spawned a phantom empty plain second
+     * document libyaml never emits (the r194 nightly,
+     * ">\n ! \n !<aaa: bbb\n...\n<NEL><NEL>"). */
     if (line_start && c->in_flow == 0 && c->bs_open) {
         size_t k = i;
         uint32_t ind = 0;
@@ -4608,6 +4611,14 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             c->at_break = (e < len);
             return t;
         }
+    }
+
+    if (ch == ' ' || ch == '\t') {
+        /* a value position survives spaces in block context ("k: 'x'"
+         * opens; the plain continuation "a 'b'" does not — its word
+         * did not begin with an indicator) */
+        c->tok_start = (c->in_flow > 0) ? 1 : (c->word_led || c->tok_start);
+        return t;
     }
 
     /* the header: a '>' / '|' at a value position with a valid
