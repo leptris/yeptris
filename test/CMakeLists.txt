@@ -2962,6 +2962,45 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/fold-bang-verbatim-nel-tail-r194.bin
     )
 
+    # the r195 round (run 42445063442, main 89aaf7c, crash-
+    # 14c7060d646ccf352adead05d17d0dd3ef0111c1): a REGRESSION from the
+    # r194 engine fix (A/B: the 8-byte artifact ">\n#ML<NEL>\n" exits
+    # 0 on the pristine pre-fix f8400d2 build and aborts on the
+    # post-fix build; a revert-only experiment -- the token-space arm
+    # moved back above the content arm -- restores exit 0, so the
+    # reorder is causal). The input itself takes the '#' comment-arm
+    # path in BOTH builds; the caught shape is the r19-family indent
+    # transform's SUB "(">\n #ML<NEL>\n", one space indented into the
+    # col-0 content line): post-reorder the content arm's
+    # blank/comment-line branch ran FIRST at the space byte and its
+    # line-end walk looked for LF ONLY, consuming " #ML<NEL>\n"
+    # wholesale with fold_off=-1 -- the NEL rode RAW into the engine's
+    # verbatim block-scalar reader and the transform's re-classify
+    # stopped flipping to parity, so the documented col-0-content
+    # carry lost its claim and the harness aborted on the raw input's
+    # DIFFER (yeptris "=VAL : #ML\n" vs libyaml's empty scalar, the
+    # reader's floor-1 clamp). Pre-reorder the space arm ate the space
+    # byte-by-byte (at_break stayed armed) and the '#' hit the comment
+    # arm, whose nel case FOLDS the break. The fix ends the
+    # blank/comment branch's line at ANY break spelling -- a multibyte
+    # break folds at the token tail (fold_off/fold_len) exactly like
+    # the comment arm; lone CR ends the line like the comment arm's CR
+    # case; the r160 content-NEL law is untouched (the CONTENT branch
+    # keeps its verbatim ride; the "> \n !<\xc2\x85 text9" pin
+    # passes unchanged). Battery: artifact pre-fix exit 134 / post-fix
+    # exit 0; the r194 seed fold-bang-verbatim-nel-tail-r194.bin exits
+    # 0 (the fold-line indent law preserved); revert-only experiment
+    # confirms causality; 50-mutant paired battery -- 0 regressions;
+    # corpus walks exit-0 pre/post on the six lf corpora with logs
+    # identical modulo libFuzzer's volatile lines; full ctest with
+    # only the pre-existing local conformance/json-suite failures;
+    # leaks --atExit clean; clang-format 18 clean.
+    add_test(
+        NAME fuzz-diff-r195-fold-comment-nel-tail
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/fold-comment-nel-tail-r195.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

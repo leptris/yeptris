@@ -4580,12 +4580,52 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
             return t; /* a final line without its break */
         }
         if (p[k] == '\n' || p[k] == '\r' || p[k] == '#') {
+            /* the line ends at ANY break spelling: a multibyte break
+             * (NEL/LS/PS) FOLDS at the token tail, exactly like the
+             * '#' comment arm ends its line (the pre-r194 path: the
+             * token-space arm consumed the leading spaces one byte at
+             * a time and the line's '#' hit the comment arm, whose
+             * nel/lps case folds). Riding the break raw inside the
+             * wholesale token leaked it to the engine's verbatim
+             * block-scalar reader, and the r19-family indent
+             * transform's verify (sub ">\n #ML<NEL>\n") stopped
+             * flipping to parity — the r195 nightly ">\n#ML<NEL>". */
             size_t e = k;
-            while (e < len && p[e] != '\n') {
+            size_t bs = 0;
+            size_t br = 0;
+            while (e < len) {
+                if (p[e] == '\n') {
+                    bs = e;
+                    br = 1;
+                    e++;
+                    break;
+                }
+                if (p[e] == '\r') {
+                    bs = e;
+                    br = (e + 1 < len && p[e + 1] == '\n') ? 2 : 1;
+                    e += br;
+                    break;
+                }
+                size_t mb = yep_scan_mb_break_len(p, len, e);
+                if (mb > 0) {
+                    bs = e;
+                    br = mb;
+                    e += mb;
+                    break;
+                }
                 e++;
             }
-            t.n = (e < len) ? (e - i + 1) : (len - i);
-            c->at_break = (e < len);
+            if (br == 0) {
+                t.n = len - i;
+                c->at_break = 0;
+                return t; /* the tail rides the line to EOF */
+            }
+            t.n = e - i;
+            if (p[bs] != '\n' && p[bs] != '\r') {
+                t.fold_off = (int)(bs - i);
+                t.fold_len = (int)br;
+            }
+            c->at_break = 1;
             return t; /* blank or comment-content line */
         }
         int marker = (ind == 0 && k + 2 < len &&
