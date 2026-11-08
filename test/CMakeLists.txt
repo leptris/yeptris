@@ -2866,6 +2866,58 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-alpha-head-r192.bin
     )
 
+    # the r193 round (run 42434624908, main 6eec12e, crash-
+    # abdb19e20b6100e0fdc16a8c59425954201a5c7f): the 14284-byte soup of
+    # the qflow family whose unclaimed residue is the member '?"#|' -- a
+    # fresh finding (A/B: the r192 parent d86219b aborts identically on
+    # the same artifact, byte-identical dumps, so the r192 gray arm is
+    # exonerated; the escalation clause does not fire). yeptris's
+    # suite-pinned plain-first-'?' law (HM87/652Z) keeps '?"#|' ONE
+    # plain (the quote glued to the indicator-led run is content, the
+    # r145 word-start law), while libyaml's flow-'?' KEY-token law
+    # consumes the '?' and frees the glued quote to OPEN a quoted
+    # scalar at the token start -- the span rides to the NEXT
+    # member-final quote (those both engines read as mid-plain content,
+    # the fold law's absorption), swallowing the members between as the
+    # KEY's folded value (the 755-byte dump line
+    # "=VAL : #|,? 2002:binary ,..."), the pair closing with the
+    # implicit empty value. The r183/r190 arms decline by construction
+    # (their follower gates list quote chars among the indicators that
+    # stay with the other qflow arms) and no walk route carries the
+    # swallow -- the walk died at the span's trailing residue
+    # ("y=[+MAP] l=[=VAL : 211]", the interior members' structure with
+    # no counterpart). The fix is the transform arm
+    # yd_r193_glued_question_quote_divergence beside the qflow cascade:
+    # the preserving spell inserts ONE blank (glued -> separated),
+    # which makes the quote a token start for BOTH engines (yeptris's
+    # separated-'?' law opens the explicit-key map with the quoted
+    # scalar as the KEY, the r151 explicit form; libyaml's token stream
+    # is unchanged -- pinned by the ldump2 == ldump byte compare), and
+    # the compound soup's remaining residue (the '?#'-comment kills and
+    # the LS/PS fold pairs) must be claimed by the family's walk --
+    # the r115 quote-out classifier's form the compound extends.
+    # Minimality: the two glued hits (both ',"?"#|' members at offsets
+    # 5702 and 10217) are the arm's own finder's only scores; the
+    # prefix cut floors at 9685 (shorter forms get claimed by the walk
+    # or turn into libyaml-only splits -- the DIFFER needs the full
+    # soup's unclaimed residue), so the true artifact stays the seed.
+    # Battery: artifact pre-fix exit 134 (on BOTH the r192 parent
+    # d86219b and the worktree baseline) / post-fix exit 0; 45-mutant
+    # paired battery (20 seeded single-byte flips, 10 span deletions,
+    # 13 targeted quote-family forms, plus the r192 seed as control)
+    # -- 0 regressions, 18 newly claimed, 19 both-abort unchanged, 8
+    # both-pass; corpus walk exit-0 pre/post on the six lf corpora,
+    # outputs identical modulo libFuzzer's volatile seed/address/counter
+    # lines (parse 310/312, feed 64, roundtrip 1, marshal 17, cbor 101,
+    # validate 5; ulimit -s 32768 for the 205KB nested-flow seed);
+    # fresh ctest -R fuzz-diff carries all 85 prior pins plus this one
+    # (86/86); leaks --atExit clean; clang-format 18 clean.
+    add_test(
+        NAME fuzz-diff-r193-glued-question-quote
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/glued-question-quote-r193.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

@@ -2859,6 +2859,188 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
     return yd_qgh_differ_walk(ydump, ldump, 1, (int)size);
 }
 
+/* The GLUED-'?'-QUOTE pair (r193, run 42434624908, main 6eec12e,
+ * crash-abdb19e20b6100e0fdc16a8c59425954201a5c7f, a 14284-byte soup of
+ * the qflow family whose unclaimed residue is the member '?"#|'):
+ * yeptris's suite-pinned plain-first-'?' law (HM87/652Z) keeps the
+ * member ONE plain ('?"#|' -- the quote glued to the indicator-led run
+ * is content, the r145 word-start law), while libyaml's flow-'?'
+ * KEY-token law consumes the '?' and frees the glued quote to OPEN a
+ * quoted scalar at the token start -- the span rides to the NEXT
+ * member-final quote (those both engines read as mid-plain content,
+ * the fold law's absorption), swallowing the members between as the
+ * KEY's folded value, the pair closing with the implicit empty value.
+ * The r183/r190 arms decline by construction: their follower gates
+ * list '"'/''' among the indicators that stay with the other qflow
+ * arms, and no walk route carries the swallow (the interior members
+ * yeptris keeps are gone from libyaml's skeleton wholesale). The
+ * preserving spell inserts ONE blank between the '?' and the quote --
+ * ?quote -> '? quote' -- which makes the quote a token start for BOTH
+ * engines: yeptris's separated-'?' law opens the explicit-key map with
+ * the quoted scalar as the KEY (the r151 explicit form's shape) and
+ * libyaml's token stream is unchanged (the blank is a separator the
+ * scanner eats; the dump-compare pin below). This soup is COMPOUND --
+ * the '?#'-comment kills and the LS/PS fold pairs ride alongside -- so
+ * the byte-exact equality of the r183 pattern cannot hold; the claim
+ * is the r115 quote-out classifier's form the compound extends: with
+ * the swallow spelled away, yeptris's dump must BYTE-EXACT equal
+ * libyaml's own dump of the rewrite, or the family's walk must claim
+ * the WHOLE residue (the same certificate yd_qflow_glued_hash_differ
+ * grants -- what remains is documented family reading, so the swallow
+ * was the only special mechanism). The finder scores only '?' + quote
+ * at a KEY-token position -- the '?' after ',', '[', '{', ':' or at
+ * stream start, outside quotes and outside a plain run (the catch-85
+ * word-start law keeps mid-plain pairs as content in both engines) --
+ * and libyaml's span view rides the tracker: inside an open span every
+ * byte is content until the closer, so pairs libyaml never scans as
+ * tokens cannot score. Bounded: one allocation (size * 2 + 4), one
+ * pass, the verify two dumps plus one walk whose line budget is the
+ * claim's own bound. */
+static int yd_r193_glued_question_quote_divergence(const uint8_t* data, size_t size,
+                                                   const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 5 || size > 262144) {
+        return 0;
+    }
+    char* sub = malloc(size * 2 + 4); /* each hit inserts one blank */
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t subn = 0;
+    int quote = 0;        /* the open quoted span (libyaml's view) */
+    int scalar_start = 1; /* a token can start at the scan position */
+    int plain = 0;        /* a plain run is open (glued quotes are content) */
+    int hits = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            sub[subn++] = (char)c;
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+                scalar_start = 0;
+                plain = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                sub[subn++] = (char)data[++i];
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+                scalar_start = 0;
+                plain = 0;
+            }
+            continue;
+        }
+        if (c == '\n' || c == '\r') {
+            /* the fold law: the break refreshes the token position but
+             * an open plain run rides it (quotes glued to the run stay
+             * content -- the member-final quote class) */
+            if (c == '\r' && i + 1 < size && data[i + 1] == '\n') {
+                sub[subn++] = (char)c;
+                i++;
+            }
+            scalar_start = 1;
+            sub[subn++] = (char)data[i];
+            continue;
+        }
+        if (c == ' ' || c == '\t') {
+            scalar_start = 1;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        if ((c == '\'' || c == '"') && scalar_start && !plain) {
+            quote = c;
+            scalar_start = 0;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        if (c == '?' && scalar_start && i + 1 < size &&
+            (data[i + 1] == '"' || data[i + 1] == '\'')) {
+            /* THE HIT: the KEY token frees the glued quote -- spell the
+             * separated form, then ride the span (libyaml opens it) */
+            sub[subn++] = (char)c;
+            sub[subn++] = ' ';
+            hits++;
+            quote = (int)data[i + 1];
+            scalar_start = 0;
+            sub[subn++] = (char)data[i + 1];
+            i++;
+            continue;
+        }
+        if (c == '?' && scalar_start && i + 1 < size && data[i + 1] == '#') {
+            /* the KEY token + the glued '#' comment (the r136 law): the
+             * comment eats to the line end -- quotes inside it cannot
+             * score */
+            sub[subn++] = (char)c;
+            i++;
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                sub[subn++] = (char)data[i++];
+            }
+            if (i < size) {
+                i--; /* the break rides the loop's own advance */
+            }
+            continue;
+        }
+        if (c == '#' && (i == 0 || data[i - 1] == ' ' || data[i - 1] == '\t' ||
+                         data[i - 1] == '\n' || data[i - 1] == '\r')) {
+            /* the blank-led comment: both engines eat it to the break */
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                sub[subn++] = (char)data[i++];
+            }
+            if (i < size) {
+                i--;
+            }
+            plain = 0;
+            continue;
+        }
+        if (c == '[' || c == '{' || c == ']' || c == '}' || c == ',' || c == ':') {
+            scalar_start = 1;
+            plain = 0;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        if (c == '?' || c == '-' || c == '&' || c == '*' || c == '!' || c == '|' || c == '>' ||
+            c == '%' || c == '@' || c == '`') {
+            /* an indicator: separated it ends the run (a token can start
+             * at the follower); glued it is plain-first content */
+            unsigned char f = i + 1 < size ? data[i + 1] : (unsigned char)' ';
+            if (f == ' ' || f == '\t' || f == '\n' || f == '\r' || f == ',' || f == ']' ||
+                f == '}') {
+                scalar_start = 1;
+                plain = 0;
+            } else {
+                scalar_start = 0;
+                plain = 1;
+            }
+            sub[subn++] = (char)c;
+            continue;
+        }
+        /* wordy content: the run opens/rides */
+        scalar_start = 0;
+        plain = 1;
+        sub[subn++] = (char)c;
+    }
+    if (hits == 0) {
+        free(sub);
+        return 0;
+    }
+    int lok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, subn, &lok2);
+    int known = 0;
+    if (lok2 && ldump2 != NULL && strcmp(ldump2, ldump) == 0) {
+        /* the spell must not move libyaml's own reading */
+        int yok2 = 0;
+        char* ydump2 = yd_sem_dump((const char*)sub, subn, &yok2);
+        if (yok2 && ydump2 != NULL) {
+            if (strcmp(ydump2, ldump2) == 0) {
+                known = 1;
+            } else {
+                known = yd_qflow_glued_hash_differ(sub, subn, ydump2, ldump2);
+            }
+        }
+        free(ydump2);
+    }
+    free(ldump2);
+    free(sub);
+    return known;
+}
+
 static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size) {
     /* the shared skip cap (r180): the frame pass scales with the input
      * size -- every skip consumes dump lines, so the walk stays
@@ -8248,6 +8430,10 @@ static void probe_one(const uint8_t* data, size_t size) {
                     if (!known) {
                         known = yd_r190_glued_hash_multiline_follower_divergence(data, size, ydump,
                                                                                  ldump);
+                        if (!known) {
+                            known =
+                                yd_r193_glued_question_quote_divergence(data, size, ydump, ldump);
+                        }
                     }
                 }
             }
