@@ -3589,6 +3589,52 @@ if(YEPTRIS_LIBYAML_ROOT)
         COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip
     )
 
+    # the r213 round (run 42533789224, main c73e1f0, crash-
+    # d8e3b3f392c37a62257576ce20d5a19b351f66ad): a FRESH find and an
+    # ENGINE round — the nightly's two-arm triage exonerates BOTH
+    # fresh changes (the 147-byte artifact aborts IDENTICALLY -- exit
+    # 133, the same [ri] l1=128 l2=127 pair -- on cb168e1
+    # (pre-r212-arm), 344c37f (the anchor slice), and c73e1f0 (both)).
+    # The catch is fuzz_roundtrip's byte-instability invariant, not a
+    # fuzz_diff comparator case: serialize(parse(serialize(x)))
+    # diverged on round two. Shape: a completed root pair ("2: e")
+    # arms root_pair_col, then a pending ("4:") chains into an
+    # ANCHORED pending ("  5: &5") whose deeper line ("    5: e")
+    # resolves it. The chain: yt_f_open_form answers the SIBLING
+    # key-SCALAR form for the outer pending (col+1 == content_col),
+    # the spent-frame slot-reuse keeps depth, and the anchored
+    # pending's event-path resolution emits its KEY SCALAR before the
+    # anchored MAP_START — the key pairs with the stranded outer key
+    # and the anchored map strands as a sibling key of the parent
+    # ({2:e, 4:"5", {5:e}&5:"7", s:null} instead of
+    # {2:e, 4:{5:{5:e}&5}, 7:s}; Psych/libyaml parse the emitted s1
+    # correctly, so the re-parse is the wrong side). The engine route
+    # (push events, eager DOM) is proven correct on the shape — the
+    # fix routes the composition there: yt_f_run's chained-pending
+    # arm bails when the outer pending resolves SCALAR-form and the
+    # incoming pending is anchored (the "anchored pendings keep the
+    # engine" law; the OPEN-form chain is untouched — the YTP_OPEN
+    # record materializes container+key in one and pairs correctly).
+    # A/B anchor-lane exoneration: the abort predates the anchor
+    # slice (fused_run ownership needs a non-NULL resolver, which is
+    # why the slice's memo/placed work is irrelevant). Minimality:
+    # greedy deletion pins the 28-byte "2: \n e\n4:\n  5: &5\n
+    # 5: e\n7: s" (domdump: eager parse correct, lazy parse corrupt
+    # — the exact route pair); the pinned seed is the TRUE 147-byte
+    # artifact. Battery: artifact pre-fix exit 133 / post-fix 0;
+    # 55-mutant paired battery (pre-fix 344c37f vs post-fix) — 24
+    # fixed, 0 regressions, 0 mixed; corpus walks exit-0 pre/post on
+    # all six lf corpora (-runs=0, ulimit -s 32768); fresh ctest
+    # green (892, corpora fetched); the anchor slice's pins
+    # (AliasAfterRedefinitionBindsLastDefinition /
+    # AliasMemoSurvivesAnchorAlternation) green; deep-nesting DOM
+    # bench 1075 MB/s (the >=1000 gate holds); leaks --atExit clean;
+    # clang-format 18 clean.
+    add_test(
+        NAME fuzz-roundtrip-r213-anchored-pending-chain
+        COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
