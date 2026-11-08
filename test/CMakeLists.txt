@@ -3239,6 +3239,46 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ls-literal-rawkeep-r202.bin
     )
 
+    # the r203 round (run 42484238632, main 9c32c73, crash-
+    # 961f75c2aafe47fb867bd2bd7098c48ef6006d2e): a FRESH find, not an
+    # r202 regression (A/B: the 37-byte artifact aborts on BOTH the
+    # pre-r202 4581c78 build and the post-fix main build -- the r202
+    # arm touched only the block-NEL family gate), fired on SEED-CORPUS
+    # replay at MS: 0 in fuzz_diff. The caught shape is the flow-SEQ
+    # question family's MULTI-LINE member: a glued '?' whose plain run
+    # RIDES LS/PS/CR breaks ("[\n?+D<LS> 'c<PS>.\n--&k:j:(<PS>
+    # \r|\r\n.oa\"]" -- libyaml's flow KEY-token law nests a
+    # single-pair map with the run as key, yeptris's suite-pinned plain
+    # reading keeps one '?'-led scalar member), and the KEY VALUE BYTES
+    # themselves diverge: libyaml's fold law keeps mid-plain LS/PS RAW
+    # (READ_LINE copies them verbatim) while yeptris follows the spec's
+    # fold law -- so r183's brace spell (its same-line run law declines
+    # any break) AND r190's KIND 2 "? " spell (both engines would fold
+    # the run differently) can never carry it. Comparator carry in
+    # yd_r203_flow_seq_question_multiline_divergence: the fold is
+    # SIMULATED with libyaml's own law (raw LS/PS lead rides with its
+    # LF-normalized trailing breaks; an LF-lead folds to ' ' with no
+    # trailing, else the trailing rides verbatim; same-line spaces
+    # ride, break-adjacent spaces drop) and the result bakes into a
+    # double-quoted key with every fold-sensitive byte escaped
+    # (\L / \P / \n / \t / \"), so NEITHER engine folds the rewrite
+    # and the byte-strict verify pins libyaml's original dump from both
+    # sides. Both readings are suite-permitted (HM87/652Z plain-'?'
+    # over libyaml's 1.1 KEY law; b-as-space fold over libyaml's
+    # raw-keep). Minimality: the UNCONSTRAINED greedy deletion minimizer
+    # drifts to the 5-byte "[:\r|]" YEPTRIS-ONLY split twin (the
+    # r186-r202 drift law again; a ledger-class split, not a nightly-
+    # reachable DIFFER); the DIFFER-constrained rerun (require the
+    # '?'-led yeptris plain vs the libyaml +MAP tell) pins the 15-byte
+    # "[?D<LS><PS>:(<PS>]"; the pinned seed is the TRUE 37-byte
+    # artifact. 117-mutant paired battery: 66 carried post-fix,
+    # 0 regressions.
+    add_test(
+        NAME fuzz-diff-r203-qflow-multiline-lsps
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-multiline-lsps-r203.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

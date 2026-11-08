@@ -2344,6 +2344,335 @@ static int yd_r190_glued_hash_multiline_follower_divergence(const uint8_t* data,
 #undef YD_R190_BREAK_LEN
 }
 
+/* Append b to sub[*subn] escaped for a double-quoted YAML scalar.
+ * Returns 0 on a byte the escape law cannot carry (the caller's run
+ * scan never produces one). */
+static int yd_r203_dq_escape(char* sub, size_t* subn, unsigned char b) {
+    switch (b) {
+    case '"':
+        sub[(*subn)++] = '\\';
+        sub[(*subn)++] = '"';
+        return 1;
+    case '\\':
+        sub[(*subn)++] = '\\';
+        sub[(*subn)++] = '\\';
+        return 1;
+    case '\n':
+        sub[(*subn)++] = '\\';
+        sub[(*subn)++] = 'n';
+        return 1;
+    case '\t':
+        sub[(*subn)++] = '\\';
+        sub[(*subn)++] = 't';
+        return 1;
+    default:
+        if (b < 0x20 || b > 0x7E) {
+            return 0;
+        }
+        sub[(*subn)++] = (char)b;
+        return 1;
+    }
+}
+
+/* True when the verdict is the MULTI-LINE member of the flow-SEQ
+ * question family (the r203 nightly, run 42484238632, main 9c32c73,
+ * crash-961f75c2aafe47fb867bd2bd7098c48ef6006d2e, 37 bytes
+ * "[\n?+D<U+2028> 'c<U+2029>.\n--&k:j:(<U+2029> \r|\r\n.oa\"]"):
+ * libyaml's unconditional flow KEY-token law (the 1.1 quirk the qflow
+ * family carries) reads the glued '?' as a KEY whatever follows it,
+ * and the enclosing flow SEQUENCE wraps the keyless pair as a nested
+ * single-pair mapping member — while yeptris's suite-pinned plain
+ * reading (HM87/652Z) keeps the whole break-riding run ONE plain
+ * scalar member. Neither r183's brace spell (its same-line plain-safe
+ * run law declines any break inside the run) nor r190's KIND 2 "? "
+ * spell can carry this shape: the KEY VALUE BYTES themselves diverge,
+ * because libyaml's fold law keeps a mid-plain U+2028/U+2029 RAW
+ * (READ_LINE copies LS/PS verbatim; only CR/CRLF/NEL normalize to LF)
+ * while yeptris follows the spec's fold law (one break folds to a
+ * space), so no rewrite that lets both engines fold the run can ever
+ * produce equal dumps. The preserving spell bakes libyaml's EXACT
+ * folded key bytes into a double-quoted key — the fold simulated with
+ * libyaml's own law (a raw LS/PS lead rides verbatim with its
+ * trailing breaks; an LF-lead folds to ' ' when no trailing break
+ * follows, else the trailing breaks ride verbatim and the lead drops;
+ * same-line spaces ride, break-adjacent spaces drop, trailing breaks
+ * at the terminator drop) — with every fold-sensitive byte escaped
+ * ('"' / '\' / LF / tab / LS as \L / PS as \P), so NEITHER engine
+ * folds the rewrite and both read the baked bytes as-is. The finder
+ * only fires on a '?' at flow depth whose innermost frame is a
+ * SEQUENCE and whose follower starts a MULTI-LINE plain run (r183's
+ * turf is the clean same-line run; quoted, indicator, and boundary
+ * followers stay with the other qflow arms), ended by ',' or ']' with
+ * no quote / '#' / '\' / nested flow / pair-separating ':' inside,
+ * ASCII-only content, and at most 8 folds. The byte-strict verify
+ * against libyaml's ORIGINAL dump arbitrates: both engines must read
+ * the rewrite exactly as libyaml read the original, or the claim
+ * declines. */
+static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, size_t size,
+                                                          const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 5 || size > 262144) {
+        return 0;
+    }
+    char* sub = malloc(size * 2 + 16); /* each hit turns "?run" into "{"escaped": }" */
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t subn = 0;
+    int quote = 0;
+    /* the frame-kind stack: 1 = sequence, 2 = mapping */
+    int frames[64];
+    int depth = 0;
+    int hits = 0;
+    /* multibyte break length at i: 2 = CRLF/NEL, 3 = LS/PS, 1 = LF/CR
+     * alone, 0 = not a break (a dangling lead rides as content) */
+#define YD_R203_BREAK_LEN(d, n, i)                                                                 \
+    ((d)[i] == '\n'   ? 1                                                                          \
+     : (d)[i] == '\r' ? (((i) + 1 < (n)) && (d)[(i) + 1] == '\n' ? 2 : 1)                          \
+     : ((d)[i] == 0xC2 && (i) + 1 < (n) && (d)[(i) + 1] == 0x85) ? 2                               \
+     : ((d)[i] == 0xE2 && (i) + 2 < (n) && (d)[(i) + 1] == 0x80 &&                                 \
+        ((d)[(i) + 2] == 0xA8 || (d)[(i) + 2] == 0xA9))                                            \
+         ? 3                                                                                       \
+         : 0)
+    for (size_t i = 0; i < size;) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            sub[subn++] = (char)c;
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                sub[subn++] = (char)data[++i];
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            i++;
+            continue;
+        }
+        if (c == '\'') {
+            quote = '\'';
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '"') {
+            quote = '"';
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '[' || c == '{') {
+            if (depth < 64) {
+                frames[depth] = (c == '[') ? 1 : 2;
+            }
+            depth++;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            if (depth > 0) {
+                depth--;
+            }
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '?' && depth > 0 && depth <= 64 && frames[depth - 1] == 1 && i + 1 < size) {
+            unsigned char f = data[i + 1];
+            /* the follower must START a plain run: blanks, breaks, and
+             * every flow/block indicator decline to the other arms'
+             * spells */
+            if (f != ' ' && f != '\t' && YD_R203_BREAK_LEN(data, size, i + 1) == 0 && f != ',' &&
+                f != ':' && f != ']' && f != '}' && f != '"' && f != '\'' && f != '[' && f != '{' &&
+                f != '#' && f != '&' && f != '*' && f != '!' && f != '|' && f != '>' && f != '%' &&
+                f != '@' && f != '`' && f != '?') {
+                /* the run itself rides breaks AND quotes (the fold
+                 * law's absorption: a plain run open across the break
+                 * keeps a quote mid-plain content in both engines, the
+                 * r191 law) but no '#' / '\' / nested flow /
+                 * pair-separating ':' inside, no non-ASCII content
+                 * beyond the breaks, no stray control bytes, and it
+                 * must end at ',' or ']' with at most 8 folds — the
+                 * multi-line shape r183's clean-run law declines */
+                size_t j = i + 1;
+                int clean = 1;
+                int breaks = 0;
+                while (j < size) {
+                    unsigned char d = data[j];
+                    if (d == ',' || d == ']') {
+                        break;
+                    }
+                    if (d == '\\' || d == '[' || d == '{' || d == '}' || d == '?' || d == '#') {
+                        clean = 0;
+                        break;
+                    }
+                    if (d == ':' && j + 1 < size) {
+                        unsigned char g = data[j + 1];
+                        if (g == ' ' || g == '\t' || g == ',' || g == '?' || g == '[' || g == ']' ||
+                            g == '{' || g == '}' || YD_R203_BREAK_LEN(data, size, j + 1) > 0) {
+                            clean = 0;
+                            break;
+                        }
+                    }
+                    int db = YD_R203_BREAK_LEN(data, size, j);
+                    if (db > 0) {
+                        if (++breaks > 8) {
+                            clean = 0;
+                            break;
+                        }
+                        j += (size_t)db;
+                        continue;
+                    }
+                    if (d < 0x20 || d == 0x7F || d >= 0x80) {
+                        clean = 0; /* stray control / non-break multibyte declines */
+                        break;
+                    }
+                    j++;
+                }
+                if (clean && j < size && breaks > 0) {
+                    /* bake libyaml's EXACT folded key bytes into a
+                     * double-quoted key: the fold simulated with
+                     * libyaml's own law, every fold-sensitive byte
+                     * escaped so neither engine folds the rewrite */
+                    unsigned char lead_kind = 0; /* 0 none, 1 LF, 2 raw LS/PS */
+                    unsigned char lead_raw[3];
+                    unsigned char trailing[24]; /* stored forms of post-lead breaks */
+                    size_t trailn = 0;
+                    char wsb[256]; /* same-line whitespace pending */
+                    size_t wsn = 0;
+                    int wok = 1;
+                    size_t save = subn;
+                    sub[subn++] = '{';
+                    sub[subn++] = '"';
+                    size_t k = i + 1;
+                    while (k < j) {
+                        unsigned char d = data[k];
+                        int db = YD_R203_BREAK_LEN(data, size, k);
+                        if (db > 0) {
+                            wsn = 0; /* break-adjacent spaces drop */
+                            unsigned char st[3];
+                            size_t stn;
+                            if (db == 3) {
+                                st[0] = data[k];
+                                st[1] = data[k + 1];
+                                st[2] = data[k + 2];
+                                stn = 3;
+                            } else {
+                                st[0] = '\n';
+                                stn = 1;
+                            }
+                            if (lead_kind == 0) {
+                                if (stn == 3) {
+                                    lead_kind = 2;
+                                    lead_raw[0] = st[0];
+                                    lead_raw[1] = st[1];
+                                    lead_raw[2] = st[2];
+                                } else {
+                                    lead_kind = 1;
+                                }
+                            } else if (trailn + stn <= sizeof(trailing)) {
+                                for (size_t t = 0; t < stn; t++) {
+                                    trailing[trailn++] = st[t];
+                                }
+                            } else {
+                                wok = 0;
+                            }
+                            k += (size_t)db;
+                            continue;
+                        }
+                        if (d == ' ' || d == '\t') {
+                            /* a post-break blank skips (the fold law);
+                             * a same-line one rides verbatim pending */
+                            if (lead_kind == 0) {
+                                if (wsn < sizeof(wsb)) {
+                                    wsb[wsn++] = (char)d;
+                                } else {
+                                    wok = 0;
+                                }
+                            }
+                            k++;
+                            continue;
+                        }
+                        /* a content byte: flush the fold, then ride */
+                        if (lead_kind == 0) {
+                            for (size_t w = 0; w < wsn; w++) {
+                                if (!yd_r203_dq_escape(sub, &subn, (unsigned char)wsb[w])) {
+                                    wok = 0;
+                                }
+                            }
+                        } else if (lead_kind == 1) {
+                            if (trailn == 0) {
+                                sub[subn++] = ' ';
+                            } else {
+                                for (size_t t = 0; t < trailn;) {
+                                    if (trailing[t] == 0xE2 && t + 2 < trailn) {
+                                        sub[subn++] = '\\';
+                                        sub[subn++] = trailing[t + 2] == 0xA8 ? 'L' : 'P';
+                                        t += 3;
+                                    } else {
+                                        if (!yd_r203_dq_escape(sub, &subn, trailing[t])) {
+                                            wok = 0;
+                                        }
+                                        t++;
+                                    }
+                                }
+                            }
+                        } else {
+                            sub[subn++] = '\\';
+                            sub[subn++] = lead_raw[2] == 0xA8 ? 'L' : 'P';
+                            for (size_t t = 0; t < trailn;) {
+                                if (trailing[t] == 0xE2 && t + 2 < trailn) {
+                                    sub[subn++] = '\\';
+                                    sub[subn++] = trailing[t + 2] == 0xA8 ? 'L' : 'P';
+                                    t += 3;
+                                } else {
+                                    if (!yd_r203_dq_escape(sub, &subn, trailing[t])) {
+                                        wok = 0;
+                                    }
+                                    t++;
+                                }
+                            }
+                        }
+                        lead_kind = 0;
+                        trailn = 0;
+                        wsn = 0;
+                        if (!yd_r203_dq_escape(sub, &subn, d)) {
+                            wok = 0;
+                        }
+                        k++;
+                    }
+                    sub[subn++] = '"';
+                    sub[subn++] = ':';
+                    sub[subn++] = ' ';
+                    sub[subn++] = '}';
+                    if (wok) {
+                        i = j;
+                        hits++;
+                        continue;
+                    }
+                    subn = save; /* the bake failed its caps: ride as content */
+                }
+            }
+        }
+        sub[subn++] = (char)c;
+        i++;
+    }
+    if (hits == 0) {
+        free(sub);
+        return 0;
+    }
+    int yok2 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, subn, &yok2);
+    int lok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, subn, &lok2);
+    int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
+                 strcmp(ldump2, ldump) == 0);
+    free(ydump2);
+    free(ldump2);
+    free(sub);
+    return known;
+#undef YD_R203_BREAK_LEN
+}
+
 static int yd_qflow_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
                                      const char* ldump) {
     if (ydump == NULL || ldump == NULL || size == 0) {
@@ -8831,6 +9160,10 @@ static void probe_one(const uint8_t* data, size_t size) {
                         if (!known) {
                             known =
                                 yd_r193_glued_question_quote_divergence(data, size, ydump, ldump);
+                            if (!known) {
+                                known = yd_r203_flow_seq_question_multiline_divergence(
+                                    data, size, ydump, ldump);
+                            }
                         }
                     }
                 }
