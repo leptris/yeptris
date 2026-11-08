@@ -3344,6 +3344,45 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-question-gap-colon-r207.bin
     )
 
+    # the r208 round (run 42507908569, main 0398dc6, crash-
+    # 251030f166bcf9087724662620981e09e99ac343): a FRESH finding (the
+    # A/B against the parent 20e01be aborts on BOTH builds -- the r207
+    # question-colon widening is innocent; the input has no '?' at
+    # all). The 25-byte ">\n !<[!p\n !<NEL CR CR !<NEL NEL SP\n" reads
+    # a root folded block scalar whose content carries raw NELs: the
+    # 1.2 break set inside bs content is LF/CR ONLY (spec 8.1), so
+    # yeptris keeps each NEL (C2 85) as CONTENT bytes, while libyaml's
+    # 1.1 reader breaks on them too (its IS_BREAK) -- the r160 family
+    # with a delta its walk arms all decline: at the run's exit
+    # libyaml's collapsed escaped-break run is exactly k LONGER than
+    # yeptris's (its collapse counts the NEL-turned-breaks; yeptris's
+    # counts only the real breaks around the kept bytes -- the
+    # artifact's first site: yeptris NEL + 1 escaped break from the CR
+    # CR pair, libyaml 2 escaped breaks from NEL CR CR), with the
+    # content behind both runs coinciding. Comparator carry in
+    # yd_block_nel_walk_mult: after the terminal-tail arm declines,
+    # eat both escaped-break runs, require the surplus == k and the
+    # alignment byte behind the runs to coincide (and not be an
+    # escape), then rejoin the byte-bound walk -- pointers never
+    # rewind, the surplus is bound by the run, and the site is pinned
+    # by the alignment byte. Strictly claim-additive: b-surplus
+    # escapes beyond the (k-1) collapse never rode any branch before,
+    # so no carried pin can contain the form. Minimality: the
+    # UNCONSTRAINED greedy deletion minimizer drifts to the 9-byte
+    # ">\n<NEL SP NEL NEL" split twin (yeptris leads with an escaped
+    # break where libyaml folds -- a different delta, r186-r207 drift
+    # law; documented, still open); the DIFFER-constrained rerun pins
+    # the 14-byte ">\n <NEL CR CR <NEL NEL" with the surplus-break
+    # delta alive; the pinned seed is the TRUE 25-byte artifact.
+    # 110-mutant paired battery: 23 gained (every one a NEL carrier
+    # with the artifact's shape), 60 carried both-abort (the ledgered
+    # split zoo, unchanged), 27 quiet, 0 regressions.
+    add_test(
+        NAME fuzz-diff-r208-block-nel-surplus-break
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-surplus-break-r208.bin
+    )
+
     # the r205 round (run 42492751265, main a0f2ff6, crash-
     # 4d4e23c665b950d0d9b238595533be47073fe111): the block-NEL family's
     # ALIGNED-LS/PS-TRIPLE INDENT SURPLUS. The artifact

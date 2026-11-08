@@ -5606,7 +5606,22 @@ static int yd_plain_nel_lsps_fold_divergence(const uint8_t* data, size_t size, c
  * (a space both carry stays byte-bound), capped at 64 (the block's
  * indent column), so the claim cannot outrun the delta and an
  * existing member's byte-bound alignment past an aligned triple is
- * untouched. */
+ * untouched.
+ * The r208 nightly adds the SURPLUS-BREAK law (crash 251030f1, run
+ * 42507908569, main 0398dc6; 25-byte artifact ">\n !<[!p\n !<NEL CR
+ * CR !<NEL NEL SP\n"): at the run's exit yeptris carries the real
+ * breaks' collapse while libyaml's collapse counts the NELs it turned
+ * into breaks too, so libyaml's escaped-break run is exactly k LONGER
+ * than yeptris's and the content behind both runs coincides (the
+ * artifact's first site: yeptris NEL + 1 escaped break from the CR CR
+ * pair, libyaml 2 escaped breaks from NEL CR CR). The walk eats both
+ * runs, requires the surplus == k, requires the alignment byte behind
+ * the runs to coincide (and not be an escape), and rejoins the
+ * byte-bound walk there -- pointers never rewind and the surplus is
+ * bound by the run. Fires after the terminal-tail arm declined (whose
+ * remainders are fully identical, a disjoint shape) and before the
+ * (k-1) collapse (which would eat part of b's run and break the
+ * exact-k accounting), so every existing member keeps its branch. */
 static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
@@ -5666,6 +5681,34 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
                 b += 2;
                 subs++;
                 continue;
+            }
+            /* the r208 surplus-break law: the NELs yeptris keeps as
+             * content were BREAKS to libyaml's reader, so libyaml's
+             * collapsed escaped-break run at the site is exactly k
+             * escapes LONGER than yeptris's (its run counts only the
+             * real breaks around the kept bytes; libyaml's counts the
+             * NELs too). Eat both runs, require the surplus == k,
+             * require the alignment byte behind the runs to coincide
+             * and not be an escape, and rejoin the byte-bound walk
+             * there: pointers never rewind, the surplus is bound by
+             * the run, and the alignment byte pins the site. */
+            {
+                const char* pa = a;
+                const char* pb = b;
+                while (pa[0] == '\\' && pa[1] == 'n') {
+                    pa += 2;
+                }
+                while (pb[0] == '\\' && pb[1] == 'n') {
+                    pb += 2;
+                }
+                int ja = (int)(pa - a) / 2;
+                int jb = (int)(pb - b) / 2;
+                if (jb == ja + k && pa[0] == pb[0] && pa[0] != '\\' && pb[0] != '\\') {
+                    subs += (jb - ja) + 1;
+                    a = pa;
+                    b = pb;
+                    continue;
+                }
             }
             /* libyaml's multi-break collapse: k breaks leave (k-1)
              * literal breaks in a folded scalar's value */
