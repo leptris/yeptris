@@ -3441,6 +3441,48 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/timeout-flow-soup-dump-append-r210.bin
     )
 
+    # the r211 round (run 42522196631, main b5264ab, crash-
+    # 925daa548a18486557bd9b53e66b18006a504cfb): a FRESH finding and an
+    # ENGINE round — the A/B against the pre-r210 parent 6e225e1 aborts
+    # IDENTICALLY (exit 134, the same DIFFER dump pair), exonerating
+    # the r210 harness change. 100 bytes
+    # "[-123122kdy: &an<O*87>chor\n !!312    3123]": a flow-seq member
+    # whose value is an anchor with the TAG on the NEXT LINE. The flow
+    # node parse (e_flow_node) ran e_props at the anchor's inline
+    # position — its loop skips INLINE space only — so the cursor
+    # stopped at the break; the following e_flow_ws crossed the break
+    # and the '!'-led line fell into the PLAIN branch (yep_plain_first_ok
+    # allows '!' as plain content, and plain scalars may not merely
+    # CONTAIN '!' but here STARTED with the whole tag): the node lost
+    # its tag entirely and glued "!!312    3123" into the scalar value,
+    # while libyaml resolves the tag (tag:yaml.org,2002:312) with value
+    # "3123". YAML 1.2 grammar: properties ride s-separate-in-flow
+    # (breaks allowed), and a plain scalar must not START with the
+    # c-indicator '!' — libyaml's reading is the spec-correct one. The
+    # fix re-lexes a riding property run in e_flow_node (the cursor at
+    # '&'/'!' after the ws crossing) with the duplicate-property state
+    # threaded across the calls (the 4JVG law holds: "&a\n&b x" now
+    # errors like libyaml instead of gluing "&b x"). The tag-led order
+    # ("!t\n&a x") and the comment-separated gap ("&a\n# c\n!!t v")
+    # ride the same loop; same-line props, block-context props (the
+    # pend mechanism), quoted/alias/collection followers, and mid-plain
+    # '!' ("x\n!!t y" stays one folded plain in BOTH engines) are
+    # untouched. Minimality: DIFFER-constrained greedy deletion pins
+    # the 14-byte "[y: &r\n!!312 ]" with the same dump pair; the
+    # pinned seed is the TRUE 100-byte artifact. Battery: artifact
+    # pre-fix exit 134 / post-fix exit 0; 53-mutant paired battery on
+    # the artifact and 55 on the minimum — pre-DIFFER 33/17 all fixed,
+    # 0 regressions (the p1/p2 second-anchor twins flip from tolerated
+    # YEPTRIS-ONLY-ACCEPT to BOTH-ERROR, never an abort class); corpus
+    # walks exit-0 pre/post on the six lf corpora with logs identical
+    # modulo libFuzzer's volatile lines (ulimit -s 32768); fresh ctest
+    # pins green; leaks --atExit clean; clang-format 18 clean.
+    add_test(
+        NAME fuzz-diff-r211-flow-props-nextline
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-props-nextline-r211.bin
+    )
+
     # the r205 round (run 42492751265, main a0f2ff6, crash-
     # 4d4e23c665b950d0d9b238595533be47073fe111): the block-NEL family's
     # ALIGNED-LS/PS-TRIPLE INDENT SURPLUS. The artifact
