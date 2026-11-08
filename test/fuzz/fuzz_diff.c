@@ -2809,6 +2809,94 @@ static int yd_qgh_alias_cut_valued_pair(const char* y, size_t yl, const char* l,
     return 1;
 }
 
+/* The ALIAS-RESTART-FOLD pair (r200, run 42465797391, main 0b67393,
+ * crash-1b6d4cbe2ac56ceb226c11139e339c6dadd369a8, a 20-byte corpus seed;
+ * the shape-constrained deletion minimal is the 9-byte "{?#?\\n*L:(}"):
+ * the glue family's MULTI-LINE-PLAIN restart -- libyaml's KEY-token
+ * comment-glue law consumed the glued '?#' THROUGH the pending explicit
+ * KEY (scan_to_next_token's unconditional '#' eat -- the carried 1.1
+ * quirk the r132 family documents), so the NEXT line's '*' became a
+ * NODE START for libyaml and re-lexed as an ALIAS KEY re-paired with
+ * the pending KEY token, its ':' freeing a plain value ("=ALI *L" +
+ * "=VAL : ("), while yeptris's suite-pinned plain-first-'?' law keeps
+ * the glued run ONE plain that FOLDS across the break (no ':'/'/'
+ * boundary sits before it -- the r196 input's trailing ':' is what
+ * made THAT member cut) and absorbs the '*' spelling as mid-plain
+ * CONTENT: "{?#?\\n*L:(}" renders yeptris "=VAL : ?# *L:(" + "=VAL : "
+ * (the implicit empty value) where the r163 tail arm declines -- ITS
+ * pin demands the member END at the alias spelling ("*L"), here the
+ * plain rides on (":(" -- the fold's colon-value tail) -- and the
+ * r179/r196 cut pairs decline too (they pin yeptris's OWN "=ALI" line;
+ * yeptris never emits one here, the spelling rode into the fold). The
+ * byte-exact restart pin: yeptris's folded plain ends EXACTLY
+ * "*" + libyaml's alias name + ":" + libyaml's value (the spelling
+ * libyaml re-lexed at the node start), yeptris's next line is the
+ * exact empty val, libyaml's next line is "=VAL : " plus the exact S
+ * tail, and the pre-alias prefix carries the glue fingerprint LOCALLY
+ * (yd_qgh_glue_marked -- the kill is the comment-glue law; a bare '?'
+ * prefix never diverges this way, that is the r178/r199 turf). An
+ * invented name or a genuine yeptris plain-fold bug (absorbing a node
+ * boundary libyaml keeps) leaves a pin unsatisfied or the skeletons
+ * one entry off past the pair -- full exhaustion refuses, the DIFFER
+ * stays visible. The pair consumes BOTH skeletons' two lines as one
+ * diff (the r179 paired-arm pattern -- both pointers advance, bounded
+ * by construction, no cap); the claim still stands only on full
+ * exhaustion (the walk's law). */
+static int yd_qgh_alias_restart_fold_pair(const char* y, size_t yl, const char* l, size_t ll,
+                                          const char** y_next, const char** l_next) {
+    const char* val_prefix = "=VAL : ";
+    const size_t vp = strlen(val_prefix);
+    /* yeptris's line: a CONTENT plain val; libyaml's: the alias event */
+    if (yl <= vp || memcmp(y, val_prefix, vp) != 0 || memcmp(l, "=ALI *", 6) != 0) {
+        return 0;
+    }
+    size_t nl = ll - 6;   /* libyaml's alias name (its own charset by construction) */
+    size_t ycl = yl - vp; /* yeptris's folded plain content */
+    const char* yn = strchr(y, '\n');
+    const char* ln = strchr(l, '\n');
+    if (yn == NULL || ln == NULL) {
+        return 0;
+    }
+    const char* y2 = yn + 1;
+    const char* l2 = ln + 1;
+    const char* y2n = strchr(y2, '\n');
+    const char* l2n = strchr(l2, '\n');
+    if (y2n == NULL || l2n == NULL) {
+        return 0; /* both skeletons must carry lines past the pair */
+    }
+    size_t y2l = (size_t)(y2n - y2);
+    size_t l2l = (size_t)(l2n - l2);
+    if (y2l != vp || memcmp(y2, val_prefix, vp) != 0) {
+        return 0; /* yeptris's value eaten EMPTY (the explicit-key form) */
+    }
+    if (l2l <= vp) {
+        return 0; /* libyaml's value S non-empty (the byte-exact pin) */
+    }
+    size_t sl = l2l - vp;
+    /* the byte-exact restart pin: yeptris's plain ends "*<N>:<S>", the
+     * exact spelling libyaml re-lexed as the alias plus its value */
+    size_t tail = 1 + nl + 1 + sl;
+    if (ycl <= tail) {
+        return 0; /* the pre-alias prefix P must be non-empty */
+    }
+    const char* t = y + vp + ycl - tail;
+    if (t[0] != '*' || memcmp(t + 1, l + 6, nl) != 0 || t[1 + nl] != ':') {
+        return 0;
+    }
+    /* the fingerprint rides LOCALLY in the prefix P (the kill is the
+     * KEY-token comment-glue law: no glue, no divergence) */
+    if (!yd_qgh_glue_marked(y + vp, ycl - tail)) {
+        return 0;
+    }
+    /* libyaml's value IS the exact S tail */
+    if (memcmp(l2 + vp, t + 2 + nl, sl) != 0) {
+        return 0;
+    }
+    *y_next = y2n + 1;
+    *l_next = l2n + 1;
+    return 1;
+}
+
 static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size);
 
 /* The family entry: the ORIGINAL walk first (frame 0 -- every member
@@ -4175,6 +4263,28 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * the claim still stands only on full exhaustion (the
                  * walk's law). */
                 diffs++;
+            } else if (yd_qgh_alias_restart_fold_pair(y, yl, l, ll, &y, &l)) {
+                /* the ALIAS-RESTART-FOLD pair (r200, run 42465797391, main
+                 * 0b67393, crash-1b6d4cbe; the 9-byte deletion minimal
+                 * "{?#?\\n*L:(}"): libyaml's comment-glue kill ran to the
+                 * LINE BREAK and the next line's '*' became a NODE START
+                 * re-lexed as an ALIAS KEY ("=ALI *L" + "=VAL : ("), while
+                 * yeptris's plain-'?' law kept the glued run ONE plain
+                 * folded across the break (no ':' boundary before it --
+                 * the r196 input's trailing ':' is what made THAT member
+                 * cut), absorbing the spelling as mid-plain content. The
+                 * r163 tail arm declines (its member ENDS at the alias
+                 * spelling), the r179/r196 cut pairs decline (yeptris
+                 * carries no "=ALI" line of its own here), the r125
+                 * realign has nothing to realign to, and the r190
+                 * transform's gates demand a quote/exotic terminator.
+                 * Bounded: the paired consume (both pointers advance two
+                 * lines, no cap); byte-exact pins throughout -- an
+                 * invented name or a genuine plain-fold bug declines a
+                 * pin or strands the skeletons past the pair, and the
+                 * claim still stands only on full exhaustion. */
+                diffs += 2;
+                continue;
             } else if (yd_qgh_alias_cut_pair(y, yl, l, ll, &y, &l)) {
                 /* the ALIAS-CHARSET-CUT pair (r179, run 42331311239,
                  * main e201a69, crash-0b3aacc6): the r142/r76 IS_ALPHA
