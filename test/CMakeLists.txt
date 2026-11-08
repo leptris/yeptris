@@ -3279,6 +3279,38 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-multiline-lsps-r203.bin
     )
 
+    # the r204 round (run 42488986434, main a3f9b1e, crash-
+    # c9eef6e31fb6eac34b7e594e99bd1c3483bf8c25): a REGRESSION of the
+    # ac088c0 perf slice (A/B: the 85-byte artifact aborts on the
+    # post-slice a3f9b1e build ONLY -- it passes on the pre-slice
+    # 9c32c73 build AND on the 955df7a r203-arm-only build, so the
+    # r203 comparator arm is innocent; fired in fuzz_roundtrip on
+    # SEED-CORPUS replay at MS: 0). The caught shape is the
+    # chained-pending family's SIBLING-REOPEN member: "b:\n c: d\n
+    # q:\n b:\n  c: d\n" -- after the chained-pending arm resolves q
+    # in place and the spent key-SCALAR slot is reused, the PENDSEC
+    # phantom close left the closed frame's content_col behind, and
+    # the stale column rode yt_f_open_form's sibling test at the next
+    # pending's pair resolution: the reopened "b" container misfiled
+    # as a key-SCALAR ("q: b" + "? {c: d}" instead of
+    # "q: {b: {c: d}}") and serialize(parse(serialize(x))) diverged
+    # on round two. Engine fix in yt_f_run (dom/ytape.c): the PENDSEC
+    # phantom close now resets content_col -- the stale-frame law the
+    # sibling path already carried (run 38179552341). Minimality: the
+    # greedy deletion minimizer drifts to the 23-byte
+    # "b:\n c: d\nq:\n b:\n  c: d\n" FIRST-PARSE twin (the
+    # r186-r203 drift law again); the pinned seed is the TRUE 85-byte
+    # artifact (both parses ride it: the original bytes parse
+    # correct, the canonical re-serialization trips the stale
+    # column). 100-mutant paired battery: 0 regressions, 0
+    # fingerprint drift. Deep-nesting DOM bench post-fix: 1075 MB/s
+    # (the slice's 1042-1080 level holds; all seven other shapes
+    # flat).
+    add_test(
+        NAME fuzz-roundtrip-r204-pend-sibling-reopen
+        COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

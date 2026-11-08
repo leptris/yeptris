@@ -1640,6 +1640,15 @@ static int yt_f_run(yt_fused* F) {
                         col + 1 != st[depth].content_col && st[depth].phantom) {
                         yt_f_close(F, st[depth].kind);
                         st[depth].phantom = 0;
+                        st[depth].content_col =
+                            0; /* the content map is gone:
+                                * its column must not greet later pairs (the
+                                * stale-frame law, run 38179552341) — after the
+                                * chained-pending arm resumes here, a stale
+                                * column rode yt_f_open_form's sibling test and
+                                * misfiled the next pending's container as a
+                                * key-SCALAR ("b:\n c: d\nq:\n b:\n  c: d\n"
+                                * lost q's map; the nightly's run 42488986434) */
                     }
                     if (depth > 0 && st[depth].pending) {
                         /* a chained pending ("a:\na:", the deep-nesting
