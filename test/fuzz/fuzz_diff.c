@@ -1223,7 +1223,12 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
  * and whose follower starts a same-line plain-safe run terminated by
  * ',' / ']' / EOF (quoted, indicator, and boundary followers stay
  * with the other qflow arms; a ':'-glued follower is the r58 pair
- * spell's turf). The byte-strict verify against libyaml's ORIGINAL
+ * spell's turf). A GLUED '#' mid-run is admitted since the r206
+ * nightly (run 42498570153, crash-df52ab9fc21e989fc250fe4592c46bc982c9570d):
+ * after a non-blank it is mid-plain content in both engines (the HM87
+ * law), while after a blank or an exotic break it is the comment
+ * boundary and declines (the r185 glue stays its own arm). The
+ * byte-strict verify against libyaml's ORIGINAL
  * dump arbitrates: both engines must read the rewrite exactly as
  * libyaml read the original, or the claim declines. */
 static int yd_r183_flow_seq_question_divergence(const uint8_t* data, size_t size, const char* ydump,
@@ -1294,7 +1299,21 @@ static int yd_r183_flow_seq_question_divergence(const uint8_t* data, size_t size
                 f != '`' && f != '?') {
                 /* the run itself must be same-line plain-safe, ended by
                  * ',' / ']' / EOF: a break, a quote, or any indicator
-                 * inside declines the whole hit */
+                 * inside declines the whole hit. The GLUED '#' is the one
+                 * exception (the r206 nightly, run 42498570153, crash-
+                 * df52ab9fc21e989fc250fe4592c46bc982c9570d, main 7d5483e:
+                 * "[11n<CR><PS> 7.tag<CR> ,?d#  m,]"): '#' mid-plain after
+                 * a non-blank is CONTENT in both engines (the HM87 law --
+                 * libyaml's scan_plain comment check only fires at a blank
+                 * boundary after whitespace/breaks), so the r185 glue is
+                 * not in play and the spell stays reproducible: the
+                 * rewrite "{run: }" renders the same glued '#' as the
+                 * explicit pair's key, and the r183 LS/PS fallback owns
+                 * the artifact's CR+PS double-break head (yeptris spells
+                 * the empty line's LF, libyaml keeps the raw PS). A '#'
+                 * after a blank, or byte-glued to an exotic break's tail
+                 * (NEL C2 85, LS/PS E2 80 A8/A9 continuations), IS the
+                 * comment boundary -- decline to the other arms. */
                 size_t j = i + 1;
                 int clean = 1;
                 while (j < size) {
@@ -1302,8 +1321,18 @@ static int yd_r183_flow_seq_question_divergence(const uint8_t* data, size_t size
                     if (d == ',' || d == ']') {
                         break;
                     }
+                    if (d == '#') {
+                        unsigned char p = data[j - 1];
+                        if (p != ' ' && p != '\t' && p != '\n' && p != '\r' && p != 0xA8 &&
+                            p != 0xA9 && p != 0x85) {
+                            j++;
+                            continue;
+                        }
+                        clean = 0;
+                        break;
+                    }
                     if (d == '}' || d == '\n' || d == '\r' || d == '[' || d == '{' || d == '"' ||
-                        d == '\'' || d == '\\' || d == ':' || d == '?' || d == '#') {
+                        d == '\'' || d == '\\' || d == ':' || d == '?') {
                         clean = 0;
                         break;
                     }
