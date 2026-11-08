@@ -3207,6 +3207,38 @@ if(YEPTRIS_LIBYAML_ROOT)
         COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip
     )
 
+    # the r202 round (run 42472937638, main 4a16549, crash-
+    # ac0d873dc7a4d5aa5fb2ef1a0c7bf745b208fb8e): a FRESH find, not an
+    # r201 regression (A/B: the 23-byte artifact aborts on BOTH the
+    # pre-r201-fix 0b67393 build and the post-fix main build -- the r201
+    # engine fix touched only the emit root-sentinel path), fired on
+    # SEED-CORPUS replay at MS: 0 in fuzz_diff. The caught shape is the
+    # block-NEL family's LS CARRIER: a literal block scalar whose
+    # content carries raw U+2028 with NO NEL byte ("|\n \n \n<LS>\n \n
+    # \n<LS>\n\n - m" -- yeptris spells "\n\n\n\n\n\n\n\n\n- m\n",
+    # libyaml keeps "\n\n<LS>\n\n\n<LS>\n\n- m"), so the family gate's
+    # NEL-only scan declined before the walk could speak. Comparator
+    # carry in yd_block_nel_content_divergence: the gate now also
+    # admits the raw LS/PS triple -- the deltas are the family's own
+    # documented law (the r197 raw-keep tolerance in yd_block_nel_walk
+    # consumes each yeptris-spelled-\n vs libyaml-raw-triple window
+    # byte-wise wherever it sits; the r176 transform owns the breakless
+    # trailing break), and the walk stays byte-bound with subs > 0, so
+    # an admitted input can only ride on the documented deltas. Both
+    # readings are spec-permitted (1.2 productions b-break vs
+    # b-as-space). Minimality: the UNCONSTRAINED greedy deletion
+    # minimizer drifts to the 1-byte "|" split-family twin (the
+    # r186-r201 drift law again); the family-constrained rerun (require
+    # the raw-LS-VAL signature) pins the 11-byte "|\n<LS>\n<LS> m";
+    # the pinned seed is the TRUE 23-byte artifact. 60-mutant paired
+    # battery: 6 aborts post-fix, 0 regressions (all 6 abort
+    # identically on the pre-fix build).
+    add_test(
+        NAME fuzz-diff-r202-block-ls-literal-rawkeep
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ls-literal-rawkeep-r202.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
