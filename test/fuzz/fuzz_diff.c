@@ -1182,6 +1182,43 @@ static int yd_qflow_question_colon_divergence(const uint8_t* data, size_t size, 
              * the same pair in the style-blind dumps (the KEY event's
              * style never rides the YD event), and both engines accept
              * '""' at a value position. */
+            /* the r207 refinement (run 42503100451, crash-f810355b):
+             * when the follower is a blank/break GAP up to the entry's
+             * OWN ':' separator ("?\t:", the artifact's "{\n?\t
+             * \n\t\t \t\t: ,?:-,?*M,}"), the '?'-led pair already
+             * carries its separator — spelling '""' ':' would DOUBLE
+             * it (a stray ':' the rewritten entry can never absorb,
+             * both engines reject, the verify dies before the glued
+             * hits are even read). Both engines read that explicit-key
+             * pair identically (libyaml's KEY token, yeptris's flow-?
+             * carve), so the pair rides VERBATIM — no spell at all.
+             * A blank-gapped '?' whose gap ends at anything else keeps
+             * the r85 '""' ':' spell. */
+            {
+                size_t k = i + 1;
+                while (k < size) {
+                    unsigned char g = data[k];
+                    if (g == ' ' || g == '\t' || g == '\n' || g == '\r') {
+                        k++;
+                        continue;
+                    }
+                    if (g == 0xC2 && k + 1 < size && data[k + 1] == 0x85) {
+                        k += 2; /* NEL */
+                        continue;
+                    }
+                    if (g == 0xE2 && k + 2 < size && data[k + 1] == 0x80 &&
+                        (data[k + 2] == 0xA8 || data[k + 2] == 0xA9)) {
+                        k += 3; /* LS/PS */
+                        continue;
+                    }
+                    break;
+                }
+                if (k < size && data[k] == ':') {
+                    sub[subn++] = (char)c;
+                    i++;
+                    continue;
+                }
+            }
             sub[subn++] = '"';
             sub[subn++] = '"';
             sub[subn++] = ':';
