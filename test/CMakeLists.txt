@@ -3279,6 +3279,37 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-multiline-lsps-r203.bin
     )
 
+    # the r206 round (run 42498570153, main 7d5483e, crash-
+    # df52ab9fc21e989fc250fe4592c46bc982c9570d): a FRESH finding (the
+    # A/B against the parent b23d553 aborts on BOTH builds -- the r205
+    # aligned-triple arm is innocent). The 25-byte
+    # "[11n<CR><PS> 7.tag<CR> ,?d#  m,]" composes two adjudicated
+    # deltas: the flow-SEQ '?' KEY-token law reads "?d#  m" as an
+    # explicit key {d#  m: <empty>} (libyaml's 1.1 quirk) while
+    # yeptris's suite-pinned plain-'?' law keeps "?d#  m" ONE plain
+    # member (the HM87 law -- the '#' glued after 'd' is mid-plain
+    # content, not a comment boundary), AND the head plain's CR+PS
+    # double break renders as yeptris's spelled-LF empty line vs
+    # libyaml's raw kept PS (the LS/PS non-fold quirk -- libyaml's
+    # fold law only folds leading '\n' breaks). Comparator carry in
+    # yd_r183_flow_seq_question_divergence: the run scanner admits a
+    # GLUED '#' (the preceding byte is a non-blank, non-break tail --
+    # content in both engines, so the "{run: }" spell keeps the pair
+    # reproducible) while a '# after a blank or byte-glued to an
+    # exotic-break tail (NEL C2 85, LS/PS E2 80 A8/A9 continuations)
+    # stays the comment boundary and declines (the r185 glue is its
+    # own arm); the r183 LS/PS fallback owns the head's raw-PS delta.
+    # Minimality: greedy deletion pins the 11-byte "[n<PS>g,?d#]"
+    # WITH both deltas alive (yeptris's lone-PS fold space vs
+    # libyaml's raw PS, byte-checked); the pinned seed is the TRUE
+    # 25-byte artifact. 101-mutant paired battery: 48 gained (the
+    # family's own mutants), 35 carried both-abort, 0 regressions.
+    add_test(
+        NAME fuzz-diff-r206-flow-question-glued-hash
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-question-glued-hash-r206.bin
+    )
+
     # the r205 round (run 42492751265, main a0f2ff6, crash-
     # 4d4e23c665b950d0d9b238595533be47073fe111): the block-NEL family's
     # ALIGNED-LS/PS-TRIPLE INDENT SURPLUS. The artifact
