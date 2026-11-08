@@ -5073,10 +5073,21 @@ static int yd_plain_nel_lsps_fold_divergence(const uint8_t* data, size_t size, c
  * remainders past the scalar) owns the whole relation. Fires only
  * after the walk declined the original dumps and only on a breakless
  * final byte (the clip arm's own precondition), so every existing
- * member keeps riding its branch unchanged; the LS/PS twins of the
- * same composition stay with the r158 arm, whose data gate owns the
- * triple (the r171 law made the normalization uniform, but the
- * families keep their own walks). */
+ * member keeps riding its branch unchanged. The r197 nightly adds the
+ * LS/PS raw-keep tolerance to the walk itself (crash-03377781, run
+ * 42453001309, main b2fdddd; 10-byte min "> CR PS SP NEL SP t"): the
+ * NEL run rode WITH a leading PS-only line, and the walk's byte-bound
+ * main loop died on the #638 delta BEFORE ever reaching the run --
+ * yeptris spells the PS break it normalized to LF while libyaml's
+ * block reader keeps the raw triple (scanner.c READ_LINE's
+ * LS|PS->LS|PS branch). That composition cannot ride the r158 arm
+ * (yd_lsps_breakless_clip_divergence): its lsps-walk owns the
+ * yeptris-SPELLED-vs-libyaml-RAW polarity but has no arm for the NEL
+ * polarity (yeptris keeps the raw NEL as 1.2 content where libyaml's
+ * break is the spelled \n). The tolerance is the family's own law
+ * byte-wise: yeptris's spelled \n is libyaml's raw LS/PS triple --
+ * a 2-vs-3-byte window that fires only on the documented delta, so
+ * the claim stays bounded. */
 static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
@@ -5189,6 +5200,22 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
             return 0;
         }
         if (*a != *b) {
+            /* the r197 LS/PS raw-keep tolerance: yeptris spells the
+             * break it normalized to LF while libyaml's block reader
+             * kept the raw triple (READ_LINE's LS|PS->LS|PS branch) --
+             * the delta fires byte-wise and can sit BEFORE the NEL run
+             * is ever reached (the r197 nightly's leading PS-only
+             * line), and the r158 arm cannot own the composition (its
+             * walk lacks the NEL polarity). A 2-vs-3-byte window that
+             * fires only on the documented delta. */
+            if (a[0] == '\\' && a[1] == 'n' && (unsigned char)b[0] == 0xE2 &&
+                (unsigned char)b[1] == 0x80 &&
+                ((unsigned char)b[2] == 0xA8 || (unsigned char)b[2] == 0xA9)) {
+                a += 2;
+                b += 3;
+                subs++;
+                continue;
+            }
             return 0;
         }
         a++;
