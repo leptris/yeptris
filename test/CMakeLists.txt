@@ -3079,6 +3079,35 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-lsps-r197.bin
     )
 
+    # the r198 round (run 42456705754, main 8ef3eb6, crash-
+    # 5f49897536e3c39c7d21b03a3e61e07f628de64d): a FRESH find, not an
+    # r197 regression (A/B: the 10-byte artifact "&a::<LF><SP><SP>*a:"
+    # aborts on BOTH the pre-fix b2fdddd build and the post-fix main
+    # build -- the r197 block-NEL LS/PS raw-keep delta never touches
+    # this plain-LF input). The caught shape is the r157/r170/r174/
+    # r182/r192 ROOT-ALIAS COLLAPSE's breakless member (r182's seed
+    # with the trailing break deleted -- the member r182's family list
+    # names), fired on SEED-CORPUS replay at MS: 0. yeptris's
+    # suite-pinned riding laws (2SXE: "&a: key" anchors "a:" and "*a:"
+    # names "a:"; W5VH keeps colons inside names) read line 1 as a
+    # props-only anchor declaration whose name rides both colons, the
+    # anchor PENDS, and line 2's colon-riding alias collapses the
+    # document to ONE root alias (3 dump lines); libyaml's 1.1 IS_ALPHA
+    # cut re-lexes the residual "::" as plain ":" + value token (the
+    # anchored key of a root map) and line 2's cut alias + EOL colon
+    # opens a nested map (alias key, empty value) -- the 9-event form.
+    # The carry rides the EXACT-BYTES gray claim
+    # (yd_r198_root_alias_breakless_gray), the r151/r170
+    # deletion-sibling precedent. Minimality: prefixes 0-3 agree raw;
+    # 4-6 ride the head-only "&a::" charset-split transform, prefix 8
+    # is the BOTH-ERROR alias-only member, prefix 9 rides the same
+    # transform; 50-mutant paired battery -- 0 regressions.
+    add_test(
+        NAME fuzz-diff-r198-root-alias-breakless
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-breakless-r198.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
