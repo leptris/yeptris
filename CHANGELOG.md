@@ -14,6 +14,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **perf: the fused walk re-enters chained same-column pendings** — the
+  95b4dc3 correctness bail ("chained same-column pendings keep the
+  tree") dropped the ENTIRE fused route on every chained pending, and
+  the deep-nesting bench shape is exactly a chained pending per level:
+  DOM fell 1066 → 480 MB/s (2.2x) when it shipped in 0.6.33. The
+  genuinely-unsafe sub-case was only the SAME-COLUMN resolution — the
+  OPEN'd container swallowed the sibling key as its first pair's value
+  because the pending's null pair never landed. The walk now resolves
+  the outer pending in place: the OPEN/SCALAR form decision is
+  unchanged, a same-column sibling emits the null pair immediately
+  (inside the opened container under the OPEN form, completing the
+  key's pair in the parent's map under the key-SCALAR form), a deeper
+  line opens the pending's container and the chain nests, and anchored
+  pendings keep the bail (their anchor rides the event path —
+  `yt_f_open` drops the name). Same-box interleaved bench_matrix
+  medians (M1 Max NEON): deep-nesting DOM 478 → 1071 MB/s (2.24x, back
+  in the pre-bail ~3.2x-vs-ryml class), tape lane 447 → 968 MB/s;
+  block-heavy/flow-single/wide-mapping/scalar-heavy/json-doc/
+  json-users/anchor-heavy all flat (±1.3%). Gates: the 95b4dc3
+  regression pins stay green, the new `ChainedPendingFamilyRidesTheFusedWalk`
+  route+tree parity pin (the route assertion is load-bearing — output
+  parity cannot see a route-identity break), 39-input + 60k-input
+  randomized eager-vs-lazy route differentials (0 splits), 3 new
+  corpus seeds, 785/785 ctest, `leaks --atExit` clean.
 - **serialize_json spells the resolved VALUE (#937)** — the JSON writer printed scalars from the DOM's tag_id + source text, but the DOM stores no decoded value, so legal inputs emitted invalid JSON or wrong values: core `0x1F`/`0o7` rode their raw radix prefixes (invalid JSON), `.inf`/`.nan` rode raw (invalid JSON), and compat's 1/3/2-char true-words (`y`/`yes`/`on`, any case) all decoded `false` because the BOOL arm guessed the value from the text LENGTH. Scalar decode now lives in SSOT tables the DOM route and the writer share (`yep_tag_bool_value`'s case-insensitive y/yes/true/on vs n/no/false/off table and `yep_tag_int64`'s separators/sexagesimal/radix walk in resolve/tags.c — compat11 rides the same bool table), and the emitter carries the document's resolver so int spelling stays family-correct (leading-0 octal in compat, decimal in core; `0o` core-only, `0b` compat-only) with FLOAT words quoted in JSON mode. The 31-row typed-value JSON-validity pin plus the canonical-YAML spelling pin (the YAML face's bytes unchanged) ride the emit tests.
 
 - **the break normalizer's phantom verbatim closes at plain continuations (#951/#952, nightly r133)** — `tok_start`, armed after every folded multi-byte break (NEL/LS/PS) with no memory of the before-break byte, let a plain scalar CONTINUATION line whose content begins with `!<` open a PHANTOM verbatim tag: everything until the next `>` rode raw (un-normalized NELs), and the plain fold emitted raw lead-stripped `0x85` bytes into the scalar value where libyaml folds the same input to newlines. The verbatim open now keys on `yep_norm_ctx.bb` — the byte immediately before the last folded break (indicator-armed token positions clear it): the r133 continuation's `!<` is content, while the legal props form (`key:` + break + `!<t> x`) opens unchanged and quotes at line starts keep their arming. The 47-byte artifact and 8-byte minimal ride as corpus seeds + ctest pins; a 14-probe matrix, byte-identical corpus failure sets, and the full ctest battery verified the fix.

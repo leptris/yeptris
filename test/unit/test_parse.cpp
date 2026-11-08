@@ -14,6 +14,8 @@
 
 #include "common/chartype.h"
 #include "common/simd_text.h"
+#include "doc.h"
+#include "dom/ytape.h"
 #include "parse/engine.h"
 #include "scan/scan.h"
 #include "tape_in.h"
@@ -727,6 +729,77 @@ TEST(Parse, IndentedSeqOwnsItsColumn) {
         free(s1);
         yeptris_document_free(doc);
     }
+}
+
+TEST(Parse, ChainedPendingFamilyRidesTheFusedWalk) {
+    /* The 95b4dc3 bail ("chained same-column pendings keep the tree")
+     * dropped the ENTIRE fused route on every chained pending — the
+     * deep-nesting shape (the bench's gen_deep ladder is a chained
+     * pending per level) fell from ~1066 to ~480 MB/s DOM. The
+     * genuinely-unsafe sub-case was only the SAME-COLUMN resolution:
+     * the OPEN'd container then swallows the sibling key as its first
+     * pair's value (the null pair was missing). Deeper chains nest
+     * correctly; anchored pendings keep the bail (yt_f_open drops the
+     * anchor name). This test pins BOTH the route (the ledger's law:
+     * output parity cannot see a route-identity break — the runner
+     * must OWN these) and the tree parity against the engine route. */
+    const char* rides[] = {
+        /* the deep-nesting bench ladder's cell */
+        "  l0:\n    l1:\n      l2:\n        leaf: w\n",
+        "a:\n  b:\n    c:\n      d: v\n",
+        /* the original bug shape and its family */
+        "a:\na:\n  b: c\nh: v\n",
+        "a:\na:\nb: v\n",
+        "a:\na:\na:\nb: v\n",
+        "x:\n  k:\n  j:\n    v: 1\n",
+        "a:\n  b:\n  c:\n  d: v\n  e: w\n",
+        "a:\nb:\na: v\n",
+        " k:\n j:\n k: v\n",
+    };
+    for (const char* y : rides) {
+        /* route: the fused runner must own the whole document */
+        yep_ytape t;
+        ASSERT_EQ(ytap_init(&t, y, strlen(y), 0), 0) << y;
+        int owned = ytap_fused_run(&t, NULL);
+        ytap_free(&t);
+        ASSERT_EQ(owned, 0) << y;
+        /* tree parity: the lazy (fused-owned) route vs the engine */
+        YeptrisStatus se = YEPTRIS_OK, sl = YEPTRIS_OK;
+        YeptrisDocument e = yeptris_parse_eager_ex(y, strlen(y), NULL, &se);
+        YeptrisDocument l = yeptris_parse_ytape_ex(y, strlen(y), NULL, &sl);
+        ASSERT_NE(e, nullptr) << y;
+        ASSERT_NE(l, nullptr) << y;
+        YeptrisNode re = yeptris_document_root(e, 0), rl = yeptris_document_root(l, 0);
+        ASSERT_EQ(yeptris_node_kind(re), yeptris_node_kind(rl)) << y;
+        if (yeptris_node_kind(re) == YEPTRIS_NODE_MAPPING) {
+            ASSERT_EQ(yeptris_node_map_count(re), yeptris_node_map_count(rl)) << y;
+        }
+        /* the bug shape's exact tree: {a: null, a: {b: c}, h: v} */
+        if (strcmp(y, "a:\na:\n  b: c\nh: v\n") == 0) {
+            ASSERT_EQ(yeptris_node_map_count(rl), 3u) << y;
+            YeptrisNode k0 = NULL, v0 = NULL, k1 = NULL, v1 = NULL;
+            ASSERT_EQ(yeptris_node_map_at(rl, 0, &k0, &v0), 0);
+            ASSERT_EQ(yeptris_node_map_at(rl, 1, &k1, &v1), 0);
+            EXPECT_EQ(val(k0), "a");
+            ASSERT_NE(v0, nullptr);
+            EXPECT_EQ(yeptris_node_kind(v0), YEPTRIS_NODE_SCALAR);
+            EXPECT_EQ(val(v0), "") << "the first pending resolves to null";
+            EXPECT_EQ(val(k1), "a");
+            ASSERT_NE(v1, nullptr);
+            EXPECT_EQ(yeptris_node_kind(v1), YEPTRIS_NODE_MAPPING);
+            EXPECT_EQ(yeptris_node_map_count(v1), 1u);
+        }
+        yeptris_document_free(e);
+        yeptris_document_free(l);
+    }
+    /* anchored pendings keep the engine (the anchor rides the event
+     * path; the runner's OPEN/SCALAR forms would drop the name) */
+    const char* anchored = "5:\n &5\n 5: e";
+    yep_ytape t;
+    ASSERT_EQ(ytap_init(&t, anchored, strlen(anchored), 0), 0);
+    int owned = ytap_fused_run(&t, NULL);
+    ytap_free(&t);
+    EXPECT_NE(owned, 0) << anchored;
 }
 
 TEST(Parse, PendingSeqResolutionTracksContentColumn) {
