@@ -1673,6 +1673,24 @@ static int yt_f_run(yt_fused* F) {
                             return 1;
                         }
                         uint8_t of = yt_f_open_form(&st[depth - 1], depth == 1, st[depth].indent);
+                        if (aid != 0 && of == 0) {
+                            /* the outer pending resolved as a SIBLING
+                             * key-SCALAR: its value container is "the pair's",
+                             * materialized by the next OPEN-class record — but
+                             * the anchored pending resolves through the event
+                             * path, which emits its KEY SCALAR *before* the
+                             * anchored MAP_START. That key pairs with the
+                             * stranded outer key (the pair's value slot) and
+                             * the anchored map strands as a sibling key of the
+                             * parent: "2: e\n4:\n  5: &5\n    5: e\n7: s"
+                             * built {2:e, 4:"5", {5:e}&5:"7", s:null} instead
+                             * of {2:e, 4:{5:{5:e}&5}, 7:s} (the nightly's
+                             * crash-d8e3b3f392c37a62257576ce20d5a19b351f66ad,
+                             * round 213 — the first shape where a completed
+                             * pair arms root_pair_col BEFORE the chain). The
+                             * engine resolves the composition. */
+                            return 1;
+                        }
                         yt_f_open(F, &st[depth], of);
                         root_open = 1;
                         if (col == st[depth].indent) {
