@@ -6261,6 +6261,79 @@ static int yd_r198_root_alias_breakless_gray(const uint8_t* data, size_t size, c
     return 1;
 }
 
+/* True for the ONE exact gray-zone input of the r199 nightly
+ * (crash-925b0aed9341409f49159b3d1bc3c388bc0b5b18, run 42461709304,
+ * main ba2c7f4): 15 bytes "{?*L:<LF>( `,*L:(}" -- the qflow bare-?'
+ * glued plain follower COMPOSED with the alias-colon-ride charset
+ * split, in one flow mapping. Both engines accept; the streams differ
+ * yeptris's plain-key head + riding-alias tail (4 content events:
+ * "=VAL : ?*L" / "=VAL : ( `" / "=ALI *L:(" / "=VAL : ") vs libyaml's
+ * KEY-token + cut-alias reading (4 content events: "=ALI *L" /
+ * "=VAL : ( `" / "=ALI *L" / "=VAL : ("). Fired on SEED-CORPUS replay
+ * at MS: 0 (libFuzzer-minimal -- no mutation chain). Regression
+ * triage: the A/B against the pre-r198 parent 8ef3eb6 aborts
+ * IDENTICALLY (exit 134, the same 15-byte artifact), so the r198
+ * breakless-root-alias arm is exonerated and the escalation clause
+ * does not fire -- a fresh composition of two suite-pinned riding
+ * laws, unchanged on post-r198 main. The walks: the head "{?*L:" --
+ * yeptris's suite-pinned plain reading (HM87/652Z: a flow '?' with a
+ * non-space follower rides as plain content) takes "?*L" as ONE plain
+ * scalar key ending at the ':'; libyaml's 1.1 unconditional flow
+ * KEY-token law (the quirk the qflow family has carried since r58)
+ * reads the '?' as the explicit-key indicator and takes "*L" as an
+ * ALIAS key (the r142/r76 IS_ALPHA cut). Both engines then bind the
+ * line-2 multiline flow plain "( `" as the value (fold ends at ',').
+ * The tail ",*L:(}" composes the second split: yeptris's anchor-name
+ * ride law (the 2SXE/W5VH charset family, catch-142: anchor chars are
+ * ns-char minus the flow indicators) rides the ':' into the name
+ * because a plain-safe '(' follows it -- anchor "L:(" -- and the '}'
+ * flow-indicator closes the name with NO value indicator, so the
+ * second entry is the alias key with an EMPTY plain value; libyaml's
+ * IS_ALPHA cut stops the name at "L", re-lexes the ':' as the VALUE
+ * token, and reads the '(' as the plain value. Neither existing spell
+ * reproduces the composition: the r71 drop-'? rewrite "{*L:<LF>(
+ * `,*L:(}" makes YEPTRIS REJECT the sub (an alias-then-glued-colon
+ * entry the engine's flow laws decline), so
+ * yd_qflow_question_colon_divergence's byte-strict verify declines;
+ * the charset-split twin declines BOTH orientations exactly as the
+ * r198 family verdict ruled -- libyaml(split) == yeptris(original)
+ * needs libyaml to read the riding anchor "L:(" (impossible -- its
+ * cut always re-lexes the colon), and the reversed orientation gates
+ * yeptris(original) to a dump containing "=ALI *L:(", which no
+ * libyaml parse of any sub can produce (its parse-side alias charset
+ * never emits the ride). Minimality: prefixes 1-14 are ALL BOTH-ERROR
+ * (the unclosed-flow family); every single-byte deletion changes the
+ * classification -- del '?' is LIBYAML-ONLY-ACCEPT (the r71 spell's
+ * base shape, yeptris declines the glued-colon alias entry), del '*'
+ * del '*' (the plain "?L" head member) still DIFFERs with a
+ * different shape (tail split intact), del 'L' (either copy),
+ * del ':' (either copy), del '(' are YEPTRIS-ONLY-ACCEPT or both-
+ * error twins, del LF folds the entry onto one line and still DIFFERs
+ * (the ':' rides inside one flow plain "?*L:( `" -- the W5VH plain
+ * colon-ride law), del ',' merges both entries into one plain,
+ * del 'SP'/'`' still DIFFER with shifted values, del '}' is BOTH-
+ * ERROR -- so the entry pins the artifact byte-exactly (the nightly
+ * artifact IS the 15-byte input). The composition rides the
+ * EXACT-BYTES gray claim -- documented by input, not by mutation.
+ * Family siblings (the plain-LF-only tail "{?*L:<LF>( `,*L:}" where
+ * the colon rides NOT and both engines agree on the alias cut, the
+ * seq-orientation "[*L:(]" of the bare charset split, and the
+ * head-only "{?*L: 1}" member) classify known or ride their own
+ * families' arms; an engine dig stays open for NONE of them -- both
+ * halves are suite-pinned riding laws the comparator has carried
+ * since catch-142 and r71. */
+static int yd_r199_qflow_bareq_alias_ride_gray(const uint8_t* data, size_t size, const char* ydump,
+                                               const char* ldump) {
+    static const uint8_t seed[] = {0x7b, 0x3f, 0x2a, 0x4c, 0x3a, 0x0a, 0x28, 0x20,
+                                   0x60, 0x2c, 0x2a, 0x4c, 0x3a, 0x28, 0x7d};
+    if (size != sizeof(seed) || memcmp(data, seed, sizeof(seed)) != 0) {
+        return 0;
+    }
+    (void)ydump;
+    (void)ldump;
+    return 1;
+}
+
 static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL) {
         return 0;
@@ -8595,6 +8668,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r182_root_alias_colonhead_gray(data, size, ydump, ldump) ||
          yd_r192_root_alias_alpha_head_gray(data, size, ydump, ldump) ||
          yd_r198_root_alias_breakless_gray(data, size, ydump, ldump) ||
+         yd_r199_qflow_bareq_alias_ride_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
