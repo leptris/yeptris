@@ -5526,7 +5526,21 @@ static int yd_plain_nel_lsps_fold_divergence(const uint8_t* data, size_t size, c
  * break is the spelled \n). The tolerance is the family's own law
  * byte-wise: yeptris's spelled \n is libyaml's raw LS/PS triple --
  * a 2-vs-3-byte window that fires only on the documented delta, so
- * the claim stays bounded. */
+ * the claim stays bounded.
+ * The r205 nightly adds the ALIGNED-triple indent surplus (crash
+ * 4d4e23c6, run 42492751265, main a0f2ff6; 34-byte min
+ * "> CR PS SP 70 PS SP 700:\\n  m NEL SP t0:\\n  m NEL SP t"): the
+ * mid-line LS/PS rode INSIDE a bs content line's wholesale token (the
+ * r194 ride), so BOTH dumps carry the raw triple at the same offset --
+ * and behind it yeptris's content line keeps the space libyaml's split
+ * ATE as the continuation's indentation (its break lands the next line
+ * at column 0, the breaks-scan strips to the content indent). The
+ * aligned branch (both dumps' raw triples coincide) skips both and
+ * then eats yeptris's SURPLUS spaces -- only while the dumps disagree
+ * (a space both carry stays byte-bound), capped at 64 (the block's
+ * indent column), so the claim cannot outrun the delta and an
+ * existing member's byte-bound alignment past an aligned triple is
+ * untouched. */
 static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
@@ -5535,6 +5549,27 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
     const char* b = ldump;
     int subs = 0;
     while (*a != '\0' || *b != '\0') {
+        if ((unsigned char)a[0] == 0xE2 && (unsigned char)a[1] == 0x80 &&
+            ((unsigned char)a[2] & 0xFE) == 0xA8 && (unsigned char)b[0] == 0xE2 &&
+            (unsigned char)b[1] == 0x80 && ((unsigned char)b[2] & 0xFE) == 0xA8) {
+            /* the r205 aligned-triple indent surplus: both dumps carry
+             * the raw LS/PS triple (libyaml's READ_LINE verbatim keep
+             * vs yeptris's bs wholesale ride); behind it yeptris's
+             * content line may keep the indent spaces libyaml's break
+             * ate. Eat only the SURPLUS (the dumps disagree) and cap
+             * it -- a space both dumps carry rides the byte-bound main
+             * loop unchanged. */
+            a += 3;
+            b += 3;
+            subs++;
+            int ate = 0;
+            while (ate < 64 && a[0] == ' ' && a[0] != b[0]) {
+                a++;
+                ate++;
+                subs++;
+            }
+            continue;
+        }
         if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85) {
             int k = 0;
             const char* p = a;

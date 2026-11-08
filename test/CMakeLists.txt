@@ -3279,6 +3279,42 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-multiline-lsps-r203.bin
     )
 
+    # the r205 round (run 42492751265, main a0f2ff6, crash-
+    # 4d4e23c665b950d0d9b238595533be47073fe111): the block-NEL family's
+    # ALIGNED-LS/PS-TRIPLE INDENT SURPLUS. The artifact
+    # "> #<11<CR><PS> 70<PS> 700:\\n  m<NEL> t0:\\n  m<NEL> t" reads as
+    # a folded block scalar whose content lines carry a MID-LINE PS and
+    # mid-line NELs. yeptris's pre-parse normalizer rides each bs
+    # content line WHOLESALE to its \\n (the r194 law), so the mid-line
+    # exotic breaks stay RAW CONTENT (kept_raw) and the engine's block
+    # reader keeps the continuation's leading space: value
+    # "\\n70<PS> 700:\\n m<NEL> t0:\\n m<NEL> t\\n". libyaml breaks the
+    # line AT every NEL/LS/PS (its IS_BREAK), READ_LINE keeps LS/PS
+    # verbatim and normalizes NEL to \\n, and each split eats the
+    # continuation's indent: value "<PS>70<PS>700:\\n m\\nt0:\\n m\\nt"
+    # (no trailing clip break at the breakless EOF). Three adjudicated
+    # deltas compose: the r197 spelled-\\n-vs-raw-triple head (the
+    # PS-only line), the NEW aligned-triple indent surplus (both dumps
+    # carry the raw PS at the same offset; yeptris keeps the space
+    # libyaml ate as the continuation's indentation), and the r140
+    # breakless clip tail via the existing r176 composed transform.
+    # Comparator carry in yd_block_nel_walk_mult: the aligned branch
+    # (both dumps' raw triples coincide) skips both triples and eats
+    # yeptris's SURPLUS spaces -- only while the dumps disagree, capped
+    # at 64 (the block's indent column) -- so a space both dumps carry
+    # stays byte-bound and the claim cannot outrun the delta. The
+    # A/B against the parent a3f9b1e aborts on BOTH builds (fresh
+    # finding; the r204 engine fix is innocent). Minimality: greedy
+    # deletion pins the 34-byte ">\\r<PS> 70<PS> 700:\\n  m<NEL>
+    # t0:\\n  m<NEL> t" with the byte-identical dump pair; the pinned
+    # seed is the TRUE 39-byte artifact. 52-mutant paired battery:
+    # 30 carried, 22 gained (the family's own mutants), 0 regressions.
+    add_test(
+        NAME fuzz-diff-r205-block-nel-ps-aligned-indent
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-ps-aligned-indent-r205.bin
+    )
+
     # the r204 round (run 42488986434, main a3f9b1e, crash-
     # c9eef6e31fb6eac34b7e594e99bd1c3483bf8c25): a REGRESSION of the
     # ac088c0 perf slice (A/B: the 85-byte artifact aborts on the
