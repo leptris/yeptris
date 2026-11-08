@@ -3335,3 +3335,77 @@ remaining gap is the walk's per-token arms (the flat-sample block),
 not positioning or passes — item 07's premise (stage 1 + bit
 iteration reaches parity) is closed; the lever moves to item 06's
 codegen shape arms and the NEON string/number kernels.
+
+## 2026-11-08 — the deep-nesting bail narrowed: chained same-column pendings re-enter the fused walk (2.24x, restores the pre-95b4dc3 class)
+
+The 2026-11-08 bench verdict flagged deep-nesting at ~480 MB/s DOM, 2.2x
+under the ~1066 pre-95b4dc3 level. Root cause: 95b4dc3 (2026-10-11,
+"chained same-column pendings keep the tree", v0.6.33) bailed the ENTIRE
+fused route whenever a pending push met a live pending — and gen_deep's
+ladder is a chained pending per level, so every branch of the shape fell
+to the engine route on its second line. The bail was broader than the
+bug: the run 38110714729 corruption is specifically the SAME-COLUMN
+resolution ("a:\na:\n  b: c\nh: v" → {a: a, ?{b: c}: h} instead of
+{a: null, a: {b: c}, h: v}) — the OPEN'd container swallowed the sibling
+key as its first pair's value because the pending's NULL pair never
+landed. Deeper chains ("a:\n  b:\n    c:") resolved correctly pre-bail
+(the deep shape was byte-exact then); only the sibling case corrupts.
+
+THE FIX (src/yeptris/dom/ytape.c, the pending-push arm): resolve the
+outer pending in place before the sibling's frame takes the slot.
+- The OPEN-vs-SCALAR form decision is unchanged (yt_f_open_form).
+- col == the pending's indent (same column): the null pair (SCALAR
+  0x0904 + empty pool span) lands immediately after the resolution —
+  under the OPEN form it pairs INSIDE the opened container (the pair
+  (parent_key → {k: null}) the engine reads), under the key-SCALAR form
+  it completes the key's pair in the parent's map. Then the existing
+  spent-key-SCALAR slot-reuse keeps flat chains at a stable stack.
+- col > indent (deeper): the resolution opens the pending's container
+  and the chain nests — the pre-bail path the deep shape rode.
+- st[depth].aid != 0 (anchored pending): KEEP the bail — yt_f_open's
+  SCALAR branch drops the anchor name, aliases to it would diverge (the
+  anchored pendings resolve through the S2900 + anchored-start event
+  form, which this arm does not carry).
+
+MEASURED (M1 Max NEON, Release, interleaved base(origin main)/fix
+builds, --shape runs):
+
+| shape | base DOM | fix DOM | delta |
+|---|---|---|---|
+| deep-nesting | 464-483 | 1042-1080 | **2.24x** |
+| deep-nesting tape lane | 443-450 | 965-971 | 2.17x |
+| block-heavy | 445.8 | 447.9 | flat |
+| flow-single | 473.7 | 473.5 | flat |
+| wide-mapping | 698.7 | 700.0 | flat |
+| scalar-heavy | 1006.1 | 1007.8 | flat |
+| json-doc | 471.8 | 472.2 | flat |
+| json-users | 561.4 | 562.0 | flat |
+| anchor-heavy | 161.9 | 159.8 | -1.3% (run noise band) |
+
+deep-nesting is back in the pre-bail class (the ledger's nested-
+ownership entry measured 1078-1104 local DOM, 845.23 ubuntu = 3.22x
+ryml). json-doc (the perf-07 798 MB/s lenient lane's DOM twin) is flat
+base-vs-fix — the change touches only the block runner's pending arm;
+the flow/JSON routes never see it.
+
+ROUTE EVIDENCE (the ledger's law #3 — output parity cannot see a
+route-identity break): the gain itself is the ownership proof (the
+whole shape cannot speed up 2.24x on the engine route), and the new
+`Parse.ChainedPendingFamilyRidesTheFusedWalk` unit pin asserts
+ytap_fused_run == 0 (owned) on the family plus tree parity against the
+eager engine route. Correctness battery: the 95b4dc3 regression pins
+green; 39-input static route differential (statuses + full recursive
+DOM equality + serialize round-trip both routes) 0 fails; 60k-input
+randomized pending-grammar differential 0 route splits across 8953
+both-accepts (1864 verified fused-owned); 3 corpus seeds added
+(deep-ladder-chained-pendings, chained-pending-same-column-nested,
+chained-pending-triple-null-tail); 785/785 ctest; leaks --atExit clean
+on a bench run.
+
+RESIDUAL: the same-column OPEN-form chain ("x:\n  k:\n  j:"-shaped)
+grows the frame stack by one per chain element (own_map frames cannot
+reuse the slot) — bounded by the 256-frame guard, which bails to the
+engine; flat root chains reuse the slot and stay stable. Anchored
+same-column pendings still ride the engine (correct, slower — rare
+shape). The route-split invisibility law applies to any future edit
+here: assert the route, not just the bytes.
