@@ -2819,6 +2819,53 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-question-quoted-head-r191.bin
     )
 
+    # the r192 round (run 42430913685, main d86219b, crash-
+    # db5cae45b2bc0a9213226fab206c8a970e836f02): the 16-byte artifact
+    # "&al:o&a:o::\n*a:\n" is the r174 doubled-head root-alias collapse's
+    # ALPHA-HEAD sibling -- byte-identical to the r174 seed with an 'l'
+    # inserted after the head's 'a', a fresh finding (A/B: the r191
+    # parent 0fd2ff4 aborts identically, so the rode_head_quote widening
+    # is exonerated; the escalation clause does not fire, yeptris's
+    # reading is the suite-pinned riding law the family has carried
+    # since r157). yeptris reads line 1 "&al:o&a:o::" as a props-only
+    # anchor declaration whose name rides BOTH colon runs and the
+    # interior '&' to the break (the trailing "::" passes the
+    # riding-colon un-consume gate -- the follower scan crosses the
+    # break to '*', no flow/block-scalar opener), so the anchor PENDS;
+    # line 2 "*a:" names "a:", no value indicator ever opens a map, and
+    # the document collapses to ONE root alias event (3 dump lines).
+    # libyaml's IS_ALPHA cut reads TWO alpha chars ("al" -- r174's head
+    # cut at one, the head length being this member's whole delta), the
+    # residual ":o&a:o::" re-lexes as plain ":o&a:o:" with the final
+    # colon as the value token, so line 1 is the anchored KEY of a root
+    # map and line 2's alias "a" at column 0 is a second flat pair
+    # (alias key, empty plain value) -- the same 8-line map form. The
+    # fix is the exact-bytes gray arm yd_r192_root_alias_alpha_head_gray
+    # beside the r157/r170/r174/r182 family claims. Minimality:
+    # prefixes 0-13 agree, prefix 14 diverges, 15/16 identically (the
+    # trailing break not load-bearing); the 'l' deletion is the r174
+    # seed (its arm claims it); the '&'/break/'*' deletions agree; the
+    # two/three-alpha and alphanumeric heads, the head-only "&al::"
+    # member, the single-trailing-colon member, the indented twin, and
+    # the breakless twin diverge with the same skeleton -- each its own
+    # entry or an engine dig. Battery: artifact pre-fix exit 134 /
+    # post-fix exit 0; 55-mutant paired battery (20 seeded single-byte
+    # flips, 10 span deletions, 20 targeted head-length/colon/break/
+    # alias forms, plus the r157/r170/r174/r182 seeds and the artifact
+    # as controls) -- 0 regressions, 1 newly claimed (the artifact, the
+    # exact-bytes arm's exact delta), 46 both-abort unchanged, 8
+    # both-pass; corpus walk exit-0 pre/post on the six lf corpora,
+    # outputs identical modulo libFuzzer's volatile seed/rss lines
+    # (parse 310, feed 64, roundtrip 1, marshal 17, cbor 101, validate
+    # 5; ulimit -s 32768 for the 205KB nested-flow seed); fresh ctest
+    # -R fuzz-diff carries all 84 prior pins plus this one (85/85);
+    # leaks --atExit clean; clang-format 18 clean.
+    add_test(
+        NAME fuzz-diff-r192-root-alias-alpha-head
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-alpha-head-r192.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
