@@ -3137,6 +3137,47 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-bareq-alias-ride-r199.bin
     )
 
+    # the r200 round (run 42465797391, main 0b67393, crash-
+    # 1b6d4cbe2ac56ceb226c11139e339c6dadd369a8): a FRESH find, not an
+    # r199 regression (A/B: the 20-byte artifact
+    # "{?#??<TAB>?#??<TAB>*L=<LF>*L:(}" aborts on BOTH the pre-r199
+    # ba2c7f4 build and the post-fix main build -- the r199 arm's
+    # exact-bytes seed is the 15-byte "{?*L:<LF>( `,*L:(}" member, never
+    # this input), fired on SEED-CORPUS replay at MS: 0. The caught
+    # shape is the qflow glued-'#' comment-glue kill composed with the
+    # flow MULTI-LINE-PLAIN restart: libyaml's KEY-token law fires on
+    # the flow '?' and scan_to_next_token's unconditional '#' eat
+    # consumes the glued run to the LINE BREAK, so the next line's '*'
+    # is a NODE START re-lexed as an ALIAS KEY ("=ALI *L" + "=VAL : (")
+    # re-paired with the pending KEY, while yeptris's suite-pinned
+    # plain-first-'?' law (HM87/652Z) keeps the glued run ONE plain
+    # FOLDED across the break (no ':'/'/' boundary sits before it --
+    # the r196 input's trailing ':' is what made THAT member cut) and
+    # absorbs the spelling as mid-plain content ("=VAL : ?#??\t?#??\t*L=
+    # *L:(" + the implicit empty value). The carry rides the family
+    # walk's new ALIAS-RESTART-FOLD pair (yd_qgh_alias_restart_fold_pair,
+    # in yd_qflow_glued_hash_differ): byte-exact pins -- yeptris's plain
+    # ends exactly "*<N>:<S>" where N is libyaml's own alias name and S
+    # its own value, yeptris's next line is the exact empty val, the
+    # pre-alias prefix carries the glue fingerprint LOCALLY. The r163
+    # tail arm declines by construction (its member ENDS at the alias
+    # spelling), the r179/r196 cut pairs decline (yeptris carries no
+    # "=ALI" line of its own here). Minimality: the UNCONSTRAINED
+    # deletion minimizer drifts to the 4-byte "{??}" split-family twin
+    # (YEPTRIS-ONLY-ACCEPT, a different verdict class -- the r186-r199
+    # drift law again); the shape-constrained rerun pins the 9-byte
+    # "{?#<LF>*L:(}" where every single-byte deletion changes the
+    # classification (del '?' -> LIBYAML-ONLY-ACCEPT, del 'L'/del ':' ->
+    # YEPTRIS-ONLY-ACCEPT twins, the rest lose the DIFFER). 81-mutant
+    # paired battery: pre-fix 65 aborts, post-fix 33, 0 regressions
+    # (the 33 residue abort identically on both builds -- pre-existing
+    # family members outside this round's carry).
+    add_test(
+        NAME fuzz-diff-r200-qflow-alias-restart-fold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-alias-restart-fold-r200.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
