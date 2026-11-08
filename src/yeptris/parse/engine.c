@@ -1342,9 +1342,12 @@ static yep_view e_resolve_tag(yep_engine* e, yep_view tag) {
 /* Parses &anchor / !tag runs at the cursor into *anchor / *tag. A node
  * carries at most one of each (c-ns-properties): a second property of
  * the same kind is the suite's 4JVG error. Keeping the last one let a
- * mutated anchor run read differently from libyaml (catch 156). */
-static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
-    int have_anchor = 0, have_tag = 0;
+ * mutated anchor run read differently from libyaml (catch 156).
+ * *have_anchor / *have_tag carry that across CALLS — the flow node
+ * parse re-runs the scan when a property rides the next line, and the
+ * duplicate law must hold across the gap. */
+static void e_props_ex(yep_engine* e, yep_view* anchor, yep_view* tag, int* have_anchor,
+                       int* have_tag) {
     for (;;) {
         e_skip_inline_space(e);
         if (e->pos >= e->len) {
@@ -1352,11 +1355,11 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
         }
         unsigned char c = (unsigned char)e->p[e->pos];
         if (c == '&') {
-            if (have_anchor) {
+            if (*have_anchor) {
                 e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
                 return;
             }
-            have_anchor = 1;
+            *have_anchor = 1;
             size_t start = e->pos + 1;
             e->pos = yep_scan_prop_end(e->p, e->len, start);
             anchor->p = e->p + start;
@@ -1425,11 +1428,11 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
                 return;
             }
         } else if (c == '!') {
-            if (have_tag) {
+            if (*have_tag) {
                 e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
                 return;
             }
-            have_tag = 1;
+            *have_tag = 1;
             size_t start = e->pos;
             e->pos++;
             if (e->pos < e->len && e->p[e->pos] == '<') {
@@ -1475,6 +1478,13 @@ static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
             return;
         }
     }
+}
+
+/* The one-call form: fresh duplicate state (the block node parse
+ * consumes the whole run in a single scan). */
+static void e_props(yep_engine* e, yep_view* anchor, yep_view* tag) {
+    int have_anchor = 0, have_tag = 0;
+    e_props_ex(e, anchor, tag, &have_anchor, &have_tag);
 }
 
 /* ------------------------------------------------------------- aliases */
@@ -1738,7 +1748,8 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
     ev->line = e->line;
     ev->col = e_col(e, e->pos) + 1;
     yep_view anchor = {0}, tag = {0};
-    e_props(e, &anchor, &tag);
+    int have_anchor = 0, have_tag = 0;
+    e_props_ex(e, &anchor, &tag, &have_anchor, &have_tag);
     if (e->err.code != YEP_ERR_NONE) {
         return -1; /* e_props failed (empty anchor name, unresolved tag) */
     }
@@ -1765,6 +1776,38 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
         return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
     }
     c = (unsigned char)e->p[e->pos];
+    /* Properties may span line breaks in flow (libyaml scans the
+     * anchor/tag run across breaks: "&a\n!!t v" carries the tag with
+     * value v; "!t\n&a x" carries the anchor). The run above skips
+     * INLINE space only, so the cursor stopped at the break and the
+     * property byte led the plain branch instead — a plain scalar
+     * glued from tag/anchor bytes (the nightly's round 211,
+     * crash-925daa54, "&anchor\n !!312    3123]"). Re-lex the riding
+     * run with the have_* state threaded so a second property of one
+     * kind still errors (the 4JVG law). Each iteration consumes at
+     * least one byte or fails, so the loop is bounded. */
+    while (c == '&' || c == '!') {
+        e_props_ex(e, &anchor, &tag, &have_anchor, &have_tag);
+        if (e->err.code != YEP_ERR_NONE) {
+            return -1;
+        }
+        if (!yep_view_is_empty(anchor) && (memchr(anchor.p, '"', anchor.len) != NULL ||
+                                           memchr(anchor.p, '\'', anchor.len) != NULL)) {
+            return (int)e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
+        ev->anchor = anchor;
+        ev->tag = tag;
+        if (!yep_view_is_empty(anchor)) {
+            ev->anchor_id = anchor_define(e, anchor);
+        }
+        if (e_flow_ws(e) != 0) {
+            return -1;
+        }
+        if (e->pos >= e->len) {
+            return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+        }
+        c = (unsigned char)e->p[e->pos];
+    }
     if ((c == ',' || c == ']' || c == '}' || c == ':') &&
         (!yep_view_is_empty(anchor) || !yep_view_is_empty(tag))) {
         ev->implicit = 1; /* properties with no node: a tagged null */
