@@ -1709,6 +1709,92 @@ TEST(Parse, AliasMemoResetPerDocument) {
     yeptris_document_free(doc2);
 }
 
+/* The repeat-alias memo must not serve a stale ordinal across a
+ * same-document redefinition: anchor_define's table law is last
+ * definition wins, so an alias written after a second '&x' binds the
+ * NEW node (and re-checks its placement). The 1-slot memo kept doc
+ * 1's ordinal and 'd' silently re-bound 'a' instead of 'c'. */
+TEST(Parse, AliasAfterRedefinitionBindsLastDefinition) {
+    const char* y = "a: &x 1\nb: *x\nc: &x 2\nd: *x\n";
+    YeptrisStatus st;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    YeptrisNode b = yeptris_node_map_get(root, "b", 1);
+    ASSERT_NE(b, nullptr);
+    ASSERT_EQ(yeptris_node_kind(b), YEPTRIS_NODE_ALIAS) << y;
+    EXPECT_EQ(val(yeptris_node_alias_target(b)), "1") << y;
+    YeptrisNode d = yeptris_node_map_get(root, "d", 1);
+    ASSERT_NE(d, nullptr);
+    ASSERT_EQ(yeptris_node_kind(d), YEPTRIS_NODE_ALIAS) << y;
+    EXPECT_EQ(val(yeptris_node_alias_target(d)), "2") << y;
+    yeptris_document_free(doc);
+}
+
+/* The repeat-alias memo must keep an alternating corpus exact WITHOUT
+ * mixing lanes: the merge key's '*base' rides between fresh '*xN'
+ * aliases (the anchor-heavy shape), and every lane's binding stays
+ * exact — memo policy changes (a second slot, LRU reshuffles) may
+ * never alter which node an alias binds. */
+TEST(Parse, AliasMemoSurvivesAnchorAlternation) {
+    const char* y = "base: &def0\n"
+                    "  a: 1\n"
+                    "i0:\n"
+                    "  <<: *def0\n"
+                    "  x: &x0 ten\n"
+                    "  y: *x0\n"
+                    "i1:\n"
+                    "  <<: *def0\n"
+                    "  x: &x1 twenty\n"
+                    "  y: *x1\n"
+                    "i2:\n"
+                    "  <<: *def0\n";
+    YeptrisStatus st;
+    YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+    ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+    YeptrisNode root = yeptris_document_root(doc, 0);
+    ASSERT_NE(root, nullptr);
+    struct Expect {
+        const char* key;
+        const char* target;
+    };
+    const Expect cases[] = {
+        {"y", "ten"},    /* i0's *x0 */
+        {"y", "twenty"}, /* i1's *x1 */
+    };
+    for (int i = 0; i < 2; i++) {
+        std::string iname = "i" + std::to_string(i);
+        YeptrisNode item = yeptris_node_map_get(root, iname.c_str(), iname.size());
+        ASSERT_NE(item, nullptr) << iname;
+        YeptrisNode yv = yeptris_node_map_get(item, "y", 1);
+        ASSERT_NE(yv, nullptr) << iname;
+        ASSERT_EQ(yeptris_node_kind(yv), YEPTRIS_NODE_ALIAS) << iname;
+        EXPECT_EQ(val(yeptris_node_alias_target(yv)), cases[i].target) << iname;
+        /* the merge key still rides the stable slot: same 'def0' node */
+        YeptrisNode mk = yeptris_node_map_get(item, "<<", 2);
+        ASSERT_NE(mk, nullptr) << iname;
+        ASSERT_EQ(yeptris_node_kind(mk), YEPTRIS_NODE_ALIAS) << iname;
+        YeptrisNode bt = yeptris_node_alias_target(mk);
+        ASSERT_NE(bt, nullptr) << iname;
+        size_t alen = 0;
+        const char* an = yeptris_node_anchor(bt, &alen);
+        ASSERT_NE(an, nullptr) << iname;
+        EXPECT_EQ(std::string(an, alen), "def0") << iname;
+    }
+    /* the trailing '*def0' answers from the memo after two fresh lanes */
+    YeptrisNode i2 = yeptris_node_map_get(root, "i2", 2);
+    ASSERT_NE(i2, nullptr);
+    YeptrisNode mk = yeptris_node_map_get(i2, "<<", 2);
+    ASSERT_NE(mk, nullptr);
+    ASSERT_EQ(yeptris_node_kind(mk), YEPTRIS_NODE_ALIAS);
+    size_t alen = 0;
+    const char* an = yeptris_node_anchor(yeptris_node_alias_target(mk), &alen);
+    ASSERT_NE(an, nullptr);
+    EXPECT_EQ(std::string(an, alen), "def0");
+    yeptris_document_free(doc);
+}
+
 /* ---- the document-boundary law (issue #900) -------------------------- */
 
 namespace {
