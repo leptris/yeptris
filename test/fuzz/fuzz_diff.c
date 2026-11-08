@@ -2732,6 +2732,83 @@ static int yd_qgh_alias_cut_pair(const char* y, size_t yl, const char* l, size_t
     return 1;
 }
 
+/* The ALIAS-CHARSET-CUT pair, VALUE orientation (r196, run 42449356146,
+ * main 6ccf3db, crash-f9837513619c855054f72e49dd4bc75b744bd3ba): the
+ * r179 helper's cut pins with the OTHER pairing. The r179 shape ended
+ * its member at the extended alias (the value eaten empty, yeptris's
+ * next line the bare "=VAL : "); here the extended alias is the member's
+ * own VALUE -- the KEY was the glued-'?' plain the r125 skip stepped
+ * over -- so NOTHING follows it on yeptris's side but the flow CLOSER,
+ * while libyaml's next line is "=VAL : " plus the exact eaten suffix
+ * (the cut freed it for a plain) and its NEXT line is that same closer.
+ * "{?#??\t*L=:\n*L:(}" renders yeptris "=VAL : ?#??\t*L=" + "=ALI *L:("
+ * + "-MAP" (the spec's ns-anchor-char keeps the ':' and the '(' in the
+ * name, the r142/r76 law) and libyaml "=ALI *L" + "=VAL : (" + "-MAP"
+ * (scan_anchor cut at the ':', the KEY token ate the glued comment).
+ * Byte-exact pins: libyaml's name is a proper PREFIX of yeptris's, the
+ * cut byte is exactly ':', every kept byte is in libyaml's own charset,
+ * libyaml's value is the exact eaten suffix, yeptris's next line is a
+ * flow closer, and libyaml's NEXT line is the SAME closer -- the pair
+ * leaves both skeletons there, where the walk verifies it equal. An
+ * invented name or a genuine yeptris alias-charset bug leaves one of
+ * the pins unsatisfied and the helper declines (r125 keeps its bail). */
+static int yd_qgh_alias_cut_valued_pair(const char* y, size_t yl, const char* l, size_t ll,
+                                        const char** y_next, const char** l_next) {
+    if (yl <= 6 || ll <= 6 || yl <= ll + 1 || memcmp(y, "=ALI ", 5) != 0 ||
+        memcmp(l, "=ALI ", 5) != 0 || y[5] != '*' || l[5] != '*') {
+        return 0;
+    }
+    size_t nl = ll - 6; /* libyaml's cut name */
+    if (nl == 0 || memcmp(y + 6, l + 6, nl) != 0) {
+        return 0;
+    }
+    for (size_t i = 0; i < nl; i++) {
+        if (!yd_anchor_byte_in_libyaml_set((unsigned char)l[6 + i])) {
+            return 0; /* every kept byte is in libyaml's own charset */
+        }
+    }
+    if (y[6 + nl] != ':') {
+        return 0; /* the cut byte is exactly the VALUE indicator */
+    }
+    size_t cl = yl - 6 - nl - 1; /* the eaten suffix after the colon */
+    if (cl == 0) {
+        return 0;
+    }
+    const char* yn = strchr(y, '\n');
+    const char* ln = strchr(l, '\n');
+    if (yn == NULL || ln == NULL) {
+        return 0;
+    }
+    const char* y2 = yn + 1;
+    const char* l2 = ln + 1;
+    const char* y2n = strchr(y2, '\n');
+    const char* l2n = strchr(l2, '\n');
+    size_t y2l = y2n != NULL ? (size_t)(y2n - y2) : strlen(y2);
+    size_t l2l = l2n != NULL ? (size_t)(l2n - l2) : strlen(l2);
+    const char* val_prefix = "=VAL : ";
+    const size_t vp = strlen(val_prefix);
+    if (l2l != vp + cl || memcmp(l2, val_prefix, vp) != 0 ||
+        memcmp(l2 + vp, y + 6 + nl + 1, cl) != 0) {
+        return 0; /* libyaml's value IS the eaten suffix */
+    }
+    if (y2l != 4 ||
+        (memcmp(y2, "-MAP", 4) != 0 && memcmp(y2, "-SEQ", 4) != 0 && memcmp(y2, "-STR", 4) != 0)) {
+        return 0; /* the VALUE orientation: only the flow closer follows */
+    }
+    if (l2n == NULL) {
+        return 0;
+    }
+    const char* l3 = l2n + 1;
+    const char* l3n = strchr(l3, '\n');
+    size_t l3l = l3n != NULL ? (size_t)(l3n - l3) : strlen(l3);
+    if (l3l != y2l || memcmp(l3, y2, y2l) != 0) {
+        return 0; /* libyaml's next line is the SAME closer */
+    }
+    *y_next = y2;
+    *l_next = l3;
+    return 1;
+}
+
 static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size);
 
 /* The family entry: the ORIGINAL walk first (frame 0 -- every member
@@ -4138,7 +4215,8 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * pairs BEFORE it that libyaml's kill emptied away.
                  * Skip yeptris's VALs until its own =ALI line; the two
                  * alias lines must then match byte-exact (only VALs
-                 * may sit between; anything else bails). Family-gated
+                 * may sit between; anything else bails) -- or ride the
+                 * r196 valued cut-pair below. Family-gated
                  * by pass 1; bounded by the shared skip cap. */
                 int skipped = 0;
                 for (;;) {
@@ -4161,9 +4239,27 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                     }
                     skipped++;
                 }
-                /* the realigned alias pair must agree byte-exact */
+                /* the realigned alias pair must agree byte-exact -- or
+                 * ride the r196 VALUED cut-pair (the r179 composition in
+                 * value orientation: yeptris's extended alias was the
+                 * member's own VALUE -- the glued-'?' plain KEY the skip
+                 * stepped over -- so no eaten-empty val follows it, and
+                 * libyaml's cut freed the suffix for a plain of its own;
+                 * the helper pins both skeletons onto the same closer,
+                 * where the walk verifies it equal). An invented name or
+                 * a genuine yeptris alias-charset bug leaves one of the
+                 * pins unsatisfied and the bail stands. */
                 if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
-                    return 0;
+                    const char* y_next2 = NULL;
+                    const char* l_next2 = NULL;
+                    if (yn == NULL || ln == NULL ||
+                        !yd_qgh_alias_cut_valued_pair(y, yl, l, ll, &y_next2, &l_next2)) {
+                        return 0;
+                    }
+                    diffs += 2;
+                    y = y_next2;
+                    l = l_next2;
+                    continue;
                 }
                 if (yn == NULL || ln == NULL) {
                     break;

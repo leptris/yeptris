@@ -3001,6 +3001,46 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/fold-comment-nel-tail-r195.bin
     )
 
+    # the r196 round (run 42449356146, main 6ccf3db, crash-
+    # f9837513619c855054f72e49dd4bc75b744bd3ba): a FRESH find, not an
+    # r195 regression (A/B: the 16-byte artifact
+    # "{?#??\t*L=:\n*L:(}" aborts byte-identically on BOTH the
+    # pre-fix 89aaf7c build and the post-fix main build -- the r195
+    # comment walk change never touches this input). The caught shape
+    # is the r179 ALIAS-CHARSET-CUT law composed with the r132
+    # glued-'?'-plain law in the VALUE orientation: libyaml's flow-'?'
+    # KEY-token law eats the '?' and its comment-glue swallows
+    # "#??<TAB>*L=:" whole (the '#' rides to the LF), so the line-2
+    # alias "*L" becomes the KEY's content -- scan_anchor cuts the
+    # name at the ':' (the r142/r76 IS_ALPHA law), freeing ':' for
+    # the VALUE token and '(' for a plain value. yeptris keeps
+    # "?#??<TAB>*L=" ONE plain (the suite-pinned plain-'?' law, the
+    # '#' mid-plain is content) as the KEY, and the alias is its
+    # VALUE with the spec's ns-anchor-char name "L:(" (c-flow
+    # indicators and white excluded only). The walk died at the
+    # r125 realign's byte-exact demand after its skip
+    # ("=ALI *L:(" vs "=ALI *L") -- the r179 helper declined
+    # because its pin demands yeptris's next line be the eaten-empty
+    # val, but HERE the alias was the member's own VALUE, so nothing
+    # follows it but the closer. The carry adds the VALUED
+    # orientation helper (yd_qgh_alias_cut_valued_pair): the same
+    # cut pins (proper-prefix name, ':' cut byte, libyaml-charset
+    # kept bytes, libyaml's next line "=VAL : " plus the exact
+    # eaten suffix) plus yeptris's next line a flow closer and
+    # libyaml's NEXT line that same closer; the r125 consult rides
+    # it on the byte-exact mismatch. An invented name or a genuine
+    # yeptris alias-charset bug leaves a pin unsatisfied and the
+    # bail stands. Battery: artifact pre-fix exit 134 / post-fix
+    # exit 0 on BOTH commits' binaries; the r194/r195 seeds exit 0;
+    # 50-mutant paired battery -- 0 regressions; corpus walk
+    # exit-0 pre/post with logs identical; ctest fuzz-diff pins all
+    # green; leaks --atExit clean; clang-format 18 clean.
+    add_test(
+        NAME fuzz-diff-r196-qflow-alias-cut-valued
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-alias-cut-valued-r196.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
