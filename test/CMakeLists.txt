@@ -3310,6 +3310,40 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-question-glued-hash-r206.bin
     )
 
+    # the r207 round (run 42503100451, main 20e01be, crash-
+    # f810355b2666b6760e63636bc6e112028c29de7b): a FRESH finding (the
+    # A/B against the parent 7d5483e aborts on BOTH builds -- the r206
+    # glued-hash widening is innocent). The 24-byte
+    # "{\\n?\\t \\n\\t\\t \\t\\t: ,?:-,?*M,}" composes three flow-'?'
+    # entries: the '?'-with-BLANK-GAP-then-':' explicit-key pair
+    # ("?\\t \\n\\t\\t \\t\\t:"), the r85 bare-'?,' boundary pair, and
+    # the r71 glued-'?*M' hit (yeptris's suite-pinned plain-'?' law
+    # reads "?*M" ONE plain key -- the HM87 law -- while libyaml's
+    # unconditional flow KEY-token law binds the alias *M as the KEY).
+    # The qflow arm's r85 boundary spell ('""' ':') DOUBLED the first
+    # pair's own separator -- the stray ':' rejects the rewritten
+    # entry in BOTH engines, so the arm's byte-strict verify died
+    # before the glued hits were even read. Comparator carry in
+    # yd_qflow_question_colon_divergence: a '?' whose follower is a
+    # blank/break gap (SP/TAB/LF/CR, NEL C2 85, LS/PS E2 80 A8/A9)
+    # up to the entry's OWN ':' rides VERBATIM -- both engines read
+    # that explicit-key pair identically (libyaml's KEY token,
+    # yeptris's flow-'?' carve), so no spell is needed; a gap ending
+    # at anything else keeps the r85 spell. The widening is strictly
+    # claim-additive: a blank-gap-':' '?' under the old spell always
+    # errored the rewrite, so no carried pin can contain the form.
+    # Minimality: the UNCONSTRAINED greedy deletion minimizer drifts
+    # to the 3-byte "{:}" split twin (the r186-r202 drift law); the
+    # DIFFER-constrained rerun pins the 11-byte "{?\\t:,?,?*M}" with
+    # all three deltas alive; the pinned seed is the TRUE 24-byte
+    # artifact. 430-mutant paired battery: 78 gained (the family's
+    # own mutants), 147 carried both-red, 205 quiet, 0 regressions.
+    add_test(
+        NAME fuzz-diff-r207-qflow-question-gap-colon
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-question-gap-colon-r207.bin
+    )
+
     # the r205 round (run 42492751265, main a0f2ff6, crash-
     # 4d4e23c665b950d0d9b238595533be47073fe111): the block-NEL family's
     # ALIGNED-LS/PS-TRIPLE INDENT SURPLUS. The artifact
