@@ -3383,6 +3383,34 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-surplus-break-r208.bin
     )
 
+    # the r209 round (run 42512673554, main 939c2f1, crash-
+    # 55c53c6c6a1169156a444bc82fc3696a759c3252): a FRESH finding (the
+    # A/B against the pre-r208 parent 0398dc6 aborts IDENTICALLY --
+    # exit 134, the same 12-byte artifact, the same dump pair -- so the
+    # r208 surplus-break arm is exonerated) and NOT issue #1149's
+    # documented drift twin (the 9-byte ">\n<NEL SP NEL NEL"
+    # block-scalar form: no '>', no NEL here). The 12-byte
+    # "{?*L:<LF>,*L:(}" is the r199 exact-bytes gray's family SIBLING --
+    # the same bare-'?'-glue x alias-ride composition with the head's
+    # value bound EMPTY -- claimed STRUCTURALLY by the new spelled arm
+    # (yd_r209_qflow_bareq_alias_spelled_divergence) so the family
+    # stops resurfacing one exact member per nightly: the preserving
+    # spell inserts one blank at each glue site ("?*L" -> "? *L",
+    # "L:(" -> "L :(", and the measured in-name colon sites) and
+    # requires libyaml(rewrite) == libyaml(original) byte-exact plus
+    # yeptris(rewrite) == libyaml(rewrite) -- the r193 certificate
+    # without the walk fallback. Minimality: the shape-constrained and
+    # any-constrained greedy deletions BOTH converge on the 10-byte
+    # "{?*L,*L:(}" with the dump pair byte-identical (no split-family
+    # drift); the pinned seed is the TRUE 12-byte artifact. The r199
+    # 15-byte sibling declines the arm BY MEASUREMENT (its spell makes
+    # yeptris reject the rewrite) and stays with its gray claim.
+    add_test(
+        NAME fuzz-diff-r209-qflow-bareq-alias-spelled
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-bareq-alias-spelled-r209.bin
+    )
+
     # the r205 round (run 42492751265, main a0f2ff6, crash-
     # 4d4e23c665b950d0d9b238595533be47073fe111): the block-NEL family's
     # ALIGNED-LS/PS-TRIPLE INDENT SURPLUS. The artifact
