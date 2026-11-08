@@ -1978,7 +1978,13 @@ static int yd_r187_glued_hash_plain_pair_divergence(const uint8_t* data, size_t 
  * them too, and the walk tracks plain continuation (breaks do not end
  * a plain run -- a quote only opens a scalar when the run is closed).
  * Gates: at least one hit must carry a NEW-SHAPE feature (an exotic
- * terminator, or a tail that folds across a break absorbing a quote),
+ * terminator, a tail that folds across a break absorbing a quote, or
+ * a HEAD plain that rode a quote across a break -- the r191 nightly,
+ * run 42426475722, main d07420b, crash-05a4b458213a98f879553cc9ed21
+ * 1875687ab3bb: "[0<U+2029>',?.]" minimized; r183's unconditional
+ * quote-open opens a phantom quoted scalar over the absorbed quote
+ * and cannot reach the flow-'?' hit at all, so the KIND 2 spell
+ * restores the explicit '?' and the verify arbitrates),
  * else the shape is r185/r187 turf; size bounded by the r186 gate.
  * The byte-strict double verify against libyaml's ORIGINAL dump
  * (both engines must read the rewrite exactly as libyaml read the
@@ -2004,6 +2010,15 @@ static int yd_r190_glued_hash_multiline_follower_divergence(const uint8_t* data,
     /* plain continuation: a break does not end a plain run (the
      * libyaml fold law); only the flow boundaries and quote closes do */
     int plain = 0;
+    /* a quote absorbed into an OPEN plain run (the r191 nightly, run
+     * 42426475722, main d07420b, crash-05a4b458213a98f879553cc9ed2118756
+     * 875687ab3bb, 20 bytes; the 10-byte DIFFER twin "[0<U+2029>',?.]"
+     * shows it bare): the fold law keeps the quote mid-plain content in
+     * both engines, but r183's unconditional quote-open opens a phantom
+     * quoted scalar over it and cannot see the flow-'?' KEY divergence
+     * at all -- this arm's KIND 2 walk reaches the hit instead, and the
+     * absorption is the NEW-SHAPE feature the gate demands */
+    int rode_head_quote = 0;
     /* the frame-kind stack: 1 = sequence, 2 = mapping */
     int frames[64];
     int depth = 0;
@@ -2060,6 +2075,11 @@ static int yd_r190_glued_hash_multiline_follower_divergence(const uint8_t* data,
             sub[subn++] = (char)c;
             i++;
             continue;
+        }
+        if ((c == '\'' || c == '"') && plain != 0) {
+            /* the fold law's absorption: the quote rides the open plain
+             * run as mid-plain content (both engines read it so) */
+            rode_head_quote = 1;
         }
         if (c == '[' || c == '{') {
             if (depth < 64) {
@@ -2133,7 +2153,7 @@ static int yd_r190_glued_hash_multiline_follower_divergence(const uint8_t* data,
                     j++;
                 }
                 if (clean && j < size) {
-                    shaped = shaped || breaks > 0;
+                    shaped = shaped || breaks > 0 || rode_head_quote;
                     /* the spell deletes nothing and restores the
                      * explicit '?': the break-riding run keeps riding
                      * as the keyless pair's key (the brace form cannot

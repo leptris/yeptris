@@ -2769,6 +2769,56 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-glued-hash-multiline-follower-r190.bin
     )
 
+    # the r191 round (run 42426475722, main d07420b, crash-
+    # 05a4b458213a98f879553cc9ed211875687ab3bb): the 20-byte artifact
+    # "[-1.0<U+2029> '.tag<CR> ,?.]" is the r183 flow-'?' explicit-key
+    # shape with a QUOTE-RIDING HEAD -- a fresh finding (A/B: the parent
+    # 0fd2ff4 aborts identically, so the r190 arm is exonerated; the
+    # escalation clause does not fire, yeptris's reading is the
+    # suite-pinned HM87 one). The head plain run (-1.0) rides the PS
+    # break per the fold law and absorbs the next line's quote as
+    # mid-plain content ("g<break>\"" reads "g \"" in both engines --
+    # the r190 law), where r183's unconditional quote-open opens a
+    # phantom quoted scalar over the absorbed quote and cannot reach
+    # its own flow-'?' finder at all (the tail "?." -- libyaml's KEY
+    # token nesting the keyless pair as a single-pair map member vs
+    # yeptris's plain "?.") hides inside the phantom quote span. The
+    # fix widens the r190 arm's KIND 2 NEW-SHAPE gate: the walker
+    # flags a quote absorbed into an OPEN plain run (rode_head_quote)
+    # and the gate admits it alongside the break-riding run, so the
+    # KIND 2 spell restores the explicit '?' ("?." -> "? ."; libyaml's
+    # KEY token stays word-for-word, yeptris flips to the explicit-key
+    # reading) and the byte-strict double verify arbitrates with the
+    # CR/LS/PS/NEL-normalized triple as the fallback (the artifact
+    # rides one: libyaml keeps the mid-plain PS raw while yeptris
+    # folds it to a space, so the strict compare can never hold).
+    # Minimizer drift documented: the unconstrained deletion minimizer
+    # reaches a 1-byte SPLIT-family twin (a bare dangling 0xA9 lead,
+    # yeptris-only-accept -- a different, uncarried family), so the
+    # minimizer was re-run verdict-constrained (DIFFER-only) to the
+    # 10-byte DIFFER twin "[0<U+2029>',?.]", which this arm carries
+    # byte-exactly; the true artifact is seeded intact. Battery:
+    # artifact pre-fix exit 134 / post-fix exit 0 (on BOTH the r190
+    # baseline 681eb5e and the parent 0fd2ff4); 77-mutant paired
+    # battery (targeted break swaps PS/LS/NEL/CR/LF/CRLF, follower
+    # charset, quote toggles, two-hit forms, mapping orientation,
+    # glued-hash crossover + seeded flips/deletions/truncations/
+    # insertions/chaos over the artifact, the minimal, the r183
+    # sibling, and the r190 seed head) -- 0 regressions, 23 newly
+    # claimed vs the r190 baseline (the widening's exact delta), 8
+    # still-abort unchanged, 46 both-pass; corpus walk exit-0 pre/post
+    # on the six lf corpora, outputs identical modulo libFuzzer's
+    # volatile seed/rss lines (parse 310, feed 64, roundtrip 1,
+    # marshal 17, cbor 101, validate 5; ulimit -s 32768 for the 205KB
+    # nested-flow seed); fresh ctest -R fuzz-diff carries all 83 prior
+    # pins plus this one (84/84); leaks --atExit clean; clang-format
+    # 18 clean.
+    add_test(
+        NAME fuzz-diff-r191-qflow-seq-question-quoted-head
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-question-quoted-head-r191.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
