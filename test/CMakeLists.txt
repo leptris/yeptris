@@ -3483,6 +3483,44 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-props-nextline-r211.bin
     )
 
+    # the r212 round (run 42527856270, main cb168e1, crash-
+    # 4532cf850a2d34c3597f172fa1eac42cc911bb81): a FRESH find, not an
+    # r211 regression (A/B: the 14-byte artifact "&a:o&a:o::<LF>*a:"
+    # aborts IDENTICALLY -- exit 134, the same DIFFER pair -- on BOTH
+    # the pre-r211 parent 55d1ab5 and the post-fix main build, so the
+    # r211 riding flow-property re-lex is exonerated). The caught shape
+    # is the root-alias collapse family's BREAKLESS DOUBLED-HEAD member:
+    # byte-identical to the r174 seed "&a:o&a:o::<LF>*a:<LF>" with the
+    # trailing break deleted -- r174's own minimality list names this
+    # twin ("the trailing break is NOT load-bearing ... the breakless
+    # twin stays unclaimed beside the pinned cut") and the r151/r170
+    # deletion-sibling precedent gives it its own entry. yeptris's
+    # suite-pinned riding laws (2SXE/W5VH + the r142 anchor-charset
+    # carry) read line 1 as a props-only anchor declaration whose name
+    # rides both colon runs and the interior '&' to the break (the
+    # anchor pends) and line 2 "*a:" as an alias whose name rides the
+    # colon -- no value indicator ever opens a map, so the document
+    # collapses to ONE root alias carrying the pended anchor. libyaml's
+    # 1.1 laws compose the other way: IS_ALPHA cuts the anchor at "a",
+    # ":o&a:o:" re-lexes as a plain (the '&' is mid-plain CONTENT) with
+    # the final colon as the VALUE token (the anchored map key), and
+    # the line-2 alias "a" sits inside the same map as a second flat
+    # pair. The carry rides the EXACT-BYTES gray claim
+    # (yd_r212_root_alias_double_head_breakless_gray): the charset-split
+    # twin declines both orientations (libyaml can never read the
+    # single root alias; the reversed orientation is the unsound
+    # r137/r138/r139 mask). Minimality: prefix 13 is the
+    # libyaml-reject alias-only split member; the artifact IS the
+    # 14-byte input, libFuzzer-minimal at MS: 0 (seed-corpora read, no
+    # mutation chain). 50-mutant paired battery: 0 regressions, every
+    # verdict identical pre/post (the surviving abort-both members are
+    # the r174 list's named family siblings).
+    add_test(
+        NAME fuzz-diff-r212-root-alias-double-head-breakless
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-double-head-breakless-r212.bin
+    )
+
     # the r205 round (run 42492751265, main a0f2ff6, crash-
     # 4d4e23c665b950d0d9b238595533be47073fe111): the block-NEL family's
     # ALIGNED-LS/PS-TRIPLE INDENT SURPLUS. The artifact
