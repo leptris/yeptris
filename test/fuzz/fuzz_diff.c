@@ -6936,6 +6936,269 @@ static int yd_r199_qflow_bareq_alias_ride_gray(const uint8_t* data, size_t size,
     return 1;
 }
 
+/* The BARE-'?'-GLUE x ALIAS-RIDE composition, SPELLED (r209, run
+ * 42512673554, main 939c2f1, crash-55c53c6c6a1169156a444bc82fc3696a759c3252,
+ * a 12-byte unit "{?*L:<LF>,*L:(}"): the r199 exact-bytes gray's family
+ * SIBLING -- the same composition with the head's value bound EMPTY
+ * (the r199 seed carried a multiline plain "( " there; deleting those
+ * two bytes yields exactly this artifact) -- claimed STRUCTURALLY so
+ * the family stops resurfacing one exact member per nightly. Both
+ * engines accept; the streams differ yeptris's plain-key head +
+ * riding-alias tail ("=VAL : ?*L" / "=VAL : " / "=ALI *L:(" / "=VAL : ")
+ * vs libyaml's KEY-token + cut-alias reading ("=ALI *L" / "=VAL : " /
+ * "=ALI *L" / "=VAL : ("). The composition rides the same three
+ * suite-pinned laws the r199 comment pins, now with both splits
+ * live: the HEAD -- yeptris's suite-pinned plain-'?' law (HM87/652Z:
+ * a flow '?' with a non-space follower rides as plain content) takes
+ * "?*L" as ONE plain key; libyaml's 1.1 unconditional flow KEY-token
+ * law (the quirk the qflow family has carried since r58) reads the
+ * '?' as the explicit-key indicator and "*L" as an ALIAS key (the
+ * r142/r76 IS_ALPHA cut); both bind the empty value. The TAIL --
+ * yeptris's anchor-name ride law (2SXE/W5VH, catch-142: anchor chars
+ * are ns-char minus the flow indicators) rides the ':' into the name
+ * because a plain-safe '(' follows it, so the alias key is "L:(" with
+ * an EMPTY value; libyaml's cut stops at "L", re-lexes the ':' as the
+ * VALUE token, and reads the '(' as the plain value. Regression
+ * triage: the A/B against the pre-r208 parent 0398dc6 aborts
+ * IDENTICALLY (exit 134, the same 12-byte artifact, the same dump
+ * pair), so the r208 surplus-break arm is exonerated and the
+ * escalation clause does not fire. NOT the documented drift twin --
+ * issue #1149's open split is the 9-byte ">\n<NEL SP NEL NEL"
+ * block-scalar form, a different delta in a different family (no '>',
+ * no NEL here). Minimality: the shape-constrained and any-constrained
+ * greedy deletions BOTH converge on the 10-byte "{?*L,*L:(}" (del ':'
+ * then del LF; the head key rides with no value indicator at all)
+ * with the dump pair byte-identical to the artifact's -- no
+ * split-family drift for once; the nightly artifact is the 12-byte
+ * unit and the seed pins THAT. The preserving spell inserts ONE blank
+ * at each glue site -- "?*L" -> "? *L" (the separated-'?' explicit-key
+ * form) and "L:(" -> "L :(" (the alias name cut before its riding
+ * colon) -- which makes the token stream identical for BOTH engines:
+ * libyaml's KEY token never depended on the glued '?' and its scan
+ * anchor always cut at the ':', so its own reading must not move; and
+ * yeptris -- whose explicit-'?' law and anchor cut now see the
+ * separated forms -- must agree with libyaml byte-exact on the
+ * rewrite. The certificate is the r193 spell's two pins, WITHOUT the
+ * walk fallback: (1) libyaml(rewrite) == libyaml(original) byte-exact
+ * (the spell is separator-neutral for the scanner it aligns to), and
+ * (2) yeptris(rewrite) == libyaml(rewrite) (the divergence rode
+ * exactly the spelled glues). A genuine yeptris alias-charset or
+ * plain-'?' bug leaves pin (2) unsatisfied -- the rewrite still
+ * diverges -- and a spell site that is NOT the divergence leaves pin
+ * (1) unsatisfied; either way the arm declines and the DIFFER stays
+ * visible. The finder scores only a flow-depth '?' at a KEY-token
+ * position glued to an alias '*' (outside every plain run -- the
+ * r145/catch-85 word-start law), and, inside an alias name opened at
+ * a token position, every ':' (the alias-colon ride site) except a
+ * '#' follower (a blank there would open a comment and move libyaml
+ * wholesale). The ride law is context-sensitive -- MEASURED, not
+ * assumed: in the explicit-key head yeptris rides the colon even
+ * before a break ("{? *L:<LF>}" parses the key as "L:"), while a
+ * flow-closer follower ends the name -- so the finder does not try to
+ * predict the ride and spells every site; the pins reject any spell
+ * that moved a reading. A block-context '?' stays with the
+ * suite's plain law in BOTH engines (libyaml's block KEY token needs
+ * the blank), so the finder requires flow depth >= 1 and the block
+ * spell never fires. An over-scored site is harmless: it moves
+ * libyaml's reading or the post-spell agreement and the certificate
+ * declines. Bounded: one allocation (size * 2 + 4), one pass, two
+ * dump verifies. The r199 15-byte sibling still declines here BY
+ * MEASUREMENT -- its alias-colon blank makes yeptris REJECT the
+ * rewrite ("{? *L:<LF>( `,*L :(}" is LIBYAML-ONLY-ACCEPT: an alias,
+ * a blank, then a glued colon is an entry the engine's flow laws do
+ * not spell), so its claim stays exactly where r199 put it. */
+static int yd_r209_qflow_bareq_alias_spelled_divergence(const uint8_t* data, size_t size,
+                                                        const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 5 || size > 262144) {
+        return 0;
+    }
+    char* sub = malloc(size * 2 + 4); /* each hit inserts one blank */
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t subn = 0;
+    int quote = 0;        /* the open quoted span (libyaml's view) */
+    int scalar_start = 1; /* a token can start at the scan position */
+    int plain = 0;        /* a plain run is open (glued pairs are content) */
+    int in_alias = 0;     /* riding an alias name opened at a token position */
+    int depth = 0;        /* flow depth: the arm's turf is the flow family */
+    int hits = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            sub[subn++] = (char)c;
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+                scalar_start = 0;
+                plain = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                sub[subn++] = (char)data[++i];
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+                scalar_start = 0;
+                plain = 0;
+            }
+            continue;
+        }
+        if (c == '\n' || c == '\r') {
+            /* the fold law: the break refreshes the token position but
+             * an open plain run rides it */
+            if (c == '\r' && i + 1 < size && data[i + 1] == '\n') {
+                sub[subn++] = (char)c;
+                i++;
+            }
+            scalar_start = 1;
+            in_alias = 0;
+            sub[subn++] = (char)data[i];
+            continue;
+        }
+        if (c == ' ' || c == '\t') {
+            scalar_start = 1;
+            in_alias = 0;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        if ((c == '\'' || c == '"') && scalar_start && !plain) {
+            quote = c;
+            scalar_start = 0;
+            in_alias = 0;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        if (c == '?' && depth > 0 && scalar_start && !plain && i + 1 < size && data[i + 1] == '*') {
+            /* HIT A: the bare-'?' glue x the alias follower -- spell the
+             * separated explicit-key form; the '*' opens the alias name */
+            sub[subn++] = (char)c;
+            sub[subn++] = ' ';
+            hits++;
+            scalar_start = 0;
+            plain = 0;
+            in_alias = 1;
+            sub[subn++] = '*';
+            i++;
+            continue;
+        }
+        if (c == '?' && scalar_start && i + 1 < size && data[i + 1] == '#') {
+            /* the KEY token + the glued '#' comment (the r136 law): the
+             * comment eats to the line end -- nothing inside it scores */
+            sub[subn++] = (char)c;
+            i++;
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                sub[subn++] = (char)data[i++];
+            }
+            if (i < size) {
+                i--; /* the break rides the loop's own advance */
+            }
+            continue;
+        }
+        if (c == '#' && (i == 0 || data[i - 1] == ' ' || data[i - 1] == '\t' ||
+                         data[i - 1] == '\n' || data[i - 1] == '\r')) {
+            /* the blank-led comment: both engines eat it to the break */
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                sub[subn++] = (char)data[i++];
+            }
+            if (i < size) {
+                i--;
+            }
+            plain = 0;
+            continue;
+        }
+        if (c == '[' || c == '{') {
+            depth++;
+            scalar_start = 1;
+            plain = 0;
+            in_alias = 0;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            if (depth > 0) {
+                depth--;
+            }
+            scalar_start = 1;
+            plain = 0;
+            in_alias = 0;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        if (c == ':' && in_alias && i + 1 < size && data[i + 1] != '#') {
+            /* HIT B: the alias-colon site -- spell the cut form (the
+             * name ends, the ':' is the VALUE token, a node can start at
+             * the follower). Measured, not assumed: yeptris's ride law
+             * is context-sensitive (in the explicit-key head it rides a
+             * colon even before a BREAK -- "{? *L:<LF>}" parses the key
+             * as "L:" -- while a flow-closer follower ends the name),
+             * so the spell fires on every in-name colon; a site whose
+             * blank moves a reading is caught by the pins below and the
+             * arm declines. The '#' follower stays unspelled: after a
+             * VALUE token the blank would open a comment and move
+             * libyaml wholesale. */
+            sub[subn++] = ' ';
+            sub[subn++] = ':';
+            hits++;
+            in_alias = 0;
+            scalar_start = 1;
+            continue;
+        }
+        if (c == ',' || c == ':') {
+            scalar_start = 1;
+            plain = 0;
+            in_alias = 0;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        if (c == '*' && scalar_start && !plain) {
+            /* an alias opens at a token position -- ride its name */
+            in_alias = 1;
+            scalar_start = 0;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        if (c == '?' || c == '-' || c == '&' || c == '*' || c == '!' || c == '|' || c == '>' ||
+            c == '%' || c == '@' || c == '`') {
+            /* an indicator: separated it ends the run (a token can start
+             * at the follower); glued it is plain-first content */
+            unsigned char f = i + 1 < size ? data[i + 1] : (unsigned char)' ';
+            if (f == ' ' || f == '\t' || f == '\n' || f == '\r' || f == ',' || f == ']' ||
+                f == '}') {
+                scalar_start = 1;
+                plain = 0;
+            } else {
+                scalar_start = 0;
+                plain = 1;
+            }
+            in_alias = 0;
+            sub[subn++] = (char)c;
+            continue;
+        }
+        /* wordy content: the run opens/rides */
+        scalar_start = 0;
+        plain = 1;
+        sub[subn++] = (char)c;
+    }
+    if (hits == 0) {
+        free(sub);
+        return 0;
+    }
+    int lok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, subn, &lok2);
+    int known = 0;
+    if (lok2 && ldump2 != NULL && strcmp(ldump2, ldump) == 0) {
+        /* the spell must not move libyaml's own reading */
+        int yok2 = 0;
+        char* ydump2 = yd_sem_dump((const char*)sub, subn, &yok2);
+        if (yok2 && ydump2 != NULL) {
+            if (strcmp(ydump2, ldump2) == 0) {
+                known = 1; /* the divergence rode exactly the spelled glues */
+            }
+        }
+        free(ydump2);
+    }
+    free(ldump2);
+    free(sub);
+    return known;
+}
+
 static int yd_breaknorm_divergence(const uint8_t* data, size_t size, const char* ydump) {
     if (ydump == NULL) {
         return 0;
@@ -9307,6 +9570,10 @@ static void probe_one(const uint8_t* data, size_t size) {
                             if (!known) {
                                 known = yd_r203_flow_seq_question_multiline_divergence(
                                     data, size, ydump, ldump);
+                                if (!known) {
+                                    known = yd_r209_qflow_bareq_alias_spelled_divergence(
+                                        data, size, ydump, ldump);
+                                }
                             }
                         }
                     }
