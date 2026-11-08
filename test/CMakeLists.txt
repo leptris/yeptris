@@ -3108,6 +3108,35 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-breakless-r198.bin
     )
 
+    # the r199 round (run 42461709304, main ba2c7f4, crash-
+    # 925b0aed9341409f49159b3d1bc3c388bc0b5b18): a FRESH find, not an
+    # r198 regression (A/B: the 15-byte artifact
+    # "{?*L:<LF>( `,*L:(}" aborts on BOTH the pre-r198 8ef3eb6 build
+    # and the post-fix main build -- the r198 arm's exact-bytes seed is
+    # the 10-byte "&a::<LF><SP><SP>*a:" member, never this input). The
+    # caught shape is the qflow bare-?' glued plain follower COMPOSED
+    # with the alias-colon-ride charset split, in one flow mapping,
+    # fired on SEED-CORPUS replay at MS: 0. yeptris's suite-pinned
+    # riding laws (HM87/652Z: a flow '?' with a non-space follower
+    # rides as plain content; 2SXE/W5VH + catch-142: anchor names are
+    # ns-char minus the flow indicators, so "L:(" rides the colon when
+    # a plain-safe char follows) read the head "?*L" as one plain key
+    # and the tail alias as anchor "L:(" with an empty value; libyaml's
+    # 1.1 laws compose the other way: the '?' is the unconditional flow
+    # KEY token (alias key, the r142/r76 IS_ALPHA cut) and the tail
+    # alias cuts at "L", re-lexing the ':' as the VALUE token with the
+    # '(' as the plain value. The carry rides the EXACT-BYTES gray
+    # claim (yd_r199_qflow_bareq_alias_ride_gray): the r71 drop-'?'
+    # spell declines (yeptris rejects its sub) and the charset-split
+    # twin declines both orientations (libyaml can never read the
+    # riding anchor). Minimality: prefixes 1-14 are all BOTH-ERROR;
+    # every single-byte deletion changes the classification.
+    add_test(
+        NAME fuzz-diff-r199-qflow-bareq-alias-ride
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-bareq-alias-ride-r199.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
