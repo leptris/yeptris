@@ -90,8 +90,14 @@ char* yd_libyaml_dump(const char* in, size_t n, int* ok) {
         return NULL;
     }
     yaml_parser_set_input_string(&p, (const unsigned char*)in, n);
+    /* the append twin of yd_sem_event's r210 law (run 42517419521,
+     * timeout-a9991d98): realloc PER EVENT re-copied the whole dump
+     * every time — O(events^2) copies under the CI harness's
+     * Debug+ASan build. Capacity grows geometrically; alen already
+     * tracked the length. Emitted bytes are identical. */
     char* acc = NULL;
     size_t alen = 0;
+    size_t acap = 0;
     int bad = 0;
     for (;;) {
         yaml_event_t ev;
@@ -102,14 +108,21 @@ char* yd_libyaml_dump(const char* in, size_t n, int* ok) {
         char line[4096];
         int ln = ly_line(&ev, line, sizeof(line));
         if (ln > 0) {
-            char* nb = realloc(acc, alen + (size_t)ln + 1);
-            if (nb == NULL) {
-                bad = 1;
-                free(acc);
-                acc = NULL;
-                break;
+            if (alen + (size_t)ln + 1 > acap) {
+                size_t nc = acap ? acap : 256;
+                while (nc < alen + (size_t)ln + 1) {
+                    nc *= 2;
+                }
+                char* nb = realloc(acc, nc);
+                if (nb == NULL) {
+                    bad = 1;
+                    free(acc);
+                    acc = NULL;
+                    break;
+                }
+                acc = nb;
+                acap = nc;
             }
-            acc = nb;
             memcpy(acc + alen, line, (size_t)ln);
             alen += (size_t)ln;
             acc[alen] = '\0';

@@ -3411,6 +3411,36 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-bareq-alias-spelled-r209.bin
     )
 
+    # the r210 round (run 42517419521, main 7bc84d6, timeout-
+    # a9991d98471f8190127b39bb60b0202dbb47ab07): the nightly's FIRST
+    # TIMEOUT-class finding — no divergence at all (both engines
+    # accept; the semantic dump pair is byte-identical pre/post). The
+    # 82KB flow-'?' soup drives 13401 events, and the probe chain
+    # rides ~50 full-input dumps through the arms
+    # (yd_anchor_name_charset_divergence's verify copies alone are
+    # ~22). The sem-dump append re-derived strlen()+realloc() PER
+    # EVENT — O(events^2) byte scans — and yd_libyaml_dump re-copied
+    # its whole buffer per event the same way; under the CI's
+    # Debug+ASan harness the unit crossed the 5s libFuzzer alarm
+    # inside yd_charset_verify_copy's yeptris leg. NOT a regression:
+    # the A/B against the pre-r209 parent 1e9f7a8 times identically
+    # (Release ~1s both sides, exit 0, "no divergences"; the CI-like
+    # Debug+ASan build measures 6s pre-fix vs 1s post-fix on the same
+    # arm64 box), and it is NOT issue #1149's drift twin (no NEL
+    # block-scalar form here). The fix is harness-only amortized
+    # growth: yd_sem_out tracks buf/len/cap in sem_dump.h and
+    # yd_libyaml_dump tracks acap in diff_core.c — the emitted bytes
+    # are IDENTICAL (verified byte-exact on the artifact and across
+    # the 50-mutant battery). Minimality does not apply to the
+    # timeout class (the property is size-dependent; the 10 battery
+    # truncation mutants both pass clean); the pinned seed is the
+    # TRUE 81936-byte unit.
+    add_test(
+        NAME fuzz-diff-r210-timeout-flow-soup-dump-append
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/timeout-flow-soup-dump-append-r210.bin
+    )
+
     # the r205 round (run 42492751265, main a0f2ff6, crash-
     # 4d4e23c665b950d0d9b238595533be47073fe111): the block-NEL family's
     # ALIGNED-LS/PS-TRIPLE INDENT SURPLUS. The artifact

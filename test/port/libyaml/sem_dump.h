@@ -15,9 +15,23 @@
 
 #include "event_dump.h"
 
+/* The append state: length and capacity are tracked, never re-derived.
+ * The nightly's run 42517419521 (timeout-a9991d98, an 82KB flow-'?'
+ * soup driving 13401 events) rode strlen+realloc PER EVENT here —
+ * O(events^2) byte scans and copies that crossed the CI harness's
+ * 5s per-unit alarm once the unit rode ~24 full-input dumps through
+ * the arm chain. Tracking the length turns each append into one
+ * memcpy; the capacity grows geometrically, so the whole dump is
+ * O(events + output). The emitted bytes are identical. */
+typedef struct {
+    char* buf;
+    size_t len;
+    size_t cap;
+} yd_sem_out;
+
 /* Appends the semantic event line to a malloc'd buffer in ctx. */
 static int yd_sem_event(void* ctx, const yep_event* ev) {
-    char** out = (char**)ctx;
+    yd_sem_out* out = (yd_sem_out*)ctx;
     yd_event y;
     memset(&y, 0, sizeof(y));
     /* the harness input cap is 8192, so a props buffer sized to it
@@ -85,21 +99,29 @@ static int yd_sem_event(void* ctx, const yep_event* ev) {
     y.tag = t;
     char line[4096];
     size_t n = yd_line(&y, line, sizeof(line));
-    size_t ol = *out ? strlen(*out) : 0;
-    char* nb = realloc(*out, ol + n + 1);
-    if (nb == NULL) {
-        return 1;
+    size_t need = out->len + n + 1;
+    if (need > out->cap) {
+        size_t nc = out->cap ? out->cap : 256;
+        while (nc < need) {
+            nc *= 2;
+        }
+        char* nb = realloc(out->buf, nc);
+        if (nb == NULL) {
+            return 1;
+        }
+        out->buf = nb;
+        out->cap = nc;
     }
-    memcpy(nb + ol, line, n);
-    nb[ol + n] = '\0';
-    *out = nb;
+    memcpy(out->buf + out->len, line, n);
+    out->len += n;
+    out->buf[out->len] = '\0';
     return 0;
 }
 
 /* Semantic dump of one parse (malloc'd; NULL on a parse error with
  * *ok = 0). The empty stream dumps "". */
 static char* yd_sem_dump(const char* in, size_t len, int* ok) {
-    char* out = NULL;
+    yd_sem_out out = {NULL, 0, 0};
     yep_engine* eng = yep_engine_create(yep_system_allocator());
     yep_sink sink = {.on_event = yd_sem_event,
                      .ctx = &out,
@@ -111,10 +133,10 @@ static char* yd_sem_dump(const char* in, size_t len, int* ok) {
     yep_engine_destroy(eng);
     *ok = (rc == 0);
     if (!*ok) {
-        free(out);
+        free(out.buf);
         return NULL;
     }
-    return out ? out : strdup("");
+    return out.buf ? out.buf : strdup("");
 }
 
 #endif /* YD_SEM_DUMP_H */
