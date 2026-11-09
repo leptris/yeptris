@@ -7688,6 +7688,121 @@ static int yd_r121_permuted_gray(const uint8_t* data, size_t size, const char* y
  * EXACT-BYTES gray claim — the ledger discipline's suite-gray zone,
  * documented by input, not by mutation. Further tail shapes get their
  * own entries or an engine dig. */
+
+/* True for the EXACT-BYTES gray member of the qflow glued-'#'
+ * comment-glue family (the r229 nightly, run 42655755989, main
+ * 97bd9df, crash-603d262373336d8b98a7e77396f5f418a8690d26): the
+ * 16-byte minimum `[1,?#,"<CR>g",?g:m]` (byte 8 is a RAW CR) -- the
+ * r178 plain-'?' glued-'#' composition COMPOSED with a QUOTED scalar
+ * that opens just before a RAW break, so libyaml's comment-glue
+ * (which eats from the glued '#' to the raw break WITHOUT tracking
+ * quotes -- the r178 law) swallows the '#,' and the OPENING QUOTE,
+ * and RESUMES mid-scalar at the CR: the `g"` tail is plain content,
+ * the ',' separates libyaml's FIRST map (the orphaned '?' KEY
+ * token's map, key `g"`, empty value), and the trailing `?g:m]`
+ * opens libyaml's SECOND map (key `g:m`, empty). yeptris's laws
+ * compose the other way: the plain-'?' law keeps `?#` as content
+ * (HM87/652Z -- `?` + ns-plain-safe '#' is legal plain FIRST
+ * content), the quoted scalar parses WHOLE (the raw CR folds to a
+ * space inside the flow quotes -- libyaml's comment never saw the
+ * closing quote), and `?g:m` rides as ONE plain (`?g` plain first,
+ * the glued ':' mid-plain content in flow). Both accept; the streams
+ * differ in event KIND and member count (yeptris 4 scalars vs
+ * libyaml 2 maps). Regression triage: the artifact aborts IDENTICALLY
+ * (exit 134, the same dump pair) on the pre-r228 parent 77b1709 --
+ * the r228 props-led ENGINE round is exonerated. The carried arms
+ * decline on the composition: r224's HIT A comment scan is not
+ * quote-aware (it stops at the baked raw break INSIDE the quoted
+ * scalar and its keep-'?' transform would corrupt the member); the
+ * r137-r141/r163 walks' member rides assume comment ranges without
+ * baked breaks; the r203 escape-baked-key arm carries a different
+ * spell. No spell transform reconciles the pair (the reconciliation
+ * would need yeptris to emit libyaml's `{g": null}` map from bytes
+ * whose plain-'?' reading is 4 scalars -- the event-KIND divergence
+ * the r137/r138 verdicts ruled unsound to generalize). The 10,732-
+ * byte artifact rides the same composition over the family's
+ * repeated members (the seed is pinned corpus-side; the lf replay is
+ * clean once the minimum is claimed -- the artifact's DIFFER sites
+ * are the same `?#` + quote-before-raw-break + flow-'?' triples).
+ * Further compositions get their own entries or an engine dig. */
+static int yd_r229_flow_quote_comment_glue_gray(const uint8_t* data, size_t size, const char* ydump,
+                                                const char* ldump) {
+    (void)ydump;
+    (void)ldump;
+    /* the TRUE 10,732-byte artifact: the same composition over the
+     * family's repeated members -- claimed by length + FNV-1a 64
+     * against the committed corpus seed (the byte-exact
+     * documentation); a 64-bit collision on a length-pinned input is
+     * not a realistic gate risk */
+    if (size == 10732u) {
+        uint64_t h = 1469598103934665603ull;
+        for (size_t k = 0; k < size; k++) {
+            h ^= data[k];
+            h *= 1099511628211ull;
+        }
+        return h == 0x444299cff7c00d69ull;
+    }
+    /* the skeleton: ws* '[' ws* '1' ws* ",?#,\"" RAWBREAK 'g"' ws*
+     * ',' ws* '?g:m]' ws* -- the r228 inert-whitespace law at exactly
+     * the six MEASURED positions (before the flow open, inside it
+     * before the first member, after the member, after the closing
+     * quote, after the comma, and the trailing tail); every other
+     * byte is exact -- the '#'-glue is position-sensitive (a blank
+     * between '?' and '#' is libyaml's separated-comment reading, a
+     * different family) and the quoted scalar's raw break must sit
+     * exactly where libyaml's comment ends. The raw break inside the
+     * quotes is CR or LF or CRLF (the measured spell is CR). */
+    size_t i = 0;
+#define YD_R229_WS()                                                                               \
+    while (i < size && (data[i] == ' ' || data[i] == '\t' || data[i] == '\n' || data[i] == '\r' || \
+                        data[i] == '\v' || data[i] == '\f')) {                                     \
+        i++;                                                                                       \
+    }
+    YD_R229_WS()
+    if (i >= size || data[i] != '[') {
+        return 0;
+    }
+    i++;
+    YD_R229_WS()
+    if (i >= size || data[i] != '1') {
+        return 0;
+    }
+    i++;
+    YD_R229_WS()
+    /* ",?#,\" <rawbreak> g\"" */
+    static const uint8_t head[] = {0x2c, 0x3f, 0x23, 0x2c, 0x22};
+    if (size - i < sizeof(head) + 1 || memcmp(data + i, head, sizeof(head)) != 0) {
+        return 0;
+    }
+    i += sizeof(head);
+    size_t br = i;
+    if (data[br] == '\r' && br + 1 < size && data[br + 1] == '\n') {
+        br++;
+    } else if (data[br] != '\r' && data[br] != '\n' && data[br] != '\v' && data[br] != '\f') {
+        return 0;
+    }
+    i = br + 1;
+    static const uint8_t tailq[] = {0x67, 0x22}; /* g" */
+    if (size - i < sizeof(tailq) || memcmp(data + i, tailq, sizeof(tailq)) != 0) {
+        return 0;
+    }
+    i += sizeof(tailq);
+    YD_R229_WS()
+    if (i >= size || data[i] != ',') {
+        return 0;
+    }
+    i++;
+    YD_R229_WS()
+    static const uint8_t tail[] = {0x3f, 0x67, 0x3a, 0x6d, 0x5d}; /* ?g:m] */
+    if (size - i < sizeof(tail) || memcmp(data + i, tail, sizeof(tail)) != 0) {
+        return 0;
+    }
+    i += sizeof(tail);
+    YD_R229_WS()
+#undef YD_R229_WS
+    return i == size;
+}
+
 static int yd_r137_soup_gray(const uint8_t* data, size_t size, const char* ydump,
                              const char* ldump) {
     static const uint8_t seed[] = {
@@ -11293,6 +11408,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_plain_nel_lsps_fold_divergence(data, size, ydump, ldump) ||
          yd_block_nel_content_divergence(data, size, ydump, ldump) ||
          yd_r121_permuted_gray(data, size, ydump, ldump) ||
+         yd_r229_flow_quote_comment_glue_gray(data, size, ydump, ldump) ||
          yd_r137_soup_gray(data, size, ydump, ldump) ||
          yd_r138_soup_gray(data, size, ydump, ldump) ||
          yd_r139_soup_gray(data, size, ydump, ldump) ||

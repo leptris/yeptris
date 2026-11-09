@@ -4169,6 +4169,46 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchored-props-led-plain-r228.bin
     )
 
+    # the r229 nightly (run 42655755989, main 97bd9df, crash-
+    # 603d262373336d8b98a7e77396f5f418a8690d26): the QUOTE-COMMENT-GLUE
+    # member of the qflow glued-# family -- the 16-byte minimum
+    # "[1,?#,\"<CR>g\",?g:m]" (byte 8 a RAW CR) and the TRUE 10,732-byte
+    # artifact over the family's repeated members. libyaml's
+    # comment-glue (the r178 law: it eats from the glued # to the raw
+    # break WITHOUT tracking quotes) swallows the '#,' AND THE OPENING
+    # QUOTE and resumes mid-scalar at the baked break: the g" tail is
+    # plain content, the ',' separates the orphaned '?' KEY token's
+    # map (key g", empty), and the trailing '?g:m]' opens the SECOND
+    # map (key g:m, empty). yeptris composes the other way: the
+    # plain-'?' law keeps '?#' as content, the quoted scalar parses
+    # WHOLE (the raw break folds inside the flow quotes), and '?g:m'
+    # rides as one plain -- 4 scalars vs 2 maps, an event-KIND
+    # divergence the r137/r138 verdicts rule unsound to generalize.
+    # REGRESSION TRIAGE CLEAN: the artifact aborts IDENTICALLY (exit
+    # 134, the same dump pair) on the pre-r228 parent 77b1709 -- the
+    # r228 props-led ENGINE round is exonerated. The carried arms
+    # decline: r224's HIT A comment scan is not quote-aware, the
+    # r137-r141/r163 walks assume comment ranges without baked breaks,
+    # the r203 escape-baked arm is a different spell; no spell
+    # transform reconciles the pair. The carry rides the r129/r139
+    # EXACT-BYTES gray discipline: the skeleton walk (yd_r229_flow_
+    # quote_comment_glue_gray -- ws* [ ws* 1 ws* ,?#," RAWBREAK g" ws*
+    # , ws* ?g:m] ws*) claims the minimum plus the six MEASURED
+    # inert-whitespace positions (the r228 law), and the artifact rides
+    # length+FNV-1a-64 against its committed corpus seed. The
+    # 118-mutant census around the minimum: 72 claimed (the skeleton's
+    # ws law), 46 still-fires -- interior content variants
+    # (glue-position shifts, quoted-body bytes, trailing-pair bytes),
+    # each its own entry per the cadence. The six corpus walks are
+    # clean (parse 349); the 118 existing pins stay green. Seeds:
+    # qflow-quote-comment-glue-r229.bin (the minimum, this pin) +
+    # qflow-quote-comment-glue-artifact-r229.bin (the TRUE artifact).
+    add_test(
+        NAME fuzz-diff-r229-qflow-quote-comment-glue
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-quote-comment-glue-r229.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
