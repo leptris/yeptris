@@ -3796,6 +3796,30 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/norm-phantom-verbatim-lead-r217.bin
     )
 
+    # the r218 round (run 42562016233, main ceea4ae, crash
+    # acc644af2f53c3a0391417902cfac62e34e9bc9d): a COMPARATOR carry --
+    # the BLANK-RUN member of the r157/r170/r174/r182/r192/r198/r212
+    # root-alias collapse family (the r170 no-indent seed plus an
+    # inert blank-line run between the anchored head "&a:o:" and the
+    # alias line "*a:"). The A/B against the pre-r217 parent 0eb3b0f
+    # aborts IDENTICALLY (exit 134, the same dump pair), so the r217
+    # engine round is exonerated; the escalation clause does not fire
+    # -- yeptris's one-root-alias reading is the suite-pinned riding
+    # law the family has carried since r157 (2SXE/W5VH), and the
+    # blank run is inert on both sides' walks. The arm's byte-shape
+    # gate (head + blank-run + indent + "*a:" + blank-run tail,
+    # tab-free) claims the measured member family; the tab blanks and
+    # the plain-follower/alias-plainname splits decline. 29-case
+    # blast-radius battery (16 members, 12 declines, 1 control): 0
+    # mismatches; 50-mutant paired battery: 0 regressions; the shared
+    # six-corpus walk is byte-identical pre/post; the r217 repro pin
+    # still exits 0.
+    add_test(
+        NAME fuzz-diff-r218-root-alias-blankrun
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-blankrun-r218.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
