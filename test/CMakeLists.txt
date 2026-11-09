@@ -3905,6 +3905,47 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-glued-colon-pair-r221.bin
     )
 
+    # the r222 nightly (run 42586898367, main f45cc5b, crash-a651e854):
+    # the COMMENT-SWALLOW pair of the flow-SEQ '?' family. libyaml's
+    # unconditional KEY-token law reads the glued '?' as a KEY and the
+    # '#' GLUED to it sits at the next token position --
+    # scan_to_next_token's unconditional '#' eat swallows "##|,?"
+    # through the break (the entry separator AND the following '?'),
+    # so the next line's plain re-lexes as the KEY's own scalar, while
+    # yeptris's suite-pinned plain reading keeps "?##|" one plain
+    # member (the '#' after a non-blank is mid-plain content, the r206
+    # law) and the following '?' its own explicit key. The r183 spell
+    # declines by construction: its follower gate refuses '#' (a '#'
+    # glued to the '?' is the comment boundary at the token position
+    # libyaml's KEY freed, not mid-plain content). The arm DELETES the
+    # glued '#' through the comment's end and KEEPS the '?' --
+    # separated from the next line by the break it re-lexes as the
+    # explicit KEY in BOTH engines (a bare delete would demote the
+    # next line's multiline plain to an IMPLICIT key, and a multiline
+    # plain is no simple key -- libyaml rejects). The innermost frame
+    # stays a SEQUENCE (the mapping orientation remains the qflow
+    # glued-hash walk's turf). The A/B against the pre-r221 parent
+    # 5826206 aborts IDENTICALLY (exit 134, the same dump pair) -- the
+    # r221 glued-colon arm is exonerated, a fresh site the earlier
+    # arms decline by construction. The byte-strict verify arbitrates
+    # with the CR/LS/PS/NEL-normalized triple as the fallback (the
+    # artifact's multiline key keeps the raw PS in libyaml's dump
+    # while yeptris folds it). The naive tracker declines too (the
+    # artifact's three double-quotes all ride GLUED mid-plain; the
+    # r145 plain-run-aware tracker counts all 60 hits). The
+    # minimizer's DIFFER-constrained twin ("[1,?##|,?<CR>:m]", kept at
+    # /tmp) rides the same arm's keep-'?' spell; the unconstrained
+    # drift twin ("[<0xA9>&m,]") is a UTF-8-continuation SPLIT, not
+    # this family. 50-mutant paired battery: 0 regressions (24 family
+    # flips abort->pass; the 6 still-fires are all SPLIT verdicts,
+    # unchanged pre/post); the shared six-corpus walk is
+    # byte-identical pre/post; the 111 existing pins stay green.
+    add_test(
+        NAME fuzz-diff-r222-qflow-seq-glued-hash-comment
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-glued-hash-comment-r222.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
