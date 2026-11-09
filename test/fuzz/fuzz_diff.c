@@ -3661,8 +3661,11 @@ static int yd_r203_dq_escape(char* sub, size_t* subn, unsigned char b) {
  * turf is the clean same-line run; quoted, indicator, and boundary
  * followers stay with the other qflow arms), ended by ',' or ']' with
  * no quote / '#' / '\' / nested flow / pair-separating ':' inside,
- * ASCII-only content beyond the breaks, and at most 16 folds (the
- * r225 nightly's 11-fold run, run 42613510600). An
+ * ASCII-only content beyond the breaks, and at most 64 folds (the
+ * r225 nightly's 11-fold run, run 42613510600, rode the 8-16 raise;
+ * the r231 nightly's 23-fold artifact, run 42677255629, rode the
+ * 16-64 raise — the cap is a work bound only, the verify
+ * arbitrates). An
  * EMBEDDED '?' mid-run rides since the r219 nightly (run 42567242070,
  * main 3b7b3f8, crash-181967eb654e91fe5d56b394c48b90eb85987370,
  * minimized "[?+D<U+2028>.\nF:-?-]"): a '?' between plain bytes is
@@ -3758,19 +3761,23 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
                  * bake quotes it away), but no '#' / '\' / nested flow
                  * / pair-separating ':' inside, no non-ASCII content
                  * beyond the breaks, no stray control bytes, and it
-                 * must end at ',' or ']' with at most 16 folds — the
+                 * must end at ',' or ']' with at most 64 folds — the
                  * multi-line shape r183's clean-run law declines (the
-                 * cap rode 8 through the r219 nightly; the r225
+                 * cap rode 8 through the r219 nightly and 16 through
+                 * the r225
                  * nightly, run 42613510600, main 355568f, crash-
                  * 277015f0d109025c7c028c614561e349224db928, rides an
-                 * 11-fold run — the r203 artifact's direct descendant,
+                 * 11-fold run — the r203 artifact's direct descendant;
                  * its head "?+D<LS> 'c<PS>.:j:(<PS>" with GLUED ':'s
                  * and an EMBEDDED second '?', admissions the r206/r219
-                 * widenings already own). The trailing[24] bake buffer
-                 * still declines gracefully past its caps (wok=0 rides
-                 * the hit as content), so the widened cap cannot
-                 * mis-certify: it only reaches folds the byte-strict
-                 * verify then arbitrates. */
+                 * widenings already own; the r231 nightly rides the
+                 * family's all-blank-run member — 13 breaks, 12 of them
+                 * trailing — and its TRUE artifact's 23-fold run, both
+                 * of which the raised cap and buffer below now cover).
+                 * The bake still declines gracefully past its caps
+                 * (wok=0 rides the hit as content), so the widened cap
+                 * cannot mis-certify: it only reaches folds the
+                 * byte-strict verify then arbitrates. */
                 size_t j = i + 1;
                 int clean = 1;
                 int breaks = 0;
@@ -3793,7 +3800,7 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
                     }
                     int db = YD_R203_BREAK_LEN(data, size, j);
                     if (db > 0) {
-                        if (++breaks > 16) {
+                        if (++breaks > 64) {
                             clean = 0;
                             break;
                         }
@@ -3813,7 +3820,17 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
                      * escaped so neither engine folds the rewrite */
                     unsigned char lead_kind = 0; /* 0 none, 1 LF, 2 raw LS/PS */
                     unsigned char lead_raw[3];
-                    unsigned char trailing[24]; /* stored forms of post-lead breaks */
+                    /* stored forms of post-lead breaks: the r231
+                     * nightly (run 42677255629, main edcece1, crash-
+                     * 238624b1) rode a 12-trailing-break run after the
+                     * raw LS/PS lead — 34 stored bytes past the old
+                     * 24-byte buffer (wok=0 declined the hit) — and its
+                     * TRUE artifact rides 23 folds past the old 16-break
+                     * cap. The cap is a work bound, not a soundness gate
+                     * (the byte-strict verify arbitrates), so it rides
+                     * 64 with the buffer at 64*3 bytes: every admitted
+                     * break stores at most 3 bytes. */
+                    unsigned char trailing[192];
                     size_t trailn = 0;
                     char wsb[256]; /* same-line whitespace pending */
                     size_t wsn = 0;
