@@ -1413,7 +1413,24 @@ static void e_props_ex(yep_engine* e, yep_view* anchor, yep_view* tag, int* have
              * keep it (libyaml rejects those: "&a: key: v", W5VH's
              * value position — suite-VALID, ledgered). The colon
              * re-lexes as the key indicator and the existing colon
-             * arm builds the anchored null key. */
+             * arm builds the anchored null key.
+             *
+             * The r228 nightly (run 42645063770, crash-8100227a)
+             * caught the PROPS-LED follower: "&k2: ! {\n}" — the run
+             * between the separator and the collection is the VALUE's
+             * own properties, so libyaml still reads the anchored null
+             * key (tag "<!>" on the flow map); yeptris instead rode
+             * the colon into the name and stamped "k2:" + tag on the
+             * map itself, and the anchor-led twin "&k2: &v {...}"
+             * outright REJECTED (duplicate anchor) where libyaml
+             * accepts. The follower scan now crosses ONE props run
+             * ("!tag" / "&anch", verbatim "!<!..>" included —
+             * scan_prop_end ends at a blank/break like the name scan)
+             * before the indicator check, and a crossed run
+             * un-consumes regardless of what follows: the tag/plain
+             * member "&k2: ! t" reads the same pair in libyaml. The
+             * plain-led twins (no props run — "&a: key", W5VH) never
+             * cross one and keep riding. */
             if (e->p[e->pos - 1] == ':') {
                 /* the follower scan crosses blanks, breaks AND
                  * comments: the pair separator at line end still opens
@@ -1426,6 +1443,7 @@ static void e_props_ex(yep_engine* e, yep_view* anchor, yep_view* tag, int* have
                  * blank-equivalent here: skip it to its break and keep
                  * scanning. */
                 size_t t = e->pos;
+                int rode_props = 0;
                 for (;;) {
                     while (t < e->len && (e->p[t] == ' ' || e->p[t] == '\t' || e->p[t] == '\n' ||
                                           e->p[t] == '\r')) {
@@ -1437,10 +1455,26 @@ static void e_props_ex(yep_engine* e, yep_view* anchor, yep_view* tag, int* have
                         }
                         continue;
                     }
+                    /* the r228 props-led law: one props run between
+                     * the separator and the follower belongs to the
+                     * VALUE node — a second keeps the first's verdict
+                     * ("&k2: !t &a {" still un-consumes on the "!") */
+                    if (!rode_props && t < e->len && (e->p[t] == '!' || e->p[t] == '&')) {
+                        t = yep_scan_prop_end(e->p, e->len, t + 1);
+                        rode_props = 1;
+                        continue;
+                    }
                     break;
                 }
                 if (t < e->len &&
                     (e->p[t] == '[' || e->p[t] == '{' || e->p[t] == '|' || e->p[t] == '>')) {
+                    anchor->len -= 1;
+                    e->pos -= 1;
+                } else if (rode_props) {
+                    /* a crossed props run is the value's own: libyaml
+                     * reads the pair whatever follows the run — the
+                     * tag-led plain ("&k2: ! t") and the bare-tag/EOF
+                     * tail ("&k2: !") included */
                     anchor->len -= 1;
                     e->pos -= 1;
                 }
