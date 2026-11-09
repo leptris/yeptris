@@ -4890,11 +4890,21 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
         c->tok_start = 1;
         if (phantom) {
             c->phantom_flow++;
+            /* the phantom opener is INTERIOR to the open plain VALUE
+             * word (libyaml's read keeps the bytes content) — the fact
+             * must survive it, or the r147 gate dies two shapes later:
+             * the slot the opener armed says "new node" while the plain
+             * is still open, and a following "!<" opened a phantom
+             * verbatim that swallowed the rest of the input (the r217
+             * nightly: "a:{!<x>"+NEL — "k:{" armed by the ':' indicator
+             * clears a live plain_open). The r155/r169 law's opener
+             * twin: block context keeps the fact. */
+        } else {
+            c->plain_open = 0; /* the slot was armed by an indicator */
         }
         c->in_flow++;
-        c->plain_open = 0; /* the slot was armed by an indicator */
     } else if (ch == ',') {
-        /* flow separators glue the next token — THE COMMA IN FLOW
+        /* flow separators glue the next token — THE COMMA IN REAL FLOW
          * ONLY. The unconditioned arm let a BLOCK plain's interior
          * comma arm tok_start, a following "!<" opened a phantom
          * verbatim tag that swallowed the rest of the input (breaks
@@ -4903,8 +4913,14 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
          * fold's blank-line tally lost them (the r96 nightly,
          * yeptris#836, "b,,,!<!<"+NEL^3). ':' stays unconditioned:
          * the BLOCK value position rides it ("k: 'x'" opens the
-         * quote, the NormLsPs pins). */
-        if (c->in_flow > 0) {
+         * quote, the NormLsPs pins). The r217 law: "in flow" means
+         * REAL flow depth (the r155/r169 gate) — the glued ':'-twin's
+         * phantom opens inflate in_flow without any flow collection
+         * existing in libyaml's read, so their commas are INTERIOR
+         * plain content ("o&a-:{*,,,!<!<"+NEL^3: the phantom '{'
+         * inflated in_flow, the interior ','s armed a props slot, and
+         * the "!<" opened the phantom verbatim again). */
+        if (c->in_flow > c->phantom_flow) {
             c->tok_start = 1;
             c->bb = 0; /* the slot was armed by an indicator, not a fold */
             c->plain_open = 0;
@@ -4914,12 +4930,21 @@ static yep_norm_tok norm_step(yep_norm_ctx* c, const char* p, size_t len, size_t
          * next token slot only before a blank/EOL/EOF — "k: 'x'"
          * opens the value quote (the NormLsPs pins) while an
          * interior "x:!<" of a block plain does NOT (the phantom
-         * verbatim again, the #836 colon-led twin) */
+         * verbatim again, the #836 colon-led twin). The r217 law for
+         * the DECLINED ':': a ':' before a non-blank byte is interior
+         * to a plain, or the plain's own LEAD ("k:\t:{!<" — the
+         * separating ':'+tab left plain_open dead, the value plain's
+         * lead ':' declines, and the phantom '{' behind it armed a
+         * props slot both of whose gates were dead — the "!<" opened
+         * the phantom verbatim and the NEL run rode raw). The decline
+         * IS the plain-context fact: arm the value word here. */
         if (i + 1 >= len || p[i + 1] == ' ' || p[i + 1] == '\t' || p[i + 1] == '\n' ||
             p[i + 1] == '\r') {
             c->tok_start = 1;
             c->bb = 0; /* the slot was armed by an indicator, not a fold */
             c->plain_open = 0;
+        } else {
+            c->plain_open = 1;
         }
     } else if (ch == ']' || ch == '}') {
         c->tok_start = 1;
