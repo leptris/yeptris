@@ -3946,6 +3946,36 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-glued-hash-comment-r222.bin
     )
 
+    # the r223 nightly (run 42595582912, main 6330309, crash-
+    # 3f0335158b94): the ANCHORED GLUED-DOUBLE-COLON COLLAPSE of the
+    # block family ("&a::\n  *e:\n", 11 bytes). libyaml's 0.2 plain law
+    # frees the FIRST glued colon after an anchor (block ':' not
+    # blank-followed is a plain-FIRST char), the plain stops at the
+    # SECOND glued colon, and that colon re-lexes as the IMPLICIT KEY's
+    # value indicator: {&a ':' -> {e -> ""}}. yeptris's line model
+    # reads the same head as ONE plain scalar ("&a::" whole, the glued
+    # '&' mid-plain) and the indented "*e:" line -- whose ':' rides
+    # INTO the alias name (the r142/r76 charset carry) -- collapses the
+    # document into the bare alias "=ALI *e:" (no map, no key, no
+    # anchor). The arm rewrites the head into the EXPLICIT anchored key
+    # "&a ':' :" (quoted ':' is style-blind in the semantic dump) and
+    # heals the glued alias separator to "*e :" -- both engines then
+    # read exactly libyaml's original dump (byte-strict verify, the
+    # CR/LS/PS/NEL-normalized triple as fallback). The A/B against the
+    # pre-r222 parent 3730a36 aborts IDENTICALLY -- the r221/r222 arms
+    # are exonerated, a fresh composition. The finder demands one
+    # "&<name>::" head and one "*<name>:" value-indicator glue, both at
+    # node positions. 60-mutant paired battery: 0 regressions (9
+    # family flips abort->pass; the 22 still-fires are all SPLIT
+    # verdicts -- empty-name anchor/alias and quote-glued heads --,
+    # unchanged pre/post). The deletion sweep's split twins ("&::",
+    # "*:") ride the split path, not this arm.
+    add_test(
+        NAME fuzz-diff-r223-block-anchored-glued-colon-alias
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-anchored-glued-colon-alias-r223.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
