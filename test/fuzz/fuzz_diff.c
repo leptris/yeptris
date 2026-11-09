@@ -2036,6 +2036,327 @@ static int yd_r222_seq_question_glued_hash_comment_divergence(const uint8_t* dat
     return known;
 }
 
+/* True when the verdict is the ANCHORED GLUED-DOUBLE-COLON COLLAPSE of
+ * the block family (the r223 nightly, run 42595582912, main 6330309,
+ * crash-3f0335158b94b9260b77f1d5e80fb63cda358df8, the 11-byte
+ * "&a::\n  *e:\n"). libyaml's 0.2 plain law frees the FIRST glued colon
+ * after an anchor: a block-context ':' not followed by a blank is a
+ * plain-FIRST char (block ':' is plain-safe mid-scalar), the plain stops
+ * at the SECOND glued colon (blankz-followed), and that second colon
+ * re-lexes as the IMPLICIT KEY's value indicator: the document is
+ * {&a ':' -> {e -> ""}} (+MAP / =VAL : &a : / +MAP / =ALI *e / =VAL : /
+ * -MAP / -MAP). yeptris's line model reads the same head as ONE plain
+ * scalar ("&a::" whole -- the carried v1 reading: the glued '&' is
+ * mid-plain content) and the indented "*e:" line -- whose ':' yeptris's
+ * alias scan rides INTO the name (the r142/r76 alias-charset carry) --
+ * collapses the whole document into the bare alias ("=ALI *e:", the
+ * root-alias family's reading): no map, no key, no anchor. The spell
+ * makes both readings explicit and preserving: the head "&<a>::" is
+ * rewritten into the EXPLICIT anchored key "&<a> ':' :" (a quoted ':'
+ * -- the semantic dump is style-blind -- followed by the separated
+ * value indicator re-lexes as exactly libyaml's original KEY), and the
+ * glued alias separator "*<e>:" gains the blank ("*<e> :" -- the name
+ * re-lexes clean in yeptris and libyaml reads the same alias + value
+ * indicator). The finder fires only on an '&'-head at a NODE position
+ * (start-of-input or after a blank/break) whose anchor name is glued to
+ * exactly "::", and on a '*' alias at a node position whose name is
+ * glued to a ':' in the value-indicator position (blankz or EOF after);
+ * at least one of each must fire. The r145 plain-run-aware quote
+ * tracker keeps glued quotes as content, blank-led comments ride their
+ * line un-scored, and the byte-strict verify against libyaml's ORIGINAL
+ * dump arbitrates, with the CR/LS/PS/NEL-normalized triple as the
+ * fallback (the r183/r221/r222 pattern). The deletion sweep's glued
+ * same-line twin ("&a::*e:") declines -- its glued value colon re-lexes
+ * as plain-first in libyaml only when value-indicator-glued, and the
+ * rewrite's separated form cannot reproduce the same-line nested pair
+ * -- and the empty-name split twins ("&::", "*:") ride the split path,
+ * not this DIFFER arm. */
+static int yd_r223_block_anchored_glued_colon_alias_divergence(const uint8_t* data, size_t size,
+                                                               const char* ydump,
+                                                               const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size < 5 || size > 8192) {
+        return 0;
+    }
+    /* the yeptris collapse tell: the whole document is ONE alias whose
+     * name rides the glued key separator (no map, no scalar) */
+    const char* yali = strstr(ydump, "=ALI *");
+    if (yali == NULL || strstr(ydump, "+MAP") != NULL || strstr(ydump, "+SEQ") != NULL ||
+        strstr(ydump, "=VAL") != NULL) {
+        return 0;
+    }
+    const char* ynl = strchr(yali, '\n');
+    if (ynl == NULL || ynl - yali < 7 || ynl[-1] != ':') {
+        return 0;
+    }
+    if (strstr(ldump, "+MAP") == NULL) {
+        return 0;
+    }
+    char* sub = malloc(size * 3 + 16); /* a hit grows "&a::" -> "&a ':' :" */
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t subn = 0;
+    int quote = 0;
+    int plain = 0; /* a plain run is active: glued quotes are content */
+    int depth = 0; /* flow depth: breaks inside a flow plain fold */
+    int heads = 0;
+    int heals = 0;
+    for (size_t i = 0; i < size;) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            sub[subn++] = (char)c;
+            if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\' && i + 1 < size) {
+                sub[subn++] = (char)data[++i];
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            i++;
+            continue;
+        }
+        if (c == '\'' || c == '"') {
+            if (!plain) {
+                quote = (int)c;
+            }
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '#' && (i == 0 || data[i - 1] == ' ' || data[i - 1] == '\t' ||
+                         data[i - 1] == '\n' || data[i - 1] == '\r')) {
+            /* a blank-led comment swallows the line; the node ended and
+             * nothing inside it opens a quote or scores */
+            plain = 0;
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                sub[subn++] = (char)data[i++];
+            }
+            if (i < size) {
+                if (data[i] == '\r' && i + 1 < size && data[i + 1] == '\n') {
+                    sub[subn++] = '\r';
+                    i++;
+                }
+                sub[subn++] = (char)data[i]; /* the break rides along */
+            }
+            i++;
+            continue;
+        }
+        if (c == '[' || c == '{') {
+            depth++;
+            plain = 0;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == ']' || c == '}') {
+            if (depth > 0) {
+                depth--;
+            }
+            plain = 0;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == ',') {
+            plain = 0;
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        if (c == '\n' || c == '\r') {
+            if (c == '\r' && i + 1 < size && data[i + 1] == '\n') {
+                sub[subn++] = '\r';
+                i++;
+            }
+            if (depth == 0) {
+                plain = 0; /* block lines: each line is a fresh node */
+            }
+            /* a flow plain folds across its break: the run rides */
+            sub[subn++] = (char)data[i];
+            i++;
+            continue;
+        }
+        if (c == ' ' || c == '\t') {
+            /* fold blanks ride the plain run */
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        int nodepos = (i == 0 || data[i - 1] == ' ' || data[i - 1] == '\t' || data[i - 1] == '\n' ||
+                       data[i - 1] == '\r');
+        if (c == '&' && nodepos) {
+            /* the anchor head: name chars then exactly "::" glued */
+            size_t j = i + 1;
+            while (j < size && (((unsigned char)data[j] >= 'A' && (unsigned char)data[j] <= 'Z') ||
+                                ((unsigned char)data[j] >= 'a' && (unsigned char)data[j] <= 'z') ||
+                                ((unsigned char)data[j] >= '0' && (unsigned char)data[j] <= '9') ||
+                                data[j] == '_' || data[j] == '-')) {
+                j++;
+            }
+            if (j > i + 1 && j + 1 < size && data[j] == ':' && data[j + 1] == ':') {
+                sub[subn++] = '&';
+                for (size_t k = i + 1; k < j; k++) {
+                    sub[subn++] = (char)data[k];
+                }
+                /* "&a::" -> "&a ':' :": the quoted ':' is style-blind in
+                 * the semantic dump and the separated value indicator
+                 * re-lexes as libyaml's original KEY */
+                sub[subn++] = ' ';
+                sub[subn++] = '\'';
+                sub[subn++] = ':';
+                sub[subn++] = '\'';
+                sub[subn++] = ' ';
+                sub[subn++] = ':';
+                plain = 0;
+                heads++;
+                i = j + 2;
+                continue;
+            }
+        }
+        if (c == '*' && nodepos) {
+            /* the alias: name chars then a ':' in the value-indicator
+             * position (blankz or EOF after) */
+            size_t j = i + 1;
+            while (j < size && (((unsigned char)data[j] >= 'A' && (unsigned char)data[j] <= 'Z') ||
+                                ((unsigned char)data[j] >= 'a' && (unsigned char)data[j] <= 'z') ||
+                                ((unsigned char)data[j] >= '0' && (unsigned char)data[j] <= '9') ||
+                                data[j] == '_' || data[j] == '-')) {
+                j++;
+            }
+            if (j > i + 1 && j < size && data[j] == ':') {
+                unsigned char f = j + 1 < size ? data[j + 1] : ' ';
+                if (f == ' ' || f == '\t' || f == '\n' || f == '\r') {
+                    sub[subn++] = '*';
+                    for (size_t k = i + 1; k < j; k++) {
+                        sub[subn++] = (char)data[k];
+                    }
+                    /* "*e:" -> "*e :": the name re-lexes clean and both
+                     * engines read the same alias + value indicator */
+                    sub[subn++] = ' ';
+                    sub[subn++] = ':';
+                    plain = 0;
+                    heals++;
+                    i = j + 1;
+                    continue;
+                }
+            }
+        }
+        if (c == ':' || c == '?' || c == '-' || c == '&' || c == '*' || c == '!' || c == '|' ||
+            c == '>' || c == '@' || c == '%' || c == '`') {
+            /* separated, the indicator ends the run (a props/value
+             * position where a quoted node can start); glued, it is
+             * plain-first content (the HM87 plain-'?' law) */
+            unsigned char f = i + 1 < size ? data[i + 1] : ' ';
+            if (f == ' ' || f == '\t' || f == '\n' || f == '\r') {
+                plain = 0;
+            } else {
+                plain = 1;
+            }
+            sub[subn++] = (char)c;
+            i++;
+            continue;
+        }
+        /* everything else: wordy content keeps the run */
+        plain = 1;
+        sub[subn++] = (char)c;
+        i++;
+    }
+    if (heads == 0 || heals == 0) {
+        free(sub);
+        return 0;
+    }
+    /* the byte-strict verify: both engines must read the rewrite
+     * exactly as libyaml read the original */
+    int yok2 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, subn, &yok2);
+    int lok2 = 0;
+    char* ldump2 = yd_libyaml_dump((const char*)sub, subn, &lok2);
+    int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
+                 strcmp(ldump2, ldump) == 0);
+    free(ydump2);
+    free(ldump2);
+    if (known) {
+        free(sub);
+        return 1;
+    }
+    /* the break-normalization fallback (the r183/r221/r222 pattern): an
+     * exotic-break twin keeps the raw bytes in libyaml's dump while
+     * yeptris follows the spec's fold law, so the byte-strict compare
+     * can never hold. Normalize every break (LS/PS/NEL/CR -> LF) on
+     * BOTH sides -- a meaning-preserving rewrite for both engines'
+     * plain/quoted readings -- and demand the triple: both engines
+     * read the normalized rewrite identically AND libyaml reads the
+     * normalized original identically too. Anything else declines. */
+    int has_break = 0;
+    for (size_t i = 0; i + 2 < size && !has_break; i++) {
+        if (data[i] == 0xE2 && data[i + 1] == 0x80 &&
+            (data[i + 2] == 0xA8 || data[i + 2] == 0xA9)) {
+            has_break = 1;
+        } else if (data[i] == 0xC2 && data[i + 1] == 0x85) {
+            has_break = 1;
+        } else if (data[i] == '\r') {
+            has_break = 1;
+        }
+    }
+    if (!has_break) {
+        free(sub);
+        return 0;
+    }
+    char* nsub = malloc(subn * 3 + 1);
+    char* norig = malloc(size * 3 + 1);
+    if (nsub == NULL || norig == NULL) {
+        free(nsub);
+        free(norig);
+        free(sub);
+        return 0;
+    }
+    size_t ns = 0;
+    for (size_t i = 0; i < subn; i++) {
+        if (sub[i] == '\r') {
+            nsub[ns++] = '\n';
+        } else if ((unsigned char)sub[i] == 0xE2 && i + 2 < subn &&
+                   (unsigned char)sub[i + 1] == 0x80 &&
+                   ((unsigned char)sub[i + 2] == 0xA8 || (unsigned char)sub[i + 2] == 0xA9)) {
+            nsub[ns++] = '\n';
+            i += 2;
+        } else if ((unsigned char)sub[i] == 0xC2 && i + 1 < subn &&
+                   (unsigned char)sub[i + 1] == 0x85) {
+            nsub[ns++] = '\n';
+            i += 1;
+        } else {
+            nsub[ns++] = sub[i];
+        }
+    }
+    size_t no = 0;
+    for (size_t i = 0; i < size; i++) {
+        if (data[i] == '\r') {
+            norig[no++] = '\n';
+        } else if (data[i] == 0xE2 && i + 2 < size && data[i + 1] == 0x80 &&
+                   (data[i + 2] == 0xA8 || data[i + 2] == 0xA9)) {
+            norig[no++] = '\n';
+            i += 2;
+        } else if (data[i] == 0xC2 && data[i + 1] == 0x85) {
+            norig[no++] = '\n';
+            i += 1;
+        } else {
+            norig[no++] = (char)data[i];
+        }
+    }
+    int yok3 = 0, lok3 = 0, lok4 = 0;
+    char* ydump3 = yd_sem_dump(nsub, ns, &yok3);
+    char* ldump3 = yd_libyaml_dump(nsub, ns, &lok3);
+    char* ldump4 = yd_libyaml_dump(norig, no, &lok4);
+    known = (yok3 && lok3 && lok4 && ydump3 != NULL && ldump3 != NULL && ldump4 != NULL &&
+             strcmp(ydump3, ldump3) == 0 && strcmp(ydump3, ldump4) == 0);
+    free(ydump3);
+    free(ldump3);
+    free(ldump4);
+    free(nsub);
+    free(norig);
+    free(sub);
+    return known;
+}
+
 /* True when the verdict is the COMMENT-CR PAIR of the glued flow '?#'
  * family (the r185 nightly, run 42392584152, main 3c87d4a, crash-
  * 187062ddd3ac: the 52-byte
@@ -10558,6 +10879,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r183_flow_seq_question_divergence(data, size, ydump, ldump) ||
          yd_r221_seq_question_glued_colon_pair_divergence(data, size, ydump, ldump) ||
          yd_r222_seq_question_glued_hash_comment_divergence(data, size, ydump, ldump) ||
+         yd_r223_block_anchored_glued_colon_alias_divergence(data, size, ydump, ldump) ||
          yd_bom_content_divergence(ydump, ldump) ||
          yd_bom_line_start_divergence(data, size, ydump, ldump) ||
          yd_bom_utf16_line_start_divergence(data, size, ydump, ldump) ||
