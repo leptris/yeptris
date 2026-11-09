@@ -3845,6 +3845,39 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-question-embedded-r219.bin
     )
 
+    # the r220 round (run 42572682702, main 025d613, crash
+    # e9a970cf9a7ed7d123d1b16bb2f18cb8529cc9a7, 52-byte artifact,
+    # minimized to the 27-byte "> LF NELx10 SP NELNEL"): a COMPARATOR
+    # carry -- the NEL-CARPET member of the block-NEL family (the
+    # r160/r161/r173/r175/r176/r177/r197/r202/r205/r208/r214/r215/r216
+    # walk): a folded block scalar whose content lines are
+    # NEL-carpeted, so libyaml's 1.1 reader (NEL is a break) splits
+    # every carpeted line into space-only sub-lines whose blank-line
+    # accounting collapses into one long escaped-break run, while
+    # yeptris's 1.2 reader (NEL is content) interleaves kept NEL pairs
+    # and fold spaces. The byte-bound walk cannot reach the shape: the
+    # per-branch budget (mult*k fold-material steps) cannot absorb the
+    # ~3k blank-line breaks each kept NEL pair maps to, and the greedy
+    # walk hits a content byte while libyaml's run is still underway.
+    # The A/B against the pre-r219 parent 3b7b3f8 aborts IDENTICALLY
+    # (exit 134, the same dump pair) -- the r219 widening is
+    # exonerated, a fresh site fired LAST where the handler previously
+    # declined unconditionally. The arm is the family's complete
+    # binding at the input level: replace every raw NEL pair with an
+    # LF (pure to libyaml -- its dump must be byte-identical, pinned
+    # by the first strcmp), re-dump yeptris on that, and require the
+    # result equals libyaml's ORIGINAL dump byte-for-byte (the second
+    # strcmp) -- the whole divergence is then the documented
+    # kept-NEL-content delta and nothing else can ride. 60-mutant
+    # paired battery: 0 regressions (11 family flips abort->pass);
+    # the shared six-corpus walk is byte-identical pre/post; the r219
+    # repro pin still exits 0.
+    add_test(
+        NAME fuzz-diff-r220-block-nel-carpet
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-carpet-r220.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
