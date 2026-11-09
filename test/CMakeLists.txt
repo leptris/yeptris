@@ -4089,6 +4089,40 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-utf16-nel-line-start-r226.bin
     )
 
+    # the r227 nightly (run 42630534433, main 0b72c24, crash-
+    # 03fcab71b7649852477c5f7163d0a42ff70f2bba): the DIRECT-ADJACENCY
+    # member of the r218 root-alias family -- the 9-byte "&a:o:\n*a:"
+    # (the mutator deleted the r218 seed's 19-LF blank run down to the
+    # bare break). libyaml's 1.1 IS_ALPHA anchor/alias charset cuts
+    # both names at ':' and reads the flat pair map (key "o" anchor
+    # "a" + empty value, then the alias key "a" + empty value), while
+    # yeptris's suite-pinned riding law (2SXE: "&a: key" anchors "a:"
+    # and "*a:" names "a:"; W5VH keeps colons inside names -- the
+    # spec's ns-anchor-char includes ':') keeps "a:o:" pending at the
+    # root and names the alias "a:", so no value indicator opens a map
+    # and the document collapses to ONE riding-name alias event. A
+    # FRESH member, not a regression: the r225/r226 fixes (#1198,
+    # #1204) are comparator-only and the artifact's stream pair is the
+    # r218 family verbatim. The carry widens the r218 arm in place
+    # (the blank run was always inert on the collapse): the separator
+    # law goes ZERO-OR-MORE blank lines, leading blank lines claim as
+    # an inert prefix, the exact-byte name pins widen to a conservative
+    # riding-name set ([A-Za-z0-9_.-] + the riding ':' -- each run
+    # required to END on its ':'), and a line-start "..." doc-end tail
+    # claims as an inert suffix (all dumpboth-verified same pairs).
+    # The 97-mutant battery around the artifact: 96 clean, 1 decline
+    # (the no-tab gate's tab member, by design). Still unclaimed:
+    # props-restart names, non-ASCII names, colon-glued "...". The
+    # six-corpus *_lf walks are clean pre/post; the 116 existing pins
+    # stay green. Minimality: the artifact is the 9-byte minimum
+    # itself (the "&a:o:\n*a:" skeleton has no smaller DIFFER member;
+    # every single-byte deletion classifies clean or splits).
+    add_test(
+        NAME fuzz-diff-r227-root-alias-direct-adjacency
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-direct-adjacency-r227.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
