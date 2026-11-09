@@ -3976,6 +3976,46 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-anchored-glued-colon-alias-r223.bin
     )
 
+    # the r224 nightly (run 42604872810, main 988ba3e, crash-
+    # 3922bb61f22630e1b2517b89fc52494d4ee1cc84): the CR-CROSSING
+    # COMMENT-SWALLOW KEY BINDING of the flow-'?' family (the 21-byte
+    # seed "[Q,?##|,:\rbnaaryM,?g]"). libyaml's 1.1 KEY-token law makes
+    # the flow '?' a KEY token whatever follows, and the scanner's
+    # next-token loop then treats the GLUED '#' as a boundary comment:
+    # the comment swallows to the NEXT LINE BREAK -- a lone CR is a
+    # break -- and the post-break plain rides as the keyless pair's
+    # key ({bnaaryM: <empty>}). yeptris's suite-pinned plain-first-'?'
+    # law (HM87) reads the glued run as flat scalars ("?##|", ":|")
+    # and folds the CR INSIDE the plain. No single prior arm claims
+    # the soup: r185's comment-CR spell heals one '?#'+follower hit
+    # but leaves the tail's bare glued-'?' runs unhealed, and r183's
+    # spell declines the tail's runs (its clean check rejects any ':'
+    # in the run) while the artifact's tail rides "?tag:yaml.org" --
+    # a GLUED-':' run. The arm COMPOSES the two healing spells in one
+    # walk: HIT A keeps the '?' and deletes the '#' through the
+    # comment's end (the r222 keep-? law -- separated from its
+    # follower by the break, the '?' re-lexes as the explicit KEY in
+    # BOTH engines; the comment must END at a CR/LF break and the
+    # post-break follower must start a wordy plain run); HIT B
+    # rewrites "?run" -> "{run: }" (the r183 spell) with the r224
+    # widening -- a ':' GLUED inside the run rides as mid-plain
+    # content, a ':' after a blank declines, and a '#' glued after a
+    # non-blank is content while a blank-led '#' declines. The
+    # byte-strict verify against libyaml's ORIGINAL dump arbitrates,
+    # with the CR/LS/PS/NEL-normalized triple as fallback. The A/B
+    # against the pre-r223 parent 6330309 aborts IDENTICALLY -- the
+    # r223 arm is exonerated, a fresh composition. 60-mutant paired
+    # battery vs main d5778d8: 0 regressions (19 family flips
+    # abort->pass; the 23 still-fires are byte-identical pre/post).
+    # The six-corpus *_lf walks (parse 343, feed 65, marshal 18, cbor
+    # 102, validate 5, roundtrip 5) are byte-identical pre/post; the
+    # 113 existing pins stay green.
+    add_test(
+        NAME fuzz-diff-r224-qflow-seq-glued-hash-cr-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-glued-hash-cr-key-r224.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
