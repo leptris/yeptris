@@ -4123,6 +4123,52 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-direct-adjacency-r227.bin
     )
 
+    # the r228 nightly (run 42645063770, main 77b1709, crash-
+    # 8100227a1abca67d3bebc6afaa1c301090471b08): the PROPS-LED member
+    # of the r29 flow-follower colon family -- the 11-byte "&k2: !
+    # {\n}\n". The r29/r31 un-consume law fired only when the riding
+    # colon's follower was a FLOW collection or BLOCK SCALAR HEADER
+    # directly; here the run between the separator and the collection
+    # is the VALUE's own properties ("! {" -- the tag "<!>" belongs to
+    # the flow map), so the law never fired: yeptris rode the colon
+    # into the anchor name ("k2:") and stamped name + tag on the map
+    # itself ("+MAP &k2: <!>") where libyaml reads the anchored null
+    # KEY plus the tagged flow map. The ENGINE fix (the r29 doctrine:
+    # the riding law yields where its result is observable) extends
+    # the follower scan in e_props_ex to cross ONE props run
+    # ("!tag"/"&anch", verbatim "!<!..>" included) before the
+    # indicator check, and a crossed run un-consumes regardless of
+    # what follows -- the tag-led PLAIN member ("&k2: ! t", dumpboth
+    # pre-fix: yeptris's anchored "&k2:" scalar vs libyaml's pair) and
+    # the bare-tag/EOF tail ("&k2: !") heal too, and the anchor-led
+    # twin ("&k2: &v {...}", pre-fix a REJECT vs libyaml's accept)
+    # now parses the anchored pair. Plain-led followers never cross a
+    # props run: 2SXE/W5VH ("&a: key") keep riding, and the r227
+    # root-alias family's alias follower is untouched. Three r44/r156-
+    # era pins moved with the law (the composite "&va2: &node2" now
+    # parses the anchored pair -- byte-exact vs libyaml; the round-44
+    # "&:\n! |\n:\n" form now REJECTS like libyaml's empty-anchor-name
+    # law, dissolving the unserializable-block concern). Paired
+    # battery vs parent 77b1709: 128 mutants, 17 admissions abort->
+    # pass, 0 regressions, 52 still-fires -- ALL splits (yeptris
+    # errors) under the lf DIFFER-only gate: 0 aborts. The residual
+    # layer (multi-line flow content/closer at column 0 under a block
+    # pair: yeptris BAD_INDENT vs libyaml's lenient span) is
+    # PRE-EXISTING on main (anchor-free "a: {\n}" errors identically
+    # pre/post) and stays outside this round, so the flow-form
+    # artifact itself lands as a SPLIT post-fix (corpus seed
+    # anchored-props-led-flow-r228.bin rides the nightly's lf gate,
+    # which does not abort splits) while the PIN replays the
+    # tag-led-PLAIN member "&k2: ! t" -- EQUAL post-fix, a riding
+    # DIFFER on any revert of the engine law (the same crossing), so
+    # the regression detection is exact. The six corpus walks are
+    # clean pre/post; full ctest 907/907; `leaks --atExit` clean.
+    add_test(
+        NAME fuzz-diff-r228-anchored-props-led-flow
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchored-props-led-plain-r228.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

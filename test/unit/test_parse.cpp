@@ -2259,15 +2259,15 @@ TEST(Parse, NodeCarriesOneAnchorAndOneTag) {
      * read an empty anchored pair. The suite's 4JVG ("Scalar value
      * with two anchors", fail: true) makes the second property of a
      * kind an error; one anchor plus one tag in either order stays
-     * legal, on one line or split across the parent line. */
+     * legal, on one line or split across the parent line.
+     * (The r228 props-led follower law re-read the RIDING composite
+     * "&va2: &node2" as libyaml's anchored-null-key pair — the two
+     * anchors split across the two nodes, one each — so it moved to
+     * AnchoredColonRidingSurvivesTheFlowLaw; 4JVG is two anchors on
+     * ONE node and still errors below.) */
     const char* bad[] = {
-        "a: &x &y b\n",
-        "a: &x &y\n",
-        "top5:\n  &va2: &node2 # comment\n  key2: two\n",
-        "a: !t !u b\n",
-        "top2: &node2\n  &v2 val2\n",
-        "&x &y a\n",
-        "!t1 !t2 a\n",
+        "a: &x &y b\n", "a: &x &y\n",  "a: !t !u b\n", "top2: &node2\n  &v2 val2\n",
+        "&x &y a\n",    "!t1 !t2 a\n",
     };
     for (const char* y : bad) {
         YeptrisStatus st = YEPTRIS_OK;
@@ -2703,13 +2703,43 @@ TEST(Parse, AnchoredColonRidingSurvivesTheFlowLaw) {
                            << "')";
         yeptris_document_free(doc);
     }
-    /* the double-anchor law rides too: "&va2: &node2" keeps both
-     * anchors on ONE node (the riding colon) and errors */
+    /* the props-led follower law (the r228 nightly) splits the pair:
+     * "&va2: &node2" un-consumes the riding colon (the crossed
+     * &node2 run is the VALUE's own property), so each node keeps
+     * one anchor — libyaml's reading; the 4JVG two-anchors-on-ONE-
+     * node error no longer applies to the pair split */
     const char* d = "top5:\n  &va2: &node2 # comment\n  key2: two";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument doc = yeptris_parse(d, strlen(d), &st);
-    EXPECT_EQ(doc, nullptr);
-    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE);
+    ASSERT_NE(doc, nullptr) << yeptris_last_error(NULL, NULL);
+    bool split_ok = false;
+    YeptrisNode top5 = yeptris_document_root(doc, 0);
+    if (top5 != nullptr && yeptris_node_kind(top5) == YEPTRIS_NODE_MAPPING) {
+        for (size_t i = 0; i < yeptris_node_map_count(top5) && !split_ok; i++) {
+            YeptrisNode k = nullptr, v = nullptr;
+            if (yeptris_node_map_at(top5, i, &k, &v) != YEPTRIS_OK || v == nullptr ||
+                yeptris_node_kind(v) != YEPTRIS_NODE_MAPPING) {
+                continue;
+            }
+            /* top5's value: pair 0 is (empty key anchored va2) ->
+             * (empty value anchored node2) — libyaml's byte-exact
+             * reading */
+            for (size_t j = 0; j < yeptris_node_map_count(v) && !split_ok; j++) {
+                YeptrisNode k2 = nullptr, v2 = nullptr;
+                if (yeptris_node_map_at(v, j, &k2, &v2) != YEPTRIS_OK) {
+                    continue;
+                }
+                size_t lk = 0, lv = 0;
+                const char* ak = k2 ? yeptris_node_anchor(k2, &lk) : nullptr;
+                const char* av = v2 ? yeptris_node_anchor(v2, &lv) : nullptr;
+                if (ak != nullptr && lk == 3 && memcmp(ak, "va2", 3) == 0 && av != nullptr &&
+                    lv == 5 && memcmp(av, "node2", 5) == 0) {
+                    split_ok = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(split_ok) << "&va2: &node2 anchors must split across the pair";
     yeptris_document_free(doc);
 }
 

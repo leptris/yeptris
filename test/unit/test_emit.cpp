@@ -1520,19 +1520,20 @@ TEST(Emit, AnchorNameNormalizeSubjectOnLineTailPropsIsUnserializable) {
 
 TEST(Emit, AnchorNameTailColonBlockStyleIsUnserializable) {
     /* the nightly's round 44 (crash-07ad9ecc, 8-byte core:
-     * "&:\n! |\n:\n"): the tail-colon law (round 31) exempted
-     * scalars -- "k: &n: v" rides byte-stably INLINE. A BLOCK-style
-     * spell puts the header where the separator should be:
-     * "! &: |" re-lexes as tag + anchor + header with no key
-     * separator -- pass2 reads a different tree (or the compat
-     * reader rejects the form outright). No spell exists: fail the
-     * serialize. The inline rider stays stable. */
+     * "&:\n! |\n:\n") pinned the riding parse of the ':'-only anchor
+     * name with the block header behind it. The r228 props-led
+     * follower law un-consumes the riding colon (the crossed "! |"
+     * run is the value's own property), which empties the ':'-only
+     * name — and the parse now REJECTS, matching libyaml ("did not
+     * find expected alphabetic or numeric character"; ':' is outside
+     * its anchor charset too). The unserializable-block concern
+     * dissolves: there is no tree to spell. The inline rider stays
+     * stable. */
     const char* y = "&:\n! |\n:\n";
     YeptrisStatus st = YEPTRIS_OK;
     YeptrisDocument d = yeptris_parse_ex(y, strlen(y), nullptr, &st);
-    ASSERT_NE(d, nullptr) << yeptris_last_error(NULL, NULL);
-    size_t len = 0;
-    EXPECT_EQ(yeptris_serialize(d, &len), nullptr);
+    EXPECT_EQ(d, nullptr) << y;
+    EXPECT_EQ(st, YEPTRIS_ERROR_PARSE) << y;
     yeptris_document_free(d);
 
     /* the inline rider keeps riding */
