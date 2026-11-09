@@ -7137,6 +7137,137 @@ static int yd_r212_root_alias_double_head_breakless_gray(const uint8_t* data, si
     (void)ldump;
     return 1;
 }
+/* One blank line of the r218 root-alias blank-run walk: spaces* then a
+ * break (LF, CRLF, or lone CR). Advances *at past it; 0 when the bytes
+ * at *at are not a blank line. */
+static int yd_r218_blank_line(const uint8_t* d, size_t n, size_t* at) {
+    size_t i = *at;
+    while (i < n && d[i] == ' ') {
+        i++;
+    }
+    if (i >= n) {
+        return 0;
+    }
+    if (d[i] == '\n') {
+        *at = i + 1;
+        return 1;
+    }
+    if (d[i] == '\r') {
+        *at = (i + 1 < n && d[i + 1] == '\n') ? i + 2 : i + 1;
+        return 1;
+    }
+    return 0;
+}
+
+/* True for the BLANK-RUN member family of the r157/r170/r174/r182/r192/
+ * r198/r212 root-alias collapse (the r218 nightly, run 42562016233,
+ * main ceea4ae, crash-acc644af2f53c3a0391417902cfac62e34e9bc9d): the
+ * 28-byte artifact "&a:o:" + 19 LFs + "*a:" -- the r170 no-indent seed
+ * with a BLANK-LINE RUN inserted between the anchored head and the
+ * alias line (the family's named missing member: r157 pins the
+ * indented glued twin, r170 the glued twin, r182 the "&a::" indented
+ * twin, r198 the breakless indented twin -- none carries the
+ * blank-line separator). Both engines accept; the streams differ
+ * yeptris's one root alias (3 dump lines: "+STR" / "=ALI *a:" /
+ * "-STR") vs libyaml's 9-event map form ("+MAP" / "=VAL : &a :o" /
+ * "=VAL : " / "=ALI *a" / "=VAL : " / "-MAP"). Fired on SEED-CORPUS
+ * replay at MS: 0 (libFuzzer-minimal -- no mutation chain). Regression
+ * triage: the A/B against the pre-r217 parent 0eb3b0f aborts
+ * IDENTICALLY (exit 134, the same dump pair), so the r217 engine
+ * round's three norm_step gates are exonerated and the escalation
+ * clause does not fire -- yeptris's reading is the suite-pinned riding
+ * law the family has carried since r157 (2SXE: "&a: key" anchors "a:"
+ * and "*a:" names "a:"; W5VH keeps colons inside names), unchanged on
+ * post-r217 main (the r217 repro pin norm-phantom-verbatim-lead-r217
+ * still exits 0). The walk: line 1 "&a:o:" is a props-only anchor
+ * declaration whose name rides the colons to the break -- the anchor
+ * PENDS; the blank run is INERT on the collapse (the pended anchor
+ * walks past pure-break lines), and the alias line's name rides its
+ * colon, so no value indicator ever opens a map and the document
+ * collapses to ONE root alias event carrying the pended anchor as
+ * props. libyaml's 1.1 laws compose the other way: IS_ALPHA cuts the
+ * anchor at "a" (the r142/r76 law), the residual ":o:" re-lexes as
+ * plain ":o" with the final colon riding as the value token, so line 1
+ * is the anchored KEY of a root map with an empty value; the alias "a"
+ * (the r54 cut) plus its own EOL colon opens the second flat pair at
+ * column 0 -- the r170 shape behind an inert blank run. Minimality:
+ * the collapse is blank-run-length independent -- the artifact's
+ * 18-blank run shrinks to the 11-byte minimum "&a:o:\n\n*a:\n" with
+ * IDENTICAL dumps, and every verified member rides the same skeleton:
+ * the k=2/3 runs, the breakless tail (EOF at the alias colon, both the
+ * 11- and 28-byte spells), the trailing blank runs, the space-only
+ * blank lines, the CRLF and lone-CR break spells, the head's
+ * trailing-space line, and the blank+indent /
+ * indented-blank+indented-alias members -- the arm's byte-shape walk
+ * (head line + ONE-OR-MORE blank lines + indent + "*a:" + blank-run
+ * tail) claims exactly those. The TAB members DECLINE by the no-tab
+ * gate: a tab in a blank line (space+tab or tab-only) flips libyaml's
+ * reading to a reject (YEPTRIS-ONLY-ACCEPT splits -- the differ-only
+ * routing declines splits, the r170 law), and the tab-indent members
+ * stay the r157 family's named siblings. Unclaimed DIFFER siblings
+ * (each its own entry or an engine dig): the longer-name members
+ * ("*ab:" and head "&aa:o:"), the "..." explicit doc-end tail, and the
+ * alias-first reverse order (yeptris errors, libyaml accepts -- a
+ * LIBYAML-ONLY split); the plain-follower member ("&a:o:\n\nb\n",
+ * yeptris folds the pended head INTO one plain scalar "&a:o: b" -- a
+ * fresh split twin of the r182-engine-residual #707 riding-anchor
+ * composite) and the alias-plainname member ("&a:o:\n\n*a\n") are
+ * YEPTRIS-ONLY splits and decline too. The charset-split twin declines
+ * both orientations exactly as r157's/r170's: libyaml's cut can never
+ * read the riding name, and the one-alias mask is unsound per
+ * r137/r138/r139 (a genuine alias-drop bug would ride the same
+ * signature). The composition rides the byte-shape gray claim over the
+ * MEASURED family -- documented by input shape, verified member by
+ * member. */
+static int yd_r218_root_alias_blank_run_gray(const uint8_t* data, size_t size, const char* ydump,
+                                             const char* ldump) {
+    static const uint8_t head[] = {0x26, 0x61, 0x3a, 0x6f, 0x3a}; /* "&a:o:" */
+    static const uint8_t ali[] = {0x2a, 0x61, 0x3a};              /* "*a:" */
+    size_t i, j, blanks;
+    if (size < sizeof(head) + 2 + sizeof(ali) || memcmp(data, head, sizeof(head)) != 0) {
+        return 0;
+    }
+    for (i = 0; i < size; i++) {
+        if (data[i] == '\t') {
+            return 0;
+        }
+    }
+    /* the head line's own spaces and terminator */
+    i = sizeof(head);
+    while (i < size && data[i] == ' ') {
+        i++;
+    }
+    if (i >= size) {
+        return 0;
+    }
+    if (data[i] == '\n') {
+        i++;
+    } else if (data[i] == '\r') {
+        i = (i + 1 < size && data[i + 1] == '\n') ? i + 2 : i + 1;
+    } else {
+        return 0;
+    }
+    /* the separator: ONE OR MORE blank lines */
+    blanks = 0;
+    while (yd_r218_blank_line(data, size, &i)) {
+        blanks++;
+    }
+    if (blanks == 0) {
+        return 0;
+    }
+    /* the alias line: optional indent spaces then "*a:" exactly */
+    j = i;
+    while (j < size && data[j] == ' ') {
+        j++;
+    }
+    if (size - j < sizeof(ali) || memcmp(data + j, ali, sizeof(ali)) != 0) {
+        return 0;
+    }
+    j += sizeof(ali);
+    /* the tail: blank lines only, then EOF */
+    while (j < size && yd_r218_blank_line(data, size, &j)) {}
+    return j == size;
+}
 
 /* True for the ONE exact gray-zone input of the r199 nightly
  * (crash-925b0aed9341409f49159b3d1bc3c388bc0b5b18, run 42461709304,
@@ -9810,6 +9941,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r198_root_alias_breakless_gray(data, size, ydump, ldump) ||
          yd_r199_qflow_bareq_alias_ride_gray(data, size, ydump, ldump) ||
          yd_r212_root_alias_double_head_breakless_gray(data, size, ydump, ldump) ||
+         yd_r218_root_alias_blank_run_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
