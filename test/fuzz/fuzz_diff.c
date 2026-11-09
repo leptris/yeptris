@@ -5780,6 +5780,71 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
                     continue;
                 }
             }
+            /* the r214 terminator law (the nightly's round 214, run
+             * 42538075383, main dc73734, crash-
+             * f8c03a6da175197af2afb7634314e3ff0b8df7f1, 14 bytes
+             * ">\n  <\u{85}...\u{85} \n"): libyaml's reader ENDS the
+             * block scalar at the NEL break -- the post-break line
+             * ("...", the document-end marker) sits at column 0 under
+             * a col-2 content indent, so libyaml's value is "<" plus
+             * ONE kept break while the marker line leaves the value
+             * entirely (consumed as the document end). yeptris's
+             * scanner never broke at the NEL (the bs wholesale ride),
+             * so its value keeps the NEL run AND the whole terminator
+             * line as verbatim content before its own trailing break.
+             * The r208 surplus law cannot own it (its alignment byte
+             * differs: yeptris's kept '.' vs libyaml's frame tail),
+             * and the r19 family's col-0 indent transform cannot fix
+             * a break that never happened. The branch: yeptris's
+             * remainder is a SINGLE-LINE surplus (plain bytes plus
+             * kept raw NEL/LS/PS -- no escapes, no raw LFs: those
+             * would start a new line, and this rides ONE line) and
+             * then its ONE trailing escape; libyaml's remainder is
+             * exactly ONE escape; the remainders behind BOTH escapes
+             * are byte-identical to the very end (the r161 complete
+             * binding -- nothing past the scalar can ride), and every
+             * step advances a (the walk stays bounded by the dump
+             * length). Fires LAST so every existing member keeps its
+             * exact path. */
+            {
+                int rode = 0;
+                for (;;) {
+                    while (a[0] != '\0' && !(a[0] == '\\' && a[1] == 'n') && a[0] != '\n' &&
+                           !((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85) &&
+                           !((unsigned char)a[0] == 0xE2 && (unsigned char)a[1] == 0x80 &&
+                             ((unsigned char)a[2] & 0xFE) == 0xA8)) {
+                        a++;
+                        subs++;
+                    }
+                    if (a[0] == '\\' && a[1] == 'n') {
+                        /* yeptris's trailing escape: libyaml must sit
+                         * at exactly its own escape, and the remainders
+                         * behind both must match to the very end */
+                        if (b[0] == '\\' && b[1] == 'n' && strcmp(a + 2, b + 2) == 0) {
+                            a += 2;
+                            b += 2;
+                            subs++;
+                            rode = 1;
+                        }
+                        break;
+                    }
+                    if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85) {
+                        a += 2; /* a kept NEL libyaml spent outside the value */
+                        subs++;
+                        continue;
+                    }
+                    if ((unsigned char)a[0] == 0xE2 && (unsigned char)a[1] == 0x80 &&
+                        ((unsigned char)a[2] & 0xFE) == 0xA8) {
+                        a += 3; /* a kept LS/PS: the same spent-break law */
+                        subs++;
+                        continue;
+                    }
+                    break; /* a raw LF or the dump's end: decline */
+                }
+                if (rode) {
+                    continue;
+                }
+            }
             return 0;
         }
         if (*a != *b) {

@@ -3635,6 +3635,52 @@ if(YEPTRIS_LIBYAML_ROOT)
         COMMAND fuzz_roundtrip ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip
     )
 
+    # the r214 round (run 42538075383, main dc73734, crash-
+    # f8c03a6da175197af2afb7634314e3ff0b8df7f1): a FRESH finding —
+    # the A/B against the pre-r213 parent c21173c aborts IDENTICALLY
+    # (exit 134, the same dump pair; a probe linking both builds'
+    # yep_engine_run prints byte-identical dumps), so the r213
+    # anchored-chained-pending bail is exonerated (the harness dump
+    # is the pure engine route; the tape never runs here). The
+    # 14-byte ">\n  <\u{85}...\u{85} \n" reads a root folded block
+    # scalar whose content carries raw NELs (the r160 family): at the
+    # FIRST NEL libyaml's 1.1 reader breaks the line, sees the next
+    # line ("...", the document-end marker) at column 0 under a col-2
+    # content indent, and ENDS the scalar — its value is "<" plus the
+    # ONE kept break while the marker line leaves the value entirely;
+    # yeptris never broke at the NEL (the bs wholesale ride, the
+    # 1.2 LF/CR-only break set inside bs content), so its value keeps
+    # the NEL run AND the whole terminator line as verbatim content
+    # before its own trailing break. No existing arm owns it: the
+    # r208 surplus-break law needs the alignment byte to coincide
+    # (yeptris's kept '.' vs libyaml's frame tail), the r19 root
+    # family's col-0 indent transform cannot fix a break that never
+    # happened, and the r176 composed transform declines (the input
+    # ends with a break). Comparator carry in yd_block_nel_walk_mult
+    # (the r214 terminator law, fired LAST so every existing member
+    # keeps its exact path): after the r173 continuation declines,
+    # yeptris's remainder must be a SINGLE-LINE surplus (plain bytes
+    # plus kept raw NEL/LS/PS — no escapes, no raw LFs: this rides
+    # ONE line) followed by its ONE trailing escape, libyaml's
+    # remainder exactly ONE escape, and the remainders behind BOTH
+    # escapes byte-identical to the very end (the r161 complete
+    # binding — nothing past the scalar can ride); every step
+    # advances the yeptris pointer (the walk stays bounded by the
+    # dump length). Strictly claim-additive: "libyaml ended the value
+    # one escaped break EARLIER with identical tails" never rode any
+    # branch before. Minimality: greedy deletion pins the 11-byte
+    # ">\n <\u{85}...\u{85}" (the same terminator delta — yeptris's
+    # trailing escape there is the suite-pinned breakless-EOF clip
+    # break; the same branch rides it); the pinned seed is the TRUE
+    # 14-byte artifact. 80-mutant paired battery (pre-fix parent
+    # c21173c vs post-arm): 14 fixed, 0 regressions, 49 carried
+    # both-abort, 17 quiet.
+    add_test(
+        NAME fuzz-diff-r214-block-nel-terminator-docend
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-terminator-docend-r214.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
