@@ -4209,6 +4209,40 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-quote-comment-glue-r229.bin
     )
 
+    # the r230 nightly (run 42665259808, main 73c447e, crash-
+    # b841bb3aa948b2f36e68252006f4a7869af10dff): the DOUBLE-split member
+    # of the r142 anchor-name charset family -- the 59-byte
+    # "&I:919999k: &ab?cd v\n--- !!m~~top4~~~...": TWO riding names on
+    # one line ('&I:919999k' riding the interior colon at the key, then
+    # the VALUE's '&ab?cd' riding the '?' -- libyaml's IS_ALPHA set
+    # excludes both ':' and '?'), separated by the KEY colon. yeptris's
+    # ns-char set rides both ("I:919999k" and "ab?cd" as the anchor
+    # names, empty key + plain "v"); libyaml cuts at the first
+    # out-of-set byte of each run (anchor "I" + plain key ":919999k",
+    # anchor "ab" + plain "?cd v"). Regression triage CLEAN: the
+    # pre-r229 main 97bd9df aborts identically (the r229 quote-glue
+    # round is comparator-only and exonerated). The r142 arm's split
+    # transform carried only the FIRST split: the residual blind copy
+    # ran no colon law, so node_pos2 stayed dead after it and the
+    # SECOND '&ab' split was skipped -- the copy kept the riding name
+    # and the copy-agrees leg declined the arm's own family (both
+    # verify legs hold by hand on the fully-split copy: dumpboth-
+    # verified). The fix (the r230 residual-colon law) runs the gate's
+    # colon law THROUGH the residual blind copy (the key colon ends
+    # the riding plain and arms node_pos2; a colon-led residual arms
+    # the plain), and the trailing plain_residual only arms when the
+    # residual had NO colon of its own -- clobbering plain_open2 after
+    # the key colon reopened the plain over the node position (the
+    # gate never clobbers). 359-mutant census: 0 aborts (the arm is
+    # general -- the whole name-variant neighborhood carries). The six
+    # corpus walks are clean (parse 352); the 119 existing pins stay
+    # green. Seed: anchor-charset-residual-colon-r230.bin (this pin).
+    add_test(
+        NAME fuzz-diff-r230-anchor-charset-residual-colon
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-residual-colon-r230.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
