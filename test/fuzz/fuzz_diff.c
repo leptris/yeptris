@@ -5864,6 +5864,93 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
                 subs++;
                 continue;
             }
+            /* the r215 fold-space arm (the nightly's round 215, run
+             * 42543960307, main d380532; 21-byte artifact
+             * ">\n !<[NEL NEL SP][LF] <[NEL NEL SP][LF]"): the site where
+             * yeptris's FOLD SPACE precedes the kept NEL run while
+             * libyaml's break run is already underway. yeptris's 1.2
+             * reader treats NEL as printable content (only LF/CR/CRLF
+             * break), so its folded scalar writes the fold space at the
+             * line boundary and keeps the NELs verbatim behind it; libyaml's
+             * 1.1 reader breaks AT the NELs, its blank-line accounting
+             * suppresses the fold space, and its break run opens with the
+             * boundary break instead. The walk's byte-bound loop stops at
+             * the space-vs-escape delta BEFORE the NEL branch is ever
+             * reached (the branch's gate wants a sitting ON the run), so
+             * every existing law declined. The arm eats ONLY the one
+             * space -- gated on the NEL pair immediately behind it and an
+             * escape on b's side -- and rejoins the loop top, where the
+             * NEL branch's own laws (the r208 surplus, the (k-1)
+             * collapse, the r173 continuation, the r214 terminator)
+             * reconcile the rest under their existing budgets. Previously
+             * this site ALWAYS declined (the handler's only exit was
+             * r197), so no existing member's path changes; the admission
+             * stays byte-bound through the branch's complete bindings. */
+            if (a[0] == ' ' && (unsigned char)a[1] == 0xC2 && (unsigned char)a[2] == 0x85 &&
+                b[0] == '\\' && b[1] == 'n') {
+                a += 1; /* yeptris's fold space; libyaml broke instead */
+                subs++;
+                continue;
+            }
+            /* the r215 fold-break surplus (the same nightly's drift
+             * sibling, 14 bytes ">\n <[LF][NEL NEL SP][NEL NEL]"): the
+             * site where yeptris's escape run is LONGER than libyaml's
+             * before the kept NELs -- its 1.2 fold emits the line
+             * boundary's fold break where libyaml's blank-line collapse
+             * absorbed it. yeptris rides x escapes then the kept NEL run
+             * of k; libyaml rides y escapes (1 <= y < x) and stops. The
+             * binding is complete: behind the run yeptris carries exactly
+             * (x - y) surplus escapes (its absorbed-fold breaks and clip)
+             * and THEN libyaml's remainder byte-identical to the very
+             * end -- nothing past the site can ride. The scan is bounded
+             * by the dumps themselves, every counted run is pinned, and
+             * the handler previously declined here unconditionally, so
+             * existing members keep their exact paths. The binding alone
+             * is the gate: the drift twins whose libyaml value is spent
+             * WHOLE (minimality's ">\n[NEL NEL SP][NEL NEL]", 11 and 12
+             * bytes) need (x - y) escapes behind the run that yeptris
+             * simply does not carry, so strcmp fails and they keep
+             * aborting -- a different mechanism (the empty-value twin)
+             * the family's binding cannot own. */
+            if (a[0] == '\\' && a[1] == 'n' && b[0] != '\0') {
+                const char* pa = a;
+                int x = 0;
+                while (pa[0] == '\\' && pa[1] == 'n') {
+                    pa += 2;
+                    x++;
+                }
+                if ((unsigned char)pa[0] == 0xC2 && (unsigned char)pa[1] == 0x85) {
+                    const char* pq = pa;
+                    int k = 0;
+                    while ((unsigned char)pq[0] == 0xC2 && (unsigned char)pq[1] == 0x85) {
+                        pq += 2;
+                        k++;
+                    }
+                    const char* pb = b;
+                    int y = 0;
+                    while (pb[0] == '\\' && pb[1] == 'n') {
+                        pb += 2;
+                        y++;
+                    }
+                    int s = x - y;
+                    if (s >= 1) {
+                        int esc = 1;
+                        for (int e = 0; e < s; e++) {
+                            if (!(pq[0] == '\\' && pq[1] == 'n')) {
+                                esc = 0;
+                                break;
+                            }
+                            pq += 2;
+                        }
+                        if (esc && strcmp(pq, pb) == 0) {
+                            a = pq;
+                            b = pb;
+                            subs += s + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
             return 0;
         }
         a++;
