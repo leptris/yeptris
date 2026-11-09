@@ -3878,6 +3878,33 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-carpet-r220.bin
     )
 
+    # the r221 nightly (run 42579140515, main 6fed677, crash-ccf950b7):
+    # the GLUED-COLON PAIR of the flow-SEQ '?' family. libyaml's
+    # unconditional KEY-token law reads the glued '?' as a KEY and its
+    # scan_plain stop law ends the key's run at a ':'+blankz or a flow
+    # boundary ("00" + value "m$"), while yeptris's suite-pinned plain
+    # reading keeps "?00" one plain key (HM87/652Z). The r183 spells
+    # decline: its run scanner refuses ANY ':' inside the run, and the
+    # "{run: }" wrap cannot absorb the pair's own separator and value.
+    # The arm quotes the KEY RUN ("?" "00" -> \"00\") and rides the
+    # separator/value verbatim; glued-colon runs ("?00:$]") wrap into
+    # "{00:$: }" instead (libyaml's empty value). The A/B against the
+    # pre-r220 parent 88864c4 aborts IDENTICALLY (exit 134, the same
+    # dump pair) -- the r220 NEL-carpet arm is exonerated, a fresh
+    # site whose ':' the earlier arms decline by construction. The
+    # byte-strict verify arbitrates with the CR/LS/PS/NEL-normalized
+    # triple as the fallback (the artifact rides one: its head plain
+    # keeps the raw PS in libyaml's dump while yeptris folds it). The
+    # minimizer's twin ("[)<PS>.,?00:$]", kept at /tmp, rides the same
+    # arm's wrap spell). 60-mutant paired battery: 0 regressions (28
+    # family flips abort->pass); the shared six-corpus walk is
+    # byte-identical pre/post; the 110 existing pins stay green.
+    add_test(
+        NAME fuzz-diff-r221-qflow-seq-glued-colon-pair
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-glued-colon-pair-r221.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
