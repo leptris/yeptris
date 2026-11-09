@@ -3767,6 +3767,35 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-foldboundary-r216.bin
     )
 
+    # the r217 round (run 42555057049, main 0eb3b0f, crash
+    # 13cb50cd9b9756179bbe0eb250c30a10e5f68a04): an ENGINE round — the
+    # A/B against the pre-r216 parent 27c92f1 aborts IDENTICALLY (exit
+    # 134, the same dump pair), so the r216 round is exonerated. The
+    # 35-byte artifact ";!&a:\\to&a-:{*,,,!<!<[NEL^3]NNa::ao\\t:" (the
+    # 15-byte DIFFER-constrained minimum ";:\\t:{!<[NEL^3]::") rides the
+    # break normalizer's context walk: the glued ':'-twin '{' opened a
+    # PHANTOM flow whose interior ','s armed a props slot (the phantom
+    # inflated in_flow past the comma arm's "in flow" gate), and the
+    # '!<' at that slot opened a phantom VERBATIM that swallowed the
+    # whole tail — every NEL rode unnormalized raw into the engine, the
+    # raw-NEL block walk minted an empty key, and yeptris emitted five
+    # scalars in one map against libyaml's four. Three gates, all in
+    # norm_step (engine.c): the phantom opener no longer clears
+    # plain_open (its bytes are interior to the open plain VALUE word —
+    # the r155/r169 law's opener twin), the comma arm keys on REAL flow
+    # (in_flow > phantom_flow — the r169 gate's comma twin), and the
+    # DECLINED ':' arms plain_open (a ':' before a non-blank byte is
+    # interior to a plain or the plain's own lead — the #833 predicate's
+    # plain-context fact). 142-mutant paired battery (pre-fix parent
+    # 27c92f1 vs post-fix): 71 fixed, 0 regressions, 9 carried
+    # both-abort, 62 both-pass; the shared six-corpus walk is
+    # byte-identical pre/post.
+    add_test(
+        NAME fuzz-diff-r217-norm-phantom-verbatim-lead
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/norm-phantom-verbatim-lead-r217.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
