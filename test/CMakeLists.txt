@@ -3680,6 +3680,53 @@ if(YEPTRIS_LIBYAML_ROOT)
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-terminator-docend-r214.bin
     )
+    # the r215 round (run 42543960307, main d380532, crash
+    # 45808742369d734fa2c16e250ad26a9af4f1a2f6): a FRESH finding — the
+    # A/B against the pre-r214 parent 4ac09a3 aborts IDENTICALLY (exit
+    # 134, the same dump pair), so the r214 terminator law is
+    # exonerated. The 21-byte ">\n !<[LF] [NEL NEL SP][LF] <[NEL NEL
+    # SP][LF]" reads a root folded block scalar whose content carries
+    # raw NELs mid-line (the r160 family): yeptris's 1.2 reader keeps
+    # them as content and writes the fold SPACE at the line boundary,
+    # so its value is "!<" + fold space + NELNEL + kept trailing space
+    # + fold space + "<" + NELNEL + space + the clip break; libyaml's
+    # 1.1 reader breaks AT the NELs, its blank-line accounting
+    # suppresses the fold space, and its break run opens with the
+    # boundary break — "!<" + 3 escaped breaks + "<" + the clip. No
+    # existing arm owns it: the walk's byte-bound loop stops at the
+    # space-vs-escape delta BEFORE the NEL branch's gate (which wants a
+    # sitting ON the run) is ever reached, so r161/r208/(k-1)/r173/r214
+    # all declined; the r176 composed transform declines (the input
+    # ends with a break). Comparator carry in yd_block_nel_walk_mult's
+    # mismatch handler (fired LAST; both arms previously declined here
+    # unconditionally, so every existing member keeps its exact path):
+    # (1) the FOLD-SPACE arm eats only the one space, gated on the NEL
+    # pair immediately behind it and an escape on libyaml's side, and
+    # rejoins the loop top where the branch's own laws reconcile the
+    # rest under their existing budgets; (2) the FOLD-BREAK-SURPLUS arm
+    # owns the drift sibling's site (yeptris's escape run LONGER than
+    # libyaml's before the kept NELs — the 14-byte ">\n <[LF][NEL NEL
+    # SP][NEL NEL]" greedy minimum, reachable from the seed by two
+    # deletions): yeptris rides x escapes then the k-NEL run, libyaml y
+    # escapes, and behind the run yeptris carries exactly (x - y)
+    # surplus escapes THEN libyaml's remainder byte-identical to the
+    # very end — a complete binding nothing past the site can ride. The
+    # empty-value drift twins (11/12 bytes, libyaml's whole value
+    # spent) need (x - y) escapes behind the run that yeptris does not
+    # carry, so the binding fails and they keep aborting (a different
+    # mechanism, documented not carried). Minimality: the
+    # DIFFER-constrained greedy deletion drifts to the empty-value twin
+    # (11-byte ">\n[NEL NEL SP][NEL NEL]"); constrained to the
+    # artifact's mechanism (libyaml's value non-empty) it pins the
+    # 14-byte fold-break-surplus sibling, which the arm carries; the
+    # pinned seed is the TRUE 21-byte artifact. 83-mutant paired
+    # battery (pre-fix parent 4ac09a3 vs post-arm): 24 fixed, 0
+    # regressions, 21 carried both-ride, 38 both-abort.
+    add_test(
+        NAME fuzz-diff-r215-block-nel-foldsurplus
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-foldsurplus-r215.bin
+    )
 
 
 
