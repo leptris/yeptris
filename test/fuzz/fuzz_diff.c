@@ -2470,10 +2470,17 @@ static int yd_r203_dq_escape(char* sub, size_t* subn, unsigned char b) {
  * turf is the clean same-line run; quoted, indicator, and boundary
  * followers stay with the other qflow arms), ended by ',' or ']' with
  * no quote / '#' / '\' / nested flow / pair-separating ':' inside,
- * ASCII-only content, and at most 8 folds. The byte-strict verify
- * against libyaml's ORIGINAL dump arbitrates: both engines must read
- * the rewrite exactly as libyaml read the original, or the claim
- * declines. */
+ * ASCII-only content beyond the breaks, and at most 8 folds. An
+ * EMBEDDED '?' mid-run rides since the r219 nightly (run 42567242070,
+ * main 3b7b3f8, crash-181967eb654e91fe5d56b394c48b90eb85987370,
+ * minimized "[?+D<U+2028>.\nF:-?-]"): a '?' between plain bytes is
+ * CONTENT in both engines' originals (libyaml's scan_plain never
+ * breaks at it mid-token -- its flow break set is ',' / '[' / ']'
+ * / '{' / '}' plus ':'-before-blank, and the KEY fetch law applies
+ * only BETWEEN tokens), and the bake quotes it away inside the
+ * double-quoted key. The byte-strict verify against libyaml's
+ * ORIGINAL dump arbitrates: both engines must read the rewrite
+ * exactly as libyaml read the original, or the claim declines. */
 static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, size_t size,
                                                           const char* ydump, const char* ldump) {
     if (ydump == NULL || ldump == NULL || size < 5 || size > 262144) {
@@ -2554,8 +2561,10 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
                 /* the run itself rides breaks AND quotes (the fold
                  * law's absorption: a plain run open across the break
                  * keeps a quote mid-plain content in both engines, the
-                 * r191 law) but no '#' / '\' / nested flow /
-                 * pair-separating ':' inside, no non-ASCII content
+                 * r191 law) and an EMBEDDED '?' (the r219 admission:
+                 * mid-plain '?' is content in both engines, and the
+                 * bake quotes it away), but no '#' / '\' / nested flow
+                 * / pair-separating ':' inside, no non-ASCII content
                  * beyond the breaks, no stray control bytes, and it
                  * must end at ',' or ']' with at most 8 folds — the
                  * multi-line shape r183's clean-run law declines */
@@ -2567,7 +2576,7 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
                     if (d == ',' || d == ']') {
                         break;
                     }
-                    if (d == '\\' || d == '[' || d == '{' || d == '}' || d == '?' || d == '#') {
+                    if (d == '\\' || d == '[' || d == '{' || d == '}' || d == '#') {
                         clean = 0;
                         break;
                     }
