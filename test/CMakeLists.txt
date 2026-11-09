@@ -4296,6 +4296,31 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-quote-comment-glue-doubled-min-r232.bin
     )
 
+    # The r233 nightly (run 42697464143, main e2b7464, crash-72a25efe)
+    # caught the r203 flow-'?' arm's DOWNSTREAM-LS/PS composition: the
+    # 132-byte artifact carries its raw LS/PS bytes in members the
+    # rewrite never touches -- the r203 bake+exact-verify handled the
+    # '?'-led member (baked key "+D\P\n\L'c") but the exact compare
+    # declined on member 3's delta alone (libyaml keeps the downstream
+    # plain's LS/PS RAW verbatim -- the r231 finding -- where yeptris
+    # folds). The carry is the r233 TWO-PHASE VERIFY in the r203 arm:
+    # phase 1 the exact compare (every previously-exact member keeps
+    # its exact path); phase 2 on decline -- the rewrite exact for
+    # libyaml (ldump2 == ldump byte-exact) and the yeptris leg
+    # re-verified through the adjudicated LS/PS fold walk
+    # (yd_dump_eq_mod_lsps_fold) -- the composition of two trusted
+    # carries, the r166 lesson applied to the verify. 1320-mutant
+    # paired battery vs parent 9e78756: 1028 fixed / 0 regressions /
+    # 16 both-abort / 276 both-pass (the walk admits the whole
+    # downstream-LS/PS neighborhood); six corpus walks clean (parse
+    # 356); the 122 existing pins stay green. Seed:
+    # qflow-lsps-downstream-plain-r233.bin (this pin).
+    add_test(
+        NAME fuzz-diff-r233-qflow-lsps-downstream-plain
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-lsps-downstream-plain-r233.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)

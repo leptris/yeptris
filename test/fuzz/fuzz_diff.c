@@ -3676,6 +3676,7 @@ static int yd_r203_dq_escape(char* sub, size_t* subn, unsigned char b) {
  * double-quoted key. The byte-strict verify against libyaml's
  * ORIGINAL dump arbitrates: both engines must read the rewrite
  * exactly as libyaml read the original, or the claim declines. */
+static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump);
 static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, size_t size,
                                                           const char* ydump, const char* ldump) {
     if (ydump == NULL || ldump == NULL || size < 5 || size > 262144) {
@@ -3961,6 +3962,21 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
     char* ldump2 = yd_libyaml_dump((const char*)sub, subn, &lok2);
     int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
                  strcmp(ldump2, ldump) == 0);
+    if (!known && hits > 0 && yok2 && lok2 && ydump2 != NULL && ldump2 != NULL &&
+        strcmp(ldump2, ldump) == 0 && yd_dump_eq_mod_lsps_fold(ydump2, ldump)) {
+        /* the r233 two-phase verify (run 42697464143, main e2b7464,
+         * crash-72a25efe): the rewrite is exact for libyaml
+         * (ldump2 == ldump byte-exact), but the UNTOUCHED members
+         * downstream may carry their own raw LS/PS bytes (libyaml's
+         * plain verbatim-keep law, the r231 finding) where yeptris
+         * folds -- the exact compare declined on member 3's delta
+         * alone. On decline the yeptris leg re-verify through the
+         * adjudicated LS/PS fold walk (the composition of two trusted
+         * carries -- the r166 lesson applied to the verify); the
+         * libyaml leg stays byte-exact. Members that verified exactly
+         * before keep their exact path (phase 1 first). */
+        known = 1;
+    }
     free(ydump2);
     free(ldump2);
     free(sub);
