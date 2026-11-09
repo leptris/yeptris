@@ -10648,11 +10648,37 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                     flowd2 == 0 && !bs_open2 &&
                     !(f == ':' && (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
                                    data[i + 1] == '\n' || data[i + 1] == '\r'));
+                int saw_colon = 0;
+                /* the r230 residual-colon law: the blind copy runs the
+                 * gate's colon law THROUGH the residual, not just at
+                 * its first byte ("&I:919999k: &ab?cd v" -- the
+                 * nightly's round 230, crash-b841bb3a -- the residual
+                 * ':919999k:' ends at the KEY colon followed by a
+                 * blank, and the LATER '&ab' anchor sits at NODE
+                 * position; leaving node_pos2 dead skipped the second
+                 * split, the copy kept the riding name and the
+                 * copy-agrees leg declined the arm's own family) */
                 while (i < size && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' &&
                        data[i] != '\r' && yd_mb_break_len(data, size, i) == 0) {
+                    if (data[i] == ':') {
+                        saw_colon = 1;
+                        unsigned char nx = (i + 1 < size) ? data[i + 1] : (unsigned char)' ';
+                        if (nx == ' ' || nx == '\t' || nx == '\n' || nx == '\r') {
+                            plain_open2 = 0; /* the key colon ends the riding plain */
+                            node_pos2 = 1;
+                        } else if (flowd2 == 0 && !bs_open2 && !tag_run2) {
+                            plain_open2 = 1; /* the colon-led plain law again */
+                        }
+                    }
                     sub[o++] = (char)data[i++];
                 }
-                if (plain_residual) {
+                /* the trailing plain_residual only arms when the
+                 * residual had NO colon of its own -- a colon-led
+                 * residual's laws already ran IN ORDER in the loop, and
+                 * clobbering plain_open2 AFTER the key colon reopened
+                 * the plain over the node position (the gate never
+                 * clobbers) */
+                if (plain_residual && !saw_colon) {
                     plain_open2 = 1;
                 }
             }
