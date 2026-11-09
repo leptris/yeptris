@@ -6084,25 +6084,109 @@ static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, con
      * own precondition (a breakless final byte; the 8192 cap bounds
      * the re-dump), and the original walk ran first, so every
      * existing member keeps riding its branch unchanged. */
-    if (size == 0 || size > 8192 || data[size - 1] == '\n' || data[size - 1] == '\r') {
+    if (size != 0 && size <= 8192 && data[size - 1] != '\n' && data[size - 1] != '\r') {
+        char* sub = malloc(size + 1);
+        if (sub != NULL) {
+            memcpy(sub, data, size);
+            sub[size] = '\n';
+            int ok2 = 0;
+            char* ldump2 = yd_libyaml_dump((const char*)sub, size + 1, &ok2);
+            free(sub);
+            if (ldump2 != NULL && ok2) {
+                int known = yd_block_nel_walk(ydump, ldump2);
+                free(ldump2);
+                if (known) {
+                    return 1;
+                }
+            } else {
+                free(ldump2);
+            }
+        }
+    }
+    /* the r220 NEL-carpet transform (the nightly's round 220, run
+     * 42572682702, main 025d613; 52-byte artifact, 27-byte minimum
+     * "> LF NELx10 SP NELNEL"): a folded block scalar whose content
+     * lines are NEL-carpeted. libyaml's 1.1 reader breaks AT every
+     * NEL, and its blank-line accounting collapses the space-only
+     * sub-lines the NEL splits leave behind into literal break runs;
+     * yeptris's 1.2 reader keeps the NELs as first-class content and
+     * folds only on the LF boundaries, so its value interleaves kept
+     * NEL pairs and fold spaces where libyaml's is one long
+     * escaped-break run (the artifact: yeptris "!< LF NELNEL SP LF
+     * NELNEL SP SP NELNEL SP LF NELNEL SP SP <NELNEL SP <NELNEL SP LF"
+     * against libyaml "!< + 15 escaped breaks + < LF < LF"). The
+     * byte-bound walk cannot reach the shape: each NEL branch's
+     * budgeted continuation pairs at MOST mult*k fold-material steps,
+     * while every kept NEL pair maps to the blank lines of THREE
+     * libyaml sub-lines spread across neighboring budget windows --
+     * the greedy walk spends its budget pairing spaces and then hits
+     * a content byte while libyaml's break run is still underway, and
+     * no surplus arm owns a surplus that large (r208's law is exactly
+     * k; here it is ~3k per site). A/B against the pre-r219 parent
+     * 3b7b3f8 aborts IDENTICALLY (exit 134, the same dump pair), so
+     * the r219 widening is exonerated: a fresh site, fired LAST where
+     * the handler previously declined unconditionally -- every
+     * existing member keeps its exact path. The arm is the family's
+     * complete binding at the INPUT level: replace every raw NEL pair
+     * with an LF. That is pure to libyaml (its 1.1 reader already
+     * breaks at NEL -- its dump must be byte-identical on the
+     * transformed input, which the first strcmp pins), and for
+     * yeptris it is exactly the family's documented delta (its 1.2
+     * reader now breaks at the very lines libyaml did). When
+     * yeptris's dump of the NEL-free input equals libyaml's ORIGINAL
+     * dump byte-for-byte, the whole original divergence is the
+     * kept-NEL-content delta and nothing else: the second strcmp
+     * binds both dumps to the very end, so no frame byte can ride.
+     * Gates: the walk and the r176 clip transform declined first,
+     * the input carries a raw NEL pair, yeptris's dump shows the
+     * kept-content signature (a raw NEL pair), and the 8192 cap (the
+     * harness's own input cap) bounds the re-dumps. */
+    if (size == 0 || size > 8192) {
+        return 0;
+    }
+    int nel_in = 0;
+    for (size_t i = 0; i + 1 < size; i++) {
+        if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+            nel_in = 1;
+            break;
+        }
+    }
+    if (!nel_in) {
+        return 0;
+    }
+    int nel_out = 0;
+    for (const char* p = ydump; p[0] != '\0'; p++) {
+        if ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0x85) {
+            nel_out = 1;
+            break;
+        }
+    }
+    if (!nel_out) {
         return 0;
     }
     char* sub = malloc(size + 1);
     if (sub == NULL) {
         return 0;
     }
-    memcpy(sub, data, size);
-    sub[size] = '\n';
-    int ok2 = 0;
-    char* ldump2 = yd_libyaml_dump((const char*)sub, size + 1, &ok2);
-    free(sub);
-    if (ldump2 == NULL || !ok2) {
-        free(ldump2);
-        return 0;
+    size_t o = 0;
+    for (size_t i = 0; i < size; i++) {
+        if (i + 1 < size && (unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+            sub[o++] = '\n';
+            i++;
+        } else {
+            sub[o++] = (char)data[i];
+        }
     }
-    int known = yd_block_nel_walk(ydump, ldump2);
-    free(ldump2);
-    return known;
+    int yok3 = 0;
+    int lok3 = 0;
+    char* ydump2 = yd_sem_dump((const char*)sub, o, &yok3);
+    char* ldump3 = yd_libyaml_dump((const char*)sub, o, &lok3);
+    int known3 = yok3 != 0 && lok3 != 0 && ydump2 != NULL && ldump3 != NULL &&
+                 strcmp(ldump3, ldump) == 0 && strcmp(ydump2, ldump) == 0;
+    free(sub);
+    free(ydump2);
+    free(ldump3);
+    return known3;
 }
 
 /* True for the ONE exact gray-zone input of the r130 nightly
