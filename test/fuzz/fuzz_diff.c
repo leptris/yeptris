@@ -41,7 +41,15 @@ static const char* probe_id = NULL;
  * cannot reach it. The probe removes every line-start BOM from the
  * input: the removal is pure to libyaml (it already stripped them)
  * and yeptris reads the BOM-less input exactly as libyaml's original —
- * both engines' dumps of the removal must equal libyaml's original. */
+ * both engines' dumps of the removal must equal libyaml's original.
+ * The r226 nightly (run 42622039396, main 892510b, crash-c76eee55,
+ * UTF-16BE "mark<NEL><BOM><NEL><BOM><NEL>a") widened "line start" to
+ * every break kind — libyaml's scan_to_next_token drops a BOM at mark
+ * column 0 whatever break opened the line (LF, CR, CRLF, NEL, LS, PS;
+ * byte-probed on the r226 probes), while yeptris keeps every content
+ * BOM (the catch-121 law); the UTF-8 NEL (C2 85) and LS/PS (E2 80
+ * A8/A9) sequences now open lines here too, matching the UTF-16 unit
+ * arm below. */
 static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const char* ydump,
                                         const char* ldump) {
     /* the 3-byte BOM + one follower byte is a legal member (the
@@ -72,6 +80,18 @@ static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const 
             if (i + 1 < size && data[i + 1] == '\n') {
                 sub[o++] = data[++i];
             }
+            line_start = 1;
+        } else if (data[i] == 0xC2 && i + 1 < size && data[i + 1] == 0x85) {
+            sub[o++] = data[++i]; /* the UTF-8 NEL: a line start too --
+                                   * libyaml's column-0 BOM skip is
+                                   * break-kind-agnostic (the r154 law),
+                                   * and the r226 nightly's UTF-8 twin
+                                   * rides BOMs past NEL lines */
+            line_start = 1;
+        } else if (data[i] == 0xE2 && i + 2 < size && data[i + 1] == 0x80 &&
+                   (data[i + 2] == 0xA8 || data[i + 2] == 0xA9)) {
+            sub[o++] = data[++i]; /* LS/PS: line starts too */
+            sub[o++] = data[++i];
             line_start = 1;
         } else {
             line_start = 0;
@@ -122,6 +142,14 @@ static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const 
             if (i + 1 < size && data[i + 1] == '\n') {
                 sub2[o++] = data[++i];
             }
+            line_start = 1;
+        } else if (data[i] == 0xC2 && i + 1 < size && data[i + 1] == 0x85) {
+            sub2[o++] = data[++i]; /* the UTF-8 NEL: a line start too */
+            line_start = 1;
+        } else if (data[i] == 0xE2 && i + 2 < size && data[i + 1] == 0x80 &&
+                   (data[i + 2] == 0xA8 || data[i + 2] == 0xA9)) {
+            sub2[o++] = data[++i]; /* LS/PS: line starts too */
+            sub2[o++] = data[++i];
             line_start = 1;
         } else {
             line_start = 0;
@@ -937,7 +965,13 @@ static int yd_qc_quote_dash_run(uint8_t* sub, size_t* subn, const uint8_t* data,
  * libyaml(original). The catch-121 form instead: transform the input
  * to WHAT LIBYAML'S READER CONSUMED (apply both strips in unit
  * space), re-encode to UTF-8, and require yeptris's reading of that
- * to equal libyaml's original dump. */
+ * to equal libyaml's original dump. The r226 nightly (run
+ * 42622039396, main 892510b, crash-c76eee55: "FE FF 00 85 FE FF 00 85
+ * FE FF 00 85 00 61" -- the NEL member) widened the line-start gate
+ * from LF-only to every break unit: libyaml's scan_to_next_token
+ * drops a BOM at mark column 0 whatever break opened the line (the
+ * r154 law, byte-probed across LF/CR/NEL/LS/PS), while yeptris keeps
+ * every content BOM (the catch-121 law). */
 static int yd_bom_utf16_line_start_divergence(const uint8_t* data, size_t size, const char* ydump,
                                               const char* ldump) {
     if (ydump == NULL || ldump == NULL || size < 6 || size > 8192 || (size % 2) != 0) {
@@ -990,7 +1024,17 @@ static int yd_bom_utf16_line_start_divergence(const uint8_t* data, size_t size, 
             sub[o++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
             sub[o++] = (unsigned char)(0x80 | (cp & 0x3F));
         }
-        line_start = (hi == 0x00 && lo == 0x0A);
+        /* a line starts after ANY break unit -- LF, CR, NEL, LS, PS
+         * (the r226 nightly artifact, run 42622039396, main 892510b,
+         * crash-c76eee55: the NEL member -- "mark<NEL><BOM><NEL><BOM>
+         * <NEL>a" -- rode BOMs at NEL line starts past the LF-only
+         * gate). libyaml's column-0 BOM skip is break-kind-agnostic:
+         * its scan_to_next_token drops a BOM at mark column 0 whatever
+         * break opened the line (the r154 law, byte-probed across
+         * LF/CR/NEL/LS/PS), while yeptris keeps every content BOM
+         * (the catch-121 law). CRLF sets the flag twice -- harmless. */
+        line_start = (hi == 0x00 && (lo == 0x0A || lo == 0x0D || lo == 0x85)) ||
+                     (hi == 0x20 && (lo == 0x28 || lo == 0x29));
     }
     if (!feature) {
         free(sub);

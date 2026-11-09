@@ -4055,6 +4055,40 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-multiline-fold-run-r225.bin
     )
 
+    # the r226 nightly (run 42622039396, main 892510b, crash-
+    # c76eee55d5fcf2ea27de2badded914ebd28bba3b): the NEL member of the
+    # UTF-16 line-start BOM family -- UTF-16BE "mark<NEL><BOM><NEL><BOM>
+    # <NEL>a" (14 bytes). libyaml's scan_to_next_token drops a BOM at
+    # mark column 0 whatever break opened the line (the r154 law,
+    # byte-probed across LF/CR/NEL/LS/PS), while yeptris keeps every
+    # content BOM (the catch-121 law): yeptris's plain reads
+    # "<BOM> <BOM> a" (the two interior NELs fold to spaces, the first
+    # rides as the plain's consumed leading break) against libyaml's
+    # bare "a". The r100 arm's line-start gate tracked LF only, so both
+    # NEL-line-start BOMs slipped past it (feature never fired); the
+    # r159 single-(BOM+fold) strip reaches only one pair, so the
+    # TWO-BOM composition stayed unknown. A FRESH find, not an r225
+    # regression: the A/B against the pre-r225 parent fe760cd aborts
+    # IDENTICALLY on both builds (same stream pair). The widening is
+    # gate-only (the arm's twin + skeleton equality gates are
+    # untouched): 60-mutant paired battery vs main 892510b, 0
+    # regressions (27 admissions abort->pass; the 10 still-fires are
+    # byte-identical pre/post; 23 clean-same). The UTF-8 byte arm's
+    # probes widened in lockstep (C2 85 / E2 80 A8/A9 line starts --
+    # the u2 twin "\n?NEL<BOM>NEL<BOM>NELa" member). The six-corpus
+    # *_lf walks (parse 344, feed 64, marshal 17, cbor 101, validate 5,
+    # roundtrip 4) are clean pre/post; the 115 existing pins stay
+    # green. Minimality: the unit-deletion sweep pins the 10-byte
+    # mark<NEL><BOM><NEL><BOM>a twin (any single-unit cut that keeps
+    # two NEL-line-start BOMs stays unknown; single-BOM members already
+    # classify through the r159 strip); the pinned seed is the TRUE
+    # 14-byte artifact.
+    add_test(
+        NAME fuzz-diff-r226-bom-utf16-nel-line-start
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-utf16-nel-line-start-r226.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
