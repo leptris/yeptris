@@ -8502,8 +8502,9 @@ static int yd_r218_blank_line(const uint8_t* d, size_t n, size_t* at) {
  * routing declines splits, the r170 law), and the tab-indent members
  * stay the r157 family's named siblings. Unclaimed DIFFER siblings
  * (each its own entry or an engine dig): the longer-name members
- * ("*ab:" and head "&aa:o:"), the "..." explicit doc-end tail, and the
- * alias-first reverse order (yeptris errors, libyaml accepts -- a
+ * ("*ab:" and head "&aa:o:"), the "..." explicit doc-end tail, the
+ * undefined-alias member ("*b:" -- a one-byte seed substitution), and
+ * the alias-first reverse order (yeptris errors, libyaml accepts -- a
  * LIBYAML-ONLY split); the plain-follower member ("&a:o:\n\nb\n",
  * yeptris folds the pended head INTO one plain scalar "&a:o: b" -- a
  * fresh split twin of the r182-engine-residual #707 riding-anchor
@@ -8514,22 +8515,72 @@ static int yd_r218_blank_line(const uint8_t* d, size_t n, size_t* at) {
  * r137/r138/r139 (a genuine alias-drop bug would ride the same
  * signature). The composition rides the byte-shape gray claim over the
  * MEASURED family -- documented by input shape, verified member by
- * member. */
+ * member.
+ *
+ * The r227 nightly (run 42630534433, main 0b72c24, crash-
+ * 03fcab71b7649852477c5f7163d0a42ff70f2bba) caught the family's
+ * DIRECT-ADJACENCY member: "&a:o:\n*a:" -- the ZERO-blank separator
+ * the blank-run claim could not reach, fired on seed-corpus replay at
+ * MS: 0 (the mutator deleted the r218 seed's 19-LF run down to the
+ * bare break). Regression triage: the r225/r226 rounds' fixes (#1198,
+ * #1204) are comparator-only and the artifact's dumps are the r218
+ * pair verbatim, so no recent arm is implicated; the A/B against the
+ * r218-era main aborts identically. The zero-blank member rides the
+ * same collapse: yeptris's ONE riding-name alias vs libyaml's flat
+ * pair map -- the blank run was always INERT on the collapse, so the
+ * separator law widens to ZERO-OR-MORE blank lines, which claims the
+ * direct form, its lone-CR spell ("&a:o:\r*a:"), the zero-blank
+ * indented-alias member ("&a:o:\n *a:", libyaml nests the alias pair),
+ * and the EOF-at-alias-colon tail (no trailing break) beside the
+ * already-claimed members. The 96-mutant battery around the artifact
+ * then measured the rest of the neighborhood: every riding-NAME
+ * mutation (longer heads "&aa:o:"/"&x:o:"/"&a:x:", dotted names
+ * "&a:.o:", longer/different alias names "*aa:"/"*x:") is the SAME
+ * collapse with a different riding run -- the ride is deterministic
+ * over the name's CONTENT -- so the exact-byte name pins widen to a
+ * conservative riding-name set ([A-Za-z0-9_.-] + the riding ':'),
+ * each run required to END on its ':' (the plain-name endings are
+ * separate shapes: "&a:o\n..." is the r142 charset family, "*a\n" a
+ * YEPTRIS-ONLY split). Leading blank lines claim as an inert prefix
+ * (their own 2-pair-vs-collapse pair, dumpboth-verified), and the
+ * line-start "..." doc-end tail claims as an inert suffix (libyaml
+ * ends the same 2-pair map at the marker). Still unclaimed: the TAB
+ * members (the no-tab gate), props-restart names ("&a&o:"), non-ASCII
+ * names, and the colon-glued "...'" spell -- each its own entry. */
 static int yd_r218_root_alias_blank_run_gray(const uint8_t* data, size_t size, const char* ydump,
                                              const char* ldump) {
-    static const uint8_t head[] = {0x26, 0x61, 0x3a, 0x6f, 0x3a}; /* "&a:o:" */
-    static const uint8_t ali[] = {0x2a, 0x61, 0x3a};              /* "*a:" */
-    size_t i, j, blanks;
-    if (size < sizeof(head) + 2 + sizeof(ali) || memcmp(data, head, sizeof(head)) != 0) {
+#define YD_R218_NAME_BYTE(c)                                                                       \
+    ((((c) >= 'A' && (c) <= 'Z') || ((c) >= 'a' && (c) <= 'z') || ((c) >= '0' && (c) <= '9') ||    \
+      (c) == '_' || (c) == '-' || (c) == '.' || (c) == ':'))
+    size_t i, j;
+    if (size < 9) { /* "&n:\n*a:" minimum */
         return 0;
     }
-    for (i = 0; i < size; i++) {
-        if (data[i] == '\t') {
+    (void)ydump;
+    (void)ldump;
+    /* the r227 leading law: blank lines BEFORE the head are inert on
+     * the collapse (an inert prefix twin of the separator run below) */
+    i = 0;
+    while (yd_r218_blank_line(data, size, &i)) {}
+    if (i >= size || data[i] != '&') {
+        return 0;
+    }
+    for (j = 0; j < size; j++) {
+        if (data[j] == '\t') {
             return 0;
         }
     }
-    /* the head line's own spaces and terminator */
-    i = sizeof(head);
+    /* the head's riding-name run, its ':' end, trailing spaces, break */
+    i++;
+    {
+        size_t name_o = i;
+        while (i < size && YD_R218_NAME_BYTE(data[i])) {
+            i++;
+        }
+        if (i == name_o || data[i - 1] != ':') {
+            return 0;
+        }
+    }
     while (i < size && data[i] == ' ') {
         i++;
     }
@@ -8543,26 +8594,42 @@ static int yd_r218_root_alias_blank_run_gray(const uint8_t* data, size_t size, c
     } else {
         return 0;
     }
-    /* the separator: ONE OR MORE blank lines */
-    blanks = 0;
-    while (yd_r218_blank_line(data, size, &i)) {
-        blanks++;
-    }
-    if (blanks == 0) {
-        return 0;
-    }
-    /* the alias line: optional indent spaces then "*a:" exactly */
+    /* the separator: ZERO-OR-MORE blank lines -- the r227 widening:
+     * the blank run was always inert on the collapse, so the direct
+     * adjacency (the r227 artifact) rides the same claim */
+    while (yd_r218_blank_line(data, size, &i)) {}
+    /* the alias line: optional indent spaces, '*', the riding-name
+     * run ending on its ':', then the blank-run tail */
     j = i;
     while (j < size && data[j] == ' ') {
         j++;
     }
-    if (size - j < sizeof(ali) || memcmp(data + j, ali, sizeof(ali)) != 0) {
+    if (j >= size || data[j] != '*') {
         return 0;
     }
-    j += sizeof(ali);
-    /* the tail: blank lines only, then EOF */
+    j++;
+    {
+        size_t name_o = j;
+        while (j < size && YD_R218_NAME_BYTE(data[j])) {
+            j++;
+        }
+        if (j == name_o || data[j - 1] != ':') {
+            return 0;
+        }
+    }
+    /* the tail: blank lines only, then EOF -- the r227 measured
+     * extension: a LINE-START "..." doc-end line (libyaml ends the
+     * same 2-pair map at the marker; yeptris's collapse ended the
+     * document before it -- dumpboth-verified identical pair); a
+     * colon-glued "..." stays outside (unmeasured) */
     while (j < size && yd_r218_blank_line(data, size, &j)) {}
+    if (j + 3 <= size && memcmp(data + j, "...", 3) == 0 && j > 0 &&
+        (data[j - 1] == '\n' || data[j - 1] == '\r')) {
+        j += 3;
+        while (j < size && yd_r218_blank_line(data, size, &j)) {}
+    }
     return j == size;
+#undef YD_R218_NAME_BYTE
 }
 
 /* True for the ONE exact gray-zone input of the r199 nightly
