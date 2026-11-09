@@ -4243,6 +4243,30 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-residual-colon-r230.bin
     )
 
+    # The r231 nightly (run 42677255629, main edcece1, crash-238624b1)
+    # caught the r203 flow-'?' x LS/PS fold family's ALL-BLANK-RUN
+    # member: the 112-byte artifact "[\n?+D<LS> 'c<PS>.:j:(<PS> \r|
+    # \r\n.D ..." repeats the ?+D member four times with an interior
+    # raw LF inside the break run, and the 42-byte minimal
+    # "[?D<LS><PS><PS>^3<LF><LS><PS><PS>\"]" rides 13 breaks (12
+    # trailing). Two bake-buffer obstructions, both work bounds the
+    # byte-strict verify arbitrates: the trailing[24] buffer stored
+    # only 8 LS/PS triples past the raw lead (the 12-trailing-break
+    # run needs 34 bytes -- wok=0 declined the hit), and the 16-break
+    # cap (the artifact rides 23 folds). The carry widens the trailing
+    # buffer to 64*3 and the break cap to 64. 1540-mutant paired
+    # battery vs parent edcece1: 579 fixed / 0 regressions / 41
+    # both-abort / 920 both-pass; six corpus walks clean (parse 353);
+    # the 120 existing pins stay green. Seeds:
+    # qflow-lsps-allblank-min-r231.bin + qflow-lsps-allblank-r231.bin
+    # (this pin replays the TRUE artifact: it needs BOTH widenings --
+    # the buffer alone still declines at the 16-break cap -- so revert
+    # detection is exact on both legs).
+    add_test(
+        NAME fuzz-diff-r231-qflow-lsps-allblank-caps
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-lsps-allblank-r231.bin
+    )
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
