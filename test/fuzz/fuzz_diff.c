@@ -7741,7 +7741,21 @@ static int yd_r121_permuted_gray(const uint8_t* data, size_t size, const char* y
  * repeated members (the seed is pinned corpus-side; the lf replay is
  * clean once the minimum is claimed -- the artifact's DIFFER sites
  * are the same `?#` + quote-before-raw-break + flow-'?' triples).
- * Further compositions get their own entries or an engine dig. */
+ * Further compositions get their own entries or an engine dig. The
+ * r232 nightly (run 42688765844, main e8ba885, crash-1020a8db,
+ * 24-byte `[1,?#,"<CR>g",?g:m?#,"<CR>g",]`) rode the widened form:
+ * the flow-'?' member's plain tail carries the glued '?#' (mid-plain
+ * content in BOTH engines -- libyaml's KEY fired only at the leading
+ * '?', its salvage map's key is the byte-exact `g:m?#`), and the
+ * trailing quoted member (`"<CR>g"` folded to ' g' inside the flow
+ * quotes) parses WHOLE on both sides -- libyaml's second map closed
+ * empty at the comma, so the tail members AGREE. Regression triage:
+ * the pre-r231 parent edcece1 aborts identically (byte-identical
+ * dumps) -- the r231 cap round is exonerated. The skeleton widened in
+ * place: the tail is the measured set [a-z0-9:?#] (non-empty, ':'/'#'
+ * never last), then comma-separated inert members ("" and the
+ * CR-folded quoted form) with a trailing comma allowed -- the exact
+ * '?g:m]' path is the empty-suffix member unchanged. */
 static int yd_r229_flow_quote_comment_glue_gray(const uint8_t* data, size_t size, const char* ydump,
                                                 const char* ldump) {
     (void)ydump;
@@ -7758,6 +7772,20 @@ static int yd_r229_flow_quote_comment_glue_gray(const uint8_t* data, size_t size
             h *= 1099511628211ull;
         }
         return h == 0x444299cff7c00d69ull;
+    }
+    /* the TRUE 24-byte r232 artifact `[1,?#,"<CR>g",?g:m?#,"<CR>g",]`
+     * (run 42688765844, main e8ba885, crash-1020a8db8ac08ba7df6b34d91
+     * 133d04cd133c6c2) -- the composition with the flow-'?' member's
+     * plain tail riding the GLUED '?#' (mid-plain content in BOTH
+     * engines: libyaml's KEY token fired only at the leading '?') and
+     * a trailing quoted member both engines render as ' g' */
+    if (size == 24u) {
+        uint64_t h = 1469598103934665603ull;
+        for (size_t k = 0; k < size; k++) {
+            h ^= data[k];
+            h *= 1099511628211ull;
+        }
+        return h == 0xd8de3b598a9d5dd9ull;
     }
     /* the skeleton: ws* '[' ws* '1' ws* ",?#,\"" RAWBREAK 'g"' ws*
      * ',' ws* '?g:m]' ws* -- the r228 inert-whitespace law at exactly
@@ -7810,11 +7838,90 @@ static int yd_r229_flow_quote_comment_glue_gray(const uint8_t* data, size_t size
     }
     i++;
     YD_R229_WS()
-    static const uint8_t tail[] = {0x3f, 0x67, 0x3a, 0x6d, 0x5d}; /* ?g:m] */
-    if (size - i < sizeof(tail) || memcmp(data + i, tail, sizeof(tail)) != 0) {
+    /* the flow-'?' member (the r232 widening): "?g" exact, then the
+     * riding plain tail -- zero or more bytes of the measured set
+     * [a-z0-9:?#] ending at ',' or ']' (non-empty; ':' and '#' never
+     * in the last position -- a trailing ':' faces the ','/']' as a
+     * pair separator, a trailing '#' is an unmeasured end-form; the
+     * exact r229 form '?g:m]' is the tail ':m' with no suffix). Then
+     * zero or more INERT members before the closer: "" (empty
+     * double-quoted) and '"'<rawbreak>'g"' (the CR-folded quoted form,
+     * the head's raw-break spell set) -- members both engines render
+     * identically as "=VAL : ", comma-separated, a trailing comma
+     * allowed. In the r232 members libyaml wraps the flow-'?' member
+     * in its SECOND salvage map (key = the tail past the '?', empty
+     * value) while yeptris keeps the plain riding; the inert members
+     * parse quoted on both sides and agree. */
+    static const uint8_t qp[] = {0x3f, 0x67}; /* ?g */
+    if (size - i < sizeof(qp) + 1 || memcmp(data + i, qp, sizeof(qp)) != 0) {
         return 0;
     }
-    i += sizeof(tail);
+    i += sizeof(qp);
+    size_t tstart = i;
+    while (i < size) {
+        unsigned char t = data[i];
+        if (t == ',' || t == ']') {
+            break;
+        }
+        if (!((t >= 'a' && t <= 'z') || (t >= '0' && t <= '9') || t == ':' || t == '?' ||
+              t == '#')) {
+            return 0;
+        }
+        i++;
+    }
+    if (i >= size || i == tstart || (data[i] != ',' && data[i] != ']')) {
+        return 0;
+    }
+    {
+        unsigned char last = data[i - 1];
+        if (last == ':' || last == '#') {
+            return 0;
+        }
+    }
+    if (data[i] == ',') {
+        i++;
+        for (;;) {
+            YD_R229_WS()
+            if (i >= size) {
+                return 0;
+            }
+            if (data[i] == ']') { /* the trailing comma form */
+                break;
+            }
+            if (data[i] != '"') {
+                return 0;
+            }
+            if (i + 1 < size && data[i + 1] == '"') {
+                i += 2; /* "" -- the empty quoted member */
+            } else {
+                size_t b2 = i + 1;
+                if (b2 < size && data[b2] == '\r' && b2 + 1 < size && data[b2 + 1] == '\n') {
+                    b2++;
+                } else if (b2 >= size || (data[b2] != '\r' && data[b2] != '\n' &&
+                                          data[b2] != '\v' && data[b2] != '\f')) {
+                    return 0;
+                }
+                b2++;
+                if (size - b2 < 2 || data[b2] != 'g' || data[b2 + 1] != '"') {
+                    return 0;
+                }
+                i = b2 + 2;
+            }
+            YD_R229_WS()
+            if (i >= size) {
+                return 0;
+            }
+            if (data[i] == ',') {
+                i++;
+                continue;
+            }
+            if (data[i] == ']') {
+                break;
+            }
+            return 0;
+        }
+    }
+    i++; /* the closer */
     YD_R229_WS()
 #undef YD_R229_WS
     return i == size;

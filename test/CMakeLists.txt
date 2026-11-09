@@ -4268,6 +4268,34 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-lsps-allblank-r231.bin
     )
 
+    # The r232 nightly (run 42688765844, main e8ba885, crash-1020a8db)
+    # caught the r229 quote-comment-glue gray arm's DOUBLED member: the
+    # 18-byte minimum '[1,?#,"<CR>g",?g?,""]' and the TRUE 24-byte
+    # artifact '[1,?#,"<CR>g",?g:m?#,"<CR>g",]' -- the flow-'?' member's
+    # plain tail rides the GLUED '?#' (mid-plain content in BOTH
+    # engines; libyaml's KEY fired only at the leading '?', its second
+    # salvage map's key is the byte-exact 'g:m?#'), and the trailing
+    # quoted member ('"<CR>g"' folded to ' g') parses WHOLE on both
+    # sides -- libyaml's map closed empty at the comma, so the tail
+    # members AGREE. Regression triage CLEAN: the pre-r231 parent
+    # edcece1 aborts identically. The carry widens the r229 skeleton in
+    # place: the tail is the measured set [a-z0-9:?#] (non-empty,
+    # ':'/'#' never last), then comma-separated inert members ("") and
+    # the CR-folded quoted form) with a trailing comma allowed -- the
+    # exact '?g:m]' path is the empty-suffix member unchanged; the TRUE
+    # artifact rides a length+FNV-1a-64 pin. 504-mutant paired battery
+    # vs parent edcece1: 37 fixed / 0 regressions / 97 both-abort (the
+    # gray cadence) / 370 both-pass; the r229 seeds stay green; six
+    # corpus walks clean (parse 355); the 121 existing pins stay green.
+    # Seeds: qflow-quote-comment-glue-doubled-min-r232.bin (this pin,
+    # the skeleton leg) + qflow-quote-comment-glue-doubled-r232.bin
+    # (the TRUE artifact, corpus-side, its FNV leg).
+    add_test(
+        NAME fuzz-diff-r232-qflow-quote-comment-glue-doubled
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-quote-comment-glue-doubled-min-r232.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
