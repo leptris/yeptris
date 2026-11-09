@@ -4016,6 +4016,45 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-glued-hash-cr-key-r224.bin
     )
 
+    # the r225 nightly (run 42613510600, main 355568f, crash-
+    # 277015f0d109025c7c028c614561e349224db928): the FOLD-CAP WIDENING
+    # of the r203 flow-SEQ question family -- the r203 artifact's own
+    # direct descendant ("[\n?+D<LS> 'c<PS>.:j:(<PS>\n?+D<LS> 'c<PS>
+    # .:j:(<PS> \r|\r\n.\r|\r\n.tag:yamd.org,2002:m*a \r|\r\n.\r|\r\n
+    # .tag:yamd.org,2002:m*apoa\"]", 112 bytes). libyaml's flow
+    # KEY-token law reads the glued '?' as a KEY and its fold law keeps
+    # the mid-plain LS/PS RAW (READ_LINE copies them verbatim; the
+    # leading byte is never '\n', so the join keeps lead+trailing
+    # verbatim), while yeptris's spec fold law collapses the run
+    # (k>=2 breaks -> k-1 LFs) -- the exact KEY VALUE BYTES diverge,
+    # and the r203 bake carries libyaml's folded key verbatim. The run
+    # rides 11 folds (LS PS PS LF LS PS PS CR CRLF CR CRLF) and the
+    # arm's fold cap rode 8 -- every other admission already held: the
+    # GLUED ':'s ride the pair-separator law (each ':' precedes a
+    # non-blank), the embedded second '?' rides the r219 admission,
+    # the mid-run quote rides the r191 law. The cap widens 8 -> 16;
+    # the trailing[24] bake buffer still declines gracefully past its
+    # caps (wok=0 rides the hit as content), so the widening only
+    # reaches folds the byte-strict verify then arbitrates. A FRESH
+    # find, not an r224 regression: the A/B against the pre-r224
+    # parent d5778d8 aborts IDENTICALLY on both builds (same stream
+    # pair). Minimality: the unconstrained deletion minimizer drifts
+    # to the 1-byte "\xe2" YEPTRIS-ONLY split twin (the r186-r224
+    # drift law); the DIFFER-constrained rerun (require the
+    # libyaml-+MAP-vs-yeptris-plain tell) pins the 26-byte
+    # "[?D<LS><PS><PS>\n<LS><PS><PS>\r\r\"]"; the pinned seed is the
+    # TRUE 112-byte artifact. 60-mutant paired battery vs main
+    # d5778d8: 0 regressions (29 admissions abort->pass; the 22
+    # still-fires are byte-identical pre/post; 9 clean-same). The
+    # six-corpus *_lf walks (parse 343, feed 64, marshal 17, cbor 101,
+    # validate 5, roundtrip 4) are byte-identical pre/post; the 114
+    # existing pins stay green.
+    add_test(
+        NAME fuzz-diff-r225-qflow-multiline-fold-run
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-multiline-fold-run-r225.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

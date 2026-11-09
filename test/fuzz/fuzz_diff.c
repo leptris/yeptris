@@ -3617,7 +3617,8 @@ static int yd_r203_dq_escape(char* sub, size_t* subn, unsigned char b) {
  * turf is the clean same-line run; quoted, indicator, and boundary
  * followers stay with the other qflow arms), ended by ',' or ']' with
  * no quote / '#' / '\' / nested flow / pair-separating ':' inside,
- * ASCII-only content beyond the breaks, and at most 8 folds. An
+ * ASCII-only content beyond the breaks, and at most 16 folds (the
+ * r225 nightly's 11-fold run, run 42613510600). An
  * EMBEDDED '?' mid-run rides since the r219 nightly (run 42567242070,
  * main 3b7b3f8, crash-181967eb654e91fe5d56b394c48b90eb85987370,
  * minimized "[?+D<U+2028>.\nF:-?-]"): a '?' between plain bytes is
@@ -3713,8 +3714,19 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
                  * bake quotes it away), but no '#' / '\' / nested flow
                  * / pair-separating ':' inside, no non-ASCII content
                  * beyond the breaks, no stray control bytes, and it
-                 * must end at ',' or ']' with at most 8 folds — the
-                 * multi-line shape r183's clean-run law declines */
+                 * must end at ',' or ']' with at most 16 folds — the
+                 * multi-line shape r183's clean-run law declines (the
+                 * cap rode 8 through the r219 nightly; the r225
+                 * nightly, run 42613510600, main 355568f, crash-
+                 * 277015f0d109025c7c028c614561e349224db928, rides an
+                 * 11-fold run — the r203 artifact's direct descendant,
+                 * its head "?+D<LS> 'c<PS>.:j:(<PS>" with GLUED ':'s
+                 * and an EMBEDDED second '?', admissions the r206/r219
+                 * widenings already own). The trailing[24] bake buffer
+                 * still declines gracefully past its caps (wok=0 rides
+                 * the hit as content), so the widened cap cannot
+                 * mis-certify: it only reaches folds the byte-strict
+                 * verify then arbitrates. */
                 size_t j = i + 1;
                 int clean = 1;
                 int breaks = 0;
@@ -3737,7 +3749,7 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
                     }
                     int db = YD_R203_BREAK_LEN(data, size, j);
                     if (db > 0) {
-                        if (++breaks > 8) {
+                        if (++breaks > 16) {
                             clean = 0;
                             break;
                         }
