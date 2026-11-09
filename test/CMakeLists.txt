@@ -3820,6 +3820,31 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-blankrun-r218.bin
     )
 
+    # the r219 round (run 42567242070, main 3b7b3f8, crash
+    # 181967eb654e91fe5d56b394c48b90eb85987370, minimized to the 15-byte
+    # "[?+D<U+2028>.\nF:-?-]"): a COMPARATOR carry -- the EMBEDDED-'?'
+    # member of the r203 flow-SEQ question family. libyaml's unconditional
+    # flow KEY-token law reads the glued '?' as a KEY (nested single-pair
+    # map member with a null value), while yeptris's suite-pinned plain
+    # reading (HM87/652Z) keeps "?+D..." one multi-line plain member; the
+    # key bytes themselves diverge because libyaml's fold law keeps the
+    # mid-plain U+2028 RAW while yeptris folds one break to a space. The
+    # A/B against the pre-r218 parent ceea4ae aborts IDENTICALLY (exit
+    # 134, the same dump pair), so the r218 arm is exonerated -- and the
+    # artifact matches none of #1180's documented alias siblings. r203's
+    # finder declined: its mid-run charset refused an embedded '?'. The
+    # widened admission (mid-plain '?' is content in both engines'
+    # originals; the bake quotes it away inside the double-quoted key)
+    # claims the member; the byte-strict verify still arbitrates every
+    # hit. 54-mutant paired battery: 0 regressions (18 intended
+    # abort->pass family flips); the shared six-corpus walk is
+    # byte-identical pre/post; the r218 repro pin still exits 0.
+    add_test(
+        NAME fuzz-diff-r219-qflow-seq-question-embedded
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-seq-question-embedded-r219.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
