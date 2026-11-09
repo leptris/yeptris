@@ -3727,6 +3727,45 @@ if(YEPTRIS_LIBYAML_ROOT)
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-foldsurplus-r215.bin
     )
+    # the r216 round (run 42549204693, main 27c92f1, crash
+    # 1ef50f3004ab57c6342cbbd770633608d74086a2): a FRESH finding — the
+    # A/B against the pre-r215 parent d380532 aborts IDENTICALLY (exit
+    # 134, the same dump pair, on both the 35-byte artifact
+    # ">\n !<[LF] [NEL NEL SP][LF][LF] [NEL NEL SP][LF] <[NEL NEL SP]
+    # <[NEL NEL SP][LF]" and the 8-byte greedy minimum
+    # ">\n [NEL][LF] <"), so the r215 round is exonerated. The shape is
+    # the r160 family's MIRROR polarity: a folded block scalar whose
+    # break run leaves LIBYAML one escape LONGER at a plain content
+    # byte. The 8-byte minimum reads "NEL" on its first content line:
+    # yeptris's 1.2 reader keeps the NEL as content and writes the fold
+    # space at the L2-L3 boundary ("NEL" + fold space + "<" + clip
+    # break); libyaml's 1.1 reader breaks AT the NEL and keeps the
+    # boundary break too ("\n\n<"). The walk enters the NEL branch (k
+    # == 1), the (k-1) collapse has nothing to eat, and the r173
+    # continuation spends its whole budget pairing yeptris's fold space
+    # against ONE of libyaml's two breaks — the pointers cannot rewind,
+    # so libyaml's boundary break survives with no yeptris counterpart
+    # and the byte-bound loop stops at escape-vs-content: the r215
+    # arms own only the a-side surpluses (a space/NEL pair, a's longer
+    # escape run) and r197 owns a's spelled break, so every law
+    # declined. Comparator carry in yd_block_nel_walk_mult's mismatch
+    # handler, fired LAST (previously an unconditional decline, so
+    # every existing member keeps its exact path): the FOLD-BOUNDARY
+    # arm eats libyaml's ONE surplus escape, gated hard — the run is
+    # exactly one escape (a wider surplus keeps aborting), a sits on a
+    # PLAIN content byte (not the frame end, not a space -- the
+    # r173/r215 sites -- not an escape, not a raw NEL/LS/PS lead byte
+    # the NEL branch owns), and the byte behind libyaml's escape EQUALS
+    # it, so the walk rejoins byte-bound at an agreement byte and the
+    # relation behind the site stays owned by the loop and the NEL
+    # branch's budgeted laws. 268-mutant paired battery (pre-fix
+    # parent d380532 vs post-arm): 41 fixed, 0 regressions, 160
+    # carried both-abort, 67 both-pass.
+    add_test(
+        NAME fuzz-diff-r216-block-nel-foldboundary
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-foldboundary-r216.bin
+    )
 
 
 

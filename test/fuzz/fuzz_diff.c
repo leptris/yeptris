@@ -5951,6 +5951,58 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
                     }
                 }
             }
+            /* the r216 fold-boundary surplus (the nightly's round 216,
+             * run 42549204693, main 27c92f1; 35-byte artifact
+             * ">\n !<[LF] [NEL NEL SP][LF][LF] [NEL NEL SP][LF]
+             * <[NEL NEL SP] <[NEL NEL SP][LF]", crash-
+             * 1ef50f3004ab57c6342cbbd770633608d74086a2): the site where
+             * LIBYAML's break run is LONGER than yeptris's before a
+             * plain content byte -- the r215 fold-break-surplus arm's
+             * MIRROR polarity. The 8-byte greedy minimum
+             * ">\n [NEL][LF] <" reads a folded block scalar whose first
+             * content line is a bare NEL: yeptris's 1.2 reader keeps it
+             * as content and writes the fold space at the L2-L3
+             * boundary ("NEL" + fold space + "<" + clip break), while
+             * libyaml's 1.1 reader breaks AT the NEL and then keeps the
+             * boundary break too ("\n\n<"). The walk enters the NEL
+             * branch (k == 1), the (k-1) collapse has nothing to eat,
+             * and the r173 continuation spends its whole budget pairing
+             * yeptris's fold space against ONE of libyaml's two breaks
+             * -- the pointers cannot rewind, so libyaml's boundary
+             * break survives with no yeptris counterpart and the
+             * byte-bound loop stops at escape-vs-content with every
+             * existing arm declining (the r215 arms own only the
+             * a-side surpluses: a space/NEL pair or a's longer escape
+             * run; the r197 arm owns a's spelled break). A/B against
+             * the pre-r215 parent d380532 aborts IDENTICALLY (exit 134,
+             * the same dump pair, on both the 35-byte artifact and the
+             * 8-byte minimum), so the r215 round is exonerated -- a
+             * fresh site, fired here LAST where the handler previously
+             * declined unconditionally, so every existing member keeps
+             * its exact path. The arm eats libyaml's ONE surplus escape,
+             * gated hard: the run is exactly one escape (a wider
+             * surplus is a different shape and keeps aborting), a sits
+             * on a PLAIN content byte (not the frame's end, not a
+             * space -- the r173/r215 sites -- not an escape, not a raw
+             * NEL/LS/PS lead byte the NEL branch owns), and the byte
+             * behind libyaml's escape EQUALS it, so the walk rejoins
+             * byte-bound at an agreement byte and the relation behind
+             * the site stays owned by the loop and the NEL branch's
+             * budgeted laws -- nothing past the agreement byte rides. */
+            if (b[0] == '\\' && b[1] == 'n' && a[0] != '\0') {
+                const char* pb = b;
+                int y = 0;
+                while (pb[0] == '\\' && pb[1] == 'n') {
+                    pb += 2;
+                    y++;
+                }
+                if (y == 1 && pb[0] == a[0] && a[0] != ' ' && a[0] != '\\' &&
+                    (unsigned char)a[0] != 0xC2 && (unsigned char)a[0] != 0xE2) {
+                    b = pb;
+                    subs += 2;
+                    continue;
+                }
+            }
             return 0;
         }
         a++;
