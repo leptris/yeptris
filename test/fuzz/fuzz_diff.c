@@ -9209,6 +9209,197 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
     return 1;
 }
 
+/* The plain-? tail rides the raw-PS plain fold (the nightly's round
+ * 240, crash-63cbaa8c, 12-byte minimum "[)<PS>(?t,?$]", main bf8342c
+ * era): a flow sequence of two plain members, the first carrying an
+ * interior PS triple, the last beginning with a bare '?' glued to a
+ * non-space byte. TWO suite-over-libyaml laws compose, and neither
+ * alone equalizes the pair:
+ * - the plain-LS/PS fold (r56, yd_plain_lsps_fold_divergence's law):
+ *   yeptris (YAML 1.2) normalizes the PS and folds it to ONE space in
+ *   the flow plain; libyaml's READ_LINE joins the break RAW into the
+ *   content — both engines' first member reads ") (?t" shaped, but
+ *   the bytes differ (space vs the raw e2 80 a9);
+ * - the suite-pinned plain-'?' law (2SXE: '?' followed by a
+ *   non-space is content): yeptris reads the tail as ONE plain
+ *   scalar; libyaml's 1.1 grammar takes the bare '?' as the
+ *   explicit-key indicator and opens "? $ : <empty>" for the tail.
+ * The composite defeats the single-law arms (the fold arm's dump
+ * transform still leaves the map/plain delta; the clip arm's
+ * LF-suffix replay never fires — this family CLIPS nothing: libyaml
+ * closes the seq and the stream), so the claim is its own byte-shape
+ * gate + dump walk, and anything the gates cannot verify declines
+ * (the escalation clause stays live).
+ *
+ * Gate: '[' first, ']' last, no LF/CR/NEL/LS/PT anywhere (the PS
+ * triple is the only exotic spelling and it sits in the head member),
+ * exactly one ',' separating the members, the head's bytes adjacent
+ * to the PS are not spaces (the fold-run composition is a later
+ * family), the head does not START with '?' (a member-start '?' is
+ * libyaml's explicit key too), the tail is '?' glued to a printable
+ * run free of the flow/style/indicator set. Walk: yeptris's dump is
+ * +STR/+SEQ/=VAL : <head with the PS folded to ONE space>/=VAL :
+ * <tail>/-SEQ/-STR; libyaml's is +STR/+SEQ/=VAL : <head with the PS
+ * RAW>/+MAP/=VAL : <tail after the '?'>/=VAL : <empty>/-MAP/-SEQ/-STR. */
+static int yd_r240_flow_qtail_clip_gray(const uint8_t* data, size_t size, const char* ydump,
+                                        const char* ldump) {
+    size_t i;
+    size_t ps = size;    /* the PS triple's offset */
+    size_t comma = size; /* the member separator's offset */
+    if (size < 12 || ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    if (data[0] != '[' || data[size - 1] != ']') {
+        return 0;
+    }
+    for (i = 0; i < size; i++) {
+        unsigned char c = (unsigned char)data[i];
+        if (c == '\n' || c == '\r' || c == '\t') {
+            return 0;
+        }
+        if (c == 0xC2 && i + 1 < size && (unsigned char)data[i + 1] == 0x85) {
+            return 0; /* NEL rides later families */
+        }
+        if (c == 0xE2 && i + 2 < size && (unsigned char)data[i + 1] == 0x80 &&
+            (((unsigned char)data[i + 2] & 0xFE) == 0xA8)) {
+            if (ps != size) {
+                return 0; /* one LS/PS spelling per claim */
+            }
+            ps = i;
+            i += 2;
+            continue;
+        }
+    }
+    if (ps == size || ps < 2) {
+        return 0; /* the head needs one byte before the PS */
+    }
+    if (data[ps - 1] == ' ' || data[ps + 3] == ' ') {
+        return 0; /* the fold-space-run composition is a later family */
+    }
+    for (i = 1; i < size; i++) {
+        unsigned char c = (unsigned char)data[i];
+        if (c == ',') {
+            if (comma != size) {
+                return 0; /* exactly one separator */
+            }
+            comma = i;
+            continue;
+        }
+    }
+    if (comma == size || comma < ps + 3) {
+        return 0; /* the PS must sit in the head member */
+    }
+    if (data[1] == '?') {
+        return 0; /* a member-start '?' is libyaml's explicit key too */
+    }
+    for (i = 1; i < comma; i++) {
+        unsigned char c = (unsigned char)data[i];
+        if (i == ps) {
+            i += 2; /* the loop's i++ lands past the triple */
+            continue;
+        }
+        if (c < 0x20 || c > 0x7E) {
+            return 0;
+        }
+        if (c != ' ' && (c == '[' || c == ']' || c == '{' || c == '}' || c == ',' || c == ':' ||
+                         c == '\'' || c == '"' || c == '#' || c == '&' || c == '*' || c == '!' ||
+                         c == '|' || c == '>' || c == '%' || c == '@' || c == '`')) {
+            return 0;
+        }
+    }
+    if (data[comma + 1] != '?' || comma + 3 > size - 1) {
+        return 0; /* the tail opens with the glued '?' */
+    }
+    if (data[comma + 2] == ' ' || data[comma + 2] == '\t') {
+        return 0; /* a spaced '?' is libyaml's explicit key too — agree */
+    }
+    for (i = comma + 2; i < size - 1; i++) {
+        unsigned char c = (unsigned char)data[i];
+        if (c < 0x21 || c > 0x7E) {
+            return 0;
+        }
+        if (c == '[' || c == ']' || c == '{' || c == '}' || c == ',' || c == ':' || c == '\'' ||
+            c == '"' || c == '#' || c == '&' || c == '*' || c == '!' || c == '|' || c == '>' ||
+            c == '%' || c == '@' || c == '`' || c == '?') {
+            return 0;
+        }
+    }
+    /* the yeptris side: +STR / +SEQ / =VAL : <head, PS -> one space> /
+     * =VAL : <tail> / -SEQ / -STR */
+    if (strncmp((const char*)ydump, "+STR\n+SEQ\n=VAL : ", 17) != 0) {
+        return 0;
+    }
+    {
+        const char* a = ydump + 17;
+        for (i = 1; i < comma; i++) {
+            if (i == ps) {
+                if (a[0] != ' ') {
+                    return 0;
+                }
+                a++;
+                i += 2; /* the loop's i++ lands past the triple */
+                continue;
+            }
+            if (a[0] != (char)data[i]) {
+                return 0;
+            }
+            a++;
+        }
+        if (strncmp(a, "\n=VAL : ", 8) != 0) {
+            return 0;
+        }
+        a += 8;
+        for (i = comma + 1; i < size - 1; i++) {
+            if (a[0] != (char)data[i]) {
+                return 0;
+            }
+            a++;
+        }
+        if (strncmp(a, "\n-SEQ\n-STR\n", 11) != 0) {
+            return 0;
+        }
+    }
+    /* the libyaml side: +STR / +SEQ / =VAL : <head, the PS RAW> /
+     * +MAP / =VAL : <tail after the '?'> / =VAL : <empty> / -MAP /
+     * -SEQ / -STR (the r56 raw-ride and the explicit-key map, the
+     * closes intact) */
+    if (strncmp((const char*)ldump, "+STR\n+SEQ\n=VAL : ", 17) != 0) {
+        return 0;
+    }
+    {
+        const char* b = ldump + 17;
+        for (i = 1; i < comma; i++) {
+            if (i == ps) {
+                if (b[0] != (char)data[i] || b[1] != (char)data[i + 1] ||
+                    b[2] != (char)data[i + 2]) {
+                    return 0;
+                }
+                b += 3;
+                i += 2; /* the loop's i++ lands past the triple */
+                continue;
+            }
+            if (b[0] != (char)data[i]) {
+                return 0;
+            }
+            b++;
+        }
+        if (strncmp(b, "\n+MAP\n=VAL : ", 13) != 0) {
+            return 0;
+        }
+        b += 13;
+        for (i = comma + 2; i < size - 1; i++) { /* past the '?' */
+            if (b[0] != (char)data[i]) {
+                return 0;
+            }
+            b++;
+        }
+        if (strncmp(b, "\n=VAL : \n-MAP\n-SEQ\n-STR\n", 24) != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static int yd_r218_root_alias_blank_run_gray(const uint8_t* data, size_t size, const char* ydump,
                                              const char* ldump) {
 #define YD_R218_NAME_BYTE(c)                                                                       \
@@ -12006,6 +12197,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r212_root_alias_double_head_breakless_gray(data, size, ydump, ldump) ||
          yd_r218_root_alias_blank_run_gray(data, size, ydump, ldump) ||
          yd_r238_root_anchor_quoted_follow_gray(data, size, ydump, ldump) ||
+         yd_r240_flow_qtail_clip_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||

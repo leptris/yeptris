@@ -4478,6 +4478,29 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip/nel-docmarker-drain-r239.bin
     )
 
+    # r240 (nightly round 240, run 42801813638, main bf8342c era,
+    # crash-63cbaa8cea06537b9ba5ded6a935c75e9c34174c, 12-byte minimum
+    # "[)<PS>(?t,?$]"): TWO suite-over-libyaml laws compose and neither
+    # alone equalizes the pair. The first member carries an interior
+    # PS: yeptris (1.2) normalizes and folds it to ONE space in the
+    # flow plain; libyaml's READ_LINE joins the break RAW (the r56
+    # plain-LS/PS law). The last member starts with a bare '?' glued
+    # to a non-space: yeptris reads it as ONE plain scalar (the
+    # suite-pinned plain-'?' law); libyaml's 1.1 grammar takes it as
+    # the explicit-key indicator and opens "? $ : <empty>" (the
+    # carried flow-explicit-key family). libyaml's dump closes
+    # everything (this family CLIPS nothing); the composite defeats
+    # the single-law arms, so yd_r240_flow_qtail_clip_gray walks both
+    # dumps against the input bytes and declines anything its gates
+    # cannot verify. Regression triage: the pre-arm parent b41870e
+    # aborts identically (a fresh find, no arm regression, no engine
+    # bug). Seed: flow-qtail-psfold-r240.bin (this pin).
+    add_test(
+        NAME fuzz-diff-r240-flow-qtail-psfold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qtail-psfold-r240.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
