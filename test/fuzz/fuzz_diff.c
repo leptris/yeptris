@@ -6976,6 +6976,24 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
              * there: pointers never rewind, the surplus is bound by
              * the run, and the alignment byte pins the site. */
             {
+                /* the r237 NEL-site indent surplus: libyaml escaped the
+                 * NEL break and ATE the continuation line's leading
+                 * space (blank-line fold, indent consumption) while
+                 * yeptris keeps the NEL raw plus the space as content
+                 * ("[NEL] SP 0" vs "\n0"). Eat yeptris's surplus spaces
+                 * before the escape-run scan -- only while the dumps
+                 * disagree behind (b leads with an escape), capped, so
+                 * a space both dumps carry never rides it. The run
+                 * scan's own laws (surplus == k, the alignment byte
+                 * coinciding, non-escape) still bind the claim. */
+                if (b[0] == '\\' && b[1] == 'n' && a[0] == ' ') {
+                    int ate = 0;
+                    while (ate < 64 && a[0] == ' ' && a[0] != b[0]) {
+                        a++;
+                        ate++;
+                        subs++;
+                    }
+                }
                 const char* pa = a;
                 const char* pb = b;
                 while (pa[0] == '\\' && pa[1] == 'n') {
@@ -7144,6 +7162,24 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
                 ((unsigned char)b[2] == 0xA8 || (unsigned char)b[2] == 0xA9)) {
                 a += 2;
                 b += 3;
+                subs++;
+                continue;
+            }
+            /* the r237 fold-space mirror (the nightly's round 237,
+             * crash-7be6d7634714addf17298a04006b77a3a8644572, 18-byte
+             * minimum "> #<PS> :\n  <NEL> 0\n t"): yeptris's 1.2 fold
+             * emits the line boundary as an escaped break while
+             * libyaml's blank-line accounting kept the fold space and
+             * absorbed the break into the NEL region it collapsed.
+             * One escape<->space pair, gated on the alignment byte
+             * behind the pair coinciding -- pointers advance, never
+             * rewind, and the site is pinned by that byte. Previously
+             * this shape declined unconditionally (r197 wants LS/PS on
+             * b, the r215 arm wants the space on a), so no existing
+             * member's path changes. */
+            if (a[0] == '\\' && a[1] == 'n' && b[0] == ' ' && a[2] == b[1]) {
+                a += 2;
+                b += 1;
                 subs++;
                 continue;
             }
