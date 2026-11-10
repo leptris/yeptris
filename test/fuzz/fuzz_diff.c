@@ -8876,6 +8876,339 @@ static int yd_r218_blank_line(const uint8_t* d, size_t n, size_t* at) {
  * ends the same 2-pair map at the marker). Still unclaimed: the TAB
  * members (the no-tab gate), props-restart names ("&a&o:"), non-ASCII
  * names, and the colon-glued "...'" spell -- each its own entry. */
+/* The r238 QUOTED-FOLLOWER member of the r218/r227 collapse family
+ * (nightly round 238, run 42770301286, main ad84a13a,
+ * crash-3d571437a4027d3b46c234964191c77cd4febdf4; 18-byte artifact
+ * "&k2: 'j:(<LS> \r|\n '", 10-byte minimum "&2: '<LS>\r'", seed-corpus
+ * replay at MS: 0): the anchor-riding colon composed with a
+ * SINGLE-QUOTED follower on the SAME line. yeptris's suite-pinned
+ * riding laws (2SXE/W5VH -- ns-anchor-char includes ':') take the
+ * whole head as ONE riding-name anchor declaration with no value
+ * indicator, and the document collapses to ONE scalar whose content
+ * embeds the anchor spelling plus the quoted body through the PLAIN
+ * fold; libyaml's 1.1 IS_ALPHA charset cuts the name at the colon
+ * (the r142/r76 law), the freed colon becomes the VALUE indicator,
+ * and the quoted scalar parses as the map value under its own fold.
+ * The body walks pin BOTH dumps against the input bytes unit by
+ * unit: printables and literal spaces byte-equal on both sides, raw
+ * NEL/LS/PS triples verbatim on both sides (the r231 law); a space
+ * run immediately before a CR/LF break folds with it -- yeptris to
+ * ONE space, libyaml to one escaped \n when a raw triple precedes
+ * (its blank-state quark: the verbatim keep arms the blank tracking,
+ * the r231 READ_LINE class) and to one space after clean content;
+ * a standalone break folds the same way; a trailing space run at the
+ * body's end merges with a just-folded break on BOTH engines (the
+ * one fold space already emitted), declining the escaped and
+ * no-fold spellings as unmeasured. Measured composition-only: the
+ * standalone quoted probes ('a<LF>', 'a<CR>', 'a<LS>', 'a<LS><CR>',
+ * '<LS><CR>', 'a<CR><LF>') ALL AGREE -- the fold delta exists only
+ * under the collapse. Gate: '&' + the r227 conservative riding-name
+ * set ending on its ':', exactly one space, a SINGLE-QUOTED body (no
+ * tabs, no consecutive breaks), the closing quote, then EOF. A
+ * differ-only routing arm beside the r218 claim -- every existing
+ * member keeps its exact path. */
+static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const char** c) {
+    const char* a = *c;
+    size_t i = bo;
+    int prev_break = 0;
+    while (i < be) {
+        if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
+            if ((unsigned char)a[0] != 0xC2 || (unsigned char)a[1] != 0x85) {
+                return 0;
+            }
+            a += 2;
+            i += 2;
+            prev_break = 0;
+        } else if ((unsigned char)body[i] == 0xE2 && (unsigned char)body[i + 1] == 0x80 &&
+                   ((unsigned char)body[i + 2] == 0xA8 || (unsigned char)body[i + 2] == 0xA9)) {
+            if ((unsigned char)a[0] != 0xE2 || (unsigned char)a[1] != 0x80 ||
+                (unsigned char)a[2] != body[i + 2]) {
+                return 0;
+            }
+            a += 3;
+            i += 3;
+            prev_break = 0;
+        } else if (body[i] == '\r' || body[i] == '\n') {
+            if (prev_break || a[0] != ' ') {
+                return 0;
+            }
+            a += 1; /* the plain fold: the break becomes one space */
+            i += 1;
+            prev_break = 1;
+        } else if (body[i] == ' ') {
+            size_t s = i;
+            while (s < be && body[s] == ' ') {
+                s++;
+            }
+            if (s < be && (body[s] == '\r' || body[s] == '\n')) {
+                if (a[0] != ' ') {
+                    return 0;
+                }
+                a += 1; /* the space run folds with its break into one space */
+                i = s + 1;
+                prev_break = 1;
+            } else if (s == be) {
+                /* the trailing run merges with a just-folded break (the
+                 * one fold space was already emitted); the no-fold
+                 * spelling is unmeasured -- decline */
+                if (!prev_break) {
+                    return 0;
+                }
+                i = s;
+            } else {
+                while (i < s) {
+                    if (a[0] != ' ') {
+                        return 0;
+                    }
+                    a += 1;
+                    i += 1;
+                }
+                prev_break = 0;
+            }
+        } else if (body[i] >= 0x20) {
+            if (a[0] != (char)body[i]) {
+                return 0;
+            }
+            a += 1;
+            i += 1;
+            prev_break = 0;
+        } else {
+            return 0;
+        }
+    }
+    *c = a;
+    return 1;
+}
+
+static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const char** c) {
+    const char* b = *c;
+    size_t i = bo;
+    int pending_exotic = 0;
+    int prev_break = 0;
+    int last_esc = 0;
+    while (i < be) {
+        if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
+            if ((unsigned char)b[0] != 0xC2 || (unsigned char)b[1] != 0x85) {
+                return 0;
+            }
+            b += 2;
+            i += 2;
+            pending_exotic = 1;
+            prev_break = 0;
+        } else if ((unsigned char)body[i] == 0xE2 && (unsigned char)body[i + 1] == 0x80 &&
+                   ((unsigned char)body[i + 2] == 0xA8 || (unsigned char)body[i + 2] == 0xA9)) {
+            if ((unsigned char)b[0] != 0xE2 || (unsigned char)b[1] != 0x80 ||
+                (unsigned char)b[2] != body[i + 2]) {
+                return 0;
+            }
+            b += 3;
+            i += 3;
+            pending_exotic = 1;
+            prev_break = 0;
+        } else if (body[i] == '\r' || body[i] == '\n') {
+            if (prev_break) {
+                return 0;
+            }
+            if (pending_exotic) {
+                if (b[0] != '\\' || b[1] != 'n') {
+                    return 0;
+                }
+                b += 2; /* the blank-state quark: the break escapes */
+                last_esc = 1;
+            } else {
+                if (b[0] != ' ') {
+                    return 0;
+                }
+                b += 1; /* the clean fold: the break becomes one space */
+                last_esc = 0;
+            }
+            i += 1;
+            prev_break = 1;
+        } else if (body[i] == ' ') {
+            size_t s = i;
+            while (s < be && body[s] == ' ') {
+                s++;
+            }
+            if (s < be && (body[s] == '\r' || body[s] == '\n')) {
+                /* the space run trims; the break speaks alone */
+                if (pending_exotic) {
+                    if (b[0] != '\\' || b[1] != 'n') {
+                        return 0;
+                    }
+                    b += 2;
+                    last_esc = 1;
+                } else {
+                    if (b[0] != ' ') {
+                        return 0;
+                    }
+                    b += 1;
+                    last_esc = 0;
+                }
+                i = s + 1;
+                prev_break = 1;
+            } else if (s == be) {
+                /* the trailing run merges with a just-FOLDED break; the
+                 * escaped and no-break spellings are unmeasured */
+                if (!prev_break || last_esc) {
+                    return 0;
+                }
+                i = s;
+            } else {
+                while (i < s) {
+                    if (b[0] != ' ') {
+                        return 0;
+                    }
+                    b += 1;
+                    i += 1;
+                }
+                prev_break = 0;
+            }
+        } else if (body[i] >= 0x20) {
+            if (b[0] != (char)body[i]) {
+                return 0;
+            }
+            b += 1;
+            i += 1;
+            pending_exotic = 0;
+            prev_break = 0;
+        } else {
+            return 0;
+        }
+    }
+    *c = b;
+    return 1;
+}
+
+static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t size,
+                                                  const char* ydump, const char* ldump) {
+    size_t i;
+    size_t name_e;
+    if (size < 10) { /* "&2: '<LS>\r'" minimum */
+        return 0;
+    }
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    for (i = 0; i < size; i++) {
+        if (data[i] == '\t') {
+            return 0;
+        }
+    }
+    if (data[0] != '&') {
+        return 0;
+    }
+    i = 1;
+    {
+        size_t name_o = i;
+        while (i < size &&
+               (((data[i]) >= 'A' && (data[i]) <= 'Z') || ((data[i]) >= 'a' && (data[i]) <= 'z') ||
+                ((data[i]) >= '0' && (data[i]) <= '9') || (data[i]) == '_' || (data[i]) == '-' ||
+                (data[i]) == '.' || (data[i]) == ':')) {
+            i++;
+        }
+        if (i == name_o || data[i - 1] != ':') {
+            return 0;
+        }
+        name_e = i; /* one past the ':' */
+    }
+    if (i >= size || data[i] != ' ' || (i + 1 < size && data[i + 1] == ' ')) {
+        return 0; /* exactly one space */
+    }
+    i++;
+    if (i >= size || data[i] != '\'') {
+        return 0;
+    }
+    i++;
+    {
+        size_t bo = i;
+        int prev_break = 0;
+        while (i < size && data[i] != '\'') {
+            if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+                i += 2;
+                prev_break = 0;
+            } else if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+                       ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+                i += 3;
+                prev_break = 0;
+            } else if (data[i] == '\r' || data[i] == '\n') {
+                if (prev_break) {
+                    return 0;
+                }
+                i += 1;
+                prev_break = 1;
+            } else if (data[i] >= 0x20) {
+                i += 1;
+                prev_break = 0;
+            } else {
+                return 0;
+            }
+        }
+        if (i >= size) {
+            return 0; /* unterminated */
+        }
+        i++; /* the closing quote */
+        if (i != size) {
+            return 0; /* EOF behind the quote */
+        }
+        /* the yeptris side: +STR / =VAL : &<name> <body-y> / -STR */
+        if (strncmp((const char*)ydump, "+STR\n=VAL : &", 13) != 0) {
+            return 0;
+        }
+        {
+            const char* a = ydump + 13;
+            size_t n;
+            for (n = 1; n < name_e; n++) { /* the riding name run, ':' included */
+                if (a[0] != (char)data[n]) {
+                    return 0;
+                }
+                a++;
+            }
+            if (a[0] != ' ') {
+                return 0;
+            }
+            a++;
+            if (!yd_r238_body_walk_y(data, bo, size - 1, &a)) {
+                return 0;
+            }
+            if (strncmp(a, "\n-STR\n", 6) != 0) {
+                return 0;
+            }
+        }
+        /* the libyaml side: +STR / +MAP / =VAL : &<cut> / =VAL :
+         * <body-l> / -MAP / -STR -- the cut name ends at the FIRST
+         * out-of-charset byte (the interior ':') */
+        if (strncmp((const char*)ldump, "+STR\n+MAP\n=VAL : &", 18) != 0) {
+            return 0;
+        }
+        {
+            const char* b = ldump + 18;
+            size_t n = 1;
+            while (n < name_e && data[n] != ':') {
+                if (b[0] != (char)data[n]) {
+                    return 0;
+                }
+                b++;
+                n++;
+            }
+            if (b[0] != ' ' || b[1] != '\n') {
+                return 0;
+            }
+            b += 2;
+            if (strncmp(b, "=VAL : ", 7) != 0) {
+                return 0;
+            }
+            b += 7;
+            if (!yd_r238_body_walk_l(data, bo, size - 1, &b)) {
+                return 0;
+            }
+            if (strncmp(b, "\n-MAP\n-STR\n", 12) != 0) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
 static int yd_r218_root_alias_blank_run_gray(const uint8_t* data, size_t size, const char* ydump,
                                              const char* ldump) {
 #define YD_R218_NAME_BYTE(c)                                                                       \
@@ -11672,6 +12005,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r199_qflow_bareq_alias_ride_gray(data, size, ydump, ldump) ||
          yd_r212_root_alias_double_head_breakless_gray(data, size, ydump, ldump) ||
          yd_r218_root_alias_blank_run_gray(data, size, ydump, ldump) ||
+         yd_r238_root_anchor_quoted_follow_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
