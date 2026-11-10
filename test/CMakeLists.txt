@@ -4401,6 +4401,29 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-lsps-utf8-content-r236.bin
     )
 
+    # r237 (nightly round 237, crash-7be6d7634714addf17298a04006b77a3a8644572,
+    # 18-byte minimum "> #<PS> :\n  <NEL> 0\n t"): the literal block
+    # scalar's post-NEL-run fold boundary. yeptris keeps the NEL raw and
+    # the continuation line's leading space as content while libyaml
+    # escaped the NEL break and ate the space as the continuation's
+    # indent ("[NEL] SP 0" vs "\n0"), and behind that yeptris's 1.2 fold
+    # emits an escaped line break where libyaml kept the fold space
+    # ("esc t" vs "SP t"). Two arms in yd_block_nel_walk_mult: (1) the
+    # r208 surplus scan now eats yeptris's NEL-site indent surplus before
+    # its escape-run scan (only while the dumps disagree behind, capped,
+    # so the run law's surplus==k + alignment byte still bind); (2) the
+    # r237 fold-space mirror in the walk's main loop rides ONE
+    # escape<->space pair gated on the alignment byte behind the pair --
+    # both arms sit where the walk previously declined unconditionally,
+    # so every existing member keeps its exact path. 129-mutant paired
+    # battery vs parent 931d7d7: 12 fixed / 0 regressions / 117
+    # both-pass; six corpus walks clean (parse 359); the 126 existing
+    # pins stay green. Seed: block-nel-nel-foldspace-r237.bin (this pin).
+    add_test(
+        NAME fuzz-diff-r237-block-nel-foldspace-mirror
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-nel-foldspace-r237.bin
+    )
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
