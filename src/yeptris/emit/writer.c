@@ -1821,7 +1821,16 @@ size_t yep_emit_run(yep_emitter* em, int dry) {
                 yep_view tdec3 = wv(w, root->tag);
                 wr_tag_token(w, &tdec3);
             }
-            if (root->anchor.len > 0) {
+            if (root->anchor.len > 0 && !anchor_name_unspellable(w, root)) {
+                /* the r235 law: the lead line writes the name UNQUOTED
+                 * and anchor names have no quoting -- a name the spell
+                 * law rejects has no safe lead-line spelling. The r235
+                 * nightly's riding-colon names ("&:" and the artifact's
+                 * "&k:\"" — run 42739927952, crash-5de6f9ff) re-parsed
+                 * as an anchored empty KEY of the follow-on collection
+                 * (the anchor lost, s1 != s2, byte growth); the
+                 * colon-tail law fails the serialize like every other
+                 * anchor write path (the r228 "&: |" law) */
                 if (root->tag.len > 0) {
                     wr_byte(w, ' '); /* props need the separator */
                 }
