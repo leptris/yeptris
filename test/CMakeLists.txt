@@ -4346,6 +4346,36 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-ps-docstart-r234.bin
     )
 
+    # The r235 nightly (run 42739927952, main 52cc501, crash-5de6f9ff)
+    # was the fuzz_roundtrip harness's catch: an ENGINE emit bug. The
+    # 19-byte artifact `&k:": #-]<PS> ? &in~` parses to a root map
+    # anchored by a RIDING-COLON name (`k:":` -- the ns-anchor-char
+    # set rides ':' and '"' to the blank), and the root-props LEAD
+    # LINE spell (the catch-56 root-side law: root block-collection
+    # props ride their own leading line) wrote it UNQUOTED as
+    # `&k:":\n<content>` -- the lead-line path never consulted the
+    # anchor spell law. The re-parse mis-attaches the riding name (the
+    # anchor is lost; the 11-byte minimum `&: #<PS>? &~` rides to
+    # `&:` which re-parses as an anchored empty KEY of the follow-on
+    # collection -- s1 != s2, byte growth). The fix is the r235 law:
+    # the root lead line gates its anchor write on the SAME
+    # anchor_name_unspellable law as every other anchor write path --
+    # a colon-tailed (or break-named) anchor on a root block
+    # collection has NO safe lead-line spelling, so the serialize
+    # fails (the r228 "&: |" law's root-side twin). Normal anchored
+    # root maps (`&a\nb: 1`) keep the lead-line spell. Regression
+    # triage CLEAN: the pre-r235 parent 03526bb aborts identically.
+    # 360-mutant paired battery vs parent: 103 fixed / 0 regressions /
+    # 257 both-pass (the unsafe neighborhood now fails the serialize
+    # cleanly); controls `&a\nb: 1`, `&a:b\nk: v` stay green; six
+    # corpus walks clean; the 124 existing pins stay green. Seed:
+    # roundtrip-root-anchor-colon-lead-r235.bin (this pin).
+    add_test(
+        NAME fuzz-roundtrip-r235-root-anchor-colon-lead
+        COMMAND fuzz_roundtrip
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/roundtrip-root-anchor-colon-lead-r235.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
