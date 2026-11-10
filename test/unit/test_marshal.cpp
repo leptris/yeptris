@@ -464,3 +464,27 @@ TEST(Marshal, StrictDuplicateKeysScanGrowsPastSixteenKeys) {
     yeptris_marshal_free(out);
     yeptris_document_free(d);
 }
+
+TEST(Marshal, ParseableNelMarkerDocMarshalParity) {
+    /* The nightly's round 239 (run 42786114675, main e75c3949,
+     * crash-05d604c94124e5d64489ca5700dc3879fbf139ff; 20-byte minimum):
+     * the value drains skipped the parse entry's break normalizer, so a
+     * raw NEL before the "..." doc-end marker errored the marshal
+     * (ERROR_PARSE on a document yeptris_parse_ex accepted and
+     * serialized cleanly). The drain now normalizes NEL/LS/PS exactly
+     * like parse_frontend (JSON routes stay above it, the parse law).
+     * Fails pre-fix with marshal st=1; passes post-fix. */
+    const char doc[] = "\xc2\x85...\xc2\x85 >\n \xc2\x85...\xc2\x85\nt";
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_ex(doc, sizeof(doc) - 1, nullptr, &st);
+    ASSERT_NE(d, nullptr);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    char* out = nullptr;
+    size_t olen = 0;
+    EXPECT_EQ(yeptris_marshal(doc, sizeof(doc) - 1, YEPTRIS_SCHEMA_11_COMPAT,
+                              YEPTRIS_MARSHAL_ALL_DOCS, &out, &olen),
+              YEPTRIS_OK);
+    EXPECT_NE(out, nullptr);
+    yeptris_marshal_free(out);
+    yeptris_document_free(d);
+}
