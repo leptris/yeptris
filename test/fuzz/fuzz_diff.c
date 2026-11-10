@@ -9241,6 +9241,154 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
  * +STR/+SEQ/=VAL : <head with the PS folded to ONE space>/=VAL :
  * <tail>/-SEQ/-STR; libyaml's is +STR/+SEQ/=VAL : <head with the PS
  * RAW>/+MAP/=VAL : <tail after the '?'>/=VAL : <empty>/-MAP/-SEQ/-STR. */
+/* The root-alias collapse's TAB + folded-header member rides the
+ * family skeleton (the nightly's round 241, crash-aa326ab1, 9-byte
+ * minimum "&a:\t>\n*a:", main f6111d8, nightly run 42919365127): the
+ * r218/r227/r238 collapse family's members so far carried blank-line
+ * runs, direct adjacency, breakless and quoted followers — never a
+ * TAB separator, and never a BLOCK-SCALAR HEADER as the head's value.
+ * Here `&a:` + a TAB + `>` + LF + `*a:` composes three agreements and
+ * one delta: BOTH engines render the head scalar as `&` + name + ONE
+ * space (the TAB blank folds like any blank run), BOTH take the `>`
+ * as an EMPTY folded-scalar value (the `*a:` line sits at column 0),
+ * and the delta is the family's own law at the second key — yeptris's
+ * suite-pinned riding laws (2SXE/W5VH) let the colon RIDE the alias
+ * name (`=ALI *a:` as an unvalued key), while libyaml's 1.1 IS_ALPHA
+ * cut splits the alias at `a` and emits its empty value (the r142/r76
+ * law). The r218 arm declines this shape twice (its no-tab gate and
+ * its blank-run separator law), so the claim is its own byte-shape
+ * gate + exact-dump walk, and anything the gates cannot verify
+ * declines (the escalation clause stays live).
+ *
+ * Gate: '&' + name-run ending in the riding ':', a TAB run (this
+ * member's separator — spaces ride the r218 siblings), '>' with no
+ * header suffix (the +/-/digit spellings escalate), LF, '*' + a
+ * name-run ending in the riding ':' + EOF (the breakless tail; the
+ * trailing-break spellings escalate). Walk: BOTH dumps are
+ * +STR/+MAP/=VAL : &<name> <ONE space>/=VAL : <empty> ...; yeptris
+ * continues =ALI *<name>:/-MAP/-STR, libyaml =ALI *<name>/=VAL :
+ * <empty>/-MAP/-STR. */
+static int yd_r241_alias_tab_fold_gray(const uint8_t* data, size_t size, const char* ydump,
+                                       const char* ldump) {
+    size_t i;
+    size_t colon = size; /* the head's riding colon */
+    size_t tabs = 0;     /* the TAB run's start */
+    size_t star = size;  /* the alias line's '*' */
+    if (size < 9 || ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    if (data[0] != '&') {
+        return 0;
+    }
+    for (i = 1; i < size; i++) {
+        unsigned char c = (unsigned char)data[i];
+        if (c == ':') {
+            colon = i;
+            break;
+        }
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+              c == '_' || c == '-' || c == '.')) {
+            return 0;
+        }
+    }
+    if (colon == size || colon == 1) {
+        return 0;
+    }
+    i = colon + 1;
+    while (i < size && data[i] == '\t') {
+        i++;
+    }
+    tabs = colon + 1;
+    if (i == tabs || i >= size || data[i] != '>') {
+        return 0;
+    }
+    i++;
+    if (i >= size || data[i] != '\n') {
+        return 0; /* a header suffix escalates */
+    }
+    i++;
+    if (i >= size || data[i] != '*') {
+        return 0;
+    }
+    star = i;
+    for (i = star + 1; i < size; i++) {
+        unsigned char c = (unsigned char)data[i];
+        if (c == ':') {
+            if (i != size - 1) {
+                return 0; /* the riding colon ends the breakless tail */
+            }
+            break;
+        }
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+              c == '_' || c == '-' || c == '.')) {
+            return 0;
+        }
+    }
+    if (star + 1 >= size || data[size - 1] != ':') {
+        return 0;
+    }
+    /* the common head: +STR / +MAP / =VAL : &<name> <space> / =VAL :
+     * <empty> */
+    if (strncmp((const char*)ydump, "+STR\n+MAP\n=VAL : &", 18) != 0) {
+        return 0;
+    }
+    if (strncmp((const char*)ldump, "+STR\n+MAP\n=VAL : &", 18) != 0) {
+        return 0;
+    }
+    {
+        const char* a = ydump + 18;
+        const char* b = ldump + 18;
+        size_t n;
+        for (n = 1; n < colon; n++) {
+            if (a[0] != (char)data[n] || b[0] != (char)data[n]) {
+                return 0;
+            }
+            a++;
+            b++;
+        }
+        /* the folded TAB run renders as ONE space on both sides */
+        if (a[0] != ' ' || b[0] != ' ' || a[1] != '\n' || b[1] != '\n') {
+            return 0;
+        }
+        a += 2;
+        b += 2;
+        if (strncmp(a, "=VAL : \n", 8) != 0 || strncmp(b, "=VAL : \n", 8) != 0) {
+            return 0;
+        }
+        a += 8;
+        b += 8;
+        /* yeptris: =ALI *<name>: / -MAP / -STR */
+        if (strncmp(a, "=ALI *", 6) != 0) {
+            return 0;
+        }
+        a += 6;
+        for (n = star + 1; n < size; n++) {
+            if (a[0] != (char)data[n]) {
+                return 0;
+            }
+            a++;
+        }
+        if (strncmp(a, "\n-MAP\n-STR\n", 11) != 0) {
+            return 0;
+        }
+        /* libyaml: =ALI *<name-cut> / =VAL : <empty> / -MAP / -STR */
+        if (strncmp(b, "=ALI *", 6) != 0) {
+            return 0;
+        }
+        b += 6;
+        for (n = star + 1; n < size - 1; n++) { /* the IS_ALPHA cut */
+            if (b[0] != (char)data[n]) {
+                return 0;
+            }
+            b++;
+        }
+        if (strncmp(b, "\n=VAL : \n-MAP\n-STR\n", 19) != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static int yd_r240_flow_qtail_clip_gray(const uint8_t* data, size_t size, const char* ydump,
                                         const char* ldump) {
     size_t i;
@@ -12198,6 +12346,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r218_root_alias_blank_run_gray(data, size, ydump, ldump) ||
          yd_r238_root_anchor_quoted_follow_gray(data, size, ydump, ldump) ||
          yd_r240_flow_qtail_clip_gray(data, size, ydump, ldump) ||
+         yd_r241_alias_tab_fold_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||

@@ -4501,6 +4501,31 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qtail-psfold-r240.bin
     )
 
+    # r241 (nightly round 241, run 42919365127, main f6111d8,
+    # crash-aa326ab184531278a80ecf9d719d6ef1cfc26c17, 9-byte minimum
+    # "&a:\t>\n*a:" — libFuzzer-minimal, the artifact itself): the
+    # root-alias collapse family's TAB + folded-header member. THREE
+    # agreements and the family's own delta: BOTH engines render the
+    # head scalar as `&` + name + ONE space (the TAB blank folds like
+    # any blank run), BOTH take the `>` as an EMPTY folded-scalar
+    # value (the `*a:` line sits at column 0), and at the second key
+    # yeptris's suite-pinned riding laws (2SXE/W5VH) let the colon
+    # RIDE the alias name (`=ALI *a:` as an unvalued key) while
+    # libyaml's 1.1 IS_ALPHA cut splits it (`=ALI *a` + an empty
+    # value, the r142/r76 law). The r218 arm declines this shape twice
+    # (its no-tab gate, its blank-run separator law), so
+    # yd_r241_alias_tab_fold_gray gates the byte shape and walks both
+    # dumps exactly, declining anything its gates cannot verify (the
+    # header suffixes and trailing breaks escalate). Regression triage:
+    # a fresh worktree build at the pre-r238-arm parent ad84a13a
+    # aborts identically (a fresh find, no arm regression, no engine
+    # bug). Seed: root-alias-tabfold-r241.bin (this pin).
+    add_test(
+        NAME fuzz-diff-r241-alias-tab-fold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-tabfold-r241.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
