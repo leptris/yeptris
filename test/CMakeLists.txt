@@ -4454,6 +4454,30 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-r238.bin
     )
 
+    # r239 (nightly round 239, run 42786114675, main e75c3949,
+    # crash-05d604c94124e5d64489ca5700dc3879fbf139ff, 20-byte minimum
+    # "<NEL>...<NEL> >\n <NEL>...<NEL>\nt"): the value drains skipped
+    # the parse entry's break normalizer. yeptris_parse_ex (compat
+    # schema) normalizes NEL/LS/PS to LF up front (parse_frontend) and
+    # accepted the document, but yep_values_from_input only did BOM +
+    # UTF-16 transcoding -- the raw NEL rode to the SAME compat-grammar
+    # engine and the "..." marker line-start gate errored the run, so
+    # yeptris_marshal returned ERROR_PARSE on a parseable document (the
+    # fuzz_roundtrip marshal-contract trap, line 42). The fix threads
+    # the same normalize step into the drain's engine branch (JSON
+    # routes stay above it, the parse_frontend law); ownership rides
+    # the existing `transcoded` plumbing. ENGINE round #17. Unit pin
+    # Marshal.ParseableNelMarkerDocMarshalParity (fails pre-fix, passes
+    # post-fix); 484-mutant paired battery vs parent e75c3949: 116
+    # fixed / 0 regressions / 368 both-pass; six corpus walks clean;
+    # the 128 existing pins stay green. Seed:
+    # nel-docmarker-drain-r239.bin (this pin).
+    add_test(
+        NAME fuzz-roundtrip-r239-nel-docmarker-drain-normalize
+        COMMAND fuzz_roundtrip
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip/nel-docmarker-drain-r239.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
