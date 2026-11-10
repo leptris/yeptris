@@ -4425,6 +4425,35 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-nel-foldspace-r237.bin
     )
 
+    # r238 (nightly round 238, crash-3d571437a4027d3b46c234964191c77cd4febdf4,
+    # 10-byte minimum "&2: '<LS>\r'", 18-byte artifact
+    # "&k2: 'j:(<LS> \r|\n '"): the r218/r227 collapse family's
+    # QUOTED-FOLLOWER member. yeptris's riding laws (2SXE/W5VH) keep the
+    # anchor name's colon and collapse the line to ONE scalar whose
+    # content embeds the anchor spelling plus the quoted body through
+    # the plain fold; libyaml's 1.1 charset cut frees the colon as the
+    # value indicator and parses the quoted scalar as the map value
+    # under its own fold. Measured composition-only: the standalone
+    # quoted probes ('a<LF>'/'a<CR>'/'a<LS>'/'a<LS><CR>'/'<LS><CR>'/
+    # 'a<CR><LF>') ALL AGREE -- no standalone engine bug. The r238 gray
+    # arm walks BOTH dumps against the input bytes: printables byte-
+    # equal, raw NEL/LS/PS verbatim (the r231 law), a space run before
+    # a break folding with it (yeptris to ONE space; libyaml to esc \n
+    # after a raw triple -- its blank-state quark -- else one space), a
+    # standalone break folding the same way, and a trailing space run
+    # merging with a just-folded break on BOTH engines. REGRESSION
+    # TRIAGE CLEAN: the pre-r238 parent fdda224 aborts identically --
+    # a fresh find, the r237 carry exonerated. 230-mutant paired
+    # battery vs parent fdda224: 36 fixed / 0 regressions / 181
+    # both-pass / 13 both-abort; six corpus walks clean; the 127
+    # existing pins stay green. Seed: root-anchor-quoted-follow-r238.bin
+    # (this pin).
+    add_test(
+        NAME fuzz-diff-r238-root-anchor-quoted-follow
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-r238.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
