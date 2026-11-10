@@ -4376,6 +4376,31 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/roundtrip-root-anchor-colon-lead-r235.bin
     )
 
+    # The r236 nightly (run 42752605314, main 5632789, crash-6a632d98)
+    # rode the r231 flow-'?' x LS/PS fold family with EXOTIC content
+    # between the break runs: the 38-byte artifact
+    # `[?D<LS><PS><PS><U+2A29><PS><PS> U\<CR> <PS><PS><LF><LS><PS><PS>"]`
+    # (32-byte minimal: the r231 shape with one U+2A29). The exotic
+    # bytes are INERT content both engines keep raw -- the r203 run
+    # scan declined them (d >= 0x80) and the DQ bake declined
+    # (b > 0x7E), and the artifact's mid-run backslash hit the scan's
+    # conservative '\' decline. The carry widens three gates in the
+    # r203 arm, all work bounds the byte-strict verify arbitrates:
+    # (1) the run scan admits a complete VALID UTF-8 sequence that is
+    # not a break unit (fragments and overruns decline); (2) the DQ
+    # bake's escape law rides bytes >= 0x80 raw (valid UTF-8 carries
+    # raw in both engines' double-quoted scalars); (3) the '\' decline
+    # lifts -- a plain backslash is CONTENT in both engines and the
+    # bake escapes it as \\. 840-mutant paired battery vs parent
+    # 5e2141e: 79 fixed / 0 regressions / 761 both-pass; six corpus
+    # walks clean (parse 358); the 125 existing pins stay green. Seed:
+    # qflow-lsps-utf8-content-r236.bin (this pin).
+    add_test(
+        NAME fuzz-diff-r236-qflow-lsps-utf8-content
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-lsps-utf8-content-r236.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
