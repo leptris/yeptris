@@ -4321,6 +4321,31 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-lsps-downstream-plain-r233.bin
     )
 
+    # The r234 nightly (run 42706321967, main f856286, crash-4262eff1)
+    # caught the r142 anchor-charset arm's PS-terminated-doc-marker
+    # member: the 18-byte "---<PS> ? &--02:in~" (PS = raw U+2029).
+    # The '-x' plain clause armed a phantom plain on the FIRST dash
+    # ('-' followed by the non-blank '-'), and the doc-marker clause
+    # that resets it (coll_col=-1, plain_open=0) required the
+    # terminator in {space,tab,nl,cr} -- the raw PS is none, so the
+    # reset never fired, node_pos rode 0 forever, and the gate
+    # declined its own family (the bare "? &--02:in~" and the
+    # LF-terminated doc marker both carried -- with an LF the
+    # doc-marker clause fires on every dash). The carry is the r234
+    # law in BOTH the gate and copy walks: the doc-marker terminator
+    # set admits the raw multibyte breaks (the r87 break model,
+    # yd_mb_break_len). Regression triage CLEAN: the pre-r234 parent
+    # f759d1f aborts identically. 198-mutant paired battery vs parent:
+    # 55 fixed / 0 regressions / 5 both-abort / 138 both-pass; the
+    # bare controls stay green; six corpus walks clean (parse 357);
+    # the 123 existing pins stay green. Seed:
+    # anchor-charset-ps-docstart-r234.bin (this pin).
+    add_test(
+        NAME fuzz-diff-r234-anchor-charset-ps-docstart
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-ps-docstart-r234.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)

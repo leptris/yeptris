@@ -10529,7 +10529,14 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             node_pos = !plain_open && (c == ':' || c == '?' || (c == '-' && only_dash));
             if (c == '-' && only_dash && i + 2 < size && data[i + 1] == '-' && data[i + 2] == '-' &&
                 (i + 3 >= size || data[i + 3] == ' ' || data[i + 3] == '\t' ||
-                 data[i + 3] == '\n' || data[i + 3] == '\r')) {
+                 data[i + 3] == '\n' || data[i + 3] == '\r' ||
+                 yd_mb_break_len(data, size, i + 3) > 0)) {
+                /* the r234 law: the raw multibyte breaks terminate the
+                 * doc marker too (the r87 break model) — with a PS
+                 * terminator the reset never fired, the '-x' clause's
+                 * phantom plain rode from the first dash, and the gate
+                 * declined its own family (run 42706321967, crash-
+                 * 4262eff1, "---<PS> ? &--02:in~") */
                 coll_col = -1; /* the document marker: root context */
                 plain_open = 0;
             } else if (c == '-' && only_dash &&
@@ -10835,7 +10842,8 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
             if (c == '-' && only_dash2 && i + 2 < size && data[i + 1] == '-' &&
                 data[i + 2] == '-' &&
                 (i + 3 >= size || data[i + 3] == ' ' || data[i + 3] == '\t' ||
-                 data[i + 3] == '\n' || data[i + 3] == '\r')) {
+                 data[i + 3] == '\n' || data[i + 3] == '\r' ||
+                 yd_mb_break_len(data, size, i + 3) > 0)) {
                 coll_col2 = -1;
                 plain_open2 = 0;
             } else if (c == '-' && only_dash2 &&
