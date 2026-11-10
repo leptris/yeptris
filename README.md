@@ -16,9 +16,9 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.60 — live across all five runtimes** (C +
-ruby `0.6.60.1` + py `0.6.60.0` + rs/ts `0.6.60`). v0.6.61 is in
-final gating (the fuzz nightly).
+**Latest release: v0.6.61 — live across all five runtimes** (C +
+ruby `0.6.61.1` + py `0.6.61.0` + rs/ts `0.6.61`, registry-checked
+2026-11-10).
 
 ## Build, test, validate
 
@@ -47,13 +47,13 @@ Corpora are fetched pinned by `scripts/fetch-corpora.sh`. Unit +
 port + flow suites run beside them; TSAN enforces the one-document-
 per-thread contract.
 
-The fuzz nightly is the safety campaign: 220+ rounds so far, every
+The fuzz nightly is the safety campaign: 240+ rounds so far, every
 catch shipped the round it was confirmed — the CHANGELOG's wave
-entry carries rounds r116–r220: 97 fuzz artifacts, fourteen of them
+entry carries rounds r116–r239: 115 fuzz artifacts, seventeen of them
 genuine engine fixes (the rest comparator-side carries where libyaml
 diverges from the suite — the suite-pinned law wins, the carry
-documents the exact shape) — 110 fuzz-diff pins and counting, every
-pin green.
+documents the exact shape) — 127 fuzz-diff pins and six roundtrip
+seed pins and counting, every pin green.
 
 ## Performance (the referee numbers — interleaved h2h medians, CI fresh runners)
 
@@ -110,11 +110,11 @@ publishing pipeline), and ts (`yeptris` on npm via the emcc build).
 A cut that lands the C tag alone is incomplete.
 
 Version shapes follow each registry's law: rubygems and PyPI take the
-four-component `{c-semver}.{binding-patch}` (`0.6.60.0`); crates.io
+four-component `{c-semver}.{binding-patch}` (`0.6.61.0`); crates.io
 and npm enforce strict three-component semver, so rs and ts carry the
-EXACT C semver (`0.6.60`) — the maximum lockstep their registries
+EXACT C semver (`0.6.61`) — the maximum lockstep their registries
 accept. A binding-only fix on ruby/py bumps the fourth component
-(`0.6.60.1`); on rs/ts it rides the next engine patch release.
+(`0.6.61.1`); on rs/ts it rides the next engine patch release.
 
 Architecture: `PLAN.md`. FFI contract: `docs/FFI.md`. ABI pins:
 `docs/ABI.md`. Board: `TODO.md` (+ `TODO.impl/`, `TODO.restructure/`).

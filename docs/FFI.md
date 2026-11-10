@@ -28,6 +28,11 @@ are bulk-shaped by design:
      24-byte records — the C side pre-converts scalars through the
      number kernels; the host never re-parses text. `is_key` carries
      the pair alternation; anchors decorate the following value.
+     The drain (and the marshal/visit routes over it) runs the parse
+     entry's encoding front-end: BOM sniff, UTF-16/32 transcode, and
+     NEL/LS/PS → LF break normalization (v0.6.61) — so a document
+     that parses also marshals. The strict JSON routes sit above the
+     normalization and keep U+0085 raw inside strings.
   3. **Columnar drain** (`yeptris_value_drain_columns`, v0.1.2+):
      the same stream as parallel typed buffers (payloads/offs/lens/
      kinds/tags/is_keys/bools) carved from ONE allocation — each
