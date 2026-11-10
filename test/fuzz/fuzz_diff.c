@@ -3623,9 +3623,13 @@ static int yd_r203_dq_escape(char* sub, size_t* subn, unsigned char b) {
         sub[(*subn)++] = 't';
         return 1;
     default:
-        if (b < 0x20 || b > 0x7E) {
+        if (b < 0x20 || b == 0x7F) {
             return 0;
         }
+        /* the r236 widening: bytes >= 0x80 ride RAW -- the run scan
+         * only admits complete valid non-break UTF-8 sequences, and a
+         * double-quoted scalar carries valid UTF-8 raw in both engines
+         * (the byte-strict verify still arbitrates) */
         sub[(*subn)++] = (char)b;
         return 1;
     }
@@ -3787,10 +3791,16 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
                     if (d == ',' || d == ']') {
                         break;
                     }
-                    if (d == '\\' || d == '[' || d == '{' || d == '}' || d == '#') {
+                    if (d == '[' || d == '{' || d == '}' || d == '#') {
                         clean = 0;
                         break;
                     }
+                    /* the r236 widening: a '\' rides as plain CONTENT in
+                     * both engines (the plain-backslash law) and the DQ
+                     * bake escapes it as \\ -- the old decline was
+                     * conservative-only (the byte-strict verify
+                     * arbitrates) */
+
                     if (d == ':' && j + 1 < size) {
                         unsigned char g = data[j + 1];
                         if (g == ' ' || g == '\t' || g == ',' || g == '?' || g == '[' || g == ']' ||
@@ -3808,9 +3818,37 @@ static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, s
                         j += (size_t)db;
                         continue;
                     }
-                    if (d < 0x20 || d == 0x7F || d >= 0x80) {
-                        clean = 0; /* stray control / non-break multibyte declines */
+                    if (d < 0x20 || d == 0x7F) {
+                        clean = 0; /* stray control declines */
                         break;
+                    }
+                    if (d >= 0x80) {
+                        /* the r236 widening: a complete VALID UTF-8
+                         * sequence that is not a break unit (LS/PS/NEL
+                         * were consumed as db units above -- any E2 80
+                         * A8/A9 or C2 85 reaching here is a fragment)
+                         * rides as content -- e.g. U+2A29. Fragments
+                         * and overruns decline. */
+                        size_t ln = (d >= 0xF0) ? 4 : (d >= 0xE0) ? 3 : (d >= 0xC0) ? 2 : 0;
+                        if (ln == 0 || j + ln > size) {
+                            clean = 0;
+                            break;
+                        }
+                        int frag = 0;
+                        for (size_t q2 = 1; q2 < ln; q2++) {
+                            if ((data[j + q2] & 0xC0) != 0x80) {
+                                frag = 1;
+                                break;
+                            }
+                        }
+                        if (frag || (d == 0xC2 && data[j + 1] == 0x85) ||
+                            (d == 0xE2 && data[j + 1] == 0x80 &&
+                             (data[j + 2] == 0xA8 || data[j + 2] == 0xA9))) {
+                            clean = 0;
+                            break;
+                        }
+                        j += ln;
+                        continue;
                     }
                     j++;
                 }
