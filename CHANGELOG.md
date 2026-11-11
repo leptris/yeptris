@@ -6,6 +6,13 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- **the comparator carries the nightly's residual divergence families (#1265, round r244)** — the wave passes one hundred and twenty fuzz artifacts (rounds r116–r244; the [0.6.62] entry above carries r116–r243), seventeen of them genuine engine fixes, the rest comparator-side (no engine bug found; yeptris correct per the suite-pinned laws — the carry documents the exact shape):
+  - **the glued-`?#` × quoted-CR flow-seq composition (r244, #1265)** — libyaml reads the glued `?#` as an explicit-key indicator whose `#` opens a comment running to the CR (the line break), swallowing `,"` plus the following quoted member's opening quote; the post-CR tail (leading spaces stripped, closing quote riding as content) becomes the map's plain key with an empty value — two `+MAP` groups where yeptris keeps `?#` one plain scalar and every member flat, the suite-pinned shape (the #949 `?#`-composition arms, r132). The EXACT-BYTES `yd_r244_flow_qhash_cr_gray` arm (the r121/r137 precedent — comment-to-CR permutations are not soundly generalizable into a structural predicate): three pinned shapes (the 18-byte libFuzzer minimum, the 24-byte artifact, the 16-byte short-tail), both dumps walked byte-exact. Fresh-worktree A/B at the pre-arm parent confirms a fresh find; 50-mutant paired battery 0 regressions (both-pass 30, both-abort 20 — every abort identical on the pre-arm binary); six corpus walks exit-0; 927/927 ctest; leaks clean.
+
 ## [0.6.62] - 2026-11-11
 
 ### Changed

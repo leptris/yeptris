@@ -16,9 +16,12 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.61 — live across all five runtimes** (C +
-ruby `0.6.61.1` + py `0.6.61.0` + rs/ts `0.6.61`, registry-checked
-2026-11-10).
+**Latest release: v0.6.62 — live across all five runtimes** (C +
+ruby `0.6.62.2` + py `0.6.62.0` + rs/ts `0.6.62`, registry-checked
+2026-11-11). This cut flips the #1257 fold default: block plain and
+single-quoted scalars fold at 80 columns exactly the way libyaml and
+Psych write stored files — `line_width: -1` (Psych's unwrap) and an
+explicit `block_fold: 0` keep everything on one line.
 
 ## Build, test, validate
 
@@ -48,11 +51,11 @@ port + flow suites run beside them; TSAN enforces the one-document-
 per-thread contract.
 
 The fuzz nightly is the safety campaign: 240+ rounds so far, every
-catch shipped the round it was confirmed — the CHANGELOG's wave
-entry carries rounds r116–r239: 115 fuzz artifacts, seventeen of them
-genuine engine fixes (the rest comparator-side carries where libyaml
+catch shipped the round it was confirmed — the CHANGELOG carries
+rounds r116–r244: 120 fuzz artifacts, seventeen of them genuine
+engine fixes (the rest comparator-side carries where libyaml
 diverges from the suite — the suite-pinned law wins, the carry
-documents the exact shape) — 127 fuzz-diff pins and six roundtrip
+documents the exact shape) — 132 fuzz-diff pins and six roundtrip
 seed pins and counting, every pin green.
 
 ## Performance (the referee numbers — interleaved h2h medians, CI fresh runners)
@@ -110,11 +113,11 @@ publishing pipeline), and ts (`yeptris` on npm via the emcc build).
 A cut that lands the C tag alone is incomplete.
 
 Version shapes follow each registry's law: rubygems and PyPI take the
-four-component `{c-semver}.{binding-patch}` (`0.6.61.0`); crates.io
+four-component `{c-semver}.{binding-patch}` (`0.6.62.0`); crates.io
 and npm enforce strict three-component semver, so rs and ts carry the
-EXACT C semver (`0.6.61`) — the maximum lockstep their registries
+EXACT C semver (`0.6.62`) — the maximum lockstep their registries
 accept. A binding-only fix on ruby/py bumps the fourth component
-(`0.6.61.1`); on rs/ts it rides the next engine patch release.
+(`0.6.62.1`); on rs/ts it rides the next engine patch release.
 
 Architecture: `PLAN.md`. FFI contract: `docs/FFI.md`. ABI pins:
 `docs/ABI.md`. Board: `TODO.md` (+ `TODO.impl/`, `TODO.restructure/`).
