@@ -1024,25 +1024,71 @@ TEST(EmitFold903, BlockPlainFoldsAt80) {
     yeptris_document_free(d2);
 }
 
-/* the default-off law: without block_fold (or with a pre-#903 struct
- * size) block output stays width-invariant — byte-identical with the
- * pre-option releases. */
-TEST(EmitFold903, DefaultOffStaysWidthInvariant) {
+/* the #1257 fold-default law: the default (and any pre-#903 16-byte
+ * struct) FOLDS at best_width like Psych — interior single spaces past
+ * the width, the continuation at parent_col + best_indent, keys
+ * excluded. An explicit block_fold = 0 or best_width < 0 unwraps. */
+TEST(EmitFold1257, DefaultFoldsAtPsychParity) {
     const char* y = "key: aaa bbb ccc ddd eee fff ggg hhh iii jjj kkk lll mmm nnn ooo ppp\n";
-    yeptris_emit_options width_only = {sizeof(yeptris_emit_options), 0, 20, 0, 0, 0};
-    yeptris_emit_options old_struct = {16, 0, 20, 0, 7, 7}; /* pre-#903 size: new fields unread */
+    const char* folded =
+        "key: aaa bbb ccc ddd eee\n  fff ggg hhh iii jjj\n  kkk lll mmm nnn ooo\n  ppp\n";
+    yeptris_emit_options width20 = {sizeof(yeptris_emit_options), 0, 20, 0, 0, 1};
+    yeptris_emit_options old_struct = {16, 0, 20, 0, 7, 7}; /* pre-#903 size: fold defaults ON */
+    yeptris_emit_options default_opts = {sizeof(yeptris_emit_options), 0, 0, 0, 0, 1};
+    EXPECT_EQ(ser_opts(y, width20), folded);
+    EXPECT_EQ(ser_opts(y, old_struct), folded);
+    EXPECT_EQ(ser_opts(y, default_opts), y); /* 68 cols < 80: no fold fires */
+    /* the unwrap doors: an explicit block_fold = 0, or best_width < 0
+     * (Psych's line_width: -1) — both reproduce the legacy bytes */
+    yeptris_emit_options unfold = {sizeof(yeptris_emit_options), 0, 20, 0, 0, 0};
+    EXPECT_EQ(ser_opts(y, unfold), y);
+    yeptris_emit_options neg = {sizeof(yeptris_emit_options), 0, -1, 0, 0, 1};
+    EXPECT_EQ(ser_opts(y, neg), y);
+    /* keys never fold (libyaml: allow_breaks = !simple_key_context) */
+    EXPECT_EQ(ser_opts("aaa bbb ccc ddd eee fff ggg hhh: v\n", width20),
+              "aaa bbb ccc ddd eee fff ggg hhh: v\n");
+    /* the libyaml too-narrow clamp: 0 < width <= best_indent*2 snaps
+     * to 80 — width 1 folds at 80 exactly like the default */
+    const char* long_y =
+        "key: The quick brown fox jumps over the lazy dog and keeps running through the meadow "
+        "while the sun sets slowly behind the distant hills\n";
+    yeptris_emit_options w1 = {sizeof(yeptris_emit_options), 0, 1, 0, 0, 1};
+    EXPECT_EQ(ser_opts(long_y, w1), ser_opts(long_y, default_opts));
+}
+
+/* the unwrap door reproduces the pre-#1257 releases byte-for-byte:
+ * block_fold = 0 was the old default and stays an explicit choice. */
+TEST(EmitFold1257, ExplicitUnwrapMatchesLegacyBytes) {
+    const char* y = "key: aaa bbb ccc ddd eee fff ggg hhh iii jjj kkk lll mmm nnn ooo ppp\n";
+    yeptris_emit_options legacy = {sizeof(yeptris_emit_options), 0, 20, 0, 0, 0};
+    legacy.block_fold = 0;
+    EXPECT_EQ(ser_opts(y, legacy), y);
+}
+
+/* byte-stability with folding ON (the default): the fold walk is
+ * deterministic, so serialize(parse(serialize(x))) is byte-stable. */
+TEST(EmitFold1257, FoldedRoundtripByteStable) {
+    const char* v = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi "
+                    "omicron pi rho sigma tau upsilon phi chi psi omega alpha beta gamma delta "
+                    "epsilon zeta eta theta iota kappa";
+    char y[512];
+    snprintf(y, sizeof(y), "key: %s\nother: 1\n", v);
     yeptris_emit_options default_opts = {sizeof(yeptris_emit_options), 0, 0, 0, 0, 0};
-    std::string with_width = ser_opts(y, width_only);
-    std::string old_shape = ser_opts(y, old_struct);
-    std::string deflt = ser_opts(y, default_opts);
-    /* one long plain line regardless of width */
-    std::string single = y;
-    EXPECT_EQ(with_width, single);
-    EXPECT_EQ(old_shape, single);
-    EXPECT_EQ(deflt, single);
-    /* a short folded member emits identically to the default walk */
-    yeptris_emit_options fold = {sizeof(yeptris_emit_options), 0, 20, 0, 0, 1};
-    EXPECT_EQ(ser_opts("a: 1\nb: two\n", fold), "a: 1\nb: two\n");
+    std::string s1 = ser_opts(y, default_opts);
+    std::string s2 = ser_opts(s1.c_str(), default_opts);
+    EXPECT_EQ(s1, s2) << "s1 [" << s1 << "]";
+    /* the folded form re-parses to the same scalar VALUE */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d2 = yeptris_parse(s1.data(), s1.size(), &st);
+    ASSERT_NE(d2, nullptr);
+    YeptrisNode root2 = yeptris_document_root(d2, 0);
+    YeptrisNode val2 = yeptris_node_map_get(root2, "key", 3);
+    ASSERT_NE(val2, nullptr);
+    size_t vlen = 0;
+    const char* vbytes = yeptris_node_value(val2, &vlen);
+    ASSERT_NE(vbytes, nullptr);
+    EXPECT_EQ(std::string(vbytes, vlen), std::string(v, strlen(v)));
+    yeptris_document_free(d2);
 }
 
 /* (pin c) canonical mode stays byte-stable under both new options —

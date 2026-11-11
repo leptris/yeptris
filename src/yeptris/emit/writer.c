@@ -20,6 +20,7 @@
 
 #include "../scan/scan.h"
 
+#include <limits.h>
 #include <string.h>
 
 #include "style.h"
@@ -1332,20 +1333,33 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
          * the exact predicates sc_route consults (no memo touch, so
          * the dry/wet sc_i streams stay aligned). Anything else falls
          * through untouched — parity by construction. block_fold
-         * (#903) declines the arm wholesale: the fused write's
-         * arithmetic column model has no fold walk, and the general
-         * body emits the identical bytes with folding. */
+         * (#903) declines only the members folding can actually
+         * touch (#1257): the fold walk breaks exclusively at an
+         * interior space whose column passes best_width, so a member
+         * is fold-inert — the fused write stays byte-identical —
+         * when folding is off, the width is the unwrap INT_MAX, the
+         * value carries no space at all, or the member line ends
+         * within the width. Fold-possible members fall through to
+         * the general body, which folds. */
         const yep_dnode* kn0 = yep_dom_node(d, child);
         const yep_dnode* vn0 = yep_dom_node(d, kn0->next_sibling);
-        if (!w->canonical && !w->json && !w->force_flow && !w->block_fold && vn0 != NULL &&
-            kn0->kind == 0 && kn0->style == 1 && kn0->anchor.len == 0 && kn0->tag.len == 0 &&
-            kn0->count == 0 && vn0->kind == 0 && vn0->style == 1 && vn0->anchor.len == 0 &&
-            vn0->tag.len == 0 && vn0->count == 0) {
+        if (!w->canonical && !w->json && !w->force_flow && vn0 != NULL && kn0->kind == 0 &&
+            kn0->style == 1 && kn0->anchor.len == 0 && kn0->tag.len == 0 && kn0->count == 0 &&
+            vn0->kind == 0 && vn0->style == 1 && vn0->anchor.len == 0 && vn0->tag.len == 0 &&
+            vn0->count == 0) {
             yep_view kv = wv(w, kn0->value);
             yep_view vv = wv(w, vn0->value);
+            /* the member's start column: after a written newline the
+             * cursor rides the indent (content_col); otherwise the
+             * live column (the first member: the caller placed the
+             * cursor at content_col) */
+            int m_start = (pair == 0 || w->last == '\n') ? content_col : w->col;
+            int fold_inert = !w->block_fold || w->best_width == INT_MAX ||
+                             memchr(vv.p, ' ', vv.len) == NULL ||
+                             m_start + (int)kv.len + (int)vv.len + 2 <= w->best_width;
             uint32_t f_ind = 0, f_nl = 0, f_total = 0;
-            int fused = kv.len > 0 && !key_written_over_limit(w, kn0) && kn0->plain_ok &&
-                        (vv.len == 0 || vn0->plain_ok);
+            int fused = fold_inert && kv.len > 0 && !key_written_over_limit(w, kn0) &&
+                        kn0->plain_ok && (vv.len == 0 || vn0->plain_ok);
             if (fused) {
                 /* fused member write: plain-safe spans carry no breaks,
                  * so the col scan is arithmetic and one reservation
