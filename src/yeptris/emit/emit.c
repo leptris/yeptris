@@ -3,6 +3,7 @@
  * Two passes of the ONE writer: dry (exact size), wet (linear writes
  * into the caller's buffer — zero reallocations by construction). */
 
+#include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,25 +24,6 @@ static int opts_canonical(const yeptris_emit_options* opts) {
            opts->canonical;
 }
 
-static int opts_width(const yeptris_emit_options* opts) {
-    if (opts == NULL ||
-        opts->size < (uint32_t)(offsetof(yeptris_emit_options, best_width) + sizeof(int)) ||
-        opts->best_width <= 0) {
-        return 80; /* libyaml best_width parity */
-    }
-    return opts->best_width;
-}
-
-static int opts_doc_marker(const yeptris_emit_options* opts) {
-    /* size-versioned: callers compiled against the older struct keep
-     * the implicit single-document behavior */
-    if (opts == NULL ||
-        opts->size < (uint32_t)(offsetof(yeptris_emit_options, explicit_doc_start) + sizeof(int))) {
-        return 0;
-    }
-    return opts->explicit_doc_start != 0;
-}
-
 static int opts_indent(const yeptris_emit_options* opts) {
     /* size-versioned (#903); out of range rides the default (libyaml
      * clamps 2..9 the same way) */
@@ -56,12 +38,48 @@ static int opts_indent(const yeptris_emit_options* opts) {
     return ind;
 }
 
+static int opts_width(const yeptris_emit_options* opts) {
+    /* libyaml's emitter-init clamp, spelled per the caller's declared
+     * width (#1257): `best_width < 0` means NEVER fold — Psych's
+     * `line_width: -1` unwrap, applied to the flow wrap and the block
+     * fold alike; `0 <= best_width <= best_indent*2` snaps to 80
+     * (libyaml's too-narrow clamp); absent or 0 rides the default 80. */
+    if (opts != NULL &&
+        opts->size >= (uint32_t)(offsetof(yeptris_emit_options, best_width) + sizeof(int)) &&
+        opts->best_width < 0) {
+        return INT_MAX;
+    }
+    int ind = opts_indent(opts);
+    if (opts == NULL ||
+        opts->size < (uint32_t)(offsetof(yeptris_emit_options, best_width) + sizeof(int)) ||
+        opts->best_width == 0) {
+        return 80; /* libyaml best_width parity */
+    }
+    if (opts->best_width <= ind * 2) {
+        return 80; /* the too-narrow clamp (libyaml: w <= best_indent*2) */
+    }
+    return opts->best_width;
+}
+
+static int opts_doc_marker(const yeptris_emit_options* opts) {
+    /* size-versioned: callers compiled against the older struct keep
+     * the implicit single-document behavior */
+    if (opts == NULL ||
+        opts->size < (uint32_t)(offsetof(yeptris_emit_options, explicit_doc_start) + sizeof(int))) {
+        return 0;
+    }
+    return opts->explicit_doc_start != 0;
+}
+
 static int opts_block_fold(const yeptris_emit_options* opts) {
-    /* size-versioned (#903): default off — block output stays
-     * width-invariant (byte-identical with the pre-option releases) */
+    /* size-versioned (#903, the #1257 flip): DEFAULT ON — block output
+     * folds at best_width like Psych/libyaml, so a host flipping
+     * engines never changes stored bytes by accident. An explicit
+     * block_fold = 0 (a caller passing the full struct) still
+     * unwraps, as does best_width < 0 (the width clamp). */
     if (opts == NULL ||
         opts->size < (uint32_t)(offsetof(yeptris_emit_options, block_fold) + sizeof(int))) {
-        return 0;
+        return 1;
     }
     return opts->block_fold != 0;
 }
