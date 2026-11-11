@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **block output folds at 80 by default - psych/libyaml stored-file parity (#1257, PR #1259)** — plain and single-quoted block scalars fold at `best_width` (default 80) exactly the way libyaml's emitter does: an interior single space past the width becomes the break, the continuation re-indents to parent_col + best_indent, keys and flow members never fold, canonical/JSON keep their fixed forms; the libyaml emission goldens pass byte-exact with the flip on. `best_width` adopts libyaml's emitter-init clamp (`< 0` never wraps — Psych's `line_width: -1` unwrap; `0 <= w <= best_indent*2` snaps to 80; 0/absent = 80) and an explicit `block_fold = 0` unwraps; all option reads stay size-versioned, so pre-existing callers keep their old bytes. The #352 flat-map fused arm stays armed for fold-inert members (no interior space, or the member line ends within the width — json-users emit fully recovered); prose-heavy shapes pay the real fold work (the fold-aware fused arm is the recorded follow-up lever on TODO.max-perf/11).
 - perf(scan): the line-facts sweep carries the value-side stop (TODO.max-perf/03, #1258) - the pair arm's plain value reads the fused stop2/has-high facts instead of a second stopset sweep; the fast path rides only spans above the walking scan's tiny-gate threshold, and the terminating law is re-checked per the walking scan's own rules.
 
 ## [0.6.61] - 2026-11-10
