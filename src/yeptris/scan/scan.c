@@ -277,7 +277,8 @@ int yep_scan_plain_safe(const char* p, uint32_t len) {
     {
         const uint64_t ONES = 0x0101010101010101ull;
         const uint64_t HIGH = 0x8080808080808080ull;
-#define YST_ZDET(w, ch) ((((w) ^ (uint64_t)(ch)*ONES) - ONES) & ~((w) ^ (uint64_t)(ch)*ONES) & HIGH)
+#define YST_ZDET(w, ch)                                                                            \
+    ((((w) ^ (uint64_t)(ch) * ONES) - ONES) & ~((w) ^ (uint64_t)(ch) * ONES) & HIGH)
         /* the all-boring accept (#742): a span of pure [0-9A-Za-z_]
          * makes EVERY rule in this function vacuous — no indicators
          * (the head switch), no blanks at the ends, no BOM, no
@@ -506,7 +507,7 @@ static yep_span shape_value_span(const char* p, size_t len, size_t vt, const yep
           (size_t)(f->end - vt) >= 64)) {
         return yep_scan_plain(p, len, vt, 0);
     }
-    size_t cand;
+    size_t cand = 0;
     int have = 0;
     if (f->flags & YEP_FACTS_STOP2) {
         if (f->stop2 >= vt) {
