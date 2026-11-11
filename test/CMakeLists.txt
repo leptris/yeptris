@@ -4574,6 +4574,11 @@ if(YEPTRIS_LIBYAML_ROOT)
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r243.bin
     )
+add_test(
+        NAME fuzz-diff-r244-flow-qhash-cr
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r244.bin
+    )
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
