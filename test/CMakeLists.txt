@@ -4526,6 +4526,30 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-alias-tabfold-r241.bin
     )
 
+    # r242 (nightly round 242, run 42930337137, main dc6d2e2 — the
+    # nightly's own failure IS the pre-arm A/B, crash-be5b7d7bc6a1d1db
+    # 754c32fe8e146caa473e85a3, 13-byte minimum "[?,,g,?g?,\"\"]"): the
+    # flow explicit-key family's glued-? MIDDLE member with no exotic
+    # bytes — the r240 carry pinned the glued-? tail behind a PS-folded
+    # head, this member is the grammar itself. The lone '?' member
+    # opens the explicit-key map on BOTH sides (they agree — the suite
+    # law protects only the GLUED '?'); quoted/plain/empty members
+    # agree; the glued-? member ('?' + a non-space indicator-free run,
+    # interior/trailing '?' included — content on both engines at
+    # non-leading positions) is the delta: yeptris's suite-pinned
+    # plain-'?' law (2SXE) reads it as ONE plain scalar while libyaml's
+    # 1.1 grammar opens `? <rest> : <empty>`. yd_r242_flow_glued_q_
+    # members_gray splits the members, classifies each, builds BOTH
+    # expected dumps from the input bytes, and requires exact equality
+    # on both sides; any byte the grammar cannot classify declines
+    # (the escalation clause stays live). Comparator carry only — no
+    # engine change. Seed: flow-glued-q-members-r242.bin (this pin).
+    add_test(
+        NAME fuzz-diff-r242-flow-glued-q-members
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-glued-q-members-r242.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
