@@ -16,12 +16,15 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.62 — live across all five runtimes** (C +
-ruby `0.6.62.2` + py `0.6.62.0` + rs/ts `0.6.62`, registry-checked
-2026-11-11). This cut flips the #1257 fold default: block plain and
-single-quoted scalars fold at 80 columns exactly the way libyaml and
-Psych write stored files — `line_width: -1` (Psych's unwrap) and an
-explicit `block_fold: 0` keep everything on one line.
+**Latest release: v0.6.63 — live across all five runtimes** (C +
+ruby `0.6.63.0` + py `0.6.63.0` + rs/ts `0.6.63`, registry-checked
+2026-11-12). This cut carries the #1264 dump-parity law: a multiline
+plain scalar whose only offense is a break rides single quotes exactly
+where libyaml and Psych put them (`'x y z\n\n  '` byte-exact) — the
+emitter now carries `single_quoted_allowed` through plain breaks,
+honors its space_break/break_space/trailing_blank kills, and renders
+folded content breaks; the binding side quotes keys through the same
+law (yeptris-ruby#374). The round also carries the r245 flow soup.
 
 ## Build, test, validate
 
@@ -52,10 +55,10 @@ per-thread contract.
 
 The fuzz nightly is the safety campaign: 240+ rounds so far, every
 catch shipped the round it was confirmed — the CHANGELOG carries
-rounds r116–r244: 120 fuzz artifacts, seventeen of them genuine
+rounds r116–r245: 121 fuzz artifacts, seventeen of them genuine
 engine fixes (the rest comparator-side carries where libyaml
 diverges from the suite — the suite-pinned law wins, the carry
-documents the exact shape) — 132 fuzz-diff pins and six roundtrip
+documents the exact shape) — 134 fuzz-diff pins and six roundtrip
 seed pins and counting, every pin green.
 
 ## Performance (the referee numbers — interleaved h2h medians, CI fresh runners)
