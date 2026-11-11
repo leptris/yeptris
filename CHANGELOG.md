@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- perf(scan): the line-facts sweep carries the value-side stop (TODO.max-perf/03, #1258) - the pair arm's plain value reads the fused stop2/has-high facts instead of a second stopset sweep; the fast path rides only spans above the walking scan's tiny-gate threshold, and the terminating law is re-checked per the walking scan's own rules.
+
 ## [0.6.61] - 2026-11-10
 
 ### Added
