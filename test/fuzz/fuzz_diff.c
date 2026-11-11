@@ -9294,6 +9294,115 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
  * dumps from the input bytes, and requires exact equality on both
  * sides; any byte the grammar cannot classify declines (the
  * escalation clause stays live). */
+
+/* The UTF-16BE mid-stream BOM composite rides the r144/r226 front-end
+ * family (the nightly's round 243, crash-1a7cef2a, 5206-byte artifact
+ * that is already single-byte-deletion minimal, main f04fd40-era,
+ * nightly run 42942836432): a UTF-16BE stream opening with THREE
+ * `feff 0085` (BOM + NEL) code-unit pairs. yeptris (the r144 fix)
+ * consumes ONLY the stream-initial BOM and keeps every mid-stream
+ * `feff` code unit as U+FEFF (ZWNBSP) CONTENT — the normalized NEL
+ * that follows each folds to ONE space in the plain scalar; libyaml's
+ * UTF-16 reader eats the mid-stream `feff` code units as BOMs too,
+ * so both its FEFF characters and their fold spaces vanish. The
+ * relation is exact and dump-shaped (the yd_ps_space_divergence
+ * pattern): libyaml's dump equals yeptris's dump with every UTF-8
+ * U+FEFF triple removed TOGETHER with the single fold space that
+ * immediately follows each (the NEL residue — yeptris folds the
+ * break libyaml swallowed whole). Any FEFF triple NOT followed by a
+ * space is also removable (a mid-content FEFF without a following
+ * break); anything else mismatches and declines (the escalation
+ * clause stays live). Gate: the input starts with the UTF-16BE BOM
+ * `fe ff` and contains at least one more `fe ff` code unit mid-stream. */
+static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, const char* ydump,
+                                            const char* ldump) {
+    size_t i;
+    int extra_bom = 0;
+    if (size < 6 || ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    if (data[0] != 0xFE || data[1] != 0xFF) {
+        return 0; /* the UTF-16BE BOM leads */
+    }
+    for (i = 2; i + 1 < size; i++) {
+        if (data[i] == 0xFE && data[i + 1] == 0xFF) {
+            extra_bom = 1;
+            break;
+        }
+    }
+    if (!extra_bom) {
+        return 0; /* the initial BOM alone rides the r144 engine law */
+    }
+    /* the relation: libyaml's dump == yeptris's dump minus every
+     * U+FEFF triple and the ONE space following each — with ONE tail
+     * allowance: at the scalar-content end libyaml's non-validating
+     * UTF-16 writer may carry a residue (the odd-region re-decode:
+     * up to two complete characters plus one TRUNCATED UTF-8
+     * sequence at EOF) that yeptris's validating front-end declines. */
+    {
+        const char* a = ydump;
+        const char* b = ldump;
+        while (a[0] != '\0') {
+            if ((unsigned char)a[0] == 0xEF && (unsigned char)a[1] == 0xBB &&
+                (unsigned char)a[2] == 0xBF) {
+                a += 3; /* the U+FEFF triple vanishes */
+                if (a[0] == ' ') {
+                    a++; /* the folded-NEL residue vanishes with it */
+                }
+                continue;
+            }
+            if (b[0] != a[0]) {
+                break; /* the residue, or a real mismatch */
+            }
+            a++;
+            b++;
+        }
+        if (a[0] == '\0') {
+            return b[0] == '\0'; /* the pure-strip equalization */
+        }
+        /* the tail law: the remainder of yeptris's dump re-appears
+         * verbatim behind a bounded residue in libyaml's */
+        {
+            size_t y_rest = strlen(a);
+            size_t l_rest = strlen(b);
+            if (l_rest <= y_rest || l_rest - y_rest > 8) {
+                return 0;
+            }
+            size_t extra = l_rest - y_rest;
+            if (memcmp(b + extra, a, y_rest) != 0) {
+                return 0;
+            }
+            /* the residue: complete chars, then ONE truncated
+             * multi-byte sequence at its end (libyaml's writer
+             * flushed the lead/continuations it had buffered) */
+            size_t k = 0;
+            int truncated = 0;
+            while (k < extra) {
+                unsigned char lead = (unsigned char)b[k];
+                size_t need;
+                if (lead >= 0x80 && lead < 0xC0) {
+                    return 0; /* a stray continuation leads */
+                }
+                need = (lead < 0x80) ? 1 : (lead < 0xE0) ? 2 : (lead < 0xF0) ? 3 : 4;
+                if (k + need > extra) {
+                    truncated = 1;
+                    break;
+                }
+                {
+                    size_t c;
+                    for (c = 1; c < need; c++) {
+                        if (((unsigned char)b[k + c] & 0xC0) != 0x80) {
+                            return 0;
+                        }
+                    }
+                }
+                k += need;
+            }
+            return truncated;
+        }
+    }
+}
+
 static int yd_r242_flow_glued_q_members_gray(const uint8_t* data, size_t size, const char* ydump,
                                              const char* ldump) {
     size_t i;
@@ -12544,6 +12653,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r240_flow_qtail_clip_gray(data, size, ydump, ldump) ||
          yd_r241_alias_tab_fold_gray(data, size, ydump, ldump) ||
          yd_r242_flow_glued_q_members_gray(data, size, ydump, ldump) ||
+         yd_r243_utf16_midstream_bom_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||

@@ -4550,6 +4550,31 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-glued-q-members-r242.bin
     )
 
+    # r243 (nightly round 243, run 42942836432, main f04fd40-era,
+    # crash-1a7cef2afb69be84709fe4c13346cdce0a130940, 5206-byte artifact
+    # that is ALREADY single-byte-deletion minimal — mutation-fragile as
+    # a whole): the UTF-16BE mid-stream BOM composite. The input opens
+    # with THREE `feff 0085` (BOM + NEL) code-unit pairs. yeptris (the
+    # r144 fix) consumes ONLY the stream-initial BOM and keeps every
+    # mid-stream `feff` code unit as U+FEFF CONTENT — the normalized
+    # NEL following each folds to ONE space; libyaml's UTF-16 reader
+    # eats the mid-stream `feff` code units as BOMs, so both its FEFF
+    # characters and their fold spaces vanish. The relation is exact
+    # and dump-shaped: libyaml's dump equals yeptris's dump with every
+    # U+FEFF triple removed together with the single fold space that
+    # follows each, plus ONE tail allowance — at the scalar-content end
+    # libyaml's non-validating UTF-16 writer carries a bounded residue
+    # (up to two complete characters plus one TRUNCATED UTF-8 sequence
+    # at EOF) that yeptris's validating front-end declines. The A/B is
+    # FREE: the nightly ran on pre-arm main and its failure IS the
+    # pre-arm abort. Comparator carry only — no engine change. Seed:
+    # utf16-midstream-bom-r243.bin (this pin).
+    add_test(
+        NAME fuzz-diff-r243-utf16-midstream-bom
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r243.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
