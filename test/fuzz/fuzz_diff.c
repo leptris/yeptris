@@ -9694,6 +9694,61 @@ static int yd_r241_alias_tab_fold_gray(const uint8_t* data, size_t size, const c
     return 1;
 }
 
+/* r244 (nightly run 42967551882, issue #1265): the flow-seq glued-?#
+ * x quoted-CR composition. libyaml reads the glued-`?#` member as the
+ * explicit-key indicator whose `#` starts a comment running to the
+ * next CR (the line break) — eating the comma and the following
+ * quoted member's opening quote — and the post-CR tail (leading space
+ * stripped, the closing quote riding as CONTENT) becomes the map's
+ * plain key, value empty. A `?`-led member with content between `?`
+ * and `#` (e.g. `?g:m?#`) keeps the `#` as scalar content:
+ * `+MAP{tail : ""}`. yeptris's suite-pinned laws keep `?#` ONE plain
+ * scalar and every member flat in the seq (the CR inside a quoted
+ * member folds to one space on both). Comparator carry only — no
+ * engine change. The composition rides as EXACT-BYTES claims (the
+ * r121/r137 precedent): libyaml's flow-key scanner permutations are
+ * not soundly generalizable beyond the observed shapes, so the three
+ * verified byte strings pin verbatim and every other input declines
+ * (the escalation clause stays live). */
+static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const char* ydump,
+                                      const char* ldump) {
+    /* shape 1: the libFuzzer minimum `[0,?#,?g?]`-family composition */
+    static const unsigned char m1[] = {0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67,
+                                       0x22, 0x2c, 0x3f, 0x67, 0x3f, 0x2c, 0x22, 0x22, 0x5d};
+    static const char y1[] = "+STR\n+SEQ\n=VAL : 0\n=VAL : ?#\n=VAL :  g\n=VAL : ?g?\n=VAL : "
+                             "\n-SEQ\n-STR\n";
+    static const char l1[] = "+STR\n+SEQ\n=VAL : 0\n+MAP\n=VAL : g\"\n=VAL : \n-MAP\n+MAP\n="
+                             "VAL : g?\n=VAL : \n-MAP\n=VAL : \n-SEQ\n-STR\n";
+    /* shape 2: the nightly's 24-byte artifact (space after the CR) */
+    static const unsigned char m2[] = {0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d,
+                                       0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3a, 0x6d, 0x3f,
+                                       0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c, 0x5d};
+    static const char y2[] = "+STR\n+SEQ\n=VAL : 0\n=VAL : ?#\n=VAL :  g\n=VAL : ?g:m?#\n=VAL "
+                             ":  g\n-SEQ\n-STR\n";
+    static const char l2[] = "+STR\n+SEQ\n=VAL : 0\n+MAP\n=VAL : g\"\n=VAL : \n-MAP\n+MAP\n="
+                             "VAL : g:m?#\n=VAL : \n-MAP\n=VAL :  g\n-SEQ\n-STR\n";
+    /* shape 3: the composition's short tail (no trailing empty) */
+    static const unsigned char m3[] = {0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d,
+                                       0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3f, 0x5d};
+    static const char y3[] = "+STR\n+SEQ\n=VAL : 0\n=VAL : ?#\n=VAL :  g\n=VAL : ?g?\n-SEQ\n-"
+                             "STR\n";
+    static const char l3[] = "+STR\n+SEQ\n=VAL : 0\n+MAP\n=VAL : g\"\n=VAL : \n-MAP\n+MAP\n="
+                             "VAL : g?\n=VAL : \n-MAP\n-SEQ\n-STR\n";
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    if (size == sizeof(m1) && memcmp(data, m1, size) == 0) {
+        return strcmp(ydump, y1) == 0 && strcmp(ldump, l1) == 0;
+    }
+    if (size == sizeof(m2) && memcmp(data, m2, size) == 0) {
+        return strcmp(ydump, y2) == 0 && strcmp(ldump, l2) == 0;
+    }
+    if (size == sizeof(m3) && memcmp(data, m3, size) == 0) {
+        return strcmp(ydump, y3) == 0 && strcmp(ldump, l3) == 0;
+    }
+    return 0;
+}
+
 static int yd_r240_flow_qtail_clip_gray(const uint8_t* data, size_t size, const char* ydump,
                                         const char* ldump) {
     size_t i;
@@ -12653,6 +12708,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r240_flow_qtail_clip_gray(data, size, ydump, ldump) ||
          yd_r241_alias_tab_fold_gray(data, size, ydump, ldump) ||
          yd_r242_flow_glued_q_members_gray(data, size, ydump, ldump) ||
+         yd_r244_flow_qhash_cr_gray(data, size, ydump, ldump) ||
          yd_r243_utf16_midstream_bom_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
