@@ -385,7 +385,7 @@ static void yep_avx2_line_facts(const char* s, size_t len, size_t pos, yep_line_
                     has_high = 1;
                 }
             } else {
-                uint32_t hlim = end - i;
+                uint32_t hlim = (uint32_t)(end - i);
                 for (uint32_t k = 0; k < hlim; k++) {
                     if ((uint8_t)s[i + k] & 0x80) {
                         has_high = 1;
@@ -467,8 +467,7 @@ static void yep_avx2_line_facts(const char* s, size_t len, size_t pos, yep_line_
     out->stop = stop;
     out->stop_set = have_stop ? 1u : stop_set;
     out->stop2 = stop2;
-    out->flags = (uint32_t)((have_stop2 ? YEP_FACTS_STOP2 : 0) |
-                            (has_high ? YEP_FACTS_HIGH : 0));
+    out->flags = (uint32_t)((have_stop2 ? YEP_FACTS_STOP2 : 0) | (has_high ? YEP_FACTS_HIGH : 0));
 }
 
 /* The flow-kernel chunk classifier: one 256-bit lane pass -> four
