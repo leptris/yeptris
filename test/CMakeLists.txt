@@ -4585,3 +4585,13 @@ add_test(
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
     yeptris_set_warnings(gen_emitter_golden)
 endif()
+add_test(
+            NAME fuzz-diff-r245-flow-qsoup
+            COMMAND fuzz_diff
+                    ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r245.bin
+        )
+add_test(
+            NAME fuzz-diff-r245-flow-qsoup-artifact
+            COMMAND fuzz_diff
+                    ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-artifact-r245.bin
+        )
