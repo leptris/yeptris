@@ -277,8 +277,7 @@ int yep_scan_plain_safe(const char* p, uint32_t len) {
     {
         const uint64_t ONES = 0x0101010101010101ull;
         const uint64_t HIGH = 0x8080808080808080ull;
-#define YST_ZDET(w, ch)                                                                            \
-    ((((w) ^ (uint64_t)(ch) * ONES) - ONES) & ~((w) ^ (uint64_t)(ch) * ONES) & HIGH)
+#define YST_ZDET(w, ch) ((((w) ^ (uint64_t)(ch)*ONES) - ONES) & ~((w) ^ (uint64_t)(ch)*ONES) & HIGH)
         /* the all-boring accept (#742): a span of pure [0-9A-Za-z_]
          * makes EVERY rule in this function vacuous — no indicators
          * (the head switch), no blanks at the ends, no BOM, no
@@ -494,8 +493,7 @@ static int shape_val_bail(unsigned char c, const char* p, size_t len, size_t at)
  * scan would apply it; a non-terminating stop or a high byte (the
  * multibyte lead probe's territory) hands the span to the walk. The
  * LineShape spec pins the two together. */
-static yep_span shape_value_span(const char* p, size_t len, size_t vt,
-                                 const yep_line_facts* f) {
+static yep_span shape_value_span(const char* p, size_t len, size_t vt, const yep_line_facts* f) {
     yep_span v;
     v.start = (uint32_t)vt;
     v.term = YEP_TERM_EOF;
@@ -532,8 +530,7 @@ static yep_span shape_value_span(const char* p, size_t len, size_t vt,
             } else if (c == ':' && yep_colon_terminates(p, len, cand, 0)) {
                 v.end = (uint32_t)cand;
                 v.term = YEP_TERM_COLON;
-            } else if (c == '#' &&
-                       (cand == vt || p[cand - 1] == ' ' || p[cand - 1] == '\t')) {
+            } else if (c == '#' && (cand == vt || p[cand - 1] == ' ' || p[cand - 1] == '\t')) {
                 v.end = (uint32_t)cand;
                 v.term = YEP_TERM_COMMENT;
             } else {

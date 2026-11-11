@@ -87,7 +87,7 @@ static inline void yep_stopset_init(yep_stopset* ss, const unsigned char bitmap[
  * break-lead law needs the lead probe, so a facts consumer may take
  * a zero-probe fast path only when the span is pure ASCII. */
 #define YEP_FACTS_STOP2 0x1u
-#define YEP_FACTS_HIGH  0x2u
+#define YEP_FACTS_HIGH 0x2u
 typedef struct yep_line_facts {
     uint32_t end;
     uint32_t indent;

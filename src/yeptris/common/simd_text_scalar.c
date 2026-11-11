@@ -278,8 +278,7 @@ int yep_text_line_facts_capped(const char* s, size_t len, size_t pos, size_t cap
     out->stop = (uint32_t)(pos + stop);
     out->stop_set = stop_set;
     out->stop2 = (uint32_t)(pos + stop2);
-    out->flags = (uint32_t)((stop2_set ? YEP_FACTS_STOP2 : 0) |
-                            (has_high ? YEP_FACTS_HIGH : 0));
+    out->flags = (uint32_t)((stop2_set ? YEP_FACTS_STOP2 : 0) | (has_high ? YEP_FACTS_HIGH : 0));
     return 1;
 }
 

@@ -593,8 +593,7 @@ static void yep_neon_line_facts(const char* s, size_t len, size_t pos, yep_line_
     out->stop = stop;
     out->stop_set = have_stop ? 1u : stop_set;
     out->stop2 = stop2;
-    out->flags = (uint32_t)((have_stop2 ? YEP_FACTS_STOP2 : 0) |
-                            (has_high ? YEP_FACTS_HIGH : 0));
+    out->flags = (uint32_t)((have_stop2 ? YEP_FACTS_STOP2 : 0) | (has_high ? YEP_FACTS_HIGH : 0));
 }
 
 /* The flow-kernel chunk classifier: two 16-byte halves -> four
