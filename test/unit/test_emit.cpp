@@ -1478,6 +1478,62 @@ TEST(Emit, TrailingColonAnchorOnCollectionIsUnserializable) {
     EXPECT_EQ(roundtrip(sv), want);
 }
 
+TEST(Emit, TrailingBreakScalarRidesSingleQuoted) {
+    /* #1264's family A (the lutaml-model emitter-parity report):
+     * libyaml's analyze keeps single_quoted_allowed through plain line
+     * breaks - only special_characters, space_break (a space
+     * immediately before a break) and break_space (a break immediately
+     * followed by a space) kill it - so a plain-unsafe trailing-break
+     * VALUE rides single-quoted with the clip's blank-line rendering
+     * ('x y z\n\n  ', psych byte-exact), never double-quoted. The old
+     * route jumped straight to DQ for every multiline scalar, and the
+     * dq-forced special set conflated the breaks with the controls. */
+    YeptrisDocument d = yeptris_document_new();
+    ASSERT_NE(d, nullptr);
+    YeptrisNode root = yeptris_node_new_mapping(d);
+    const char* v = "x y z\n";
+    YeptrisNode val = yeptris_node_new_scalar(d, v, 6, YEPTRIS_STYLE_PLAIN);
+    ASSERT_EQ(yeptris_node_map_add(root, "a", 1, val), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_document_set_root(d, root), YEPTRIS_OK);
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(d, &l1);
+    ASSERT_NE(s1, nullptr);
+    const char* want = "a: 'x y z\n\n  '\n";
+    ASSERT_EQ(std::string(s1, l1), std::string(want));
+    /* the emitted form re-parses (single-quoted clip: one content
+     * break per blank line) and re-serializes byte-identically */
+    /* the parse borrows the input's bytes (zero-copy views) — s1 is
+     * freed only after d2's own serialize materialized its DOM */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d2 = yeptris_parse(s1, l1, &st);
+    ASSERT_NE(d2, nullptr);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(d2, &l2);
+    ASSERT_NE(s2, nullptr);
+    ASSERT_EQ(std::string(s2, l2), std::string(want));
+    free(s2);
+    free(s1);
+    yeptris_document_free(d2);
+    yeptris_document_free(d);
+
+    /* the space_break control: a space immediately before the break
+     * kills single_quoted_allowed in libyaml - the value stays DQ */
+    YeptrisDocument d3 = yeptris_document_new();
+    ASSERT_NE(d3, nullptr);
+    YeptrisNode root3 = yeptris_node_new_mapping(d3);
+    const char* vb = "x \ny";
+    YeptrisNode val3 = yeptris_node_new_scalar(d3, vb, 4, YEPTRIS_STYLE_PLAIN);
+    ASSERT_EQ(yeptris_node_map_add(root3, "a", 1, val3), YEPTRIS_OK);
+    ASSERT_EQ(yeptris_document_set_root(d3, root3), YEPTRIS_OK);
+    size_t l3 = 0;
+    char* s3 = yeptris_serialize(d3, &l3);
+    ASSERT_NE(s3, nullptr);
+    ASSERT_EQ(std::string(s3, l3), "a: \"x \\ny\"\n");
+    free(s3);
+    yeptris_document_free(d3);
+}
+
 TEST(Emit, RawLsPsValueRidesQuoted) {
     /* the nightly's round 18 (run 39587656699, crash-1e79b2e3): since
      * the quote-aware normalizer (#638) a quoted scalar's value can
