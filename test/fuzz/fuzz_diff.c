@@ -9268,6 +9268,202 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
  * +STR/+MAP/=VAL : &<name> <ONE space>/=VAL : <empty> ...; yeptris
  * continues =ALI *<name>:/-MAP/-STR, libyaml =ALI *<name>/=VAL :
  * <empty>/-MAP/-STR. */
+
+/* The flow explicit-key family's glued-? plain member, generalized
+ * across the sequence (the nightly's round 242, crash-be5b7d7b, 13-byte
+ * minimum "[?,,g,?g?,\"\"]", main dc6d2e2, nightly run 42930337137):
+ * a breakless flow sequence whose members split on ',' — the r240
+ * carry pinned the glued-? tail behind a PS-folded head; this member
+ * is the MIDDLE-of-sequence glued-? with no exotic bytes at all, so
+ * the claim is the member grammar itself. Members — trimmed of
+ * spaces, no breaks, no nested flow (the '['/'{' bytes decline):
+ * - the LONE '?' opens the explicit-key map with an empty key and an
+ *   empty value on BOTH sides (they agree — the suite law only
+ *   protects the GLUED '?');
+ * - an empty member between commas renders NOTHING on both sides;
+ * - a quoted member ('..' or "..", simple printable interior, no
+ *   escapes) and a plain member (indicator-free printable run) render
+ *   `=VAL : <content>` on both sides (the harness's dump normalizes
+ *   scalar styles; content agrees);
+ * - a GLUED-'?' member ('?' + a non-space printable run free of the
+ *   flow/style/indicator set) is the divergence: yeptris's
+ *   suite-pinned plain-'?' law (2SXE) reads it as ONE plain scalar,
+ *   libyaml's 1.1 grammar takes the bare '?' as the explicit-key
+ *   indicator and opens `? <rest> : <empty>`.
+ * The arm splits the members, classifies each, builds BOTH expected
+ * dumps from the input bytes, and requires exact equality on both
+ * sides; any byte the grammar cannot classify declines (the
+ * escalation clause stays live). */
+static int yd_r242_flow_glued_q_members_gray(const uint8_t* data, size_t size, const char* ydump,
+                                             const char* ldump) {
+    size_t i;
+    size_t cap;
+    char* yb;
+    char* lb;
+    size_t yo = 0;
+    size_t lo = 0;
+    int seen_q = 0;
+    if (size < 5 || ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    if (data[0] != '[' || data[size - 1] != ']') {
+        return 0;
+    }
+    for (i = 1; i + 1 < size; i++) {
+        unsigned char c = (unsigned char)data[i];
+        if (c == '\n' || c == '\r' || c == '\t' || c == '[' || c == ']' || c == '{' || c == '}') {
+            return 0;
+        }
+    }
+#define YD_R242_EMIT(buf, off, s)                                                                  \
+    do {                                                                                           \
+        size_t n_ = strlen(s);                                                                     \
+        memcpy((buf) + (off), (s), n_);                                                            \
+        (off) += n_;                                                                               \
+    } while (0)
+    cap = size * 16 + 128;
+    yb = malloc(cap);
+    lb = malloc(cap);
+    if (yb == NULL || lb == NULL) {
+        free(yb);
+        free(lb);
+        return 0;
+    }
+    YD_R242_EMIT(yb, yo, "+STR\n+SEQ\n");
+    YD_R242_EMIT(lb, lo, "+STR\n+SEQ\n");
+    i = 1;
+    while (i < size - 1) {
+        size_t ms = i;
+        size_t me;
+        while (i < size - 1 && data[i] != ',') {
+            i++;
+        }
+        me = i; /* the member is [ms, me) */
+        if (i < size - 1) {
+            i++; /* past the comma */
+        }
+        /* trim spaces */
+        while (ms < me && data[ms] == ' ') {
+            ms++;
+        }
+        while (me > ms && data[me - 1] == ' ') {
+            me--;
+        }
+        if (ms == me) {
+            continue; /* the empty member renders nothing on both */
+        }
+        if (me - ms == 1 && data[ms] == '?') {
+            /* the lone '?': the explicit-key map, empty key + empty
+             * value, on BOTH sides */
+            YD_R242_EMIT(yb, yo, "+MAP\n=VAL : \n=VAL : \n-MAP\n");
+            YD_R242_EMIT(lb, lo, "+MAP\n=VAL : \n=VAL : \n-MAP\n");
+            continue;
+        }
+        if (data[ms] == '"' || data[ms] == '\'') {
+            unsigned char q = (unsigned char)data[ms];
+            size_t c;
+            if (me - ms < 2 || data[me - 1] != (char)q) {
+                goto decline;
+            }
+            for (c = ms + 1; c + 1 < me; c++) {
+                unsigned char d = (unsigned char)data[c];
+                if (d == q || d == '\\' || d < 0x20 || d > 0x7E) {
+                    goto decline;
+                }
+                if (d == '[' || d == ']' || d == '{' || d == '}' || d == ',') {
+                    goto decline;
+                }
+            }
+            YD_R242_EMIT(yb, yo, "=VAL : ");
+            YD_R242_EMIT(lb, lo, "=VAL : ");
+            memcpy(yb + yo, data + ms + 1, me - ms - 2);
+            yo += me - ms - 2;
+            memcpy(lb + lo, data + ms + 1, me - ms - 2);
+            lo += me - ms - 2;
+            YD_R242_EMIT(yb, yo, "\n");
+            YD_R242_EMIT(lb, lo, "\n");
+            continue;
+        }
+        if (data[ms] == '?') {
+            /* the glued-?: the rest must be the plain charset */
+            size_t c;
+            if (me - ms < 2) {
+                goto decline;
+            }
+            if (data[ms + 1] == ' ' || data[ms + 1] == '\t') {
+                goto decline; /* a spaced '?' is libyaml's key too */
+            }
+            for (c = ms + 1; c < me; c++) {
+                unsigned char d = (unsigned char)data[c];
+                if (d < 0x21 || d > 0x7E) {
+                    goto decline;
+                }
+                if (d == '[' || d == ']' || d == '{' || d == '}' || d == ',' || d == ':' ||
+                    d == '\'' || d == '"' || d == '#' || d == '&' || d == '*' || d == '!' ||
+                    d == '|' || d == '>' || d == '%' || d == '@' || d == '`' || d == '\\') {
+                    goto decline;
+                }
+            }
+            seen_q = 1;
+            /* yeptris: ONE plain scalar carrying the whole member */
+            YD_R242_EMIT(yb, yo, "=VAL : ");
+            memcpy(yb + yo, data + ms, me - ms);
+            yo += me - ms;
+            YD_R242_EMIT(yb, yo, "\n");
+            /* libyaml: "? <rest> : <empty>" as the explicit-key map */
+            YD_R242_EMIT(lb, lo, "+MAP\n=VAL : ");
+            memcpy(lb + lo, data + ms + 1, me - ms - 1);
+            lo += me - ms - 1;
+            YD_R242_EMIT(lb, lo, "\n=VAL : \n-MAP\n");
+            continue;
+        }
+        /* plain member: the indicator-free printable run */
+        {
+            size_t c;
+            int ok_member = 1;
+            for (c = ms; c < me; c++) {
+                unsigned char d = (unsigned char)data[c];
+                if (d < 0x20 || d > 0x7E) {
+                    ok_member = 0;
+                    break;
+                }
+                if (d == '[' || d == ']' || d == '{' || d == '}' || d == ',' || d == ':' ||
+                    d == '\'' || d == '"' || d == '#' || d == '&' || d == '*' || d == '!' ||
+                    d == '|' || d == '>' || d == '%' || d == '@' || d == '`' || d == '\\') {
+                    ok_member = 0;
+                    break;
+                }
+            }
+            if (!ok_member) {
+                goto decline;
+            }
+            YD_R242_EMIT(yb, yo, "=VAL : ");
+            memcpy(yb + yo, data + ms, me - ms);
+            yo += me - ms;
+            YD_R242_EMIT(yb, yo, "\n");
+            YD_R242_EMIT(lb, lo, "=VAL : ");
+            memcpy(lb + lo, data + ms, me - ms);
+            lo += me - ms;
+            YD_R242_EMIT(lb, lo, "\n");
+            continue;
+        }
+    decline:
+        free(yb);
+        free(lb);
+        return 0;
+    }
+    YD_R242_EMIT(yb, yo, "-SEQ\n-STR\n");
+    YD_R242_EMIT(lb, lo, "-SEQ\n-STR\n");
+#undef YD_R242_EMIT
+    {
+        int ok = seen_q && yo == strlen(ydump) && lo == strlen(ldump) &&
+                 memcmp(yb, ydump, yo) == 0 && memcmp(lb, ldump, lo) == 0;
+        free(yb);
+        free(lb);
+        return ok;
+    }
+}
+
 static int yd_r241_alias_tab_fold_gray(const uint8_t* data, size_t size, const char* ydump,
                                        const char* ldump) {
     size_t i;
@@ -12347,6 +12543,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r238_root_anchor_quoted_follow_gray(data, size, ydump, ldump) ||
          yd_r240_flow_qtail_clip_gray(data, size, ydump, ldump) ||
          yd_r241_alias_tab_fold_gray(data, size, ydump, ldump) ||
+         yd_r242_flow_glued_q_members_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
          yd_flow_anchor_colon_divergence(data, size, ydump, ldump) ||
