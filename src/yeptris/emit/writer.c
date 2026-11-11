@@ -1354,7 +1354,9 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
              * live column (the first member: the caller placed the
              * cursor at content_col) */
             int m_start = (pair == 0 || w->last == '\n') ? content_col : w->col;
-            int fold_inert = !w->block_fold || w->best_width == INT_MAX ||
+            /* the empty value's view is {NULL, 0} (wv) — memchr's
+             * nonnull contract forbids the probe even at len 0 */
+            int fold_inert = !w->block_fold || w->best_width == INT_MAX || vv.p == NULL ||
                              memchr(vv.p, ' ', vv.len) == NULL ||
                              m_start + (int)kv.len + (int)vv.len + 2 <= w->best_width;
             uint32_t f_ind = 0, f_nl = 0, f_total = 0;
