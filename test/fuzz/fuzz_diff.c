@@ -10009,6 +10009,109 @@ static int yd_r245_flow_qsoup_gray(const uint8_t* data, size_t size, const char*
     return 0;
 }
 
+/* The nightly's r246 soup (run 43116239639, main dc128c7): the
+ * flow-? glued-D/+ x LS/PS-break composition, the r245 family's
+ * fresh permutation. Two suite-pinned facets compose again: yeptris
+ * keeps the glued-? members (`?D<LS>`, `?+<PS>`) ONE plain scalar
+ * each (the #949/r244/r245 suite-pinned plain-? law) and folds the
+ * exotic breaks to spaces (the 1.2 break law, #638's family), while
+ * libyaml rebinds the glued ? as an explicit-key indicator (the
+ * `?D` map with an empty value) and rides the RAW PS byte in the
+ * second member (`0 ?+<PS>"`). Every other member matches
+ * byte-exact - the divergence is exactly the two documented drift
+ * laws composing. Suite over libyaml on both counts; the soup
+ * permutations are not soundly generalizable into a structural
+ * predicate (the r121/r137 EXACT-BYTES precedent). */
+static int yd_r246_flow_qsoup2_gray(const uint8_t* data, size_t size, const char* ydump,
+                                    const char* ldump) {
+    /* shape 1: the 16-byte libFuzzer minimum `[?D<LS>,0\n?+<PS>]` */
+    static const unsigned char m1[] = {0x5b, 0x3f, 0x44, 0xe2, 0x80, 0xa8, 0x2c, 0x30,
+                                       0x0a, 0x3f, 0x2b, 0xe2, 0x80, 0xa9, 0x22, 0x5d};
+    static const char y1[] = "+STR\n+SEQ\n=VAL : ?D\n=VAL : 0 ?+ \"\n-SEQ\n-STR\n";
+    static const char l1[] = "+STR\n+SEQ\n+MAP\n=VAL : D\n=VAL : \n-MAP\n=VAL : 0 ?+\xe2"
+                             "\x80"
+                             "\xa9"
+                             "\"\n-SEQ\n-STR\n";
+    /* shape 2: the nightly's 193-byte artifact (the ?+D tag-soup) */
+    static const unsigned char m2[] = {
+        0x5b, 0x0a, 0x3f, 0x2b, 0x44, 0xe2, 0x80, 0xa8, 0x20, 0x27, 0x63, 0xe2, 0x80, 0xa9, 0x2e,
+        0x3a, 0x6a, 0x3a, 0x28, 0xe2, 0x80, 0xa9, 0x0a, 0x3f, 0x2b, 0x44, 0xe2, 0x80, 0xa8, 0x20,
+        0x27, 0x63, 0xe2, 0x80, 0xa9, 0x2e, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e,
+        0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x27, 0x63, 0xe2, 0x80, 0xa9, 0x2e,
+        0x3a, 0x6a, 0x3a, 0x28, 0xe2, 0x80, 0xa9, 0x0a, 0x3f, 0x2b, 0x44, 0xe2, 0x80, 0xa8, 0x20,
+        0x27, 0x63, 0xe2, 0x80, 0xa9, 0x27, 0x63, 0xe2, 0x80, 0xa9, 0x2e, 0x74, 0x61, 0x67, 0x3a,
+        0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x27,
+        0x63, 0xe2, 0x80, 0xa9, 0x2e, 0x3a, 0x6a, 0x3a, 0x28, 0xe2, 0x80, 0xa9, 0x0a, 0x3f, 0x2b,
+        0x44, 0xe2, 0x80, 0xa8, 0x20, 0x27, 0x63, 0xe2, 0x80, 0xa9, 0x2e, 0x3a, 0x6a, 0x3a, 0x28,
+        0xe2, 0x80, 0xa9, 0x20, 0x0d, 0x7c, 0x0d, 0x0a, 0x2e, 0x0d, 0x7c, 0x0d, 0x0a, 0x2e, 0x74,
+        0x61, 0x67, 0x3a, 0x3a, 0x6d, 0x2a, 0x61, 0x70, 0x6f, 0x61, 0x22, 0x2e, 0x3a, 0x6a, 0x3a,
+        0x28, 0xe2, 0x80, 0xa9, 0x20, 0x0d, 0x7c, 0x0d, 0x0a, 0x2e, 0x0d, 0x7c, 0x0d, 0x0a, 0x2e,
+        0x74, 0x61, 0x67, 0x3a, 0x3a, 0x6d, 0x2a, 0x61, 0x70, 0x6f, 0x61, 0x22, 0x5d};
+    static const char y2[] =
+        "+STR\n+SEQ\n=VAL : ?+D 'c .:j:(\\n?+D 'c .tag:yaml.org\n=VAL : 2002:'c .:j:(\\n?+D 'c 'c "
+        ".tag:yaml.org\n=VAL : 2002:'c .:j:(\\n?+D 'c .:j:(\\n| . | .tag::m*apoa\".:j:(\\n| . | "
+        ".tag::m*apoa\"\n-SEQ\n-STR\n";
+    static const char l2[] = "+STR\n+SEQ\n+MAP\n=VAL : +D\xe2"
+                             "\x80"
+                             "\xa8"
+                             "'c\xe2"
+                             "\x80"
+                             "\xa9"
+                             ".:j:(\xe2"
+                             "\x80"
+                             "\xa9"
+                             "\\n?+D\xe2"
+                             "\x80"
+                             "\xa8"
+                             "'c\xe2"
+                             "\x80"
+                             "\xa9"
+                             ".tag:yaml.org\n=VAL : \n-MAP\n=VAL : 2002:'c\xe2"
+                             "\x80"
+                             "\xa9"
+                             ".:j:(\xe2"
+                             "\x80"
+                             "\xa9"
+                             "\\n?+D\xe2"
+                             "\x80"
+                             "\xa8"
+                             "'c\xe2"
+                             "\x80"
+                             "\xa9"
+                             "'c\xe2"
+                             "\x80"
+                             "\xa9"
+                             ".tag:yaml.org\n=VAL : 2002:'c\xe2"
+                             "\x80"
+                             "\xa9"
+                             ".:j:(\xe2"
+                             "\x80"
+                             "\xa9"
+                             "\\n?+D\xe2"
+                             "\x80"
+                             "\xa8"
+                             "'c\xe2"
+                             "\x80"
+                             "\xa9"
+                             ".:j:(\xe2"
+                             "\x80"
+                             "\xa9"
+                             "\\n| . | .tag::m*apoa\".:j:(\xe2"
+                             "\x80"
+                             "\xa9"
+                             "\\n| . | .tag::m*apoa\"\n-SEQ\n-STR\n";
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    if (size == sizeof(m1) && memcmp(data, m1, size) == 0) {
+        return strcmp(ydump, y1) == 0 && strcmp(ldump, l1) == 0;
+    }
+    if (size == sizeof(m2) && memcmp(data, m2, size) == 0) {
+        return strcmp(ydump, y2) == 0 && strcmp(ldump, l2) == 0;
+    }
+    return 0;
+}
+
 static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const char* ydump,
                                       const char* ldump) {
     /* shape 1: the libFuzzer minimum `[0,?#,?g?]`-family composition */
@@ -13008,6 +13111,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r241_alias_tab_fold_gray(data, size, ydump, ldump) ||
          yd_r242_flow_glued_q_members_gray(data, size, ydump, ldump) ||
          yd_r245_flow_qsoup_gray(data, size, ydump, ldump) ||
+         yd_r246_flow_qsoup2_gray(data, size, ydump, ldump) ||
          yd_r244_flow_qhash_cr_gray(data, size, ydump, ldump) ||
          yd_r243_utf16_midstream_bom_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
