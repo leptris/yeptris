@@ -10303,6 +10303,25 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m6) && memcmp(data, m6, size) == 0) {
         return strcmp(ydump, y6) == 0 && strcmp(ldump, l6) == 0;
     }
+    /* shape 7: the r253 permutation (nightly run 43213825013, main
+     * 03707aa, 24 bytes) - the r251 shape with the final quoted-CR
+     * member's CR mutated to a `}` (`"}g"`). The two documented
+     * laws again: libyaml reads the glued `?#` as an explicit-key
+     * indicator whose `#` comment eats `,"` to the CR (the post-CR
+     * `g"` rides as the empty-valued key) and `?g:m?#` rebinds
+     * identically, while yeptris keeps all five members flat and
+     * plain (the #949 law) with the quoted CR folding to a space;
+     * the final `"}g"` member matches byte-exact on both sides. */
+    static const unsigned char m7[] = {0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d,
+                                       0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3a, 0x6d, 0x3f,
+                                       0x23, 0x2c, 0x22, 0x7d, 0x67, 0x22, 0x2c, 0x5d};
+    static const char y7[] =
+        "+STR\n+SEQ\n=VAL : 0\n=VAL : ?#\n=VAL :  g\n=VAL : ?g:m?#\n=VAL : }g\n-SEQ\n-STR\n";
+    static const char l7[] = "+STR\n+SEQ\n=VAL : 0\n+MAP\n=VAL : g\"\n=VAL : \n-MAP\n+MAP\n=VAL : "
+                             "g:m?#\n=VAL : \n-MAP\n=VAL : }g\n-SEQ\n-STR\n";
+    if (size == sizeof(m7) && memcmp(data, m7, size) == 0) {
+        return strcmp(ydump, y7) == 0 && strcmp(ldump, l7) == 0;
+    }
     return 0;
 }
 
