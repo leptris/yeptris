@@ -10109,6 +10109,24 @@ static int yd_r246_flow_qsoup2_gray(const uint8_t* data, size_t size, const char
     if (size == sizeof(m2) && memcmp(data, m2, size) == 0) {
         return strcmp(ydump, y2) == 0 && strcmp(ldump, l2) == 0;
     }
+    /* shape 3: the r249 LS-dollar permutation (nightly run
+     * 43174937751, 11-byte libFuzzer minimum) - `[)<LS>?t,?$]`:
+     * yeptris keeps both members flat and plain (the #949
+     * suite-pinned plain-? law) with the LS folded to a space (the
+     * 1.2 break law), while libyaml rebinds the glued `?$` as an
+     * explicit-key indicator (`+MAP{$ : ""}` with an empty value)
+     * and rides the raw LS bytes verbatim inside the first scalar.
+     * Two documented laws compose, same as shapes 1-2. */
+    static const unsigned char m3[] = {0x5b, 0x29, 0xe2, 0x80, 0xa8, 0x3f,
+                                       0x74, 0x2c, 0x3f, 0x24, 0x5d};
+    static const char y3[] = "+STR\n+SEQ\n=VAL : ) ?t\n=VAL : ?$\n-SEQ\n-STR\n";
+    static const char l3[] = "+STR\n+SEQ\n=VAL : )\xe2"
+                             "\x80"
+                             "\xa8"
+                             "?t\n+MAP\n=VAL : $\n=VAL : \n-MAP\n-SEQ\n-STR\n";
+    if (size == sizeof(m3) && memcmp(data, m3, size) == 0) {
+        return strcmp(ydump, y3) == 0 && strcmp(ldump, l3) == 0;
+    }
     return 0;
 }
 
