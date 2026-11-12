@@ -10006,6 +10006,81 @@ static int yd_r245_flow_qsoup_gray(const uint8_t* data, size_t size, const char*
     if (size == sizeof(m2) && memcmp(data, m2, size) == 0) {
         return strcmp(ydump, y2) == 0 && strcmp(ldump, l2) == 0;
     }
+    /* shape 3: the r250 soup (nightly run 43185065444, main 5de9a24,
+     * 122-byte artifact) - the 11-member flow-seq composition of the
+     * three documented laws: the glued-`?#` members ride the r244
+     * comment-to-CR law (libyaml's `#` eats to the CR, swallowing
+     * `?|` and the next member's `?` in one chain), the glued-`?` +
+     * breaks rebind as explicit-key maps on both sides (`?2` reads
+     * key `2`, `?`+CR+LS rides key `0 ?` / `1 ?`), and the raw-PS
+     * ride splits the break law inside keys and the `s =<PS>1`
+     * value (yeptris folds LS/PS to spaces; libyaml rides the raw
+     * bytes). Suite over libyaml on every count; the soup
+     * permutations stay EXACT-BYTES (the r121/r137 precedent). */
+    static const unsigned char m3[] = {
+        0x5b, 0x31, 0x2c, 0x3f, 0x0d, 0xe2, 0x80, 0xa9, 0x30, 0xe2, 0x80, 0xa9, 0x3f, 0xe2,
+        0x80, 0xa9, 0x3f, 0xe2, 0x80, 0xa9, 0x3f, 0xe2, 0x80, 0xa9, 0x3f, 0xe2, 0x80, 0xa9,
+        0x3f, 0xe2, 0x80, 0xa9, 0x3f, 0x2c, 0x3f, 0x23, 0x2c, 0x3f, 0x0d, 0xe2, 0x80, 0xa9,
+        0x30, 0xe2, 0x80, 0xa9, 0x3f, 0x2c, 0x3f, 0x32, 0x2c, 0x3f, 0x0d, 0xe2, 0x80, 0xa9,
+        0x31, 0xe2, 0x80, 0xa9, 0x3f, 0xe2, 0x80, 0xa9, 0x2c, 0x3f, 0x23, 0x2c, 0x3f, 0x7c,
+        0x2c, 0x3f, 0x0d, 0xe2, 0x80, 0xa9, 0x31, 0x3a, 0x0d, 0x73, 0x20, 0x3d, 0x0d, 0xe2,
+        0x80, 0xa9, 0x31, 0x2c, 0x3f, 0x23, 0x2c, 0x3f, 0x0d, 0xe2, 0x80, 0xa9, 0x30, 0xe2,
+        0x80, 0xa9, 0x3f, 0xe2, 0x80, 0xa9, 0x3f, 0xe2, 0x80, 0xa9, 0x3f, 0xe2, 0x80, 0xa9,
+        0x3f, 0xe2, 0x80, 0xa9, 0x3f, 0xe2, 0x80, 0xa9, 0x3f, 0x5d};
+    static const char y3[] =
+        "+STR\n+SEQ\n=VAL : 1\n+MAP\n=VAL : 0 ? ? ? ? ? ?\n=VAL : \n-MAP\n=VAL : ?#\n+MAP\n=VAL : "
+        "0 ?\n=VAL : \n-MAP\n=VAL : ?2\n+MAP\n=VAL : 1 ?\n=VAL : \n-MAP\n=VAL : ?#\n=VAL : "
+        "?|\n+MAP\n=VAL : 1\n=VAL : s =\\n1\n-MAP\n=VAL : ?#\n+MAP\n=VAL : 0 ? ? ? ? ? ?\n=VAL : "
+        "\n-MAP\n-SEQ\n-STR\n";
+    static const char l3[] = "+STR\n+SEQ\n=VAL : 1\n+MAP\n=VAL : 0\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\n=VAL : \n-MAP\n+MAP\n=VAL : 0\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\n=VAL : \n-MAP\n+MAP\n=VAL : 2\n=VAL : \n-MAP\n+MAP\n=VAL : 1\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\n=VAL : \n-MAP\n+MAP\n=VAL : 1\n=VAL : s =\xe2"
+                             "\x80"
+                             "\xa9"
+                             "1\n-MAP\n+MAP\n=VAL : 0\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\xe2"
+                             "\x80"
+                             "\xa9"
+                             "?\n=VAL : \n-MAP\n-SEQ\n-STR\n";
+    if (size == sizeof(m3) && memcmp(data, m3, size) == 0) {
+        return strcmp(ydump, y3) == 0 && strcmp(ldump, l3) == 0;
+    }
     return 0;
 }
 
