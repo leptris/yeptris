@@ -72,8 +72,13 @@ jobs:
       # output turned the nightly into a per-round arm-extension
       # treadmill (runs r251-r254: each red was a fresh mutation of our
       # own pinned seeds, crashing during the diff leg's seed read).
+      # The soup seeds themselves are also excluded: the family is dense
+      # (local mining harvested 30 members in 30 consecutive 20s runs —
+      # #1306), so any seed-led fuzzing re-derives documented members
+      # within seconds. The seeds stay under full ctest regression
+      # (fuzz-diff-rNNN pins); the diff leg explores fresh space.
       - name: Comparator corpus snapshot
-        run: cp -r corpus corpus-comparator
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete
 
       - name: Fuzz budget
         run: |
