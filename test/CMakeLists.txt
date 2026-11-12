@@ -4656,6 +4656,156 @@ add_test(
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r254.bin
     )
+    add_test(
+        NAME fuzz-diff-r255-mined-00
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m00.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-01
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m01.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-02
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m02.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-03
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m03.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-04
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m04.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-05
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m05.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-06
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m06.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-07
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m07.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-08
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m08.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-09
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m09.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-10
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m10.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-11
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m11.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-12
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m12.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-13
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m13.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-14
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m14.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-15
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m15.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-16
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m16.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-17
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m17.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-18
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m18.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-19
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m19.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-20
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m20.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-21
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m21.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-22
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m22.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-23
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m23.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-24
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m24.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-25
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m25.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-26
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m26.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-27
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m27.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-28
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m28.bin
+    )
+    add_test(
+        NAME fuzz-diff-r255-mined-29
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r255-m29.bin
+    )
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
