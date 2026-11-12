@@ -4478,6 +4478,27 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip/nel-docmarker-drain-r239.bin
     )
 
+    # the r248 round (run 43151917346, main 14ccfa6, crash-
+    # b8d4a4b3315658e37cfab11523638871d81c2ab7): BYTE INSTABILITY in the
+    # emitter's folded-line walk - the fold-point selection (break AT a
+    # space past best_width) refused space-adjacent breaks but not
+    # TAB-adjacent ones, so a fold landed with a TAB at the folded
+    # line's END (stripped as trailing s-white on re-parse) and/or a
+    # TAB at the continuation's START (stripped as leading s-white):
+    # 149 -> 146 bytes across parse-serialize-parse-serialize. The
+    # #1268 single-quoted fold walk and the plain twin both grow the
+    # tab guards (the fold consumes the space; p[i-1]/p[i+1] != '\t').
+    # 933/933 ctest with the libyaml emission goldens UNCHANGED (the
+    # guard only shifts bytes for tab-adjacent folds, which the goldens
+    # do not exercise); paired 50-mutant battery PRE/POST (matched
+    # standalone binaries, same seed): 0 regressions, POST fixes the
+    # artifact. Seed: tab-fold-r248.bin (this pin).
+    add_test(
+        NAME fuzz-roundtrip-r248-tab-fold
+        COMMAND fuzz_roundtrip
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip/tab-fold-r248.bin
+    )
+
     # r240 (nightly round 240, run 42801813638, main bf8342c era,
     # crash-63cbaa8cea06537b9ba5ded6a935c75e9c34174c, 12-byte minimum
     # "[)<PS>(?t,?$]"): TWO suite-over-libyaml laws compose and neither
