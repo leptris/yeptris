@@ -78,3 +78,40 @@ jobs:
           BIN="./build/cli/yeptris"
           if [ "$RUNNER_OS" = "Windows" ]; then BIN="./build/bin/Release/yeptris"; fi
           "$BIN" version
+
+  test-library-riscv64:
+    # The emulated leg (leptris/leptris-py#346 pattern): riscv64 has no
+    # hosted runner, so the build + the same ctest command the other
+    # Linux legs run execute in a debian riscv64 container under QEMU
+    # (binfmt) on the x86_64 runner. One job, not a matrix entry — TCG
+    # emulation is an order of magnitude slower than the native legs,
+    # so it only earns its runtime as a single architecture sentinel.
+    name: Test C Library on riscv64 (QEMU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Boot QEMU (binfmt)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build and test in the riscv64 container
+        shell: bash
+        run: |
+          docker run --rm --platform linux/riscv64 \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            debian:trixie sh -c '
+            set -eux
+            apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential cmake ninja-build git ca-certificates >/dev/null
+            cmake -B build -S . -G Ninja \
+              -DBUILD_TESTING=ON \
+              -DYEPTRIS_BUILD_CLI=ON \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DYEPTRIS_WARNINGS_AS_ERRORS=ON
+            cmake --build build
+            scripts/fetch-corpora.sh
+            ctest --test-dir build --output-on-failure
+            ./build/cli/yeptris version
+          '
