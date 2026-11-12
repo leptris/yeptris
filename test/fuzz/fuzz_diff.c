@@ -10259,6 +10259,32 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m4) && memcmp(data, m4, size) == 0) {
         return strcmp(ydump, y4) == 0 && strcmp(ldump, l4) == 0;
     }
+    /* shape 5: the r251 permutation (nightly run 43196101133, main
+     * e966fcb, 85 bytes) - the r247 seed mutated: a `0,` prefix plus
+     * the final `"\rg"` member expanded to a long double-quoted
+     * string with \n/\t escapes (whose breaks fold identically on
+     * both sides). The divergence stays members 2-4: the glued `?#`
+     * rides the comment-to-CR law (libyaml's `#` eats `,"` and reads
+     * the post-CR `g"` as the empty-valued key), and the second `?`
+     * rebinds identically (`g:m?#`), while yeptris keeps all three
+     * members flat and plain (the #949 law) with the quoted CR
+     * folding to a space. Suite over libyaml on both counts. */
+    static const unsigned char m5[] = {
+        0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3a, 0x6d,
+        0x3f, 0x23, 0x2c, 0x22, 0x23, 0x21, 0x23, 0x23, 0x21, 0x21, 0x25, 0x23, 0x21, 0x67, 0x61,
+        0x23, 0x21, 0x23, 0x23, 0x21, 0x23, 0x25, 0x23, 0x21, 0x67, 0x61, 0x0a, 0x26, 0x6b, 0x6b,
+        0x65, 0x3a, 0x32, 0x31, 0x25, 0x62, 0x0a, 0x7c, 0x20, 0x20, 0x0a, 0x20, 0x20, 0x23, 0x23,
+        0x21, 0x25, 0x62, 0x09, 0x23, 0x23, 0x32, 0x23, 0x32, 0x31, 0x25, 0x62, 0x74, 0x67, 0x72,
+        0x75, 0x65, 0x23, 0x23, 0x0a, 0x23, 0x41, 0x22, 0x2c, 0x5d};
+    static const char y5[] =
+        "+STR\n+SEQ\n=VAL : 0\n=VAL : ?#\n=VAL :  g\n=VAL : ?g:m?#\n=VAL : #!##!!%#!ga#!##!#%#!ga "
+        "&kke:21%b | ##!%b\\t##2#21%btgrue## #A\n-SEQ\n-STR\n";
+    static const char l5[] = "+STR\n+SEQ\n=VAL : 0\n+MAP\n=VAL : g\"\n=VAL : \n-MAP\n+MAP\n=VAL : "
+                             "g:m?#\n=VAL : \n-MAP\n=VAL : #!##!!%#!ga#!##!#%#!ga &kke:21%b | "
+                             "##!%b\\t##2#21%btgrue## #A\n-SEQ\n-STR\n";
+    if (size == sizeof(m5) && memcmp(data, m5, size) == 0) {
+        return strcmp(ydump, y5) == 0 && strcmp(ldump, l5) == 0;
+    }
     return 0;
 }
 
