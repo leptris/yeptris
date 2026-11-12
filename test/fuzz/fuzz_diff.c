@@ -10148,6 +10148,24 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m3) && memcmp(data, m3, size) == 0) {
         return strcmp(ydump, y3) == 0 && strcmp(ldump, l3) == 0;
     }
+    /* shape 4: the r247 seq-head permutation (nightly run
+     * 43145599515, main 14ccfa6) - the r244 composition minus the
+     * leading `0,` prefix: the first `?#` sits AT seq-head, the
+     * comment-to-CR law reads it as the explicit-key indicator whose
+     * comment eats to the CR and the post-CR tail `g"` becomes the
+     * key, value empty; the second `?g:m?#` rebinds the same way.
+     * yeptris keeps all four members flat and plain (the #949 law),
+     * CR folds to a space. */
+    static const unsigned char m4[] = {0x5b, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22,
+                                       0x2c, 0x3f, 0x67, 0x3a, 0x6d, 0x3f, 0x23, 0x2c,
+                                       0x22, 0x0d, 0x67, 0x22, 0x2c, 0x5d};
+    static const char y4[] =
+        "+STR\n+SEQ\n=VAL : ?#\n=VAL :  g\n=VAL : ?g:m?#\n=VAL :  g\n-SEQ\n-STR\n";
+    static const char l4[] = "+STR\n+SEQ\n+MAP\n=VAL : g\"\n=VAL : \n-MAP\n+MAP\n=VAL : "
+                             "g:m?#\n=VAL : \n-MAP\n=VAL :  g\n-SEQ\n-STR\n";
+    if (size == sizeof(m4) && memcmp(data, m4, size) == 0) {
+        return strcmp(ydump, y4) == 0 && strcmp(ldump, l4) == 0;
+    }
     return 0;
 }
 
