@@ -10285,6 +10285,24 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m5) && memcmp(data, m5, size) == 0) {
         return strcmp(ydump, y5) == 0 && strcmp(ldump, l5) == 0;
     }
+    /* shape 6: the r252 permutation (nightly run 43205729364, main
+     * f0f6e5a, 21 bytes) - the r247 shape with the colon dropped
+     * (`?gm?#` in place of `?g:m?#`). The two documented laws again:
+     * libyaml reads the glued `?#` as an explicit-key indicator
+     * whose `#` comment eats `,"` to the CR (the post-CR `g"` rides
+     * as the empty-valued key) and `?gm?#` rebinds identically
+     * (key `gm?#`), while yeptris keeps all four members flat and
+     * plain (the #949 law) with the quoted CRs folding to spaces. */
+    static const unsigned char m6[] = {0x5b, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67,
+                                       0x22, 0x2c, 0x3f, 0x67, 0x6d, 0x3f, 0x23,
+                                       0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c, 0x5d};
+    static const char y6[] =
+        "+STR\n+SEQ\n=VAL : ?#\n=VAL :  g\n=VAL : ?gm?#\n=VAL :  g\n-SEQ\n-STR\n";
+    static const char l6[] = "+STR\n+SEQ\n+MAP\n=VAL : g\"\n=VAL : \n-MAP\n+MAP\n=VAL : gm?#\n=VAL "
+                             ": \n-MAP\n=VAL :  g\n-SEQ\n-STR\n";
+    if (size == sizeof(m6) && memcmp(data, m6, size) == 0) {
+        return strcmp(ydump, y6) == 0 && strcmp(ldump, l6) == 0;
+    }
     return 0;
 }
 
