@@ -11603,6 +11603,25 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m38) && memcmp(data, m38, size) == 0) {
         return strcmp(ydump, y38) == 0 && strcmp(ldump, l38) == 0;
     }
+    /* shape 39: the r256 flow-map soup (nightly run 43244107728,
+     * 67 bytes, found de-novo from the general corpus - the
+     * family is dense in input space, not just around the soup
+     * seeds). The same documented laws in flow-MAP form. */
+    static const unsigned char m39[] = {
+        0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a,
+        0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f,
+        0x09, 0x2a, 0x25, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c,
+        0x60, 0x20, 0x0a, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c,
+        0x2b, 0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y39[] =
+        "+STR\n+MAP\n=VAL : ?#?#|#|+`\n=VAL : \n=VAL : ?##|#|\n=VAL : \n=VAL : `\n=VAL : \n=ALI "
+        "*%L\n=VAL : \n=VAL : ?#|#|\n=VAL : \n=VAL : `\n=VAL : \n=VAL : :#|#|+`\n=VAL : \n=VAL : "
+        "<\n=VAL : \n-MAP\n-STR\n";
+    static const char l39[] = "+STR\n+MAP\n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : "
+                              "\n=VAL : <\n=VAL : \n-MAP\n-STR\n";
+    if (size == sizeof(m39) && memcmp(data, m39, size) == 0) {
+        return strcmp(ydump, y39) == 0 && strcmp(ldump, l39) == 0;
+    }
     return 0;
 }
 
