@@ -11622,6 +11622,25 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m39) && memcmp(data, m39, size) == 0) {
         return strcmp(ydump, y39) == 0 && strcmp(ldump, l39) == 0;
     }
+    /* shape 40: the r257 permutation (nightly run 43254014133,
+     * 67 bytes) - the r256 flow-map soup with one byte mutated
+     * (a tab-for-space at the `\n:` fold point): the exact-bytes
+     * neighborhood is one-mutation dense. Same documented laws. */
+    static const unsigned char m40[] = {
+        0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a,
+        0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f,
+        0x09, 0x2a, 0x25, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c,
+        0x60, 0x20, 0x0a, 0x3a, 0x20, 0x09, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c,
+        0x2b, 0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y40[] =
+        "+STR\n+MAP\n=VAL : ?#?#|#|+`\n=VAL : \n=VAL : ?##|#|\n=VAL : \n=VAL : `\n=VAL : \n=ALI "
+        "*%L\n=VAL : \n=VAL : ?#|#|\n=VAL : \n=VAL : `\n=VAL : \n=VAL : :#|#|+`\n=VAL : \n=VAL : "
+        "<\n=VAL : \n-MAP\n-STR\n";
+    static const char l40[] = "+STR\n+MAP\n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : "
+                              "\n=VAL : <\n=VAL : \n-MAP\n-STR\n";
+    if (size == sizeof(m40) && memcmp(data, m40, size) == 0) {
+        return strcmp(ydump, y40) == 0 && strcmp(ldump, l40) == 0;
+    }
     return 0;
 }
 
