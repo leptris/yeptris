@@ -64,6 +64,17 @@ jobs:
           find test/conformance/data/yaml-test-suite -name '*.yaml' -exec cp {} corpus/ \; 2>/dev/null || true
           find test/conformance/data/json-test-suite/test_parsing -name '*.json' -exec cp {} corpus/ \; 2>/dev/null || true
 
+      # The comparator leg runs over its own snapshot of the seed corpus:
+      # the parser legs above write their coverage-gaining mutations into
+      # the shared corpus/ dir, and any of those mutations may be a
+      # documented-divergence family member (the soup arms' neighborhood
+      # is mutation-rich). Feeding fuzz_diff unvalidated parser-leg
+      # output turned the nightly into a per-round arm-extension
+      # treadmill (runs r251-r254: each red was a fresh mutation of our
+      # own pinned seeds, crashing during the diff leg's seed read).
+      - name: Comparator corpus snapshot
+        run: cp -r corpus corpus-comparator
+
       - name: Fuzz budget
         run: |
           MINS="${{ github.event.inputs.minutes || '60' }}"
@@ -89,7 +100,7 @@ jobs:
 
       # semantic differential: both libraries accept, streams differ
       - name: fuzz_diff
-        run: ulimit -s 32768 || true; ./build/test/fuzz_diff_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
+        run: ulimit -s 32768 || true; ./build/test/fuzz_diff_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus-comparator
 
       - name: CBOR seeds
         run: python3 scripts/gen-cbor-seeds.py
