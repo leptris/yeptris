@@ -10322,6 +10322,29 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m7) && memcmp(data, m7, size) == 0) {
         return strcmp(ydump, y7) == 0 && strcmp(ldump, l7) == 0;
     }
+    /* shape 8: the r254 permutation (nightly run 43220587080, 75
+     * bytes) - the r251 artifact with the quoted tail truncated
+     * (`tgrue##` losing its lead). The two documented laws again:
+     * libyaml reads the glued `?#` as an explicit-key indicator
+     * whose `#` comment eats `,"` to the CR (the post-CR `g"` rides
+     * as the empty-valued key) and `?g:m?#` rebinds identically,
+     * while yeptris keeps all five members flat and plain (the #949
+     * law) with the quoted CR folding to a space; the long quoted
+     * member folds its breaks identically on both sides. */
+    static const unsigned char m8[] = {
+        0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3a, 0x6d,
+        0x3f, 0x23, 0x2c, 0x22, 0x23, 0x21, 0x23, 0x23, 0x21, 0x21, 0x25, 0x23, 0x21, 0x67, 0x61,
+        0x23, 0x21, 0x23, 0x23, 0x21, 0x23, 0x25, 0x23, 0x21, 0x67, 0x61, 0x0a, 0x26, 0x6b, 0x6b,
+        0x65, 0x3a, 0x32, 0x31, 0x25, 0x62, 0x0a, 0x7c, 0x20, 0x20, 0x0a, 0x20, 0x20, 0x23, 0x23,
+        0x21, 0x25, 0x62, 0x09, 0x23, 0x75, 0x65, 0x23, 0x23, 0x0a, 0x23, 0x41, 0x22, 0x2c, 0x5d};
+    static const char y8[] = "+STR\n+SEQ\n=VAL : 0\n=VAL : ?#\n=VAL :  g\n=VAL : ?g:m?#\n=VAL : "
+                             "#!##!!%#!ga#!##!#%#!ga &kke:21%b | ##!%b\\t#ue## #A\n-SEQ\n-STR\n";
+    static const char l8[] =
+        "+STR\n+SEQ\n=VAL : 0\n+MAP\n=VAL : g\"\n=VAL : \n-MAP\n+MAP\n=VAL : g:m?#\n=VAL : "
+        "\n-MAP\n=VAL : #!##!!%#!ga#!##!#%#!ga &kke:21%b | ##!%b\\t#ue## #A\n-SEQ\n-STR\n";
+    if (size == sizeof(m8) && memcmp(data, m8, size) == 0) {
+        return strcmp(ydump, y8) == 0 && strcmp(ldump, l8) == 0;
+    }
     return 0;
 }
 
