@@ -84,6 +84,30 @@ static void yd_escape_append(const char* v, size_t n, char* out, size_t cap, siz
     }
 }
 
+/* Appends pre + the NUL-terminated s into out at off, keeping out
+ * NUL-terminated at the written end, and returns the WOULD-BE length
+ * (the snprintf discipline the clamps in yd_line ride). The props
+ * appends below were snprintf " &%s" / " <%s>" forms — gcc 14 (the
+ * riscv64 leg's trixie toolchain) proves pl, which rides those
+ * would-be lengths, can leave a later append less room than an
+ * unknown %s may write and -Werror=format-truncation kills the build
+ * (gcc 13's x86_64 legs never saw it). The byte loop makes the bound
+ * explicit; output is byte-identical to the snprintf forms. */
+static size_t yd_str_append(const char* pre, const char* s, char* out, size_t cap, size_t off) {
+    size_t w = off;
+    size_t n = strlen(pre) + strlen(s);
+    if (w < cap) {
+        for (const char* p = pre; *p != '\0' && w + 1 < cap; p++) {
+            out[w++] = *p;
+        }
+        for (; *s != '\0' && w + 1 < cap; s++) {
+            out[w++] = *s;
+        }
+        out[w] = '\0';
+    }
+    return n;
+}
+
 /* Renders one event line into out (cap bytes); returns line length. */
 static size_t yd_line(const yd_event* ev, char* out, size_t cap) {
     size_t len = 0;
@@ -91,10 +115,16 @@ static size_t yd_line(const yd_event* ev, char* out, size_t cap) {
     size_t pl = 0;
     props[0] = '\0';
     if (ev->anchor != NULL) {
-        pl += (size_t)snprintf(props + pl, sizeof(props) - pl, " &%s", ev->anchor);
+        pl += yd_str_append(" &", ev->anchor, props, sizeof(props), pl);
     }
     if (ev->tag != NULL) {
-        pl += (size_t)snprintf(props + pl, sizeof(props) - pl, " <%s>", ev->tag);
+        pl += yd_str_append(" <", ev->tag, props, sizeof(props), pl);
+        if (pl + 1 < sizeof(props)) {
+            props[pl++] = '>';
+        }
+        if (pl < sizeof(props)) {
+            props[pl] = '\0';
+        }
     }
     switch (ev->type) {
     case YD_STREAM_START:
