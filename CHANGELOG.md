@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **the comparator carries the nightly's residual divergence families (round r246, #1275)** — the glued-`?` × LS/PS-break flow-seq soup (the r244/r245 family's fresh permutation): yeptris keeps the glued-`?` members (`?D`+LS, `?+`+PS) one plain scalar each (the suite-pinned plain-`?` law, the #949/r244/r245 arms) and folds the exotic breaks to spaces (the 1.2 break law, the #638 family), while libyaml rebinds the glued `?` as an explicit-key indicator (the `?D` map with an empty value) and rides the raw PS byte. Every other member matches byte-exact — the divergence is exactly the two documented drift laws composing. The EXACT-BYTES `yd_r246_flow_qsoup2_gray` arm (the r121/r137 precedent — the soup permutations are not soundly generalizable): two pinned shapes (the 16-byte libFuzzer minimum `[?D<LS>,0<LF>?+<PS>]` and the 193-byte artifact), both dumps walked byte-exact. Fresh-worktree build at the pre-arm parent confirms the find persists there; 50-mutant PAIRED battery with matched standalone harness binaries on both sides reads 0 regressions, 0 arm-caught (pre verdicts differ 1 / pass 9 / abort 40 — every mutation's verdict identical on the pre-arm binary); corpus walks exit-0; 932/932 ctest; leaks clean (PR #1276).
+
 ## [0.6.63] - 2026-11-11
 
 ### Fixed
