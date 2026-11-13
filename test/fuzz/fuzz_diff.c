@@ -13217,6 +13217,39 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
         "51\n=VAL : 1.0e17.tag\n-MAP\n+MAP\n=VAL : 2002:b&m\n=VAL : \n-MAP\n=VAL : "
         "1.0e57.tag:yaml.org\n=VAL : 2002:binaryg:yamlaml.org\n=VAL : 2002:binaryg:yam l.org\n=VAL "
         ": 2002:binary YAM\n+MAP\n=VAL : L &m\n=VAL : \n-MAP\n-SEQ\n-STR\n";
+    /* shape 44: the r262 nightly member (run 43405687610, 77
+     * bytes) - the r260 soup with a twelve-byte head growth and
+     * a one-byte deletion (the leading `?#` takes a spliced `?`
+     * and eleven glued `?` before the closing `|+`, and the
+     * m43-spliced `:` at the last member's `\n` fold point is
+     * gone). The documented laws compose exactly as pinned
+     * since m39/m40: the grown head rides the #949 plain-? law
+     * - every spliced `?` is glued, so yeptris keeps one flat
+     * plain scalar with the same SP terminator and only the
+     * head key's text moves - while the fold-point colon's
+     * deletion rides m43's own finding that the spliced `:`
+     * moves neither dump, libyaml's dump stays byte-identical
+     * to l43 (its head region is comment-eaten to empty keys
+     * either way), and the alias member rides `=ALI *L` on
+     * yeptris vs libyaml's empty-key collapse (the m39/m40
+     * alias precedent). */
+    static const unsigned char m44[] = {
+        0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x3f, 0x3f, 0x3f, 0x3f, 0x3f, 0x3f,
+        0x3f, 0x3f, 0x3f, 0x3f, 0x3f, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a, 0x09,
+        0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f,
+        0x09, 0x2a, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c,
+        0x60, 0x20, 0x0a, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23,
+        0x7c, 0x2b, 0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y44[] =
+        "+STR\n+MAP\n=VAL : ?#?#|#???????????|+`\n=VAL : \n=VAL : ?##|#|\n=VAL : \n=VAL : `"
+        "\n=VAL : \n=ALI *L\n=VAL : \n=VAL : ?#|#|\n=VAL : \n=VAL : `\n=VAL : \n=VAL : "
+        ":#|#|+`\n=VAL : \n=VAL : <\n=VAL : \n-MAP\n-STR\n";
+    static const char l44[] =
+        "+STR\n+MAP\n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : <\n=VAL : \n-MAP"
+        "\n-STR\n";
+    if (size == sizeof(m44) && memcmp(data, m44, size) == 0) {
+        return strcmp(ydump, y44) == 0 && strcmp(ldump, l44) == 0;
+    }
     /* shape 43: the r260 nightly member (run 43380562434, 66
      * bytes) - the r256 flow-map soup with a three-byte
      * permutation (the leading `?#?#` loses one `?` to `?##`,
