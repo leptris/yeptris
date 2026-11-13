@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- **the DOM replay pairs the sibling map as a key after an anchored block-seq value (#1303, PR #1318)** — the fused writer's dash-resolves-pending branch has an anchored arm (`remediable_types: &vt` + indented dash items) that emits the root MAP_START but never arms `st[0].content_col` — the non-anchored twin arms it (the run 38128905644 bookkeeping, "the root bookkeeping the anchored branch carries") and the anchored MAP twin arms it ("the root now has content"), so the next sibling key re-fired the contentless-root law in `yt_f_open_form`, a second OPEN landed in the root's spent-key slot, and the replay paired the fresh map as a KEY with a synthesized empty scalar ([mapping, scalar ""]) while the drain walk parsed the same bytes correctly (the replay-equals-event-walk law). Surfaced through yeptris-ruby#378: `safe_load(aliases: true)` reaches the DOM tree whenever the source carries anchors, so metanorma/svg_conform's anchored configuration shape mis-nested and `dig` missed. The differential corpus now carries the family — the existing `list_anchor` entry never fired this because its root-level alias pair hits the anchored_first bail (engine restart fallback), so the repro defers the alias past the root frame — and `YTape.AnchoredSeqSiblingPairKeepsTheRootPairForm` pins the `[scalar, seq], [scalar, mapping]` root pairs structurally on both routes, verified RED pre-fix on a pristine build. 792/792 ctest, leaks 0. yeptris-ruby#378's four capability-gated DOM pins activate once this ships in a released engine tag.
+
 ## [0.6.64] - 2026-11-12
 
 ### Fixed
