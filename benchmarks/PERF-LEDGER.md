@@ -3529,3 +3529,65 @@ byte-identical A/B over 1337 probe cases (36 adversarial texts x
 parse+roundtrip, 60 mutation-API cases across styles 1-5 x exotic
 content, 1089 snapshot files) with all 637 roundtrips stable,
 clang-format 22 clean.
+## 2026-11-13 — TODO.max-perf/02 one-memo fusion: the per-line lane behind one key (SHIPS)
+
+The board's remaining item-02 content: the three per-line memo keys
+(li_cache_line, shape_cache_line, facts_cache_line — three loads +
+compares + branches on every accessor hit, spread across three struct
+regions, plus facts->li invalidation stores on every miss) fused into
+ONE memo_line guarding facts+li (computed back-to-back, yep_scan_line's
+own pair), the shape on one lazy key. e_facts_here dissolved; the ten
+e_line_info_here sites and the e_classified/e_shape_here pair pay a
+single compare where two stood. The struct keeps every old key slot
+(memo_line/shape_line take li_cache_line/shape_cache_line's offsets, a
+pad restores facts_cache_line's) so the A/B isolates logic from layout
+luck; a shifted-layout sibling measured -2.0% vs the padded +0.5% on
+anchor — both inside the band.
+
+Profile named the lane first (anchor-heavy DOM, non-LTO RelWithDebInfo
+Time Profiler, attach on a parse loop over the persisted corpus):
+memo-check self 10.2% (e_shape_here 8.01%, e_facts_here 1.31%,
+e_line_info_here 0.92%), line-facts trio 9.6%, shape pair ~3.4%,
+e_classified 21.7% (762 on-CPU samples). After the fusion (9720
+samples): e_facts_here's leaf is gone, e_shape_here 8.01% -> 5.77%,
+memo-check self 5.8% — halved, and the wall followed.
+
+Matched interleaved A/B, per-parse CPU time via getrusage, both sides
+utility-QoS, K sized so each side runs ~1 s of CPU per round, median
+of rounds, origin/main vs origin/main + patch (Release+LTO):
+
+| shape | base cpu/parse | fused cpu/parse | delta |
+|---|---|---|---|
+| anchor-heavy | 12.67 ms | 12.31 ms | **-2.79%** (median of 7 sweeps: -4.09, -7.59, +0.12, -2.09, +2.88, -2.79, -3.71 — 6/7 negative) |
+| block-heavy | 12.31 ms | 12.12 ms | -1.54% |
+| scalar-heavy | 4.15 ms | 4.14 ms | -0.14% |
+| wide-mapping | 5.35 ms | 5.31 ms | -0.82% |
+| flow-json | 13.13 ms | 12.94 ms | -1.42% |
+| flow-single | 1.089 ms | 1.067 ms | -2.01% |
+| json-doc | 6.28 ms | 6.12 ms | -2.69% |
+| deep-nesting | 0.385 ms | 0.383 ms | -0.47% |
+| json-users | 11.24 ms | 11.15 ms | -0.82% |
+
+Every shape at-or-below baseline; anchor-heavy, the campaign's last
+sub-1.3x shape, takes the largest gain. Same-host bench_matrix --quick
+h2h context: anchor-heavy 1.34x vs ryml on the fused build (1.21x on
+the pre-cut base minutes earlier; the referee itself drifted ~13%
+between the runs, so the paired driver table above is the verdict).
+ctest 792/792, leaks 0/0, clang-format clean.
+
+Three measurement traps this round cost hours and are recorded so the
+next session skips them: (1) at load 60-100 the box's wall-clock
+min/median flipped sign between adjacent interleaved pairs — CPU time
+per parse is the only usable currency under this load; (2) per-process
+E/P-core placement luck faked a -55% "win" on deep-nesting between
+builds differing only by struct padding (a base-vs-base self-check
+pins the honest band at ±7% for sub-ms shapes; ~1 s of CPU per side
+per round and utility QoS tame it); (3) the local main checkout tip
+has DIVERGED from origin/main (274 files) — a baseline built from it
+reads +2%/-55% phantom deltas; baselines must come from the PR's own
+merge-base. The non-LTO memo lane reads as a no-LTO artifact under
+all of it: thin-LTO already CSEs the three line-key compares into
+one, and the fusion's win is the removed facts->li invalidation
+chain plus one struct region instead of three — real but small, and
+the item's lane is now closed (the residuals are the kernels:
+line-facts trio, shape pair, e_classified's dispatch itself).
