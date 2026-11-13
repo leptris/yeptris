@@ -3688,3 +3688,86 @@ Residuals parked for the next pass: whole-run seq assembly
 float-word strlen table (yep_tag_float_word + strlen ~5% of the
 remaining samples), and marshal/to_json.c's skip_col (its writer
 memset-zeroes, so the field is safe there today).
+
+## 2026-11-13 — #742 CBOR decode: the Release-lane profiles + the setup/dispatch/validator cuts (WIN, ships)
+
+The issue's tinycbor row (1.3-2.2x behind on the C face) compared
+yeptris's DOM decode against tinycbor's get_next walk. The decode-only
+face (`yeptris_cbor_decode_sax`) already landed; this slice profiled
+the REAL Release+LTO lanes (the earlier profiles were non-LTO and
+misattributed the lane shares — `cbor_arg`/`cbor_span_node` show as
+separate frames only there; LTO folds them into `cbor_item`) and cut
+what measured. Referee: the serialbench fixtures (small 103 B /
+medium 145 KB / large 1.8 MB), interleaved old/new binary pairs
+(7-9 pairs, medians), tinycbor v0.6.1 compiled into both sides as the
+drift canary. Release+LTO, this arm64 Mac.
+
+Profile state after the cuts (large DOM): cbor_item 26.9% self,
+dom_open_node 13.9% self (DOM build ~40% with sinks+place), the
+validator ~17.5%; SAX: cbor_item 53% self (arg+span folded in), the
+validator 29%.
+
+Cuts shipped:
+
+1. **yep_cdec field-init, not memset** (decode.c): the decoder context
+   carries the 1000-deep frame stack (~24 KB) and memset it per call —
+   a 100-byte payload memset 200x its size. Every frame slot is
+   written by cbor_open/the gen loop before it is read, so the stack
+   needs no zero-init; tagbuf is guarded by taglen. Small-fixture
+   legs: DOM 1.56x, SAX 2.31x.
+2. **cbor_arg inlined + fixed-width big-endian compose** (decode.c):
+   the out-of-line call + byte-loop became always_inline with
+   constant-width loads (compilers emit rev/bswap loads); MSVC falls
+   back to plain static. SAX +5-7% on the large lane.
+3. **the byte-DFA UTF-8 validator** (utf8_validate.c): the per-byte
+   step walk (nine-branch first-byte cascade) became one class table +
+   one next-state table load per byte, with SWAR ASCII runs riding
+   free in START state and the gate kernel taking spans >= 128 B in
+   one call. Verdict-identical: tables derived from step()'s rules,
+   proven by 732k boundary sequences (len <= 4 over the 29 range-edge
+   bytes), the full two-byte alphabet, every (lead, cont) pair for
+   multi-byte leads, truncation shapes, 1M random strings, and the
+   637-file fuzz corpus — 0 mismatches; the err_pos contract rides the
+   unchanged authoritative walk (the DFA only ever answers "valid" on
+   its own). Isolation A/B: 0.96-0.97x the HEAD walk's time (dom+sax).
+
+MEASURED DEAD (reverted):
+
+- **the whole-input UTF-8 pre-pass** (validate once, per-span checks
+  gated on it): semantically sound — text spans start and end on
+  code-point boundaries, so input validity implies span validity, and
+  byte strings stay immune because invalid inputs fall back to the
+  per-span walk — but the Release per-string checks it replaced were
+  already cheap (the 26-29% validate share is the walk itself on the
+  span bytes, not per-call overhead). A/B 0.95-0.97x (slower); the
+  pre-pass cost 17.5-29% of the lane as one whole-input pass, paying
+  for text AND non-text bytes. Reverted.
+- the plain per-byte DFA without the SWAR ASCII runs: 0.95-0.99x on
+  sparse-ASCII corpora (the table loads lose to the branchy ASCII
+  fast path); the SWAR run-skip is what makes the DFA net-positive.
+
+Standing after the cuts (vs HEAD, interleaved medians): small DOM
+1.56x / SAX 2.31x, medium 1.02x / 1.09x, large 1.05x / 1.05x (canary
+drift 1.02-1.06x — the large-lane cut is noise-to-+5%). Against the
+tinycbor walk, the SAX face now reads 1.29x (small) / 1.41x (medium,
+large) PAST the tinycbor leg on this host; the DOM row stays behind
+(0.40-0.63x) by construction — it builds a tree tinycbor never builds.
+
+Named next slices (not attempted this round):
+
+- a NEON/AVX2 `utf8_check` verdict kernel (Lemire-class): validation
+  is 17-29% of the decode lanes and tinycbor's leg does none — the
+  fair-comparison handicap is a kernel-sized lever.
+- cbor_item item-class fast paths (53% SAX self): the #474 LUT-dead
+  precedent warns the dispatch space; measure before carving.
+- DOM-build structural work (dom_open_node + sinks ~40% of the DOM
+  face): the ledger already names the DOM row's gap structural; the
+  decode-only face is the campaign answer and it is shipped.
+
+Gates: 792/792 ctest (corpora fetched fresh), 48/48 CBOR unit,
+leaks --atExit 0 (DOM + SAX + indefinite-string + tag-chain driver),
+clang-format clean, the 2.06M-case validator differential 0 bad.
+The YAML-emit half of #742 stays deferred to #352: the 2026-10-30(ii)
+row landed the parse-time plain_ok fact (+38-55% serialize) and names
+the remaining emit lever INSIDE the style lane (the plain-safety
+walk), which #352's DQ/style-rescan slice owns.
