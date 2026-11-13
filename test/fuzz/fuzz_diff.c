@@ -13281,6 +13281,41 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m45) && memcmp(data, m45, size) == 0) {
         return strcmp(ydump, y45) == 0 && strcmp(ldump, l45) == 0;
     }
+    /* shape 46: the r264 nightly member (run 43452769394, 24
+     * bytes) - the family's first member with NO `#` and NO CR:
+     * the bare-`?` sibling soup `{?TAB SP LF SP,?:-,?*M:-,?*M,}`.
+     * The documented laws compose exactly as pinned: member 1's
+     * `?` rides a TAB blank, so the explicit key + empty pair
+     * matches byte-exact on both sides; members 2-4 ride the
+     * bare-`?`-glue x alias-ride composition the r199/r209 arms
+     * pin — yeptris's suite-pinned plain-`?` law (HM87/652Z: a
+     * flow `?` with a non-space follower rides as plain content)
+     * takes `?:-` / `?*M:-` / `?*M` as ONE plain key each, the
+     * colon riding inside where a non-blank `-` follows it, both
+     * values empty; libyaml's 1.1 unconditional flow KEY-token
+     * law (the quirk the qflow family has carried since r58)
+     * reads each `?` as the explicit-key indicator, its IS_ALPHA
+     * alias cut (the r142/r76 law) surfaces `=ALI *M` as the
+     * members 3-4 keys, and the members 2-3 `:` re-lex as the
+     * VALUE token with the `-` riding as the plain value. The
+     * libFuzzer minimizer converges on the 14-byte twin core
+     * `{?*M:-,?*M,}` (the same dump pair modulo member 1-2);
+     * the hand-minimum inside the composition is `{?*M:-}` (7
+     * bytes) — greedy deletion drifts into the arm-covered
+     * siblings (`{?*}` plain-`?`, `{*M:-}` bare alias-cut),
+     * which is exactly why the libFuzzer walk stops at the
+     * twin: only the glued-`?`-plus-riding-colon composition
+     * is still uncovered. */
+    static const unsigned char m46[] = {0x7b, 0x0a, 0x3f, 0x09, 0x20, 0x0a, 0x20, 0x2c,
+                                        0x3f, 0x3a, 0x2d, 0x2c, 0x3f, 0x2a, 0x4d, 0x3a,
+                                        0x2d, 0x2c, 0x3f, 0x2a, 0x4d, 0x2c, 0x7d, 0x0a};
+    static const char y46[] = "+STR\n+MAP\n=VAL : \n=VAL : \n=VAL : ?:-\n=VAL : \n=VAL : "
+                              "?*M:-\n=VAL : \n=VAL : ?*M\n=VAL : \n-MAP\n-STR\n";
+    static const char l46[] = "+STR\n+MAP\n=VAL : \n=VAL : \n=VAL : \n=VAL : -\n=ALI *M\n=VAL "
+                              ": -\n=ALI *M\n=VAL : \n-MAP\n-STR\n";
+    if (size == sizeof(m46) && memcmp(data, m46, size) == 0) {
+        return strcmp(ydump, y46) == 0 && strcmp(ldump, l46) == 0;
+    }
     /* shape 43: the r260 nightly member (run 43380562434, 66
      * bytes) - the r256 flow-map soup with a three-byte
      * permutation (the leading `?#?#` loses one `?` to `?##`,
