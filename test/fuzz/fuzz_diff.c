@@ -13186,6 +13186,35 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
         "51\n=VAL : 1.0e17.tag\n-MAP\n+MAP\n=VAL : 2002:b&m\n=VAL : \n-MAP\n=VAL : "
         "1.0e57.tag:yaml.org\n=VAL : 2002:binaryg:yamlaml.org\n=VAL : 2002:binaryg:yam l.org\n=VAL "
         ": 2002:binary YAM\n+MAP\n=VAL : L &m\n=VAL : \n-MAP\n-SEQ\n-STR\n";
+    /* shape 43: the r260 nightly member (run 43380562434, 66
+     * bytes) - the r256 flow-map soup with a three-byte
+     * permutation (the leading `?#?#` loses one `?` to `?##`,
+     * `*%L` loses its `%` to `*L`, and a `:` is spliced at the
+     * last member's `\n` fold point). The documented laws
+     * compose exactly as pinned since m39/m40: the glued `?##`
+     * members stay flat and plain (the #949 law) while libyaml
+     * comment-eats to CR/LF and rebinds the explicit keys with
+     * empty values, the TAB/LF folds ride the 1.2 break law (the
+     * spliced `:` formalizes the `` ` `` member's value slot and
+     * moves neither dump), and the alias member rides `=ALI *L`
+     * on yeptris vs libyaml's empty-key collapse (the m39/m40
+     * alias precedent). */
+    static const unsigned char m43[] = {
+        0x7b, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a, 0x09,
+        0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09,
+        0x2a, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20,
+        0x0a, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60,
+        0x20, 0x3a, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y43[] =
+        "+STR\n+MAP\n=VAL : ?##|#|+`\n=VAL : \n=VAL : ?##|#|\n=VAL : \n=VAL : `\n=VAL : \n=ALI "
+        "*L\n=VAL : \n=VAL : ?#|#|\n=VAL : \n=VAL : `\n=VAL : \n=VAL : :#|#|+`\n=VAL : \n=VAL : "
+        "<\n=VAL : \n-MAP\n-STR\n";
+    static const char l43[] =
+        "+STR\n+MAP\n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : <\n=VAL : \n-MAP"
+        "\n-STR\n";
+    if (size == sizeof(m43) && memcmp(data, m43, size) == 0) {
+        return strcmp(ydump, y43) == 0 && strcmp(ldump, l43) == 0;
+    }
     /* shape 42: the r259 nightly member (run 43369491072, 25
      * bytes) - the shape-2 composition with a 0-to-1 digit swap
      * and a + spliced into the first quoted member. The three
