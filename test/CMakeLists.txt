@@ -4831,6 +4831,11 @@ add_test(
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r260.bin
     )
+    add_test(
+        NAME fuzz-diff-r261-nel-fold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-fold-r261.bin
+    )
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)

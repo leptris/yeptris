@@ -6904,8 +6904,19 @@ static int yd_plain_nel_lsps_fold_divergence(const uint8_t* data, size_t size, c
  * bound by the run. Fires after the terminal-tail arm declined (whose
  * remainders are fully identical, a disjoint shape) and before the
  * (k-1) collapse (which would eat part of b's run and break the
- * exact-k accounting), so every existing member keeps its branch. */
-static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult) {
+ * exact-k accounting), so every existing member keeps its branch.
+ *
+ * `eat` gates the r237 NEL-site surplus eat (below): 0 = the
+ * pre-r237 walk verbatim (the leading SP survives for the r173
+ * SP<->break pairing the SPLIT-pair shapes need), 1 = the r237-era
+ * walk (the eat feeds the r208 surplus law the r237 member needs).
+ * The r261 nightly (run 43388810632) exposed that the eat and the
+ * pairing are mutually exclusive at the same site -- one SP cannot
+ * serve both -- and the family's two-phase discipline (the r177
+ * precedent: a greedy eat must never fire in the pass where an
+ * existing member's byte-walk needs the space) sequences the eras:
+ * the pre-r237 pair first, then the r237 pair. */
+static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult, int eat) {
     if (ydump == NULL || ldump == NULL) {
         return 0;
     }
@@ -6985,8 +6996,21 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
                  * disagree behind (b leads with an escape), capped, so
                  * a space both dumps carry never rides it. The run
                  * scan's own laws (surplus == k, the alignment byte
-                 * coinciding, non-escape) still bind the claim. */
-                if (b[0] == '\\' && b[1] == 'n' && a[0] == ' ') {
+                 * coinciding, non-escape) still bind the claim. The
+                 * r261 nightly (run 43388810632, main a86f67fe,
+                 * crash-ae385ab41d3dfeef0aa6a3a1ddcb8cdce94789a0, 23
+                 * bytes "> #<PS> 700:\n  m<NEL> <NEL> t") exposed the
+                 * eat's cost: for the SPLIT-pair shapes (kept pairs
+                 * separated by single kept spaces) the leading SP is
+                 * the r173 continuation's pairing material -- eating it
+                 * strands the walk at the second pair with no r173 step
+                 * left, and a ride that stood since r160 broke. The eat
+                 * therefore runs only in the `eat` pass (the two-phase
+                 * discipline, the r177 precedent: the pre-r237 pair
+                 * walks first so every member that rode before r237
+                 * keeps its exact path; the eat pass follows for the
+                 * r237 flavor). */
+                if (eat && b[0] == '\\' && b[1] == 'n' && a[0] == ' ') {
                     int ate = 0;
                     while (ate < 64 && a[0] == ' ' && a[0] != b[0]) {
                         a++;
@@ -7330,20 +7354,27 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
     return subs > 0;
 }
 
-/* The family entry: the ORIGINAL budget-k walk first -- every member
- * that rode before r177 keeps its exact path (the continuation is
- * greedy with no lookahead, so a wider first-pass budget would eat a
- * verbatim-aligned space a member's byte-walk needs: the doubled
- * budget alone flipped the r173 seed's more-indented-line sibling
- * from ridden to aborting). Only when that declines does the r177
- * budget-2k retry run -- the fold-suppression flavor's extra
- * suppressed-fold step fires there, on shapes the original walk
- * already rejected. */
+/* The family entry: the eras walk in order -- the pre-r237 pair first
+ * (every member that rode before r237 keeps its exact path: the
+ * continuation is greedy with no lookahead, so the r237 surplus eat in
+ * the first pass would consume a verbatim-aligned space a member's
+ * byte-walk needs -- the r177 two-phase law, now with the eat as its
+ * second axis; the r261 nightly's split-pair artifact rode exactly
+ * that space), then the r237 pair with the eat (the r237 flavor's
+ * surplus law fires there, on shapes the no-eat passes already
+ * rejected). Each pass is the same budgeted, end-anchored walk -- an
+ * admitted input can only ride on the documented deltas either way. */
 static int yd_block_nel_walk(const char* ydump, const char* ldump) {
-    if (yd_block_nel_walk_mult(ydump, ldump, 1)) {
+    if (yd_block_nel_walk_mult(ydump, ldump, 1, 0)) {
         return 1;
     }
-    return yd_block_nel_walk_mult(ydump, ldump, 2);
+    if (yd_block_nel_walk_mult(ydump, ldump, 2, 0)) {
+        return 1;
+    }
+    if (yd_block_nel_walk_mult(ydump, ldump, 1, 1)) {
+        return 1;
+    }
+    return yd_block_nel_walk_mult(ydump, ldump, 2, 1);
 }
 
 /* True when the difference is the BLOCK-SCALAR NEL CONTENT law (the
