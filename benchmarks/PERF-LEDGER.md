@@ -3477,3 +3477,55 @@ owned by 02/03. Gates: 891/891 ctest (corpora fetched), 787/787
 ASan+UBSan, leaks clean (test_unit, fuzz_diff, bench_matrix),
 clang-format 18, no new warnings; DOM sweep unharmed (deep-nesting
 1028-1060 MB/s, all shapes within the run-drift band).
+
+## 2026-11-13 — the DQ-preservation cell rides the recorded style (measured WIN)
+
+The #352 tail-cell cut after lane 3: `sc_route` still walked every
+double-quoted scalar's bytes before answering DQ. For `sty_in` 3 (and
+0 = ANY) EVERY route in the body already returned `YEP_SC_DQ` — the
+dq-forced check, the flow-context indicator loop, the switch's
+default — so the walks were dead work: the dq-forced rescan (when
+`no_exotic` was 0), the per-scalar flow indicator loop (the
+json-users/flow-json cells), and the multiline memchr + blockable
+walk (whose result is UNUSED for styles 3/0; only styles 1/2/4/5 read
+it). The cut: one early return at sc_route's head — DQ-preservation
+rides the recorded style, no re-scan. Byte-equivalence is by case
+analysis over every return in the body; mutation-built scalars
+(facts 0) keep the conservative derive for styles 1/2/4/5 — only the
+recorded style itself accelerates.
+
+Measured (M1 Max, Release+LTO, matched A/B, tight interleaved pairs,
+medians of 5-7 rounds; the serialize-only `--emit-shape` referee):
+
+| shape | serialize before | after | delta |
+|---|---|---|---|
+| json-users | 212.74 | **258.76 MB/s (1.216x)** | +21.6% |
+| flow-json | 169.67 | **199.65 (1.177x)** | +17.7% |
+| scalar-heavy | 401.43 | 404.67 | +0.8% |
+| block-heavy | 408.97 | 409.77 | +0.2% |
+| wide-mapping (control) | 798.55 | 798.57 | 0.0% |
+
+The control shape (zero DQ scalars, unchanged code path) reads the
+noise floor exactly; the wins land precisely on the DQ-preservation
+cells (json-users: every key and string value rides DQ; flow-json:
+the DQ keys/names). scalar-heavy's DQ scalars are >32 B and ride the
+sc_dec memo, so only the dry pass stops deriving — the residual
++0.8%. Generation h2h medians moved the same direction (json-users
+1.12x -> 1.29x, scalar-heavy 0.89x -> 1.21x, block 1.46x -> 1.51x,
+flow-json 0.99x -> 1.09x vs ryml) but that session ran under a
+load-average 30-90 neighbor and wide-mapping — a control there too —
+drifted -20%, so the vs-ryml deltas carry that session's noise band;
+the emit-only table above is the referee.
+
+Route identity: the gain itself is the evidence (a silent route
+narrowing would show no delta — the ledger's law #3); the early
+return is also the only semantic change in the diff.
+
+Gates: 792/792 ctest (emit-diff, emit-roundtrip, libyaml-diff,
+events-crosscheck, the yaml-test-suite + json-suite corpora walks,
+the fuzz families, the unit emit battery), leaks --atExit 0 on the
+emit-roundtrip driver and the adversarial battery, snapshots walk
+byte-identical A/B over 1337 probe cases (36 adversarial texts x
+parse+roundtrip, 60 mutation-API cases across styles 1-5 x exotic
+content, 1089 snapshot files) with all 637 roundtrips stable,
+clang-format 22 clean.

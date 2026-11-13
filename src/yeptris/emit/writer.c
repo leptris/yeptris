@@ -725,6 +725,17 @@ enum { YEP_SC_NOTHING = 0, YEP_SC_PLAIN, YEP_SC_SQ, YEP_SC_DQ, YEP_SC_LITERAL, Y
  * machine. PERF-LEDGER carries the numbers. */
 static uint8_t sc_route(yep_writer* w, const char* p, uint32_t len, int as_key, uint8_t sty_in,
                         int has_tag, int no_exotic, int plain_fact) {
+    /* DQ-preservation rides the recorded style (#352 tail cell): a
+     * scalar recorded double-quoted at parse stays double-quoted at
+     * emit, and ANY rides the switch's default arm — for sty_in 3 and
+     * 0 every route below returns YEP_SC_DQ (the dq-forced check, the
+     * flow indicator arm, the switch's default), so the body's walks
+     * (the dq-forced rescan, the per-scalar flow indicator loop, the
+     * multiline memchr + blockable walk) are dead work on the
+     * DQ-heavy cells. Recorded style answers; no re-scan. */
+    if (sty_in == 3 || sty_in == 0) {
+        return YEP_SC_DQ;
+    }
     /* the parse-time fact bits (#352 lanes 2-3): a dnode verified clean
      * of the dq-forced set skips that rescan, and a verified plain-safe
      * span skips the safety walk — 0 (mutation-built or JSON classes)
