@@ -95,7 +95,7 @@ static void cbor_fail(yep_cdec* c, yep_err_code code, const char* msg) {
 #if defined(__GNUC__)
 #define CBOR_ARG_INLINE __attribute__((always_inline)) inline
 #else
-#define CBOR_ARG_INLINE static
+#define CBOR_ARG_INLINE /* plain static: MSVC has no always_inline */
 #endif
 
 static CBOR_ARG_INLINE int cbor_arg(yep_cdec* c, uint8_t ai, uint64_t* val) {
