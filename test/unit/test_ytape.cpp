@@ -91,6 +91,14 @@ TEST(YTape, ReplayedTreeMatchesDirectParse) {
         "anchored: &a value\nref: *a\n",
         "base: &b\n  x: 1\nuser:\n  <<: *b\n  y: 2\n",
         "list_anchor: &L\n  - 1\n  - 2\nagain: *L\n",
+        /* the #1303 family: the sibling pair after an ANCHORED block
+         * seq value. The root-level alias twin above bails on the
+         * anchored_first law; these defer the alias (or drop it) so
+         * the tape route owns the input end to end */
+        "k: &a\n  - x\nnext: 1\n",
+        "k: &a\n  - x\nnext:\n  deep: 2\n",
+        "remediable_types: &vt\n  - :reference_violation\nseverity_levels:\n  "
+        "critical:\n    violation_types: *vt\n    default_weight: 5\n",
         "!!str tagged: value\nexplicit: !!int 42\n",
         "tagged anchor: &t !!str hello\ntarget: *t\n",
         "key anchor: &k v\npair: {&ik ik: *k}\n",
@@ -332,4 +340,57 @@ TEST(YTape, RootPendingPairArmsTheSecondRootLaw) {
         yeptris_document_free(e1);
         yeptris_document_free(e2);
     }
+}
+
+TEST(YTape, AnchoredSeqSiblingPairKeepsTheRootPairForm) {
+    /* issue #1303: after "k: &a" resolves into a block SEQUENCE (the
+     * dash-resolves-pending branch's ANCHORED arm), st[0].content_col
+     * stayed 0 — the non-anchored twin arms it (the nightly's run
+     * 38128905644), the anchored MAP twin arms it — so the next
+     * sibling key re-fired the contentless-root law in yt_f_open_form,
+     * a second OPEN landed in the root's spent-key slot, and the
+     * replay paired the fresh map as a KEY ([mapping, scalar ""]).
+     * The drain walk (yeptris_parse_ex) is the reference law. The
+     * repro's alias rides INSIDE the nested map: a root-level alias
+     * pair hits the anchored_first bail and rides the engine, which
+     * is why the corpus's list_anchor entry never fired this. */
+    const char* repro = "remediable_types: &vt\n"
+                        "  - :reference_violation\n"
+                        "severity_levels:\n"
+                        "  critical:\n"
+                        "    violation_types: *vt\n"
+                        "    default_weight: 5\n"
+                        "    max_penalty: 20\n";
+    YeptrisStatus st = YEPTRIS_OK, st2 = YEPTRIS_OK;
+    YeptrisDocument direct = yeptris_parse_ex(repro, strlen(repro), NULL, &st);
+    YeptrisDocument lazy = yeptris_parse_ytape_ex(repro, strlen(repro), NULL, &st2);
+    ASSERT_EQ(st, YEPTRIS_OK) << repro;
+    ASSERT_EQ(st2, YEPTRIS_OK) << repro;
+    EXPECT_TRUE(
+        doms_equal(yep_doc_dom((yeptris_document*)direct), yep_doc_dom((yeptris_document*)lazy)))
+        << repro;
+    /* the root pairs: [scalar "remediable_types", seq], [scalar
+     * "severity_levels", mapping] — the skew made pair 2
+     * [mapping, scalar ""] */
+    const yep_dom* d = yep_doc_dom((yeptris_document*)lazy);
+    ASSERT_GE(d->dcount, 1u);
+    ASSERT_GE(d->ncount, 4u);
+    uint32_t r = d->docs[0];
+    uint32_t k1 = d->nodes[r].first_child;
+    ASSERT_NE(k1, UINT32_MAX);
+    uint32_t v1 = d->nodes[k1].next_sibling;
+    uint32_t k2 = v1 != UINT32_MAX ? d->nodes[v1].next_sibling : UINT32_MAX;
+    uint32_t v2 = k2 != UINT32_MAX ? d->nodes[k2].next_sibling : UINT32_MAX;
+    ASSERT_NE(v1, UINT32_MAX);
+    ASSERT_NE(k2, UINT32_MAX);
+    ASSERT_NE(v2, UINT32_MAX);
+    EXPECT_EQ(d->nodes[k1].kind, YEP_DOM_SCALAR);
+    EXPECT_EQ(d->nodes[v1].kind, YEP_DOM_SEQUENCE);
+    EXPECT_EQ(d->nodes[k2].kind, YEP_DOM_SCALAR);
+    EXPECT_EQ(d->nodes[v2].kind, YEP_DOM_MAPPING);
+    uint32_t klen = 0;
+    const char* kbytes = sv_bytes(d, d->nodes[k2].value, &klen);
+    EXPECT_EQ(std::string(kbytes, klen), "severity_levels");
+    yeptris_document_free(direct);
+    yeptris_document_free(lazy);
 }
