@@ -72,10 +72,14 @@ struct yep_engine {
     yep_line_info li_cache;     /* per-line scan_line memo: every site
            positioned at line_start reads it (plain continuation checks,
            literal blocks, the main loop), so a line is scanned once */
-    uint32_t li_cache_line;     /* 0 = no entry (line numbers are 1-based) */
+    uint32_t memo_line;         /* the ONE line key (TODO.max-perf/02):
+                                   facts+li validity, 0 = empty (lines are
+                                   1-based); sits in li_cache_line's old slot
+                                   so the struct geometry does not move */
     yep_line_shape shape_cache; /* per-line shape memo (TODO.restructure/49):
                                    the dispatch decision is made once */
-    uint32_t shape_cache_line;  /* 0 = no entry */
+    uint32_t shape_line;        /* the shape's own lazy key: 0 = empty (the
+                                 * shape_cache_line slot) */
     uint32_t line_base;         /* lines consumed by earlier stepped runs */
     yep_error err;
     const yep_sink* sink;
@@ -107,7 +111,10 @@ struct yep_engine {
     /* the line-facts memo (TODO.restructure/76): one kernel pass per
      * line feeds both the line info and the shape */
     yep_line_facts facts_cache;
-    uint32_t facts_cache_line;
+    uint32_t facts_pad; /* keeps every field after the old facts_cache_line
+                         * at its original offset: the fusion removes one
+                         * uint32 key, the pad restores the geometry so the
+                         * A/B isolates the logic from layout luck */
 
     yep_fold_line fold[YEP_MAX_FOLD_LINES];
     size_t fold_n;
@@ -351,45 +358,36 @@ static void e_line_done(yep_engine* e, size_t at) {
         e->pos = at + br;
         e->line++;
         e->line_start = e->pos;
-        e->li_cache_line = 0;
-        e->shape_cache_line = 0;
-        e->facts_cache_line = 0;
+        e->memo_line = 0;
+        e->shape_line = 0;
     } else {
         e->pos = at;
     }
 }
 
-/* The line-facts memo (TODO.restructure/76): ONE kernel pass per
- * line; li and the shape both derive from it. */
-static const yep_line_facts* e_facts_here(yep_engine* e) {
-    if (e->facts_cache_line != e->line) {
-        yep_scan_facts(e->p, e->len, e->line_start, &e->facts_cache);
-        e->facts_cache_line = e->line;
-        e->li_cache_line = 0; /* derived caches are stale now */
-        e->shape_cache_line = 0;
-    }
-    return &e->facts_cache;
-}
-
-/* scan_line for the current line, memoized for the flow loop (the
- * loop head and the post-ws check each need it every line). */
+/* The one-memo (TODO.max-perf/02): the per-line lane behind ONE line
+ * key. A miss computes facts and li back-to-back (yep_scan_line_f
+ * reads the facts in place — yep_scan_line is exactly this pair), so
+ * every site's hit check is a single compare+branch where a facts
+ * check plus a li check stood; the shape derives lazily on its own
+ * key because only e_classified's dispatch needs it. */
 static yep_line_info e_line_info_here(yep_engine* e) {
-    const yep_line_facts* f = e_facts_here(e);
-    if (e->li_cache_line != e->line) {
-        yep_scan_line_f(e->p, e->len, e->line_start, f, &e->li_cache);
-        e->li_cache_line = e->line;
+    if (e->memo_line != e->line) {
+        yep_scan_facts(e->p, e->len, e->line_start, &e->facts_cache);
+        yep_scan_line_f(e->p, e->len, e->line_start, &e->facts_cache, &e->li_cache);
+        e->memo_line = e->line;
+        e->shape_line = 0; /* the shape reads li: stale now */
     }
     return e->li_cache;
 }
 
-/* The line's classified shape, memoized beside the line facts: the
+/* The line's classified shape, memoized beside the one-memo: the
  * engine decides dispatch ONCE per line (TODO.restructure/49). */
 static const yep_line_shape* e_shape_here(yep_engine* e) {
-    const yep_line_facts* f = e_facts_here(e);
-    e_line_info_here(e);
-    if (e->shape_cache_line != e->line) {
-        yep_scan_shape_f(e->p, e->len, &e->li_cache, f, &e->shape_cache);
-        e->shape_cache_line = e->line;
+    e_line_info_here(e); /* facts+li ride the same key */
+    if (e->shape_line != e->line) {
+        yep_scan_shape_f(e->p, e->len, &e->li_cache, &e->facts_cache, &e->shape_cache);
+        e->shape_line = e->line;
     }
     return &e->shape_cache;
 }
@@ -1017,8 +1015,8 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
                             e->pos = at + br;
                             e->line++;
                             e->line_start = e->pos;
-                            e->li_cache_line = 0;
-                            e->shape_cache_line = 0;
+                            e->memo_line = 0;
+                            e->shape_line = 0;
                         } else {
                             e->pos = at;
                         }
@@ -1050,8 +1048,8 @@ static int e_block_scalar(yep_engine* e, yep_event* ev, int parent_col) {
                         e->pos = at + br;
                         e->line++;
                         e->line_start = e->pos;
-                        e->li_cache_line = 0;
-                        e->shape_cache_line = 0;
+                        e->memo_line = 0;
+                        e->shape_line = 0;
                     } else {
                         e->pos = at;
                     }
@@ -1961,9 +1959,8 @@ static int e_flow_node(yep_engine* e, yep_event* ev, int keyish) {
                 e->pos += br;
                 e->line++;
                 e->line_start = e->pos;
-                e->li_cache_line = 0;
-                e->shape_cache_line = 0;
-                e->facts_cache_line = 0;
+                e->memo_line = 0;
+                e->shape_line = 0;
                 if (e->pos >= e->len) {
                     ended = 1;
                     break;
@@ -5928,9 +5925,8 @@ static int engine_run_impl(yep_engine* e, const char* buf, size_t len, const yep
     e->line = 1 + e->line_base;
     e->line_base = 0;
     e->line_start = 0;
-    e->li_cache_line = 0;
-    e->shape_cache_line = 0;
-    e->facts_cache_line = 0;
+    e->memo_line = 0;
+    e->shape_line = 0;
     e->depth = 0;
     yep_nametab_clear(&e->anchors);
     if (e->anchor_placed != NULL) {
