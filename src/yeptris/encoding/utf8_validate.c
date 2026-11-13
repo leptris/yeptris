@@ -187,17 +187,18 @@ static int validate(const unsigned char* p, size_t len, size_t* err_pos, int pri
  *
  * Verdict equivalence is pinned three ways: the tables were derived
  * from step()'s range rules; a differential harness walked every
- * boundary sequence of length <= 4 (the 25 range-edge bytes), the
- * full two-byte alphabet, every (lead, continuation) pair for the
- * multi-byte leads, and 500k random strings — 0 mismatches; and
- * test_encoding's pinned verdicts + err_pos ride the suite. On any
- * DFA rejection the authoritative walk below re-runs for the pinned
- * err_pos (invalid inputs take the exact path; valid ones never do).
+ * boundary sequence of length <= 4 (29 range-edge bytes), the full
+ * two-byte alphabet, every (lead, continuation) pair for the
+ * multi-byte leads, the truncation shapes, 1M random strings, and the
+ * fuzz corpus — 0 mismatches; and test_encoding's pinned verdicts +
+ * err_pos ride the suite. On any DFA rejection the authoritative walk
+ * below re-runs for the pinned err_pos (invalid inputs take the exact
+ * path; valid ones never do).
  *
- * The gate first: one kernel call answers the all-gate-safe span
- * (pure-ASCII text — the common CBOR/JSON shape) without touching
- * the DFA. The old loop paid a dispatch-table lookup per 32 bytes;
- * the pointer is hoisted here and the span is asked once. */
+ * The gate answers only the long spans (>= 128 B): short ones (CBOR
+ * map keys are single-digit bytes) fall through the kernel's 16-byte
+ * loop into its scalar per-byte walk, paying a dispatch lookup to get
+ * there — the SWAR loop below answers those spans directly. */
 
 static const uint8_t utf8_class[256] = {
     /* 00-7F ASCII */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
