@@ -13250,6 +13250,37 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m44) && memcmp(data, m44, size) == 0) {
         return strcmp(ydump, y44) == 0 && strcmp(ldump, l44) == 0;
     }
+    /* shape 45: the r263 nightly member (run 43423327515, 67
+     * bytes) - the r262 soup with a twelve-byte head shrink and
+     * two one-byte moves (the head key's spliced `?` and eleven
+     * glued `?` leave, so `?#?#|#|+` is the whole head key
+     * again; the alias regains m43's `%` to `*%L`; and the
+     * tail's pre-`}` SP becomes a `%`). The documented laws
+     * compose exactly as pinned since m39/m40: the glued
+     * `?#`/`?##` members stay flat and plain (the #949 law)
+     * while libyaml comment-eats each to an empty key and
+     * rebinds the explicit keys (the comment-to-CR law), the
+     * alias rides `=ALI *%L` on yeptris vs libyaml's empty-key
+     * collapse (the m39/m40 alias precedent, the m43 spelling),
+     * and the tail member's `%` rides the TAB/LF fold law
+     * identically on both sides (`=VAL : < %` byte-exact on
+     * both). */
+    static const unsigned char m45[] = {
+        0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a,
+        0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f,
+        0x09, 0x2a, 0x25, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c,
+        0x60, 0x20, 0x0a, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c,
+        0x2b, 0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x25, 0x7d};
+    static const char y45[] =
+        "+STR\n+MAP\n=VAL : ?#?#|#|+`\n=VAL : \n=VAL : ?##|#|\n=VAL : \n=VAL : `\n=VAL : \n=ALI "
+        "*%L\n=VAL : \n=VAL : ?#|#|\n=VAL : \n=VAL : `\n=VAL : \n=VAL : :#|#|+`\n=VAL : \n=VAL : "
+        "< %\n=VAL : \n-MAP\n-STR\n";
+    static const char l45[] = "+STR\n+MAP\n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : "
+                              "\n=VAL : < %\n=VAL : \n-MAP"
+                              "\n-STR\n";
+    if (size == sizeof(m45) && memcmp(data, m45, size) == 0) {
+        return strcmp(ydump, y45) == 0 && strcmp(ldump, l45) == 0;
+    }
     /* shape 43: the r260 nightly member (run 43380562434, 66
      * bytes) - the r256 flow-map soup with a three-byte
      * permutation (the leading `?#?#` loses one `?` to `?##`,
