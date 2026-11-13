@@ -13186,6 +13186,27 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
         "51\n=VAL : 1.0e17.tag\n-MAP\n+MAP\n=VAL : 2002:b&m\n=VAL : \n-MAP\n=VAL : "
         "1.0e57.tag:yaml.org\n=VAL : 2002:binaryg:yamlaml.org\n=VAL : 2002:binaryg:yam l.org\n=VAL "
         ": 2002:binary YAM\n+MAP\n=VAL : L &m\n=VAL : \n-MAP\n-SEQ\n-STR\n";
+    /* shape 42: the r259 nightly member (run 43369491072, 25
+     * bytes) - the shape-2 composition with a 0-to-1 digit swap
+     * and a + spliced into the first quoted member. The three
+     * documented laws compose: the glued `?#` rides the
+     * comment-to-CR law (libyaml's `#` eats `,"` and the CR and
+     * reads the post-CR `g+"` as the empty-valued key), the
+     * second `?g:m?#` rebinds the same way, yeptris keeps both
+     * flat and plain (the #949 law), and the quoted CRs fold to
+     * a space on the yeptris side (the 1.2 break law; the
+     * surviving quoted member rides DQ on both sides per the
+     * #1268 family, its fold ` g` agreeing). */
+    static const unsigned char m42[] = {0x5b, 0x31, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67,
+                                        0x2b, 0x22, 0x2c, 0x3f, 0x67, 0x3a, 0x6d, 0x3f, 0x23,
+                                        0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c, 0x5d};
+    static const char y42[] = "+STR\n+SEQ\n=VAL : 1\n=VAL : ?#\n=VAL :  g+\n=VAL : "
+                              "?g:m?#\n=VAL :  g\n-SEQ\n-STR\n";
+    static const char l42[] = "+STR\n+SEQ\n=VAL : 1\n+MAP\n=VAL : g+\"\n=VAL : \n-MAP\n+MAP\n"
+                              "=VAL : g:m?#\n=VAL : \n-MAP\n=VAL :  g\n-SEQ\n-STR\n";
+    if (size == sizeof(m42) && memcmp(data, m42, size) == 0) {
+        return strcmp(ydump, y42) == 0 && strcmp(ldump, l42) == 0;
+    }
     if (size == sizeof(m41) && memcmp(data, m41, size) == 0) {
         return strcmp(ydump, y41) == 0 && strcmp(ldump, l41) == 0;
     }
