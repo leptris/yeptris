@@ -13316,6 +13316,46 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m46) && memcmp(data, m46, size) == 0) {
         return strcmp(ydump, y46) == 0 && strcmp(ldump, l46) == 0;
     }
+    /* shape 47: the r265 nightly member (run 43482683441, 74
+     * bytes) - the r263 soup with the auto-dictionary's `=VAL : `
+     * spliced into member 5 (the nightly mutation DE: "=VAL : ",
+     * making it `?#|#|=VAL : `) and the tail's post-fold `%`
+     * back to a blank (member 8 rides `<` plain on both sides,
+     * the m44 spelling). The documented laws compose exactly as
+     * pinned since m39/m40: the glued `?#`/`?##` members stay
+     * flat and plain (the #949 law) while libyaml comment-eats
+     * member 1 and member 2 to the CR - member 2's eat swallowing
+     * members 3-5 and member 6's head - and rebinds the explicit
+     * keys with empty values (the comment-to-CR law), the alias
+     * member rides `=ALI *%L` on yeptris vs libyaml's empty-key
+     * collapse (the m39/m40 alias precedent, the r58 qflow
+     * KEY-token and r142/r76 IS_ALPHA-cut laws), and the spliced
+     * ` : ` rides the colon-inside law on yeptris only: the
+     * plain key grows to `?#|#|=VAL` with the colon re-lexing as
+     * the implicit VALUE token (the r46/HM87/652Z colon ride, the
+     * r230 residual-colon family) while on libyaml the whole
+     * member sits inside member 2's comment region and moves
+     * nothing. No single member deletion keeps the divergence:
+     * every soup segment is load-bearing, so the artifact bytes
+     * are their own hand-minimum; the libFuzzer greedy floor is
+     * the 10-byte same-law twin `{?#,*%\n,<}` (drifted dump
+     * shape, the r264 lesson). */
+    static const unsigned char m47[] = {
+        0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a, 0x09,
+        0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a,
+        0x25, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x3d, 0x56, 0x41, 0x4c,
+        0x20, 0x3a, 0x20, 0x2c, 0x60, 0x20, 0x0a, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x09, 0x3a, 0x23,
+        0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y47[] =
+        "+STR\n+MAP\n=VAL : ?#?#|#|+`\n=VAL : \n=VAL : ?##|#|\n=VAL : \n=VAL : `\n=VAL : \n=ALI "
+        "*%L\n=VAL : \n=VAL : ?#|#|=VAL\n=VAL : \n=VAL : `\n=VAL : \n=VAL : :#|#|+`\n=VAL : \n=VAL "
+        ": <\n=VAL : \n-MAP\n-STR\n";
+    static const char l47[] = "+STR\n+MAP\n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : \n=VAL : "
+                              "\n=VAL : <\n=VAL : \n-MAP"
+                              "\n-STR\n";
+    if (size == sizeof(m47) && memcmp(data, m47, size) == 0) {
+        return strcmp(ydump, y47) == 0 && strcmp(ldump, l47) == 0;
+    }
     /* shape 43: the r260 nightly member (run 43380562434, 66
      * bytes) - the r256 flow-map soup with a three-byte
      * permutation (the leading `?#?#` loses one `?` to `?##`,
