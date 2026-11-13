@@ -4847,6 +4847,11 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r264.bin
     )
     add_test(
+        NAME fuzz-diff-r265-qhash-cr-soup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r265.bin
+    )
+    add_test(
         NAME fuzz-diff-r261-nel-fold
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-fold-r261.bin
