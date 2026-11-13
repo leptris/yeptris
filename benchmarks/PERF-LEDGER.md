@@ -3771,3 +3771,76 @@ The YAML-emit half of #742 stays deferred to #352: the 2026-10-30(ii)
 row landed the parse-time plain_ok fact (+38-55% serialize) and names
 the remaining emit lever INSIDE the style lane (the plain-safety
 walk), which #352's DQ/style-rescan slice owns.
+
+## #474 CLOSED: the arm64 json-users columns-walk deficit is structural at instruction granularity (2026-11-13)
+
+The issue's cell — parse_json_tape 0.61x vs simdjson on json-users/macos-arm64
+while ubuntu reads 1.07x — was closed by measurement on the dev M1 Max
+(Apple clang 15, Release+LTO). Local baseline reproduced the shape:
+json-users tape 0.59-0.85x (bouncy), json-doc tape ~0.91x; yeptris
+absolutes are run-stable (tape 1100 MB/s), the ratio arm (simdjson) is
+what bounces.
+
+**Per-INSTRUCTION profile** (first at this granularity — xctrace leaf PCs
+resolved to file addresses, PMI-skid-snapped to 4-byte instruction starts,
+annotated onto the LTO binary's disassembly of `yeptris_parse_json_tape`,
+16.9 s / 16933 samples on the json-users shape): the walk stays FLAT with
+no lane above **4.21%**. The named lanes:
+
+| lane | share | what |
+|---|---|---|
+| `str x8, [sp,#40]` (+ siblings) | ~8% | the walk's `i` RA-spilled to a stack slot, stored at every token boundary |
+| SWAR round-1 ALU (add/and/orr/subs/rbit/clz) | ~14% | the per-string close scan, ~16-18 ops per string |
+| jump-table dispatch (ldrh ×3 + base +cmp) | ~12% | per-byte byte-class dispatch (table loads are DEPENDENT per byte) |
+| literal arm (ldrb ×3 + movz/movk consts) | ~12% | true/false/null: u32 word + 'e' byte + boundary bitmap |
+| count-slot + esc zero-store | ~3% | record-count round-trip, `esc_` store per string scan |
+| column stores (kinds/offs/lens) | ~4.5% | the output itself |
+| madvise (free path) | ~3% | outside the harness's timed window (parse-only timing) — NOT in the ratio |
+
+**Cuts measured this session (interleaved A/B, order-alternating, medians):**
+
+1. **SWAR constant pool (volatile rodata loads replacing the mov/movk
+   remat chains) — REGRESSION, reverted.** Every route read 4-6% slower
+   (users tape 1143→1089 MB/s), order-independent. The movk remat was
+   CHEAPER than un-CSE-able per-site loads (LNUM_RUN reads 0x8080 four
+   times per iteration); volatile loads also add LSU pressure on the
+   byte loop. LLVM's remat choice was right.
+2. **ThinLTO vs full LTO — WASH** (±2-3%, inside the noise floor;
+   json-users tape median +2.7%, json-doc −2.1%). Not a lever.
+3. **PGO — neutral on this route** (measured in-issue 2026-10; unchanged
+   conclusion).
+4. **SHIPPED (kept, strictly-less-work):** (a) `tape_carve(with_recs)` —
+   column-built routes no longer allocate the interleaved-record region
+   they never touch: the strict tape block halves (17 → 9 bytes/input
+   byte; 105 → 55 MB on a 6 MB doc), `recs == NULL` is the documented
+   column-primary shape (tape.h); (b) `esc_` scoped out of LSTR_SCAN's
+   SWAR fast path into the two cold kernel blocks (the 1.4% zero-store
+   lane leaves the hot path). Referee-metric neutral (see below);
+   parse-only single-route loops read +2-6%.
+5. **NEON-fallback hypothesis (the task's candidate 2) — dead**, twice
+   confirmed: `cpu.c` sets `neon = 1` unconditionally on
+   `__aarch64__/__ARM_NEON` (no getauxval gate — both CI legs run the
+   NEON kernel table), and the walk body's SWAR compiles to scalar ALU
+   on both ISAs by design. There is no x86-gated kernel falling back on
+   arm64.
+
+**Referee A/B (base vs ship, 8 alternating-order rounds × 9 interleaved
+h2h rounds, medians):** json-users tape 1135.0 → 1157.4 MB/s
+(0.79x → 0.80x), json-doc tape 948.8 → 934.0 (0.91x both), users
+lenient 1102.2 → 1084.5, doc lenient 877.8 → 870.2 — every delta
+inside the box's ±2-4% noise floor; ranges overlap. Byte-parity: full
+column dump + convert outputs FNV-identical across JSONTestSuite (318
+files) + users corpora (6 MB / 64 MB) + misc docs; 792/792 ctest;
+validate.sh OK; leaks clean.
+
+**Verdict.** The 0.61x-vs-1.07x split is not a missing NEON kernel, not
+a flags problem (PGO/ThinLTO/O-level all measured flat or hostile), and
+not a single cuttable lane: at instruction granularity the cost is the
+per-byte dispatch + per-token bookkeeping that x64's scheduler hides
+and arm64 pays, smeared across the whole body (max lane 4.21%). The
+only lever class that changes the shape remains the block-mask member
+cycle — vector ACROSS members, handing the state machine its next lane
+— the ground-up campaign the issue already priced and the owner closed.
+The strict walk's h2h cell stays parity-class on json-doc and
+structural-gap on json-users; recorded so nobody re-digs the micro
+seams (constant pools, esc slots, LTO flavor, PGO now all measured).
