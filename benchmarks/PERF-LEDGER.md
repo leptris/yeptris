@@ -3591,3 +3591,100 @@ one, and the fusion's win is the removed facts->li invalidation
 chain plus one struct region instead of three — real but small, and
 the item's lane is now closed (the residuals are the kernels:
 line-facts trio, shape pair, e_classified's dispatch itself).
+
+## 2026-11-13 — #739 the JSON write leg: skip_col + the json_clean fact + the fused pair walk (WIN, ships this train)
+
+The write leg was the dominant open cell (issue comments: 11.8x -> 6.2x
+after #755; the campaign's WRITE cell behind yyjson). Fresh M1 profile
+of `serialize_json` on json-users (RelWithDebInfo, non-LTO, `sample`
+10 s attach, 2993 samples) put the residual in four lanes: `wr_put`
+25.6% (the per-span '\n' column scan — the fold machinery's input,
+read by NO JSON lane), `emit_dq_json` 16.9% (the per-byte escape
+loop), `emit_json_node` 13.8% (the id-based walk's dispatch), and
+`memmove` 12.7% (the copies). The yyjson-shaped cut is the #352 law
+applied to JSON: prove string cleanliness at parse, consult a fact at
+emit, and fuse the walk.
+
+Four cuts, landed one at a time (792/792 ctest + byte-parity
+differentials after each):
+
+1. **skip_col** (writer.c): `yep_emit_run` sets
+   `skip_col = json && !json_pretty` (one assignment per run covers
+   every em.w init site — the ledger's zero-every-field law); the
+   fold column is YAML's input and no non-pretty JSON lane reads it.
+   `wr_col_update`'s span scan and `wr_byte`'s column arithmetic leave
+   the JSON lane.
+2. **the json_clean fact bit** (the yyjson pre-escaped-flag pattern):
+   `yep_scan_json_clean` (scan.c — bytes→facts SSOT: no '"', no '\',
+   no C0; DEL and non-ASCII ride raw in JSON) + the dnode's spare
+   bitfield byte (`plain_ok` splits to :1, `json_clean` :1; the node
+   stays 48 B). The strict-JSON builder sets it GRAMMAR-FREE on
+   unescaped strings (raw C0 is illegal in strict JSON strings; an
+   unescaped span carries no quote/backslash by the scanner's
+   termination rule) and prices one scan on escaped ones;
+   `dom_set_value` leaves 0 = unknown = the byte loop, so the YAML
+   parse path pays NOTHING. The emit side gains `emit_dq_json_raw` —
+   quote + memcpy + quote through one reservation, the fixed-window
+   route declining to the chunked loop (the block specialist's law).
+3. **the pointer walk**: `emit_json_node_p`/`emit_json_flow_p` carry
+   node pointers down the recursion (the DOM is const during emit);
+   the per-node id re-lookups (yep_dom_node 5.5%) leave the lane.
+4. **the fused pair/item specialists**: an unpropertied clean-string
+   key whose value is a simple scalar (clean string, null, bool,
+   JSON-token int, float through the SAME strtod truncation bound and
+   yep_d2s_json the general arm uses) writes as ONE assembled token in
+   a single stack-buffer memcpy; seq items likewise. Typed tokens
+   resolve BEFORE any byte is written — a decline (odd bool word,
+   non-token int, unparseable float) reaches the general path
+   untouched, so the bytes cannot drift. The anchor exclusion is kept:
+   propertied nodes decline so `wr_anchor_check`'s unserializable law
+   stays reachable.
+
+Measured (M1 Max, dev box, interleaved medians, serialbench form —
+parse+serialize+free per round, input-basis MB/s):
+
+| leg | before | after | delta |
+|---|---|---|---|
+| json-users write | 118.8 | 145.7 | **+23%** |
+| json-users generation | 107.0 | 127.7 | **+19%** |
+| json-doc write | 109.7 | 132.5 | +21% |
+| json-users parse | ~1050 | ~1060 | noise |
+
+Campaign form (the in-repo matrix referee this train adds:
+`bench_json_emit`, hot-doc best-of, output-basis MB/s — the yyjson
+comparison's discipline):
+
+| shape | before | after | delta |
+|---|---|---|---|
+| json-doc | 229.51 | 421.90 | **+84%** |
+| json-users | 266.74 | 502.57 | **+88%** |
+
+Profile after (same referee): wr_put 25.6 -> 1.9%, emit_canonical_scalar
+9.4 -> 2.4%, yep_dom_node 5.5 -> ~0 (pointer walk); the lane is now the
+collection walk itself (`emit_json_node_p` 28%), the copies (memmove
+17%), and the string raw-writes (11%) — i.e. the tree walk's frame
+cost, which is yyjson's flat-tape advantage and NOT reachable without
+the DOM layout (architectural, out of this front's scope).
+
+Byte parity: FNV differentials base-vs-cut over all three serialize
+faces on json-doc/json-users AND over serialize_json on all eight
+YAML corpora (the json_clean=0 derive arm) — byte-identical; 792/792
+ctest (the EmitJson pins, jsonc_compat, marshal_json, tape,
+conformance, both json suites); `leaks --atExit` 0.
+
+Parse leg verdict (the front's other half): the local referee reads
+json-doc DOM 0.87x / tape 0.86x / lenient 0.79x simdjson, json-users
+DOM 0.76x / tape 0.70x / lenient 0.73x — inside the ledgered band
+(strict ~0.84-1.00x json-doc, ~0.74-0.83x json-users; lenient 0.78x
+recorded). A fresh parse profile shows 95.8% in ONE flat symbol
+(`yep_tape_walk_lenient_fused`): no new lane decomposes — the residual
+is exactly the ledgered owner's-call pair (NEON per-token arm codegen
+or the ryml-style in-place front, task #85). The ledgered-dead levers
+(mask consumption, the SIMD tokenizer, the 16-byte block mask) stay
+dead; nothing re-attempted.
+
+Residuals parked for the next pass: whole-run seq assembly
+(`,"a","b","c"` as one token; the tags-array shape), the
+float-word strlen table (yep_tag_float_word + strlen ~5% of the
+remaining samples), and marshal/to_json.c's skip_col (its writer
+memset-zeroes, so the field is safe there today).

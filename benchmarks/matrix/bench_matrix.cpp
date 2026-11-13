@@ -618,6 +618,39 @@ Result bench_emit(const Corpus& c, int iters) {
     return {c.name + " (emit)", best_ms > 0 ? mb * 1000.0 / best_ms : 0, best_ms, len};
 }
 
+/* The JSON WRITE leg (#739): serialize_json on a pre-built JSON DOM,
+ * timed alone (the yyjson comparison's yeptris half). MB/s rides the
+ * OUTPUT length (the bytes actually written) — the write lane's
+ * expansion is part of its job. JSON corpora only; the other shapes
+ * are not strict JSON and fail parse_json. */
+Result bench_json_emit(const Corpus& c, int iters) {
+    YeptrisStatus st;
+    YeptrisDocument d = yeptris_parse_json(c.data.data(), c.data.size(), &st);
+    if (d == NULL) {
+        return {c.name + " (json emit)", 0, 0, c.data.size()};
+    }
+    double best_ms = 1e9;
+    size_t len = 0;
+    for (int i = 0; i < iters; i++) {
+        auto t0 = clk::now();
+        char* s = yeptris_serialize_json(d, &len);
+        auto t1 = clk::now();
+        if (s == NULL) {
+            free(s);
+            yeptris_document_free(d);
+            return {c.name + " (json emit)", 0, 0, c.data.size()};
+        }
+        free(s);
+        double m = ms_of(t0, t1);
+        if (m < best_ms) {
+            best_ms = m;
+        }
+    }
+    yeptris_document_free(d);
+    double mb = (double)len / (1024.0 * 1024.0);
+    return {c.name + " (json emit)", best_ms > 0 ? mb * 1000.0 / best_ms : 0, best_ms, len};
+}
+
 #if defined(YEP_BENCH_LIBYAML)
 Result bench_libyaml(const Corpus& c, int iters) {
     double best_ms = 1e9;
@@ -1276,6 +1309,23 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    /* --json-emit-shape NAME: the serialize_json loop on the one
+     * corpus (~30s, sample target — the #739 JSON write lane) */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--json-emit-shape") != 0 || i + 1 >= argc) {
+            continue;
+        }
+        for (const Corpus& c : corpora) {
+            if (c.name == argv[i + 1]) {
+                Result r = bench_json_emit(c, 400);
+                printf("%s: json emit %.2f MB/s (%.2f ms)\n", c.name.c_str(), r.mb_s, r.ms);
+                return 0;
+            }
+        }
+        fprintf(stderr, "unknown shape: %s\n", argv[i + 1]);
+        return 2;
+    }
+
     /* --shape NAME: DOM parse loop on the one corpus, ~30s (sample
      * target for the perf/profile workflows — one hot path per run) */
     if (one_shape != NULL) {
@@ -1307,6 +1357,9 @@ int main(int argc, char** argv) {
         results.push_back(bench_pull(c, iters));
         results.push_back(bench_recorder(c, iters));
         results.push_back(bench_emit(c, iters));
+        if (c.name == "json-doc" || c.name == "json-users") {
+            results.push_back(bench_json_emit(c, iters)); /* the #739 write leg */
+        }
 #if defined(YEP_BENCH_LIBYAML)
         results.push_back(bench_libyaml(c, iters));
 #endif
@@ -1411,6 +1464,23 @@ int main(int argc, char** argv) {
     printf("\n");
     printf("%s", md_h2h.c_str()); /* the tail dump for console runs */
 #endif
+
+    /* #739's referee table: the JSON write leg (serialize_json, output
+     * MB/s — the yyjson comparison's yeptris half). */
+    printf("\n# json write leg: serialize_json (#739, output MB/s, best-of)\n\n"
+           "| shape | json emit MB/s |\n|---|---|\n");
+    md_h2h += "\n# json write leg: serialize_json (#739, output MB/s, best-of)\n\n"
+              "| shape | json emit MB/s |\n|---|---|\n";
+    for (const Corpus& c : corpora) {
+        if (c.name != "json-doc" && c.name != "json-users") {
+            continue;
+        }
+        Result r = bench_json_emit(c, full ? 9 : 5);
+        char row[128];
+        snprintf(row, sizeof(row), "| %s | %.2f |\n", c.name.c_str(), r.mb_s);
+        printf("%s", row);
+        md_h2h += row;
+    }
 
     /* #352's referee table: the emit kernel split. */
     printf("\n# emit kernel split: 2-pass vs 1-pass (#352, median of rounds)\n\n"
