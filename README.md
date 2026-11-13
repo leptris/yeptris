@@ -16,15 +16,20 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.63 — live across all five runtimes** (C +
-ruby `0.6.63.0` + py `0.6.63.0` + rs/ts `0.6.63`, registry-checked
-2026-11-12). This cut carries the #1264 dump-parity law: a multiline
-plain scalar whose only offense is a break rides single quotes exactly
-where libyaml and Psych put them (`'x y z\n\n  '` byte-exact) — the
-emitter now carries `single_quoted_allowed` through plain breaks,
-honors its space_break/break_space/trailing_blank kills, and renders
-folded content breaks; the binding side quotes keys through the same
-law (yeptris-ruby#374). The round also carries the r245 flow soup.
+**Latest release: v0.6.64 — live across all five runtimes** (C +
+ruby `0.6.64.0` + py `0.6.64.0` + rs/ts `0.6.64`, registry-checked
+2026-11-13). This cut carries the r248 fold-walk TAB guard (#1280):
+`serialize∘parse∘serialize` stays byte-stable when a fold point
+borders a TAB — the emitter's folded-line walk refuses TAB-adjacent
+break points (trailing s-white strips a folded TAB; a TAB-led
+continuation loses its leading run). The round also fixed the
+nightly's corpus treadmill (the comparator leg now fuzzes its own
+corpus snapshot — every red in r250–r254 had been a mutation of our
+own soup seeds fed across legs), measured the soup family's density
+(30 members mined locally in 30 consecutive runs; 40 exact-bytes
+shapes now pinned across the r244–r257 arms), and CI gained a
+riscv64 QEMU leg (PR #1317) after the riscv64 wheels/platform gems
+shipped across the runtimes.
 
 ## Build, test, validate
 
@@ -47,19 +52,22 @@ Sanitizer builds: `build-asan`, `build-ubsan`, `build-tsan`.
 | JSONTestSuite (YAML mode) | `1ef36fa` | 95/95 accept, 188/188 reject (strict) |
 | libyaml emission goldens | `279` snapshots | 0 divergences (4 ledgered libyaml bugs waived) |
 | libyaml parse differential | 405 inputs | full-record equality |
-| fuzz corpora | 543 tracked inputs | record-stream equality across chunkings |
+| fuzz corpora | 616 tracked inputs | record-stream equality across chunkings |
 
 Corpora are fetched pinned by `scripts/fetch-corpora.sh`. Unit +
 port + flow suites run beside them; TSAN enforces the one-document-
 per-thread contract.
 
-The fuzz nightly is the safety campaign: 240+ rounds so far, every
+The fuzz nightly is the safety campaign: 250+ rounds so far, every
 catch shipped the round it was confirmed — the CHANGELOG carries
-rounds r116–r245: 121 fuzz artifacts, seventeen of them genuine
+rounds r116–r257: 133 fuzz artifacts, eighteen of them genuine
 engine fixes (the rest comparator-side carries where libyaml
 diverges from the suite — the suite-pinned law wins, the carry
-documents the exact shape) — 134 fuzz-diff pins and six roundtrip
-seed pins and counting, every pin green.
+documents the exact shape; since the r250–r254 treadmill fix the
+comparator leg fuzzes its own corpus snapshot, and the soup family's
+density is measured with 40 exact-bytes shapes pinned) — 180
+fuzzing-gated pins and six roundtrip seed pins and counting, every
+pin green.
 
 ## Performance (the referee numbers — interleaved h2h medians, CI fresh runners)
 
