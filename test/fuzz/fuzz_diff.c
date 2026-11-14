@@ -15588,6 +15588,51 @@ static int yd_r272_mined_soup_gray(const uint8_t* data, size_t size, const char*
         (void)ldump;
         return 1;
     }
+    /* shape 47: raw r272-nightly [map-root alias CR] (86 bytes); the run 43597525678 escape */
+    static const unsigned char m47[] = {
+        0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a, 0x09,
+        0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a,
+        0x25, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x0a,
+        0x3a, 0x20, 0x09, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x20,
+        0x43, 0x6f, 0x6d, 0x6d, 0x65, 0x6e, 0x74, 0x0a, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+        0x20, 0x23, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y47[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : ?#?#|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : ?##|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=ALI *%L\n"
+                              "=VAL : \n"
+                              "=VAL : ?#|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=VAL : :#|#|+`  Comment\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l47[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m47) && memcmp(data, m47, size) == 0) {
+        return strcmp(ydump, y47) == 0 && strcmp(ldump, l47) == 0;
+    }
     return 0;
 }
 
