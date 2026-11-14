@@ -430,7 +430,8 @@ static size_t fc_alias_name(const uint8_t* p, size_t n, size_t i, size_t end) {
  * byte-exact across the engines — the law-b raw-ride split is
  * plain-only). Interior blanks ride BYTE-EXACT when content follows
  * directly (the dump keeps the raw TAB — the r251 seed's `##!%b\t##`);
- * blanks at a break boundary drop into the fold. Gates: a backslash
+ * blanks at a break boundary drop into the fold; a break-only span
+ * folds to ONE space at the close (the r274 law). Gates: a backslash
  * (escapes), an exotic break, a leading run >1, any trailing
  * blank/break, a blank-led start. */
 static int fc_quoted_value(const uint8_t* p, size_t n, size_t s, size_t e, fout* o,
@@ -496,7 +497,14 @@ static int fc_quoted_value(const uint8_t* p, size_t n, size_t s, size_t e, fout*
         return 0; /* trailing blanks/breaks: untested */
     }
     if (first_content && lead_run > 0) {
-        return 0; /* a break-only span: untested */
+        if (lead_run > 1 || blank_n > 0) {
+            return 0; /* a multi-break-only span or a break+blank span:
+                       * the trailing join rides raw — untested */
+        }
+        /* the break-only span folds to ONE space at the close (the
+         * engines' scan_flow_scalar end-join; both agree byte-exact —
+         * the r274 law, ["<CR>"] -> " " on both) */
+        fo_str(o, " ");
     }
     *close_at = i;
     return i < e && p[i] == '"';
@@ -1270,6 +1278,16 @@ static int l_dq_scan(lctx* c, fout* o, size_t* stop) {
     }
     if (!first && (run > 0 || blank_n > 0)) {
         return l_fail(c); /* trailing blanks/breaks: untested */
+    }
+    if (first && lead > 0) {
+        if (lead > 1 || blank_n > 0) {
+            return l_fail(c); /* a multi-break-only span or a break+blank
+                               * span: the trailing join rides raw —
+                               * untested */
+        }
+        fo_str(o, " "); /* the break-only span folds to ONE space at the
+                         * close (fc_quoted_value's twin, the r274 law)
+                         */
     }
     *stop = i + 1; /* past the close */
     return 1;

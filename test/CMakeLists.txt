@@ -5162,6 +5162,16 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r273-m00.bin
     )
 
+    # the r274 nightly escape (run 43621335462): the glued-? x break-only
+    # quoted span rides the #1310 classifier's model extension (the
+    # break-only span folds to ONE space at the close on both engines);
+    # the flow-qhash-cr- prefix joins the classifier's positive seed set
+    add_test(
+        NAME fuzz-diff-r274-breakdq-soup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r274.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
