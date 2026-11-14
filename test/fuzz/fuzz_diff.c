@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "diff_core.h"
+#include "family_classify.h"
 #include "sem_dump.h" /* the charset carry re-dumps yeptris on the split input */
 
 /* The corpus basename this input came from (set by the walker), or
@@ -16506,6 +16507,23 @@ static void probe_one(const uint8_t* data, size_t size) {
             }
         }
     }
+    /* the law-verifying classifier (issue #1310): after every arm gate
+     * declines, derive BOTH dumps from the adjudicated laws (the #949
+     * comment-eat, the 1.2 break fold, the alias collapse, the plain-?,
+     * the fold-point colon) and claim the input only when the actual
+     * bytes match exactly — anything the classifier cannot fully
+     * explain stays DIFFER */
+    if (!known && v == YD_DIFFER) {
+        known = yd_family_classify(data, size, ydump, ldump);
+        if (known) {
+            fprintf(stderr,
+                    "fuzz_diff: family-classified (%s): the glued-?/#/breaks "
+                    "flow-soup laws (a #949 comment-eat, b break-fold, "
+                    "c alias-collapse, d plain-?, e fold-colon) explain the "
+                    "divergence\n",
+                    probe_id ? probe_id : "libfuzzer");
+        }
+    }
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
@@ -16536,8 +16554,392 @@ static void probe_one(const uint8_t* data, size_t size) {
 
 #define _POSIX_C_SOURCE 200809L
 #include <dirent.h>
+#include <sys/stat.h>
+
+/* ---- the classifier self-test (issue #1310's firewall) --------------
+ *
+ * Three assertions over the soup corpus seeds
+ * (flow-qhash-cr-*.bin / flow-qsoup*.bin):
+ *
+ *  1. POSITIVE: every seed's verdict is YD_DIFFER and the classifier
+ *     CLAIMS it (the derivation reproduces both actual dumps exactly).
+ *  2. DUMP-TAMPER (the misclassification firewall): with either actual
+ *     dump tampered (one byte flipped, deleted, or the dump truncated),
+ *     the classifier must DECLINE — any engine defect that moves even
+ *     one byte of either stream on a family-shaped input stays red.
+ *  3. LAW-VIOLATING MUTANTS: structurally mutated inputs (a spliced
+ *     closer, a broken alias, a comment restored ahead of the `#`, a
+ *     tag/anchor splice, a nesting splice, a dropped closer) must never
+ *     classify; mutants whose verdict stops being DIFFER are counted
+ *     separately (the classifier is not consulted there).
+ */
+
+static int fc_name_is_seed(const char* nm, size_t nl) {
+    if (nl > 14 && memcmp(nm, "flow-qhash-cr-", 14) == 0 && memcmp(nm + nl - 4, ".bin", 4) == 0) {
+        return 1;
+    }
+    if (nl > 10 && memcmp(nm, "flow-qsoup", 10) == 0 && memcmp(nm + nl - 4, ".bin", 4) == 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static int fc_cmp_names(const void* a, const void* b) {
+    return strcmp(*(const char* const*)a, *(const char* const*)b);
+}
+
+/* The first '*' OUTSIDE a double-quoted span (the family carries no
+ * escapes, so quote parity is a bare toggle). An alias splice onto a
+ * quoted-scalar '*' would be inert content — the mutant must hit the
+ * structural alias. Returns n when none exists. */
+static size_t fc_star_outside_quotes(const uint8_t* buf, size_t n) {
+    int inq = 0;
+    for (size_t i = 1; i < n; i++) {
+        if (buf[i] == '"') {
+            inq = !inq;
+            continue;
+        }
+        if (buf[i] == '*' && !inq) {
+            return i;
+        }
+    }
+    return n;
+}
+
+static int fc_selftest_dir(const char* dir) {
+    DIR* d = opendir(dir);
+    if (d == NULL) {
+        fprintf(stderr, "family-classify: no corpus dir %s\n", dir);
+        return 2;
+    }
+    static char names[512][128];
+    static char* namep[512];
+    int nn = 0;
+    struct dirent* ent;
+    while ((ent = readdir(d)) != NULL && nn < 512) {
+        size_t nl = strlen(ent->d_name);
+        if (!fc_name_is_seed(ent->d_name, nl)) {
+            continue;
+        }
+        snprintf(names[nn], sizeof(names[nn]), "%s", ent->d_name);
+        namep[nn] = names[nn];
+        nn++;
+    }
+    closedir(d);
+    qsort(namep, (size_t)nn, sizeof(namep[0]), fc_cmp_names);
+    if (nn == 0) {
+        fprintf(stderr, "family-classify: no soup seeds in %s\n", dir);
+        return 2;
+    }
+
+    int fails = 0;
+    long seeds = 0;
+    long tamper_cases = 0;
+    long tamper_declined = 0;
+    long mutant_cases = 0;
+    long mutant_consulted = 0;
+    long mutant_declined = 0;
+    long mutant_flipped = 0;
+    static uint8_t buf[1 << 20];
+
+    for (int s = 0; s < nn; s++) {
+        char path[2048];
+        snprintf(path, sizeof(path), "%s/%s", dir, namep[s]);
+        FILE* f = fopen(path, "rb");
+        if (f == NULL) {
+            continue;
+        }
+        size_t n = fread(buf, 1, sizeof(buf), f);
+        fclose(f);
+        seeds++;
+
+        /* 1. the positive: DIFFER + classified */
+        char* ydump = NULL;
+        char* ldump = NULL;
+        yd_verdict v = yd_diff_classify((const char*)buf, n, &ydump, &ldump);
+        int cl = (v == YD_DIFFER) ? yd_family_classify(buf, n, ydump, ldump) : 0;
+        if (v != YD_DIFFER || cl != 1) {
+            fprintf(stderr, "family-classify: FAIL seed %s (verdict %s, classified %d)\n", namep[s],
+                    yd_verdict_name(v), cl);
+            if (getenv("FC_VERBOSE") != NULL) {
+                mkdir("/tmp/fc-fails", 0755);
+                char fpath[2048];
+                snprintf(fpath, sizeof(fpath), "/tmp/fc-fails/%s.seed.bin", namep[s]);
+                FILE* ff = fopen(fpath, "wb");
+                if (ff != NULL) {
+                    fwrite(buf, 1, n, ff);
+                    fclose(ff);
+                }
+                fprintf(stderr,
+                        "family-classify: seed %s ACTUAL-Y:\n%s\n"
+                        "family-classify: seed %s ACTUAL-L:\n%s\n",
+                        namep[s], ydump ? ydump : "(error)", namep[s], ldump ? ldump : "(error)");
+            }
+            fails++;
+        }
+
+        /* 2. the dump-tamper firewall: any single-byte change to either
+         * actual dump must decline */
+        if (ydump != NULL && ldump != NULL) {
+            static const char* sides[2] = {0};
+            sides[0] = ydump;
+            sides[1] = ldump;
+            for (int side = 0; side < 2; side++) {
+                size_t len = strlen(sides[side]);
+                size_t step = len / 8;
+                if (step == 0) {
+                    step = 1;
+                }
+                for (size_t pos = 0; pos < len; pos += step) {
+                    char* copy = strdup(sides[side]);
+                    if (copy == NULL) {
+                        continue;
+                    }
+                    /* op 1: flip one byte */
+                    copy[pos] = (char)(copy[pos] ^ 0x01);
+                    tamper_cases++;
+                    if (yd_family_classify(buf, n, side == 0 ? copy : ydump,
+                                           side == 0 ? ldump : copy) != 0) {
+                        fprintf(stderr, "family-classify: FAIL %s tamper-flip %s@%zu\n", namep[s],
+                                side == 0 ? "y" : "l", pos);
+                        fails++;
+                    } else {
+                        tamper_declined++;
+                    }
+                    /* op 2: delete one byte */
+                    memmove(copy + pos, copy + pos + 1, len - pos);
+                    tamper_cases++;
+                    if (yd_family_classify(buf, n, side == 0 ? copy : ydump,
+                                           side == 0 ? ldump : copy) != 0) {
+                        fprintf(stderr, "family-classify: FAIL %s tamper-del %s@%zu\n", namep[s],
+                                side == 0 ? "y" : "l", pos);
+                        fails++;
+                    } else {
+                        tamper_declined++;
+                    }
+                    /* op 3: truncate at the byte */
+                    copy[pos] = '\0';
+                    tamper_cases++;
+                    if (yd_family_classify(buf, n, side == 0 ? copy : ydump,
+                                           side == 0 ? ldump : copy) != 0) {
+                        fprintf(stderr, "family-classify: FAIL %s tamper-cut %s@%zu\n", namep[s],
+                                side == 0 ? "y" : "l", pos);
+                        fails++;
+                    } else {
+                        tamper_declined++;
+                    }
+                    free(copy);
+                }
+            }
+        }
+
+        /* 3. the law-violating input mutants */
+        uint8_t* m = malloc(n + 32);
+        if (m == NULL) {
+            free(ydump);
+            free(ldump);
+            continue;
+        }
+        for (int mc = 0; mc < 8; mc++) {
+            size_t mn = 0;
+            int applied = 1;
+            switch (mc) {
+            case 0: { /* a closer spliced before the first separator */
+                size_t sep = n;
+                for (size_t i = 1; i + 1 < n; i++) {
+                    if (buf[i] == ',') {
+                        sep = i;
+                        break;
+                    }
+                }
+                if (sep == n) {
+                    applied = 0;
+                    break;
+                }
+                memcpy(m, buf, sep);
+                m[sep] = ']';
+                memcpy(m + sep + 1, buf + sep, n - sep);
+                mn = n + 1;
+                break;
+            }
+            case 1: { /* the alias broken: the first '*' outside quotes
+                       * becomes a nesting open (an alias cannot resume
+                       * inside a nested collection; the flat-member walk
+                       * and the flow tokenizer both refuse) */
+                size_t star = fc_star_outside_quotes(buf, n);
+                if (star == n) {
+                    applied = 0;
+                    break;
+                }
+                memcpy(m, buf, n);
+                m[star] = '[';
+                mn = n;
+                break;
+            }
+            case 2: { /* the alias follower broken: '[' glued right
+                       * after the structural '*' (the name cut dies at
+                       * the flow indicator; a structural byte rides
+                       * where the family's flat alias must end) */
+                size_t star = fc_star_outside_quotes(buf, n);
+                if (star == n || star + 1 >= n) {
+                    applied = 0;
+                    break;
+                }
+                memcpy(m, buf, star + 1);
+                m[star + 1] = '[';
+                memcpy(m + star + 2, buf + star + 1, n - star - 1);
+                mn = n + 1;
+                break;
+            }
+            case 3: { /* the glue torn: a closer rides straight after the
+                       * first glued `?` ("?]" tears the member mid-run).
+                       * (The old blank-split probe — "? #" — became
+                       * LAW-GOVERNED when the classifier grew the
+                       * comment-at-key / stolen-key derivation: yeptris
+                       * fires the content-start comment, eats through
+                       * the separator, and the following content is the
+                       * stolen key (the m7-m10 probes); the engines
+                       * obey it byte-exact, so the classifier rightly
+                       * claims it. A closer inside the glued run is the
+                       * remaining violation of that site.) */
+                size_t qh = n;
+                for (size_t i = 1; i + 1 < n; i++) {
+                    if (buf[i] == '?' && buf[i + 1] == '#') {
+                        qh = i;
+                        break;
+                    }
+                }
+                if (qh == n) {
+                    applied = 0;
+                    break;
+                }
+                memcpy(m, buf, qh + 1);
+                m[qh + 1] = ']';
+                memcpy(m + qh + 2, buf + qh + 1, n - qh - 1);
+                mn = n + 1;
+                break;
+            }
+            case 4: { /* a tag spliced into the first member */
+                memcpy(m, buf, 1);
+                m[1] = '!';
+                m[2] = 't';
+                m[3] = ' ';
+                memcpy(m + 4, buf + 1, n - 1);
+                mn = n + 3;
+                break;
+            }
+            case 5: { /* an anchor spliced into the first member */
+                memcpy(m, buf, 1);
+                m[1] = '&';
+                m[2] = 'k';
+                m[3] = ' ';
+                memcpy(m + 4, buf + 1, n - 1);
+                mn = n + 3;
+                break;
+            }
+            case 6: { /* nesting spliced before the final close: a whole
+                       * empty nested sequence rides as the last member
+                       * (the flat-member walk and the flow tokenizer
+                       * both refuse nested collections) */
+                if (n < 2) {
+                    applied = 0;
+                    break;
+                }
+                memcpy(m, buf, n - 1);
+                m[n - 1] = ',';
+                m[n] = '[';
+                m[n + 1] = ']';
+                m[n + 2] = buf[n - 1];
+                mn = n + 3;
+                break;
+            }
+            case 7: { /* the root close dropped (unterminated flow): the
+                       * closer byte itself is removed, not a trailing
+                       * break (dropping a trailing "\n" would leave the
+                       * member family-shaped) */
+                if (n < 2) {
+                    applied = 0;
+                    break;
+                }
+                unsigned char close = buf[0] == '{' ? '}' : ']';
+                size_t cl = n;
+                for (size_t i = n; i-- > 1;) {
+                    if (buf[i] == close) {
+                        cl = i;
+                        break;
+                    }
+                }
+                if (cl == n) {
+                    applied = 0;
+                    break;
+                }
+                memcpy(m, buf, cl);
+                memcpy(m + cl, buf + cl + 1, n - cl - 1);
+                mn = n - 1;
+                break;
+            }
+            }
+            if (!applied) {
+                continue;
+            }
+            mutant_cases++;
+            char* my = NULL;
+            char* ml = NULL;
+            yd_verdict mv = yd_diff_classify((const char*)m, mn, &my, &ml);
+            if (mv == YD_DIFFER) {
+                mutant_consulted++;
+                if (yd_family_classify(m, mn, my, ml) != 0) {
+                    fprintf(stderr, "family-classify: FAIL %s mutant %d classified\n", namep[s],
+                            mc);
+                    if (getenv("FC_VERBOSE") != NULL) {
+                        mkdir("/tmp/fc-fails", 0755);
+                        char fpath[2048];
+                        snprintf(fpath, sizeof(fpath), "/tmp/fc-fails/%s.m%d.bin", namep[s], mc);
+                        FILE* ff = fopen(fpath, "wb");
+                        if (ff != NULL) {
+                            fwrite(m, 1, mn, ff);
+                            fclose(ff);
+                        }
+                        fprintf(stderr,
+                                "family-classify: %s mutant %d ACTUAL-Y:\n%s\n"
+                                "family-classify: %s mutant %d ACTUAL-L:\n%s\n",
+                                namep[s], mc, my ? my : "(error)", namep[s], mc,
+                                ml ? ml : "(error)");
+                    }
+                    fails++;
+                } else {
+                    mutant_declined++;
+                }
+            } else {
+                mutant_flipped++;
+            }
+            free(my);
+            free(ml);
+        }
+        free(m);
+        free(ydump);
+        free(ldump);
+    }
+
+    printf("family-classify: %ld seeds classified, %ld dump-tamper cases "
+           "declined, %ld mutants (%ld consulted: %ld declined, %ld verdict "
+           "flips), %d failures\n",
+           seeds, tamper_declined, mutant_cases, mutant_consulted, mutant_declined, mutant_flipped,
+           fails);
+    if (tamper_cases < 100) {
+        fprintf(stderr,
+                "family-classify: the tamper battery is too small "
+                "(%ld cases; the firewall needs >= 100)\n",
+                tamper_cases);
+        fails++;
+    }
+    return fails ? 1 : 0;
+}
 
 int main(int argc, char** argv) {
+    if (argc >= 3 && strcmp(argv[1], "--family-classify") == 0) {
+        return fc_selftest_dir(argv[2]);
+    }
     if (argc < 2) {
         char buf[1 << 16];
         size_t n = fread(buf, 1, sizeof(buf), stdin);

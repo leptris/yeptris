@@ -280,8 +280,9 @@ if(YEPTRIS_ENABLE_FUZZING)
 
     if(YEPTRIS_LIBYAML_ROOT)
         # differential under fuzzing: libyaml linked into the harness
-        add_executable(fuzz_diff_lf fuzz/fuzz_diff.c)
+        add_executable(fuzz_diff_lf fuzz/fuzz_diff.c fuzz/family_classify.c)
         target_link_libraries(fuzz_diff_lf PRIVATE diff_core)
+        target_include_directories(fuzz_diff_lf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fuzz)
         yeptris_set_warnings(fuzz_diff_lf)
     target_link_options(fuzz_diff_lf PRIVATE ${YEP_FUZZ_HARNESS_LINK_OPTIONS})
     
@@ -408,9 +409,10 @@ if(YEPTRIS_LIBYAML_ROOT)
     target_link_libraries(yepdiff PRIVATE diff_core)
     yeptris_set_warnings(yepdiff)
 
-    add_executable(fuzz_diff fuzz/fuzz_diff.c)
+    add_executable(fuzz_diff fuzz/fuzz_diff.c fuzz/family_classify.c)
     target_include_directories(fuzz_diff PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml ${YEPTRIS_LIBYAML_ROOT}/include)
+        ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml ${YEPTRIS_LIBYAML_ROOT}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/fuzz)
     target_link_libraries(fuzz_diff PRIVATE diff_core)
     target_compile_definitions(fuzz_diff PRIVATE YEP_FUZZ_STANDALONE)
     yeptris_set_warnings(fuzz_diff)
@@ -420,6 +422,19 @@ if(YEPTRIS_LIBYAML_ROOT)
         COMMAND fuzz_diff
                 --ledger=${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/ledger.txt
                 ${CMAKE_CURRENT_SOURCE_DIR}/port/libyaml/snapshots
+    )
+
+    # the #1310 classifier self-test: every soup corpus seed classifies
+    # (the law derivation reproduces both actual dumps byte-exact); the
+    # dump-tamper firewall (any one-byte change to either dump declines)
+    # and the law-violating input mutants (spliced closers, broken
+    # aliases, restored comments, tag/anchor/nesting splices) must all
+    # stay UNKNOWN
+    add_test(
+        NAME fuzz-diff-family-classify
+        COMMAND fuzz_diff
+                --family-classify
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse
     )
 
     # the r104 nightly's composition (anchor-charset x PS-led plain
