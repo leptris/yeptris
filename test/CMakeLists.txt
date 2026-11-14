@@ -5172,6 +5172,18 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r274.bin
     )
 
+    # the r275 nightly escape (run 43638904766): the indicator-? and
+    # colon-led key slots ride the #1310 classifier's model extension
+    # (a `?` directly followed by a flow indicator drops the `?` on
+    # both engines; a `?`+break key slot closed by a `:`+blank is the
+    # empty-key entry); the flow-qsoup- prefix joins the classifier's
+    # positive seed set
+    add_test(
+        NAME fuzz-diff-r275-qflow-colon-soup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r275.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
