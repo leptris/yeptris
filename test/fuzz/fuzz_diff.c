@@ -13490,6 +13490,83 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m41) && memcmp(data, m41, size) == 0) {
         return strcmp(ydump, y41) == 0 && strcmp(ldump, l41) == 0;
     }
+    /* shape 50: the r269 nightly member's libFuzzer minimum (run
+     * 43554293420, job 132323530554, 11 bytes) - the family's
+     * FIRST NESTED carrier: `[?{?#,*|\n}]`, the explicit-key
+     * wrapper `?{` opening a nested flow map whose first member
+     * is the glued `?#`. The wrapper half rides byte-exact on
+     * BOTH engines (every flow `?` is the KEY token; the
+     * single-pair wrapper opens around the nested map on both),
+     * so the divergence is the flat family's two laws riding at
+     * nesting depth 2: libyaml content-start comment-eats
+     * `#,*|` to the LF (the #949 law; the eat needs the LF to
+     * spare the `}]` closers) and rebinds the explicit key with
+     * an empty value (`{null: null}` - the KEY-without-node
+     * empty-scalar insertion), while yeptris keeps the glued
+     * `?#` one flat plain key (the #949 suite-pinned plain-?
+     * law) with the `*|` alias member riding the alias-charset
+     * name cut (`|` joins the yeptris name, the alias-charset
+     * family's spelling) and the empty values riding the
+     * parser's empty-scalar insertion. The #1310 classifier
+     * correctly DECLINES the shape - its models are flat-member
+     * only and its mutant firewall pins the nesting decline
+     * (conservatism law ii) - so the arm stays the second line
+     * exactly as the r269 adjudication calls it. Minimality:
+     * two independent 100s libFuzzer minimize walks converge on
+     * these 11 bytes; every smaller neighbor is both-error or
+     * arm-claimed flat, the `*|` alias member and the LF are
+     * both load-bearing (the LF carries the comment-eat
+     * terminator that leaves `}]` for libyaml). */
+    static const unsigned char m50[] = {0x5b, 0x3f, 0x7b, 0x3f, 0x23, 0x2c,
+                                        0x2a, 0x7c, 0x0a, 0x7d, 0x5d};
+    static const char y50[] = "+STR\n+SEQ\n+MAP\n+MAP\n=VAL : ?#\n=VAL : \n=ALI *|\n=VAL : "
+                              "\n-MAP\n=VAL : \n-MAP\n-SEQ\n-STR\n";
+    static const char l50[] = "+STR\n+SEQ\n+MAP\n+MAP\n=VAL : \n=VAL : \n-MAP\n=VAL : \n-MAP\n-"
+                              "SEQ\n-STR\n";
+    if (size == sizeof(m50) && memcmp(data, m50, size) == 0) {
+        return strcmp(ydump, y50) == 0 && strcmp(ldump, l50) == 0;
+    }
+    /* shape 51: the r269 nightly artifact itself (run
+     * 43554293420, 44 bytes: `[=,?=,?{?#?#|#| \t ,\` ,?\t*L:\t
+     * ,?#|#pp\n\t }\n,8]`, the auto-dictionary composition
+     * `?#?#|#|` riding the log's DE) - the FIRST post-classifier
+     * escape: the classifier declines (the nested `?{...}`
+     * wrapper is outside its flat-member scope, the documented
+     * conservatism decline ii) and the arm is the second line.
+     * The laws compose exactly as pinned since shape 1, now at
+     * nesting depth 2: member 1 `=` and member 4 `8` agree;
+     * member 2 `?=` rides the plain-? law on yeptris (ONE glued
+     * plain, the #949 suite-pinned law) while libyaml's 1.1
+     * unconditional flow KEY-token law (the qflow quirk carried
+     * since r58) opens the single-pair map around `=` with the
+     * empty value; member 3's `?{` wrapper agrees on both (KEY
+     * + nested map); INSIDE the nested map libyaml
+     * content-start comment-eats from the glued `?#` to the LF
+     * (the #949 law; the eat swallows `#?#|#| \t ,` + the
+     * backtick + ` ,?\t*L:\t ,?#|#pp` and the post-LF TAB rides
+     * the flow-blank law) and rebinds the explicit key with the
+     * empty value, while yeptris keeps four flat members - the
+     * `?#?#|#|` glued plain key (empty value), the backtick
+     * member plain (the m39-m48 backtick precedent), the
+     * `?`+TAB-split explicit key riding `*L` as the alias (the
+     * IS_ALPHA cut, the r142/r76 law; the `:` re-lexes as the
+     * VALUE token with the empty value) and the `?#|#pp` glued
+     * plain key whose LF folds to nothing at the tail (the 1.2
+     * break law: one break folds toward the closer's blank run,
+     * the trailing `\t ` trims). */
+    static const unsigned char m51[] = {
+        0x5b, 0x3d, 0x2c, 0x3f, 0x3d, 0x2c, 0x3f, 0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x7c,
+        0x20, 0x09, 0x20, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a, 0x4c, 0x3a, 0x09, 0x20, 0x2c,
+        0x3f, 0x23, 0x7c, 0x23, 0x70, 0x70, 0x0a, 0x09, 0x20, 0x7d, 0x0a, 0x2c, 0x38, 0x5d};
+    static const char y51[] =
+        "+STR\n+SEQ\n=VAL : =\n=VAL : ?=\n+MAP\n+MAP\n=VAL : ?#?#|#|\n=VAL : \n=VAL : `\n=VAL : "
+        "\n=ALI *L\n=VAL : \n=VAL : ?#|#pp\n=VAL : \n-MAP\n=VAL : \n-MAP\n=VAL : 8\n-SEQ\n-STR"
+        "\n";
+    static const char l51[] = "+STR\n+SEQ\n=VAL : =\n+MAP\n=VAL : =\n=VAL : \n-MAP\n+MAP\n+MAP\n"
+                              "=VAL : \n=VAL : \n-MAP\n=VAL : \n-MAP\n=VAL : 8\n-SEQ\n-STR\n";
+    if (size == sizeof(m51) && memcmp(data, m51, size) == 0) {
+        return strcmp(ydump, y51) == 0 && strcmp(ldump, l51) == 0;
+    }
     return 0;
 }
 
