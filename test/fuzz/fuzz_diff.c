@@ -13570,6 +13570,71 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     return 0;
 }
 
+/* The r271 block NEL/PS fold composite rides the block-NEL/LS/PS
+ * family (the nightly's round 271, crash-092c20a8875b, run
+ * 43582267420, job 132409373543, 23-byte artifact + 9-byte libFuzzer
+ * floor, main f13e6553): a folded block scalar whose post-header
+ * break is a lone CR and whose content region mixes PS and NEL
+ * breaks with indented lines. EVERY delta is the family's own
+ * documented law, so the #1310 classifier declines on DECLARED
+ * scope (block scalars are outside the flow-soup family its models
+ * lex -- family_classify.c's header, the l_fail at '|' / '>') and
+ * the family walk declines on STRUCTURE (at the NEL site the
+ * alignment bytes differ: libyaml's break ate the indent space its
+ * breaks-scan strips while yeptris's kept-NEL ride carries it, so
+ * the r208 surplus arm's coincide test cannot bind). The composing
+ * laws, per engine:
+ *   - yeptris's normalizer folds the header line's lone CR to LF
+ *     (the #638 fold law) and folds the PS at the dedent line that
+ *     follows (leading indent 0 <= the header floor ends the block
+ *     fold; the r171 family) -- the empty first content line -- so
+ *     its value leads with one escaped '\n';
+ *   - the content line rides WHOLESALE (only an LF splits it, the
+ *     r194 ride), so the mid-line PS and the NEL are 1.2 content
+ *     and ride raw (the r202/r205/r208 carriers); libyaml's
+ *     READ_LINE keeps LS/PS raw too (the r197 law) but breaks AT
+ *     the NEL (1.1 IS_BREAK -> LF) and its breaks-scan eats the
+ *     indent spaces the line carried (the r205 surplus polarity,
+ *     here reversed: yeptris keeps the space libyaml ate);
+ *   - the folded block clips ONE trailing LF on yeptris while
+ *     libyaml's breakless EOF leaves leading_break empty (the r176
+ *     clip law).
+ * A/B against the pre-arm parent 8836c545 aborts IDENTICALLY (exit
+ * 77, the same dump pair) on both shapes -- a fresh composition of
+ * documented laws, not an engine regression. The seeds join the
+ * nightly comparator-snapshot exclusion (family density: the walk's
+ * budgeted alignment cannot reach the composition, so neighbor
+ * mutations re-derive it within seconds) and stay out of the
+ * classifier's seed set (block scalars are outside its models by
+ * design). */
+static int yd_r271_block_ps_nel_fold_gray(const uint8_t* data, size_t size, const char* ydump,
+                                          const char* ldump) {
+    /* shape 1: the r271 nightly artifact itself (23 bytes:
+     * '>' SP '#<11' CR PS SP '70' PS SP SP 'm' NEL SP 't') */
+    static const unsigned char m1[] = {0x3e, 0x20, 0x23, 0x3c, 0x31, 0x31, 0x0d, 0xe2,
+                                       0x80, 0xa9, 0x20, 0x37, 0x30, 0xe2, 0x80, 0xa9,
+                                       0x20, 0x20, 0x6d, 0xc2, 0x85, 0x20, 0x74};
+    static const char y1[] = "+STR\n=VAL : \\n70\xe2\x80\xa9  m\xc2\x85 t\\n\n-STR\n";
+    static const char l1[] = "+STR\n=VAL : \xe2\x80\xa9"
+                             "70\xe2\x80\xa9 m\\nt\n-STR\n";
+    /* shape 2: the libFuzzer minimum (9 bytes: '>' CR SP '0' PS SP
+     * SP; the comment and the NEL member drop out, the PS ride and
+     * the clip tail carry the divergence alone) */
+    static const unsigned char m2[] = {0x3e, 0x0d, 0x20, 0x30, 0xe2, 0x80, 0xa9, 0x20, 0x20};
+    static const char y2[] = "+STR\n=VAL : 0\xe2\x80\xa9  \\n\n-STR\n";
+    static const char l2[] = "+STR\n=VAL : 0\xe2\x80\xa9 \n-STR\n";
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    if (size == sizeof(m1) && memcmp(data, m1, size) == 0) {
+        return strcmp(ydump, y1) == 0 && strcmp(ldump, l1) == 0;
+    }
+    if (size == sizeof(m2) && memcmp(data, m2, size) == 0) {
+        return strcmp(ydump, y2) == 0 && strcmp(ldump, l2) == 0;
+    }
+    return 0;
+}
+
 static int yd_r240_flow_qtail_clip_gray(const uint8_t* data, size_t size, const char* ydump,
                                         const char* ldump) {
     size_t i;
@@ -16532,6 +16597,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r245_flow_qsoup_gray(data, size, ydump, ldump) ||
          yd_r246_flow_qsoup2_gray(data, size, ydump, ldump) ||
          yd_r244_flow_qhash_cr_gray(data, size, ydump, ldump) ||
+         yd_r271_block_ps_nel_fold_gray(data, size, ydump, ldump) ||
          yd_r243_utf16_midstream_bom_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
