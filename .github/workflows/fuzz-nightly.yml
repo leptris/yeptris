@@ -78,7 +78,10 @@ jobs:
       # within seconds. The seeds stay under full ctest regression
       # (fuzz-diff-rNNN pins); the diff leg explores fresh space.
       - name: Comparator corpus snapshot
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete
+        # the r269 nested carrier joins the exclusion: same family
+        # density (the arm pins it; the classifier declines nesting),
+        # so the diff leg must not seed from it
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete
 
       - name: Fuzz budget
         run: |
