@@ -569,6 +569,30 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
     size_t stop;
     int sep;
     if (!split) {
+        /* the `?` directly followed by a flow indicator (the r275
+         * minimal's `?,` member): the plain cannot start there (the
+         * follower is not a plain-safe char), so both engines drop the
+         * `?` -- the INDICATOR form, key and value both empty (the
+         * probes: `{?,a}` -> (e,e)+(a,e), `{?}` -> (e,e), `{?\t}` ->
+         * (e,e), SEQ wraps the single pair). Only the comma /
+         * matching-closer forms are probed byte-exact; the
+         * wrong-closer combos are BOTH-ERROR shapes the comparator
+         * never consults. */
+        if (nxt < n && (p[nxt] == ',' || p[nxt] == (c->is_map ? '}' : ']'))) {
+            memset(&key, 0, sizeof(key));
+            memset(&val, 0, sizeof(val));
+            *term_at = nxt;
+            if (c->is_map) {
+                fc_render_val(&c->out, p, &key);
+                fc_render_val(&c->out, p, &val);
+            } else {
+                fo_str(&c->out, "+MAP\n");
+                fc_render_val(&c->out, p, &key);
+                fc_render_val(&c->out, p, &val);
+                fo_str(&c->out, "-MAP\n");
+            }
+            return 1;
+        }
         /* GLUED: the `?` is content; the plain scan starts at it. The
          * SEQ-rooted walk rides the qm colon+flow-indicator boundary
          * (the r272 `[?::]` floor's KEY-implicit cut); the MAP-rooted
@@ -692,12 +716,21 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
                p[ks] == '{') {
         return y_fail(c);
     } else {
-        if (p[ks] == ':' &&
-            (ks + 1 >= n || fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0)) {
-            return y_fail(c); /* a colon-led key node: untested */
-        }
-        if (!fc_plain_pieces(p, n, ks, n, 0, &key, &stop, &sep)) {
-            return y_fail(c);
+        if (p[ks] == ':' && ks + 1 < n && (fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0)) {
+            /* the colon-led key slot (the r275 artifact's `?`+break+`:`
+             * +blank members): the engines agree byte-exact -- the `?`
+             * drops, the key is EMPTY, and the colon-+blank is the
+             * VALUE boundary riding the common colon path below (the
+             * probes: `?\n:\t ,b` -> (e,e)+(b,e), `?\n:\tb` -> (e,b),
+             * `{a,?\n:\t }` -> (a,e)+(e,e), SEQ wraps the single
+             * pair). The colon at EOF still declines. */
+            memset(&key, 0, sizeof(key)); /* the empty key node */
+            key.colon = 1;
+            key.colon_at = ks;
+        } else {
+            if (!fc_plain_pieces(p, n, ks, n, 0, &key, &stop, &sep)) {
+                return y_fail(c);
+            }
         }
     }
     if (key.colon) {
