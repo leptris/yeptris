@@ -13400,6 +13400,42 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     if (size == sizeof(m48) && memcmp(data, m48, size) == 0) {
         return strcmp(ydump, y48) == 0 && strcmp(ldump, l48) == 0;
     }
+    /* shape 49: the r267 nightly member (run 43531063474, 31
+     * bytes) - the r259 shape-42 composition (head digit `1`,
+     * the glued `?#` member, the `?g:m?#` rebind) with the
+     * final quoted member's tail expanded by the
+     * auto-dictionary splice `-MAP` + LF + `-S` (the nightly
+     * mutation DE: "-MAP\012-S"). The documented laws compose
+     * exactly as pinned since shape 1: the glued `?#` stays
+     * flat and plain (the #949 law) while libyaml comment-eats
+     * `,"` to the CR and reads the post-CR `g"` as the
+     * empty-valued key, and `?g:m?#` rebinds identically (key
+     * `g:m?#`), while the expanded quoted tail rides the 1.2
+     * break law byte-exact on BOTH sides - the CR folds to the
+     * leading space and the LF folds to the middle space, `=VAL
+     * :  g-MAP -S` on both engines (the r251 shape-5 precedent
+     * for quoted-tail expansions whose breaks fold identically)
+     * - so the divergence stays members 2-4. Minimality: the
+     * libFuzzer greedy floor is the 5-byte `[?::]` (drifted
+     * dump shape, the r264 lesson - it exits the composition
+     * into the plain-`?` colon family, an uncarried same-law
+     * sibling flagged for the #1310 classifier), and the
+     * hand-minimum inside the composition is the 16-byte
+     * `[?#,"\rg",?g:m?#]` - the tail member is not
+     * load-bearing, the two law members carry the divergence
+     * alone. */
+    static const unsigned char m49[] = {0x5b, 0x31, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d,
+                                        0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3a, 0x6d, 0x3f,
+                                        0x23, 0x2c, 0x22, 0x0d, 0x67, 0x2d, 0x4d, 0x41,
+                                        0x50, 0x0a, 0x2d, 0x53, 0x22, 0x2c, 0x5d};
+    static const char y49[] =
+        "+STR\n+SEQ\n=VAL : 1\n=VAL : ?#\n=VAL :  g\n=VAL : ?g:m?#\n=VAL :  g-MAP -S\n-SEQ\n-STR"
+        "\n";
+    static const char l49[] = "+STR\n+SEQ\n=VAL : 1\n+MAP\n=VAL : g\"\n=VAL : \n-MAP\n+MAP\n=VAL "
+                              ": g:m?#\n=VAL : \n-MAP\n=VAL :  g-MAP -S\n-SEQ\n-STR\n";
+    if (size == sizeof(m49) && memcmp(data, m49, size) == 0) {
+        return strcmp(ydump, y49) == 0 && strcmp(ldump, l49) == 0;
+    }
     /* shape 43: the r260 nightly member (run 43380562434, 66
      * bytes) - the r256 flow-map soup with a three-byte
      * permutation (the leading `?#?#` loses one `?` to `?##`,
