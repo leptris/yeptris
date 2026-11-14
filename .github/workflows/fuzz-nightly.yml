@@ -80,8 +80,14 @@ jobs:
       - name: Comparator corpus snapshot
         # the r269 nested carrier joins the exclusion: same family
         # density (the arm pins it; the classifier declines nesting),
-        # so the diff leg must not seed from it
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete
+        # so the diff leg must not seed from it. The r271 block
+        # PS/NEL fold carrier joins too: the walk's budgeted
+        # alignment cannot reach the composition (the NEL site's
+        # alignment bytes differ -- libyaml's break ate the indent
+        # space), so neighbor mutations re-derive it; the arm pins
+        # it EXACT-BYTES and the classifier declines block scalars
+        # by declared scope.
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete
 
       - name: Fuzz budget
         run: |

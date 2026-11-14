@@ -4887,6 +4887,11 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r269.bin
     )
     add_test(
+        NAME fuzz-diff-r271-block-ps-nel-fold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ps-nel-fold-r271.bin
+    )
+    add_test(
         NAME fuzz-diff-r261-nel-fold
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-fold-r261.bin
