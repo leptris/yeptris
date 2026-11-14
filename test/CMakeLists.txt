@@ -4877,6 +4877,11 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r267.bin
     )
     add_test(
+        NAME fuzz-diff-r270-qhash-alias-soup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r270.bin
+    )
+    add_test(
         NAME fuzz-diff-r269-qhash-nest
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r269.bin

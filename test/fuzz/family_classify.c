@@ -6,9 +6,12 @@
  *
  *  - the yeptris model: flow members split at top-level commas outside
  *    quoted spans; glued-`?` members stay one flat plain (law a/d);
- *    `?`+blank/break splits the explicit key; plain folds ride the 1.2
- *    law (1 break -> space, n -> n-1 newlines, interior blanks exact,
- *    leading/trailing runs trimmed);
+ *    bare alias members ride the engine's e_alias name cut (law c —
+ *    the alias event renders the name verbatim, a ':'-blank boundary
+ *    opens the VALUE slot, a separator/closer leaves the empty
+ *    scalar); `?`+blank/break splits the explicit key; plain folds
+ *    ride the 1.2 law (1 break -> space, n -> n-1 newlines, interior
+ *    blanks exact, leading/trailing runs trimmed);
  *  - the libyaml model: the 0.2.x scanner/parser contract the corpus
  *    walks adjudicated — scan_to_next_token eats blanks/tabs and every
  *    break kind in flow and comment-eats from any `#` to the line
@@ -730,7 +733,56 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
      * start (the r258 ">\r2002:binary" members) — the libyaml walk
      * gates them where its dispatch would really fire; `&`, `*`, `!`,
      * quotes and collections stay structural gates */
-    if (ch == '*' || ch == '&' || ch == '\'' || ch == '!' || ch == '#' || ch == '[' || ch == '{') {
+    if (ch == '*') {
+        /* the bare alias member (the r270 `{?#,*<name>\n,(}` soup): the
+         * engine's e_alias name cut fires at the member start and the
+         * alias event rides the name verbatim (`=ALI *<name>`, the Y2GN
+         * interior-`:` law: the name cut stops before a ':' that a
+         * blank/break follows). Two terminations: a ':'-blank/break
+         * boundary is the VALUE token (MAP only — the value node rides
+         * y_value_node, the same gates as the plain-key path); a
+         * separator/closer after the blank/break run leaves the map
+         * value slot to the parser's empty-scalar insertion (SEQ: the
+         * alias is a bare node). Anything else — a ':' glued to a flow
+         * indicator, a SEQ alias key with a value, a non-boundary byte
+         * — declines. */
+        size_t as = i + 1;
+        size_t al = fc_alias_name(p, n, as, n);
+        if (al == 0) {
+            return y_fail(c); /* a name cut that dies at once */
+        }
+        size_t ae = as + al;
+        if (c->is_map && p[ae] == ':' &&
+            (ae + 1 >= n || fc_blank(p[ae + 1]) || fc_break_len(p, n, ae + 1) > 0)) {
+            fcnode val;
+            size_t vstop;
+            if (!y_value_node(c, ae + 1, &vstop, &val)) {
+                return 0;
+            }
+            if (vstop >= n || !fc_flow_ind(p[vstop])) {
+                return y_fail(c);
+            }
+            *term_at = vstop;
+            fo_str(&c->out, "=ALI *");
+            fo_bytes(&c->out, p + as, al);
+            fo_str(&c->out, "\n");
+            fc_render_val(&c->out, p, &val);
+            return 1;
+        }
+        size_t ve = fc_skip_blank_break(p, n, ae);
+        if (ve >= n || !fc_flow_ind(p[ve])) {
+            return y_fail(c); /* a non-boundary byte after the name */
+        }
+        *term_at = ve;
+        fo_str(&c->out, "=ALI *");
+        fo_bytes(&c->out, p + as, al);
+        fo_str(&c->out, "\n");
+        if (c->is_map) {
+            fo_str(&c->out, "=VAL : \n");
+        }
+        return 1;
+    }
+    if (ch == '&' || ch == '\'' || ch == '!' || ch == '#' || ch == '[' || ch == '{') {
         return y_fail(c); /* outside the family's flat-member shape */
     }
     if (ch == '-' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0 ||
