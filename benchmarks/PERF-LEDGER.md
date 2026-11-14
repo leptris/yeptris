@@ -3886,13 +3886,15 @@ side per round, median of 7):
 | shape | base cpu/parse | fused cpu/parse | delta (median of paired ratios) |
 |---|---|---|---|
 | wide-mapping | 17.88 ms | 17.56 ms | -1.6% (7/7 rounds negative) |
-| block-heavy | 33.51 ms | 34.17 ms | +2.8% (rounds -5.8%..+19.6%) |
+| block-heavy run 1 | 33.51 ms | 34.17 ms | +2.8% (rounds -5.8%..+19.6%; ambient load 200-430) |
+| block-heavy run 2 | 32.99 ms | 32.93 ms | -0.3% (rounds -3.4%..+4.4%; load settled) |
 
 The addressable slack (the redundant per-pair placement round-trip) is
 roughly half of dom_place's 5.2-5.5% self share; the recovery measured
--under- 2% on both shapes and the block-heavy median read NEGATIVE
-(code-layout shift from the inlined pair logic). Under the 3% cut bar:
-reverted, do not re-dig.
+-under- 2% on both shapes and block-heavy is a wash in BOTH directions
+across 14 rounds (run 1's positive median was load pollution — its
++19.6% round rode the box at load 430, the settled re-run reads flat).
+Under the 3% cut bar: reverted, do not re-dig.
 
 **The /03 residue: none unmeasured.** On the same profiles the item's
 named costs are gone or ledgered: `yep_text_line_facts_capped` does not
