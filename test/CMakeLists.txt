@@ -5152,6 +5152,16 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-fold-r261.bin
     )
 
+    # the r273 nightly escape (run 43611144511): the glued-? x tag soup
+    # rides the yd_r273_mined_soup_gray arm EXACT-BYTES; the seed's
+    # flow-qhash-nest-* prefix stays out of the classifier's positive
+    # seed set and joins the nightly comparator-snapshot exclusion
+    add_test(
+        NAME fuzz-diff-r273-mined-00
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r273-m00.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

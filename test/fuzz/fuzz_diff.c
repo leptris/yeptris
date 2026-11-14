@@ -15636,6 +15636,108 @@ static int yd_r272_mined_soup_gray(const uint8_t* data, size_t size, const char*
     return 0;
 }
 
+/* The r273 nightly escape (run 43611144511, job 132496238365, 27-byte
+ * artifact + 7-byte libFuzzer floor, main 75ee73b6): the FIRST tag-byte
+ * member past the #1310 classifier. Every delta is the family's own
+ * documented law, so the classifier declines on DECLARED scope (tags
+ * are outside the flow-soup family its models lex -- family_classify.c
+ * the l_fail at '!'; the mutant firewall's tag splice must stay
+ * declined) and the adjudication is the ARM, not a model extension and
+ * not an engine defect (zero src/ change). The composing laws, per
+ * engine:
+ *   - yeptris keeps each glued-`?` member ONE flat plain scalar (the
+ *     plain-? law, HM87/652Z): `?!st non-empty` rides content with the
+ *     mid-plain `!` inert (no member boundary precedes it; both
+ *     engines agree `a!b` is plain `a!b` -- the plain scan's only
+ *     stops are the flow indicators, a `:` boundary, and a blank-led
+ *     `#`), the blank line folding to nothing before the `,` (the 1.2
+ *     break law), and the trailing `?!`/`8` riding flat;
+ *   - libyaml's 1.1 unconditional flow KEY-token law (the qflow quirk
+ *     carried since r58) reads every `?` as the KEY token -- glued or
+ *     not -- so `?!st non-empty` opens the single-pair map with the
+ *     tag property `!st` (libyaml's tag law; the `<!st> non-empty`
+ *     dump) and the empty value, the blank line's `,` closing the
+ *     pair, and `?` + the non-specific tag `!` + the break landing the
+ *     empty key whose tag drops at the node-less boundary;
+ *   - the models cannot cover the structure CONSERVATIVELY: the
+ *     libyaml-side tag model (tag tokenizer, the `<tag> value` dump
+ *     form, the tag-drops-at-the-boundary case) would have to un-
+ *     decline the mutant firewall's own tag-splice case, so the arm
+ *     carries both members EXACT-BYTES against both dumps (the r269
+ *     shapes-50-51 precedent: arm shapes without individual seed pins
+ *     ride the arm's verification).
+ * The raw member seeds flow-qhash-nest-r273-mNN.bin (outside the
+ * classifier's positive seed set, inside the nightly comparator-
+ * snapshot exclusion, no workflow edit), pinned fuzz-diff-r273-mined-NN. */
+static int yd_r273_mined_soup_gray(const uint8_t* data, size_t size, const char* ydump,
+                                   const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+
+    /* shape 0: raw r273-nightly [glued-? x tag soup] (27 bytes) */
+    static const unsigned char m0[] = {0x5b, 0x3d, 0x2c, 0x3f, 0x21, 0x73, 0x74, 0x20, 0x6e,
+                                       0x6f, 0x6e, 0x2d, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x0a,
+                                       0x0a, 0x20, 0x2c, 0x3f, 0x21, 0x0a, 0x2c, 0x38, 0x5d};
+    static const char y0[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : =\n"
+                             "=VAL : ?!st non-empty\n"
+                             "=VAL : ?!\n"
+                             "=VAL : 8\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l0[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : =\n"
+                             "+MAP\n"
+                             "=VAL : <!st> non-empty\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "+MAP\n"
+                             "=VAL : \n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "=VAL : 8\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m0) && memcmp(data, m0, size) == 0) {
+        return strcmp(ydump, y0) == 0 && strcmp(ldump, l0) == 0;
+    }
+    /* shape 1: libFuzzer floor [?!s,?] (7 bytes) — the same-law core:
+     * the glued `?` + the named tag against the KEY/token split */
+    static const unsigned char m1[] = {0x5b, 0x3f, 0x21, 0x73, 0x2c, 0x3f, 0x5d};
+    static const char y1[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : ?!s\n"
+                             "+MAP\n"
+                             "=VAL : \n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l1[] = "+STR\n"
+                             "+SEQ\n"
+                             "+MAP\n"
+                             "=VAL : <!s> \n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "+MAP\n"
+                             "=VAL : \n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m1) && memcmp(data, m1, size) == 0) {
+        return strcmp(ydump, y1) == 0 && strcmp(ldump, l1) == 0;
+    }
+    return 0;
+}
+
 /* The r271 block NEL/PS fold composite rides the block-NEL/LS/PS
  * family (the nightly's round 271, crash-092c20a8875b, run
  * 43582267420, job 132409373543, 23-byte artifact + 9-byte libFuzzer
@@ -18708,6 +18810,10 @@ static void probe_one(const uint8_t* data, size_t size) {
                                     if (!known) {
                                         known = yd_r224_seq_question_glued_hash_cr_run_divergence(
                                             data, size, ydump, ldump);
+                                        if (!known) {
+                                            known =
+                                                yd_r273_mined_soup_gray(data, size, ydump, ldump);
+                                        }
                                     }
                                 }
                             }
