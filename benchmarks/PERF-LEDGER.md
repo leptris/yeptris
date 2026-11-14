@@ -3844,3 +3844,84 @@ cycle — vector ACROSS members, handing the state machine its next lane
 The strict walk's h2h cell stays parity-class on json-doc and
 structural-gap on json-users; recorded so nobody re-digs the micro
 seams (constant pools, esc slots, LTO flavor, PGO now all measured).
+
+## TODO.max-perf/09(b) + /03 CLOSE-OUT: the DOM build lane measured on the #378 lazy-tape architecture; the dom_place pair fusion is a wash (2026-11-15)
+
+The ryml per-line front's last two named lanes, measured fresh on
+origin/main (add48ddc, the 0.6.66 wave) — the issue-era profile
+(dom_open_node 7.8% / dom_on_block_pair 4.9% / dom_place 3.9%) predates
+the #378 lazy tape: today `yeptris_parse` builds records only, and the
+DOM materializes on first access (`yeptris_document_root` ->
+`dom_from_ytape` replay through the seven committed-op sinks). The
+referee's DOM leg never touches that phase; a tree-touching consumer
+does.
+
+**The fresh profile** (non-LTO RelWithDebInfo, Time Profiler, parse +
+materialize + free loop, sample): materialization is the consumer
+route's majority phase — wide-mapping 67% (16.8 ms route vs 5.8 ms
+tape-only parse), block-heavy 63% (30.8 ms vs 12 ms). Leaves within the
+materialization phase:
+
+| lane | wide | block |
+|---|---|---|
+| dom_open_node | 11.8% | 21.3% |
+| yep_scan_plain_safe (the plain_ok fact) | 14.7% | 20.3% |
+| yep_scan_dq_forced (the no_exotic fact) | 10.7% | 14.4% |
+| yep_core12_plain (the resolver) | 9.0% | 9.8% |
+| dom_place | 5.2% | 8.7% |
+| dom_on_block_pair self | 5.3% | 5.5% |
+| dom_set_value self | 5.3% | 6.8% |
+
+**The 09(b) fusion (dom_place_pair), implemented and measured WASH,
+reverted.** One `dom_place_pair(d, k, v)` replacing `dom_on_block_pair`'s
+two `dom_place` calls — frame state (oom/depth/stack/top kind/pending)
+loaded once, both links off one hot parent line, the odd-pending and
+depth==0 shapes mirrored exactly; DOM FNV differentials identical across
+the ten bench corpora (full-tree walk: kinds/values/styles/tags/anchors/
+alias targets/child order/doc counts). Matched interleaved A/B
+(origin/main vs origin/main + patch, Release+LTO, order-alternating,
+utility QoS, per-parse CPU time via getrusage, 60 parses ~1 s CPU per
+side per round, median of 7):
+
+| shape | base cpu/parse | fused cpu/parse | delta (median of paired ratios) |
+|---|---|---|---|
+| wide-mapping | 17.88 ms | 17.56 ms | -1.6% (7/7 rounds negative) |
+| block-heavy | 33.51 ms | 34.17 ms | +2.8% (rounds -5.8%..+19.6%) |
+
+The addressable slack (the redundant per-pair placement round-trip) is
+roughly half of dom_place's 5.2-5.5% self share; the recovery measured
+-under- 2% on both shapes and the block-heavy median read NEGATIVE
+(code-layout shift from the inlined pair logic). Under the 3% cut bar:
+reverted, do not re-dig.
+
+**The /03 residue: none unmeasured.** On the same profiles the item's
+named costs are gone or ledgered: `yep_text_line_facts_capped` does not
+appear as a distinct lane (folded into yt_flat_run/ytap_fused_run
+inlining), `yep_neon_stopset_find` reads 2.3% of the wide tape parse and
+~0.2% of the DOM route (the value-side stop shipped in 0.6.63; the SWAR
+tiny path measured dead, ledgered 2026-09-27). Nothing left to carve.
+
+**Where the DOM route's real weight sits now** (for whoever reopens
+this lane): the emit-fact walks are the top addressable block —
+plain_safe + dq_forced = 25.4% (wide) / 34.7% (block) of the
+consumer route, two separate byte-class scans per value that could
+fuse into one pass (a #352-family cut, not a 09 lane); dom_open_node's
+11.8-21.3% is the 48 B template copy + grow check itself; core12's
+walk is the SSOT. None of these is a one-call fusion; each is a
+design change, priced accordingly.
+
+**Standing on the affected shapes** (origin/main, quick interleaved
+h2h vs rapidyaml, dev M1 Max under load 200+): wide-mapping **10.53x**,
+block-heavy **2.56x**, anchor-heavy 1.12x, scalar-heavy 3.16x,
+deep-nesting 3.65x, flow-single 3.61x, json-doc 5.32x, json-users 8.50x
+— every ryml lane at-or-past parity except flow-json (0.74x, its own
+lane). Caveat carried: the 0.6.66 engine.c (the #1329 one-memo fusion)
+has the OPEN #1362 bug-1 DOM-misbuild regression against it — the
+standing reads are on that engine.c; the fusion's A/B and this front's
+cuts are builder-side (dom.c) and unaffected, but the wave's numbers
+must be re-refereed after #1362 lands.
+
+Gates for the (reverted) attempt: the differential stayed green
+throughout (FNV differentials above); nothing landed, so no ctest
+delta exists — the tree is byte-identical to origin/main after the
+revert.
