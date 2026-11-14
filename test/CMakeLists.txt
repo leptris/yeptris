@@ -4892,6 +4892,256 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ps-nel-fold-r271.bin
     )
     add_test(
+        NAME fuzz-diff-r272-mined-00
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f00.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-01
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f01.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-02
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f02.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-03
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f03.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-04
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f04.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-05
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f05.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-06
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f06.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-07
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f07.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-08
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f08.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-09
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f09.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-10
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f10.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-11
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f11.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-12
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f12.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-13
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f13.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-14
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f14.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-15
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f15.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-16
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f16.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-17
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f17.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-18
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f18.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-19
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f19.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-20
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f20.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-21
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f21.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-22
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f22.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-23
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f23.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-24
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f24.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-25
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f25.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-26
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f26.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-27
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f27.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-28
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f28.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-29
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f29.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-30
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-f30.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-31
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m31.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-32
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m32.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-33
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m33.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-34
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m34.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-35
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m35.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-36
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m36.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-37
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m37.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-38
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m38.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-39
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m39.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-40
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m40.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-41
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m41.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-42
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m42.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-43
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m43.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-44
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m44.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-45
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-m45.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-mined-46
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r272-b46.bin
+    )
+    add_test(
+        NAME fuzz-diff-r272-classified
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-floor.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-floor2.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-m00.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-m01.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-m02.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-m03.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-m04.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-m05.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-m06.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-cr-r272-m07.bin
+
+    )
+    add_test(
         NAME fuzz-diff-r261-nel-fold
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/nel-fold-r261.bin

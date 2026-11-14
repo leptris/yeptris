@@ -231,7 +231,7 @@ typedef struct {
  * stop position and whether it is a separator/close. A blank run that
  * leads into `#` is a COMMENT on both engines — the walk refuses it
  * (the family's `#` only rides glued to the `?`-led run, law a). */
-static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, size_t* piece_at,
+static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, int qm, size_t* piece_at,
                     size_t* piece_len, size_t* stop, int* stop_sep) {
     size_t k = q;
     size_t blank_n = 0;
@@ -252,8 +252,14 @@ static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, size_t* pi
                 break; /* the VALUE boundary */
             }
             if (fc_flow_ind(nx)) {
-                return 0; /* ':' + flow indicator: libyaml's "unexpected
-                           * ':'" scanner error — outside the family */
+                if (!qm) {
+                    return 0; /* ':' + flow indicator: libyaml's "unexpected
+                               * ':'" scanner error — outside the family */
+                }
+                /* the glued-`?` member (the r272 floor): the engine's
+                 * KEY-implicit walk treats the colon + closer as the
+                 * VALUE boundary, not a scanner error */
+                break;
             }
         }
         if (fc_flow_ind(c)) {
@@ -285,7 +291,7 @@ static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, size_t* pi
 
 /* The full plain-node walk: pieces separated by break runs. Returns 0
  * on any gate (comment lead-in, ':' + flow indicator, budget). */
-static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, fcnode* node,
+static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int qm, fcnode* node,
                            size_t* stop_at, int* stop_sep) {
     memset(node, 0, sizeof(*node));
     size_t pos = i;
@@ -320,7 +326,7 @@ static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, fcn
         }
         size_t pat, plen, stop;
         int sep;
-        if (!fc_piece(p, n, q, end, &pat, &plen, &stop, &sep)) {
+        if (!fc_piece(p, n, q, end, qm, &pat, &plen, &stop, &sep)) {
             return 0;
         }
         if (plen > 0) {
@@ -333,7 +339,8 @@ static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, fcn
             node->n++;
         }
         if (stop < end && p[stop] == ':' &&
-            (stop + 1 >= end || fc_blank(p[stop + 1]) || fc_break_len(p, n, stop + 1) > 0)) {
+            (stop + 1 >= end || fc_blank(p[stop + 1]) || fc_break_len(p, n, stop + 1) > 0 ||
+             (qm && stop + 1 < end && fc_flow_ind(p[stop + 1])))) {
             node->colon = 1;
             node->colon_at = stop;
             *stop_at = stop;
@@ -534,7 +541,7 @@ static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
         return y_fail(c);
     }
     int sep;
-    if (!fc_plain_pieces(p, c->n, q, c->n, val, stop, &sep)) {
+    if (!fc_plain_pieces(p, c->n, q, c->n, 0, val, stop, &sep)) {
         return y_fail(c);
     }
     return 1;
@@ -554,14 +561,35 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
     size_t stop;
     int sep;
     if (!split) {
-        /* GLUED: the `?` is content; the plain scan starts at it */
-        if (!fc_plain_pieces(p, n, i, n, &key, &stop, &sep)) {
+        /* GLUED: the `?` is content; the plain scan starts at it. The
+         * SEQ-rooted walk rides the qm colon+flow-indicator boundary
+         * (the r272 `[?::]` floor's KEY-implicit cut); the MAP-rooted
+         * walk keeps the plain law. */
+        if (!fc_plain_pieces(p, n, i, n, !c->is_map, &key, &stop, &sep)) {
             return y_fail(c);
         }
         if (key.colon) {
             if (!c->is_map) {
-                return y_fail(c); /* a glued SEQ entry never splits
-                                   * key/value (untested shape) */
+                /* the SEQ single-pair wrapper (the r272-mined `[?::]`
+                 * floor): the engine opens the KEY-implicit map for the
+                 * glued-`?` member and cuts key/value at the member's
+                 * terminating colon (the piece walk rides interior
+                 * colons and stops at the one a blank/break/member-end
+                 * follows), the value slot empty when the colon sits at
+                 * the member end. Anything but a flow-indicator
+                 * terminator after the value scan declines. */
+                if (!y_value_node(c, key.colon_at + 1, &stop, &val)) {
+                    return 0;
+                }
+                if (stop >= n || !fc_flow_ind(p[stop])) {
+                    return y_fail(c);
+                }
+                *term_at = stop;
+                fo_str(&c->out, "+MAP\n");
+                fc_render_val(&c->out, p, &key);
+                fc_render_val(&c->out, p, &val);
+                fo_str(&c->out, "-MAP\n");
+                return 1;
             }
             if (!y_value_node(c, key.colon_at + 1, &stop, &val)) {
                 return 0;
@@ -649,7 +677,7 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             (ks + 1 >= n || fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0)) {
             return y_fail(c); /* a colon-led stolen key: untested */
         }
-        if (!fc_plain_pieces(p, n, ks, n, &key, &stop, &sep)) {
+        if (!fc_plain_pieces(p, n, ks, n, 0, &key, &stop, &sep)) {
             return y_fail(c);
         }
     } else if (p[ks] == '"' || p[ks] == '\'' || p[ks] == '&' || p[ks] == '!' || p[ks] == '[' ||
@@ -660,7 +688,7 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             (ks + 1 >= n || fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0)) {
             return y_fail(c); /* a colon-led key node: untested */
         }
-        if (!fc_plain_pieces(p, n, ks, n, &key, &stop, &sep)) {
+        if (!fc_plain_pieces(p, n, ks, n, 0, &key, &stop, &sep)) {
             return y_fail(c);
         }
     }
@@ -699,7 +727,13 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
     c->pos_trace = i;
     unsigned char ch = p[i];
     if (getenv("YD_FC_TRACE") != NULL) {
-        fprintf(stderr, "member at %zu (%c): %.24s\n", (size_t)i, ch, (const char*)p + i);
+        /* bounded by the remaining bytes: a fixed %.24s precision reads
+         * past the input buffer when the member sits near the end */
+        size_t left = n - i;
+        if (left > 24) {
+            left = 24;
+        }
+        fprintf(stderr, "member at %zu (%c): %.*s\n", (size_t)i, ch, (int)left, (const char*)p + i);
     }
     if (ch == '?') {
         return y_question_member(c, i, term_at);
@@ -796,7 +830,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
     memset(&val, 0, sizeof(val));
     size_t stop;
     int sep;
-    if (!fc_plain_pieces(p, n, i, n, &key, &stop, &sep)) {
+    if (!fc_plain_pieces(p, n, i, n, 0, &key, &stop, &sep)) {
         return y_fail(c);
     }
     if (key.colon) {

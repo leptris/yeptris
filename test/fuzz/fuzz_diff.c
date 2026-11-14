@@ -13569,6 +13569,2027 @@ static int yd_r244_flow_qhash_cr_gray(const uint8_t* data, size_t size, const ch
     }
     return 0;
 }
+/* the r272 mined-soup members (local mining over the parse seeds, 11
+ * fork-mode runs, libFuzzer-minimized): every shape the four-branch
+ * adjudication kept a law-resolvable decline -- the documented laws (the
+ * #949 comment-eat, the break folds, the plain-? law, the fold-colon, the
+ * alias cut, the BOM rides) inside composites the #1310 classifier's
+ * models cannot cover (explicit-key wrappers with anchor/alias keys,
+ * quoted-CR members, UTF-16 BOM runs, LS/PS folds, soup density), so the
+ * arm carries each member EXACT-BYTES against both dumps. Oversized-dump
+ * floors ride input-bytes-only (the r212 precedent: documented by input,
+ * the dumps held in the campaign record). Floors are seeded
+ * flow-qhash-nest-r272-fNN.bin, raw members flow-qhash-nest-r272-mNN.bin,
+ * input-only members flow-qhash-nest-r272-bNN.bin (outside the
+ * classifier's positive seed set, inside the nightly comparator-snapshot
+ * exclusion), pinned fuzz-diff-r272-mined-NN. */
+static int yd_r272_mined_soup_gray(const uint8_t* data, size_t size, const char* ydump,
+                                   const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+
+    /* shape 0: floor 1699bffe [anchor] (8 bytes) */
+    static const unsigned char m0[] = {0x5b, 0x3f, 0x26, 0x62, 0x2c, 0x26, 0x6d, 0x5d};
+    static const char y0[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : ?&b\n"
+                             "=VAL : &m \n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l0[] = "+STR\n"
+                             "+SEQ\n"
+                             "+MAP\n"
+                             "=VAL : &b \n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "=VAL : &m \n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m0) && memcmp(data, m0, size) == 0) {
+        return strcmp(ydump, y0) == 0 && strcmp(ldump, l0) == 0;
+    }
+    /* shape 1: floor 1a763df2 [PS CR anchor] (96 bytes) */
+    static const unsigned char m1[] = {
+        0x5b, 0x31, 0x31, 0x20, 0x2c, 0x0d, 0x0d, 0xe2, 0x80, 0xa9, 0x20, 0x35, 0x30, 0x65,
+        0x31, 0x37, 0x2e, 0x74, 0x61, 0x67, 0x0d, 0x20, 0x2c, 0x3f, 0x61, 0x72, 0x79, 0x0d,
+        0x0d, 0x20, 0x2c, 0x3f, 0x74, 0x23, 0x23, 0x31, 0x2e, 0x30, 0x65, 0x35, 0x2c, 0x3f,
+        0x23, 0x23, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x2c, 0x3f, 0x0d, 0x2f, 0x0a, 0x0d,
+        0x0d, 0xe2, 0x80, 0xa9, 0x20, 0x35, 0x0d, 0x31, 0x2e, 0x74, 0x61, 0x67, 0x0d, 0x20,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x2c, 0x3f, 0x0d, 0x23, 0x23, 0x23, 0xe2, 0x80, 0xa9,
+        0x20, 0x35, 0x31, 0x3a, 0x30, 0x32, 0x3a, 0x62, 0x26, 0x6d, 0x2c, 0x5d,
+    };
+    static const char y1[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : 11\n"
+                             "=VAL : 50e17.tag\n"
+                             "=VAL : ?ary\n"
+                             "=VAL : ?t##1.0e5\n"
+                             "=VAL : ?##\n"
+                             "=VAL : ?##|\n"
+                             "+MAP\n"
+                             "=VAL : /\\n\\n\\n5 1.tag\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "=VAL : ?##|\n"
+                             "+MAP\n"
+                             "=VAL : 51:02:b&m\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l1[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : 11\n"
+                             "=VAL : 50e17.tag\n"
+                             "+MAP\n"
+                             "=VAL : ary\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "+MAP\n"
+                             "=VAL : t##1.0e5\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "+MAP\n"
+                             "=VAL : /\\n\\n"
+                             "\xe2"
+                             "\x80"
+                             "\xa9"
+                             "5 1.tag\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "+MAP\n"
+                             "=VAL : 51:02:b&m\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m1) && memcmp(data, m1, size) == 0) {
+        return strcmp(ydump, y1) == 0 && strcmp(ldump, l1) == 0;
+    }
+    /* shape 2: floor 1ff543c4 [CR] (14 bytes) */
+    static const unsigned char m2[] = {0x5b, 0x3f, 0x23, 0x2c, 0x3a, 0x0d, 0x67,
+                                       0x2c, 0x3f, 0x67, 0x3a, 0x22, 0x2c, 0x5d};
+    static const char y2[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : ?#\n"
+                             "+MAP\n"
+                             "=VAL : \n"
+                             "=VAL : g\n"
+                             "=VAL : ?g:\"\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l2[] = "+STR\n"
+                             "+SEQ\n"
+                             "+MAP\n"
+                             "=VAL : g\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "+MAP\n"
+                             "=VAL : g:\"\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m2) && memcmp(data, m2, size) == 0) {
+        return strcmp(ydump, y2) == 0 && strcmp(ldump, l2) == 0;
+    }
+    /* shape 3: floor 205bfff4 [PS CR] (29 bytes) */
+    static const unsigned char m3[] = {0x5b, 0x0d, 0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3a, 0x23, 0x2c,
+                                       0x22, 0x23, 0x23, 0x21, 0x23, 0x25, 0x23, 0xe2, 0x80, 0xa9,
+                                       0x20, 0x35, 0x31, 0x23, 0x23, 0x41, 0x22, 0x2c, 0x5d};
+    static const char y3[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : g\"\n"
+                             "=VAL : ?g:#\n"
+                             "=VAL : ##!#%# 51##A\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l3[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : g\"\n"
+                             "+MAP\n"
+                             "=VAL : g:#\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "=VAL : ##!#%#"
+                             "\xe2"
+                             "\x80"
+                             "\xa9"
+                             "51##A\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m3) && memcmp(data, m3, size) == 0) {
+        return strcmp(ydump, y3) == 0 && strcmp(ldump, l3) == 0;
+    }
+    /* shape 4: floor 3118dc6a [PS CR anchor] (97 bytes) */
+    static const unsigned char m4[] = {
+        0x5b, 0x31, 0x31, 0x20, 0x3f, 0x23, 0x23, 0x7c, 0x2c, 0x3f, 0x0d, 0x32, 0x31, 0x31,
+        0x31, 0x37, 0x2e, 0x74, 0x61, 0x67, 0x0d, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x20, 0x2c,
+        0x3f, 0x23, 0x23, 0x7c, 0x2c, 0x3f, 0x0d, 0x2f, 0x0a, 0x0d, 0x0d, 0xe2, 0x80, 0xa9,
+        0x20, 0x30, 0x32, 0x72, 0x79, 0x0d, 0x0d, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x0d, 0x0a,
+        0x26, 0x6d, 0x2c, 0x31, 0x2e, 0x30, 0x65, 0x35, 0x2e, 0x74, 0x2c, 0x20, 0x23, 0x23,
+        0x7c, 0x2c, 0x3f, 0x0d, 0x72, 0x79, 0x0d, 0x0d, 0x3f, 0x69, 0x6e, 0x61, 0x72, 0x79,
+        0x0d, 0x0d, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x0d, 0x0a, 0x26, 0x6d, 0x2c, 0x5d};
+    static const char y4[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : 11 ?##|\n"
+                             "+MAP\n"
+                             "=VAL : 21117.tag\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "=VAL : ?##\n"
+                             "=VAL : ?##|\n"
+                             "+MAP\n"
+                             "=VAL : /\\n\\n\\n02ry\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "=VAL : ?## &m\n"
+                             "=VAL : 1.0e5.t\n"
+                             "=VAL : ry\\n?inary\n"
+                             "=VAL : ?## &m\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l4[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : 11 ?##|\n"
+                             "+MAP\n"
+                             "=VAL : 21117.tag\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "+MAP\n"
+                             "=VAL : /\\n\\n"
+                             "\xe2"
+                             "\x80"
+                             "\xa9"
+                             "02ry\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "+MAP\n"
+                             "=VAL : &m \n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "=VAL : 1.0e5.t\n"
+                             "=VAL : ry\\n?inary\n"
+                             "+MAP\n"
+                             "=VAL : &m \n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m4) && memcmp(data, m4, size) == 0) {
+        return strcmp(ydump, y4) == 0 && strcmp(ldump, l4) == 0;
+    }
+    /* shape 5: floor 3641e8e1 [LS alias CR] (41 bytes) */
+    static const unsigned char m5[] = {
+        0x5b, 0x0a, 0x3f, 0x2b, 0x44, 0xe2, 0x80, 0xa8, 0x20, 0x31, 0x37, 0x2c, 0x65, 0x2c,
+        0x3f, 0x23, 0x23, 0x7c, 0x2c, 0x3f, 0x0d, 0x23, 0x23, 0x7c, 0x67, 0x3f, 0x0d, 0x61,
+        0x73, 0x79, 0x67, 0x3d, 0x3a, 0x6d, 0x2a, 0x61, 0x70, 0x6f, 0x61, 0x22, 0x5d};
+    static const char y5[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : ?+D 17\n"
+                             "=VAL : e\n"
+                             "=VAL : ?##|\n"
+                             "+MAP\n"
+                             "=VAL : asyg=:m*apoa\"\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l5[] = "+STR\n"
+                             "+SEQ\n"
+                             "+MAP\n"
+                             "=VAL : +D"
+                             "\xe2"
+                             "\x80"
+                             "\xa8"
+                             "17\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "=VAL : e\n"
+                             "+MAP\n"
+                             "=VAL : asyg=:m*apoa\"\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m5) && memcmp(data, m5, size) == 0) {
+        return strcmp(ydump, y5) == 0 && strcmp(ldump, l5) == 0;
+    }
+    /* shape 6: floor 401f421d [anchor] (8 bytes) */
+    static const unsigned char m6[] = {0x5b, 0x3f, 0x26, 0x6d, 0x2c, 0x26, 0x6d, 0x5d};
+    static const char y6[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : ?&m\n"
+                             "=VAL : &m \n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l6[] = "+STR\n"
+                             "+SEQ\n"
+                             "+MAP\n"
+                             "=VAL : &m \n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "=VAL : &m \n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m6) && memcmp(data, m6, size) == 0) {
+        return strcmp(ydump, y6) == 0 && strcmp(ldump, l6) == 0;
+    }
+    /* shape 7: floor 428409e2 [PS] (11 bytes) */
+    static const unsigned char m7[] = {0x5b, 0x3f, 0x2b, 0x09, 0x3a, 0x28,
+                                       0xe2, 0x80, 0xa9, 0x39, 0x5d};
+    static const char y7[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : ?+\\t:( 9\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l7[] = "+STR\n"
+                             "+SEQ\n"
+                             "+MAP\n"
+                             "=VAL : +\\t:("
+                             "\xe2"
+                             "\x80"
+                             "\xa9"
+                             "9\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m7) && memcmp(data, m7, size) == 0) {
+        return strcmp(ydump, y7) == 0 && strcmp(ldump, l7) == 0;
+    }
+    /* shape 8: floor 4491dcfc [map-root alias] (12 bytes) */
+    static const unsigned char m8[] = {
+        0x7b, 0x3f, 0x23, 0x2c, 0x2a, 0x7c, 0x0a, 0x2c, 0x7e, 0x09, 0x2b, 0x7d,
+    };
+    static const char y8[] = "+STR\n"
+                             "+MAP\n"
+                             "=VAL : ?#\n"
+                             "=VAL : \n"
+                             "=ALI *|\n"
+                             "=VAL : \n"
+                             "=VAL : ~\\t+\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-STR\n"
+                             "";
+    static const char l8[] = "+STR\n"
+                             "+MAP\n"
+                             "=VAL : \n"
+                             "=VAL : \n"
+                             "=VAL : ~\\t+\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m8) && memcmp(data, m8, size) == 0) {
+        return strcmp(ydump, y8) == 0 && strcmp(ldump, l8) == 0;
+    }
+    /* shape 9: floor 500894e5 [LS] (11 bytes) */
+    static const unsigned char m9[] = {0x5b, 0x3f, 0x44, 0xe2, 0x80, 0xa8,
+                                       0x3a, 0x6d, 0x09, 0x22, 0x5d};
+    static const char y9[] = "+STR\n"
+                             "+SEQ\n"
+                             "=VAL : ?D :m\\t\"\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    static const char l9[] = "+STR\n"
+                             "+SEQ\n"
+                             "+MAP\n"
+                             "=VAL : D"
+                             "\xe2"
+                             "\x80"
+                             "\xa8"
+                             ":m\\t\"\n"
+                             "=VAL : \n"
+                             "-MAP\n"
+                             "-SEQ\n"
+                             "-STR\n"
+                             "";
+    if (size == sizeof(m9) && memcmp(data, m9, size) == 0) {
+        return strcmp(ydump, y9) == 0 && strcmp(ldump, l9) == 0;
+    }
+    /* shape 10: floor 521e60da [utf16-bom NUL] (14 bytes) */
+    static const unsigned char m10[] = {0xfe, 0xff, 0xfe, 0xff, 0x00, 0x85, 0xfe,
+                                        0xff, 0x3a, 0x3a, 0x20, 0x29, 0x2c, 0x32};
+    static const char y10[] = "+STR\n"
+                              "=VAL : "
+                              "\xef"
+                              "\xbb"
+                              "\xbf"
+                              " "
+                              "\xef"
+                              "\xbb"
+                              "\xbf"
+                              "\xe3"
+                              "\xa8"
+                              "\xba"
+                              " "
+                              "\xe2"
+                              "\xb0"
+                              "\xb2\n"
+                              "-STR\n"
+                              "";
+    static const char l10[] = "+STR\n"
+                              "=VAL : "
+                              "\xe3"
+                              "\xa8"
+                              "\xba"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "\xe2"
+                              "\xb0"
+                              "\xb2\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m10) && memcmp(data, m10, size) == 0) {
+        return strcmp(ydump, y10) == 0 && strcmp(ldump, l10) == 0;
+    }
+    /* shape 11: floor 7aab163f [map-root alias] (12 bytes) */
+    static const unsigned char m11[] = {
+        0x7b, 0x3f, 0x23, 0x2c, 0x3f, 0x09, 0x2a, 0x2b, 0x0a, 0x2c, 0x3c, 0x7d,
+    };
+    static const char y11[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : ?#\n"
+                              "=VAL : \n"
+                              "=ALI *+\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l11[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m11) && memcmp(data, m11, size) == 0) {
+        return strcmp(ydump, y11) == 0 && strcmp(ldump, l11) == 0;
+    }
+    /* shape 12: floor 7ba3bf20 [PS CR] (11 bytes) */
+    static const unsigned char m12[] = {0x5b, 0x3f, 0x2f, 0xe2, 0x80, 0xa9,
+                                        0x31, 0x09, 0x23, 0x0d, 0x5d};
+    static const char y12[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?/ 1\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l12[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : /"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "1\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m12) && memcmp(data, m12, size) == 0) {
+        return strcmp(ydump, y12) == 0 && strcmp(ldump, l12) == 0;
+    }
+    /* shape 13: floor 7d6f3677 [utf16-bom NUL] (8 bytes) */
+    static const unsigned char m13[] = {0xfe, 0xff, 0x00, 0x85, 0xfe, 0xff, 0x00, 0x2d};
+    static const char y13[] = "+STR\n"
+                              "=VAL : "
+                              "\xef"
+                              "\xbb"
+                              "\xbf"
+                              "-\n"
+                              "-STR\n"
+                              "";
+    static const char l13[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : \n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m13) && memcmp(data, m13, size) == 0) {
+        return strcmp(ydump, y13) == 0 && strcmp(ldump, l13) == 0;
+    }
+    /* shape 14: floor 846db5dd [CR] (24 bytes) */
+    static const unsigned char m14[] = {
+        0x5b, 0x0d, 0x23, 0x2c, 0x3f, 0x23, 0x0d, 0x3f, 0x23, 0x2c, 0x3f, 0x6d,
+        0x2c, 0x67, 0x2c, 0x6d, 0x0a, 0x09, 0x67, 0x2c, 0x30, 0x3a, 0x0d, 0x5d,
+    };
+    static const char y14[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?#\n"
+                              "=VAL : ?m\n"
+                              "=VAL : g\n"
+                              "=VAL : m g\n"
+                              "+MAP\n"
+                              "=VAL : 0\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l14[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : g\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : 0\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m14) && memcmp(data, m14, size) == 0) {
+        return strcmp(ydump, y14) == 0 && strcmp(ldump, l14) == 0;
+    }
+    /* shape 15: floor 8bae75db [PS CR] (14 bytes) */
+    static const unsigned char m15[] = {0x5b, 0x2f, 0xe2, 0x80, 0xa9, 0x35, 0x0d,
+                                        0x23, 0x0a, 0x2c, 0x3f, 0x61, 0x22, 0x5d};
+    static const char y15[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : / 5\n"
+                              "=VAL : ?a\"\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l15[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : /"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "5\n"
+                              "+MAP\n"
+                              "=VAL : a\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m15) && memcmp(data, m15, size) == 0) {
+        return strcmp(ydump, y15) == 0 && strcmp(ldump, l15) == 0;
+    }
+    /* shape 16: floor 95ffa922 [map-root alias] (10 bytes) */
+    static const unsigned char m16[] = {0x7b, 0x3f, 0x23, 0x2c, 0x2a, 0x3a, 0x0a, 0x2c, 0x3c, 0x7d};
+    static const char y16[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : ?#\n"
+                              "=VAL : \n"
+                              "=ALI *:\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l16[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m16) && memcmp(data, m16, size) == 0) {
+        return strcmp(ydump, y16) == 0 && strcmp(ldump, l16) == 0;
+    }
+    /* shape 17: floor 964c4a79 [PS map-root CR anchor] (194 bytes) */
+    static const unsigned char m17[] = {
+        0x7b, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20,
+        0x2c, 0x3f, 0x49, 0x20, 0x2c, 0x3f, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x0d, 0x6f, 0x72, 0x67,
+        0x2c, 0x32, 0x09, 0x20, 0x2c, 0x2e, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c,
+        0x3f, 0x72, 0x67, 0x2c, 0x67, 0x23, 0x7c, 0x2c, 0x3f, 0x0d, 0x32, 0x0d, 0x0d, 0x2c, 0x6d,
+        0x2c, 0x31, 0x2e, 0x2c, 0x3f, 0x31, 0x3a, 0x0d, 0x0d, 0x37, 0x2c, 0x72, 0x79, 0x67, 0x3a,
+        0x0d, 0x0d, 0x31, 0x2e, 0x30, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x2c, 0x3f, 0x0d, 0x2f, 0x0a,
+        0xe2, 0x80, 0xa9, 0x20, 0x30, 0x3a, 0x0d, 0x74, 0x61, 0x67, 0x0d, 0x20, 0x2c, 0x3f, 0x62,
+        0x2c, 0x3f, 0x23, 0x23, 0x0d, 0x0a, 0x26, 0x6d, 0x2c, 0x31, 0x3f, 0x23, 0x23, 0x7c, 0x2c,
+        0x3f, 0x0d, 0x32, 0x7c, 0x2c, 0x3f, 0x0d, 0x0a, 0x74, 0x0d, 0x20, 0x2c, 0x3f, 0x23, 0x23,
+        0x35, 0x31, 0x3a, 0x0d, 0x31, 0x23, 0x23, 0x23, 0x7c, 0x2b, 0x09, 0x3a, 0x79, 0x6f, 0x72,
+        0x67, 0x2c, 0x32, 0x30, 0x2c, 0x3f, 0x32, 0x79, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x2c,
+        0x3f, 0x32, 0x23, 0x3d, 0x2c, 0x20, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x2c, 0x3f,
+        0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x2c, 0x3f, 0x32, 0x23, 0x2c, 0x20, 0x7d};
+    static const char y17[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : ?ml?\n"
+                              "=VAL : \n"
+                              "=VAL : ?I\n"
+                              "=VAL : \n"
+                              "=VAL : ?I\n"
+                              "=VAL : \n"
+                              "=VAL : ?#=\n"
+                              "=VAL : \n"
+                              "=VAL : ?# org\n"
+                              "=VAL : \n"
+                              "=VAL : 2\n"
+                              "=VAL : \n"
+                              "=VAL : .rg\n"
+                              "=VAL : \n"
+                              "=VAL : 200#=\n"
+                              "=VAL : \n"
+                              "=VAL : ?rg\n"
+                              "=VAL : \n"
+                              "=VAL : g#|\n"
+                              "=VAL : \n"
+                              "=VAL : 2\n"
+                              "=VAL : \n"
+                              "=VAL : m\n"
+                              "=VAL : \n"
+                              "=VAL : 1.\n"
+                              "=VAL : \n"
+                              "=VAL : ?1\n"
+                              "=VAL : 7\n"
+                              "=VAL : ryg\n"
+                              "=VAL : 1.0\n"
+                              "=VAL : ?#|\n"
+                              "=VAL : \n"
+                              "=VAL : /\\n0\n"
+                              "=VAL : tag\n"
+                              "=VAL : ?b\n"
+                              "=VAL : \n"
+                              "=VAL : ?## &m\n"
+                              "=VAL : \n"
+                              "=VAL : 1?##|\n"
+                              "=VAL : \n"
+                              "=VAL : 2|\n"
+                              "=VAL : \n"
+                              "=VAL : t\n"
+                              "=VAL : \n"
+                              "=VAL : ?##51\n"
+                              "=VAL : 1###|+\\t:yorg\n"
+                              "=VAL : 20\n"
+                              "=VAL : \n"
+                              "=VAL : ?2yorg\n"
+                              "=VAL : \n"
+                              "=VAL : 20\n"
+                              "=VAL : \n"
+                              "=VAL : ?2#=\n"
+                              "=VAL : \n"
+                              "=VAL : .org\n"
+                              "=VAL : \n"
+                              "=VAL : 20\n"
+                              "=VAL : \n"
+                              "=VAL : ?.org\n"
+                              "=VAL : \n"
+                              "=VAL : 20\n"
+                              "=VAL : \n"
+                              "=VAL : ?2#\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l17[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : ml?\n"
+                              "=VAL : \n"
+                              "=VAL : I\n"
+                              "=VAL : \n"
+                              "=VAL : I\n"
+                              "=VAL : \n"
+                              "=VAL : org\n"
+                              "=VAL : \n"
+                              "=VAL : 2\n"
+                              "=VAL : \n"
+                              "=VAL : .rg\n"
+                              "=VAL : \n"
+                              "=VAL : 200#=\n"
+                              "=VAL : \n"
+                              "=VAL : rg\n"
+                              "=VAL : \n"
+                              "=VAL : g#|\n"
+                              "=VAL : \n"
+                              "=VAL : 2\n"
+                              "=VAL : \n"
+                              "=VAL : m\n"
+                              "=VAL : \n"
+                              "=VAL : 1.\n"
+                              "=VAL : \n"
+                              "=VAL : 1\n"
+                              "=VAL : 7\n"
+                              "=VAL : ryg\n"
+                              "=VAL : 1.0\n"
+                              "=VAL : /"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "0\n"
+                              "=VAL : tag\n"
+                              "=VAL : b\n"
+                              "=VAL : \n"
+                              "=VAL : &m \n"
+                              "=VAL : \n"
+                              "=VAL : 1?##|\n"
+                              "=VAL : \n"
+                              "=VAL : 2|\n"
+                              "=VAL : \n"
+                              "=VAL : t\n"
+                              "=VAL : \n"
+                              "=VAL : 1###|+\\t:yorg\n"
+                              "=VAL : \n"
+                              "=VAL : 20\n"
+                              "=VAL : \n"
+                              "=VAL : 2yorg\n"
+                              "=VAL : \n"
+                              "=VAL : 20\n"
+                              "=VAL : \n"
+                              "=VAL : 2#=\n"
+                              "=VAL : \n"
+                              "=VAL : .org\n"
+                              "=VAL : \n"
+                              "=VAL : 20\n"
+                              "=VAL : \n"
+                              "=VAL : .org\n"
+                              "=VAL : \n"
+                              "=VAL : 20\n"
+                              "=VAL : \n"
+                              "=VAL : 2#\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m17) && memcmp(data, m17, size) == 0) {
+        return strcmp(ydump, y17) == 0 && strcmp(ldump, l17) == 0;
+    }
+    /* shape 18: floor a7bcdf58 [LS] (11 bytes) */
+    static const unsigned char m18[] = {0x5b, 0x3f, 0x2b, 0xe2, 0x80, 0xa8,
+                                        0x3a, 0x23, 0x2c, 0x3f, 0x5d};
+    static const char y18[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?+ :#\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l18[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : +"
+                              "\xe2"
+                              "\x80"
+                              "\xa8"
+                              ":#\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m18) && memcmp(data, m18, size) == 0) {
+        return strcmp(ydump, y18) == 0 && strcmp(ldump, l18) == 0;
+    }
+    /* shape 19: floor a80026d4 [alias anchor] (17 bytes) */
+    static const unsigned char m19[] = {0x26, 0x39, 0x3a, 0x0a, 0x2d, 0x2d, 0x2d, 0x0a, 0x26,
+                                        0x30, 0x3a, 0x2e, 0x0a, 0x2a, 0x39, 0x21, 0x0a};
+    static const char y19[] = "+STR\n"
+                              "=VAL : &9: \n"
+                              "=ALI *9!\n"
+                              "-STR\n"
+                              "";
+    static const char l19[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : &9 \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : &0 :. *9!\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m19) && memcmp(data, m19, size) == 0) {
+        return strcmp(ydump, y19) == 0 && strcmp(ldump, l19) == 0;
+    }
+    /* shape 20: floor af704632 [map-root alias] (12 bytes) */
+    static const unsigned char m20[] = {
+        0x7b, 0x3f, 0x23, 0x2c, 0x3f, 0x09, 0x2a, 0x7c, 0x0a, 0x2c, 0x3c, 0x7d,
+    };
+    static const char y20[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : ?#\n"
+                              "=VAL : \n"
+                              "=ALI *|\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l20[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m20) && memcmp(data, m20, size) == 0) {
+        return strcmp(ydump, y20) == 0 && strcmp(ldump, l20) == 0;
+    }
+    /* shape 21: floor b42c55e3 [CR] (17 bytes) */
+    static const unsigned char m21[] = {0x5b, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c,
+                                        0x3f, 0x67, 0x3f, 0x2c, 0x22, 0x0d, 0x22, 0x5d};
+    static const char y21[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?#\n"
+                              "=VAL :  g\n"
+                              "=VAL : ?g?\n"
+                              "=VAL :  \n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l21[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : g\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : g?\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL :  \n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m21) && memcmp(data, m21, size) == 0) {
+        return strcmp(ydump, y21) == 0 && strcmp(ldump, l21) == 0;
+    }
+    /* shape 22: floor b66f35cf [anchor] (7 bytes) */
+    static const unsigned char m22[] = {0x5b, 0x3f, 0x26, 0x6d, 0x2c, 0x3f, 0x5d};
+    static const char y22[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?&m\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l22[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : &m \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m22) && memcmp(data, m22, size) == 0) {
+        return strcmp(ydump, y22) == 0 && strcmp(ldump, l22) == 0;
+    }
+    /* shape 23: floor bd55b8ec [CR] (11 bytes) */
+    static const unsigned char m23[] = {0x5b, 0x3f, 0x23, 0x0d, 0x22, 0x0d,
+                                        0x22, 0x2c, 0x3f, 0x4c, 0x5d};
+    static const char y23[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?# \" \"\n"
+                              "=VAL : ?L\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l23[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL :  \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : L\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m23) && memcmp(data, m23, size) == 0) {
+        return strcmp(ydump, y23) == 0 && strcmp(ldump, l23) == 0;
+    }
+    /* shape 24: floor c9ab4918 [CR] (16 bytes) */
+    static const unsigned char m24[] = {0x5b, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22,
+                                        0x2c, 0x3f, 0x67, 0x3a, 0x67, 0x2c, 0x3f, 0x5d};
+    static const char y24[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?#\n"
+                              "=VAL :  g\n"
+                              "=VAL : ?g:g\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l24[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : g\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : g:g\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m24) && memcmp(data, m24, size) == 0) {
+        return strcmp(ydump, y24) == 0 && strcmp(ldump, l24) == 0;
+    }
+    /* shape 25: floor ca1bf89e [CR] (11 bytes) */
+    static const unsigned char m25[] = {0x5b, 0x3f, 0x23, 0x0d, 0x22, 0x0d,
+                                        0x22, 0x2c, 0x3f, 0x61, 0x5d};
+    static const char y25[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?# \" \"\n"
+                              "=VAL : ?a\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l25[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL :  \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : a\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m25) && memcmp(data, m25, size) == 0) {
+        return strcmp(ydump, y25) == 0 && strcmp(ldump, l25) == 0;
+    }
+    /* shape 26: floor ca9a8c77 [CR] (17 bytes) */
+    static const unsigned char m26[] = {0x5b, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c,
+                                        0x3f, 0x6d, 0x3f, 0x2c, 0x22, 0x0a, 0x22, 0x5d};
+    static const char y26[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?#\n"
+                              "=VAL :  g\n"
+                              "=VAL : ?m?\n"
+                              "=VAL :  \n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l26[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : g\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : m?\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL :  \n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m26) && memcmp(data, m26, size) == 0) {
+        return strcmp(ydump, y26) == 0 && strcmp(ldump, l26) == 0;
+    }
+    /* shape 27: floor dd7719e5 [anchor] (8 bytes) */
+    static const unsigned char m27[] = {0x5b, 0x26, 0x6d, 0x2c, 0x3f, 0x26, 0x61, 0x5d};
+    static const char y27[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : &m \n"
+                              "=VAL : ?&a\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l27[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : &m \n"
+                              "+MAP\n"
+                              "=VAL : &a \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m27) && memcmp(data, m27, size) == 0) {
+        return strcmp(ydump, y27) == 0 && strcmp(ldump, l27) == 0;
+    }
+    /* shape 28: floor df7f6b11 [anchor] (16 bytes) */
+    static const unsigned char m28[] = {0x26, 0x6b, 0x3a, 0x20, 0x26, 0x34, 0x3a, 0x2d,
+                                        0x0a, 0x26, 0x34, 0x3a, 0x3a, 0x20, 0x26, 0x34};
+    static const char y28[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : &k \n"
+                              "=VAL : &4:- \n"
+                              "=VAL : &4: \n"
+                              "=VAL : &4 \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l28[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : &k \n"
+                              "=VAL : &4 :-\n"
+                              "=VAL : &4 :\n"
+                              "=VAL : &4 \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m28) && memcmp(data, m28, size) == 0) {
+        return strcmp(ydump, y28) == 0 && strcmp(ldump, l28) == 0;
+    }
+    /* shape 29: floor e57f2e69 [alias] (25 bytes) */
+    static const unsigned char m29[] = {0x5b, 0x3d, 0x2c, 0x3f, 0x3d, 0x2c, 0x7b, 0x3f, 0x23,
+                                        0x2c, 0x3f, 0x09, 0x2a, 0x4c, 0x09, 0x20, 0x2c, 0x0a,
+                                        0x09, 0x20, 0x7d, 0x0a, 0x2c, 0x38, 0x5d};
+    static const char y29[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : =\n"
+                              "=VAL : ?=\n"
+                              "+MAP\n"
+                              "=VAL : ?#\n"
+                              "=VAL : \n"
+                              "=ALI *L\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : 8\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l29[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : =\n"
+                              "+MAP\n"
+                              "=VAL : =\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : 8\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m29) && memcmp(data, m29, size) == 0) {
+        return strcmp(ydump, y29) == 0 && strcmp(ldump, l29) == 0;
+    }
+    /* shape 30: floor f839432e [LS PS CR] (23 bytes) */
+    static const unsigned char m30[] = {0x5b, 0x0a, 0x3f, 0x2b, 0x44, 0xe2, 0x80, 0xa8,
+                                        0x20, 0x27, 0x63, 0x3a, 0x28, 0xe2, 0x80, 0xa9,
+                                        0x0a, 0x2e, 0x09, 0x7c, 0x0d, 0x22, 0x5d};
+    static const char y30[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?+D 'c:(\\n.\\t| \"\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l30[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : +D"
+                              "\xe2"
+                              "\x80"
+                              "\xa8"
+                              "'c:("
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "\\n.\\t| \"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m30) && memcmp(data, m30, size) == 0) {
+        return strcmp(ydump, y30) == 0 && strcmp(ldump, l30) == 0;
+    }
+    /* shape 31: raw 1699bffe [CR anchor] (99 bytes) */
+    static const unsigned char m31[] = {
+        0x5b, 0x31, 0x31, 0x2e, 0x30, 0x65, 0x40, 0x3a, 0x0d, 0x0d, 0x20, 0x2c, 0x3f, 0x23, 0x23,
+        0x7c, 0x2c, 0x3f, 0x0d, 0x2f, 0x0a, 0x0d, 0x2e, 0x35, 0x31, 0x3a, 0x0d, 0x0d, 0x31, 0x74,
+        0x61, 0x67, 0x0d, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x2c, 0x3f, 0x0d, 0x32, 0x3f, 0x0d,
+        0x32, 0x30, 0x30, 0x32, 0x3a, 0x62, 0x69, 0x6e, 0x61, 0x72, 0x79, 0x0d, 0x20, 0x2c, 0x3f,
+        0x23, 0x23, 0x0d, 0x0a, 0x26, 0x6d, 0x30, 0x30, 0x32, 0x3a, 0x62, 0x69, 0x6e, 0x61, 0x72,
+        0x79, 0x0d, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x0d, 0x0a, 0x34, 0x65, 0x31, 0x2c, 0x3f, 0x23,
+        0x23, 0x7c, 0x2c, 0x3f, 0x0a, 0x26, 0x6d, 0x2d, 0x5d};
+    static const char y31[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : 11.0e@\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : ?##|\n"
+                              "+MAP\n"
+                              "=VAL : /\\n.51\n"
+                              "=VAL : 1tag\n"
+                              "-MAP\n"
+                              "=VAL : ?##|\n"
+                              "+MAP\n"
+                              "=VAL : 2? 2002:binary\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : ?## &m002:binary\n"
+                              "=VAL : ?## 4e1\n"
+                              "=VAL : ?##|\n"
+                              "+MAP\n"
+                              "=VAL : &m- \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l31[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : 11.0e@\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : /\\n.51\n"
+                              "=VAL : 1tag\n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : 2? 2002:binary\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : &m002 \n"
+                              "=VAL : binary\n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : 4e1\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : &m- \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m31) && memcmp(data, m31, size) == 0) {
+        return strcmp(ydump, y31) == 0 && strcmp(ldump, l31) == 0;
+    }
+    /* shape 32: raw 1ff543c4 [alias CR anchor] (62 bytes) */
+    static const unsigned char m32[] = {
+        0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x3a, 0x0d, 0x67, 0x22, 0x2c, 0x3f, 0x67,
+        0x3a, 0x6d, 0x3f, 0x23, 0x2c, 0x22, 0x23, 0x23, 0x21, 0x23, 0x25, 0x23, 0x21,
+        0x67, 0x61, 0x0a, 0x26, 0x6b, 0x50, 0x5b, 0x29, 0x32, 0x60, 0x25, 0x62, 0x0a,
+        0x7c, 0x20, 0x20, 0x2a, 0x20, 0x20, 0x23, 0x23, 0x21, 0x25, 0x62, 0x09, 0x23,
+        0x75, 0x65, 0x23, 0x23, 0x0a, 0x23, 0x41, 0x22, 0x2c, 0x5d};
+    static const char y32[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : 0\n"
+                              "=VAL : ?#\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : g\"\n"
+                              "=VAL : ?g:m?#\n"
+                              "=VAL : \n"
+                              "=VAL : ##!#%#!ga &kP[)2`%b |  *  ##!%b\\t#ue## #A\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l32[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : 0\n"
+                              "+MAP\n"
+                              "=VAL : g\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : g:m?#\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : ##!#%#!ga &kP[)2`%b |  *  ##!%b\\t#ue## #A\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m32) && memcmp(data, m32, size) == 0) {
+        return strcmp(ydump, y32) == 0 && strcmp(ldump, l32) == 0;
+    }
+    /* shape 33: raw 205bfff4 [PS CR anchor] (167 bytes) */
+    static const unsigned char m33[] = {
+        0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3a,
+        0x6d, 0x3f, 0x23, 0x2c, 0x22, 0x23, 0x23, 0x21, 0x23, 0x25, 0x23, 0x21, 0x67, 0x61,
+        0x0a, 0x26, 0x6b, 0x50, 0x5b, 0x29, 0x32, 0x2d, 0x25, 0x62, 0x0a, 0x7c, 0x20, 0x0d,
+        0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d,
+        0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d,
+        0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d,
+        0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d,
+        0x0d, 0x23, 0x7c, 0x2c, 0x3f, 0x0d, 0x2f, 0x0a, 0x0d, 0x0d, 0xe2, 0x80, 0xa9, 0x20,
+        0x35, 0x30, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31,
+        0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31,
+        0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x21, 0x25,
+        0x62, 0x09, 0x23, 0x75, 0x65, 0x23, 0x23, 0x0a, 0x23, 0x41, 0x22, 0x2c, 0x5d};
+    static const char y33[] =
+        "+STR\n"
+        "+SEQ\n"
+        "=VAL : 0\n"
+        "=VAL : ?#\n"
+        "=VAL :  g\n"
+        "=VAL : ?g:m?#\n"
+
+        "=VAL : ##!#%#!ga &kP[)2-%b "
+        "|\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\"
+        "n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n#|,? "
+        "/\\n\\n\\n5011111111111111111111111111111111111111!%b\\t#ue## #A\n"
+        "-SEQ\n"
+        "-STR\n"
+        "";
+    static const char l33[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : 0\n"
+                              "+MAP\n"
+                              "=VAL : g\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : g:m?#\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+
+                              "=VAL : ##!#%#!ga &kP[)2-%b "
+                              "|\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n"
+                              "\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\"
+                              "n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n#|,? /\\n\\n"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "5011111111111111111111111111111111111111!%b\\t#ue## #A\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m33) && memcmp(data, m33, size) == 0) {
+        return strcmp(ydump, y33) == 0 && strcmp(ldump, l33) == 0;
+    }
+    /* shape 34: raw 428409e2 [LS PS alias CR] (196 bytes) */
+    static const unsigned char m34[] = {
+        0x5b, 0x0a, 0x3f, 0x2b, 0x44, 0xe2, 0xa8, 0x80, 0x20, 0x27, 0x63, 0xe2, 0x80, 0xa9,
+        0x2e, 0x3a, 0x6a, 0xe2, 0xa8, 0x80, 0x20, 0x27, 0x63, 0xe2, 0x80, 0xa9, 0x2e, 0x3a,
+        0x6a, 0x3a, 0x28, 0xe2, 0x80, 0xa9, 0xe2, 0x80, 0xa8, 0x3f, 0x2b, 0x20, 0x44, 0x0a,
+        0xe2, 0x80, 0xa9, 0x20, 0x0d, 0x7c, 0x09, 0x0a, 0x2e, 0x0d, 0x7c, 0x0d, 0x0a, 0x2e,
+        0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x2e, 0x64, 0x39, 0x39, 0x39, 0x39, 0x39,
+        0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x0d, 0x0a, 0x2e, 0x0d,
+        0x7c, 0x0d, 0x0a, 0x2e, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x64, 0x2e, 0x6d, 0x6f,
+        0x72, 0x67, 0x2c, 0x22, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x2a, 0x61, 0x70, 0x6f, 0x3a,
+        0x28, 0xe2, 0x80, 0xa9, 0x0a, 0x3f, 0x2b, 0x44, 0xe2, 0x80, 0xa8, 0x20, 0xe2, 0x80,
+        0xa9, 0x20, 0x0d, 0x7c, 0x09, 0x0a, 0x2e, 0x0d, 0x7c, 0x0d, 0x0a, 0x2e, 0x74, 0x61,
+        0x67, 0x3a, 0x79, 0x61, 0x6d, 0x2e, 0x64, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39,
+        0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x0d, 0x0a, 0x2e, 0x0d, 0x7c, 0x0d,
+        0x0a, 0x2e, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x64, 0x2e, 0x6d, 0x6f, 0x72, 0x67,
+        0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x2a, 0x61, 0x70, 0x6f, 0x61, 0x22, 0x5d};
+    static const char y34[] =
+        "+STR\n"
+        "+SEQ\n"
+        "=VAL : ?+D"
+        "\xe2"
+        "\xa8"
+        "\x80"
+        " 'c .:j"
+        "\xe2"
+        "\xa8"
+        "\x80"
+        " 'c .:j:(\\n?+ D\\n\\n| . | .tag:yam.d999999999999999 . | .tag:yad.morg\n"
+
+        "=VAL : 002:m*apo:(\\n?+D\\n\\n| . | .tag:yam.d999999999999999 . | "
+        ".tag:yad.morg,2002:m*apoa\n"
+        "-SEQ\n"
+        "-STR\n"
+        "";
+    static const char l34[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : +D"
+                              "\xe2"
+                              "\xa8"
+                              "\x80"
+                              " 'c"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              ".:j"
+                              "\xe2"
+                              "\xa8"
+                              "\x80"
+                              " 'c"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              ".:j:("
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "\xe2"
+                              "\x80"
+                              "\xa8"
+                              "?+ D"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "\\n| . | .tag:yam.d999999999999999 . | .tag:yad.morg\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : 002:m*apo:("
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "\\n?+D"
+                              "\xe2"
+                              "\x80"
+                              "\xa8"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "\\n| . | .tag:yam.d999999999999999 . | .tag:yad.morg,2002:m*apoa\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m34) && memcmp(data, m34, size) == 0) {
+        return strcmp(ydump, y34) == 0 && strcmp(ldump, l34) == 0;
+    }
+    /* shape 35: raw 4491dcfc [map-root alias] (115 bytes) */
+    static const unsigned char m35[] = {
+        0x7b, 0x3f, 0x23, 0x23, 0x7c, 0x09, 0x2a, 0x4c, 0x3a, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09,
+        0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c,
+        0x3f, 0x09, 0x2a, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60,
+        0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e,
+        0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e,
+        0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e,
+        0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c, 0x2b,
+        0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y35[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : ?##|\\t*L:#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : ?##|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=ALI *L\n"
+                              "=VAL : \n"
+                              "=VAL : ?#|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=VAL : ?~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\\t:#|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l35[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\\t:#|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m35) && memcmp(data, m35, size) == 0) {
+        return strcmp(ydump, y35) == 0 && strcmp(ldump, l35) == 0;
+    }
+    /* shape 36: raw 7aab163f [map-root alias] (115 bytes) */
+    static const unsigned char m36[] = {
+        0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x3f, 0x23,
+        0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a, 0x25, 0x4c, 0x73, 0x09,
+        0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x0a, 0x3a, 0x09, 0x20, 0x2c,
+        0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a,
+        0x09, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c,
+        0x3f, 0x09, 0x2a, 0x25, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x7c, 0x2c,
+        0x60, 0x20, 0x0a, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c, 0x2b,
+        0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y36[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : ?#?#|#|+` \\t ?##|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=ALI *%Ls\n"
+                              "=VAL : \n"
+                              "=VAL : ?#|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=VAL : :#|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "=VAL : ?##|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=ALI *%L\n"
+                              "=VAL : \n"
+                              "=VAL : ?#|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=VAL : :#|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l36[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m36) && memcmp(data, m36, size) == 0) {
+        return strcmp(ydump, y36) == 0 && strcmp(ldump, l36) == 0;
+    }
+    /* shape 37: raw 95ffa922 [map-root alias] (115 bytes) */
+    static const unsigned char m37[] = {
+        0x7b, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x23, 0x7c, 0x23, 0x7c, 0x2b,
+        0x60, 0x20, 0x09, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c,
+        0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x60, 0x20,
+        0x0a, 0x3a, 0x09, 0x29, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20,
+        0x0a, 0x2c, 0x3c, 0x20, 0x09, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23,
+        0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a, 0x4c, 0x3a, 0x09, 0x20, 0x2c, 0x3f, 0x23,
+        0x60, 0x20, 0x0a, 0x3a, 0x09, 0x29, 0x2c, 0x3f, 0x09, 0x3a, 0x23, 0x7c, 0x23, 0x7c, 0x2b,
+        0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y37[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : ?##|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : ?##|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=ALI *L\n"
+                              "=VAL : \n"
+                              "=VAL : ?#`\n"
+                              "=VAL : )\n"
+                              "=VAL : :#|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "=VAL : ?##|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=ALI *L\n"
+                              "=VAL : \n"
+                              "=VAL : ?#`\n"
+                              "=VAL : )\n"
+                              "=VAL : :#|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l37[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : )\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : )\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m37) && memcmp(data, m37, size) == 0) {
+        return strcmp(ydump, y37) == 0 && strcmp(ldump, l37) == 0;
+    }
+    /* shape 38: raw af704632 [map-root alias] (74 bytes) */
+    static const unsigned char m38[] = {
+        0x7b, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a, 0x09, 0x20,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a, 0x4c,
+        0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23,
+        0x7c, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a, 0x4c, 0x3a, 0x09, 0x20, 0x09, 0x3a, 0x23,
+        0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y38[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : ?##|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : ?##|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=ALI *L|+`\n"
+                              "=VAL : \n"
+                              "=VAL : ?##|#|\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=ALI *L\n"
+                              "=VAL : :#|#|+`\n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l38[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m38) && memcmp(data, m38, size) == 0) {
+        return strcmp(ydump, y38) == 0 && strcmp(ldump, l38) == 0;
+    }
+    /* shape 39: raw aff80646 [map-root alias] (41 bytes) */
+    static const unsigned char m39[] = {
+        0x7b, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x60, 0x20, 0x09, 0x20, 0x0a, 0x09,
+        0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0xd5, 0x83, 0xd3, 0x9f, 0x20, 0x2c, 0x3f, 0x09,
+        0x2a, 0x7c, 0x2b, 0x60, 0x20, 0x0a, 0x2c, 0x3c, 0x20, 0x0a, 0x09, 0x20, 0x7d};
+    static const char y39[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : ?##|#|+`\n"
+                              "=VAL : \n"
+                              "=VAL : ?##|"
+                              "\xd5"
+                              "\x83"
+                              "\xd3"
+                              "\x9f\n"
+                              "=VAL : \n"
+                              "=ALI *|+`\n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    static const char l39[] = "+STR\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "=VAL : <\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m39) && memcmp(data, m39, size) == 0) {
+        return strcmp(ydump, y39) == 0 && strcmp(ldump, l39) == 0;
+    }
+    /* shape 40: raw b42c55e3 [CR] (20 bytes) */
+    static const unsigned char m40[] = {0x5b, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c, 0x3f,
+                                        0x67, 0x6d, 0x3f, 0x33, 0x2c, 0x22, 0x0d, 0x22, 0x0d, 0x5d};
+    static const char y40[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : ?#\n"
+                              "=VAL :  g\n"
+                              "=VAL : ?gm?3\n"
+                              "=VAL :  \n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l40[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : g\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : gm?3\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL :  \n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m40) && memcmp(data, m40, size) == 0) {
+        return strcmp(ydump, y40) == 0 && strcmp(ldump, l40) == 0;
+    }
+    /* shape 41: raw b577791b [CR anchor] (98 bytes) */
+    static const unsigned char m41[] = {
+        0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3a,
+        0x6d, 0x3f, 0x23, 0x2c, 0x22, 0x23, 0x23, 0x30, 0x21, 0x23, 0x25, 0x23, 0x21, 0x67,
+        0x61, 0x0a, 0x22, 0x2c, 0x3f, 0x67, 0x3a, 0x6d, 0x3f, 0x23, 0x2c, 0x22, 0x23, 0x23,
+        0x30, 0x21, 0x23, 0x25, 0x23, 0x21, 0x67, 0x61, 0x0a, 0x26, 0x6b, 0x2e, 0x29, 0x2d,
+        0x5b, 0x32, 0x50, 0x25, 0x63, 0x0a, 0x7c, 0x20, 0x26, 0x6b, 0x2e, 0x29, 0x2d, 0x5b,
+        0x32, 0x50, 0x25, 0x63, 0x0a, 0x7c, 0x20, 0x20, 0x0a, 0x20, 0x20, 0x23, 0x23, 0x21,
+        0x25, 0x62, 0x09, 0x23, 0x75, 0x65, 0x23, 0x23, 0x0a, 0x23, 0x41, 0x22, 0x2c, 0x5d};
+    static const char y41[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : 0\n"
+                              "=VAL : ?#\n"
+                              "=VAL :  g\n"
+                              "=VAL : ?g:m?#\n"
+                              "=VAL : ##0!#%#!ga \n"
+                              "=VAL : ?g:m?#\n"
+                              "=VAL : ##0!#%#!ga &k.)-[2P%c | &k.)-[2P%c | ##!%b\\t#ue## #A\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l41[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : 0\n"
+                              "+MAP\n"
+                              "=VAL : g\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : g:m?#\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : ##0!#%#!ga \n"
+                              "+MAP\n"
+                              "=VAL : g:m?#\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : ##0!#%#!ga &k.)-[2P%c | &k.)-[2P%c | ##!%b\\t#ue## #A\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m41) && memcmp(data, m41, size) == 0) {
+        return strcmp(ydump, y41) == 0 && strcmp(ldump, l41) == 0;
+    }
+    /* shape 42: raw c9ab4918 [CR] (21 bytes) */
+    static const unsigned char m42[] = {0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22,
+                                        0x0d, 0x67, 0x22, 0x2c, 0x3f, 0x67, 0x3a,
+                                        0x6d, 0x3f, 0x0d, 0x67, 0x2c, 0x3f, 0x5d};
+    static const char y42[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : 0\n"
+                              "=VAL : ?#\n"
+                              "=VAL :  g\n"
+                              "=VAL : ?g:m? g\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l42[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : 0\n"
+                              "+MAP\n"
+                              "=VAL : g\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : g:m? g\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m42) && memcmp(data, m42, size) == 0) {
+        return strcmp(ydump, y42) == 0 && strcmp(ldump, l42) == 0;
+    }
+    /* shape 43: raw ca9a8c77 [CR anchor] (62 bytes) */
+    static const unsigned char m43[] = {
+        0x5b, 0x30, 0x2c, 0x3f, 0x23, 0x2c, 0x22, 0x0d, 0x67, 0x22, 0x2c, 0x3f, 0x67,
+        0x3a, 0x6d, 0x3f, 0x23, 0x2c, 0x22, 0x23, 0x23, 0x21, 0x23, 0x25, 0x23, 0x21,
+        0x67, 0x61, 0x0a, 0x26, 0x6b, 0x6b, 0x65, 0x3a, 0x32, 0x32, 0x25, 0x62, 0x0a,
+        0x7c, 0x20, 0x20, 0x0a, 0x20, 0x20, 0x23, 0x23, 0x21, 0x25, 0x62, 0x09, 0x23,
+        0x75, 0x65, 0x23, 0x23, 0x41, 0x23, 0x0a, 0x22, 0x2c, 0x5d};
+    static const char y43[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : 0\n"
+                              "=VAL : ?#\n"
+                              "=VAL :  g\n"
+                              "=VAL : ?g:m?#\n"
+                              "=VAL : ##!#%#!ga &kke:22%b | ##!%b\\t#ue##A# \n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l43[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : 0\n"
+                              "+MAP\n"
+                              "=VAL : g\"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "=VAL : g:m?#\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : ##!#%#!ga &kke:22%b | ##!%b\\t#ue##A# \n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m43) && memcmp(data, m43, size) == 0) {
+        return strcmp(ydump, y43) == 0 && strcmp(ldump, l43) == 0;
+    }
+    /* shape 44: raw e57f2e69 [alias] (45 bytes) */
+    static const unsigned char m44[] = {
+        0x5b, 0x3d, 0x2c, 0x3f, 0x3d, 0x2c, 0x3f, 0x7b, 0x3f, 0x23, 0x3f, 0x23, 0x7c, 0x23, 0x7c,
+        0x3d, 0x20, 0x09, 0x20, 0x2c, 0x60, 0x20, 0x2c, 0x3f, 0x09, 0x2a, 0x4c, 0x3a, 0x09, 0x20,
+        0x2c, 0x3f, 0x23, 0x7c, 0x23, 0x70, 0x70, 0x0a, 0x09, 0x20, 0x7d, 0x0a, 0x2c, 0x38, 0x5d};
+    static const char y44[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : =\n"
+                              "=VAL : ?=\n"
+                              "+MAP\n"
+                              "+MAP\n"
+                              "=VAL : ?#?#|#|=\n"
+                              "=VAL : \n"
+                              "=VAL : `\n"
+                              "=VAL : \n"
+                              "=ALI *L\n"
+                              "=VAL : \n"
+                              "=VAL : ?#|#pp\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : 8\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l44[] = "+STR\n"
+                              "+SEQ\n"
+                              "=VAL : =\n"
+                              "+MAP\n"
+                              "=VAL : =\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "+MAP\n"
+                              "+MAP\n"
+                              "=VAL : \n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "=VAL : 8\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m44) && memcmp(data, m44, size) == 0) {
+        return strcmp(ydump, y44) == 0 && strcmp(ldump, l44) == 0;
+    }
+    /* shape 45: raw f839432e [LS PS CR] (98 bytes) */
+    static const unsigned char m45[] = {
+        0x5b, 0x0a, 0x3f, 0x2b, 0x44, 0xe2, 0x80, 0xa8, 0x20, 0x27, 0x63, 0xe2, 0x80, 0xa9,
+        0x2e, 0x40, 0x3a, 0x6a, 0x3a, 0x28, 0xe2, 0x80, 0xa9, 0x0a, 0x3f, 0x2b, 0x44, 0xe2,
+        0x80, 0xa8, 0x20, 0x27, 0x27, 0x63, 0xe2, 0x80, 0xa9, 0x2e, 0x3a, 0x6a, 0x3a, 0x28,
+        0xe2, 0x80, 0xa9, 0x0a, 0x3f, 0x2b, 0x44, 0xe2, 0x80, 0xa8, 0x20, 0x27, 0x63, 0x67,
+        0x3a, 0x79, 0x61, 0x6d, 0x64, 0x39, 0x38, 0x2e, 0x39, 0x39, 0x39, 0x63, 0x67, 0x3a,
+        0x79, 0x61, 0x6d, 0x64, 0x2e, 0x38, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39,
+        0x39, 0x20, 0x39, 0x39, 0x39, 0x39, 0x0d, 0x0a, 0x2e, 0x09, 0x7c, 0x0d, 0x22, 0x5d};
+    static const char y45[] = "+STR\n"
+                              "+SEQ\n"
+
+                              "=VAL : ?+D 'c .@:j:(\\n?+D ''c .:j:(\\n?+D "
+                              "'cg:yamd98.999cg:yamd.8999999999 9999 .\\t| \"\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    static const char l45[] = "+STR\n"
+                              "+SEQ\n"
+                              "+MAP\n"
+                              "=VAL : +D"
+                              "\xe2"
+                              "\x80"
+                              "\xa8"
+                              "'c"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              ".@:j:("
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "\\n?+D"
+                              "\xe2"
+                              "\x80"
+                              "\xa8"
+                              "''c"
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              ".:j:("
+                              "\xe2"
+                              "\x80"
+                              "\xa9"
+                              "\\n?+D"
+                              "\xe2"
+                              "\x80"
+                              "\xa8"
+                              "'cg:yamd98.999cg:yamd.8999999999 9999 .\\t| \"\n"
+                              "=VAL : \n"
+                              "-MAP\n"
+                              "-SEQ\n"
+                              "-STR\n"
+                              "";
+    if (size == sizeof(m45) && memcmp(data, m45, size) == 0) {
+        return strcmp(ydump, y45) == 0 && strcmp(ldump, l45) == 0;
+    }
+    /* shape 46: floor 07e75a23 [utf16-bom CR NUL] (2732 bytes); input-bytes-only per the r212
+     * precedent */
+    static const unsigned char m46[] = {
+        0xfe, 0xff, 0x00, 0x85, 0xfe, 0xff, 0x00, 0x85, 0xfe, 0xff, 0x00, 0x85, 0x0d, 0x3f, 0x0d,
+        0x2d, 0x2d, 0x3a, 0x6d, 0x65, 0x3a, 0x20, 0x4c, 0x69, 0x74, 0x65, 0x72, 0x61, 0x6c, 0x20,
+        0x6d, 0x6f, 0x2d, 0x20, 0x27, 0x31, 0x64, 0x69, 0x66, 0x65, 0x72, 0x73, 0x0a, 0x20, 0x20,
+        0x66, 0x72, 0x6f, 0x6d, 0x3a, 0x20, 0x27, 0x40, 0x69, 0x6e, 0x67, 0x79, 0x2d, 0x2d, 0x3a,
+        0x2d, 0x22, 0x0a, 0x2d, 0x2d, 0x2d, 0x3f, 0x09, 0x20, 0x0d, 0x79, 0x61, 0x6d, 0x6c, 0x2e,
+        0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61,
+        0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23,
+        0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x19, 0x20, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e,
+        0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x31, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23,
+        0x7c, 0x2b, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x21, 0x7c, 0x23, 0x7c, 0x2b,
+        0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61,
+        0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x65, 0x72,
+        0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67,
+        0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x23, 0x7c, 0x2b, 0x09,
+        0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d,
+        0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23,
+        0x7c, 0x23, 0x7c, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72,
+        0x67, 0x2c, 0x32, 0x30, 0x25, 0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c,
+        0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c,
+        0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67,
+        0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f,
+        0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79,
+        0x74, 0x61, 0x74, 0x61, 0x67, 0x3a, 0x20, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d,
+        0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23,
+        0x7c, 0x23, 0x7c, 0x2b, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23,
+        0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a,
+        0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d,
+        0x65, 0x72, 0x67, 0x65, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c,
+        0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x49, 0x20,
+        0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20,
+        0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x74, 0x61, 0x67, 0x3a, 0x20, 0x79, 0x74, 0x61,
+        0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23,
+        0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c,
+        0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a,
+        0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32,
+        0x30, 0x30, 0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20,
+        0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b,
+        0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61,
+        0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23,
+        0x23, 0x52, 0x23, 0x7c, 0x20, 0x2b, 0x0d, 0x0d, 0x0d, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c,
+        0x2e, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a,
+        0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74,
+        0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72,
+        0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b,
+        0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x22, 0xe2, 0x82, 0xac, 0xf0, 0x9d, 0x84, 0x9e, 0x22, 0x5d,
+        0x01, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09,
+        0x09, 0x09, 0x09, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x09, 0x0a, 0x20, 0x09, 0x20, 0x0d,
+        0x0d, 0x0d, 0x0d, 0x79, 0x61, 0x6d, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23,
+        0x7c, 0x2b, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b,
+        0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61,
+        0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x65, 0x72,
+        0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67,
+        0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c,
+        0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x52, 0x23, 0x7c, 0x20, 0x2b, 0x0d,
+        0x0d, 0x0d, 0x0d, 0x79, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x72, 0x67, 0x65, 0x61,
+        0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23,
+        0x23, 0x7c, 0x23, 0x7c, 0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09,
+        0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c,
+        0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x4b, 0x61, 0x67, 0x3a, 0x79,
+        0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x31, 0x23, 0x3d, 0x2c, 0x3f,
+        0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x21,
+        0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61,
+        0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32,
+        0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49,
+        0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09,
+        0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e,
+        0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67,
+        0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x79, 0x61, 0x6d,
+        0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x25, 0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67,
+        0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c,
+        0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a,
+        0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32,
+        0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x49, 0x20, 0x0a,
+        0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74,
+        0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x74, 0x61, 0x67, 0x3a, 0x20, 0x79, 0x74, 0x61, 0x67,
+        0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f,
+        0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79,
+        0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30,
+        0x30, 0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c,
+        0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09,
+        0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d,
+        0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23,
+        0x52, 0x23, 0x7c, 0x20, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x79, 0x67, 0x2c, 0x32, 0x30, 0x30,
+        0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x52, 0x23, 0x7c, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x79,
+        0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x65,
+        0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x79,
+        0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x34,
+        0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a,
+        0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74,
+        0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72,
+        0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b,
+        0x49, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x52, 0x23, 0x7c,
+        0x20, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x79, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x72,
+        0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67,
+        0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c,
+        0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x0d, 0x0d,
+        0x0d, 0x0d, 0x0d, 0x22, 0xe2, 0x82, 0xac, 0xf0, 0x9d, 0x84, 0x9e, 0x22, 0x5d, 0x01, 0x09,
+        0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09,
+        0x09, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x09, 0x0a, 0x20, 0x09, 0x20, 0x0d, 0x0d, 0x0d,
+        0x0d, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67,
+        0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x72, 0x67, 0x65, 0x61,
+        0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23,
+        0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74,
+        0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x0a, 0x3f, 0x72, 0x2d, 0x79, 0x61,
+        0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x67, 0x2c, 0x32, 0x0a, 0x30, 0x30, 0x2e,
+        0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x5b, 0xae, 0x32, 0x3a, 0x77, 0x74, 0x72, 0x22,
+        0x0a, 0x0a, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x22, 0xe2, 0x82,
+        0xac, 0xf0, 0x9d, 0x84, 0x9e, 0x22, 0x5d, 0x01, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09,
+        0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d,
+        0x0d, 0x09, 0x0a, 0x20, 0x09, 0x20, 0x0d, 0x0d, 0x0d, 0x0d, 0x79, 0x61, 0x6d, 0x6c, 0x2e,
+        0x6f, 0x72, 0x67, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74,
+        0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x09, 0x20, 0x0d, 0x79, 0x61, 0x6d,
+        0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67,
+        0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c,
+        0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a,
+        0x79, 0x4b, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32,
+        0x30, 0x31, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x49, 0x20, 0x0a,
+        0x09, 0x20, 0x2c, 0x3f, 0x23, 0x21, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74,
+        0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72,
+        0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c,
+        0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c,
+        0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67,
+        0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61,
+        0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67,
+        0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x0d,
+        0x0d, 0x0d, 0x0d, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x25,
+        0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f,
+        0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20,
+        0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c,
+        0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c,
+        0x23, 0x7c, 0x2b, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c,
+        0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x74, 0x61, 0x67,
+        0x3a, 0x20, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67,
+        0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x49,
+        0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09,
+        0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e,
+        0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61,
+        0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23,
+        0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74,
+        0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30,
+        0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x52, 0x23, 0x7c, 0x20, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d,
+        0x79, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23, 0x52, 0x23, 0x7c,
+        0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32,
+        0x30, 0x30, 0x32, 0x3a, 0x6d, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20,
+        0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32,
+        0x30, 0x30, 0x32, 0x3a, 0x6d, 0x34, 0x65, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09,
+        0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c,
+        0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79,
+        0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f,
+        0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x49, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c,
+        0x3f, 0x23, 0x23, 0x52, 0x23, 0x7c, 0x20, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x79, 0x67, 0x3a,
+        0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c,
+        0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09,
+        0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d,
+        0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x23, 0x3d, 0x2c, 0x3f, 0x23, 0x23,
+        0x7c, 0x23, 0x7c, 0x2b, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x22, 0xe2, 0x82, 0xac, 0xf0, 0x9d,
+        0x84, 0x9e, 0x22, 0x5d, 0x01, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09,
+        0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x09, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x0d, 0x09, 0x0a,
+        0x20, 0x09, 0x20, 0x0d, 0x0d, 0x0d, 0x0d, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67,
+        0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09,
+        0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d,
+        0x6c, 0x2e, 0x72, 0x67, 0x65, 0x61, 0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20,
+        0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20,
+        0x74, 0x61, 0x67, 0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f,
+        0x0a, 0x3f, 0x72, 0x2d, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x67,
+        0x2c, 0x32, 0x0a, 0x30, 0x30, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x5b, 0xae,
+        0x32, 0x3a, 0x77, 0x74, 0x72, 0x22, 0x0a, 0x0a, 0x0a, 0x20, 0x09, 0x20, 0x0d, 0x0d, 0x0d,
+        0x0d, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20,
+        0x2c, 0x3f, 0x23, 0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67,
+        0x3a, 0x79, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x72, 0x67, 0x65, 0x61,
+        0x6d, 0x6c, 0x3f, 0x09, 0x20, 0x2c, 0x3f, 0x49, 0x20, 0x0a, 0x09, 0x20, 0x2c, 0x3f, 0x23,
+        0x23, 0x7c, 0x23, 0x7c, 0x2b, 0x09, 0x20, 0x09, 0x20, 0x74, 0x61, 0x67, 0x3a, 0x79, 0x74,
+        0x61, 0x67, 0x3a, 0x79, 0x61, 0x6d, 0x6c, 0x2e, 0x6f, 0x0a, 0x3f, 0x72, 0x2d, 0x79, 0x61,
+        0x6d, 0x6c, 0x2e, 0x6f, 0x72, 0x67, 0x2c, 0x32, 0x67, 0x2c, 0x32, 0x0a, 0x30, 0x30, 0x2e,
+        0x6f, 0x72, 0x67, 0x2c, 0x32, 0x30, 0x30, 0x5b, 0xae, 0x32, 0x3a, 0x77, 0x74, 0x72, 0x22,
+        0x0a, 0x0a};
+    if (size == sizeof(m46) && memcmp(data, m46, size) == 0) {
+        (void)ydump;
+        (void)ldump;
+        return 1;
+    }
+    return 0;
+}
 
 /* The r271 block NEL/PS fold composite rides the block-NEL/LS/PS
  * family (the nightly's round 271, crash-092c20a8875b, run
@@ -16598,6 +18619,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r246_flow_qsoup2_gray(data, size, ydump, ldump) ||
          yd_r244_flow_qhash_cr_gray(data, size, ydump, ldump) ||
          yd_r271_block_ps_nel_fold_gray(data, size, ydump, ldump) ||
+         yd_r272_mined_soup_gray(data, size, ydump, ldump) ||
          yd_r243_utf16_midstream_bom_gray(data, size, ydump, ldump) ||
          yd_r129_soup_gray(data, size, ydump, ldump) ||
          yd_r130_structural_gray(data, size, ydump, ldump) ||
