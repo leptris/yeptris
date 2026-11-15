@@ -71,6 +71,22 @@
  *      comment-eats the rest of the line, and pairs the KEY/VALUE with
  *      inserted empties). Content resuming after the run, a second
  *      comment line, and eats to EOF stay UNKNOWN.
+ *  (i) the r281 nested-flow-map law (run 43705128492): a `{` at a
+ *      member's VALUE slot (after a `:`-blank/break boundary) opens a
+ *      NESTED flow map on both engines and the same member laws derive
+ *      its content recursively. yeptris: the colon boundary opens the
+ *      value, the nested map renders +MAP/-MAP in the value slot, and
+ *      the blank/break run after the close skips before the member
+ *      terminator; a `:`-led member (the floor's second member — its
+ *      `:` rode the libyaml comment) derives the EMPTY key with the
+ *      nested value. libyaml: the flow `?` fires the KEY token, the
+ *      comment eats the colon line, and the parser reaches the nested
+ *      `{` as the explicit-key member's node (its simple-key slots are
+ *      PER FLOW LEVEL — the nested level's saved key dies on the line
+ *      cross). Maps only: a nested `[` stays UNKNOWN; a colon-led
+ *      member is reachable exactly when libyaml comment-ate its colon
+ *      (a raw flow `:` after a separator errors the parser's node
+ *      state); past 32 deep stays UNKNOWN.
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
@@ -80,14 +96,15 @@
  * byte-equal to their expectations. Any byte it cannot derive -> UNKNOWN.
  *
  * Conservatism laws:
- *  (i)   block context -> UNKNOWN (the family is flow-only);
- *  (ii)  any member outside the family's flat-member shape (anchors it
- *        cannot resolve, tags, nesting, single quotes, escapes) ->
+ *  (j)   block context -> UNKNOWN (the family is flow-only);
+ *  (k)   any member outside the family's flat-member shape (anchors it
+ *        cannot resolve, tags, nesting it cannot place — nested flow
+ *        SEQUENCES, member-start collections, single quotes, escapes)
+ *        -> UNKNOWN;
+ *  (l)   a mismatch inside a quoted span (beyond the law-b folds) ->
  *        UNKNOWN;
- *  (iii) a mismatch inside a quoted span (beyond the law-b folds) ->
- *        UNKNOWN;
- *  (iv)  the classifier consults no arm pins -- it stands alone;
- *  (v)   total budget bounded (refuses inputs over 16 KB -> UNKNOWN).
+ *  (m)   the classifier consults no arm pins -- it stands alone;
+ *  (n)   total budget bounded (refuses inputs over 16 KB -> UNKNOWN).
  *
  * Memory: no allocation escapes the call; all scratch is heap and freed
  * before return. Pure over its four arguments: same inputs, same
