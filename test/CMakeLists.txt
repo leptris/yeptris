@@ -5366,6 +5366,31 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-crps-qsoup-r285-artifact.bin
     )
 
+    # the r286 nightly escape (run 43760525981): the SPLIT-? COLON-IND
+    # flow soup - members where the split `?` (blank follows) opens the
+    # explicit key and the key slot's `:` rides the 1.2 flow
+    # VALUE-boundary law (`:` + flow indicator = the VALUE boundary,
+    # `?<TAB>:,` reads the empty key and the empty value on BOTH
+    # engines) while the classifier's r275 arm only modeled `:` +
+    # blank/break and declined the colon-ind twin, leaving the 95-byte
+    # soup unexplained. The widening is yeptris-model-side only; the
+    # libyaml model already derived the soup (KEY, VALUE, FLOW-ENTRY
+    # token dispatch), and the GLUED `?:,` twin stays red (libyaml fires
+    # KEY on the glued `?` and reads `:,` mid-plain, yeptris keeps `?`
+    # plain-first - probed DIFFER, out of this arm). Comparator carry
+    # only - no engine change. (The seeds ride the `flow-qsoup*`
+    # comparator-snapshot exclusion - the family is dense.)
+    # Seeds: flow-qsoup-qcolon-r286.bin (the greedy byte-law floor, 16
+    # bytes: `{?#,*%,?<TAB>:,?<LF>,<}` - the glued-?# plain, the bare
+    # alias, the r286 colon-ind member, a split-? pair, the `<` keyless
+    # member) and the raw artifact.
+    add_test(
+        NAME fuzz-diff-r286-flow-qsoup-qcolon
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-qcolon-r286.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-qcolon-r286-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
