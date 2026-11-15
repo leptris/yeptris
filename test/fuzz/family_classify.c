@@ -1288,17 +1288,53 @@ static int l_plain_scan(lctx* c, fout* o, size_t* stop) {
     return 1;
 }
 
-/* The DQ scan (libyaml's scan_flow_scalar fold — CR/LF/NEL fold
- * identically to yeptris; exotic breaks are a gate; interior blanks
- * ride byte-exact, boundary blanks join the fold — see
- * fc_quoted_value). */
+/* The DQ scan (libyaml's scan_flow_scalar: interior blanks ride
+ * byte-exact, boundary blanks join the fold — see fc_quoted_value's
+ * twin gates). The in-span break runs join per libyaml's
+ * leading_break/trailing_breaks dance over READ_LINE (the r278 law):
+ * the run's blanks drop; a run whose FIRST break is CR/LF/CRLF/NEL
+ * folds to ONE space when it is the only break, else the leading
+ * break discards and the REST join (CR/LF/NEL -> '\n', LS/PS raw); a
+ * run led by LS/PS joins EVERY break (LS/PS raw, the others '\n').
+ * The probes: "a<CR>b" -> `a b`, "a<CR><CR>b" -> `a\nb`,
+ * "a<PS>b" -> `a<PS>b`, "a<CR><PS>b" -> `a<PS>b`,
+ * "a<PS><CR>b" -> `a<PS>\nb`, "a<CR><PS><CR>b" -> `a<PS>\nb`. */
+
+#define FC_MAX_BRK_RUN                                                                             \
+    64u /* break kinds remembered per run; past it:                                                \
+         * decline */
+
+typedef struct {
+    uint8_t raw;   /* 0: joins as '\n'; 1: the LS/PS bytes ride */
+    uint8_t b3[2]; /* the raw bytes after the E2 lead (80 A8/A9) */
+} fcbrk;
+
+static void fc_brk_join(fout* o, const fcbrk* run, uint32_t run_n) {
+    uint32_t k = 0;
+    if (!run[0].raw) {
+        if (run_n == 1) {
+            fo_str(o, " ");
+            return;
+        }
+        k = 1; /* the leading NL break discards into the fold */
+    }
+    for (; k < run_n; k++) {
+        if (run[k].raw) {
+            fo_str(o, "\xe2");
+            fo_bytes(o, run[k].b3, 2);
+        } else {
+            fo_str(o, "\\n"); /* the dump-escaped LF (yd_escape_append) */
+        }
+    }
+}
+
 static int l_dq_scan(lctx* c, fout* o, size_t* stop) {
     const uint8_t* p = c->p;
     size_t n = c->n;
     size_t i = c->pos + 1; /* past the open quote */
     int first = 1;
-    uint32_t lead = 0;
-    uint32_t run = 0;
+    fcbrk kinds[FC_MAX_BRK_RUN];
+    uint32_t run_n = 0;
     size_t blank_at = 0;
     size_t blank_n = 0;
     for (;;) {
@@ -1307,14 +1343,18 @@ static int l_dq_scan(lctx* c, fout* o, size_t* stop) {
         }
         int bl = fc_break_run_len(p, n, i);
         if (bl > 0) {
-            if (p[i] == 0xE2 || p[i] == 0xC2) {
-                return l_fail(c);
+            if (run_n >= FC_MAX_BRK_RUN) {
+                return l_fail(c); /* a run past the cap: unmodeled */
             }
-            if (first) {
-                lead++;
+            if (p[i] == 0xE2) {
+                /* LS/PS ride RAW (READ_LINE); remember the exact bytes */
+                kinds[run_n].raw = 1;
+                kinds[run_n].b3[0] = p[i + 1];
+                kinds[run_n].b3[1] = p[i + 2];
             } else {
-                run++;
+                kinds[run_n].raw = 0; /* CR/LF/CRLF/NEL join as '\n' */
             }
+            run_n++;
             blank_n = 0; /* the boundary blanks join the fold */
             i += (size_t)bl;
             c->line++;
@@ -1337,16 +1377,20 @@ static int l_dq_scan(lctx* c, fout* o, size_t* stop) {
         }
         if (first) {
             first = 0;
-            if (blank_n > 0 || lead > 1) {
-                return l_fail(c);
+            if (blank_n > 0) {
+                return l_fail(c); /* a blank-led span: untested */
             }
-            if (lead == 1) {
-                fo_str(o, " ");
+            if (run_n > 0) {
+                fc_brk_join(o, kinds, run_n); /* the leading fold (the
+                                               * r274 NL twin; PS-led
+                                               * rides raw) */
+                run_n = 0;
             }
-        } else if (run > 0) {
-            fo_fold_run(o, run); /* the boundary blanks on BOTH sides of
-                                  * the break ride the fold */
-            run = 0;
+        } else if (run_n > 0) {
+            fc_brk_join(o, kinds, run_n); /* the boundary blanks on BOTH
+                                           * sides of the run ride the
+                                           * join */
+            run_n = 0;
             blank_n = 0;
         } else if (blank_n > 0) {
             fo_escape(o, p + blank_at, blank_n); /* interior: byte-exact,
@@ -1356,18 +1400,17 @@ static int l_dq_scan(lctx* c, fout* o, size_t* stop) {
         fo_escape(o, p + i, 1);
         i++;
     }
-    if (!first && (run > 0 || blank_n > 0)) {
-        return l_fail(c); /* trailing blanks/breaks: untested */
+    if (!first && blank_n > 0 && run_n == 0) {
+        return l_fail(c); /* pure trailing blanks: libyaml's whitespaces
+                           * join rides them RAW while yeptris trims the
+                           * member's tail — an unmodeled split, stays
+                           * UNKNOWN */
     }
-    if (first && lead > 0) {
-        if (lead > 1 || blank_n > 0) {
-            return l_fail(c); /* a multi-break-only span or a break+blank
-                               * span: the trailing join rides raw —
-                               * untested */
-        }
-        fo_str(o, " "); /* the break-only span folds to ONE space at the
-                         * close (fc_quoted_value's twin, the r274 law)
-                         */
+    if (run_n > 0) {
+        /* the pending run joins the close (the r278 floor:
+         * `?"2<CR>"` -> `2 `; the break-only span is the r274 NL twin,
+         * `?"<CR>"` -> ` ` — PS-led rides raw) */
+        fc_brk_join(o, kinds, run_n);
     }
     *stop = i + 1; /* past the close */
     return 1;

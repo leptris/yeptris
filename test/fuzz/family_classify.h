@@ -45,6 +45,19 @@
  *      between a member's plain tail and its separator: inert on both
  *      engines, the plain ends at the run and terminates at the next
  *      flow indicator.
+ *  (g) the r278 quoted-tail law (run 43675241311): inside a glued-`?`
+ *      member the quoted-span bytes ride yeptris's flat plain as
+ *      content (the plain fold law joins the piece breaks), while
+ *      libyaml scans a real double-quoted scalar whose break runs join
+ *      per the leading_break/trailing_breaks dance: a run led by
+ *      CR/LF/NEL folds to ONE space when it is the only break, else
+ *      the leading break discards and the rest join (CR/LF/NEL ->
+ *      newline, LS/PS raw); a run led by LS/PS joins every break
+ *      (LS/PS raw) — the probes `?"2<CR>"` -> `2 `,
+ *      `?"a<CR><PS>b"` -> `a<PS>b`, `?"a<PS><CR>b"` -> `a<PS><LF>b`,
+ *      the break-only `?"<CR>"` -> ` ` twin of the r274 law. Pure
+ *      trailing BLANKS stay UNKNOWN (libyaml joins them raw, yeptris
+ *      trims — unmodeled split).
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
