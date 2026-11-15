@@ -5238,6 +5238,32 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r279-artifact.bin
     )
 
+    # the r280 nightly escape (run 43695970290): the UTF-16BE mid-stream
+    # BOM composite rides the r144/r226/r243 front-end family's dump
+    # relation, widened on two fronts the 5206-byte sibling (12 bytes
+    # off the pinned r243 seed) exposed. (1) The fold residue is now
+    # DERIVED from the input in unit space: after each mid-stream `feff`
+    # the break run renders per the 1.2 plain-fold law (one break folds
+    # ONE space, n>1 fold n-1 escaped newlines; boundary blanks drop) —
+    # the 14-byte floor `feff feff 0085 feff 0085 2029 220a` rides the
+    # second FEFF's NEL+PS two-break run (one "\n" escape libyaml
+    # swallowed whole with the breaks). (2) The harness's 4096-byte line
+    # cap truncates BOTH giant dumps at possibly DIFFERENT char phases,
+    # so the residue window decodes as [one partial char tail][complete
+    # chars][one partial char head] and EITHER fragment proves the
+    # window is the cap cut, not extra content. Runs past the cap, runs
+    # that eat to EOF, and composites past the FEFF table decline. The
+    # A/B is FREE: the nightly ran on pre-widen main and its failure IS
+    # the pre-widen abort. Comparator carry only — no engine change.
+    # Seeds: utf16-midstream-bom-r280.bin (this pin) and the raw
+    # artifact.
+    add_test(
+        NAME fuzz-diff-r280-utf16-midstream-bom
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r280.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r280-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

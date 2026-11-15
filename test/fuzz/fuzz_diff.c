@@ -9333,19 +9333,31 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
  * nightly run 42942836432): a UTF-16BE stream opening with THREE
  * `feff 0085` (BOM + NEL) code-unit pairs. yeptris (the r144 fix)
  * consumes ONLY the stream-initial BOM and keeps every mid-stream
- * `feff` code unit as U+FEFF (ZWNBSP) CONTENT — the normalized NEL
- * that follows each folds to ONE space in the plain scalar; libyaml's
- * UTF-16 reader eats the mid-stream `feff` code units as BOMs too,
- * so both its FEFF characters and their fold spaces vanish. The
- * relation is exact and dump-shaped (the yd_ps_space_divergence
- * pattern): libyaml's dump equals yeptris's dump with every UTF-8
- * U+FEFF triple removed TOGETHER with the single fold space that
- * immediately follows each (the NEL residue — yeptris folds the
- * break libyaml swallowed whole). Any FEFF triple NOT followed by a
- * space is also removable (a mid-content FEFF without a following
- * break); anything else mismatches and declines (the escalation
- * clause stays live). Gate: the input starts with the UTF-16BE BOM
- * `fe ff` and contains at least one more `fe ff` code unit mid-stream. */
+ * that follows each folds per the 1.2 plain-fold law in the plain
+ * scalar; libyaml's UTF-16 reader eats the mid-stream `feff` code
+ * units as BOMs too, so both its FEFF characters and their fold
+ * residue vanish. The relation is exact and dump-shaped (the
+ * yd_ps_space_divergence pattern): libyaml's dump equals yeptris's
+ * dump with every UTF-8 U+FEFF triple removed TOGETHER with the fold
+ * render of the break run that follows it in unit space — the render
+ * is DERIVED from the input (one break folds ONE space, n>1 breaks
+ * fold n-1 escaped newlines; boundary blanks drop; the r280 floor
+ * `feff feff 0085 feff 0085 2029 220a`: the second FEFF's NEL+PS
+ * two-break run renders one "\n" escape libyaml swallowed whole with
+ * the breaks). A FEFF with NO break run keeps the legacy single-space
+ * strip (a mid-content FEFF's neighbor blank); a run past the cap, a
+ * run that eats to EOF, and a FEFF past the table decline (the
+ * escalation clause stays live). At the dump tail the harness's
+ * 4096-byte line cap truncates BOTH giant dumps at possibly DIFFERENT
+ * char phases (the r280 artifact, 5206 bytes): the residue window
+ * decodes as [one partial char tail — up to three continuation bytes
+ * —][complete chars][one partial char head], and EITHER fragment
+ * proves the window is the cap cut, not extra content. Gate: the
+ * input starts with the UTF-16BE BOM `fe ff` and contains at least
+ * one more `fe ff` code unit mid-stream. */
+#define YD_R243_MAX_RES 256u                          /* mid-stream FEFFs modeled */
+#define YD_R243_MAX_RUN 8u                            /* breaks per fold run */
+#define YD_R243_RES_MAX (2u * (YD_R243_MAX_RUN - 1u)) /* render bytes */
 static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, const char* ydump,
                                             const char* ldump) {
     size_t i;
@@ -9365,22 +9377,110 @@ static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, co
     if (!extra_bom) {
         return 0; /* the initial BOM alone rides the r144 engine law */
     }
+    /* the per-FEFF fold residues, derived in unit space (the r280
+     * drill, run 43695970290): blanks at the fold boundary drop, the
+     * break run renders per the 1.2 fold law, content or another FEFF
+     * ends the derivation, and EOF after a run stays unmodelable */
+    uint8_t res[YD_R243_MAX_RES][YD_R243_RES_MAX];
+    size_t resn[YD_R243_MAX_RES];
+    size_t nres = 0;
+    for (i = 2; i + 1 < size;) {
+        unsigned hi;
+        unsigned lo;
+        size_t u;
+        uint32_t br;
+        uint8_t* r;
+        if (data[i] != 0xFE || data[i + 1] != 0xFF) {
+            i += 2;
+            continue;
+        }
+        if (nres >= YD_R243_MAX_RES) {
+            return 0; /* a composite past the table: unmodelable */
+        }
+        r = res[nres];
+        resn[nres] = 0;
+        u = i + 2;
+        while (u + 1 < size && data[u] == 0x00 && (data[u + 1] == 0x20 || data[u + 1] == 0x09)) {
+            u += 2; /* boundary blanks drop into the fold */
+        }
+        br = 0;
+        while (u + 1 < size) {
+            hi = data[u];
+            lo = data[u + 1];
+            if (hi != 0x00 && hi != 0x20) {
+                break; /* not a break unit (the LS/PS leads) */
+            }
+            if (lo == 0x0A || lo == 0x0D || lo == 0x85) {
+                br++;
+                u += 2;
+                if (hi == 0x00 && lo == 0x0D && u + 1 < size && data[u] == 0x00 &&
+                    data[u + 1] == 0x0A) {
+                    u += 2; /* CRLF counts ONE break */
+                }
+                if (br > YD_R243_MAX_RUN) {
+                    return 0; /* a run past the cap: unmodelable */
+                }
+                while (u + 1 < size && data[u] == 0x00 &&
+                       (data[u + 1] == 0x20 || data[u + 1] == 0x09)) {
+                    u += 2; /* interior boundary blanks drop */
+                }
+                continue;
+            }
+            if (hi == 0x20 && (lo == 0x28 || lo == 0x29)) {
+                br++; /* LS/PS */
+                u += 2;
+                if (br > YD_R243_MAX_RUN) {
+                    return 0;
+                }
+                while (u + 1 < size && data[u] == 0x00 &&
+                       (data[u + 1] == 0x20 || data[u + 1] == 0x09)) {
+                    u += 2;
+                }
+                continue;
+            }
+            break; /* content (or another FEFF) ends the run */
+        }
+        if (br > 0) {
+            if (u + 1 >= size) {
+                return 0; /* a run that eats to EOF: unmodelable */
+            }
+            if (br == 1) {
+                r[resn[nres]++] = ' ';
+            } else {
+                uint32_t k2;
+                for (k2 = 0; k2 + 1 < br; k2++) {
+                    r[resn[nres]++] = '\\';
+                    r[resn[nres]++] = 'n';
+                }
+            }
+        }
+        nres++;
+        i = u; /* the derivation resumes after the run (or at the
+                * next FEFF the walk lands on directly) */
+    }
     /* the relation: libyaml's dump == yeptris's dump minus every
-     * U+FEFF triple and the ONE space following each — with ONE tail
-     * allowance: at the scalar-content end libyaml's non-validating
-     * UTF-16 writer may carry a residue (the odd-region re-decode:
-     * up to two complete characters plus one TRUNCATED UTF-8
-     * sequence at EOF) that yeptris's validating front-end declines. */
+     * U+FEFF triple and its derived fold render — with ONE tail
+     * allowance: the harness's 4096-byte line cap truncates BOTH
+     * giant dumps at possibly different char phases, and libyaml's
+     * window carries the residue (the r280 artifact). */
     {
         const char* a = ydump;
         const char* b = ldump;
+        size_t ri = 0;
         while (a[0] != '\0') {
             if ((unsigned char)a[0] == 0xEF && (unsigned char)a[1] == 0xBB &&
                 (unsigned char)a[2] == 0xBF) {
                 a += 3; /* the U+FEFF triple vanishes */
-                if (a[0] == ' ') {
-                    a++; /* the folded-NEL residue vanishes with it */
+                if (ri < nres && resn[ri] > 0) {
+                    if (memcmp(a, res[ri], resn[ri]) != 0) {
+                        return 0; /* the derived fold render is absent */
+                    }
+                    a += resn[ri];
+                } else if (a[0] == ' ') {
+                    a++; /* the legacy single-space strip (a FEFF with
+                          * no break run: the neighbor blank) */
                 }
+                ri++;
                 continue;
             }
             if (b[0] != a[0]) {
@@ -9404,11 +9504,24 @@ static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, co
             if (memcmp(b + extra, a, y_rest) != 0) {
                 return 0;
             }
-            /* the residue: complete chars, then ONE truncated
-             * multi-byte sequence at its end (libyaml's writer
-             * flushed the lead/continuations it had buffered) */
+            /* the residue: the cap cut lands at an arbitrary char
+             * PHASE on each side (the r280 law) — the window decodes
+             * as [one partial char tail, up to three continuation
+             * bytes — the r280 artifact's phase][complete chars][one
+             * partial char head — the r243 seed's phase]; EITHER
+             * fragment present proves the window is the cap cut, not
+             * extra content */
             size_t k = 0;
+            size_t frag = 0;
             int truncated = 0;
+            while (k < extra && frag < 3 && ((unsigned char)b[k] & 0xC0) == 0x80) {
+                k++; /* the char cut in yeptris's window leaves its
+                      * continuation tail here */
+                frag++;
+            }
+            if (frag == 3 && k < extra && ((unsigned char)b[k] & 0xC0) == 0x80) {
+                return 0; /* more than one char's tail: not a cap cut */
+            }
             while (k < extra) {
                 unsigned char lead = (unsigned char)b[k];
                 size_t need;
@@ -9430,7 +9543,7 @@ static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, co
                 }
                 k += need;
             }
-            return truncated;
+            return truncated || frag > 0;
         }
     }
 }
