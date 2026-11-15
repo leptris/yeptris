@@ -6,6 +6,14 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.69] - 2026-11-15
+
+### Fixed
+
+- **the comparator widens the block-NEL arm twice more (the #1310 family; zero engine divergence outstanding — the last engine defect remains r248, #1281)**:
+  - **the more-indent surplus (r282, PR #1385, issue #1384)** — a folded block scalar whose content NEL (the 1.2 kept-content law) meets a space-only continuation sub-line: yeptris reads NEL + n spaces where libyaml's 1.1 reads one escape + (n − 1) spaces (the indent it ate), the r176 breakless-EOF clip tail closing the pair. New arm `yd_block_nel_moreindent_divergence`: byte-bound transducer, run == escape run, space delta == exactly 1, the r161 remainder law on the tail. Floor 7 bytes.
+  - **the header widening (r283, PR #1387, issue #1386)** — the same family behind a commented, PS-terminated block-scalar header: the gate admits break-terminated (spaces + one space-preceded comment) header lines, and the pair-walk gains the r197 LS/PS raw-keep polarity (libyaml keeps the raw PS triple; yeptris normalizes to the spelled break) plus the dropped-fold-break surplus the NEL split manufactures (exactly one surplus escape per gap). Floor 12 bytes.
+
 ## [0.6.68] - 2026-11-15
 
 ## [0.6.68] - 2026-11-15
