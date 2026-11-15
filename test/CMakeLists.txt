@@ -5306,6 +5306,27 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-moreindent-r282-artifact.bin
     )
 
+    # the r283 nightly escape (run 43737119210): the BLOCK-NEL
+    # header-comment composition - the r282 shape riding a COMMENTED
+    # block-scalar header ("> # PS :" - the header line's break is the
+    # PS) plus two more documented sites past the NEL law: the LS/PS
+    # raw-keep polarity (yeptris spells the empty-line break it
+    # normalized to an escape; libyaml's READ_LINE keeps the raw
+    # triple) and the dropped-fold-break surplus the NEL split
+    # manufactures (libyaml's fold branch drops the gap's leading
+    # break; yeptris's more-indented kept-content line keeps it
+    # literal). Floor 12 bytes "> SP # PS SP : NEL SP SP"; the raw
+    # 32-byte artifact rides the same arm. Comparator carry only -
+    # no engine change.
+    # Seeds: block-nel-header-ps-r283.bin (this floor) and the raw
+    # artifact.
+    add_test(
+        NAME fuzz-diff-r283-block-nel-header-ps
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-header-ps-r283.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-header-ps-r283-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
