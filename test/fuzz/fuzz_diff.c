@@ -19060,9 +19060,27 @@ static int fc_selftest_dir(const char* dir) {
             size_t mn = 0;
             int applied = 1;
             switch (mc) {
-            case 0: { /* a closer spliced before the first separator */
+            case 0: { /* a closer spliced before the first separator
+                       * (comment-aware: a `,` inside a `#`-to-break run
+                       * rides inert — the r279 seed's first raw comma
+                       * sits in the plain-tail comment the law-h
+                       * derivation eats on both engines, so a splice
+                       * there is NOT a violation, it reproduces the base
+                       * seed byte-exact; the splice lands before the
+                       * first separator the engines actually token) */
                 size_t sep = n;
+                int in_comment = 0;
                 for (size_t i = 1; i + 1 < n; i++) {
+                    if (in_comment) {
+                        if (buf[i] == '\n' || buf[i] == '\r') {
+                            in_comment = 0;
+                        }
+                        continue;
+                    }
+                    if (buf[i] == '#') {
+                        in_comment = 1;
+                        continue;
+                    }
                     if (buf[i] == ',') {
                         sep = i;
                         break;

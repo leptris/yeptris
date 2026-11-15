@@ -5218,6 +5218,26 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r278-artifact.bin
     )
 
+    # the r279 nightly escape (run 43688038100): the plain-tail comment
+    # members ride the #1310 classifier's model extension (law h) — a
+    # blank-preceded `#` INSIDE a member's plain ends the plain on BOTH
+    # engines (the run eats inertly to the break) and the member
+    # boundary after the break must derive: a flow indicator (the
+    # 16-byte floor {?#<SP>#<LF>,?#,*L<LF>,<}) or a `:`+blank/break
+    # VALUE boundary (the artifact's first member: the glued-`?` plain
+    # ends at the run, the colon re-lexes as the VALUE token with an
+    # empty value; libyaml fires the KEY token for the flow `?`,
+    # comment-eats the rest of the line, and pairs KEY/VALUE with
+    # inserted empties). Content resuming after the run, a second
+    # comment line, and eats to EOF stay UNKNOWN.
+    # The flow-qsoup- prefix joins the classifier's positive seed set.
+    add_test(
+        NAME fuzz-diff-r279-qtail-comment
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r279.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r279-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
