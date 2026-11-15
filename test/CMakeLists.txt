@@ -5200,6 +5200,24 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r277-artifact.bin
     )
 
+    # the r278 nightly escape (run 43675241311): the quoted-tail members
+    # ride the #1310 classifier's model extension — inside a glued-`?`
+    # member the quoted-span bytes ride yeptris's flat plain as content
+    # (the plain fold law) while libyaml scans a real double-quoted
+    # scalar whose break runs join per the leading_break/
+    # trailing_breaks dance (a CR/LF/NEL-led run folds to ONE space
+    # when it is the only break, else the leading break discards and
+    # the rest join; an LS/PS-led run joins every break with LS/PS
+    # raw — the 12-byte floor [?#<CR>"2<CR>",?m]); pure trailing
+    # blanks stay UNKNOWN (libyaml joins them raw, yeptris trims).
+    # The flow-qsoup- prefix joins the classifier's positive seed set.
+    add_test(
+        NAME fuzz-diff-r278-qtail-break-dq
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r278.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r278-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
