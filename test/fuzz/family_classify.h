@@ -33,6 +33,18 @@
  *  (e) the r230 double-split residual-colon law and the m43/m44
  *      finding: a spliced/dropped `:` at a fold point moves neither
  *      dump (the fold-point `:` re-lexes as the VALUE token on both).
+ *  (f) the r277 MAP-steal laws (run 43657665584): an explicit-`?`
+ *      member whose key-position scan hits a blank-preceded `#`
+ *      comment ride — with ZERO separators inside the run on a MAP
+ *      root, the post-break content is the member's key slot, and a
+ *      GLUED `:` leading it (the 9-byte floor `{?TAB#LF:#LF}`) is
+ *      plain content on yeptris (the 1.2 ns-plain-first rule) while
+ *      libyaml's flow scan splits ANY colon as the VALUE token and the
+ *      line's tail comment-eats (yeptris keeps the plain key, libyaml
+ *      renders the empty-key pair). And the whole-line comment run
+ *      between a member's plain tail and its separator: inert on both
+ *      engines, the plain ends at the run and terminates at the next
+ *      flow indicator.
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:

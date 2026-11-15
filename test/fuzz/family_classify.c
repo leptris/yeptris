@@ -314,7 +314,33 @@ static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int
             break;
         }
         if ((node->n > 0 || br > 0) && q < end && p[q] == '#') {
-            return 0; /* a comment line/lead-in: outside the family */
+            /* a whole-line comment run between pieces (the r277
+             * members: `<` + a line-start `\t#...` eat + the `,`): the
+             * comment ends the plain on BOTH engines and rides inert,
+             * so the plain terminates at the next flow indicator.
+             * Only the separator/closer follow-on is derived — a plain
+             * byte resuming after the comment is a fresh member where
+             * a separator was expected (the engines' "did not find
+             * expected ',' or '}'" both-error, never consulted); a
+             * run that eats to EOF never terminates. Everything else
+             * stays UNKNOWN. */
+            size_t e2 = q + 1;
+            while (e2 < end && fc_break_len(p, n, e2) == 0) {
+                e2++;
+            }
+            if (e2 >= end) {
+                return 0;
+            }
+            e2 += (size_t)fc_break_run_len(p, n, e2);
+            while (e2 < end && fc_blank(p[e2])) {
+                e2++;
+            }
+            if (e2 >= end || !fc_flow_ind(p[e2])) {
+                return 0;
+            }
+            *stop_at = e2;
+            *stop_sep = 1;
+            return 1;
         }
         if (q >= end || fc_flow_ind(p[q])) {
             *stop_at = q;
@@ -676,11 +702,26 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
          * yeptris fires a comment at the content-start `#`; the run eats
          * to the break — the member's `,` separator AND any following
          * `?`+break ride inside it inertly — and whatever content
-         * follows becomes the STOLEN KEY of this explicit-key member,
-         * rendered as the single-pair wrapper (the m7/m8/m9/m10 probes:
-         * `[a,?\r#x,b\nc]` -> +MAP(c,), `[?##|,?\r###|,?\rb]` ->
-         * +MAP(b,)). Gates: exactly one separator inside the run, a
-         * terminator exists, SEQ root, flat content start. */
+         * follows becomes the STOLEN KEY of this explicit-key member.
+         * Two probed rides:
+         *  - the r245 SEQ steal: exactly one `,` inside the run, SEQ
+         *    root, the post-break content rides the single-pair
+         *    wrapper (the m7/m8/m9/m10 probes: `[a,?\r#x,b\nc]` ->
+         *    +MAP(c,), `[?##|,?\r###|,?\rb]` -> +MAP(b,));
+         *  - the r277 MAP steal: ZERO separators inside the run, MAP
+         *    root, the post-break content is the member's key slot.
+         *    A GLUED `:` leading it (the r277 floor's `{?\t#\n:#\n}`:
+         *    `:` + non-blank) is plain content on yeptris (the 1.2
+         *    ns-plain-first rule; the glued-colon-plain ride) while
+         *    libyaml's flow scan splits ANY colon as the VALUE token
+         *    and the run's tail comment-eats — so the yeptris dump
+         *    keeps the whole plain as the key (value empty) and the
+         *    libyaml dump renders the empty-key pair. A non-colon-led
+         *    stolen key agrees on both engines (never consulted).
+         * Gates: at most one separator inside the run, a terminator
+         * exists, the r245 steal stays SEQ-rooted, a clean eat stays
+         * MAP-rooted, and the stolen key is flat content (structural
+         * and colon+blank-led keys decline). */
         size_t e = ks + 1;
         int seps = 0;
         while (e < n && fc_break_len(p, n, e) == 0) {
@@ -693,12 +734,18 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             }
             e++;
         }
-        if (seps != 1 || e >= n) {
+        if (seps >= 2 || e >= n) {
             return y_fail(c);
+        }
+        if (seps == 1 && c->is_map) {
+            return y_fail(c); /* the r245 steal stays SEQ-rooted */
+        }
+        if (seps == 0 && !c->is_map) {
+            return y_fail(c); /* a clean eat on the SEQ root: untested */
         }
         e += (size_t)fc_break_run_len(p, n, e);
         ks = fc_skip_blank_break(p, n, e);
-        if (ks >= n || c->is_map) {
+        if (ks >= n) {
             return y_fail(c);
         }
         if (p[ks] == '*' || p[ks] == '&' || p[ks] == '"' || p[ks] == '\'' || p[ks] == '!' ||

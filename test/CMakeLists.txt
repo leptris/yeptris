@@ -5184,6 +5184,22 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r275.bin
     )
 
+    # the r277 nightly escape (run 43657665584): the MAP-steal members
+    # ride the #1310 classifier's model extension (a `?`+blank explicit
+    # key whose key-position scan hits a blank-preceded `#` comment with
+    # zero separators inside the run: the post-break content is the key
+    # slot, and a GLUED `:` leading it is plain content on yeptris while
+    # libyaml's flow scan splits ANY colon as the VALUE token — the
+    # 9-byte floor {?TAB#LF:#LF}); the whole-line comment run between a
+    # member's plain tail and its separator rides inert on both engines.
+    # The flow-qsoup- prefix joins the classifier's positive seed set.
+    add_test(
+        NAME fuzz-diff-r277-qmap-colon-steal
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r277.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r277-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
