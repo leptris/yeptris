@@ -120,7 +120,7 @@ typedef struct {
     uint32_t tag_len;
 } YeptrisEventRecord; /* 44B — the bindings mirror this layout in the
                          same lockstep window (the 0.6.9 law). The
-                         *_off/*_len pairs are BYTE offsets+lengths into
+                         *`*_off` / `*_len` pairs are BYTE offsets+lengths into
                          the arena (UTF-8 bytes, no trailing NUL): hosts
                          slice BYTES (ruby: byteslice — a char-indexed
                          String#[] turns a 22-byte "…ré…" span into 22
