@@ -5264,6 +5264,32 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r280-artifact.bin
     )
 
+    # the r281 nightly escape (run 43705128492): the glued-`?#` soup
+    # composed with ONE under-modeled container shape — the nested flow
+    # map. The 9-byte floor `{?#,:<LF>{}}` splits on the slot the
+    # empty `{}` lands in: yeptris splits the `#,:` line at the
+    # comment-eat (member 1 = glued-`?#` plain + empty; member 2 =
+    # `:`+LF colon-led EMPTY key whose value IS the nested map), while
+    # libyaml's scan_to_next_token comment-eats `#,:` from the token
+    # start and the parser reaches the `{` as the explicit-`?` member's
+    # KEY node. The classifier models the nesting recursively (law i):
+    # the yeptris value walk renders +MAP/-MAP around the same member
+    # laws, the `:`-led member derives the empty key, libyaml's
+    # simple-key slots ride per flow level and its flow-mapping body
+    # recurses at FLOW-MAPPING-START nodes. Maps only — a nested `[`,
+    # member-start collections, and past-32 nesting stay UNKNOWN. The
+    # member-start collections, and past-32 nesting stay UNKNOWN. The
+    # 66-byte artifact composes the floor with the `% :{...}` value
+    # split (its nested map carries six members against libyaml's
+    # three empty-key pairs). Comparator carry only — no engine change.
+    # Seeds: flow-qsoup-r281.bin (this floor) and the raw artifact.
+    add_test(
+        NAME fuzz-diff-r281-nested-map
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r281.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r281-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
