@@ -5391,6 +5391,30 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-qcolon-r286-artifact.bin
     )
 
+    # the r287 nightly escape (run 43769925521): the BLANK-LED DQ SPAN
+    # flow soup - members where a double-quoted span opens with a CR
+    # break followed by a blank run (the artifact's `"<CR>` + 34 SP +
+    # `g"`): both engines fold the break to ONE space and strip the
+    # continuation blanks (` g` byte-exact on both sides) while the
+    # classifier's twin gates declined any blank-led span head, leaving
+    # the 58-byte soup unexplained. The widening is twin-model-side (the
+    # yeptris walk's fc_quoted_value first-content gate and the libyaml
+    # walk's l_dq_scan first gate admit the blank run after a SINGLE
+    # leading CR/LF/NEL break; multi-break leads and raw LS/PS-led
+    # heads stay declined). Comparator carry only - no engine change.
+    # (The seeds ride the `flow-qsoup*` comparator-snapshot exclusion -
+    # the family is dense.)
+    # Seeds: flow-qsoup-dqblankled-r287.bin (the constrained ddmin floor,
+    # 21 bytes: `[1,?#,"<CR>g",?m?,"<CR><SP>g"]` - the plain lead, the
+    # glued-?# member eaten by libyaml's comment run, the glued-? pair,
+    # the blank-led DQ member) and the raw artifact.
+    add_test(
+        NAME fuzz-diff-r287-flow-qsoup-dqblankled
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqblankled-r287.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqblankled-r287-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
