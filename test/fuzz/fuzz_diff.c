@@ -7531,6 +7531,136 @@ static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, con
     return known3;
 }
 
+/* True for the r282 nightly's BLOCK-NEL MORE-INDENT-SURPLUS law (run
+ * 43719730493, crash-e559eb4ce7e0c032dad39516005a60e05b983eb8, 24
+ * bytes; greedy floor 7 bytes "> LF SP < NEL SP SP"): a block scalar
+ * whose content carries a raw NEL followed by a space run with no
+ * content behind it on that sub-line. yeptris's 1.2 reader keeps the
+ * NEL as first-class content plus ALL the spaces; libyaml's 1.1
+ * reader breaks AT the NEL, and the space-only continuation keeps
+ * exactly its indent-surplus space behind the escaped break -- so at
+ * each such site yeptris's dump reads NEL + n spaces where libyaml's
+ * reads one \n escape + (n - 1) spaces. The transducer pairs exactly
+ * that (run k == escape run, space delta == 1, everything else
+ * byte-bound), and the r176 breakless-EOF tail (yeptris's clip keeps
+ * the final break libyaml drops) rides as the closing surplus when
+ * the y-side's whole remainder is the one escape over a byte-identical
+ * frame suffix (the r161 law). The gate binds hard: the input must
+ * OPEN with a block-scalar header ('>' or '|' then LF), carry the raw
+ * NEL pair, and the walk is byte-bound -- an admitted input can only
+ * ride the documented deltas; every flow or tag byte declines before
+ * the walk. */
+static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    const char* a = ydump;
+    const char* b = ldump;
+    int subs = 0;
+    while (*a != '\0' || *b != '\0') {
+        if (*a == *b) {
+            a++;
+            b++;
+            continue;
+        }
+        /* the NEL site: yeptris keeps raw NELs, libyaml escaped them */
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 && b[0] == '\\' &&
+            b[1] == 'n') {
+            int k = 0;
+            const char* p = a;
+            while ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0x85) {
+                p += 2;
+                k++;
+            }
+            int r = 0;
+            const char* q = b;
+            while (q[0] == '\\' && q[1] == 'n') {
+                q += 2;
+                r++;
+            }
+            if (r != k) {
+                return 0;
+            }
+            /* the space runs behind: libyaml keeps exactly one fewer
+             * (the indent it ate on the space-only sub-line) */
+            int na = 0;
+            while (p[0] == ' ') {
+                p++;
+                na++;
+            }
+            int nb = 0;
+            while (q[0] == ' ') {
+                q++;
+                nb++;
+            }
+            if (na - nb != 1 || na < 1) {
+                return 0;
+            }
+            a = p;
+            b = q;
+            subs++;
+            continue;
+        }
+        /* the r176 tail: yeptris's clip break libyaml dropped at a
+         * breakless EOF -- accept ONLY when y's whole remainder is
+         * the one escape followed by a byte-identical frame suffix
+         * (the r161 law: the remainders behind the surplus escape
+         * must coincide completely, so the claim can never swallow
+         * divergence past the value) */
+        if (a[0] == '\\' && a[1] == 'n' && strcmp(a + 2, b) == 0) {
+            return subs > 0;
+        }
+        return 0;
+    }
+    return *a == '\0' && *b == '\0' && subs > 0;
+}
+
+static int yd_block_nel_moreindent_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                              const char* ldump) {
+    if (size < 3 || ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    /* the block-scalar header gate: '>' or '|' then LF, no flow */
+    if ((data[0] != '>' && data[0] != '|') || data[1] != '\n') {
+        return 0;
+    }
+    int has = 0;
+    for (size_t i = 0; i + 1 < size; i++) {
+        if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+            has = 1;
+            break;
+        }
+    }
+    if (!has) {
+        return 0;
+    }
+    if (yd_block_nel_moreindent_pair(ydump, ldump)) {
+        return 1;
+    }
+    /* the r176 move: at a breakless EOF libyaml drops the final
+     * break -- re-dump libyaml with the LF appended and pair again */
+    if (data[size - 1] != '\n' && data[size - 1] != '\r' && size <= 8192) {
+        char* sub = malloc(size + 1);
+        if (sub != NULL) {
+            memcpy(sub, data, size);
+            sub[size] = '\n';
+            int ok2 = 0;
+            char* ldump2 = yd_libyaml_dump((const char*)sub, size + 1, &ok2);
+            free(sub);
+            if (ldump2 != NULL && ok2) {
+                int known = yd_block_nel_moreindent_pair(ydump, ldump2);
+                free(ldump2);
+                if (known) {
+                    return 1;
+                }
+            } else {
+                free(ldump2);
+            }
+        }
+    }
+    return 0;
+}
+
 /* True for the ONE exact gray-zone input of the r130 nightly
  * (crash artifact, 31 bytes, run 41839166485): the glued-hash qflow
  * family's STRUCTURAL permutation -- yeptris reads two plain seq
@@ -18854,6 +18984,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_plain_nel_fold_divergence(data, size, ydump, ldump) ||
          yd_plain_nel_lsps_fold_divergence(data, size, ydump, ldump) ||
          yd_block_nel_content_divergence(data, size, ydump, ldump) ||
+         yd_block_nel_moreindent_divergence(data, size, ydump, ldump) ||
          yd_r121_permuted_gray(data, size, ydump, ldump) ||
          yd_r229_flow_quote_comment_glue_gray(data, size, ydump, ldump) ||
          yd_r137_soup_gray(data, size, ydump, ldump) ||
