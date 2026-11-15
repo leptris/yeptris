@@ -16,13 +16,15 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.68 — live across all five runtimes** (C +
-ruby `0.6.68.0` + py `0.6.68.0` + rs/ts `0.6.68`, registry-checked
-2026-11-15). v0.6.68 carries the day's comparator hardening (the
-classifier laws (g)/(h)/(i): DQ break folds, plain-tail comments,
-nested flow maps — five nightly escapes retired, zero engine
-divergence outstanding since r248) over the contract cut. v0.6.67
-was that cut: the
+**Latest release: v0.6.69 — live across all five runtimes** (C +
+ruby `0.6.69.0` + py `0.6.69.0` + rs/ts `0.6.69`, registry-checked
+2026-11-15). v0.6.69 continues the comparator hardening: the
+block-NEL arm widened twice (the more-indent surplus, the
+commented-PS header composition), the classifier's bare-anchor
+member branch, and pure budget raises as the soup grows — nine
+nightly escapes retired this day, zero engine divergence outstanding
+since r248. v0.6.68 carried the earlier hardening wave over the
+contract cut. v0.6.67 was that cut: the
 0.6.66 downstream regression (relaton #1359, png_conform #1366) is
 verdict-closed — the engine REFUTED innocent (records byte-perfect
 from every library; the corruption was the binding's char-indexed
