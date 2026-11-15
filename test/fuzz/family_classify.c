@@ -227,14 +227,16 @@ typedef struct {
 
 /* Scan one plain content piece inside [q, end): interior blanks ride
  * byte-exact; the piece stops at a break, a `:`-VALUE boundary, a flow
- * separator/close, or blanks that lead into one of those. Returns the
- * stop position and whether it is a separator/close. A blank run that
- * leads into `#` is a COMMENT on both engines — the walk refuses it
- * (the family's `#` only rides glued to the `?`-led run, law a). */
+ * separator/close, or blanks that lead into one of those. A blank run
+ * that leads into `#` is a COMMENT on both engines — the walk ends the
+ * plain there (sets *ended_comment, the caller derives the run's ride;
+ * the r279 law) instead of refusing. Returns the stop position and
+ * whether it is a separator/close. */
 static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, int qm, size_t* piece_at,
-                    size_t* piece_len, size_t* stop, int* stop_sep) {
+                    size_t* piece_len, size_t* stop, int* stop_sep, int* ended_comment) {
     size_t k = q;
     size_t blank_n = 0;
+    *ended_comment = 0;
     for (;;) {
         if (k >= end) {
             break;
@@ -271,7 +273,10 @@ static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, int qm, si
             continue;
         }
         if (c == '#' && blank_n > 0) {
-            return 0; /* a comment: both engines end the plain here */
+            *ended_comment = 1; /* the plain ends at the comment (the
+                                 * r279 law); the tail-trim below drops
+                                 * the blanks before the run */
+            break;
         }
         /* content: any pending blanks ride INSIDE the piece */
         blank_n = 0;
@@ -352,7 +357,8 @@ static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int
         }
         size_t pat, plen, stop;
         int sep;
-        if (!fc_piece(p, n, q, end, qm, &pat, &plen, &stop, &sep)) {
+        int commented = 0;
+        if (!fc_piece(p, n, q, end, qm, &pat, &plen, &stop, &sep, &commented)) {
             return 0;
         }
         if (plen > 0) {
@@ -363,6 +369,47 @@ static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int
             node->pieces[node->n].blanks_at = 0;
             node->pieces[node->n].blanks_n = 0;
             node->n++;
+        }
+        if (commented) {
+            /* the plain-tail comment run (the r279 law, run
+             * 43688038100): a blank-preceded `#` INSIDE a member's plain
+             * ends the plain on BOTH engines (the run eats inertly to
+             * the break — yeptris's comment-at-content rule, libyaml's
+             * scan-to-token eat), so the member boundary after the
+             * break must derive: a flow indicator (the plain terminates
+             * there — the r277 whole-line law's ride) or a
+             * `:`+blank/break VALUE boundary (the colon re-lexes as the
+             * VALUE token — the r279 floor's `?#`+sp-`#`+LF+`:`+TAB).
+             * Content resuming after the run, another comment line, or
+             * an eat to EOF stays UNKNOWN. */
+            size_t e2 = stop + 1; /* stop sits ON the '#' */
+            while (e2 < end && fc_break_len(p, n, e2) == 0) {
+                e2++;
+            }
+            if (e2 >= end) {
+                return 0; /* the run eats to EOF: never terminates */
+            }
+            e2 += (size_t)fc_break_run_len(p, n, e2);
+            while (e2 < end && fc_blank(p[e2])) {
+                e2++;
+            }
+            if (e2 >= end) {
+                return 0;
+            }
+            if (fc_flow_ind(p[e2])) {
+                *stop_at = e2;
+                *stop_sep = 1;
+                return 1;
+            }
+            if (p[e2] == ':' &&
+                (e2 + 1 >= end || fc_blank(p[e2 + 1]) || fc_break_len(p, n, e2 + 1) > 0)) {
+                node->colon = 1;
+                node->colon_at = e2;
+                *stop_at = e2;
+                *stop_sep = 0;
+                return 1;
+            }
+            return 0;
         }
         if (stop < end && p[stop] == ':' &&
             (stop + 1 >= end || fc_blank(p[stop + 1]) || fc_break_len(p, n, stop + 1) > 0 ||

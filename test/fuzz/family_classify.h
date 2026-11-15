@@ -58,6 +58,19 @@
  *      the break-only `?"<CR>"` -> ` ` twin of the r274 law. Pure
  *      trailing BLANKS stay UNKNOWN (libyaml joins them raw, yeptris
  *      trims — unmodeled split).
+ *  (h) the r279 plain-tail comment law (run 43688038100): a
+ *      blank-preceded `#` INSIDE a member's plain (not at the key
+ *      position, not at a line start) ends the plain on BOTH engines —
+ *      the run eats inertly to the break — and the member boundary
+ *      after the break must derive: a flow indicator (the plain
+ *      terminates there) or a `:`+blank/break VALUE boundary (the
+ *      colon re-lexes as the VALUE token, the floor's
+ *      `{?# #\n:\t}`: the glued-`?#` plain `?#` rides the key with the
+ *      run's `,`/`\`` bytes eaten, the post-break `:`+TAB opens an
+ *      empty value; libyaml fires the KEY token for the flow `?`,
+ *      comment-eats the rest of the line, and pairs the KEY/VALUE with
+ *      inserted empties). Content resuming after the run, a second
+ *      comment line, and eats to EOF stay UNKNOWN.
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
