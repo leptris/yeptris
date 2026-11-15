@@ -10,7 +10,10 @@
  *    the alias event renders the name verbatim, a ':'-blank boundary
  *    opens the VALUE slot, a separator/closer leaves the empty
  *    scalar); `?`+blank/break splits the explicit key; a `:`-led
- *    member opens the EMPTY key (the r281 floor); plain folds ride the
+ *    member opens the EMPTY key (the r281 floor; the split-? key slot
+ *    takes `:` + blank/break/flow-indicator — the r286 flow
+ *    VALUE-boundary widening, the glued `?:` twin stays out); plain
+ *    folds ride the
  *    1.2 law (1 break -> space, n -> n-1 newlines, interior blanks
  *    exact, leading/trailing runs trimmed); a `{` at the value slot
  *    opens a nested flow map derived recursively by the same member
@@ -890,14 +893,23 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
                p[ks] == '{') {
         return y_fail(c);
     } else {
-        if (p[ks] == ':' && ks + 1 < n && (fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0)) {
+        if (p[ks] == ':' && ks + 1 < n &&
+            (fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0 || fc_flow_ind(p[ks + 1]))) {
             /* the colon-led key slot (the r275 artifact's `?`+break+`:`
-             * +blank members): the engines agree byte-exact -- the `?`
-             * drops, the key is EMPTY, and the colon-+blank is the
-             * VALUE boundary riding the common colon path below (the
-             * probes: `?\n:\t ,b` -> (e,e)+(b,e), `?\n:\tb` -> (e,b),
-             * `{a,?\n:\t }` -> (a,e)+(e,e), SEQ wraps the single
-             * pair). The colon at EOF still declines. */
+             * +blank members; the r286 widening: the colon may be
+             * followed by a FLOW INDICATOR too — the 1.2 flow
+             * VALUE-boundary law, `?\t:\,` reads the empty key and the
+             * empty value on BOTH engines while libyaml's 1.1 token
+             * dispatch fires KEY, VALUE, FLOW-ENTRY on the same bytes).
+             * The engines agree byte-exact -- the `?`
+             * drops, the key is EMPTY, and the colon boundary rides the
+             * common colon path below (the probes: `?\n:\t ,b` ->
+             * (e,e)+(b,e), `?\n:\tb` -> (e,b), `{a,?\n:\t }` ->
+             * (a,e)+(e,e), SEQ wraps the single pair; the r286 probes:
+             * `{?\t:,}`, `{?\t:}`, `{?\t:\t}`, `{a,?\t:,}`, `[?\t:,]`,
+             * `{?\t:{a}}` all EQUAL — the GLUED `?:,` twin stays
+             * red/DIFFER, out of this arm). The colon at EOF still
+             * declines. */
             memset(&key, 0, sizeof(key)); /* the empty key node */
             key.colon = 1;
             key.colon_at = ks;
