@@ -544,7 +544,9 @@ static size_t fc_alias_name(const uint8_t* p, size_t n, size_t i, size_t end) {
  * blanks at a break boundary drop into the fold; a break-only span
  * folds to ONE space at the close (the r274 law). Gates: a backslash
  * (escapes), an exotic break, a leading run >1, any trailing
- * blank/break, a blank-led start. */
+ * blank/break, a blank-led start (a blank run after a SINGLE leading
+ * break joins the fold — both engines strip the continuation blanks,
+ * the r287 arm; every other blank-led start declines). */
 static int fc_quoted_value(const uint8_t* p, size_t n, size_t s, size_t e, fout* o,
                            size_t* close_at) {
     size_t i = s;
@@ -585,11 +587,18 @@ static int fc_quoted_value(const uint8_t* p, size_t n, size_t s, size_t e, fout*
         }
         if (first_content) {
             first_content = 0;
-            if (blank_n > 0 || lead_run > 1) {
-                return 0; /* a blank-led span / a leading run: untested */
+            if (lead_run > 1) {
+                return 0; /* a multi-break-led span: untested */
             }
             if (lead_run == 1) {
-                fo_str(o, " "); /* the leading single fold keeps one space */
+                /* the leading single fold keeps one space; a leading
+                 * blank run joins the fold — BOTH engines strip the
+                 * continuation blanks (the r287 arm: the break folds,
+                 * the blanks never ride) */
+                fo_str(o, " ");
+                blank_n = 0;
+            } else if (blank_n > 0) {
+                return 0; /* a blank-led span: untested */
             }
         } else if (run > 0) {
             fo_fold_run(o, run); /* the boundary blanks on BOTH sides of
@@ -1577,14 +1586,21 @@ static int l_dq_scan(lctx* c, fout* o, size_t* stop) {
         }
         if (first) {
             first = 0;
-            if (blank_n > 0) {
-                return l_fail(c); /* a blank-led span: untested */
+            if (blank_n > 0 && (run_n != 1 || kinds[0].raw)) {
+                return l_fail(c); /* a blank-led span with no single
+                                   * leading CR/LF/NEL break: untested */
             }
             if (run_n > 0) {
                 fc_brk_join(o, kinds, run_n); /* the leading fold (the
                                                * r274 NL twin; PS-led
-                                               * rides raw) */
+                                               * rides raw); a following
+                                               * blank run joins the fold —
+                                               * libyaml's leading_blanks
+                                               * loop eats it (the r287
+                                               * arm, fc_quoted_value's
+                                               * twin) */
                 run_n = 0;
+                blank_n = 0;
             }
         } else if (run_n > 0) {
             fc_brk_join(o, kinds, run_n); /* the boundary blanks on BOTH
