@@ -6,6 +6,15 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.68] - 2026-11-15
+
+### Fixed
+
+- **the comparator closes the day's three classifier escapes and the UTF-16BE arm residue (the #1310 family; zero engine divergence outstanding — the last engine defect remains r248, #1281)**:
+  - **the quoted-tail break runs inside glued-`?#` members — law (g) (r278, PR #1372, issue #1371)**: libyaml's leading_break/trailing_breaks dance for DQ spans (CR/LF/NEL-led break-only runs fold to one space at close; multi-break and break+blank stay declined; LS/PS-led joins raw) via one bounded `fc_brk_join` emitter, cap 64; blank-led spans and pure trailing blanks stay UNKNOWN. Floor `[?#\r"2\r",?m]`.
+  - **the plain-tail comment run — law (h) (r279, PR #1375, issue #1374)**: a blank-preceded `#` inside a member's plain tail ends the plain on both engines, the run eats inertly to the break, and the post-break boundary derives (flow indicator or `:`+blank VALUE); libyaml pairs the flow `?` KEY token with inserted empties. yeptris-model side only; the firewall's closer splice went comment-aware (case-3 precedent). Floor `{?# #\n,?#,*L\n,<}`.
+  - **the UTF-16BE mid-stream BOM sibling — the r243 arm widened (r280, PR #1377, issue #1376)**: the harness tail window now decodes partial-char fragments at the `=VAL` truncation phase, and the fold residue after a FEFF derives from the input (1 break → space, n>1 → n-1 escaped newlines, blanks drop, runs to EOF decline). The classifier stays untouched — law (i) keeps encoding finds out of flow scope. Floor `feff feff 0085 feff 0085 2029 220a` (14 bytes).
+
 ## [0.6.67] - 2026-11-15
 
 ### Fixed
