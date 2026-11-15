@@ -46,18 +46,20 @@
 /* ---- budget (conservatism law n) ------------------------------------ */
 
 #define FC_MAX_INPUT                                                                               \
-    20480u                        /* the family's members are <1KB; the                            \
+    40960u                        /* the family's members are <1KB; the                            \
                                    * largest corpus seed is 10732; the                             \
-                                   * 18.5KB r284 artifact rides whole */
+                                   * 18.5KB r284 artifact rides whole; the                         \
+                                   * 32.8KB r285 artifact rides whole */
 #define FC_MAX_OUT (256u * 1024u) /* derived-dump cap */
 #define FC_MAX_PIECES 256u        /* plain fold pieces per node */
 #define FC_MAX_MEMBERS                                                                             \
-    2048u /* flow members per collection (the                                                      \
+    4096u /* flow members per collection (the                                                      \
            * 10KB r258 artifact rides ~300; the                                                    \
-           * r284 soup rides ~1400) */
+           * r284 soup rides ~1400; the r285 soup                                                  \
+           * rides 2324) */
 #define FC_MAX_TOKENS                                                                              \
     8192u               /* libyaml tokens per stream (the r284 soup                                \
-                         * rides ~5600) */
+                         * rides ~5600; the r285 soup rides 5477) */
 #define FC_MAX_NEST 32u /* the modeled nesting depth (past it: UNKNOWN) */
 
 /* ---- byte facts ------------------------------------------------------ */
