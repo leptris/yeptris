@@ -46,15 +46,19 @@
 /* ---- budget (conservatism law n) ------------------------------------ */
 
 #define FC_MAX_INPUT                                                                               \
-    16384u                        /* the family's members are <1KB; the                            \
-                                   * largest corpus seed is 10732 */
+    20480u                        /* the family's members are <1KB; the                            \
+                                   * largest corpus seed is 10732; the                             \
+                                   * 18.5KB r284 artifact rides whole */
 #define FC_MAX_OUT (256u * 1024u) /* derived-dump cap */
 #define FC_MAX_PIECES 256u        /* plain fold pieces per node */
 #define FC_MAX_MEMBERS                                                                             \
-    1024u                   /* flow members per collection (the                                    \
-                             * 10KB r258 artifact rides ~300) */
-#define FC_MAX_TOKENS 4096u /* libyaml tokens per stream */
-#define FC_MAX_NEST 32u     /* the modeled nesting depth (past it: UNKNOWN) */
+    2048u /* flow members per collection (the                                                      \
+           * 10KB r258 artifact rides ~300; the                                                    \
+           * r284 soup rides ~1400) */
+#define FC_MAX_TOKENS                                                                              \
+    8192u               /* libyaml tokens per stream (the r284 soup                                \
+                         * rides ~5600) */
+#define FC_MAX_NEST 32u /* the modeled nesting depth (past it: UNKNOWN) */
 
 /* ---- byte facts ------------------------------------------------------ */
 
@@ -1027,7 +1031,35 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
         }
         return 1;
     }
-    if (ch == '&' || ch == '\'' || ch == '!' || ch == '#' || ch == '[' || ch == '{') {
+    if (ch == '&') {
+        /* the bare anchor member (the r284 floor's `&m` between two
+         * glued-`?` members): the engine's e_anchor walk cuts the name
+         * and the member's flow-indicator terminator leaves the anchored
+         * node EMPTY — both engines render the prop, the separator
+         * blank, and the empty value (`=VAL : &m `, the r154 props
+         * law's agreeing shape). Gates: a non-empty all-IS_ALPHA name
+         * (the one charset where the engine's prop cut and libyaml's
+         * scan_anchor cut agree byte-exact — wider names ride the Y2GN
+         * interior-`:` law and diverge), the terminator glued right
+         * after the name (blank/break opens a value slot: untested), and
+         * the SEQ root (a MAP key slot rides the r76 anchor-keymap
+         * arm). */
+        size_t as = i + 1;
+        size_t al = 0;
+        while (as + al < n && fc_alpha(p[as + al])) {
+            al++;
+        }
+        size_t ae = as + al;
+        if (al == 0 || c->is_map || ae >= n || !fc_flow_ind(p[ae])) {
+            return y_fail(c);
+        }
+        *term_at = ae;
+        fo_str(&c->out, "=VAL : &");
+        fo_bytes(&c->out, p + as, al);
+        fo_str(&c->out, " \n");
+        return 1;
+    }
+    if (ch == '\'' || ch == '!' || ch == '#' || ch == '[' || ch == '{') {
         return y_fail(c); /* outside the family's flat-member shape */
     }
     if (ch == '-' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0 ||

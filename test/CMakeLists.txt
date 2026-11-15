@@ -5327,6 +5327,26 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-header-ps-r283-artifact.bin
     )
 
+    # the r284 nightly escape (run 43745100701): the GLUED-?/ANCHOR flow
+    # soup - SEQ members where yeptris's 1.2 reads the glued `?` as
+    # plain-first content (`?5:&` stays one plain; `?/<PS>m` folds the PS
+    # break to the fold space) while libyaml's 1.1 fires the KEY token on
+    # EVERY flow `?` (the glued content rides the single-pair map's key,
+    # value empty; libyaml's READ_LINE keeps the raw PS mid-plain), plus
+    # the bare `&m` anchor member both engines render as the prop +
+    # separator blank + empty value. Floor 16 bytes
+    # "[?5:&,&m,?/<PS>m]"; the raw 18552-byte soup rides whole past the
+    # raised budgets (~1400 members). Comparator carry only - no engine
+    # change.
+    # Seeds: flow-anchored-qsoup-r284.bin (this floor) and the raw
+    # artifact.
+    add_test(
+        NAME fuzz-diff-r284-flow-anchored-qsoup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-anchored-qsoup-r284.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-anchored-qsoup-r284-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
