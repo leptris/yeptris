@@ -5347,6 +5347,25 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-anchored-qsoup-r284-artifact.bin
     )
 
+    # the r285 nightly escape (run 43752700542): the CR-RUN/PS fold soup -
+    # SEQ members where yeptris's 1.2 folds the CR-run + PS break runs
+    # (5 consecutive breaks join as n-1 newlines) while libyaml's 1.1
+    # READ_LINE keeps the raw PS mid-plain (it is NOT a fold break; the
+    # raw bytes ride the join), plus the r284 glued-`?`/`?##` members and
+    # the bare `&m` anchor member riding whole. The models derive the
+    # 32772-byte artifact byte-exact with zero law changes - the only
+    # decline was the conservatism budget (2324 members past the 2048
+    # cap, 32772 bytes past the 20480 input cap). Comparator carry only -
+    # no engine change, budgets 20480/2048 -> 40960/4096.
+    # Seeds: flow-crps-qsoup-r285.bin (the greedy floor at the input
+    # budget boundary, 20484 bytes) and the raw artifact.
+    add_test(
+        NAME fuzz-diff-r285-flow-crps-qsoup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-crps-qsoup-r285.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-crps-qsoup-r285-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
