@@ -5,7 +5,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -15,6 +17,12 @@ namespace {
 
 const char* kMulti = "a: 1\n---\nb: [2, 3]\n---\n# empty\nc: x\n";
 const char* kOne = "k: v\n";
+
+std::string ev_value(YeptrisNode n) {
+    size_t len = 0;
+    const char* p = yeptris_node_value(n, &len);
+    return p ? std::string(p, len) : std::string();
+}
 
 std::string ev_text(const YeptrisEvent* e) {
     switch (e->type) {
@@ -582,4 +590,117 @@ TEST(Events, PushCallbackAbortSetsTheErrorChannel) {
     auto ok_fn = [](void*, const YeptrisEvent*) -> int { return 0; };
     EXPECT_EQ(yeptris_push_parse("x: 1\n", 5, ok_fn, nullptr), YEPTRIS_OK);
     EXPECT_STREQ(yeptris_last_error(&line, &col), "");
+}
+
+/* The records arena hands BYTE offsets+lengths (events.h's ABI). #1362's
+ * downstream face rode the gap: the ruby binding's records walk
+ * force_encoding(UTF_8)'d the arena and sliced it with Ruby's
+ * CHARACTER-indexed String#[], so the 22-byte title span
+ * "1e réunion de la CGPM" (21 chars — é is 2 bytes) read as 22 chars =
+ * 23 bytes and gained the next arena entry's first byte ("CGPMi",
+ * relaton's BIPM meeting fixtures), mis-slicing every scalar after the
+ * arena's first multibyte byte (the meeting-101-2 nil crash, the same
+ * class). The C lane's spans were byte-exact in every library — this
+ * pin holds them exact so any engine-side drift of a multibyte record's
+ * offset/length fires at the contract's home, not downstream. */
+TEST(Events, RecordsArenaSpansAreByteOffsetsMultibyte) {
+    /* the relaton meeting-01 reduction: nested metadata with the
+     * non-ASCII title and its ASCII neighbor adjacent in the arena,
+     * a folded plain continuation, and a literal block — every shape
+     * the mis-slice touched */
+    const char* in = "---\n"
+                     "metadata:\n"
+                     "  title: 1e réunion de la CGPM\n"
+                     "  identifier: 1\n"
+                     "resolutions:\n"
+                     "- type: resolution\n"
+                     "  title: Sanction des prototypes internationaux\n"
+                     "  message: considérant le « Compte rendu du Président »\n"
+                     "    et le « Rapport du Comité »\n"
+                     "notes: |-\n"
+                     "  définition abrogée en 1960\n"
+                     "  par la 11^e^ CGPM\n";
+    const size_t len = strlen(in);
+
+    /* the records lane, compat_11 — the binding's exact face */
+    YeptrisRecorder r = yeptris_recorder_new_ex(YEPTRIS_SCHEMA_11_COMPAT);
+    ASSERT_NE(r, nullptr);
+    ASSERT_EQ(yeptris_recorder_feed(r, in, len, 1), YEPTRIS_OK);
+    size_t n = 0;
+    const YeptrisEventRecord* recs = yeptris_recorder_records(r, &n);
+    ASSERT_NE(recs, nullptr);
+    size_t alen = 0;
+    const char* arena = yeptris_recorder_arena(r, &alen);
+    ASSERT_NE(arena, nullptr);
+
+    std::vector<std::string> rec_vals;
+    for (size_t i = 0; i < n; i++) {
+        if (recs[i].type != YEPTRIS_EV_SCALAR) {
+            continue;
+        }
+        /* every span in bounds: offset+length never leaves the arena */
+        ASSERT_LE((size_t)recs[i].value_off, alen);
+        ASSERT_LE((size_t)recs[i].value_off + (size_t)recs[i].value_len, alen);
+        rec_vals.emplace_back(arena + recs[i].value_off, recs[i].value_len);
+    }
+    yeptris_recorder_free(r);
+
+    /* the title's span is BYTE-exact: 22 bytes, the é riding as 2 of
+     * them, no trailing byte from the adjacent "identifier" entry */
+    const std::string title = "1e réunion de la CGPM";
+    ASSERT_EQ(title.size(), 22u);
+    ASSERT_NE(std::find(rec_vals.begin(), rec_vals.end(), title), rec_vals.end());
+    for (const auto& v : rec_vals) {
+        EXPECT_NE(v, "1e réunion de la CGPMi");
+    }
+
+    /* the folded plain and the literal block, byte-exact */
+    ASSERT_NE(std::find(rec_vals.begin(), rec_vals.end(),
+                        "considérant le « Compte rendu du Président » et le "
+                        "« Rapport du Comité »"),
+              rec_vals.end());
+    ASSERT_NE(std::find(rec_vals.begin(), rec_vals.end(),
+                        "définition abrogée en 1960\npar la 11^e^ CGPM"),
+              rec_vals.end());
+
+    /* the DOM lane reads the same scalars, byte-equal, in the same
+     * order — the two lanes cannot drift */
+    YeptrisParseOptions opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.schema = YEPTRIS_SCHEMA_11_COMPAT;
+    YeptrisDocument doc = yeptris_parse_ex(in, len, &opts, nullptr);
+    ASSERT_NE(doc, nullptr);
+
+    std::vector<std::string> dom_vals;
+    std::function<void(YeptrisNode)> walk = [&](YeptrisNode node) {
+        switch (yeptris_node_kind(node)) {
+        case YEPTRIS_NODE_MAPPING: {
+            size_t pairs = yeptris_node_map_count(node);
+            for (size_t i = 0; i < pairs; i++) {
+                YeptrisNode k, v;
+                ASSERT_EQ(yeptris_node_map_at(node, i, &k, &v), 0);
+                walk(k);
+                walk(v);
+            }
+            break;
+        }
+        case YEPTRIS_NODE_SEQUENCE: {
+            size_t count = yeptris_node_seq_count(node);
+            for (size_t i = 0; i < count; i++) {
+                walk(yeptris_node_seq_at(node, i));
+            }
+            break;
+        }
+        default:
+            dom_vals.push_back(ev_value(node));
+            break;
+        }
+    };
+    walk(yeptris_document_root(doc, 0));
+    yeptris_document_free(doc);
+
+    ASSERT_EQ(rec_vals.size(), dom_vals.size());
+    for (size_t i = 0; i < rec_vals.size(); i++) {
+        EXPECT_EQ(rec_vals[i], dom_vals[i]) << "scalar #" << i;
+    }
 }
