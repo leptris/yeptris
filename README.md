@@ -16,10 +16,18 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.66 — live across all five runtimes** (C +
-ruby `0.6.66.0` — the 15-platform gem set, riscv64 included + py
-`0.6.66.0` — the 11-artifact wheel set, riscv64 included + rs/ts
-`0.6.66`, registry-checked 2026-11-15). This cut closes the six
+**Latest release: v0.6.67 — live across all five runtimes** (C +
+ruby `0.6.67.0` (the 0.6.66 regression's fix line: `0.6.66.1` shipped
+the binding byteslice repair first) + py `0.6.67.0` + rs/ts `0.6.67`,
+registry-checked 2026-11-15). v0.6.67 is the contract cut: the
+0.6.66 downstream regression (relaton #1359, png_conform #1366) is
+verdict-closed — the engine REFUTED innocent (records byte-perfect
+from every library; the corruption was the binding's char-indexed
+arena slicing), the byte-offset law pinned at its C home
+(#1367), and the 0.6.66.1/0.6.67.0 binding line ships the repair.
+Zero `src/` behavior change; the comparator's classifier era
+continues (laws (f)/(g) extensions, #1369/#1372). The previous cut
+closes the six
 long-horizon competition fronts with measured verdicts (#474/#739/
 #742/#331/#352 + the binding faces #862/#857, every attempt
 ledgered): anchor-heavy — the last DOM shape that trailed — rides
