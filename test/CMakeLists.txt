@@ -5290,6 +5290,22 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r281-artifact.bin
     )
 
+    # the r282 nightly escape (run 43719730493): the BLOCK-NEL
+    # more-indent surplus - a folded block scalar whose content NEL
+    # (yeptris's 1.2 kept-content law) meets a space-only continuation
+    # sub-line (libyaml's 1.1 keeps exactly the indent-surplus space
+    # behind the escaped break; yeptris keeps all the spaces). Floor
+    # 7 bytes "> LF SP < NEL SP SP"; the raw 24-byte artifact rides
+    # the same arm. Comparator carry only - no engine change.
+    # Seeds: block-nel-moreindent-r282.bin (this floor) and the raw
+    # artifact.
+    add_test(
+        NAME fuzz-diff-r282-block-nel-moreindent
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-moreindent-r282.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-moreindent-r282-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
