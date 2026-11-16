@@ -1945,6 +1945,62 @@ TEST(Parse, BareDocumentAfterExplicitIsAbsorbedNotANewDocument) {
     }
 }
 
+TEST(Parse, FlowSequenceMultiLineImplicitKeyCarriesLibyamlWords) {
+    /* "[a\n: b]": an implicit key cannot span lines. The rejection is
+     * libyaml's parser error, now carried with its words and its
+     * context mark (the '[' that opened the sequence) instead of the
+     * default arm's "unexpected parser state" at the ':'. Lines and
+     * columns are Psych's (Psych::SyntaxError#line/#column). */
+    struct Case {
+        const char* y;
+        uint32_t line, col;
+    };
+    const Case cases[] = {
+        {"implements: [unclosed\n  : : :\n\t- bad", 1, 13},
+        {"implementations: [unclosed\n  : : :\n", 1, 18},
+        {"[a\n: b]\n", 1, 1},
+        {"k: [a, b\n  : c]\n", 1, 4},
+        {"[[a\n: b]]\n", 1, 2},
+        {"{k: [a\n: b]}\n", 1, 5},
+        {"[a: [b\n: c]]\n", 1, 5},
+        {"- [x, y\n  z: 1]\n", 1, 3},
+        {"x:\n  - [a\n     b: c]\n", 2, 5},
+    };
+    const char* msg = "did not find expected ',' or ']' while parsing a flow sequence";
+    for (const Case& c : cases) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(c.y, strlen(c.y), &st);
+        EXPECT_EQ(doc, nullptr) << c.y;
+        EXPECT_EQ(st, YEPTRIS_ERROR_PARSE) << c.y;
+        EXPECT_EQ(yep_error_tls()->code, YEP_ERR_UNEXPECTED) << c.y;
+        EXPECT_STREQ(yep_error_tls()->msg, msg) << c.y;
+        EXPECT_EQ(yep_error_tls()->line, c.line) << c.y;
+        EXPECT_EQ(yep_error_tls()->col, c.col) << c.y;
+        yeptris_document_free(doc);
+    }
+    /* acceptance is unchanged: single-line pairs, explicit keys and
+     * multi-line entries without a ':' still parse */
+    const char* ok[] = {"[a: b]\n", "[? a\n : b]\n", "[a,\n b]\n", "[a\n b]\n"};
+    for (const char* y : ok) {
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_NE(doc, nullptr) << y << ": " << yeptris_last_error(nullptr, nullptr);
+        yeptris_document_free(doc);
+    }
+    /* a neighbouring flow rejection keeps the default arm and its mark */
+    {
+        const char* y = "[s: 2:]\n";
+        YeptrisStatus st = YEPTRIS_OK;
+        YeptrisDocument doc = yeptris_parse(y, strlen(y), &st);
+        EXPECT_EQ(doc, nullptr) << y;
+        EXPECT_EQ(yep_error_tls()->code, YEP_ERR_UNEXPECTED) << y;
+        EXPECT_STREQ(yep_error_tls()->msg, "unexpected parser state") << y;
+        EXPECT_EQ(yep_error_tls()->line, 1u) << y;
+        EXPECT_EQ(yep_error_tls()->col, 6u) << y;
+        yeptris_document_free(doc);
+    }
+}
+
 TEST(Parse, SiblingPairFlushesBufferedExplicitKey) {
     /* issue #570 (the nightly's run 38261610465, "? &a\nt: &b\n*a"):
      * a same-column PLAIN-START pair line under an explicit key was

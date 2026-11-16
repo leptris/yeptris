@@ -2392,7 +2392,8 @@ static int e_flow_json(yep_engine* e, yep_view anchor, yep_view tag, uint32_t an
 
 /* Iterative flow kernel; emits events for the whole collection. */
 /* Initializes one flow frame (SSOT: every field, every push site). */
-static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
+static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key, uint32_t open_line,
+                              uint32_t open_col) {
     typedef struct {
         uint8_t kind;
         uint8_t pending_key;
@@ -2411,6 +2412,8 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
         int32_t buf_from;
         uint32_t entry_line;
         uint32_t entries;
+        uint32_t open_line;
+        uint32_t open_col;
     } e_flow_frame;
     e_flow_frame* st = (e_flow_frame*)stv;
     st[idx].kind = (uint8_t)kind;
@@ -2427,6 +2430,8 @@ static void e_flow_frame_init(void* stv, int idx, int kind, int pending_key) {
     st[idx].buf_from = -1;
     st[idx].entry_line = 0;
     st[idx].entries = 0;
+    st[idx].open_line = open_line;
+    st[idx].open_col = open_col;
 }
 
 static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_id) {
@@ -2446,10 +2451,14 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
         int32_t buf_from;      /* seq: entry events buffered from this index */
         uint32_t entry_line;   /* seq: line where the buffered entry ended */
         uint32_t entries;      /* completed entries (for trailing-comma detection) */
+        uint32_t open_line;    /* 1-based mark of the opening indicator: */
+        uint32_t open_col;     /* libyaml's context mark for its diagnostics */
     } st[YEP_MAX_DEPTH];
     int n = 0;
 
     unsigned char open = (unsigned char)e->p[e->pos];
+    uint32_t open_line = e->line;
+    uint32_t open_col = e_col(e, e->pos) + 1;
     e->pos++;
     yep_event ev;
     e_event_init(&ev, open == '[' ? YEP_EV_SEQ_START : YEP_EV_MAP_START);
@@ -2464,7 +2473,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
     if (emit_now(e, &ev) != 0) {
         return -2;
     }
-    e_flow_frame_init(st, n, (open == '[') ? 0 : 1, 0);
+    e_flow_frame_init(st, n, (open == '[') ? 0 : 1, 0, open_line, open_col);
     n++;
 
     for (;;) {
@@ -2617,6 +2626,8 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 st[n - 1].pair_value = 1;
             }
             unsigned char oc = (unsigned char)e->p[e->pos];
+            uint32_t oc_line = e->line;
+            uint32_t oc_col = e_col(e, e->pos) + 1;
             e->pos++;
             yep_view pa = ev.anchor, pt = ev.tag; /* props before the opener */
             uint32_t paid = ev.anchor_id;
@@ -2642,7 +2653,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
             st[n - 1].key_coll = (uint8_t)coll_key;
             st[n - 1].sep = 0;
             st[n - 1].entries++;
-            e_flow_frame_init(st, n, (oc == '[') ? 0 : 1, 0);
+            e_flow_frame_init(st, n, (oc == '[') ? 0 : 1, 0, oc_line, oc_col);
             n++;
             continue;
         }
@@ -2722,8 +2733,15 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 }
                 if (st[n - 1].buf_from >= 0 && !quoted && !q_key &&
                     (save_pos < e->line_start || ev.multiline)) {
-                    /* "[a\n: b]": an IMPLICIT key cannot span lines ("? " may) */
-                    return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
+                    /* "[a\n: b]": an IMPLICIT key cannot span lines ("? " may).
+                     * libyaml's parser error carries its words and its
+                     * context mark: the '[' that opened this sequence
+                     * (Psych "... while parsing a flow sequence at line 1
+                     * column 1"); the offset stays at the ':' */
+                    yep_error_set(&e->err, YEP_ERR_UNEXPECTED, st[n - 1].open_line,
+                                  st[n - 1].open_col, e->pos, "%s",
+                                  "did not find expected ',' or ']' while parsing a flow sequence");
+                    return -1;
                 }
                 /* single-pair mapping inside a sequence: the entry's
                  * events are buffered; wrap them in MAP_START .. MAP_END */
@@ -3192,7 +3210,7 @@ static int e_flow(yep_engine* e, yep_view anchor, yep_view tag, uint32_t anchor_
                 }
                 st[n - 1].sep = 0;
                 st[n - 1].entries++;
-                e_flow_frame_init(st, n, 1, 1);
+                e_flow_frame_init(st, n, 1, 1, st[n - 1].open_line, st[n - 1].open_col);
                 st[n].pair_wrap = 1; /* the seq single-pair wrapper */
                 n++;
                 continue;
