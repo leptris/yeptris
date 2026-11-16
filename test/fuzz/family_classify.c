@@ -55,20 +55,23 @@
 /* ---- budget (conservatism law n) ------------------------------------ */
 
 #define FC_MAX_INPUT                                                                               \
-    40960u                        /* the family's members are <1KB; the                            \
+    65536u                        /* the family's members are <1KB; the                            \
                                    * largest corpus seed is 10732; the                             \
                                    * 18.5KB r284 artifact rides whole; the                         \
-                                   * 32.8KB r285 artifact rides whole */
+                                   * 32.8KB r285 artifact rides whole; the                         \
+                                   * 48.5KB r293 artifact rides whole */
 #define FC_MAX_OUT (256u * 1024u) /* derived-dump cap */
 #define FC_MAX_PIECES 256u        /* plain fold pieces per node */
 #define FC_MAX_MEMBERS                                                                             \
     4096u /* flow members per collection (the                                                      \
            * 10KB r258 artifact rides ~300; the                                                    \
            * r284 soup rides ~1400; the r285 soup                                                  \
-           * rides 2324) */
+           * rides 2324; the r293 soup rides under                                                 \
+           * the cap) */
 #define FC_MAX_TOKENS                                                                              \
-    8192u               /* libyaml tokens per stream (the r284 soup                                \
-                         * rides ~5600; the r285 soup rides 5477) */
+    16384u              /* libyaml tokens per stream (the r284 soup                                \
+                         * rides ~5600; the r285 soup rides 5477; the                              \
+                         * r293 soup rides just past 8192) */
 #define FC_MAX_NEST 32u /* the modeled nesting depth (past it: UNKNOWN) */
 
 /* ---- byte facts ------------------------------------------------------ */
