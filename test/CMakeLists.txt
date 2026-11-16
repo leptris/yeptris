@@ -5430,6 +5430,28 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-foldspace-r288-artifact.bin
     )
 
+    # the r289 nightly escape (run 43809383047): the TAB BLANK-RUN
+    # dump-escape repair - a plain member whose INTERIOR blank run
+    # carries a TAB byte (the floor's `,1<TAB>.` member; the artifact
+    # rides TABs at 57 sites). Both engines agree byte-exact (the TAB
+    # rides the libyaml plain; the actual dump escapes it as `\t`) but
+    # the libyaml model's interior-blank join wrote the run RAW while
+    # its l_dq_scan twin and the yeptris plain walk already escaped -
+    # SP-only runs are escape-neutral, so the repair un-classifies
+    # nothing. Comparator carry only - no engine change.
+    # (The seeds ride the `flow-qsoup*` comparator-snapshot exclusion -
+    # the family is dense.)
+    # Seeds: flow-qsoup-tabblank-r289.bin (the greedy floor, 97 bytes:
+    # the split-? plain members, the glued-?# comment-eat members, the
+    # CR/PS break soup, and the TAB-bearing `1<TAB>.` member) and the
+    # raw artifact.
+    add_test(
+        NAME fuzz-diff-r289-flow-qsoup-tabblank
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tabblank-r289.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tabblank-r289-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
