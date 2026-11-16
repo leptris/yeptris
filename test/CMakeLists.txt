@@ -5472,6 +5472,34 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-barenel-r290-artifact.bin
     )
 
+    # the r291 nightly escape (run 43830356926): the POST-BREAK VALUE
+    # boundary - a plain member whose blank/break run is followed by
+    # `:` + a flow indicator (the floor's "` SP TAB LF `:,`" member;
+    # the artifact rides it after the second backtick). yeptris ends
+    # the plain at the run and re-lexes the colon as the 1.2 flow
+    # VALUE boundary (the r286 law at the post-break continuation
+    # position, pair (plain, empty)) while the model's piece walk hit
+    # the glued-`:`+flow-ind gate. libyaml can only see these bytes
+    # when its comment-eat swallows the whole member - every
+    # libyaml-visible instance is YEPTRIS-ONLY (its still-open plain
+    # hits the "unexpected ':'" scanner error), so the glued
+    # no-break, SP-only-run, first-piece, and member-end positions all
+    # stay declined. Reproduces on Debug AND Release pre-fix.
+    # Comparator carry only - no engine change.
+    # (The seeds ride the `flow-qsoup*` comparator-snapshot exclusion -
+    # the family is dense.)
+    # Seeds: flow-qsoup-postbreak-qcolon-r291.bin (the 24-byte floor,
+    # the family-consult-constrained fixpoint: the plain member, the
+    # glued-?# comment-eat member, the alias member, and the
+    # post-break colon member) and the raw 66-byte artifact (both
+    # byte-scale walks fixpointed at it).
+    add_test(
+        NAME fuzz-diff-r291-flow-qsoup-postbreak-qcolon
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-postbreak-qcolon-r291.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-postbreak-qcolon-r291-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
