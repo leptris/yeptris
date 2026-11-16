@@ -7593,8 +7593,13 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             if (r != k) {
                 return 0;
             }
-            /* the space runs behind: libyaml keeps exactly one fewer
-             * (the indent it ate on the space-only sub-line) */
+            /* the space runs behind: libyaml keeps fewer than
+             * yeptris -- its fold branch ate the NEL-adjacent
+             * space-only material (indent on the r282 space-only
+             * sub-line, the whole SP-LF run on the r288 blank-ish
+             * interleave). The delta is bounded below by one and the
+             * byte-bound continuation behind both runs still binds
+             * the claim completely -- the r208 surplus-law class. */
             int na = 0;
             while (p[0] == ' ') {
                 p++;
@@ -7605,7 +7610,7 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 q++;
                 nb++;
             }
-            if (na - nb != 1 || na < 1) {
+            if (na - nb < 1) {
                 return 0;
             }
             a = p;
@@ -7661,6 +7666,34 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
         if (a[0] == '\\' && a[1] == 'n' && a[2] == b[0] && a[2] != ' ' && a[2] != '\\' &&
             a[2] != '\0' && (unsigned char)a[2] != 0xC2 && (unsigned char)a[2] != 0xE2) {
             a += 2;
+            subs += 2;
+            continue;
+        }
+        /* the r288 fold-space surplus (run 43778032929): the same
+         * dropped-fold-break law as above, but the space-run form --
+         * yeptris spells the fold break AND keeps the fold-adjacent
+         * space ("0 ESC SP 2") where libyaml's fold branch dropped
+         * the break keeping only the space ("0 SP 2"). Eat the ONE
+         * surplus escape, gated on both sides leading the SAME
+         * plain byte behind (a[3] == b[1], not a space -- the runs
+         * pair byte-wise next -- not an escape, not a raw NEL/LS/PS
+         * lead), so the claim can never swallow arbitrary
+         * divergence; the byte-bound continuation binds the rest. */
+        if (a[0] == '\\' && a[1] == 'n' && a[2] == ' ' && b[0] == ' ' && a[3] == b[1] &&
+            a[3] != ' ' && a[3] != '\\' && a[3] != '\0' && (unsigned char)a[3] != 0xC2 &&
+            (unsigned char)a[3] != 0xE2) {
+            a += 2;
+            subs += 2;
+            continue;
+        }
+        /* the mirror polarity: yeptris's fold ATE the fold-adjacent
+         * space with the break ("0 ESC 2") where libyaml's kept the
+         * space ("0 SP 2") -- eat b's ONE surplus space, gated the
+         * same way (a[2] == b[1], plain, bound by the continuation). */
+        if (a[0] == '\\' && a[1] == 'n' && b[0] == ' ' && a[2] == b[1] && a[2] != ' ' &&
+            a[2] != '\\' && a[2] != '\0' && (unsigned char)a[2] != 0xC2 &&
+            (unsigned char)a[2] != 0xE2) {
+            b += 1;
             subs += 2;
             continue;
         }
