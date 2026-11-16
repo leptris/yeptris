@@ -3872,6 +3872,12 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
             return -1;
         }
         if (e_colon_at(e, e->pos)) {
+            if (ctx == YEP_CTX_AFTER_COLON && !ev.multiline) {
+                /* "a: 'b': c": a pair separator after a same-line value;
+                 * libyaml's scanner words, marked at the ':' */
+                return e_fail_msg(e, YEP_ERR_UNEXPECTED, e->pos,
+                                  "mapping values are not allowed in this context");
+            }
             if (ctx == YEP_CTX_AFTER_COLON || ev.multiline) {
                 return e_fail(e, YEP_ERR_UNEXPECTED, e->pos);
             }
@@ -3961,7 +3967,13 @@ static int e_node(yep_engine* e, yep_ctx ctx, uint32_t floor_col) {
     }
     if (s.term == YEP_TERM_COLON) {
         if (ctx == YEP_CTX_AFTER_COLON) {
-            return e_fail(e, YEP_ERR_UNEXPECTED, s.end);
+            /* "a: b: c": a second pair separator on the value's line.
+             * libyaml's scanner rejects it with its words, marked at
+             * that ':' (Psych "mapping values are not allowed in this
+             * context at line 1 column 5"); the code, offset and
+             * acceptance are unchanged */
+            return e_fail_msg(e, YEP_ERR_UNEXPECTED, s.end,
+                              "mapping values are not allowed in this context");
         }
         if (node_at > 0 && e->p[node_at - 1] == '\t' && !e->doc_inline) {
             /* (on the --- line the marker-line gate names the same
