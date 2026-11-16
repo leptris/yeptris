@@ -5452,6 +5452,26 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tabblank-r289-artifact.bin
     )
 
+    # the r290 nightly escape (run 43819857599): the BARE-NEL site -
+    # inside the r282/r283/r288 arm the NEL-split sub-line is fully
+    # blank (the NEL rides directly against the next break), so BOTH
+    # space runs at the site are empty (the r288 lower-bound-of-one
+    # space gate declined) and libyaml escapes one MORE break than
+    # yeptris keeps NELs (the surplus LF ride pairs byte-wise behind
+    # the k-vs-k NEL pairing); the floor's twin carries libyaml's
+    # kept-raw PS where yeptris folded the consecutive-break pair
+    # away. Reproduces on Debug AND Release pre-fix. Comparator
+    # carry only - no engine change.
+    # Seeds: block-nel-barenel-r290.bin (the greedy floor, 17 bytes:
+    # the commented PS-led header, the bare NEL sub-line, the PS-led
+    # " :" line and the trailing NEL) and the raw 31-byte artifact.
+    add_test(
+        NAME fuzz-diff-r290-block-nel-barenel
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-barenel-r290.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-barenel-r290-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

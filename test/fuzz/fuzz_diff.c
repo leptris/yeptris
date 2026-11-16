@@ -7584,22 +7584,36 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 p += 2;
                 k++;
             }
+            /* the r290 cap (run 43819857599): libyaml may have
+             * escaped MORE breaks than yeptris kept NELs at the
+             * site -- the bare NEL sub-line's LF ride behind it
+             * ("NEL LF" spells NEL + one LF escape on yeptris's
+             * side, two escapes on libyaml's). Pair the k NELs to
+             * the FIRST k escapes only; the (r - k) surplus escapes
+             * stay in libyaml's stream and must pair byte-wise
+             * behind (esc-vs-esc through the plain byte-match) or
+             * through the documented downstream laws -- nothing
+             * swallows them here. Fewer escapes than NELs stays a
+             * decline (yeptris seeing more breaks than libyaml is
+             * no documented law). */
             int r = 0;
-            const char* q = b;
-            while (q[0] == '\\' && q[1] == 'n') {
-                q += 2;
+            while (b[2 * r] == '\\' && b[2 * r + 1] == 'n') {
                 r++;
             }
-            if (r != k) {
+            if (r < k) {
                 return 0;
             }
-            /* the space runs behind: libyaml keeps fewer than
-             * yeptris -- its fold branch ate the NEL-adjacent
+            const char* q = b + 2 * k;
+            /* the space runs behind: libyaml keeps at most as many
+             * as yeptris -- its fold branch ate the NEL-adjacent
              * space-only material (indent on the r282 space-only
              * sub-line, the whole SP-LF run on the r288 blank-ish
-             * interleave). The delta is bounded below by one and the
-             * byte-bound continuation behind both runs still binds
-             * the claim completely -- the r208 surplus-law class. */
+             * interleave, and on the r290 bare NEL site BOTH runs
+             * are empty: the NEL-led sub-line is fully blank so
+             * neither reader has any space to keep). The delta is
+             * bounded below by zero and the byte-bound continuation
+             * behind both runs still binds the claim completely --
+             * the r208 surplus-law class. */
             int na = 0;
             while (p[0] == ' ') {
                 p++;
@@ -7610,7 +7624,7 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 q++;
                 nb++;
             }
-            if (na - nb < 1) {
+            if (na - nb < 0) {
                 return 0;
             }
             a = p;
@@ -7694,6 +7708,29 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             a[2] != '\\' && a[2] != '\0' && (unsigned char)a[2] != 0xC2 &&
             (unsigned char)a[2] != 0xE2) {
             b += 1;
+            subs += 2;
+            continue;
+        }
+        /* the r290 kept-raw-LS/PS surplus on libyaml's side (run
+         * 43819857599): yeptris folded the LS/PS break away (the
+         * consecutive-break fold -- the bare NEL sub-line makes the
+         * two engines' neighbors disagree about the gap's leading
+         * break, so yeptris's dump carries the folded single escape
+         * the byte-match already paired) while libyaml's block
+         * reader kept the raw LS/PS triple as content. Eat the ONE
+         * surplus raw triple, gated on the alignment byte behind it
+         * coinciding and sitting on plain content (not a space --
+         * the space-run pairing is the NEL-site law's own material;
+         * not an escape -- the r197 polarity owns the esc-vs-triple
+         * pairing; not a raw NEL/LS/PS lead byte), so the claim can
+         * never swallow arbitrary divergence; the byte-bound
+         * continuation binds the rest. Sits behind the mirror so
+         * every existing member keeps its exact path. */
+        if ((unsigned char)b[0] == 0xE2 && (unsigned char)b[1] == 0x80 &&
+            ((unsigned char)b[2] == 0xA8 || (unsigned char)b[2] == 0xA9) && a[0] == b[3] &&
+            a[0] != ' ' && a[0] != '\\' && a[0] != '\0' && (unsigned char)a[0] != 0xC2 &&
+            (unsigned char)a[0] != 0xE2) {
+            b += 3;
             subs += 2;
             continue;
         }
