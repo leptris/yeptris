@@ -7667,6 +7667,43 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             subs++;
             continue;
         }
+        /* the r297 spent-NEL site (run 43952064060): libyaml's fold
+         * accounting SPENT the break -- the NEL was leading_break at
+         * the next content line and the fold branch dropped it
+         * (trailing_breaks non-empty clears leading_break,
+         * scanner.c's fold gate), its breaks-scan eating the site's
+         * spaces as the continuation's indent -- so the value carries
+         * NO counterpart for yeptris's kept NEL + space run before
+         * the coinciding plain byte ("m<NEL> <NEL> m" tail: yeptris
+         * keeps both pairs, libyaml spells the run as the ONE escape
+         * its trailing_breaks join emitted). Sits BEHIND the NEL-site
+         * branch (its entry gate wants b on an escape or a space --
+         * this site's b sits on plain content, so the branch skipped
+         * the shape and every law below declined unconditionally).
+         * Fire only on a SINGLE kept NEL (the run collapse owns wider
+         * shapes), b on PLAIN content (a space behind the branch's
+         * gate is the r294 fold sub-case; an escape lead is the r>=k
+         * pairing's own material; not the frame end; not a raw
+         * NEL/LS/PS lead byte), and the byte behind yeptris's
+         * NEL+space run COINCIDES with it, so the claim can never
+         * swallow arbitrary divergence; the byte-bound continuation
+         * binds the rest. Previously this shape declined
+         * unconditionally here, so no existing member's path
+         * changes. */
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 &&
+            (unsigned char)a[2] != 0xC2 && b[0] != '\0' && b[0] != ' ' && b[0] != '\\' &&
+            (unsigned char)b[0] != 0xC2 && (unsigned char)b[0] != 0xE2) {
+            const char* t = a + 2;
+            while (t[0] == ' ') {
+                t++;
+            }
+            if (t[0] == b[0] && t[0] != '\\' && (unsigned char)t[0] != 0xC2 &&
+                (unsigned char)t[0] != 0xE2) {
+                a = t;
+                subs += 2;
+                continue;
+            }
+        }
         /* the r176 tail: yeptris's clip break libyaml dropped at a
          * breakless EOF -- accept ONLY when y's whole remainder is
          * the one escape followed by a byte-identical frame suffix
@@ -7768,6 +7805,45 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             b += 3;
             subs += 2;
             continue;
+        }
+        /* the r297 PS-fold site (run 43952064060): a COMMENT-LED
+         * content line in the block scalar ends AT its mid-line raw
+         * PS -- yeptris's comment-eat spans to the mb-break and the
+         * remainder rescans as a fresh fold line, so the boundary
+         * folds to the ONE space ("#<PS> 700:" reads "# 700:" with
+         * the fold space); libyaml's block reader breaks at the PS
+         * mid-line (IS_BREAK), READ_LINE keeps the raw triple in
+         * leading_break, and the raw lead (not LF) fails the fold
+         * gate -- the fold space is never written and the triple
+         * joins the value. Eat the ONE space and the ONE raw triple,
+         * gated on the alignment byte behind each side: either the
+         * SAME plain byte (not a space -- the fold is the site's only
+         * space on a; not an escape -- the esc pairing owns those;
+         * not a raw NEL/LS/PS lead byte), so the walk rejoins
+         * byte-bound, or a's side on a kept NEL lead with b's side on
+         * the escape run its reader spelled at the boundary (the
+         * NEL-site law owns the region from there -- the shipped
+         * floor's shape). Previously this shape declined
+         * unconditionally here, so no existing member's path
+         * changes. Sits behind the r290 kept-raw surplus (whose gate
+         * demands a[0] == b[3] and non-space -- this site's a leads
+         * the fold space). */
+        if (a[0] == ' ' && (unsigned char)b[0] == 0xE2 && (unsigned char)b[1] == 0x80 &&
+            ((unsigned char)b[2] == 0xA8 || (unsigned char)b[2] == 0xA9)) {
+            if (a[1] == b[3] && a[1] != ' ' && a[1] != '\\' && a[1] != '\0' &&
+                (unsigned char)a[1] != 0xC2 && (unsigned char)a[1] != 0xE2) {
+                a += 1;
+                b += 3;
+                subs += 2;
+                continue;
+            }
+            if ((unsigned char)a[1] == 0xC2 && (unsigned char)a[2] == 0x85 && b[3] == '\\' &&
+                b[4] == 'n') {
+                a += 1;
+                b += 3;
+                subs += 2;
+                continue;
+            }
         }
         return 0;
     }

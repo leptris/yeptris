@@ -5646,6 +5646,47 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-leadrun-r296-artifact.bin
     )
 
+    # the r297 nightly escape (run 43952064060): the 42-byte artifact
+    # `> SP #<PS 700: LF SP #<PS 700: LF SP SP m<NEL> SP<NEL> SP
+    # m<NEL> SP<NEL> SP t` - a folded block scalar whose SECOND content
+    # line is COMMENT-LED with a mid-line raw PS. The engine behaviors
+    # are the documented ones (A/B at the pre-arm parent f13e6553
+    # aborts identically; zero src/ divergence since r248), but the
+    # composition is fresh: at the mid-content `#`-first PS line
+    # yeptris's comment-eat ends AT the mb-break and the remainder
+    # rescans as a fresh fold line (the boundary folds to the ONE
+    # space), while libyaml breaks at the PS mid-line, READ_LINE keeps
+    # the raw triple in leading_break, and the raw lead (NE LF) fails
+    # the fold gate - no fold space, the triple rides verbatim (the
+    # r197/r290 polarity's ESC-LESS mirror: yeptris spells a SPACE
+    # where every prior law wants an escape). The tail's second
+    # kept-NEL pair is the spent-NEL site: libyaml's fold branch
+    # dropped the leading break (trailing_breaks non-empty clears it)
+    # and its breaks-scan ate the spaces, so yeptris's NEL+space has
+    # no counterpart before the coinciding plain byte. The widened arm
+    # (the r282/r283/r288/r290/r294 lineage) gains both site laws,
+    # gated on the coinciding plain alignment byte and the byte-bound
+    # continuation; every prior member keeps its exact path (both laws
+    # sit behind declines that held for all of them - the r290
+    # kept-raw gate demands a[0] == b[3] non-space; the r294 `r < k`
+    # decline owned the tail unconditionally). Reproduces on Debug AND
+    # Release pre-fix (nightly config is Debug).
+    # Comparator carry only - no engine change.
+    # (The seeds ride the `block-ps-nel-fold-*` comparator-snapshot
+    # exclusion - the r271 family's own glob.)
+    # Seeds: block-ps-nel-fold-r297.bin (the 25-byte DIFFER- and
+    # shape-constrained floor `> SP # PS SP # PS SP NEL NEL SP m NEL SP
+    # NEL SP t` - the PS-fold site with the NEL-lead alignment and the
+    # spent-NEL tail) and the raw 42-byte artifact (whose repeated
+    # `#<PS 700:` fold line and `700:`/` m` regions ride the same laws
+    # with the plain-byte alignment).
+    add_test(
+        NAME fuzz-diff-r297-block-nel-psfold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ps-nel-fold-r297.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ps-nel-fold-r297-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
