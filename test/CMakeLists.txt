@@ -5618,6 +5618,34 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r295-artifact.bin
     )
 
+    # the r296 nightly escape (run 43940004067): the 21-byte artifact
+    # `\n [?#,"\rg",?m?,"\n"] \n` - a LEADING blank/break run before the
+    # root bracket. The classifier's law-j gate read data[0] strictly, so
+    # the whole family declined before any derivation; the artifact minus
+    # its two lead bytes already classified PRE (the no-lead twin rides
+    # the old gate byte-exact), which isolates the lead as the only
+    # missing piece. Both engines scan-to-token before the root token
+    # (blanks and breaks, every kind - the r285 CR/PS law's own
+    # mechanics), so the gate and the yeptris model's root walk gain the
+    # lead run; any other lead byte (a comment, a TAB - libyaml does not
+    # eat a stream-start tab in block context, a directive, a document
+    # marker) still declines byte-exact. Reproduces on Debug AND Release
+    # pre-fix (nightly config is Debug).
+    # Comparator carry only - no engine change.
+    # (The seeds ride the `flow-qsoup*` comparator-snapshot exclusion -
+    # the family is dense.)
+    # Seeds: flow-qsoup-leadrun-r296.bin (the 14-byte DIFFER-constrained
+    # floor `\n[?#,"\rg",?m?]` - the lead-bearing glued-`?#` KEY-eat head,
+    # the raw-CR DQ fold, the glued-`?m?` plain) and the raw 21-byte
+    # artifact (which additionally carries the closing `"\n"]` fold and
+    # the trailing run).
+    add_test(
+        NAME fuzz-diff-r296-flow-qsoup-leadrun
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-leadrun-r296.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-leadrun-r296-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

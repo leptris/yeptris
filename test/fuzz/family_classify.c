@@ -1267,10 +1267,15 @@ static int y_root(yctx* c) {
     const uint8_t* p = c->p;
     size_t n = c->n;
     c->pos_trace = 1;
+    /* the leading blank/break run before the root bracket (the r296
+     * artifact's `\n [` head): both engines scan-to-token before the
+     * root, so the members start past the run (the caller's gate
+     * rejects any other lead byte) */
+    size_t lead = fc_skip_blank_break(p, n, 0);
     fo_str(&c->out, "+STR\n");
     fo_str(&c->out, c->is_map ? "+MAP\n" : "+SEQ\n");
     size_t after = 0;
-    if (!y_members(c, c->is_map ? (unsigned char)'}' : (unsigned char)']', 1, &after)) {
+    if (!y_members(c, c->is_map ? (unsigned char)'}' : (unsigned char)']', lead + 1, &after)) {
         return 0;
     }
     fo_str(&c->out, c->is_map ? "-MAP\n" : "-SEQ\n");
@@ -2383,10 +2388,15 @@ int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, cons
     if (size < 4 || size > FC_MAX_INPUT) {
         return 0; /* the budget gate (law n) */
     }
-    if (data[0] != '[' && data[0] != '{') {
-        return 0; /* the family is flow-rooted (law j) */
+    size_t root = fc_skip_blank_break(data, size, 0);
+    if (root >= size || (data[root] != '[' && data[root] != '{')) {
+        return 0; /* the family is flow-rooted (law j): a leading
+                   * blank/break run is scan-to-token territory on both
+                   * engines (the r296 artifact's `\n [` head) — any
+                   * other lead byte (a comment, a directive, a document
+                   * marker) still declines */
     }
-    int is_map = data[0] == '{';
+    int is_map = data[root] == '{';
     for (size_t i = 0; i < size; i++) {
         unsigned char ch = data[i];
         if (ch == 0x00) {
