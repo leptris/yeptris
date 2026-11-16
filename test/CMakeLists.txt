@@ -5532,6 +5532,31 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-artifact-r292.bin
     )
 
+    # the r293 nightly escape (run 43867368224): the 49677-byte
+    # CR-run/PS fold soup OUTGREW the r285-raised budgets - the family
+    # classifier declined at the budget gate (law n) before any
+    # derivation (the artifact exceeds FC_MAX_INPUT 40960, and its
+    # libyaml-token ride sits between 8193 and 9216, past
+    # FC_MAX_TOKENS 8192). The classifier's laws derive both dumps
+    # byte-exact with the caps alone raised (the r285 "rides past
+    # raised budgets" shape one size class later); the model is
+    # untouched, the firewalled decline surface is byte-identical.
+    # The `!`-byte plains ride MID-PLAIN on both engines (indicators
+    # matter only at token start) - the r292 tag model is not
+    # implicated. Reproduces on Debug AND Release pre-fix.
+    # Comparator carry only - no engine change.
+    # (The seeds ride the `flow-qsoup*` comparator-snapshot exclusion -
+    # the family is dense.)
+    # Seeds: flow-qsoup-r293.bin (the 43995-byte member-boundary prefix
+    # floor - over the old input cap, under the new one) and the raw
+    # 49677-byte artifact (which additionally rides past the token cap).
+    add_test(
+        NAME fuzz-diff-r293-flow-qsoup-crps-budget
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r293.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r293-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
