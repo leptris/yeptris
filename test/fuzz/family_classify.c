@@ -367,6 +367,26 @@ static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int
             *stop_sep = 1;
             return 1;
         }
+        if (node->n > 0 && br > 0 && q + 1 < end && p[q] == ':' && fc_flow_ind(p[q + 1])) {
+            /* the post-break VALUE boundary (the r291 member: plain +
+             * SP-TAB-SP-LF + `:` + `,`): the blank/break run ends the
+             * plain and the re-lexed `:` + flow indicator is the 1.2
+             * flow VALUE boundary (the r286 law, now at the post-break
+             * continuation position) — the pair rides (plain, empty).
+             * libyaml can only see these bytes when its comment-eat
+             * swallows the whole member (the probe: `{b,` SP TAB SP LF
+             * `:,}` is YEPTRIS-ONLY — libyaml's still-open plain hits
+             * the `:`+flow-ind "unexpected ':'" scanner error), so the
+             * twin derivation below never consults a libyaml-visible
+             * instance. The glued no-break position keeps the fc_piece
+             * !qm decline; a plain-led run (no break) and a first-piece
+             * colon (a blank-led member) stay declined. */
+            node->colon = 1;
+            node->colon_at = q;
+            *stop_at = q;
+            *stop_sep = 0;
+            return 1;
+        }
         if (q >= end || fc_flow_ind(p[q])) {
             *stop_at = q;
             *stop_sep = 1;
