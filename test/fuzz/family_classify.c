@@ -24,7 +24,13 @@
  *    break; every flow `?` is the KEY token; every flow `:` is the
  *    VALUE token with the simple-key insertion (the simple-key slots
  *    ride PER FLOW LEVEL — the nested `{` pushes a fresh slot, and a
- *    line cross stales every level's saved key); plains fold per
+ *    line cross stales every level's saved key); the `!` tag is the
+ *    shorthand scan (the alpha-run head rides into the suffix, %XX
+ *    octet escapes decode per the UTF-8 discipline, only `!`/`!!` are
+ *    default-resolvable handles, and the bare `!` resolves to the
+ *    non-specific tag the adapter drops) attaching to the node that
+ *    follows or riding the tagged empty scalar (the r292 law); plains
+ *    fold per
  *    READ_LINE (CR/LF/CRLF/NEL -> LF, LS/PS ride RAW) with the
  *    leading/trailing-break dance (a leading folded break with no
  *    trailing joins one space; with trailing, the trailing string
@@ -125,6 +131,29 @@ static size_t fc_skip_blank_break(const uint8_t* p, size_t n, size_t i) {
 static int fc_alpha(unsigned char c) {
     return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' ||
            c == '-';
+}
+
+static int fc_hex(unsigned char c) {
+    return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+}
+
+static unsigned fc_hexval(unsigned char c) {
+    if (c >= '0' && c <= '9') {
+        return (unsigned)(c - '0');
+    }
+    if (c >= 'A' && c <= 'F') {
+        return (unsigned)(c - 'A' + 10);
+    }
+    return (unsigned)(c - 'a' + 10);
+}
+
+/* scan_tag_uri's shorthand charset: alpha plus ;/?:@&=+$.!~*'()% — the
+ * verbatim form's ,/[/] ride only inside !<...> (not modeled). '%' is
+ * in the set but never rides raw: it opens the %XX octet escape. */
+static int fc_uri_char(unsigned char c) {
+    return fc_alpha(c) || c == ';' || c == '/' || c == '?' || c == ':' || c == '@' || c == '&' ||
+           c == '=' || c == '+' || c == '$' || c == '.' || c == '!' || c == '~' || c == '*' ||
+           c == '\'' || c == '(' || c == ')';
 }
 
 /* ---- output buffer + the dump renderer (event_dump.h's byte format) -- */
@@ -1271,6 +1300,7 @@ typedef enum {
     LT_SCALAR,
     LT_ALIAS,
     LT_ANCHOR,
+    LT_TAG,
     LT_EOS,
     LT_ERROR
 } ltkind;
@@ -1279,8 +1309,9 @@ typedef struct {
     ltkind kind;
     size_t line;
     char* text;          /* SCALAR: the folded value (already dump-escaped);
-                          * owned */
-    size_t tlen;         /* SCALAR: the folded length */
+                          * TAG: the RESOLVED event tag (the handle prefix +
+                          * the URI-decoded suffix); owned */
+    size_t tlen;         /* SCALAR: the folded length; TAG: the tag length */
     const uint8_t* name; /* ALIAS/ANCHOR: the name span (input view) */
     size_t name_len;
 } ltok;
@@ -1658,6 +1689,86 @@ static int l_dq_scan(lctx* c, fout* o, size_t* stop) {
 }
 
 /* The tokenizer (libyaml's fetch dispatch over the flow contract). */
+/* libyaml's scan_tag (the shorthand forms; the verbatim !<...> form is
+ * outside the modeled family). Fills `tag` with the RESOLVED event tag
+ * bytes and advances past the tag; returns 0 on every error shape:
+ *  - the handle forms: '!h!' with a nonempty h is the "undefined tag
+ *    handle" parser error (the default directives carry only '!' and
+ *    '!!'), and '!!' resolves to tag:yaml.org,2002: — neither rides;
+ *  - the suffix form: handle '!', the suffix starts with the alpha run
+ *    (scan_tag_uri copies the head minus the leading '!') and continues
+ *    over the URI charset, decoding %XX octet escapes per the UTF-8
+ *    leading/trailing-octet discipline (scan_uri_escapes);
+ *  - the end check: in flow only ',' may end the tag without a blank
+ *    ('did not find expected whitespace or line break');
+ *  - the bare '!' is the special case (handle '' + suffix '!'): the
+ *    resolved tag is the bare '!' — the adapter drops it ("resolves by
+ *    style", diff_core.c). */
+static int l_scan_tag(lctx* c, fout* tag) {
+    const uint8_t* p = c->p;
+    size_t n = c->n;
+    size_t i = c->pos + 1; /* past the '!' */
+    if (i < n && p[i] == '<') {
+        return 0; /* the verbatim form */
+    }
+    size_t h = i;
+    while (h < n && fc_alpha(p[h])) {
+        h++;
+    }
+    if (h < n && p[h] == '!') {
+        return 0; /* a '!h!'/ '!!' handle: unmodeled */
+    }
+    fo_str(tag, "!");            /* the '!' handle's default prefix */
+    fo_bytes(tag, p + i, h - i); /* the head minus the leading '!' */
+    for (;;) {
+        if (h >= n) {
+            break; /* IS_BLANKZ at EOF: the tag ends clean */
+        }
+        unsigned char t = p[h];
+        if (fc_blank(t) || fc_break_len(p, n, h) > 0) {
+            break;
+        }
+        if (t == '%') {
+            int width = 0;
+            do {
+                if (h + 2 >= n || p[h] != '%' || !fc_hex(p[h + 1]) || !fc_hex(p[h + 2])) {
+                    return 0; /* 'did not find URI escaped octet' */
+                }
+                unsigned char octet =
+                    (unsigned char)((fc_hexval(p[h + 1]) << 4) + fc_hexval(p[h + 2]));
+                if (!width) {
+                    width = (octet & 0x80) == 0x00   ? 1
+                            : (octet & 0xE0) == 0xC0 ? 2
+                            : (octet & 0xF0) == 0xE0 ? 3
+                            : (octet & 0xF8) == 0xF0 ? 4
+                                                     : 0;
+                    if (!width) {
+                        return 0; /* 'found an incorrect leading UTF-8
+                                   * octet' */
+                    }
+                } else if ((octet & 0xC0) != 0x80) {
+                    return 0; /* 'found an incorrect trailing UTF-8
+                               * octet' */
+                }
+                fo_bytes(tag, &octet, 1);
+                h += 3;
+            } while (--width);
+            continue;
+        }
+        if (!fc_uri_char(t)) {
+            if (t == ',' && c->depth > 0) {
+                break; /* the flow tag-end carve-out */
+            }
+            return 0; /* 'did not find expected whitespace or line
+                       * break' */
+        }
+        fo_bytes(tag, &t, 1);
+        h++;
+    }
+    c->pos = h;
+    return 1;
+}
+
 static int l_tokenize(lctx* c) {
     const uint8_t* p = c->p;
     size_t n = c->n;
@@ -1830,8 +1941,26 @@ static int l_tokenize(lctx* c) {
             return l_fail(c); /* libyaml cannot start a token here */
         case '|':
         case '>':
-        case '!':
-            return l_fail(c); /* block scalars / tags: outside the family */
+            return l_fail(c); /* block scalars: outside the family */
+        case '!': {
+            /* the tag (the r292 member: the glued-`?` KEY slot's
+             * `!(4%21bz!` shorthand — the %21 decodes to '!'). The
+             * resolved tag rides the token's text. */
+            fout tag = {NULL, 0, 0, 0};
+            if (!l_scan_tag(c, &tag)) {
+                free(tag.buf);
+                return l_fail(c);
+            }
+            l_save_sk(c, line); /* fetch_tag's save_simple_key (flow keeps
+                                 * the slot live) */
+            if (!l_push(c, LT_TAG, line)) {
+                free(tag.buf);
+                return l_fail(c);
+            }
+            c->toks[c->ntoks - 1].text = tag.buf; /* owned */
+            c->toks[c->ntoks - 1].tlen = tag.len;
+            break;
+        }
         case '`':
             plain = 1;
             break;
@@ -1885,6 +2014,45 @@ static int l_render_node(lctx* c, fout* o, size_t* ip) {
         if (t->kind == LT_ANCHOR) {
             return l_fail(c); /* a second anchor: outside the family */
         }
+        if (t->kind == LT_TAG) {
+            return l_fail(c); /* an anchor-then-tag node: untested */
+        }
+    }
+    if (t->kind == LT_TAG) {
+        /* the tag attaches to the node that follows (parse_node's
+         * properties walk); the next token decides: a scalar carries the
+         * tag in the props slot, any non-node token leaves the tagged
+         * EMPTY scalar (the parser's anchor||tag branch). The bare '!'
+         * resolves to the non-specific tag and drops (diff_core.c:
+         * "resolves by style"). The multi-prop and tagged-collection
+         * combos stay outside. */
+        const char* tagb = (const char*)t->text;
+        size_t tl = t->tlen;
+        int dropped = (tl == 1 && tagb[0] == '!');
+        (*ip)++;
+        if (*ip >= c->ntoks) {
+            return l_fail(c);
+        }
+        ltok* t2 = &c->toks[*ip];
+        if (t2->kind == LT_TAG || t2->kind == LT_ANCHOR || t2->kind == LT_ALIAS ||
+            t2->kind == LT_FLMAP) {
+            return l_fail(c);
+        }
+        fo_str(o, "=VAL :");
+        if (!dropped) {
+            fo_str(o, " <");
+            fo_bytes(o, tagb, tl);
+            fo_str(o, ">");
+        }
+        if (t2->kind == LT_SCALAR) {
+            fo_str(o, " ");
+            fo_bytes(o, t2->text, t2->tlen);
+            (*ip)++;
+        } else {
+            fo_str(o, " "); /* the node-less position */
+        }
+        fo_str(o, "\n");
+        return 1;
     }
     if (t->kind == LT_ALIAS) {
         fo_str(o, "=ALI *");
@@ -2030,6 +2198,8 @@ static const char* ltk_name(ltkind k) {
         return "ALIAS";
     case LT_ANCHOR:
         return "ANCHOR";
+    case LT_TAG:
+        return "TAG";
     case LT_EOS:
         return "EOS";
     default:

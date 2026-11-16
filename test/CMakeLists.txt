@@ -5500,6 +5500,38 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-postbreak-qcolon-r291-artifact.bin
     )
 
+    # the r292 nightly escape (run 43845785461): the TAG shorthand in
+    # the glued-`?` KEY slot - the libyaml model never tokenized `!`,
+    # so the family classifier declined every tag-bearing member.
+    # yeptris reads the glued-`?` member as ONE flat plain (the `!`,
+    # `(` and `%` bytes ride plain content; the r272 plain-? law) while
+    # libyaml scans the shorthand tag (scan_tag: the alpha-run head
+    # rides into the suffix minus the leading `!`, %XX octet escapes
+    # decode per the UTF-8 leading/trailing-octet discipline, only `!`
+    # and `!!` are default-resolvable handles, and the tag may end only
+    # at a blank, a break, `,` in flow, or EOF) and pairs the tagged
+    # EMPTY scalar as the single-pair wrapper's key - the artifact's
+    # `!(4%21bz!` renders URI-unescaped as `!(4!bz!` while the bare `!`
+    # member's tag drops (the non-specific tag, "resolves by style").
+    # The model now tokenizes LT_TAG (the resolved event tag rides the
+    # token) and attaches it in parse_node's properties walk; the
+    # verbatim `!<`, the `!h!`/`!!` handles, the invalid escapes and
+    # the non-`,` closers all stay declined. The yeptris model is
+    # untouched (a member LED by `!` still declines - only the glued
+    # position rides). Reproduces on Debug AND Release pre-fix.
+    # Comparator carry only - no engine change.
+    # (The seeds ride the `flow-qsoup*` comparator-snapshot exclusion -
+    # the family is dense.)
+    # Seeds: flow-qsoup-r292.bin (the 7-byte greedy floor `[?!x,?]`:
+    # the tag-bearing glued-`?` member + the r275 indicator-? member)
+    # and the raw 20-byte artifact.
+    add_test(
+        NAME fuzz-diff-r292-flow-qsoup-tag
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r292.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-artifact-r292.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
