@@ -7575,9 +7575,11 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             b++;
             continue;
         }
-        /* the NEL site: yeptris keeps raw NELs, libyaml escaped them */
-        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 && b[0] == '\\' &&
-            b[1] == 'n') {
+        /* the NEL site: yeptris keeps raw NELs, libyaml escaped them
+         * (or, the r294 fold sub-case, folded the break into the one
+         * plain-fold space -- the esc-less site) */
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 &&
+            ((b[0] == '\\' && b[1] == 'n') || b[0] == ' ')) {
             int k = 0;
             const char* p = a;
             while ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0x85) {
@@ -7601,6 +7603,39 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 r++;
             }
             if (r < k) {
+                /* the r294 fold sub-case (run 43884852403): libyaml
+                 * escaped NOTHING at the site -- its fold branch
+                 * turned the break into the ONE space its plain
+                 * fold spells ("?<NEL> SP 0" reads "? SP 0", the
+                 * break-leading blank eaten with the fold) while
+                 * yeptris kept the raw NEL as 1.2 content with the
+                 * space riding verbatim behind it (the r202 raw
+                 * carrier at an esc-less site). Fire only when r == 0
+                 * and k == 1 (the fold of a break-run is a different
+                 * shape), b's single space is the fold, and the
+                 * alignment byte behind it coincides with the first
+                 * byte behind yeptris's NEL+space run and sits on
+                 * plain content (not a space -- the fold is the
+                 * site's only space on b; not an escape -- the esc
+                 * pairing owns those; not a raw NEL/LS/PS lead
+                 * byte), so the claim can never swallow arbitrary
+                 * divergence; the byte-bound continuation binds the
+                 * rest. Previously this shape declined
+                 * unconditionally here, so no existing member's
+                 * path changes. */
+                if (k == 1 && b[0] == ' ') {
+                    const char* t = p;
+                    while (t[0] == ' ') {
+                        t++;
+                    }
+                    if (t[0] != '\0' && b[1] == t[0] && t[0] != ' ' && t[0] != '\\' &&
+                        (unsigned char)t[0] != 0xC2 && (unsigned char)t[0] != 0xE2) {
+                        a = t;
+                        b += 1;
+                        subs += 2;
+                        continue;
+                    }
+                }
                 return 0;
             }
             const char* q = b + 2 * k;

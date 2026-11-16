@@ -5557,6 +5557,36 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r293-artifact.bin
     )
 
+    # the r294 nightly escape (run 43884852403): the ESC-LESS NEL fold
+    # site - the `>`-header + NEL/PS composition's sixth member. At the
+    # site yeptris keeps the raw NEL as 1.2 content (the r202 raw
+    # carrier) with the space riding verbatim behind it, while
+    # libyaml's fold branch turned the break into the ONE space its
+    # plain fold spells ("?<NEL> SP 0" reads "? SP 0", the
+    # break-leading blank eaten with the fold) - no escape at all on
+    # libyaml's side, so the NEL-site gate's esc pairing had nothing
+    # to pair against and declined unconditionally. The widened arm
+    # pairs the one NEL to the one fold space behind the same
+    # r283/r288/r290 gates (r==0, k==1, the alignment byte behind the
+    # fold coincides with the first byte behind yeptris's NEL+space
+    # run and sits on plain content); every prior member keeps its
+    # exact path (the sub-case sits behind the r290 `r < k` decline,
+    # which held for all of them). Reproduces on Debug AND Release
+    # pre-fix.
+    # Comparator carry only - no engine change.
+    # Seeds: block-nel-escless-fold-r294.bin (the 25-byte DIFFER- and
+    # shape-constrained floor `> SP # PS SP : LF SP SP NEL SP 0 LF PS
+    # SP ? NEL SP 0` - the r283/r288 template's first 16 bytes then
+    # the `?`-content NEL site) and the raw 62-byte artifact (whose
+    # `?g:yaml.org,2##|#|+`,?!\t--x` soup and `  t` tail ride the same
+    # laws and are not load-bearing).
+    add_test(
+        NAME fuzz-diff-r294-block-nel-escless-fold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-escless-fold-r294.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-escless-fold-r294-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
