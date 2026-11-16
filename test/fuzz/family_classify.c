@@ -55,19 +55,21 @@
 /* ---- budget (conservatism law n) ------------------------------------ */
 
 #define FC_MAX_INPUT                                                                               \
-    65536u                        /* the family's members are <1KB; the                            \
+    131072u                       /* the family's members are <1KB; the                            \
                                    * largest corpus seed is 10732; the                             \
                                    * 18.5KB r284 artifact rides whole; the                         \
                                    * 32.8KB r285 artifact rides whole; the                         \
-                                   * 48.5KB r293 artifact rides whole */
+                                   * 48.5KB r293 artifact rides whole; the                         \
+                                   * 81.9KB r295 artifact rides whole */
 #define FC_MAX_OUT (256u * 1024u) /* derived-dump cap */
 #define FC_MAX_PIECES 256u        /* plain fold pieces per node */
 #define FC_MAX_MEMBERS                                                                             \
-    4096u /* flow members per collection (the                                                      \
+    8192u /* flow members per collection (the                                                      \
            * 10KB r258 artifact rides ~300; the                                                    \
            * r284 soup rides ~1400; the r285 soup                                                  \
            * rides 2324; the r293 soup rides under                                                 \
-           * the cap) */
+           * 4096; the r295 soup rides just past                                                   \
+           * 4096) */
 #define FC_MAX_TOKENS                                                                              \
     16384u              /* libyaml tokens per stream (the r284 soup                                \
                          * rides ~5600; the r285 soup rides 5477; the                              \
@@ -1193,14 +1195,18 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
 }
 
 /* The member loop shared by the root and the nested map walk: members
- * to the matching `closer`, the byte after it in *after. The
- * wrong-kind closer, an empty/comment member, and a missing terminator
- * decline (the nested walk passes `}`; the root passes its own kind's
- * closer — a `]` inside a map (and vice versa) hits the decline). */
+ * to the matching `closer`, the byte after it in *after. The wrong-kind
+ * closer, an empty member, and a missing terminator decline (the nested
+ * walk passes `}`; the root passes its own kind's closer — a `]` inside
+ * a map (and vice versa) hits the decline). A loop-top comment rides:
+ * both engines eat `#` to the break between members (the r295 artifact's
+ * `, #` site — verified identical on both engines, so the comment
+ * contributes no events and the walk continues after the break). */
 static int y_members(yctx* c, unsigned char closer, size_t i, size_t* after) {
     const uint8_t* p = c->p;
     size_t n = c->n;
     for (;;) {
+        size_t pre = i;
         i = fc_skip_blank_break(p, n, i);
         if (i >= n) {
             return y_fail(c); /* never closed */
@@ -1210,13 +1216,25 @@ static int y_members(yctx* c, unsigned char closer, size_t i, size_t* after) {
             i++;
             break;
         }
-        if (ch == ',' || ch == (c->is_map ? ']' : '}') || ch == '#') {
+        if (ch == '#' && i > pre) {
+            /* the comment ride: a blank/break preceded the `#` (the
+             * engine's comment condition — `,`- or `[`-glued `#` is the
+             * documented yeptris-rejects/libyaml-accepts split, never a
+             * comment), so both engines eat to the break and the walk
+             * re-enters (the tail gate's own law, moved between
+             * members — the r295 artifact's `, #` site) */
+            while (i < n && fc_break_len(p, n, i) == 0) {
+                i++;
+            }
+            continue;
+        }
+        if (ch == ',' || ch == (c->is_map ? ']' : '}')) {
             c->pos_trace = i;
             if (getenv("YD_FC_TRACE") != NULL) {
                 fprintf(stderr, "loop-top byte at %zu: %02x (prev 24: %.*s)\n", i, ch,
                         (int)(i > 24 ? 24 : i), (const char*)p + i - (i > 24 ? 24 : i));
             }
-            return y_fail(c); /* an empty/comment member: outside */
+            return y_fail(c); /* an empty member: outside */
         }
         if (c->members >= FC_MAX_MEMBERS) {
             return y_fail(c);
