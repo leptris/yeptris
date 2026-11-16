@@ -86,8 +86,13 @@ jobs:
         # alignment bytes differ -- libyaml's break ate the indent
         # space), so neighbor mutations re-derive it; the arm pins
         # it EXACT-BYTES and the classifier declines block scalars
-        # by declared scope.
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete
+        # by declared scope. The utf16-midstream-bom family joins at
+        # r298: three arm-model gaps (r243/r280/r298) harvested from
+        # mutations of one pinned 14-byte seed -- a UTF-16BE seed is
+        # one ChangeByte from a fresh documented-law composition, so
+        # the diff leg explores fresh space; the seeds stay under the
+        # full ctest (the fuzz-diff-r243/r280/r298 pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-midstream-bom-*' -delete
 
       - name: Fuzz budget
         run: |

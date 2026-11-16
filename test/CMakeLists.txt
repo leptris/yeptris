@@ -5687,6 +5687,40 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ps-nel-fold-r297-artifact.bin
     )
 
+    # the r298 nightly escape (run 43969459612): the UTF-16BE composite
+    # rides the mid-content LS/PS raw-join site, a ONE-BYTE sibling of
+    # the pinned r280 floor — the floor's second `0085` (NEL) became
+    # `4185` (U+4185 content), so the PS that followed it now folds
+    # MID-CONTENT: yeptris's plain scalar folds the single break to ONE
+    # space (the 1.2 plain-fold law) while libyaml's READ_LINE joins
+    # the raw triple into leading_break and its fold gate wants an LF
+    # lead, so the triple rides the value verbatim (scanner.c
+    # LS|PS -> LS|PS; the r56 plain law). Every plain-fold arm's data
+    # gate scans the UTF-8 `e2 80 a8/a9` triples — blind to the
+    # UTF-16BE `20 28/20 29` code units — and the FEFF-strip walk owns
+    # the dump head, so the law rides the r144/r226/r243/r280 family
+    # arm: a unit-space site pass counts the mid-content single LS/PS
+    # breaks (both flanking units content — a flanking blank or break
+    # belongs to the derivation above or declines) and the walk bounds
+    # yeptris's ONE fold space against libyaml's ONE raw triple by that
+    # count (composites past the cap decline). The 14-byte artifact is
+    # floor-minimal (every unit load-bearing; the plain ddmin walk
+    # cannot shed the BOM, either FEFF, the NEL residue run, or either
+    # site flank byte). A/B at the r243-arm parent 0de5db23^ (Release):
+    # RC 77 with a byte-identical dump pair — the divergence predates
+    # the whole arm lineage, a fresh composition of the r144 BOM law,
+    # the r56 plain LS/PS law, and the r280 residue law. Reproduces on
+    # Debug AND Release (nightly config is Debug).
+    # Comparator carry only — no engine change. Seeds: the 14-byte
+    # floor artifact (this pin; the seed joins the comparator-snapshot
+    # exclusion via the new utf16-midstream-bom-* glob — the family's
+    # third arm-model gap, all one-byte mutations of the same seed).
+    add_test(
+        NAME fuzz-diff-r298-utf16-midcontent-lsps
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r298.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
