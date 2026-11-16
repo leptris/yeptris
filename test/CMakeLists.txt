@@ -5415,6 +5415,21 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqblankled-r287-artifact.bin
     )
 
+    # the r288 nightly escape (run 43778032929): the BLOCK-NEL
+    # fold-space surplus - inside the r282/r283 family the fold-adjacent
+    # space diverges both ways (yeptris's fold eats it with the spelled
+    # break, libyaml's keeps it past the dropped break; the NEL-site
+    # space-run delta widens past one where the sub-line is blank-ish).
+    # Floor 27 bytes (commented PS-led header, two NEL lines, the "2 t"
+    # tail); the raw 33-byte artifact rides the same arm. Comparator
+    # carry only - no engine change.
+    add_test(
+        NAME fuzz-diff-r288-block-nel-foldspace
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-foldspace-r288.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-foldspace-r288-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
