@@ -6,6 +6,23 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [0.6.71] - 2026-11-17
+
+### Fixed
+
+- **the ENGINE fix: multi-line flow implicit keys carry libyaml's words (#1411)** — an implicit key spanning lines inside a flow sequence (`[a\nb: c]`-shaped) was rejected through the default arm with `unexpected parser state` at the continuation's `:`; the fused classifier now carries libyaml's multi-line implicit-key words, matching libyaml's error shape (`did not find expected ',' or ']'`, context `while parsing a flow sequence`, marked at the opening `[`) and Psych's accept/reject face on the accepting forms. First engine `src/` change since r248 (#1281) — pinned in the C suite by #1411's tests.
+
+### the comparator era (r293-r298, all zero-`src/`)
+
+- **the comparator carries six more nightly escapes (the #1310 family; zero engine divergence)**:
+  - **the 49KB CR-run/PS fold soup rides past raised budgets (r293, PR #1414, issue #1413)** — `FC_MAX_INPUT` 65536, `FC_MAX_TOKENS` 16384; both models derived the soup byte-exact.
+  - **the loop-top comment member (r295, PR #1419, issue #1418)** — `y_members` gains the blank/break-prefixed loop-top comment ride (the glued `#` splits stay declined, six soundness probes) + budgets to 131072/8192.
+  - **the block-NEL arm widened three times more (r294 #1417 esc-less fold site; r297 #1423 the PS-fold mirror + spent-NEL exception; floors 25 bytes each; r288-r290 lineage)**.
+  - **the leading blank/break run rides the classifier (r296, PR #1421, issue #1420)** — law-j's gate + `y_root` skip a lead run; the divergence rides the standing r222/r274/glued-`?` laws. Floor 14 bytes.
+  - **the UTF-16BE unit-space site (r298, PR #1425, issue #1424)** — with content flanking the PS, yeptris's plain fold renders one space where libyaml's READ_LINE raw-joins the triple; the plain-fold arms' UTF-8-triple gate was blind to the UTF-16BE units. A one-byte sibling of the pinned r280 floor.
+
 ## [0.6.70] - 2026-11-16
 
 ## [0.6.70] - 2026-11-16
