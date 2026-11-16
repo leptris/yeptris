@@ -1410,7 +1410,12 @@ static int l_plain_scan(lctx* c, fout* o, size_t* stop) {
                 tb_n = 0;
                 leading_blanks = 0;
             } else if (blanks_n > 0) {
-                fo_bytes(o, p + blanks_at, blanks_n);
+                /* interior: byte-exact, dump-escaped (the r289 repair:
+                 * the raw ride leaked TAB bytes into the derived dump —
+                 * the actual driver escapes TAB as \t; SP is
+                 * escape-neutral either way, so no classified seed
+                 * changes) */
+                fo_escape(o, p + blanks_at, blanks_n);
             }
             blanks_n = 0;
             fo_escape(o, p + i, k - i);
