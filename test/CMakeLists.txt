@@ -5587,6 +5587,37 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-escless-fold-r294-artifact.bin
     )
 
+    # the r295 nightly escape (run 43912266935): the 81936-byte CR-run/PS
+    # fold soup outgrew the r293-raised budgets AND carried a shape the
+    # yeptris model declined outright - a `, #` COMMENT MEMBER (a `#`
+    # after a blank at the member loop-top). Both engines eat the comment
+    # to the break between members (probes `, #c` LF, `[a, #c` LF,
+    # `[a,\n #c` LF are byte-identical), so the model gains the loop-top
+    # comment ride (the tail gate's own law, moved between members;
+    # gated on the preceding blank/break - the `,`-glued or `[`-glued `#`
+    # is the documented yeptris-rejects/libyaml-accepts split, never a
+    # comment) plus the budget raises: FC_MAX_INPUT 65536 -> 131072 (the
+    # r285/r293 "outgrew the budget" shape one size class later) and
+    # FC_MAX_MEMBERS 4096 -> 8192 (the soup rides 5906 members; the
+    # 13935-token ride stays under FC_MAX_TOKENS 16384). The isolation
+    # matrix: the raises alone decline at the comment gate (pos 38108);
+    # the comment ride alone declines at the members gate (pos 56835);
+    # the full change classifies both dumps byte-exact. Reproduces on
+    # Debug AND Release pre-fix.
+    # Comparator carry only - no engine change.
+    # (The seeds ride the `flow-qsoup*` comparator-snapshot exclusion -
+    # the family is dense.)
+    # Seeds: flow-qsoup-r295.bin (the 65650-byte member-boundary prefix
+    # floor - over the old input cap, under the new one, carrying the
+    # comment site) and the raw 81936-byte artifact (which additionally
+    # rides past the members cap).
+    add_test(
+        NAME fuzz-diff-r295-flow-qsoup-comment-budget
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r295.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-r295-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
