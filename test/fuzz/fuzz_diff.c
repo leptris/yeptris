@@ -9771,6 +9771,7 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
 #define YD_R243_MAX_RES 256u                          /* mid-stream FEFFs modeled */
 #define YD_R243_MAX_RUN 8u                            /* breaks per fold run */
 #define YD_R243_RES_MAX (2u * (YD_R243_MAX_RUN - 1u)) /* render bytes */
+#define YD_R243_MAX_SITE 16u                          /* mid-content LS/PS sites */
 static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, const char* ydump,
                                             const char* ldump) {
     size_t i;
@@ -9871,92 +9872,148 @@ static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, co
         i = u; /* the derivation resumes after the run (or at the
                 * next FEFF the walk lands on directly) */
     }
-    /* the relation: libyaml's dump == yeptris's dump minus every
-     * U+FEFF triple and its derived fold render — with ONE tail
-     * allowance: the harness's 4096-byte line cap truncates BOTH
-     * giant dumps at possibly different char phases, and libyaml's
-     * window carries the residue (the r280 artifact). */
+    /* the r298 site pass (the nightly's round 298, artifact
+     * crash-fa1d8d51, a one-byte sibling of the r280 floor: the second
+     * NEL byte became U+4185 content, so the PS that followed it now
+     * rides MID-CONTENT instead of inside a FEFF-led break run): a
+     * plain-scalar LS/PS break whose flanking units are both CONTENT
+     * folds ONE space in yeptris (the 1.2 plain-fold law) while
+     * libyaml's READ_LINE joins the raw triple into leading_break and
+     * its fold gate wants an LF lead -- the raw triple joins the value
+     * verbatim (scanner.c LS|PS -> LS|PS). The r56 plain law in
+     * UTF-16BE unit space: every UTF-8-data gate in the plain-fold
+     * arms (yd_plain_lsps_fold_divergence, yd_plain_nel_lsps_fold_
+     * divergence) is blind to the `20 28`/`20 29` code units, and the
+     * FEFF-strip walk owns the head of these dumps -- so the law lives
+     * HERE, in the family arm. The site is the single-break shape
+     * only: a flanking blank or break (boundary blanks, break runs,
+     * FEFF-led residues) belongs to the derivation above or declines,
+     * and a composite past the cap is unmodelable. */
     {
-        const char* a = ydump;
-        const char* b = ldump;
-        size_t ri = 0;
-        while (a[0] != '\0') {
-            if ((unsigned char)a[0] == 0xEF && (unsigned char)a[1] == 0xBB &&
-                (unsigned char)a[2] == 0xBF) {
-                a += 3; /* the U+FEFF triple vanishes */
-                if (ri < nres && resn[ri] > 0) {
-                    if (memcmp(a, res[ri], resn[ri]) != 0) {
-                        return 0; /* the derived fold render is absent */
+        size_t nsite = 0;
+        for (i = 4; i + 3 < size; i += 2) {
+            if (data[i] == 0x20 && (data[i + 1] == 0x28 || data[i + 1] == 0x29)) {
+                size_t p = i - 2;
+                size_t q = i + 2;
+                int pc, qc;
+                pc = !((data[p] == 0x00 &&
+                        (data[p + 1] == 0x20 || data[p + 1] == 0x09 || data[p + 1] == 0x0A ||
+                         data[p + 1] == 0x0D || data[p + 1] == 0x85)) ||
+                       (data[p] == 0x20 && (data[p + 1] == 0x28 || data[p + 1] == 0x29)) ||
+                       (data[p] == 0xFE && data[p + 1] == 0xFF));
+                qc = !((data[q] == 0x00 &&
+                        (data[q + 1] == 0x20 || data[q + 1] == 0x09 || data[q + 1] == 0x0A ||
+                         data[q + 1] == 0x0D || data[q + 1] == 0x85)) ||
+                       (data[q] == 0x20 && (data[q + 1] == 0x28 || data[q + 1] == 0x29)) ||
+                       (data[q] == 0xFE && data[q + 1] == 0xFF));
+                if (pc && qc) {
+                    if (nsite >= YD_R243_MAX_SITE) {
+                        return 0; /* a composite past the cap: unmodelable */
                     }
-                    a += resn[ri];
-                } else if (a[0] == ' ') {
-                    a++; /* the legacy single-space strip (a FEFF with
-                          * no break run: the neighbor blank) */
+                    nsite++;
                 }
-                ri++;
-                continue;
             }
-            if (b[0] != a[0]) {
-                break; /* the residue, or a real mismatch */
-            }
-            a++;
-            b++;
         }
-        if (a[0] == '\0') {
-            return b[0] == '\0'; /* the pure-strip equalization */
-        }
-        /* the tail law: the remainder of yeptris's dump re-appears
-         * verbatim behind a bounded residue in libyaml's */
+        /* the relation: libyaml's dump == yeptris's dump minus every
+         * U+FEFF triple and its derived fold render -- with ONE tail
+         * allowance: the harness's 4096-byte line cap truncates BOTH
+         * giant dumps at possibly different char phases, and libyaml's
+         * window carries the residue (the r280 artifact). Sites add a
+         * second allowance: yeptris's ONE fold space facing libyaml's
+         * ONE raw LS/PS triple rides the r56 plain law (bounded by the
+         * unit-space site count). */
         {
-            size_t y_rest = strlen(a);
-            size_t l_rest = strlen(b);
-            if (l_rest <= y_rest || l_rest - y_rest > 8) {
-                return 0;
-            }
-            size_t extra = l_rest - y_rest;
-            if (memcmp(b + extra, a, y_rest) != 0) {
-                return 0;
-            }
-            /* the residue: the cap cut lands at an arbitrary char
-             * PHASE on each side (the r280 law) — the window decodes
-             * as [one partial char tail, up to three continuation
-             * bytes — the r280 artifact's phase][complete chars][one
-             * partial char head — the r243 seed's phase]; EITHER
-             * fragment present proves the window is the cap cut, not
-             * extra content */
-            size_t k = 0;
-            size_t frag = 0;
-            int truncated = 0;
-            while (k < extra && frag < 3 && ((unsigned char)b[k] & 0xC0) == 0x80) {
-                k++; /* the char cut in yeptris's window leaves its
-                      * continuation tail here */
-                frag++;
-            }
-            if (frag == 3 && k < extra && ((unsigned char)b[k] & 0xC0) == 0x80) {
-                return 0; /* more than one char's tail: not a cap cut */
-            }
-            while (k < extra) {
-                unsigned char lead = (unsigned char)b[k];
-                size_t need;
-                if (lead >= 0x80 && lead < 0xC0) {
-                    return 0; /* a stray continuation leads */
+            const char* a = ydump;
+            const char* b = ldump;
+            size_t ri = 0;
+            size_t sites = 0;
+            while (a[0] != '\0') {
+                if ((unsigned char)a[0] == 0xEF && (unsigned char)a[1] == 0xBB &&
+                    (unsigned char)a[2] == 0xBF) {
+                    a += 3; /* the U+FEFF triple vanishes */
+                    if (ri < nres && resn[ri] > 0) {
+                        if (memcmp(a, res[ri], resn[ri]) != 0) {
+                            return 0; /* the derived fold render is absent */
+                        }
+                        a += resn[ri];
+                    } else if (a[0] == ' ') {
+                        a++; /* the legacy single-space strip (a FEFF with
+                              * no break run: the neighbor blank) */
+                    }
+                    ri++;
+                    continue;
                 }
-                need = (lead < 0x80) ? 1 : (lead < 0xE0) ? 2 : (lead < 0xF0) ? 3 : 4;
-                if (k + need > extra) {
-                    truncated = 1;
-                    break;
+                if (sites < nsite && (unsigned char)a[0] == ' ' && (unsigned char)b[0] == 0xE2 &&
+                    (unsigned char)b[1] == 0x80 &&
+                    ((unsigned char)b[2] == 0xA8 || (unsigned char)b[2] == 0xA9)) {
+                    a += 1; /* the r298 site: yeptris's fold space rides
+                             * where libyaml raw-joined the LS/PS break */
+                    b += 3;
+                    sites++;
+                    continue;
                 }
-                {
-                    size_t c;
-                    for (c = 1; c < need; c++) {
-                        if (((unsigned char)b[k + c] & 0xC0) != 0x80) {
-                            return 0;
+                if (b[0] != a[0]) {
+                    break; /* the residue, or a real mismatch */
+                }
+                a++;
+                b++;
+            }
+            if (a[0] == '\0') {
+                return b[0] == '\0'; /* the pure-strip equalization */
+            }
+            /* the tail law: the remainder of yeptris's dump re-appears
+             * verbatim behind a bounded residue in libyaml's */
+            {
+                size_t y_rest = strlen(a);
+                size_t l_rest = strlen(b);
+                if (l_rest <= y_rest || l_rest - y_rest > 8) {
+                    return 0;
+                }
+                size_t extra = l_rest - y_rest;
+                if (memcmp(b + extra, a, y_rest) != 0) {
+                    return 0;
+                }
+                /* the residue: the cap cut lands at an arbitrary char
+                 * PHASE on each side (the r280 law) — the window decodes
+                 * as [one partial char tail, up to three continuation
+                 * bytes — the r280 artifact's phase][complete chars][one
+                 * partial char head — the r243 seed's phase]; EITHER
+                 * fragment present proves the window is the cap cut, not
+                 * extra content */
+                size_t k = 0;
+                size_t frag = 0;
+                int truncated = 0;
+                while (k < extra && frag < 3 && ((unsigned char)b[k] & 0xC0) == 0x80) {
+                    k++; /* the char cut in yeptris's window leaves its
+                          * continuation tail here */
+                    frag++;
+                }
+                if (frag == 3 && k < extra && ((unsigned char)b[k] & 0xC0) == 0x80) {
+                    return 0; /* more than one char's tail: not a cap cut */
+                }
+                while (k < extra) {
+                    unsigned char lead = (unsigned char)b[k];
+                    size_t need;
+                    if (lead >= 0x80 && lead < 0xC0) {
+                        return 0; /* a stray continuation leads */
+                    }
+                    need = (lead < 0x80) ? 1 : (lead < 0xE0) ? 2 : (lead < 0xF0) ? 3 : 4;
+                    if (k + need > extra) {
+                        truncated = 1;
+                        break;
+                    }
+                    {
+                        size_t c;
+                        for (c = 1; c < need; c++) {
+                            if (((unsigned char)b[k + c] & 0xC0) != 0x80) {
+                                return 0;
+                            }
                         }
                     }
+                    k += need;
                 }
-                k += need;
+                return truncated || frag > 0;
             }
-            return truncated || frag > 0;
         }
     }
 }
