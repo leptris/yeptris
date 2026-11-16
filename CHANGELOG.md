@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.70] - 2026-11-16
+
+### Fixed
+
+- **the comparator carries six more nightly escapes (r287-r292, the #1310 family; zero engine divergence outstanding — the last engine defect remains r248, #1281)**:
+  - **the blank-led DQ span head (r287, PR #1399, issue #1398)** — `fc_quoted_value` + `l_dq_scan` admit a blank run only after a single leading break; multi-break leads, raw LS/PS heads, pure blank-led heads, trailing blanks stay declined. Floor 21 bytes.
+  - **the block-NEL fold-space surplus (r288, PR #1401, issue #1400)** — the fold-adjacent space diverges both ways inside the r282/r283 family: yeptris's fold eats it with the spelled break, libyaml's keeps it past the dropped break; the NEL-site space-run delta becomes a lower bound. Floor 27 bytes (Debug-build-only reproduction; Release+ASan masks it).
+  - **the TAB-bearing interior blank run (r289, PR #1403, issue #1402)** — `l_plain_scan`'s interior-blank join wrote TAB runs raw into the derived dump; the one-line `fo_bytes` → `fo_escape` repair. Floor 3 bytes (`|` CR `y` — the documented yeptris-only split).
+  - **the block-NEL bare-NEL site (r290, PR #1405, issue #1404)** — the escape-run cap becomes a floor (r ≥ k), the space delta admits zero at the bare site, and the kept-raw-LS/PS surplus law covers the consecutive-break twin. Floor 17 bytes.
+  - **the post-break flow colon (r291, PR #1407, issue #1406)** — the r286 1.2 flow VALUE-boundary law extends to the post-break continuation position (one condition in `fc_plain_pieces`; the pair derives (plain, empty) byte-exact). Floor 24 bytes.
+  - **the classifier's first TAG model (r292, PR #1409, issue #1408)** — `l_scan_tag` (shorthand scan, `scan_tag_uri` charset, UTF-8-disciplined `%XX` escapes, blank/break/comma boundaries) + LT_TAG tokens in parse_node's properties walk: the first tag byte to reach the classifier in its history, retiring the r273 arm's declared-scope conservatism. Floor 7 bytes `[?!x,?]`.
+
 ## [0.6.69] - 2026-11-15
 
 ## [0.6.69] - 2026-11-15
