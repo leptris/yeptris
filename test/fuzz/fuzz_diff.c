@@ -7845,6 +7845,59 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 continue;
             }
         }
+        /* the r299 twin-LEAD fold-space site (run 43983729736, crash-
+         * bf6fe244e0f509a9bf62c2c609468840956cc258): a PLAIN content
+         * line's mid-line raw LS/PS break with content on BOTH flanks
+         * -- yeptris's block fold writes the ONE fold space BEFORE the
+         * kept raw triple it also keeps as 1.2 content ("70<PS> 70"
+         * reads "70 SP<PS> SP 70" at the twin site) while libyaml's
+         * block reader breaks at the PS mid-line (IS_BREAK), READ_LINE
+         * keeps the raw triple in leading_break, and the raw lead (not
+         * LF) fails the fold gate -- no fold spaces, the bare triple
+         * ("70<PS>70"). Both engines keep the triple here, so the r297
+         * PS-fold site's shape (a carries NO triple) and the r290
+         * kept-raw surplus (a[0] == b[3] non-space) both decline first
+         * -- previously this shape fell through to the unconditional
+         * decline. Eat the ONE surplus lead space when a carries the
+         * SAME raw triple b leads (the triples pair byte-wise behind
+         * the eaten space; the byte-bound continuation and the trail
+         * site below bind the rest), so the claim can never swallow
+         * arbitrary divergence. No existing member's path changes. */
+        if (a[0] == ' ' && (unsigned char)a[1] == 0xE2 && (unsigned char)a[2] == 0x80 &&
+            ((unsigned char)a[3] == 0xA8 || (unsigned char)a[3] == 0xA9) &&
+            (unsigned char)b[0] == 0xE2 && (unsigned char)b[1] == 0x80 &&
+            (unsigned char)b[2] == (unsigned char)a[3]) {
+            a += 1;
+            subs += 2;
+            continue;
+        }
+        /* the r299 twin-TRAIL fold-space site (run 43983729736): the
+         * same PLAIN mid-content LS/PS break seen from behind its kept
+         * raw triple -- yeptris's fold writes the ONE fold space AFTER
+         * the triple too (the twin site's trailing flank; at the
+         * artifact's bare-triple sites only the trail survives), while
+         * libyaml's block reader carries no fold space around the
+         * triple its READ_LINE kept. Sits behind the lead site (whose
+         * gate wants a on the surplus LEAD space with the triple ahead)
+         * and fires byte-wise on the byte-paired triple's trailing
+         * flank: eat the ONE surplus space when the walk just passed
+         * the SAME raw triple on a (the back-reference binds the site
+         * to the fold region -- the frame bytes never hold an LS/PS
+         * triple) and the byte behind it coincides with b's and sits on
+         * plain content (not a space -- the lead site owns the other
+         * flank; not an escape -- the esc pairing owns those; not a raw
+         * NEL/LS/PS lead byte), so the claim can never swallow
+         * arbitrary divergence. Previously this shape declined
+         * unconditionally here, so no existing member's path changes. */
+        if (a[0] == ' ' && a >= ydump + 3 && (unsigned char)a[-3] == 0xE2 &&
+            (unsigned char)a[-2] == 0x80 &&
+            ((unsigned char)a[-1] == 0xA8 || (unsigned char)a[-1] == 0xA9) && a[1] == b[0] &&
+            a[1] != ' ' && a[1] != '\\' && a[1] != '\0' && (unsigned char)a[1] != 0xC2 &&
+            (unsigned char)a[1] != 0xE2) {
+            a += 1;
+            subs += 2;
+            continue;
+        }
         return 0;
     }
     return *a == '\0' && *b == '\0' && subs > 0;

@@ -5721,6 +5721,50 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r298.bin
     )
 
+    # the r299 nightly escape (run 43983729736): the 55-byte artifact
+    # `> SP #<11 CR<PS> 70<PS> 70<PS> 700: LF SP<PS> 700: LF SP SP
+    # m<NEL> SP t0: LF SP SP m<NEL> SP t` - a folded block scalar whose
+    # header comment ends at a CR break (the r283 header gate's
+    # break-terminated-comment case) and whose PLAIN content lines
+    # carry mid-line raw PS breaks with content on BOTH flanks. The
+    # engine behaviors are the documented ones (A/B at the pre-#1411
+    # parent 9d715344 aborts identically with a byte-identical dump
+    # pair - the divergence predates the engine fix; zero src/
+    # divergence), but the composition is fresh: at the mid-content
+    # plain PS site BOTH engines keep the raw triple (libyaml's block
+    # reader breaks at the PS mid-line, READ_LINE keeps it in
+    # leading_break, the raw lead fails the fold gate), but yeptris's
+    # block fold writes the ONE fold space on EACH FLANK of the triple
+    # it also keeps (twin spaces) where libyaml carries none - the r290
+    # kept-raw surplus demands a[0] == b[3] non-space and the r297
+    # PS-fold site wants a WITHOUT its own triple, so the twin-flanked
+    # sites fell through to the unconditional decline. The widened arm
+    # (the r282/r283/r288/r290/r294/r297 lineage) gains the two
+    # twin-space site laws: the LEAD flank (eat the ONE surplus space
+    # when a carries the SAME raw triple b leads - the triples pair
+    # byte-wise behind it) and the TRAIL flank (eat the ONE surplus
+    # space behind a byte-paired raw triple, back-reference-bound,
+    # gated on the coinciding plain alignment byte and the byte-bound
+    # continuation). The tail rides the NEL site and the r176 clip as
+    # before; every prior member keeps its exact path (both laws sit
+    # behind declines that held for all of them). Reproduces on Debug
+    # AND Release pre-fix (nightly config is Debug).
+    # Comparator carry only - no engine change.
+    # (The seeds ride the `block-ps-nel-fold-*` comparator-snapshot
+    # exclusion - the r271 family's own glob.)
+    # Seeds: block-ps-nel-fold-r299.bin (the 17-byte DIFFER- and
+    # shape-constrained floor `> SP #<PS SP : LF SP<PS> SP m<NEL>` -
+    # the twin-lead site, the byte-paired triple's twin-trail site, the
+    # kept-NEL site, and the r176 clip) and the raw 55-byte artifact
+    # (whose three plain twin sites and the `  m`/` t0:` tail ride the
+    # same laws with the r197 leading-empty-line pairing).
+    add_test(
+        NAME fuzz-diff-r299-block-nel-twinspace
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ps-nel-fold-r299.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ps-nel-fold-r299-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
