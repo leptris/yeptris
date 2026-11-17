@@ -5765,6 +5765,46 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-ps-nel-fold-r299-artifact.bin
     )
 
+    # the r300 nightly escape (run 43997338071): the 14-byte artifact
+    # `BOM<NEL><FEFF><NEL><FEFF><NEL>'-'` in UTF-16BE code units -- a
+    # ONE-UNIT sibling of the pinned r226 seed (bom-utf16-nel-line-start),
+    # its final `0061` ('a') became `002d` ('-'). The engine behaviors
+    # are the documented ones (A/B at the pre-#1411 parent 9d715344
+    # aborts identically with a byte-identical dump pair -- the
+    # divergence predates the engine fix; zero src/ divergence), but
+    # the composition is fresh: behind the all-FEFF/break prefix the
+    # trailing `-` indicator flips libyaml's scanner to the STRUCTURAL
+    # level -- its reader eats every mid-stream FEFF (the r144 law), so
+    # it sees a bare break run then the `-` at column 0 and opens an
+    # implicit block SEQUENCE with the empty scalar, while yeptris
+    # keeps the FEFFs as content, folds the NEL runs into the derived
+    # residues, and rides the `-` as interior plain text. The scalar-
+    # content walk is blind to the wrapper, so the shape fell through
+    # to the unconditional decline. The widened arm (the
+    # r144/r226/r243/r280/r298 lineage) gains the structural-eat site
+    # law: unit-space tight (even size, the trailing `00 2D` unit at
+    # EOF, only FEFF/break units between the BOM and the indicator),
+    # libyaml's dump must be the empty-SEQ wrapper (the `003f` '?'
+    # twin's implicit-MAP wrapper rides the same law), yeptris's the
+    # flat scalar, and the FEFF/residue strip over yeptris's value
+    # leaves the eaten indicator alone (composites -- a second
+    # indicator, any content unit, a wrapper with extra entries --
+    # decline). The 14-byte artifact is floor-minimal (every unit
+    # load-bearing; the DIFFER-constrained ddmin walk cannot shed the
+    # BOM, either FEFF, any NEL, or the indicator). A/B at 9d715344
+    # (Release): RC 134 with a byte-identical dump pair. Reproduces on
+    # Debug AND Release (nightly config is Debug).
+    # Comparator carry only -- no engine change.
+    # (The seed rides the `utf16-midstream-bom-*` comparator-snapshot
+    # exclusion -- the family's own glob.)
+    # Seed: utf16-midstream-bom-r300.bin (the 14-byte artifact, which
+    # is also the floor).
+    add_test(
+        NAME fuzz-diff-r300-utf16-structural-eat
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r300.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
