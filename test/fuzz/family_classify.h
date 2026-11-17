@@ -24,7 +24,11 @@
  *      collapses to an empty key on libyaml (the anchor prop renders on
  *      the empty scalar; the IS_ALPHA alias cut), while yeptris keeps
  *      the bytes as plain content or the alias node (the m39/m40
- *      precedent);
+ *      precedent); the r301 widening (run 44006575967): the split
+ *      explicit-key slot's alias (`? *L ,`) rides the same blank/break
+ *      run to the separator/closer the bare-alias member walks — the
+ *      map value slot stays the parser's empty scalar; a ':' across
+ *      the run (a VALUE boundary the probes never cover) stays out;
  *  (d) the plain-`?` law (suite HM87/652Z + r199/r209/r264): a `?`-led
  *      member with a non-blank follower keeps the whole text as one
  *      plain key (colon rides inside when a non-blank follows), values

@@ -9,7 +9,10 @@
  *    bare alias members ride the engine's e_alias name cut (law c —
  *    the alias event renders the name verbatim, a ':'-blank boundary
  *    opens the VALUE slot, a separator/closer leaves the empty
- *    scalar); `?`+blank/break splits the explicit key; a `:`-led
+ *    scalar); `?`+blank/break splits the explicit key (the split slot's
+ *    alias rides the same blank/break run to the separator/closer the
+ *    bare-alias member walks — the r301 widening; a ':' across the run
+ *    stays out); a `:`-led
  *    member opens the EMPTY key (the r281 floor; the split-? key slot
  *    takes `:` + blank/break/flow-indicator — the r286 flow
  *    VALUE-boundary widening, the glued `?:` twin stays out); plain
@@ -887,8 +890,25 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             stop = ae;
             sep = 1;
         } else {
-            return y_fail(c); /* bytes after the alias name that are not
-                               * a boundary: outside the family */
+            /* the r301 widening (run 44006575967): a blank/break run
+             * between the alias name and its boundary (the floor's
+             * `? *L ,` member -- the nightly artifact's `?\t*%L\t\t ,`).
+             * The bare-alias member's walk already rides this exact run
+             * (fc_skip_blank_break) to the separator/closer, leaving the
+             * map value slot to the parser's empty scalar; the split
+             * explicit-key slot rides the same walk. Only the
+             * separator/closer follow-on derives: a ':' reached across
+             * the run (a VALUE boundary the probes never cover) is not
+             * a flow indicator and any other byte fails the gate --
+             * both decline. */
+            size_t ve = fc_skip_blank_break(p, n, ae);
+            if (ve >= n || !fc_flow_ind(p[ve])) {
+                return y_fail(c); /* bytes after the alias name that are
+                                   * not a blank/break-then-boundary ride:
+                                   * outside the family */
+            }
+            stop = ve;
+            sep = 1;
         }
     } else if (p[ks] == '#') {
         /* the comment at the key position (the r245 `?\r###|` members):

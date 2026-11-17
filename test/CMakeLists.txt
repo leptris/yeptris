@@ -5805,6 +5805,47 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r300.bin
     )
 
+    # the r301 nightly escape (run 44006575967): the 70-byte UTF-8 flow
+    # map `{?#?#|#|+` <sp><TAB><sp><LF><TAB> ,?##|#|,` ,?<TAB>*%L<TAB><TAB>
+    # <sp> ,?#|#|,` <LF>:<TAB> ,?---<TAB>:#|#|+` <LF> ,<*<LF><TAB><sp> }`
+    # -- the glued-`?`/#/breaks flow-soup family (the #1310 classifier's
+    # own laws a-e compose here: the KEY-adjacent `#` comment-eat, the
+    # glued-`?#` plain, the fold-point colon, the plain-`?`), but the
+    # split explicit-key slot's ALIAS (`?<TAB>*%L` -- `?`+blank splits
+    # the key, the alias rides the key slot) carried a blank/break RUN
+    # between the alias name and the member's separator. yeptris parses
+    # the member fine (`=ALI *%L` + the parser's empty value scalar);
+    # the classifier's split-alias path only accepted the name glued
+    # straight to its boundary and declined the whole input (the
+    # libyaml model already derived its side byte-exact: libyaml's
+    # comment-eat from the `#` glued to the FIRST flow `?` KEY swallows
+    # the separator AND the alias member to EOL, so libyaml renders
+    # (empty,empty) pairs and never sees the alias at all). The widening
+    # (law c): the split-slot alias rides the same fc_skip_blank_break
+    # walk to the separator/closer the bare-alias member walks; a ':'
+    # across the run (a VALUE boundary the probes never cover) and any
+    # other byte still decline. Firewall counts byte-identical pre/post
+    # (89 seeds / 4770 tamper / 564 mutants before the seeds ride).
+    # Reproduces on the nightly-mirroring Debug build AND on Release
+    # (standalone abort RC 134 both, pre-patch). A/B at the pre-#1411
+    # parent 9d715344: identical abort with a byte-identical dump pair
+    # -- not an engine regression (the divergence is classifier-scope
+    # comparator law, zero src/ change).
+    # Comparator carry only -- no engine change.
+    # (The seeds ride the `flow-qsoup*` comparator-snapshot exclusion --
+    # the family's own glob.)
+    # Seeds: flow-qsoup-aliasblank-r301.bin (the 15-byte
+    # DIFFER-constrained ddmin floor `{?#,? *L ,`<LF>,<>}` -- every byte
+    # load-bearing; the artifact's TAB before the alias folds to SP in
+    # the floor and rides), flow-qsoup-aliasblank-r301-artifact.bin (the
+    # 70-byte raw artifact).
+    add_test(
+        NAME fuzz-diff-r301-flow-qsoup-aliasblank
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-aliasblank-r301.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-aliasblank-r301-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
