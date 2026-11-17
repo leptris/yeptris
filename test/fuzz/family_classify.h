@@ -29,6 +29,13 @@
  *      run to the separator/closer the bare-alias member walks — the
  *      map value slot stays the parser's empty scalar; a ':' across
  *      the run (a VALUE boundary the probes never cover) stays out;
+ *      the r302 widening (run 44034382404): an ALIAS at a `:`-boundary
+ *      VALUE slot (the floor's `?#:<TAB>*% ,` — the fold-colon value
+ *      followed by the TAB-riding alias, the plain-key twin
+ *      `L:<TAB>*% <sp>,`) rides the engine's name cut verbatim
+ *      (`=ALI *<name>` in the value position) with the same
+ *      blank/break run to the terminator the bare-alias member walks;
+ *      a ':' after the alias and any other byte stay out;
  *  (d) the plain-`?` law (suite HM87/652Z + r199/r209/r264): a `?`-led
  *      member with a non-blank follower keeps the whole text as one
  *      plain key (colon rides inside when a non-blank follows), values
