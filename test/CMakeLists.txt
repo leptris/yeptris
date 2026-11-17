@@ -6158,6 +6158,35 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqexotic-r308-artifact.bin
     )
 
+    # the r309 nightly escape (run 44178312079, the r308 carry's first
+    # post-merge nightly): a sibling scramble of the r308 artifact (the
+    # first 4096 bytes are shared; the motif pool gains only the digits
+    # '4'/'9') escaped the comparator snapshot's `flow-qsoup*` exclusion
+    # again. The 36555-byte artifact's FIRST unexplained site is the
+    # pair's VALUE slot riding a whole-line comment:
+    # `?<CR>/<LF><CR><CR><LS> 50:<CR>##|,?<CR>2002:binary` - after the
+    # fold-colon `:` boundary and ONE CR break the `#` is
+    # blank/break-preceded (the engine's comment condition), so BOTH
+    # engines eat `##|,?` to its break and the value resumes
+    # `2002:binary` - the pair (\n\n\n50, 2002:binary) rides byte-exact
+    # on both sides, while the un-ridden model read `##|,?` as the
+    # value plain. The widening: the value walk rides whole-line
+    # comments across the blank/break run (the r295 loop-top ride's
+    # mechanics, one slot deeper), looping for multi-comment runs (the
+    # r307 law) - a GLUED colon-`#` stays out (the yeptris-rejects/
+    # libyaml-accepts split, never a comment), and an eat to EOF stays
+    # declined.
+    # Comparator carry only - no engine change.
+    # (The seeds ride the corpus like the r282-r308 soup seeds and are
+    # excluded from the comparator snapshot by the same `flow-qsoup*`
+    # deletes - no mutation pressure on the nightly diff leg.)
+    add_test(
+        NAME fuzz-diff-r309-flow-qsoup-valueslotcomment
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-valueslotcomment-r309.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-valueslotcomment-r309-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

@@ -44,6 +44,18 @@
  *  (e) the r230 double-split residual-colon law and the m43/m44
  *      finding: a spliced/dropped `:` at a fold point moves neither
  *      dump (the fold-point `:` re-lexes as the VALUE token on both).
+ *  (e2) the r309 value-slot comment ride (run 44178312079): a
+ *      whole-line comment reached ACROSS the blank/break run INSIDE a
+ *      pair's value slot (after the `:`-boundary) rides — the `#` is
+ *      blank/break-preceded (the engine's comment condition), so both
+ *      engines eat it to its break and the value resumes after the run
+ *      (the r309 artifact's `?<CR>/<LF><CR><CR><LS> 50:<CR>##|,?<CR>
+ *      2002:binary` member pairs (/\n\n\n50, 2002:binary) byte-exact
+ *      on both engines while the un-ridden model read `##|,?` as the
+ *      value plain). The ride loops (the r307 multi-comment law, one
+ *      slot deeper); a GLUED colon-`#` is the documented
+ *      yeptris-rejects/libyaml-accepts split, never a comment, and
+ *      stays out; an eat to EOF stays declined.
  *  (f) the r277 MAP-steal laws (run 43657665584): an explicit-`?`
  *      member whose key-position scan hits a blank-preceded `#`
  *      comment ride — with ZERO separators inside the run on a MAP

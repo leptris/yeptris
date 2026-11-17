@@ -752,10 +752,31 @@ static int y_members(yctx* c, unsigned char closer, size_t i, size_t* after);
 
 /* A value slot after a `:`-boundary: plain, empty, anchored-empty,
  * alias (the r302 law), or a nested flow map (a quoted / nested-seq
- * value slot is untested). */
+ * value slot is untested). The r309 widening (run 44178312079): a
+ * whole-line comment reached ACROSS the blank/break run rides the
+ * value slot — the `#` is blank/break-preceded (the engine's comment
+ * condition), so both engines eat it to its break and the value
+ * resumes after the run (the r309 artifact's
+ * `50:<CR>##|,?<CR>2002:binary` site pairs
+ * (/\n\n\n50, 2002:binary) on both engines; a GLUED colon-`#` is the
+ * documented yeptris-rejects/libyaml-accepts split, never a comment,
+ * and stays out). The ride loops (the r307 multi-comment law, one
+ * slot deeper). */
 static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
     const uint8_t* p = c->p;
     size_t q = fc_skip_blank_break(p, c->n, i);
+    while (p[q] == '#' && q > i) {
+        /* the blank/break-preceded value-slot comment ride: eat to the
+         * break, then the run to the next content (the r295 loop-top
+         * ride's mechanics, one slot deeper) */
+        while (q < c->n && fc_break_len(p, c->n, q) == 0) {
+            q++;
+        }
+        if (q >= c->n) {
+            break; /* an eat to EOF: the caller's terminator gates fail */
+        }
+        q = fc_skip_blank_break(p, c->n, q);
+    }
     if (q >= c->n || p[q] == ',' || p[q] == '}' || p[q] == ']') {
         memset(val, 0, sizeof(*val));
         *stop = q;
