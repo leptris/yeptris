@@ -6033,6 +6033,56 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-residual-keycolon-r305-artifact.bin
     )
 
+    # the r306 nightly escape (run 44127434757): the 32836-byte artifact
+    # `[11 ,?##|,?\r/\n\r\r  **  **  50: ...<BOM><BOM><BOM>...&m ,]` - a
+    # dense mixed-context flow soup: glued-`?#` members (the `?#` split
+    # family's plain-? law, d), `?`-led split pairs and simple-key pairs
+    # whose values ride CR break runs (the 1.2 break-fold law, b, with
+    # the alias-collapse law, c, eating the `**` runs), and — the fresh
+    # tail — THREE MID-LINE UTF-8 BOMs glued after a `?\r2` member
+    # (offset ~12685). The BOMs are inert passengers: both engines keep
+    # the marks byte-exact INSIDE their plains (3 in each actual dump),
+    # so the soup divergence is unchanged - but the classifier's BOM
+    # gate declined any BOM byte outright, and the BOM arms decline too
+    # (the line-start arm's transform is line-start-only and its 8192
+    # cap outruns the artifact; the content-strip transform cannot
+    # reach a soup-shaped dump pair). The gate widening: a MID-LINE BOM
+    # rides as inert content (the models' byte-exact plains already
+    # reproduce it); a LINE-START BOM still routes to the BOM families
+    # (the r226 law - libyaml strips at mark column 0 whatever break
+    # opened the line, yeptris keeps it as content - the byte-exact
+    # derivation declines those shapes on its own, the gate keeps the
+    # routing explicit). Stripping the three marks turns the artifact
+    # into an already-classified soup (the pre-patch classifier claims
+    # the 32827-byte BOM-free twin), pinning the BOMs as the sole
+    # unexplained piece. The 18-byte floor
+    # `[1,?#,7,:\rK ?#,\rm]` adds the SECOND fresh law: the #741
+    # colon-led SEQ single-pair STAYS OPEN across the separator (the
+    # floor's `,\rm` member folds INTO the pair's map as a second
+    # entry - libfyaml 04e0b58 and libyaml both read `m` as the bare
+    # seq member that follows, and libyaml rejects the bare-colon
+    # member outright, the ledgered CFD4 deviation - but the engine's
+    # pair-stays-open transition is the deliberate #741 law, CFD4
+    # suite-VALID), so the classifier gains the map-entry side: plain
+    # (glued colon/question content rides whole), quoted, and
+    # anchored-empty members take the key slot with the parser's
+    # empty-scalar value; the bare-colon member keeps its empty key
+    # with its value node; everything else declines. Comparator carry
+    # only - no engine change.
+    # (The seeds ride the comparator corpus like the r282-r305 soup
+    # seeds - no snapshot exclusion, no workflow edit.)
+    # Seed: flow-qsoup-bomride-r306.bin - the artifact rides whole
+    # (charmin floor 32836 -> 18; the byte-deletion walk reshaped the
+    # simple-key chunk into the bare-colon member, so the floor carries
+    # the fold-in law the artifact itself never fires - both stay
+    # pinned).
+    add_test(
+        NAME fuzz-diff-r306-flow-qsoup-bomride
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-bomride-r306.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-bomride-r306-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
