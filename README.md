@@ -16,21 +16,23 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.72 — live across all five runtimes** (C +
-ruby `0.6.72.0` + py `0.6.72.0` + rs/ts `0.6.72`, registry-checked
-2026-11-17). v0.6.72 carries the r299-r302 comparator hardening: the
-block-NEL arm's twin fold-space laws, the UTF-16BE structural-eat
-site, the split-slot alias walk, and the alias VALUE-slot ride —
-twenty-four nightly escapes retired across the weekend, zero engine
-divergence outstanding beyond #1411's deliberate fix. The previous
-cuts: v0.6.71 (the **#1411 engine fix** — multi-line flow implicit
-keys carry libyaml's words, the first engine `src/` change since
-r248) and v0.6.70 (the r287-r292 carries, the classifier's first TAG
-model) over the contract cut. v0.6.67 was that cut: the 0.6.66
-downstream regression (relaton #1359, png_conform #1366)
-verdict-closed — the engine REFUTED innocent (records byte-perfect
-from every library; the corruption was the binding's char-indexed
-arena slicing), the byte-offset law pinned at its C home (#1367).
+**Latest release: v0.6.73 — live across all five runtimes** (C +
+ruby `0.6.73.0` + py `0.6.73.0` + rs/ts `0.6.73`, registry-checked
+2026-11-18). v0.6.73 carries the r303-r305 comparator hardening: the
+block-NEL arm's EOF-tail kept-NEL and fold-space sibling laws (its
+ninth widening), and the anchor-charset arm's residual key-colon
+law — twenty-seven nightly escapes retired across the weekend, zero
+engine divergence outstanding beyond #1411's deliberate fix. The
+previous cuts: v0.6.72 (the r299-r302 carries — the twin fold-space
+laws, the UTF-16BE structural-eat site, the split-slot alias walk,
+the alias VALUE-slot ride) and v0.6.71 (the **#1411 engine fix** —
+multi-line flow implicit keys carry libyaml's words, the first
+engine `src/` change since r248) over the contract cut. v0.6.67 was
+that cut: the 0.6.66 downstream regression (relaton #1359,
+png_conform #1366) verdict-closed — the engine REFUTED innocent
+(records byte-perfect from every library; the corruption was the
+binding's char-indexed arena slicing), the byte-offset law pinned at
+its C home (#1367).
 The cut before it closes the six long-horizon competition fronts
 with measured verdicts (#474/#739/#742/#331/#352 + the binding faces
 #862/#857, every attempt ledgered): anchor-heavy — the last DOM
