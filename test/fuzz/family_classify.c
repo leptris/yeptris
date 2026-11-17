@@ -12,7 +12,8 @@
  *    scalar); `?`+blank/break splits the explicit key (the split slot's
  *    alias rides the same blank/break run to the separator/closer the
  *    bare-alias member walks — the r301 widening; a ':' across the run
- *    stays out); a `:`-led
+ *    stays out); an alias at a `:`-boundary VALUE slot rides the same
+ *    name cut and terminator walk (the r302 widening); a `:`-led
  *    member opens the EMPTY key (the r281 floor; the split-? key slot
  *    takes `:` + blank/break/flow-indicator — the r286 flow
  *    VALUE-boundary widening, the glued `?:` twin stays out); plain
@@ -276,6 +277,9 @@ typedef struct {
     size_t colon_at;
     size_t anchor_at; /* an anchored empty value (the props law) */
     size_t anchor_len;
+    size_t alias_at; /* an alias value (the r302 value-slot law; the
+                      * engine's e_alias name cut renders verbatim) */
+    size_t alias_len;
     char* nest_buf; /* a nested-collection render stashed by the value
                      * walk (fc_render_val consumes it at the caller's
                      * render point, after the key line; owned) */
@@ -527,6 +531,15 @@ static void fc_render_val(fout* o, const uint8_t* p, fcnode* nd) {
         return;
     }
     if (nd->n == 0) {
+        if (nd->alias_len > 0) {
+            /* the alias value (the r302 law): the event rides the name
+             * verbatim (`=ALI *<name>`, the same render the key-slot
+             * alias fires) */
+            fo_str(o, "=ALI *");
+            fo_bytes(o, p + nd->alias_at, nd->alias_len);
+            fo_str(o, "\n");
+            return;
+        }
         if (nd->anchor_len > 0) {
             fo_str(o, "=VAL : &");
             fo_bytes(o, p + nd->anchor_at, nd->anchor_len);
@@ -693,9 +706,9 @@ static int fc_quoted_value(const uint8_t* p, size_t n, size_t s, size_t e, fout*
  * terminator decline. Defined after y_member; forward-declared here. */
 static int y_members(yctx* c, unsigned char closer, size_t i, size_t* after);
 
-/* A value slot after a `:`-boundary: plain, empty, anchored-empty, or a
- * nested flow map (an alias / quoted / nested-seq value slot is
- * untested). */
+/* A value slot after a `:`-boundary: plain, empty, anchored-empty,
+ * alias (the r302 law), or a nested flow map (a quoted / nested-seq
+ * value slot is untested). */
 static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
     const uint8_t* p = c->p;
     size_t q = fc_skip_blank_break(p, c->n, i);
@@ -705,7 +718,31 @@ static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
         return 1; /* the empty value (a separator/closer terminator) */
     }
     if (p[q] == '*') {
-        return y_fail(c); /* an alias value slot: untested */
+        /* the alias value slot (the r302 widening, run 44034382404: the
+         * floor's `?#:<TAB>*% ,` member -- the fold-colon VALUE boundary
+         * followed by the TAB-riding alias `*%`; the artifact's
+         * `L:<TAB>*% <sp>,` plain-key twin rides the same slot). The
+         * engine's e_alias name cut (the prop-char walk, the law-c
+         * charset) renders the name verbatim, and a blank/break run
+         * then rides to the member terminator -- the same walk the
+         * bare-alias member and the r301 split-key slot take. Only a
+         * separator/closer leaves the alias as the bare value: a ':'
+         * VALUE boundary after the alias (a `alias:value` composition
+         * the probes never cover) and any other byte decline. */
+        size_t as = q + 1;
+        size_t al = fc_alias_name(p, c->n, as, c->n);
+        if (al == 0) {
+            return y_fail(c); /* a name cut that dies at once */
+        }
+        size_t ve = fc_skip_blank_break(p, c->n, as + al);
+        if (ve >= c->n || !fc_flow_ind(p[ve])) {
+            return y_fail(c); /* a non-boundary byte after the name */
+        }
+        memset(val, 0, sizeof(*val));
+        val->alias_at = as;
+        val->alias_len = al;
+        *stop = ve;
+        return 1;
     }
     if (p[q] == '&') {
         /* the anchored empty value (the engine's props-then-no-node

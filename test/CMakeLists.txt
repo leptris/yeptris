@@ -5846,6 +5846,45 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-aliasblank-r301-artifact.bin
     )
 
+    # the r302 nightly escape (run 44034382404): the 67-byte UTF-8 flow
+    # map `{?#?#|#|+` <sp><TAB><sp><LF><TAB> ,?##|#|,` <TAB>?,L:<TAB>*%<sp>
+    # ,?#|#|,` <LF>z <TAB> ,?<TAB>:#|#J+` <LF> ,<<LF><TAB><sp> }` -- the
+    # glued-`?`/#/breaks flow-soup family (the #1310 classifier's own
+    # laws a-e compose here), but the ALIAS at a `:`-boundary VALUE slot
+    # (`?#:<TAB>*%` -- the fold-colon value followed by the TAB-riding
+    # alias `*%`; the plain-key twin `L:<TAB>*%<sp>` rides the same slot)
+    # was the documented decline ("an alias value slot: untested").
+    # yeptris parses the member fine (`=ALI *%` in the value position --
+    # the engine's e_alias prop-char name cut takes the non-alpha `%`);
+    # libyaml's comment-eat from the `#` glued to the member's `?`
+    # swallows the whole member to EOL, so libyaml never sees the alias
+    # and its side already derived byte-exact. The widening (law c): the
+    # alias value rides the engine's name cut verbatim with the same
+    # blank/break run to the terminator the bare-alias member and the
+    # r301 split-key slot take; a ':' VALUE boundary after the alias and
+    # any other byte still decline. Firewall counts byte-identical
+    # pre/post (89 seeds / 4770 tamper / 564 mutants before the seeds
+    # ride; 91/4875/580 with them riding -- the r301 post-seed counts).
+    # Reproduces on the nightly-mirroring Debug build (standalone abort
+    # RC 134 pre-patch). A/B at the pre-#1411 parent 9d715344 (Debug):
+    # identical abort with a BYTE-IDENTICAL dump pair (diff-verified) --
+    # not an engine regression (the divergence is classifier-scope
+    # comparator law, zero src/ change). The 13-byte DIFFER-constrained
+    # ddmin floor `{?,?#:<TAB>*%,<LF><>}` is minimality-checked under
+    # the libFuzzer oracle (every single-byte deletion stops the
+    # true-DIFFER; single-byte splits of the floor ride the ledger).
+    # Comparator carry only -- no engine change.
+    # (The seeds ride the `flow-qsoup*` comparator-snapshot exclusion --
+    # the family's own glob.)
+    # Seeds: flow-qsoup-valalias-r302.bin (the 13-byte floor) and
+    # flow-qsoup-valalias-r302-artifact.bin (the 67-byte raw artifact).
+    add_test(
+        NAME fuzz-diff-r302-flow-qsoup-valalias
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-valalias-r302.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-valalias-r302-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
