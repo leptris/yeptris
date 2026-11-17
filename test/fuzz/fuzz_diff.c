@@ -9967,6 +9967,91 @@ static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, co
                 }
             }
         }
+        /* the r300 site pass (the nightly's round 300, run 43997338071,
+         * artifact crash-70c78e75: a ONE-UNIT sibling of the pinned
+         * r226 seed -- the final `0061` ('a') became `002d` ('-'),
+         * riding at EOF behind an all-FEFF/break prefix). libyaml's
+         * reader eats EVERY mid-stream FEFF (the r144 law), so its
+         * scanner sees a bare break run and then the `-` indicator at
+         * column 0: an implicit block SEQUENCE opens with the empty
+         * scalar. yeptris keeps the FEFFs as content (the law's other
+         * face), the plain scalar folds the NEL runs into the derived
+         * residues, and the `-` rides as interior plain text -- the
+         * STRUCTURAL eat (libyaml's verdict grows a wrapper; the
+         * scalar-content walk above is blind to it). The `003f` ('?')
+         * twin rides the same law with libyaml's implicit-MAP wrapper
+         * (both engines' two empty scalars). The relation: libyaml's
+         * dump is the empty SEQ/MAP wrapper, yeptris's is the flat
+         * scalar, and the FEFF/residue strip over yeptris's value
+         * leaves the EATEN indicator alone. The gate is unit-space
+         * tight: even size, the trailing `00 2D`/`00 3F` unit at EOF,
+         * and ONLY FEFF/break units between the BOM and the indicator
+         * (a second indicator, any content unit, a wrapper with extra
+         * entries -- a composite past the site: unmodelable, declines). */
+        {
+            int structural_tail = 0;
+            if (size >= 8 && size % 2 == 0 && data[size - 2] == 0x00 &&
+                (data[size - 1] == 0x2D || data[size - 1] == 0x3F)) {
+                size_t u;
+                structural_tail = 1;
+                for (u = 2; u + 1 < size - 2; u += 2) {
+                    unsigned hi = data[u];
+                    unsigned lo = data[u + 1];
+                    if (hi == 0xFE && lo == 0xFF) {
+                        continue; /* the FEFF site */
+                    }
+                    if (hi == 0x00 && (lo == 0x0A || lo == 0x0D || lo == 0x85)) {
+                        continue; /* the break unit */
+                    }
+                    if (hi == 0x20 && (lo == 0x28 || lo == 0x29)) {
+                        continue; /* the LS/PS unit */
+                    }
+                    structural_tail = 0; /* content (or a second
+                                          * indicator): composite */
+                    break;
+                }
+            }
+            if (structural_tail) {
+                static const char lseq[] = "+STR\n+SEQ\n=VAL : \n-SEQ\n-STR\n";
+                static const char lmap[] = "+STR\n+MAP\n=VAL : \n=VAL : \n-MAP\n-STR\n";
+                static const char yhead[] = "+STR\n=VAL : ";
+                const char* v;
+                size_t vl;
+                size_t k;
+                size_t ri = 0;
+                if (strcmp(ldump, lseq) != 0 && strcmp(ldump, lmap) != 0) {
+                    return 0; /* a wrapper past the site: unmodelable */
+                }
+                if (strncmp(ydump, yhead, sizeof(yhead) - 1) != 0) {
+                    return 0; /* not the flat scalar */
+                }
+                v = ydump + sizeof(yhead) - 1;
+                vl = strlen(v);
+                if (vl < 6 || memcmp(v + vl - 6, "\n-STR\n", 6) != 0) {
+                    return 0;
+                }
+                vl -= 6;
+                k = 0;
+                while (k < vl) {
+                    if (vl - k >= 3 && (unsigned char)v[k] == 0xEF &&
+                        (unsigned char)v[k + 1] == 0xBB && (unsigned char)v[k + 2] == 0xBF) {
+                        k += 3; /* the U+FEFF triple vanishes */
+                        if (ri < nres && resn[ri] > 0) {
+                            if (vl - k < resn[ri] || memcmp(v + k, res[ri], resn[ri]) != 0) {
+                                return 0; /* the derived fold render is absent */
+                            }
+                            k += resn[ri];
+                        } else if (k < vl && v[k] == ' ') {
+                            k++; /* the legacy single-space strip */
+                        }
+                        ri++;
+                        continue;
+                    }
+                    break; /* the residual (or a real mismatch) */
+                }
+                return vl - k == 1 && (v[k] == '-' || v[k] == '?');
+            }
+        }
         /* the relation: libyaml's dump == yeptris's dump minus every
          * U+FEFF triple and its derived fold render -- with ONE tail
          * allowance: the harness's 4096-byte line cap truncates BOTH
