@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [0.6.72] - 2026-11-17
+
+### the comparator era (r299-r302, all zero-`src/`)
+
+- **the comparator carries five more nightly escapes (the #1310 family; zero engine divergence)**:
+  - **the twin fold-space laws (r299, PR #1429, issue #1428)** — the block-NEL arm's twin-LEAD (the surplus lead space before a both-sides-kept raw triple) and twin-TRAIL (the trail space behind a byte-paired triple, back-reference-bound) sites; NOT a #1411 regression (A/B at the pre-fix parent aborts identically). Floor 17 bytes.
+  - **the UTF-16BE structural-eat site (r300, PR #1431, issue #1430)** — with content flanking the PS, libyaml eats every mid-stream FEFF so its scanner sees break runs + a bare indicator (implicit SEQ/MAP wrapper) while yeptris keeps FEFFs as content; the arm gains the wrapper-level walk. A one-unit sibling of the pinned r226 seed.
+  - **the split-slot alias walk (r301, PR #1434, issue #1433)** — the split explicit-key slot's alias rides `fc_skip_blank_break` to the separator/closer. Floor 15 bytes.
+  - **the alias VALUE-slot ride (r302, PR #1436, issue #1435)** — law c widened: the TAB-riding non-alpha-cut alias (`*%`) renders `=ALI *%` in the value position. Floor 13 bytes.
+
 ## [0.6.71] - 2026-11-17
 
 ## [0.6.71] - 2026-11-17
