@@ -389,17 +389,40 @@ static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int
              * a separator was expected (the engines' "did not find
              * expected ',' or '}'" both-error, never consulted); a
              * run that eats to EOF never terminates. Everything else
-             * stays UNKNOWN. */
-            size_t e2 = q + 1;
-            while (e2 < end && fc_break_len(p, n, e2) == 0) {
-                e2++;
-            }
-            if (e2 >= end) {
-                return 0;
-            }
-            e2 += (size_t)fc_break_run_len(p, n, e2);
-            while (e2 < end && fc_blank(p[e2])) {
-                e2++;
+             * stays UNKNOWN. The r307 mutant's widening: CONSECUTIVE
+             * whole-line comments ride the same inert walk (`1.0e17
+             * .tag\r #,|#\r#,??2002:binary\r\r,` — the first comment's
+             * break is followed by a line-start `#` that opens another
+             * comment line; each rides to its own break, both engines
+             * byte-identically) before the terminator is demanded. */
+            size_t e2 = q;
+            for (;;) {
+                e2 = q + 1;
+                while (e2 < end && fc_break_len(p, n, e2) == 0) {
+                    e2++;
+                }
+                if (e2 >= end) {
+                    return 0;
+                }
+                /* the break run (and any further blanks/breaks) rides
+                 * inert past the comment — the plain already ended */
+                for (;;) {
+                    size_t bl = fc_break_run_len(p, n, e2);
+                    if (bl > 0) {
+                        e2 += (size_t)bl;
+                        continue;
+                    }
+                    if (e2 < end && fc_blank(p[e2])) {
+                        e2++;
+                        continue;
+                    }
+                    break;
+                }
+                if (e2 < end && p[e2] == '#') {
+                    q = e2; /* the next line-start comment: ride it too */
+                    continue;
+                }
+                break;
             }
             if (e2 >= end || !fc_flow_ind(p[e2])) {
                 return 0;
