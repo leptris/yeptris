@@ -655,9 +655,13 @@ static int fc_quoted_value(const uint8_t* p, size_t n, size_t s, size_t e, fout*
     while (i < e) {
         int bl = fc_break_run_len(p, n, i);
         if (bl > 0) {
-            if (p[i] == 0xE2 || p[i] == 0xC2) {
-                return 0; /* an exotic break in a quoted span */
-            }
+            /* the r308 widening (run 44160636260): an EXOTIC break inside
+             * the span is a break like any other — yeptris's 1.2 fold law
+             * counts NEL/LS/PS in the run and folds the whole run (the
+             * artifact's `",?g??...` member renders its `/\n\r\r<LS>`
+             * site as n-1 newlines with the LS folded; the actual dumps
+             * carry zero raw LS bytes inside quoted values). The old
+             * outright decline (untested) hid exactly this site. */
             if (first_content) {
                 lead_run++;
             } else {
@@ -710,8 +714,21 @@ static int fc_quoted_value(const uint8_t* p, size_t n, size_t s, size_t e, fout*
         fo_escape(o, p + i, 1);
         i++;
     }
-    if (!first_content && (run > 0 || blank_n > 0)) {
-        return 0; /* trailing blanks/breaks: untested */
+    if (!first_content && blank_n > 0) {
+        return 0; /* trailing blanks (pure or riding the tail run):
+                   * libyaml's whitespaces join rides them RAW while
+                   * yeptris trims the member's tail — an unmodeled split,
+                   * stays UNKNOWN (the r278 twin) */
+    }
+    if (!first_content && run > 1) {
+        return 0; /* a multi-break tail at the close: unprobed (the
+                   * artifact's tail is the ONE-break fold) */
+    }
+    if (!first_content && run == 1) {
+        /* the pending run joins the close: ONE break folds to the ONE
+         * space (the r278 floor `?"2<CR>"` -> `2 ` — the artifact's
+         * `...1.0e17.tag<CR>"` ends the value with the fold space) */
+        fo_str(o, " ");
     }
     if (first_content && lead_run > 0) {
         if (lead_run > 1 || blank_n > 0) {

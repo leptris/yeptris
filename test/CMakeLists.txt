@@ -6115,6 +6115,49 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-multicomment-r307-artifact.bin
     )
 
+    # the r308 nightly escape (run 44160636260, the r307 carry's first
+    # post-merge nightly): another parser-leg soup scramble under a
+    # libFuzzer hash name escaped the comparator snapshot's name-based
+    # `flow-qsoup*` exclusion (the r269 accepted trade - each nightly
+    # red is one more carry). The 32777-byte artifact is the family's
+    # own pinned shapes at scale (608 `?##|` members, 977 yeptris pairs
+    # vs libyaml's 1219 split pairs); the FIRST unexplained site is the
+    # member-LED double-quoted scalar `",?g??<CR>2002:bi,...<CR>"` - a
+    # 153-byte span whose interior break runs carry an EXOTIC member
+    # (LS U+2028 mid-run after `/<LF><CR><CR>`) and whose tail break
+    # sits right before the close. The old quoted walk declined ANY
+    # exotic break inside a span outright (untested). The engines agree
+    # byte-exact on the span (zero raw LS bytes in either actual dump):
+    # yeptris's 1.2 fold law counts the exotic break in the run like
+    # any other break (`/<LF><CR><CR><LS>` renders as three newlines,
+    # n-1 LFs for the 4-break run) and the pending ONE-break tail joins
+    # the close as the ONE fold space (the r278 `?"2<CR>"` -> `2 ` law;
+    # the value ends `.tag `). The widening: the quoted walk folds
+    # NEL/LS/PS as breaks (the repo-adjudicated break set), and the
+    # close-join joins the bare one-break tail. A multi-break tail at
+    # the close, trailing blanks (pure or riding the tail run), and a
+    # multi-break-LED span all stay UNKNOWN. libyaml never OPENS this
+    # span - the law-a comment-eat swallows the glued-`#` member's tail
+    # including the quote - so the span rides the plain-comment walk on
+    # the libyaml side and the derivation stays byte-exact both sides.
+    # the ddmin floor: 38 of 32777 bytes survive the dual-bar walk
+    # (pre-patch DIFFER + post-patch classify; every surviving byte is
+    # load-bearing - the `,"g:<CR>"` member IS the minimal close-join
+    # site; the artifact seed carries the LS-mid-span composition).
+    # The scramble's neighborhood is dense with family-law
+    # compositions; the ctest pins stay the regression bar, the
+    # comparator leg explores fresh space.
+    # Comparator carry only - no engine change.
+    # (The seeds ride the corpus like the r282-r307 soup seeds and are
+    # excluded from the comparator snapshot by the same `flow-qsoup*`
+    # deletes - no mutation pressure on the nightly diff leg.)
+    add_test(
+        NAME fuzz-diff-r308-flow-qsoup-dqexotic
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqexotic-r308.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqexotic-r308-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

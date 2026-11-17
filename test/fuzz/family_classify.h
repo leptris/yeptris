@@ -69,6 +69,23 @@
  *      the break-only `?"<CR>"` -> ` ` twin of the r274 law. Pure
  *      trailing BLANKS stay UNKNOWN (libyaml joins them raw, yeptris
  *      trims — unmodeled split).
+ *  (g2) the r308 quoted-span exotic-fold law (run 44160636260): the
+ *      member-led double-quoted span is no longer declined for its
+ *      break bytes — an EXOTIC break (NEL/LS/PS) inside the span is a
+ *      break like any other on the yeptris side (the 1.2 fold law
+ *      counts the whole run: 1 break -> one space, n -> n-1 newlines;
+ *      the r308 artifact's `",?g??...` member renders its
+ *      `/<LF><CR><CR><LS>` site as three newlines with the LS folded,
+ *      zero raw LS bytes in either actual dump), and the pending
+ *      ONE-break run joins the close as the ONE fold space (the r278
+ *      `?"2<CR>"` -> `2 ` law, the artifact's `.tag<CR>"` tail). A
+ *      multi-break tail at the close and trailing blanks (pure or
+ *      riding the tail run) stay UNKNOWN; a multi-break-LED span stays
+ *      UNKNOWN. The libyaml side of a member-led span rides the same
+ *      fc_quoted_value twin gates; when libyaml never OPENS the span
+ *      (the law-a comment-eat swallows the glued-`#` member's tail
+ *      including the quote) the bytes are comment content and the
+ *      post-break rebinding walks on.
  *  (h) the r279 plain-tail comment law (run 43688038100): a
  *      blank-preceded `#` INSIDE a member's plain (not at the key
  *      position, not at a line start) ends the plain on BOTH engines —
