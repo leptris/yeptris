@@ -5987,6 +5987,52 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-eofkeep-foldspace-r304-artifact.bin
     )
 
+    # the r305 nightly escape (run 44110729107): the 104-byte artifact
+    # `&<8*60>:<8*18><7*15>6a : TAB > LF *a:` - the anchor-name charset
+    # family's head (the round-69/round-54 law: the suite keeps every
+    # ns-anchor-char INSIDE the name - 2SXE "&a: key" anchors 'a:' and
+    # names the tail alias 'a:'; the ledger carries 2SXE/W5VH as
+    # suite-VALID, libyaml rejects - while libyaml's IS_ALPHA charset
+    # truncates at the ':' and re-lexes the residual) COMPOSED with a
+    # TAB-separated folded '>' value slot and an alias-as-key tail at
+    # column zero. The arm's transform split the '&' half but the '*'
+    # twin never fired: the riding name's residual ends in a KEY colon
+    # (':' + TAB), and the residual walk's key-colon law cleared
+    # plain_open2/node_pos2 without the gate's coll_col twin - so
+    # coll_col2 stayed -1, the next line at column 0 rode the phantom
+    # plain ("a root-level plain swallows every line"), and the copy
+    # kept the riding alias name; the copy-agrees verify leg then
+    # declined the arm's own family (measured pre-fix: nsplits=1,
+    # amps=2 - the gate counted two splits, the transform performed
+    # one). The engine behaviors are the documented ones (the ledger's
+    # 2SXE/W5VH entries; libfyaml at the pinned tip rejects the artifact
+    # outright on its strict missing-document-start law, so no engine
+    # divergence is claimed - zero src/ divergence since r248), and
+    # every pinned floor rides: all corpus seeds classify pre/post, the
+    # #1310 soup firewall is untouched (the seeds are not soup-named),
+    # the 50-mutant paired battery flips 9 pre-fix family aborts to 0
+    # post-fix with zero new DIFFERs. Reproduces on the nightly-
+    # mirroring Debug build AND on Release (libFuzzer exit 77 pre-patch
+    # on both; the nightly config is Debug). The widened arm gains the
+    # ONE residual-key-colon coll_col law: the transform now mirrors
+    # the gate's own key-colon line ("the mapping's indent is the key's
+    # column") inside the residual walk - the r230 law fixed node_pos2
+    # here, this fixes its coll_col2 twin; the walk's other sites keep
+    # their state, so no existing member's path changes.
+    # Comparator carry only - no engine change.
+    # (The seeds ride the comparator corpus like the r230/r104 charset
+    # seeds - no snapshot exclusion, no workflow edit.)
+    # Seeds: anchor-charset-residual-keycolon-r305.bin (the 10-byte ddmin
+    # floor "&8::\t>\n*a:"; every single-byte deletion stops the DIFFER)
+    # and anchor-charset-residual-keycolon-r305-artifact.bin (the
+    # 104-byte raw artifact - same dump pair modulo the digit runs).
+    add_test(
+        NAME fuzz-diff-r305-anchor-charset-residual-keycolon
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-residual-keycolon-r305.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-residual-keycolon-r305-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
