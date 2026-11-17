@@ -6083,6 +6083,38 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-bomride-r306-artifact.bin
     )
 
+    # the r307 nightly escape (run 44144369860, the r306 carry's first
+    # post-merge nightly): the parser legs write coverage-gaining soup
+    # mutations into the shared corpus under libFuzzer hash names, so a
+    # fresh soup scramble escaped the comparator snapshot's name-based
+    # exclusion (the `flow-qsoup*` deletes) and seeded the diff leg.
+    # The 10732-byte artifact is a multi-site scramble of the family's
+    # own pinned shapes; the FIRST unexplained site is the value's tail
+    # comment run: `1.0e17.tag\r #,|#\r#,??2002:binary\r\r,` - after the
+    # r277 single whole-line comment (blank-# eats to its break, inert
+    # on both engines) the mutant adds ANOTHER line-start `#` comment
+    # (plus an inert break run) before the `,` terminator. The ride
+    # loops: each whole-line comment eats to its own break, breaks and
+    # blanks ride inert past it (the plain already ended), and only the
+    # terminator (a separator/closer) is demanded - a plain byte
+    # resuming after the run still declines (the r277 law's both-error
+    # shape, never consulted). Byte-exact on both sides; the tamper
+    # firewall stays red for anything the laws cannot place.
+    # Comparator carry only - no engine change.
+    # (The seeds ride the corpus like the r282-r306 soup seeds and are
+    # excluded from the comparator snapshot by the same `flow-qsoup*`
+    # deletes - no mutation pressure on the nightly diff leg.)
+    # Seed: flow-qsoup-multicomment-r307.bin - the 8684-byte
+    # tail-protected-ddmin floor (the scramble's mutant neighborhood is
+    # dense with family-law compositions; the ctest pins stay the
+    # regression bar, the comparator leg explores fresh space).
+    add_test(
+        NAME fuzz-diff-r307-flow-qsoup-multicomment
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-multicomment-r307.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-multicomment-r307-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
