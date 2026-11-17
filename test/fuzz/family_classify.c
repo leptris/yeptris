@@ -571,7 +571,11 @@ typedef struct {
     fout out;
     size_t members;
     size_t pos_trace;
-    int depth; /* the open nested-collection depth (FC_MAX_NEST cap) */
+    int depth;     /* the open nested-collection depth (FC_MAX_NEST cap) */
+    int pair_open; /* the #741 colon-led SEQ single-pair stays open: the
+                    * following members render as map entries (key +
+                    * empty value; the bare colon member keeps its
+                    * empty-key + value slot) until the closer */
 } yctx;
 
 static int y_fail_at(yctx* c, int line) {
@@ -1204,6 +1208,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
     memset(&val, 0, sizeof(val));
     size_t stop;
     int sep;
+    int colon_led = 0;
     if (ch == ':' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0)) {
         /* the colon-led member (the r281 floor's second member): the
          * `?` drops-and-empties twin — the key is EMPTY (colon=1, the
@@ -1213,6 +1218,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
          * after a separator errors the parser's node state), so the
          * branch is reachable exactly on the family's comment-eat
          * shapes — the floor's `#,:` run. */
+        colon_led = 1;
         memset(&key, 0, sizeof(key));
         key.colon = 1;
         key.colon_at = i;
@@ -1237,6 +1243,16 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
     if (c->is_map) {
         fc_render_val(&c->out, p, &key);
         fc_render_val(&c->out, p, &val);
+    } else if (colon_led) {
+        /* the SEQ wrapper opens and STAYS OPEN (the #741 law: closing
+         * at the comma spilled the value indicator into a second
+         * entry — the pair survives the separator, so every following
+         * member is a map entry until the closer; y_members renders
+         * the -MAP when it consumes the closer) */
+        fo_str(&c->out, "+MAP\n");
+        fc_render_val(&c->out, p, &key);
+        fc_render_val(&c->out, p, &val);
+        c->pair_open = 1;
     } else if (key.colon) {
         /* a SEQ entry split at the colon boundary rides the single-pair
          * wrapper on BOTH engines (the simple-key mechanism — the r245
@@ -1248,6 +1264,130 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
     } else {
         fc_render_val(&c->out, p, &key);
     }
+    return 1;
+}
+
+/* The fold-in member walk (the #741 law's map-entry side, probed on
+ * the r306 floor): with the colon-led pair open, every following
+ * member renders as a MAP ENTRY — the plain member (glued colons and
+ * questions ride as content, P5/P7), the quoted span (P6), and the
+ * anchored-empty member (`=VAL : &<name> `, P8) all take the key slot
+ * with the parser's empty-scalar value; the bare-colon member keeps
+ * its empty key with the value node riding (P4). Everything else
+ * declines (the alias member, an explicit `?`-key member, a nested
+ * collection: unprobed under the open pair). */
+static int y_pair_member(yctx* c, size_t i, size_t* term_at) {
+    const uint8_t* p = c->p;
+    size_t n = c->n;
+    c->pos_trace = i;
+    unsigned char ch = p[i];
+    if (ch == ':' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0)) {
+        /* the bare-colon fold-in member: the empty key and the value
+         * node (P4's `:\rn` pair) */
+        fcnode val;
+        memset(&val, 0, sizeof(val));
+        size_t stop;
+        if (!y_value_node(c, i + 1, &stop, &val)) {
+            return 0;
+        }
+        if (stop >= n || !fc_flow_ind(p[stop])) {
+            fc_val_drop(&val);
+            return y_fail(c);
+        }
+        *term_at = stop;
+        fo_str(&c->out, "=VAL : \n");
+        fc_render_val(&c->out, p, &val);
+        return 1;
+    }
+    if (ch == '"') {
+        fout tmp = {NULL, 0, 0, 0};
+        size_t close = 0;
+        int ok = fc_quoted_value(p, n, i + 1, n, &tmp, &close);
+        if (!ok) {
+            free(tmp.buf);
+            return y_fail(c);
+        }
+        size_t j = fc_skip_blank_break(p, n, close + 1);
+        if (j >= n || !fc_flow_ind(p[j])) {
+            free(tmp.buf);
+            return y_fail(c);
+        }
+        *term_at = j;
+        fo_str(&c->out, "=VAL : ");
+        fo_bytes(&c->out, tmp.buf, tmp.len);
+        fo_str(&c->out, "\n=VAL : \n");
+        free(tmp.buf);
+        return 1;
+    }
+    if (ch == '&' || ch == '*') {
+        /* the prop-char walk is shared: an anchor takes the key slot as
+         * the anchored-empty render (`=VAL : &<name> `, P8); an alias
+         * member declines (unprobed under the open pair) */
+        if (ch == '*') {
+            return y_fail(c);
+        }
+        size_t as = i + 1;
+        size_t al = 0;
+        while (as + al < n && fc_alpha(p[as + al])) {
+            al++;
+        }
+        size_t ae = as + al;
+        if (al == 0 || ae >= n || !fc_flow_ind(p[ae])) {
+            return y_fail(c);
+        }
+        *term_at = ae;
+        fo_str(&c->out, "=VAL : &");
+        fo_bytes(&c->out, p + as, al);
+        fo_str(&c->out, " \n=VAL : \n");
+        return 1;
+    }
+    if (ch == '!') {
+        /* the non-specific tag (the m47 mutant's law): `!` followed by
+         * a blank/break run DROPS on yeptris (t4's `!\rm` renders the
+         * plain key `m`, t5's `!\rK ?#` renders `K ?#`) — the node
+         * rides the run as the plain key; a GLUED local tag stays
+         * unmodeled (T1's `<!m> ` tagged-empty render needs the tag
+         * machinery) and declines */
+        if (!(i + 1 < n && (fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0))) {
+            return y_fail(c);
+        }
+        i = fc_skip_blank_break(p, n, i + 1);
+        if (i >= n) {
+            return y_fail(c);
+        }
+        ch = p[i];
+        if (ch == ':' || ch == '&' || ch == '*' || ch == '"' || ch == '\'' || ch == '!' ||
+            ch == '#' || ch == '[' || ch == '{' || ch == '}' || ch == ',' || ch == ']') {
+            return y_fail(c); /* a tagged non-plain node: unprobed */
+        }
+    }
+    if (ch == '?' || ch == '\'' || ch == '!' || ch == '#' || ch == '[' || ch == '{') {
+        return y_fail(c); /* the explicit-key member and the rest of the
+                           * non-flat spell: unprobed under the open pair */
+    }
+    if (ch == '-' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0 ||
+                      fc_flow_ind(p[i + 1]))) {
+        return y_fail(c);
+    }
+    /* the plain member: glued colons and questions ride as content (P5's
+     * `a:b`, P7's `?a`) — a `:`-VALUE boundary declines (the pair value
+     * under an open pair is unprobed) */
+    fcnode key;
+    memset(&key, 0, sizeof(key));
+    size_t stop;
+    int sep;
+    if (!fc_plain_pieces(p, n, i, n, 0, &key, &stop, &sep)) {
+        return y_fail(c);
+    }
+    if (key.colon) {
+        return y_fail(c);
+    }
+    if (stop >= n || !fc_flow_ind(p[stop])) {
+        return y_fail(c);
+    }
+    *term_at = stop;
+    fc_render_val(&c->out, p, &key);
+    fo_str(&c->out, "=VAL : \n");
     return 1;
 }
 
@@ -1270,6 +1410,11 @@ static int y_members(yctx* c, unsigned char closer, size_t i, size_t* after) {
         }
         unsigned char ch = p[i];
         if (ch == closer) {
+            if (c->pair_open) {
+                /* the #741 open pair closes with the collection */
+                fo_str(&c->out, "-MAP\n");
+                c->pair_open = 0;
+            }
             i++;
             break;
         }
@@ -1298,7 +1443,13 @@ static int y_members(yctx* c, unsigned char closer, size_t i, size_t* after) {
         }
         c->members++;
         size_t term;
-        if (!y_member(c, i, &term)) {
+        int ok;
+        if (c->pair_open) {
+            ok = y_pair_member(c, i, &term); /* the #741 map-entry side */
+        } else {
+            ok = y_member(c, i, &term);
+        }
+        if (!ok) {
             return 0;
         }
         i = term;
@@ -1310,6 +1461,10 @@ static int y_members(yctx* c, unsigned char closer, size_t i, size_t* after) {
             continue;
         }
         if (p[i] == closer) {
+            if (c->pair_open) {
+                fo_str(&c->out, "-MAP\n");
+                c->pair_open = 0;
+            }
             i++;
             break;
         }
@@ -2454,14 +2609,36 @@ int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, cons
                    * marker) still declines */
     }
     int is_map = data[root] == '{';
-    for (size_t i = 0; i < size; i++) {
+    /* the r306 BOM-ride gate: a MID-LINE BOM is inert content — both
+     * engines keep the mark inside the plain byte-exact (the r306
+     * artifact's `?\r2<BOM><BOM><BOM>` site renders the three marks
+     * into BOTH actual dumps), so the soup models ride it as plain
+     * bytes; a LINE-START BOM still rides other families (libyaml's
+     * scan_to_next_token strips it at mark column 0 whatever break
+     * opened the line — the r226 law — while yeptris keeps it as
+     * content, so the byte-exact derivation would decline it anyway;
+     * the gate keeps the routing explicit) */
+    int line_start = 1;
+    for (size_t i = 0; i < size;) {
         unsigned char ch = data[i];
         if (ch == 0x00) {
             return 0; /* NUL: libyaml's stream end — outside the family */
         }
         if (ch == 0xEF && i + 2 < size && data[i + 1] == 0xBB && data[i + 2] == 0xBF) {
-            return 0; /* a BOM rides other families */
+            if (line_start) {
+                return 0; /* a line-start BOM rides other families */
+            }
+            i += 3; /* the mid-line mark rides as content */
+            continue;
         }
+        size_t bl = fc_break_len(data, size, i);
+        if (bl > 0) {
+            i += bl;
+            line_start = 1;
+            continue;
+        }
+        line_start = 0;
+        i++;
     }
     fout yd = {NULL, 0, 0, 0};
     fout ld = {NULL, 0, 0, 0};
