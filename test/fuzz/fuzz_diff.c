@@ -18754,6 +18754,18 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                         if (nx == ' ' || nx == '\t' || nx == '\n' || nx == '\r') {
                             plain_open2 = 0; /* the key colon ends the riding plain */
                             node_pos2 = 1;
+                            /* the gate's mapping-column law again: the
+                             * key colon owns the map indent ("&8::\t>\n*a:",
+                             * run 44110729107). Without it coll_col2
+                             * stays -1 past a SPLIT's residual, so the
+                             * next line at or below the column rides the
+                             * phantom plain and the '*' twin of this
+                             * very family never fires its split -- the
+                             * copy kept the riding alias name and the
+                             * copy-agrees leg declined the arm's own
+                             * family (the r230 law fixed node_pos2
+                             * here; this fixes its coll_col2 twin). */
+                            coll_col2 = line_first2;
                         } else if (flowd2 == 0 && !bs_open2 && !tag_run2) {
                             plain_open2 = 1; /* the colon-led plain law again */
                         }
