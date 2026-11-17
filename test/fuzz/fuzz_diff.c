@@ -7704,6 +7704,35 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 continue;
             }
         }
+        /* the r303 EOF-tail kept-NEL site (run 44046151152): a kept
+         * raw NEL at the END OF INPUT behind a blank-led final line --
+         * yeptris's line LF rides literal (the blank-led final line
+         * suppresses the fold), the NEL rides raw as 1.2 content, and
+         * the clip break spells the ONE trailing escape behind it
+         * ("0 \n<NEL>\n"), while libyaml's trailing-breaks join
+         * collapsed the whole tail -- the line LF, the blank-led
+         * spaces, and the EOF NEL (1.1 IS_BREAK) -- into the ONE
+         * escape the byte-match already paired, so a's remainder is
+         * exactly ONE kept NEL plus the ONE clip escape ahead of the
+         * frame suffix b already sits on. Sits BEHIND the NEL-site
+         * branch (its entry gate pairs the site's escapes -- the
+         * byte-match spent b's last one on the line LF above) and
+         * behind the r297 spent-NEL site (whose gate wants b on
+         * plain content); the r176 tail owns the pure-escape surplus
+         * (a ON the escape itself). Accept ONLY when a's surplus is
+         * exactly the kept-NEL pair followed by the ONE escape and
+         * the remainders behind the claim coincide completely (the
+         * r161 law: strcmp binds the suffix, so the claim can never
+         * swallow divergence past the value), and the final gate
+         * still demands at least one documented law rode behind it
+         * (subs > 0). Previously this shape declined unconditionally
+         * here, so no existing member's path changes. */
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 && a[2] == '\\' &&
+            a[3] == 'n' && strcmp(a + 4, b) == 0) {
+            a += 4;
+            subs += 2;
+            continue;
+        }
         /* the r176 tail: yeptris's clip break libyaml dropped at a
          * breakless EOF -- accept ONLY when y's whole remainder is
          * the one escape followed by a byte-identical frame suffix

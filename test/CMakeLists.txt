@@ -5885,6 +5885,60 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-valalias-r302-artifact.bin
     )
 
+    # the r303 nightly escape (run 44046151152): the 32-byte artifact
+    # `> SP #<PS> SP : LF SP SP<NEL> SP 0 LF<PS> SP : LF SP SP<NEL> SP 0
+    # LF SP<NEL>` - a folded block scalar whose header comment ends at a
+    # PS break (the r283 header gate's comment-terminated case) whose
+    # MORE-INDENTED content lines carry mid-line raw NELs (the kept-NEL
+    # sites) and whose SECOND content line is PS-LED AT COLUMN ZERO (an
+    # empty line - the PS is the line's whole content), ending on a
+    # blank-led final line whose NEL sits at END OF INPUT. The engine
+    # behaviors are the documented ones (A/B at the pre-#1411 parent
+    # 9d715344 aborts identically with a BYTE-IDENTICAL dump pair - the
+    # divergence predates the engine fix; zero src/ divergence since
+    # r248), but the composition is fresh. The value pairs through the
+    # standing laws - the NEL-site pairings (kept raw C2 85 vs the one
+    # escape), the surplus-space rides (libyaml's breaks-scan eats the
+    # NEL-adjacent spaces), the r197 polarity (yeptris's spelled escape
+    # vs libyaml's raw PS triple at the column-zero empty line - the
+    # PS-led line's break rides normalized on yeptris, raw-tripled on
+    # libyaml with its leading break spent), and the r283 surplus
+    # escape - but the TAIL is new: the final line's LF rides LITERAL
+    # on yeptris (the blank-led line suppresses the fold), its NEL rides
+    # RAW as 1.2 content and the clip break spells the ONE escape behind
+    # it ("0 \n<NEL>\n"), while libyaml's trailing-breaks join collapsed
+    # the whole tail - the line LF, the blank-led spaces, the EOF NEL -
+    # into the ONE escape the byte-match already paired. After the byte
+    # match spends b's last escape on a's line LF, a's remainder is
+    # exactly the kept NEL plus the clip escape ahead of the byte-bound
+    # frame suffix, and every law declined unconditionally there (the
+    # r297 spent-NEL gate wants b on plain content; the r176 tail owns
+    # the pure-escape surplus). The widened arm (the r282/r283/r288/
+    # r290/r294/r297/r299 lineage) gains the ONE EOF-tail kept-NEL site
+    # law: a's surplus must be exactly the kept-NEL pair followed by
+    # the ONE escape with the remainders behind the claim coinciding
+    # completely (the r161 strcmp law), gated on subs > 0 (at least one
+    # documented law rode behind). Every prior member keeps its exact
+    # path (all 296 pinned seeds classify pre/post on Debug AND
+    # Release). The 25-byte `:<NEL><NEL>` tail sibling still declines -
+    # at the r290 cap's r < k site (two kept NELs vs one escape), a
+    # deliberately un-widened shape. Reproduces on the nightly-mirroring
+    # Debug build AND on Release (standalone abort RC 134 pre-patch on
+    # both; the nightly config is Debug).
+    # Comparator carry only - no engine change.
+    # (The seed rides the comparator corpus like the r282/r290/r294
+    # block-nel seeds - no snapshot exclusion, no workflow edit.)
+    # Seed: block-nel-eofkeep-r303.bin - the artifact is its own floor:
+    # 32/32 bytes load-bearing under the dump-pair-preserving walk, the
+    # family-signature walk, AND the same-site-shape walk (every
+    # single-byte deletion breaks the shape; the unconstrained walk
+    # leaves the family at 1 byte).
+    add_test(
+        NAME fuzz-diff-r303-block-nel-eofkeep
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-eofkeep-r303.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
