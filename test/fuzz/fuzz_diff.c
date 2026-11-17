@@ -7733,6 +7733,37 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             subs += 2;
             continue;
         }
+        /* the r304 EOF-tail fold-space kept-NEL site (run 44091514439,
+         * crash-f66152f3bcbd5c462c617925e3dc73b16d5e9146, 79 bytes; ddmin
+         * floor 33 bytes "> SP # PS SP : LF SP SP NEL SP 0 LF PS SP : LF
+         * SP f SP NEL SP 0 LF SP NEL"): the SAME EOF-tail kept NEL as
+         * above, seen when the final content line ends in PLAIN content
+         * ("f<NEL> 0" -- the r303 floor's line was NEL-led). The plain
+         * lead does not suppress yeptris's fold: the line break folds to
+         * the ONE space, so a's tail is "0 SP NEL \n" (fold space, raw
+         * NEL, clip escape) while libyaml's trailing-breaks join still
+         * collapses the whole tail -- the line LF, the final line's
+         * spaces, the EOF NEL -- into the ONE escape still PENDING on b
+         * (the r303 floor's tail byte-matched its twin against a's
+         * literal line LF; the fold space here blocks that match). The
+         * claim eats a's surplus fold space + kept NEL and pairs the ONE
+         * clip escape on each side; the remainders behind must coincide
+         * completely (the r161 strcmp law -- the claim can never swallow
+         * divergence past the value). Sits BEHIND the r303 site (whose
+         * gate wants a on the bare NEL pair -- this site's a leads the
+         * fold space) and behind the r176 tail (a ON the escape); the
+         * r299 twin sites own the space lead with a raw LS/PS triple
+         * behind (a[1] == 0xE2), disjoint from this gate's a[1] ==
+         * 0xC2. Previously this shape declined unconditionally here, so
+         * no existing member's path changes. */
+        if (a[0] == ' ' && (unsigned char)a[1] == 0xC2 && (unsigned char)a[2] == 0x85 &&
+            a[3] == '\\' && a[4] == 'n' && b[0] == '\\' && b[1] == 'n' &&
+            strcmp(a + 5, b + 2) == 0) {
+            a += 5;
+            b += 2;
+            subs += 2;
+            continue;
+        }
         /* the r176 tail: yeptris's clip break libyaml dropped at a
          * breakless EOF -- accept ONLY when y's whole remainder is
          * the one escape followed by a byte-identical frame suffix

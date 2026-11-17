@@ -5939,6 +5939,54 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-eofkeep-r303.bin
     )
 
+    # the r304 nightly escape (run 44091514439): the 79-byte artifact
+    # `> SP #<PS> SP : LF SP SP<NEL> SP 0 LF<PS> SP : LF SP f*47 SP<NEL>
+    # SP 0 LF SP<NEL>` - the r303 block-NEL family's head (the folded
+    # scalar whose header comment ends at a PS break, whose more-indented
+    # content lines carry mid-line raw NELs, whose third line is PS-led
+    # at column zero) with the final content line PLAIN-LED (" f*47<NEL>
+    # 0" - the r303 floor's line was NEL-led) and the same blank-led
+    # final line whose NEL sits at END OF INPUT. The plain lead does not
+    # suppress yeptris's fold: the line break folds to the ONE space, so
+    # yeptris's tail reads "0 SP<NEL>\n" (fold space, raw 1.2-content
+    # NEL, clip escape) while libyaml's trailing-breaks join still
+    # collapses the whole tail - the line LF, the final line's spaces,
+    # the EOF NEL - into the ONE escape that stays PENDING on b (the
+    # r303 floor's tail byte-matched its twin against a's literal line
+    # LF; the fold space here blocks that match, so the r303 law's
+    # strcmp never sees equal remainders). The engine behaviors are the
+    # documented ones (A/B at the pre-#1411 parent 9d715344 aborts
+    # identically with a BYTE-IDENTICAL dump pair - the divergence
+    # predates the engine fix; zero src/ divergence since r248), and
+    # every pinned floor rides: all 448 corpus seeds classify pre/post
+    # (the 26-seed block-NEL family included), the classifier firewall
+    # counts byte-identical to the r303 post-seed gate. The widened arm
+    # gains the ONE EOF-tail fold-space kept-NEL site law: a's surplus
+    # must be exactly the ONE fold space + the kept-NEL pair, b must
+    # still hold the ONE pending escape, the clip escapes pair, and the
+    # remainders behind the claim coincide completely (the r161 strcmp
+    # law - the claim can never swallow divergence past the value). The
+    # r299 twin sites own the space lead with a raw LS/PS triple behind
+    # (a[1] == 0xE2), disjoint from this gate's a[1] == 0xC2; previously
+    # the shape declined unconditionally, so no existing member's path
+    # changes. Reproduces on the nightly-mirroring Debug build AND on
+    # Release (standalone abort RC 134 pre-patch on both; the nightly
+    # config is Debug).
+    # Comparator carry only - no engine change.
+    # (The seeds ride the comparator corpus like the r282/r290/r294/
+    # r303 block-nel seeds - no snapshot exclusion, no workflow edit.)
+    # Seeds: block-nel-eofkeep-foldspace-r304.bin (the 33-byte ddmin
+    # floor "> SP #<PS> SP : LF SP SP<NEL> SP 0 LF<PS> SP : LF SP f SP
+    # <NEL> SP 0 LF SP<NEL>"; every single-byte deletion stops the
+    # DIFFER) and block-nel-eofkeep-foldspace-r304-artifact.bin (the
+    # 79-byte raw artifact - same dump pair modulo the f-run).
+    add_test(
+        NAME fuzz-diff-r304-block-nel-eofkeep-foldspace
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-eofkeep-foldspace-r304.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-nel-eofkeep-foldspace-r304-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
