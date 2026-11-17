@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [0.6.73] - 2026-11-17
+
+### the comparator era (r303-r304, all zero-`src/`)
+
+- **the comparator carries two more nightly escapes (the #1310 family's block-NEL lineage; zero engine divergence)**:
+  - **the EOF-tail kept-NEL site (r303, PR #1440, issue #1439)** — yeptris rides the literal line LF + raw 1.2-content NEL + clip escape where libyaml's trailing-breaks join collapsed the whole tail into the one already-paired escape; fires only on exactly NEL-pair + one escape with a strcmp-bound frame suffix. Floor: the 32-byte artifact is its own floor.
+  - **the EOF-tail fold-space kept-NEL sibling (r304, PR #1444, issue #1443)** — the plain-led variant: the line's fold space blocks the r303 byte-match so the escape stays pending on libyaml's side; the sibling gate accepts exactly one space + NEL, pairs the pending escape, strcmp-binds the remainder. Floor 33 bytes, every byte load-bearing.
+
 ## [0.6.72] - 2026-11-17
 
 ## [0.6.72] - 2026-11-17
