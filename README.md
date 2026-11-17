@@ -16,37 +16,36 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.71 — live across all five runtimes** (C +
-ruby `0.6.71.0` + py `0.6.71.0` + rs/ts `0.6.71`, registry-checked
-2026-11-17). v0.6.71 carries the **#1411 engine fix** — multi-line
-flow implicit keys carry libyaml's words, the first engine `src/`
-change since r248 (C-suite pinned) — over the r293-r298 comparator
-hardening (budget raises to 131072/8192, the loop-top comment
-member, the block-NEL arm's esc-less/twin fold-space laws, the lead
-run, the UTF-16BE structural-eat law). Eighteen nightly escapes
-retired across the day-plus, zero engine divergence outstanding
-since r248. The previous cuts: v0.6.70 (the r287-r292 carries, the
-TAG model) and v0.6.69/v0.6.68 (the block-NEL arm, laws
-(f)/(g)/(h)/(i), the UTF-16BE arm) over the contract cut. v0.6.67
-was that cut: the 0.6.66 downstream regression (relaton #1359,
-png_conform #1366) verdict-closed — the engine REFUTED innocent
-(records byte-perfect from every library; the corruption was the
-binding's char-indexed arena slicing), the byte-offset law pinned at
-its C home (#1367). The cut before it closes the six long-horizon
-competition fronts with measured verdicts (#474/#739/#742/#331/#352
-+ the binding faces #862/#857, every attempt ledgered): anchor-heavy
-— the last DOM shape that trailed — rides the per-line memo to
-1.34x vs rapidyaml; the emitter's DQ cells +21.6%/+17.7% on
-parse-time style facts; the Psych-compat ruby facade beats stdlib
-Psych on every lane (5.6x clean safe_load / 1.7x gated; the
-node-free dump face 1.71x at -55.7% allocations); the JSON write leg
-+23% (referee) / +84-88% (campaign); CBOR SAX decode reads
-1.29-1.41x past tinycbor; and the #474 arm64 verdict is recorded
-structural — a flat walk with no hot target, NEON engaged on both CI
-legs. The fuzz side shipped the classifier era: the #1310
-law-verifying classifier replaced member enumeration and the r272
-mining harvest closed the decline surface (48 pins + the [?::] model
-extension) — zero engine defects since r248 (#1281).
+**Latest release: v0.6.72 — live across all five runtimes** (C +
+ruby `0.6.72.0` + py `0.6.72.0` + rs/ts `0.6.72`, registry-checked
+2026-11-17). v0.6.72 carries the r299-r302 comparator hardening: the
+block-NEL arm's twin fold-space laws, the UTF-16BE structural-eat
+site, the split-slot alias walk, and the alias VALUE-slot ride —
+twenty-four nightly escapes retired across the weekend, zero engine
+divergence outstanding beyond #1411's deliberate fix. The previous
+cuts: v0.6.71 (the **#1411 engine fix** — multi-line flow implicit
+keys carry libyaml's words, the first engine `src/` change since
+r248) and v0.6.70 (the r287-r292 carries, the classifier's first TAG
+model) over the contract cut. v0.6.67 was that cut: the 0.6.66
+downstream regression (relaton #1359, png_conform #1366)
+verdict-closed — the engine REFUTED innocent (records byte-perfect
+from every library; the corruption was the binding's char-indexed
+arena slicing), the byte-offset law pinned at its C home (#1367).
+The cut before it closes the six long-horizon competition fronts
+with measured verdicts (#474/#739/#742/#331/#352 + the binding faces
+#862/#857, every attempt ledgered): anchor-heavy — the last DOM
+shape that trailed — rides the per-line memo to 1.34x vs rapidyaml;
+the emitter's DQ cells +21.6%/+17.7% on parse-time style facts; the
+Psych-compat ruby facade beats stdlib Psych on every lane (5.6x
+clean safe_load / 1.7x gated; the node-free dump face 1.71x at
+-55.7% allocations); the JSON write leg +23% (referee) / +84-88%
+(campaign); CBOR SAX decode reads 1.29-1.41x past tinycbor; and the
+#474 arm64 verdict is recorded structural — a flat walk with no hot
+target, NEON engaged on both CI legs. The fuzz side shipped the
+classifier era: the #1310 law-verifying classifier replaced member
+enumeration and the r272 mining harvest closed the decline surface
+(48 pins + the [?::] model extension) — zero engine defects since
+r248 (#1281).
 
 ## Build, test, validate
 
