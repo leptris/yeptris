@@ -126,7 +126,16 @@
  *      cross). Maps only: a nested `[` stays UNKNOWN; a colon-led
  *      member is reachable exactly when libyaml comment-ate its colon
  *      (a raw flow `:` after a separator errors the parser's node
- *      state); past 32 deep stays UNKNOWN.
+ *      state); past 32 deep stays UNKNOWN. The r310 widening (run
+ *      44191067135): the nested `{` may hang off the split-explicit-key
+ *      member's KEY SLOT itself (`?\t{...}` — the `?` drops, the `{`
+ *      opens the key node, and the blank/break run after the close
+ *      rides to the `:` VALUE boundary the same slot walk takes; the
+ *      floor's `{?\t{},?-,?*M}` keeps the empty collection key and the
+ *      two glued-`?` plains of the law-d split behind it, 13 of 48
+ *      bytes under the dual bar). A glued colon (not a VALUE boundary)
+ *      after the collection key and any other non-boundary byte stay
+ *      out.
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
