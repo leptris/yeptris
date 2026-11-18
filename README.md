@@ -16,20 +16,23 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.74 — live across all five runtimes** (C +
-ruby `0.6.74.0` + py `0.6.74.0` + rs/ts `0.6.74`, registry-checked
-2026-11-18). v0.6.74 carries the r306-r310 comparator hardening: the
-mid-line-BOM ride and the #741 pair-stays-open map-entry side, the
-multi-comment value-tail loop, the member-led quoted-span exotic
-fold, the value-slot comment ride, and the split-key nested
-collection — thirty-two nightly escapes retired, zero engine
+**Latest release: v0.6.75 — live across all five runtimes** (C +
+ruby `0.6.75.0` + py `0.6.75.0` + rs/ts `0.6.75`, registry-checked
+2026-11-19). v0.6.75 is a memory-safety cut: the CBOR DOM strtab
+**heap-use-after-free (#1468, PR #1469)** — the sinks' arena-staged
+tag/value pieces re-entered `str_put` as source pointers, and the
+copy's own `str_grow` freed the buffer under them; `str_put` now
+snapshots the self-offset before the grow (one SSOT fix across all
+seven decode.c staging sites, the artifact pinned). Over the
+r311-r313 comparator hardening: the anchor-charset prefix ladder,
+the seq-dash position guard, and the `?` explicit-key guard's dead
+off-by-one — thirty-five nightly escapes retired, zero YAML engine
 divergence outstanding beyond #1411's deliberate fix. The previous
-cuts: v0.6.73 (the r303-r305 carries — the block-NEL arm's EOF-tail
-kept-NEL and fold-space sibling laws, the anchor-charset arm's
-residual key-colon law) and v0.6.72 (the r299-r302 carries — the
-twin fold-space laws, the UTF-16BE structural-eat site, the
-split-slot alias walk, the alias VALUE-slot ride) over the contract
-cut. v0.6.67 was
+cuts: v0.6.74 (the r306-r310 carries — the mid-line-BOM ride and
+the #741 pair-stays-open side, the multi-comment value-tail loop,
+the quoted-span exotic fold, the value-slot comment ride, the
+split-key nested collection) and v0.6.73 (the r303-r305 carries)
+over the contract cut. v0.6.67 was
 that cut: the 0.6.66 downstream regression (relaton #1359,
 png_conform #1366) verdict-closed — the engine REFUTED innocent
 (records byte-perfect from every library; the corruption was the
