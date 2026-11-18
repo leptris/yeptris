@@ -20051,9 +20051,17 @@ static int fc_selftest_dir(const char* dir) {
                 break;
             }
             case 6: { /* nesting spliced before the final close: a whole
-                       * empty nested sequence rides as the last member
-                       * (the flat-member walk and the flow tokenizer
-                       * both refuse nested collections) */
+                       * nested collection rides as the last member. (The
+                       * splice used to carry an EMPTY nested sequence —
+                       * `,[]` — but the r314 nested-seq law governs that
+                       * shape byte-exact now: yeptris and libyaml read
+                       * the empty member identically and the classifier
+                       * rightly claims it, the mutant-3 precedent. The
+                       * remaining violation carries a `{`-led member
+                       * inside the splice — the flat-member walk refuses
+                       * a nested MAP at a member start, and the flow
+                       * tokenizer's map body never models the
+                       * seq-rooted member walk's decline.) */
                 if (n < 2) {
                     applied = 0;
                     break;
@@ -20061,9 +20069,12 @@ static int fc_selftest_dir(const char* dir) {
                 memcpy(m, buf, n - 1);
                 m[n - 1] = ',';
                 m[n] = '[';
-                m[n + 1] = ']';
-                m[n + 2] = buf[n - 1];
-                mn = n + 3;
+                m[n + 1] = '{';
+                m[n + 2] = 'a';
+                m[n + 3] = '}';
+                m[n + 4] = ']';
+                m[n + 5] = buf[n - 1];
+                mn = n + 6;
                 break;
             }
             case 7: { /* the root close dropped (unterminated flow): the
