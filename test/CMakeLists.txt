@@ -6298,6 +6298,42 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-dashtwin-r312-artifact.bin
     )
 
+    # the r313 nightly escape (run 44314834088): the anchor-name-charset
+    # family again - the r234 docstart seed's content DOUBLED
+    # ("---<PS> ? &--02:in~---<PS> ? &--02:in~"), the two explicit-key
+    # lines the new ingredient. The law is unchanged - yeptris keeps the
+    # 1.2 ns-anchor-char wide name (':' is not a flow indicator; only a
+    # blank/break ends it) riding an anchored-empty while libyaml 0.2.x
+    # truncates at ':' and pairs the residual ':'-led plain (suite 2SXE;
+    # libfyaml 04e0b58 A/B reads yeptris's stream byte-exact on the LF
+    # twin) - but the walk's '?' explicit-key law carried a guard that
+    # NEVER fired: col is incremented before the arms run, so the arm's
+    # `col == line_first` compared the NEXT byte's column against the
+    # first-token column. coll_col kept the root -1, the ':'-led
+    # residual plain (the HM87 riding-colon law) crossed the PS into the
+    # second line's '?', the second anchor run rode as mid-plain CONTENT,
+    # its split never staged, and the all-splits copy (the r311
+    # composition, one truncation per '&' run) declined its own family.
+    # The fix: the guard takes the byte's own column (col - 1), the
+    # '?' sets coll_col to its line's first-token column, the second
+    # line's '?' ends the riding plain, and the EXISTING all-splits copy
+    # carries. Model fix only - the carry search gains zero new power
+    # (the seq-dash r312 sibling keeps its shipped dead-guard state; the
+    # dash arm is untouched in this carry).
+    # Comparator carry only - no engine change.
+    # the ddmin floor: 20 of 36 bytes survive the dual-bar walk
+    # (pre-patch DIFFER exit 77 + post-patch carry exit 0; 20/20
+    # single-byte deletions lose the dual bar - `---<PS>` stages the
+    # PS-terminated doc marker, the first `? -` member rides a seq
+    # entry into the map, and `? &2:i` is the minimal colon-in-name
+    # anchor twin).
+    add_test(
+        NAME fuzz-diff-r313-anchor-charset-explicitkey
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-explicitkey-r313.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-explicitkey-r313-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
