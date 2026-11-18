@@ -837,16 +837,19 @@ static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
             return y_fail(c); /* an anchor needs a name */
         }
         size_t ae = as + al;
-        while (ae < c->n && fc_blank(p[ae])) {
-            ae++;
-        }
-        if (ae >= c->n || !fc_flow_ind(p[ae])) {
+        /* the r315 widening (run 44411162279): the run between the name
+         * and the terminator rides blank/break like the alias value slot
+         * (the same prop walk — the artifact's `:\r&binary\r,` value
+         * renders the anchored empty byte-exact on both engines); a `#`
+         * or any other non-boundary byte declines */
+        size_t ve = fc_skip_blank_break(p, c->n, ae);
+        if (ve >= c->n || !fc_flow_ind(p[ve])) {
             return y_fail(c);
         }
         memset(val, 0, sizeof(*val));
         val->anchor_at = as;
         val->anchor_len = al;
-        *stop = ae;
+        *stop = ve;
         return 1;
     }
     if (p[q] == '{') {
@@ -1355,10 +1358,25 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
             al++;
         }
         size_t ae = as + al;
-        if (al == 0 || y_cur_is_map(c) || ae >= n || !fc_flow_ind(p[ae])) {
+        if (al == 0 || y_cur_is_map(c)) {
             return y_fail(c);
         }
-        *term_at = ae;
+        /* the r315 widening (run 44411162279): a blank/break run between
+         * the anchor name and the member terminator rides like the alias
+         * slots take it (the r301/r302 law — the same prop walk, the
+         * engine skips the run before the flow indicator and nothing
+         * folds into the empty node: the artifact's `&i\r,` /
+         * `&binary\r,` sites render `=VAL : &<name> ` byte-exact on both
+         * engines). A `#` inside the run stops the walk (the
+         * flow-indicator gate declines it — the engine's comment
+         * condition fires there); a `?`/`:` after the run is no flow
+         * indicator and declines the same way (the KEY/VALUE boundary
+         * compositions the probes never cover). */
+        size_t ve = fc_skip_blank_break(p, n, ae);
+        if (ve >= n || !fc_flow_ind(p[ve])) {
+            return y_fail(c);
+        }
+        *term_at = ve;
         fo_str(&c->out, "=VAL : &");
         fo_bytes(&c->out, p + as, al);
         fo_str(&c->out, " \n");
@@ -1563,10 +1581,15 @@ static int y_pair_member(yctx* c, size_t i, size_t* term_at) {
             al++;
         }
         size_t ae = as + al;
-        if (al == 0 || ae >= n || !fc_flow_ind(p[ae])) {
+        /* the r315 widening (run 44411162279): the run between the name
+         * and the terminator rides blank/break (the bare-anchor member's
+         * law — the artifact's `,\r&binary\r,` fold-in member renders
+         * `=VAL : &<name> \n=VAL : \n` byte-exact on both engines) */
+        size_t ve = fc_skip_blank_break(p, n, ae);
+        if (al == 0 || ve >= n || !fc_flow_ind(p[ve])) {
             return y_fail(c);
         }
-        *term_at = ae;
+        *term_at = ve;
         fo_str(&c->out, "=VAL : &");
         fo_bytes(&c->out, p + as, al);
         fo_str(&c->out, " \n=VAL : \n");
@@ -1592,9 +1615,18 @@ static int y_pair_member(yctx* c, size_t i, size_t* term_at) {
             return y_fail(c); /* a tagged non-plain node: unprobed */
         }
     }
-    if (ch == '?' || ch == '\'' || ch == '!' || ch == '#' || ch == '[' || ch == '{') {
-        return y_fail(c); /* the explicit-key member and the rest of the
-                           * non-flat spell: unprobed under the open pair */
+    if (ch == '?' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0)) {
+        return y_fail(c); /* the SPLIT explicit-key member under the open
+                           * pair: unprobed, stays out. The GLUED spell
+                           * falls through to the plain walk (P7's `?a`
+                           * law — the question rides as content, the
+                           * r315 artifact's ` ?#ԃ` fold-in member takes
+                           * the key slot with the parser's empty value,
+                           * byte-exact on both engines). */
+    }
+    if (ch == '\'' || ch == '#' || ch == '[' || ch == '{') {
+        return y_fail(c); /* the rest of the non-flat spell: unprobed
+                           * under the open pair */
     }
     if (ch == '-' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0 ||
                       fc_flow_ind(p[i + 1]))) {

@@ -6384,6 +6384,51 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-nestedseq-r314-artifact.bin
     )
 
+    # the r315 nightly escape (run 44411162279): the 52-byte soup
+    # artifact `[1,?0e\Su.0v ,?#<U+0503>,:&<CR>&binary<CR>, ?#<U+0503>,
+    # :&<CR>&binary<CR>, (?,]` - the flow-qsoup family (the glued-`?`
+    # plains ride laws a/d, the CR runs ride law b) with the ANCHOR
+    # slots' ride gap. THE FLOOR LAW: the minimizer's 14-byte floor
+    # `[?\,?#,<CR>&i<CR>,?]` - a bare-anchor member whose terminator
+    # sits across a blank/break run. yeptris reads `&i<CR>,` as the
+    # anchored-empty member (the prop walk skips the run before the
+    # flow indicator, nothing folds into the empty node: `=VAL : &i `)
+    # against libyaml 0.2.x where the member-2 comment-eat swallows
+    # `#,` to the CR and the post-break `&i` rebinds as the explicit
+    # key (the law-a post-break clause; the anchor renders on the empty
+    # key scalar, `=VAL : &i ` in the KEY slot). The same ride shape
+    # gates the artifact's `:<CR>&binary<CR>,` fold-in members (the
+    # #741 open pair, the anchored-empty value slot) and the open
+    # pair's glued-`?` plain member (P7's content law - the gate
+    # predating it declined the whole `?` spell under the pair). The
+    # classifier gains: the bare-anchor member arm, the anchored-empty
+    # value slot, and the fold-in anchor member all ride the
+    # blank/break run to the terminator (the r301/r302 alias-slot law's
+    # anchor twins), and the fold-in `?` gate splits glued (plain walk,
+    # P7) from split-explicit-key (stays out). THE A/B: both models
+    # reproduce the full dump pair byte-exact post-widening; the
+    # libyaml side rides the documented 1.1 flow-`?`-KEY +
+    # comment-eat-to-breakz laws (the `#` eats THROUGH the `,` to the
+    # CR), no engine claim.
+    # Comparator carry only - no engine change.
+    # (The seeds ride the comparator corpus like the r282-r314 soup
+    # seeds - no snapshot exclusion, no workflow edit.)
+    # Seeds: flow-qsoup-anchor-breakride-r315.bin (the 14-byte floor;
+    # 14/14 single-byte deletions lose the unclaimed-DIFFER dual bar -
+    # 10 become agreements, 1 rides the r284 glued-anchor arm as a
+    # claimed member, 3 become the documented accept/reject splits:
+    # the yeptris-rejects/libyaml-accepts glued-`#` member and two
+    # libyaml-rejects rides) and
+    # flow-qsoup-anchor-breakride-r315-artifact.bin (the 52-byte raw
+    # artifact - classified byte-exact post-widening, both models
+    # reproduce the full dump pair).
+    add_test(
+        NAME fuzz-diff-r315-flow-qsoup-anchor-breakride
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-anchor-breakride-r315.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-anchor-breakride-r315-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

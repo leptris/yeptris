@@ -36,6 +36,17 @@
  *      (`=ALI *<name>` in the value position) with the same
  *      blank/break run to the terminator the bare-alias member walks;
  *      a ':' after the alias and any other byte stay out;
+ *      the r315 widening (run 44411162279): the ANCHOR slots take the
+ *      same run — the bare-anchor member, the anchored-empty value
+ *      slot, and the open-pair fold-in member ride a blank/break run
+ *      between the name and the terminator (the same prop walk; the
+ *      engine skips the run before the flow indicator and nothing
+ *      folds into the empty node — the artifact's `&i<CR>,` /
+ *      `&binary<CR>,` sites render `=VAL : &<name> ` byte-exact on
+ *      both engines); a `#` inside the run still declines (the engine
+ *      comment condition fires there), and the open-pair fold-in's
+ *      GLUED-`?` plain member rides P7's content law while the SPLIT
+ *      explicit-key spell stays out;
  *  (d) the plain-`?` law (suite HM87/652Z + r199/r209/r264): a `?`-led
  *      member with a non-blank follower keeps the whole text as one
  *      plain key (colon rides inside when a non-blank follows), values
