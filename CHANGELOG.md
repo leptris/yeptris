@@ -6,6 +6,19 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [0.6.74] - 2026-11-18
+
+### the comparator era (r306-r310, all zero-`src/`)
+
+- **the comparator carries five more nightly escapes (the #1310 family's soup lineage; zero engine divergence)**:
+  - **the mid-line-BOM ride + the pair-stays-open map-entry side (r306, PR #1449, issue #1450)** — three interior BOMs ride byte-exact on both engines (line-start BOMs keep the BOM arms), and the #741 pair-stays-open side: libfyaml sides with yeptris on `?#` plains while libyaml rejects the bare-colon pair (ledgered CFD4). Floor 18 bytes (`[1,?#,7,:\rK ?#,\rm]`).
+  - **the multi-comment value-tail ride (r307, PR #1452, issue #1453)** — the r277 whole-line comment ride loops: after the first comment's break the tail adds another line-start `#` comment (plus an inert break run) before the `,`; each whole-line comment rides to its own break; only the terminator is demanded. Floor 8684 bytes (tail-protected ddmin; the scramble has no byte-tiny floor — every chunk load-bearing).
+  - **the member-led quoted-span exotic fold (r308, PR #1455, issue #1454)** — engines byte-identical with zero raw LS; the 1.2 fold counts NEL/LS/PS in the run + the r278 one-break close-join. Floor 38 bytes (dual-bar ddmin; libFuzzer's minimizer escapes the family, noted).
+  - **the value-slot comment ride (r309, PR #1456)** — the pair's value slot rides a whole-line comment; `50:<CR>##|,?<CR>2002:binary` pairs byte-exact on both sides. Floor 44 bytes.
+  - **the split-key nested collection (r310, PR #1458, issue #1457)** — the block × nested-flow hybrid: the explicit keys' glued-`?` plains (`?:-`/`?*M`) stay flat in yeptris while libyaml splits the keys (`-` as the key scalar, `?*M` reaching the alias — `=ALI *M`); the nested-collection walk gains the split-key side. Floor 13 bytes (1-minimal).
+
 ## [0.6.73] - 2026-11-17
 
 ## [0.6.73] - 2026-11-17
