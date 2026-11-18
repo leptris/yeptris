@@ -6262,6 +6262,42 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-docsoup-r311-artifact.bin
     )
 
+    # the r312 nightly escape (run 44292507063): the anchor-name-charset
+    # family again, with the corrupting alias twin now LEADING. The law
+    # is unchanged - `&4:` glues the name to the colon and yeptris keeps
+    # ONE flat plain while libyaml 0.2.x truncates at ':' (suite 2SXE) -
+    # but the r311 prefix ladder covers a corrupting split only when it
+    # TRAILS the load-bearing prefix. Here a `--` line stages the twin:
+    # the walk's seq-dash law took the SECOND dash of `--` for a
+    # construct boundary (coll_col = line_first with no position check),
+    # closed the root-level plain the -x law had opened, and staged the
+    # next line's `*0:a` as a phantom alias NODE. Its split ("*0:a" ->
+    # "*0 :a" inserts a space into a plain both engines read as one
+    # root-level rider, issue #718's indent -1 law) is libyaml-NON-
+    # invariant and LED the scan-order split list, ahead of the
+    # load-bearing `&4:` pair - no ladder prefix covered the pair and
+    # the carry declined its own family.
+    # The widening: the seq-dash law takes the guard its '?' explicit-key
+    # sibling has always carried - col == line_first, the dash is the
+    # LINE'S FIRST TOKEN. The glued second dash of `--` is mid-token
+    # plain content, the riding plain keeps swallowing (the root law),
+    # and the twin's run stays content: the phantom split site
+    # disappears and the all-splits copy (the two `&4:` truncations,
+    # r311's own composition) carries on every seed. Model fix only -
+    # the carry search gains zero new power.
+    # Comparator carry only - no engine change.
+    # the ddmin floor: 28 of 14240 bytes survive the dual-bar walk
+    # (pre-patch DIFFER + post-patch carry; 28/28 single-byte deletions
+    # lose the dual bar - `--` stages the dash-drift plain, `*0:a` is
+    # the minimal leading corrupting twin, `---` crosses the document,
+    # and `9: &4:-` / `&4:: &1` are the minimal anchor-twin pair).
+    add_test(
+        NAME fuzz-diff-r312-anchor-charset-dashtwin
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-dashtwin-r312.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-dashtwin-r312-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

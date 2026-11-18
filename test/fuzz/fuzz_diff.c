@@ -18480,9 +18480,31 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                  * 4262eff1, "---<PS> ? &--02:in~") */
                 coll_col = -1; /* the document marker: root context */
                 plain_open = 0;
-            } else if (c == '-' && only_dash &&
+            } else if (c == '-' && only_dash && col == line_first &&
                        (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
                         data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                /* the r312 law: the seq dash sits at the LINE'S FIRST
+                 * TOKEN (col == line_first -- the guard its '?'
+                 * explicit-key sibling has always carried). A '-'
+                 * GLUED later in the line's opening token ("--", the
+                 * nightly's r312 escape floor "--\n*0:a\n---\n9:
+                 * &4:-\n&4:: &1") is mid-token PLAIN CONTENT: the
+                 * plain the -x law opened on the first dash keeps
+                 * riding, the root-level plain swallows the next line
+                 * (issue #718's root law, libyaml's indent -1), and
+                 * the '&'-/'*'-runs on it stay plain content in BOTH
+                 * engines. Without the guard the walk took the second
+                 * dash of "--" for a construct boundary (coll_col =
+                 * line_first), closed the riding plain, and staged
+                 * "*0:a" as a phantom alias NODE -- the twin's split
+                 * ("*0:a" -> "*0 :a" inserts a space into a plain
+                 * both engines read as content, so libyaml is not
+                 * invariant) LED the scan-order split list, ahead of
+                 * the load-bearing "&4:" pair; the r311 prefix ladder
+                 * is prefixes-only by the firewall (a corrupting split
+                 * ahead of a load-bearing one stays out), so no prefix
+                 * covered the pair and the carry declined its own
+                 * family (run 44292507063). */
                 coll_col = (int)line_first;
             } else if (c == '?' && col == line_first &&
                        (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
@@ -18799,9 +18821,13 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                  yd_mb_break_len(data, size, i + 3) > 0)) {
                 coll_col2 = -1;
                 plain_open2 = 0;
-            } else if (c == '-' && only_dash2 &&
+            } else if (c == '-' && only_dash2 && col2 == line_first2 &&
                        (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
                         data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                /* the r312 law again (the copy walk mirrors the gate:
+                 * the seq dash is the line's first token; the glued
+                 * second dash of "--" is plain content and the riding
+                 * plain keeps the '&'-/'*'-runs inside it content) */
                 coll_col2 = (int)line_first2;
             } else if (c == '?' && col2 == line_first2 &&
                        (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
