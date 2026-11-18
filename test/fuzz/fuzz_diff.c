@@ -18876,6 +18876,42 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                 carried = yd_charset_verify_copy(s1, size + 1, ldump);
                 free(s1);
             }
+            if (!carried && nsplits > 2) {
+                /* the r311 prefix ladder (run 44268982441): the r95 solo
+                 * retry covers the k=1 member and the all-splits copy the
+                 * k=nsplits one, but a dense composition can make the
+                 * load-bearing set a MULTI-split prefix — every diverging
+                 * site must ride the copy together (yeptris's copy reading
+                 * must equal libyaml's copy reading at each site), while a
+                 * LATER corrupting split (the trailing document's
+                 * mid-plain `*`, `9999...*99999app-om` — its blind space
+                 * cuts a plain both engines read as content) poisons the
+                 * all-splits copy and no single split verifies alone.
+                 * Each PREFIX of the scan-order split list (verbatim +
+                 * the first k insertions) gets the same verify legs;
+                 * splits are recorded in scan order, so the ladder is
+                 * exact inserts at recorded positions. A corrupting split
+                 * EARLIER in scan order than a load-bearing one still
+                 * stays out (no subset search), as does any shape the
+                 * legs reject — the firewall stays red. */
+                for (int k = 2; k < nsplits && !carried; k++) {
+                    char* sk = malloc(size + (size_t)k);
+                    if (sk == NULL) {
+                        break;
+                    }
+                    size_t oo = 0;
+                    int si = 0;
+                    for (size_t t = 0; t < size; t++) {
+                        if (si < k && split_at[si] == t) {
+                            sk[oo++] = ' '; /* the same truncation-point break */
+                            si++;
+                        }
+                        sk[oo++] = data[t];
+                    }
+                    carried = yd_charset_verify_copy(sk, size + (size_t)k, ldump);
+                    free(sk);
+                }
+            }
         }
         if (carried) {
             free(ydump2);

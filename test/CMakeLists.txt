@@ -6225,6 +6225,43 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-keynestmap-r310-artifact.bin
     )
 
+    # the r311 nightly escape (run 44268982441): a dense multi-document
+    # composition rode the anchor-name-charset arm past its carry search.
+    # The law itself is the standing anchor-name split - `&4:` glues the
+    # name to the colon: yeptris declines the anchor (the name charset
+    # ends at the colon, the glued follower fails the props check) and
+    # keeps the whole run ONE flat plain, while libyaml 0.2.x truncates
+    # the name at the ':' (scan_anchor's legal-end set includes it) and
+    # pairs anchor `&4` with the plain `:-` twin (suite 2SXE, the
+    # ledger's standing upstream deviation; libfyaml reads a third way,
+    # the 1.2 ns-anchor-char law - the colon IN the name). The arm's
+    # transform carries that law by splitting the name at the truncation
+    # point and verifying the copy; the carry search held all-splits +
+    # single-split retries (r95). The fresh SITE is the COMBINATOR: the
+    # load-bearing set here is a MULTI-split prefix (the two `&4:` sites
+    # of the first document must ride the copy together - yeptris's copy
+    # reading must equal libyaml's at each), while a LATER corrupting
+    # split (the trailing `*0:-` alias twin - its blind space cuts a
+    # plain both engines read as content) poisons the all-splits copy,
+    # and NO single split verifies alone. The widening: the PREFIX
+    # LADDER - each scan-order prefix of the recorded split list gets
+    # the same verify legs (the corrupting split trailing the scan
+    # order is exactly the r95 shape one member up; a corrupting split
+    # EARLIER than a load-bearing one and every leg-rejected shape stay
+    # out).
+    # Comparator carry only - no engine change.
+    # the ddmin floor: 30 of 8209 bytes survive the dual-bar walk
+    # (pre-patch DIFFER + post-patch carry; every byte is load-bearing -
+    # the two `&4:` sites are the minimal anchor-twin pair, `---`/`--`
+    # stage the document cross, and `! *0:-` is the minimal corrupting
+    # alias twin the escape hid behind).
+    add_test(
+        NAME fuzz-diff-r311-anchor-charset-docsoup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-docsoup-r311.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-docsoup-r311-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
