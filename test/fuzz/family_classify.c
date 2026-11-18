@@ -596,11 +596,16 @@ typedef struct {
     fout out;
     size_t members;
     size_t pos_trace;
-    int depth;     /* the open nested-collection depth (FC_MAX_NEST cap) */
-    int pair_open; /* the #741 colon-led SEQ single-pair stays open: the
-                    * following members render as map entries (key +
-                    * empty value; the bare colon member keeps its
-                    * empty-key + value slot) until the closer */
+    int depth;                             /* the open nested-collection depth (FC_MAX_NEST cap) */
+    unsigned char seq_at[FC_MAX_NEST + 2]; /* per level: the level is a
+                                            * SEQUENCE (the r314 nested-
+                                            * seq law; the nested walks
+                                            * restamp their level so a
+                                            * sibling branch reads fresh) */
+    int pair_open;                         /* the #741 colon-led SEQ single-pair stays open: the
+                                            * following members render as map entries (key +
+                                            * empty value; the bare colon member keeps its
+                                            * empty-key + value slot) until the closer */
 } yctx;
 
 static int y_fail_at(yctx* c, int line) {
@@ -612,6 +617,17 @@ static int y_fail_at(yctx* c, int line) {
     return 0;
 }
 #define y_fail(c) y_fail_at((c), __LINE__)
+
+/* The ENCLOSING level's kind (the member walks' branch driver): the
+ * root level rides c->is_map; a nested level rides its seq_at stamp —
+ * the r314 nested-seq walk stamps 1, the nested-MAP walks stamp 0, so
+ * a sibling branch never reads a stale level kind. */
+static int y_cur_is_map(const yctx* c) {
+    if (c->depth == 0) {
+        return c->is_map;
+    }
+    return c->seq_at[c->depth] ? 0 : 1;
+}
 
 /* The alias name run (the engine's e_alias walk): prop chars = not
  * blank, not break, not flow indicator, ',', or '#'; an interior ':'
@@ -849,6 +865,7 @@ static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
         fout outer = c->out;
         c->out = nf;
         c->depth++;
+        c->seq_at[c->depth] = 0; /* the level is a MAP (fresh stamp) */
         size_t after = 0;
         int ok = y_members(c, '}', q + 1, &after);
         c->depth--;
@@ -902,11 +919,11 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
          * matching-closer forms are probed byte-exact; the
          * wrong-closer combos are BOTH-ERROR shapes the comparator
          * never consults. */
-        if (nxt < n && (p[nxt] == ',' || p[nxt] == (c->is_map ? '}' : ']'))) {
+        if (nxt < n && (p[nxt] == ',' || p[nxt] == (y_cur_is_map(c) ? '}' : ']'))) {
             memset(&key, 0, sizeof(key));
             memset(&val, 0, sizeof(val));
             *term_at = nxt;
-            if (c->is_map) {
+            if (y_cur_is_map(c)) {
                 fc_render_val(&c->out, p, &key);
                 fc_render_val(&c->out, p, &val);
             } else {
@@ -921,11 +938,11 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
          * SEQ-rooted walk rides the qm colon+flow-indicator boundary
          * (the r272 `[?::]` floor's KEY-implicit cut); the MAP-rooted
          * walk keeps the plain law. */
-        if (!fc_plain_pieces(p, n, i, n, !c->is_map, &key, &stop, &sep)) {
+        if (!fc_plain_pieces(p, n, i, n, !y_cur_is_map(c), &key, &stop, &sep)) {
             return y_fail(c);
         }
         if (key.colon) {
-            if (!c->is_map) {
+            if (!y_cur_is_map(c)) {
                 /* the SEQ single-pair wrapper (the r272-mined `[?::]`
                  * floor): the engine opens the KEY-implicit map for the
                  * glued-`?` member and cuts key/value at the member's
@@ -957,7 +974,7 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             return y_fail(c);
         }
         *term_at = stop;
-        if (c->is_map) {
+        if (y_cur_is_map(c)) {
             fc_render_val(&c->out, p, &key);
             fc_render_val(&c->out, p, &val);
         } else {
@@ -970,6 +987,12 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
     int key_is_alias = 0;
     size_t alias_at = 0;
     size_t alias_len = 0;
+    memset(&key, 0, sizeof(key)); /* every SPLIT slot initializes the key
+                                   * node: the terminator-gate decline
+                                   * below drops it (the r314 release
+                                   * finding — the r301 alias-blank path
+                                   * freed the uninitialized nest_buf
+                                   * slot; the layout shift exposed it) */
     if (ks >= n || (fc_flow_ind(p[ks]) && p[ks] != '{')) {
         /* (`{` is carved out: it opens the nested-collection KEY slot
          * walk below -- the r310 widening) */
@@ -1056,10 +1079,10 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
         if (seps >= 2 || e >= n) {
             return y_fail(c);
         }
-        if (seps == 1 && c->is_map) {
+        if (seps == 1 && y_cur_is_map(c)) {
             return y_fail(c); /* the r245 steal stays SEQ-rooted */
         }
-        if (seps == 0 && !c->is_map) {
+        if (seps == 0 && !y_cur_is_map(c)) {
             return y_fail(c); /* a clean eat on the SEQ root: untested */
         }
         e += (size_t)fc_break_run_len(p, n, e);
@@ -1100,6 +1123,7 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
         fout outer = c->out;
         c->out = nf;
         c->depth++;
+        c->seq_at[c->depth] = 0; /* the level is a MAP (fresh stamp) */
         size_t after = 0;
         int ok = y_members(c, '}', ks + 1, &after);
         c->depth--;
@@ -1172,7 +1196,7 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
         return y_fail(c);
     }
     *term_at = stop;
-    if (c->is_map) {
+    if (y_cur_is_map(c)) {
         if (key_is_alias) {
             fo_str(&c->out, "=ALI *");
             fo_bytes(&c->out, p + alias_at, alias_len);
@@ -1210,28 +1234,52 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
         return y_question_member(c, i, term_at);
     }
     if (ch == '"') {
-        /* the member IS the quoted span; only blanks may follow; and a
-         * quoted MAP member (key with an empty value) is untested */
-        if (c->is_map) {
-            return y_fail(c);
-        }
+        /* the member IS the quoted span. MAP root (the r314 widening,
+         * run 44354924371's tail member `"empky":\n}`): the quoted KEY
+         * member — the DQ fold rides fc_quoted_value (the engines AGREE
+         * byte-exact on the probes `{"a"}` / `{"a":}` / `{"a":x}`; the
+         * walk claims the shape to reach the later members). The
+         * boundary after the span: a `:` splits UNCONDITIONALLY after a
+         * quoted scalar on both engines (no plain context — the value
+         * slot rides y_value_node), a flow indicator leaves the value
+         * empty; anything else declines. SEQ root keeps the keyless
+         * member arm below. */
         fout tmp = {NULL, 0, 0, 0};
         size_t close = 0;
-        int ok = fc_quoted_value(p, n, i + 1, n, &tmp, &close);
-        if (!ok) {
+        if (!fc_quoted_value(p, n, i + 1, n, &tmp, &close)) {
             free(tmp.buf);
             return y_fail(c);
         }
         size_t j = fc_skip_blank_break(p, n, close + 1);
-        if (j >= n || !fc_flow_ind(p[j])) {
+        fcnode val;
+        memset(&val, 0, sizeof(val));
+        size_t qstop;
+        if (y_cur_is_map(c) && j < n && p[j] == ':') {
+            /* the VALUE boundary after the quoted key (unconditional
+             * split on both engines) */
+            if (!y_value_node(c, j + 1, &qstop, &val)) {
+                free(tmp.buf);
+                return 0;
+            }
+            if (qstop >= n || !fc_flow_ind(p[qstop])) {
+                fc_val_drop(&val);
+                free(tmp.buf);
+                return y_fail(c);
+            }
+        } else if (j >= n || !fc_flow_ind(p[j])) {
             free(tmp.buf);
-            return y_fail(c);
+            return y_fail(c); /* a non-boundary byte after the span */
+        } else {
+            qstop = j; /* the empty value (the parser's insertion) */
         }
-        *term_at = j;
+        *term_at = qstop;
         fo_str(&c->out, "=VAL : ");
         fo_bytes(&c->out, tmp.buf, tmp.len);
         fo_str(&c->out, "\n");
         free(tmp.buf);
+        if (y_cur_is_map(c)) {
+            fc_render_val(&c->out, p, &val);
+        }
         return 1;
     }
     /* `|`, `>`, `%`, `@` ride as plain CONTENT at a yeptris member
@@ -1257,7 +1305,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
             return y_fail(c); /* a name cut that dies at once */
         }
         size_t ae = as + al;
-        if (c->is_map && p[ae] == ':' &&
+        if (y_cur_is_map(c) && p[ae] == ':' &&
             (ae + 1 >= n || fc_blank(p[ae + 1]) || fc_break_len(p, n, ae + 1) > 0)) {
             fcnode val;
             size_t vstop;
@@ -1283,7 +1331,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
         fo_str(&c->out, "=ALI *");
         fo_bytes(&c->out, p + as, al);
         fo_str(&c->out, "\n");
-        if (c->is_map) {
+        if (y_cur_is_map(c)) {
             fo_str(&c->out, "=VAL : \n");
         }
         return 1;
@@ -1307,7 +1355,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
             al++;
         }
         size_t ae = as + al;
-        if (al == 0 || c->is_map || ae >= n || !fc_flow_ind(p[ae])) {
+        if (al == 0 || y_cur_is_map(c) || ae >= n || !fc_flow_ind(p[ae])) {
             return y_fail(c);
         }
         *term_at = ae;
@@ -1316,7 +1364,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
         fo_str(&c->out, " \n");
         return 1;
     }
-    if (ch == '\'' || ch == '!' || ch == '#' || ch == '[' || ch == '{') {
+    if (ch == '\'' || ch == '!' || ch == '#' || ch == '{') {
         return y_fail(c); /* outside the family's flat-member shape */
     }
     if (ch == '-' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0 ||
@@ -1328,7 +1376,71 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
     size_t stop;
     int sep;
     int colon_led = 0;
-    if (ch == ':' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0)) {
+    if (ch == '[') {
+        /* the r314 law (run 44354924371): the nested flow SEQUENCE at a
+         * member start — the r281 nested-flow-map law's SEQ twin (the
+         * r310 widening's mechanics at the plain member slot). The
+         * member IS the nested collection: the same member laws derive
+         * its entries recursively (+SEQ/-SEQ around them), stashed on
+         * the key node like the value-slot `{` stash. yeptris keeps the
+         * collection as the bare member (the map's value slot empty) or
+         * as the key before a VALUE boundary; the libyaml side rides
+         * the l-side nested-seq law (the tokenizer level slots + the
+         * recursive seq body). The floor `{[?&m]} ` fires exactly this:
+         * the glued-`?` plain `?&m` inside the nested seq (the HM87/652Z
+         * plain-? law, d) against libyaml's KEY-token wrapper (the 1.1
+         * flow-`?` law — `&` is an indicator follower, outside the r183
+         * arm's plain-safe gate). A quoted / `?`-slot / value-slot `[`
+         * keeps its decline (untested shapes stay out). */
+        if (c->depth >= (int)FC_MAX_NEST) {
+            return y_fail(c); /* past the nesting budget */
+        }
+        fout nf = {NULL, 0, 0, 0};
+        fo_str(&nf, "+SEQ\n");
+        fout outer = c->out;
+        c->out = nf;
+        c->depth++;
+        c->seq_at[c->depth] = 1; /* the level is a SEQUENCE (the r314
+                                  * stamp; the member walks below ride
+                                  * y_cur_is_map) */
+        size_t after = 0;
+        int ok = y_members(c, ']', i + 1, &after);
+        c->depth--;
+        nf = c->out;
+        c->out = outer;
+        if (!ok || nf.bad) {
+            free(nf.buf);
+            return 0;
+        }
+        fo_str(&nf, "-SEQ\n");
+        if (nf.bad) {
+            free(nf.buf);
+            return y_fail(c);
+        }
+        memset(&key, 0, sizeof(key));
+        key.nest_buf = nf.buf;
+        key.nest_len = nf.len;
+        stop = fc_skip_blank_break(p, n, after);
+        if (stop < n && p[stop] == ':') {
+            key.colon = 1; /* the VALUE boundary after the collection
+                            * key: a `:` splits UNCONDITIONALLY after a
+                            * closer on both engines (no plain context
+                            * survives `]` — the r314 probe `{[?&m]:x}`
+                            * pairs the value byte-exact); the common
+                            * colon path below opens the value slot */
+            key.colon_at = stop;
+        } else if (stop >= n || !fc_flow_ind(p[stop])) {
+            fc_val_drop(&key);
+            return y_fail(c);
+        }
+        if (key.colon) {
+            /* the value node opens in the branch (the shared colon path
+             * below sits inside the plain-led arm) */
+            if (!y_value_node(c, key.colon_at + 1, &stop, &val)) {
+                return 0;
+            }
+        }
+    } else if (ch == ':' && (i + 1 >= n || fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0)) {
         /* the colon-led member (the r281 floor's second member): the
          * `?` drops-and-empties twin — the key is EMPTY (colon=1, the
          * SEQ single-pair wrapper keeps the pair) and the value node
@@ -1359,7 +1471,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
         return y_fail(c);
     }
     *term_at = stop;
-    if (c->is_map) {
+    if (y_cur_is_map(c)) {
         fc_render_val(&c->out, p, &key);
         fc_render_val(&c->out, p, &val);
     } else if (colon_led) {
@@ -1549,7 +1661,7 @@ static int y_members(yctx* c, unsigned char closer, size_t i, size_t* after) {
             }
             continue;
         }
-        if (ch == ',' || ch == (c->is_map ? ']' : '}')) {
+        if (ch == ',' || ch == (y_cur_is_map(c) ? ']' : '}')) {
             c->pos_trace = i;
             if (getenv("YD_FC_TRACE") != NULL) {
                 fprintf(stderr, "loop-top byte at %zu: %02x (prev 24: %.*s)\n", i, ch,
@@ -2147,9 +2259,8 @@ static int l_tokenize(lctx* c) {
         int plain = 0;
         switch (ch) {
         case '[':
-            if (c->depth > 0) {
-                return l_fail(c); /* a nested flow SEQUENCE: outside the
-                                   * modeled family (maps only) */
+            if (c->depth >= (int)FC_MAX_NEST) {
+                return l_fail(c); /* past the nesting budget */
             }
             l_save_sk(c, line); /* the collection may be a simple key */
             c->depth++;
@@ -2355,6 +2466,7 @@ static int l_tokenize(lctx* c) {
 /* ---- the libyaml parser (the flow state machine, event-exact) -------- */
 
 static int l_render_map(lctx* c, fout* o, size_t* ip);
+static int l_render_seq(lctx* c, fout* o, size_t* ip);
 
 static int l_render_node(lctx* c, fout* o, size_t* ip) {
     ltok* t = &c->toks[*ip];
@@ -2392,7 +2504,7 @@ static int l_render_node(lctx* c, fout* o, size_t* ip) {
         }
         ltok* t2 = &c->toks[*ip];
         if (t2->kind == LT_TAG || t2->kind == LT_ANCHOR || t2->kind == LT_ALIAS ||
-            t2->kind == LT_FLMAP) {
+            t2->kind == LT_FLMAP || t2->kind == LT_FLSEQ) {
             return l_fail(c);
         }
         fo_str(o, "=VAL :");
@@ -2435,6 +2547,12 @@ static int l_render_node(lctx* c, fout* o, size_t* ip) {
             return l_fail(c); /* an anchored nested map: outside */
         }
         return l_render_map(c, o, ip);
+    }
+    if (t->kind == LT_FLSEQ) {
+        if (anchor != NULL) {
+            return l_fail(c); /* an anchored nested seq: outside */
+        }
+        return l_render_seq(c, o, ip);
     }
     /* a node-less position: the empty scalar (the anchor rides) */
     fo_str(o, "=VAL :");
@@ -2530,6 +2648,102 @@ static int l_render_map(lctx* c, fout* o, size_t* ip) {
         fo_str(o, "=VAL : \n");
     }
     fo_str(o, "-MAP\n");
+    return 1;
+}
+
+/* The nested flow-sequence body (the r314 law's libyaml side): *ip sits
+ * ON the FLSEQ-START token. The same walk the root seq render takes —
+ * the KEY single-pair wrapper (+MAP/-MAP, the parser's
+ * flow_sequence_entry_mapping_* states), ENTRY separators with the
+ * trailing-comma re-peek, key-less members rendering the bare node —
+ * ending at the level's FLSEQ-END (the root walk's EOS/-STR tail stays
+ * the root's alone). The floor's `[?&m]` member renders
+ * `+MAP/=VAL : &m / =VAL : / -MAP` — the anchor rides the wrapper's
+ * EMPTY key (the node-less position law) while the parser's value slot
+ * inserts the empty scalar. */
+static int l_render_seq(lctx* c, fout* o, size_t* ip) {
+    (*ip)++; /* past FLSEQ-START */
+    fo_str(o, "+SEQ\n");
+    int first = 1;
+    for (;;) {
+        if (*ip >= c->ntoks) {
+            return l_fail(c);
+        }
+        ltok* e = &c->toks[*ip];
+        if (e->kind == LT_EOS || e->kind == LT_ERROR) {
+            return l_fail(c); /* the collection never closed */
+        }
+        if (e->kind == LT_FLSEQ_END) {
+            (*ip)++;
+            break;
+        }
+        if (!first) {
+            if (e->kind != LT_ENTRY) {
+                return l_fail(c);
+            }
+            (*ip)++;
+            if (*ip >= c->ntoks) {
+                return l_fail(c);
+            }
+            e = &c->toks[*ip];
+            /* libyaml re-peeks after the separator: the collection may
+             * end right here (the trailing-comma shape) */
+            if (e->kind == LT_FLSEQ_END) {
+                (*ip)++;
+                break;
+            }
+            if (e->kind == LT_EOS || e->kind == LT_ERROR) {
+                return l_fail(c);
+            }
+        }
+        first = 0;
+        if (e->kind == LT_KEY) {
+            /* the single-pair mapping wrapper */
+            (*ip)++;
+            fo_str(o, "+MAP\n");
+            if (*ip >= c->ntoks) {
+                return l_fail(c);
+            }
+            ltok* k = &c->toks[*ip];
+            if (k->kind == LT_VALUE || k->kind == LT_ENTRY) {
+                (*ip)++; /* the SEQ mapping-key state consumes this token */
+                fo_str(o, "=VAL : \n");
+            } else if (k->kind == LT_FLSEQ_END) {
+                fo_str(o, "=VAL : \n");
+            } else {
+                if (!l_render_node(c, o, ip)) {
+                    return l_fail(c);
+                }
+            }
+            if (*ip >= c->ntoks) {
+                return l_fail(c);
+            }
+            ltok* v = &c->toks[*ip];
+            if (v->kind == LT_VALUE) {
+                (*ip)++;
+                if (*ip >= c->ntoks) {
+                    return l_fail(c);
+                }
+                v = &c->toks[*ip];
+                if (v->kind == LT_ENTRY || v->kind == LT_FLSEQ_END) {
+                    fo_str(o, "=VAL : \n");
+                } else {
+                    if (!l_render_node(c, o, ip)) {
+                        return l_fail(c);
+                    }
+                }
+            } else {
+                fo_str(o, "=VAL : \n");
+            }
+            fo_str(o, "-MAP\n");
+            continue;
+        }
+        /* the key-less entry: the node is the SEQ member */
+        if (!l_render_node(c, o, ip)) {
+            return l_fail(c);
+        }
+    }
+    fo_str(o, "-SEQ\n");
     return 1;
 }
 

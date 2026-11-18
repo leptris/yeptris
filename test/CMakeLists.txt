@@ -6334,6 +6334,56 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-explicitkey-r313-artifact.bin
     )
 
+    # the r314 nightly escape (run 44354924371): the 8290-byte soup
+    # artifact `{<CR-run>  **  51:<CR><CR>1.0e17,2002:binaryg:...` - the
+    # flow-qsoup family (the ?##| glued members ride laws a/d, the CR
+    # runs ride law b, the ** runs ride law c) with TWO fresh members
+    # the walk never modeled, each carrying its own widening. THE FLOOR
+    # LAW: the minimizer's 7-byte floor `{[?&m]} ` - a nested flow
+    # SEQUENCE at a MAP member start. yeptris reads the member as the
+    # nested collection itself (+SEQ/-SEQ, the glued-`?` plain `?&m`
+    # riding the HM87/652Z plain-? law, d - `&` is mid-plain content
+    # after the non-blank `?`) against libyaml 0.2.x's unconditional
+    # flow-`?`-KEY law (scanner.c fetch_next_token: `?` in flow_level is
+    # a KEY whatever follows - an INDICATOR follower, outside the r183
+    # arm's plain-safe gate), which wraps the single pair as a NESTED
+    # map with the anchored-empty key (`=VAL : &m `). The A/B: libfyaml
+    # 04e0b58 reads the floor byte-exact as yeptris does (one plain
+    # inside the seq - 2-of-3 with the 1.2 grammar's ns-plain-first,
+    # where `?` followed by an ns-plain-safe byte starts a plain scalar
+    # in flow context too) - comparator divergence, no engine claim.
+    # THE TAIL LAW: the artifact's last member is the quoted `"empky":`
+    # at a map member start - the engines AGREE byte-exact on the
+    # probes (`{"a"}` / `{"a":}` / `{"a":x}`; a `:` splits
+    # unconditionally after a quoted scalar in flow), the walk just
+    # needed to claim the shape to reach the tail. The classifier gains:
+    # the y-side nested-`[` member arm (the r281/r310 stash mechanics
+    # with the per-level seq_at stamp - the member walks read the
+    # ENCLOSING level's kind, the value-slot/split-key `{` walks restamp
+    # 0 so sibling branches never read stale), the y-side quoted-KEY
+    # member arm, the l-side nested-seq tokenizer slots (the depth>0
+    # `[` case mirrors `{`) and the recursive l_render_seq body (the
+    # root walk's KEY-wrapper semantics, ending at the level's closer),
+    # and the self-test's nesting-splice mutant moves to a `{`-led
+    # member (the empty-seq splice `,[]` is law-governed now, the
+    # mutant-3 precedent - 49 of them claimed byte-exact pre-move, 0
+    # post).
+    # Comparator carry only - no engine change.
+    # (The seeds ride the comparator corpus like the r282-r313 soup
+    # seeds - no snapshot exclusion, no workflow edit.)
+    # Seeds: flow-qsoup-nestedseq-r314.bin (the 7-byte ddmin floor
+    # `{[?&m]}<SP>`; 7/7 single-byte deletions lose the dual bar -
+    # pre-patch DIFFER exit 77, post-patch carry exit 0) and
+    # flow-qsoup-nestedseq-r314-artifact.bin (the 8290-byte raw
+    # artifact - classified byte-exact post-widening, both models
+    # reproduce the full 1193-line/937-line dump pair).
+    add_test(
+        NAME fuzz-diff-r314-flow-qsoup-nestedseq
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-nestedseq-r314.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-nestedseq-r314-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
