@@ -18506,9 +18506,29 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                  * covered the pair and the carry declined its own
                  * family (run 44292507063). */
                 coll_col = (int)line_first;
-            } else if (c == '?' && col == line_first &&
+            } else if (c == '?' && col - 1 == line_first &&
                        (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
                         data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                /* the '?' explicit-key law: the '?' is the LINE'S FIRST
+                 * TOKEN. col is counted per consumed byte (incremented
+                 * before the arms run), so the byte's own column is
+                 * col - 1 -- the arm's original `col == line_first`
+                 * compared the NEXT byte's column against the
+                 * first-token column and never fired, coll_col kept
+                 * the root -1, and the ':'-led residual plain a
+                 * truncated anchor leaves (the HM87 riding-colon law)
+                 * crossed the PS into the next line's '?' -- the
+                 * second anchor run rode as mid-plain CONTENT, its
+                 * split never staged, and the all-splits copy (the
+                 * r311 composition, one truncation per '&' run)
+                 * declined its own family (the nightly's run
+                 * 44314834088, crash-b59be29f: the r234 docstart seed
+                 * DOUBLED, "---<PS> ? &--02:in~---<PS> ? &--02:in~").
+                 * libfyaml A/B: the LF twin reads yeptris's stream
+                 * byte-exact (wide 1.2 ns-anchor-char names riding
+                 * anchored-empties; the r311 04e0b58 probe concurs) --
+                 * comparator carry only, the carry search gains zero
+                 * new power. */
                 coll_col = (int)line_first;
             }
             if (c == ':' && (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
@@ -18829,9 +18849,12 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                  * second dash of "--" is plain content and the riding
                  * plain keeps the '&'-/'*'-runs inside it content) */
                 coll_col2 = (int)line_first2;
-            } else if (c == '?' && col2 == line_first2 &&
+            } else if (c == '?' && col2 - 1 == line_first2 &&
                        (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
                         data[i + 1] == '\n' || data[i + 1] == '\r')) {
+                /* the '?' explicit-key law again (the copy walk mirrors
+                 * the gate: the '?' is the line's first token, col2-1 is
+                 * the byte's own column -- see the gate walk) */
                 coll_col2 = (int)line_first2;
             }
             if (c == ':' && (i + 1 >= size || data[i + 1] == ' ' || data[i + 1] == '\t' ||
