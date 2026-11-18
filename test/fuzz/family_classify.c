@@ -21,7 +21,9 @@
  *    1.2 law (1 break -> space, n -> n-1 newlines, interior blanks
  *    exact, leading/trailing runs trimmed); a `{` at the value slot
  *    opens a nested flow map derived recursively by the same member
- *    laws (law i);
+ *    laws (law i), and so does a `{` at the split-explicit-key
+ *    member's KEY slot — the blank/break run after the close rides to
+ *    the `:` VALUE boundary (the r310 widening);
  *  - the libyaml model: the 0.2.x scanner/parser contract the corpus
  *    walks adjudicated — scan_to_next_token eats blanks/tabs and every
  *    break kind in flow and comment-eats from any `#` to the line
@@ -968,7 +970,9 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
     int key_is_alias = 0;
     size_t alias_at = 0;
     size_t alias_len = 0;
-    if (ks >= n || fc_flow_ind(p[ks])) {
+    if (ks >= n || (fc_flow_ind(p[ks]) && p[ks] != '{')) {
+        /* (`{` is carved out: it opens the nested-collection KEY slot
+         * walk below -- the r310 widening) */
         memset(&key, 0, sizeof(key)); /* the empty key node */
         stop = ks;
         sep = (ks < n && fc_flow_ind(p[ks]));
@@ -1074,8 +1078,58 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
         if (!fc_plain_pieces(p, n, ks, n, 0, &key, &stop, &sep)) {
             return y_fail(c);
         }
-    } else if (p[ks] == '"' || p[ks] == '\'' || p[ks] == '&' || p[ks] == '!' || p[ks] == '[' ||
-               p[ks] == '{') {
+    } else if (p[ks] == '{') {
+        /* the nested flow map at the split-explicit-key member's KEY
+         * slot (the r310 widening, run 44191067135): the r281 law's
+         * mechanics one slot up -- the artifact's root member
+         * `?\t{\n...\n}` hangs the nested collection off the split
+         * explicit key ITSELF (the `?` drops, the `{` opens the key
+         * node, and the blank/break run after the close rides to the
+         * `:` VALUE boundary the same slot walk takes). The same member
+         * laws derive the collection recursively (maps only, maps
+         * decline past the depth budget); a glued colon (not a VALUE
+         * boundary) and any other non-boundary byte decline. */
+        if (getenv("YD_FC_TRACE") != NULL) {
+            fprintf(stderr, "split-key nested map at %zu\n", ks);
+        }
+        if (c->depth >= (int)FC_MAX_NEST) {
+            return y_fail(c); /* past the nesting budget */
+        }
+        fout nf = {NULL, 0, 0, 0};
+        fo_str(&nf, "+MAP\n");
+        fout outer = c->out;
+        c->out = nf;
+        c->depth++;
+        size_t after = 0;
+        int ok = y_members(c, '}', ks + 1, &after);
+        c->depth--;
+        nf = c->out;
+        c->out = outer;
+        if (!ok || nf.bad) {
+            free(nf.buf);
+            return 0;
+        }
+        fo_str(&nf, "-MAP\n");
+        if (nf.bad) {
+            free(nf.buf);
+            return y_fail(c);
+        }
+        memset(&key, 0, sizeof(key));
+        key.nest_buf = nf.buf;
+        key.nest_len = nf.len;
+        stop = fc_skip_blank_break(p, n, after);
+        if (stop < n && p[stop] == ':' &&
+            (stop + 1 >= n || fc_blank(p[stop + 1]) || fc_break_len(p, n, stop + 1) > 0 ||
+             fc_flow_ind(p[stop + 1]))) {
+            key.colon = 1; /* the VALUE boundary after the collection
+                            * key (the r286 shape); the common colon
+                            * path below opens the empty value */
+            key.colon_at = stop;
+        } else if (stop >= n || !fc_flow_ind(p[stop])) {
+            fc_val_drop(&key);
+            return y_fail(c);
+        }
+    } else if (p[ks] == '"' || p[ks] == '\'' || p[ks] == '&' || p[ks] == '!' || p[ks] == '[') {
         return y_fail(c);
     } else {
         if (p[ks] == ':' && ks + 1 < n &&
@@ -1106,11 +1160,15 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
     }
     if (key.colon) {
         if (!y_value_node(c, key.colon_at + 1, &stop, &val)) {
+            fc_val_drop(&key); /* the key-slot nested stash (the r310
+                                * widening) dies with the failed value
+                                * walk */
             return 0;
         }
     }
     if (stop >= n || !fc_flow_ind(p[stop])) {
         fc_val_drop(&val);
+        fc_val_drop(&key);
         return y_fail(c);
     }
     *term_at = stop;

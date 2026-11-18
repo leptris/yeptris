@@ -6187,6 +6187,44 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-valueslotcomment-r309-artifact.bin
     )
 
+    # the r310 nightly escape (run 44191067135, the r309 carry's first
+    # post-merge nightly): another parser-leg soup mutation under a
+    # libFuzzer hash name escaped the comparator snapshot's name-based
+    # `flow-qsoup*` exclusion (the r269 accepted trade). The 48-byte
+    # artifact is a block x nested-flow hybrid - the root member
+    # `?\t{...}` hangs a NESTED flow map off the split-explicit-key
+    # member's KEY slot (the r281 mechanics one slot up from the value
+    # slot), and the collection members plus the root members carry the
+    # glued-`?` plains `?:-` / `?*M`: yeptris keeps each ONE flat plain
+    # (the law-d ns-plain-first rule, suite HM87/652Z) while libyaml's
+    # 1.1 flow KEY-token quirk splits the explicit keys (`:` rides as
+    # the VALUE token -> the empty key with the plain `-` value; `*M`
+    # reaches the alias scan -> the `=ALI *M` key). The fresh SITE is
+    # byte-agreed on both engines (the nested key collection renders
+    # +MAP/-MAP + the empty value pair identically) - the divergence is
+    # the documented law-d split trapped behind the unmodeled key-slot
+    # collection, which the old walk declined outright (`{` at the
+    # split key slot was outside the family shape). The widening: the
+    # split-key slot accepts `{` - the same member laws derive the
+    # collection recursively, the blank/break run after the close rides
+    # to the `:` VALUE boundary (the r286 shape; a glued colon and any
+    # other non-boundary byte stay out).
+    # Comparator carry only - no engine change.
+    # the ddmin floor: 13 of 48 bytes survive the dual-bar walk
+    # (pre-patch DIFFER + post-patch classify; every byte is
+    # load-bearing - `?\t{}` IS the minimal key-slot collection member,
+    # and `?-` / `?*M` are the minimal law-d twins the escape hid
+    # behind it).
+    # (The seeds ride the corpus like the r282-r309 soup seeds and are
+    # excluded from the comparator snapshot by the same `flow-qsoup*`
+    # deletes - no mutation pressure on the nightly diff leg.)
+    add_test(
+        NAME fuzz-diff-r310-flow-qsoup-keynestmap
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-keynestmap-r310.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-keynestmap-r310-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
