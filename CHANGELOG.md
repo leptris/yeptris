@@ -6,7 +6,20 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.6.74] - 2026-11-18
+## [Unreleased]
+
+## [0.6.75] - 2026-11-19
+
+### Fixed
+
+- **the CBOR DOM strtab heap-use-after-free (#1468, PR #1469)** — the sinks stage tag/value pieces into the arena string (tail + commit) and re-encode the committed view through `dom_open_node` → `dom_str_in` → `str_put`; when that copy itself triggered `str_grow`, the grow reallocated `d->str` and freed the buffer the source pointer still named (`yep_dom_str_put` memcpy'd freed memory — ASan-confirmed on a 58-byte fuzz_cbor artifact). `str_put` now snapshots the self-offset before the grow and copies from the new buffer; a staged region extending past `str_len` is refused as OOM. One SSOT fix covers all seven decode.c staging call sites; the artifact is pinned as `test/fuzz/corpus/cbor/strtab-uaf-1468.cbor`.
+
+### the comparator era (r311-r313, all zero-`src/`)
+
+- **the comparator carries three more nightly escapes (the #1310 family's soup lineage; zero YAML engine divergence)**:
+  - **the anchor-charset prefix ladder (r311, PR #1463, issue #1462)** — the anchor-name-charset arm's carry search (all-splits + k=1 solos) can't reach the multi-split-prefix load-bearing set when a later corrupting split poisons the copy; each scan-order prefix of the recorded splits gets the same verify legs. Floor 30 bytes (1-minimal; two `&4:` anchor sites + a `---`/`--` doc cross + the corrupting `*0:-` alias twin).
+  - **the seq-dash position guard (r312, PR #1464, issue #1465)** — the arm's seq-dash walk took the second dash of `--` for a construct boundary (no position check), closed the riding plain, and staged a phantom alias node whose corrupting split led the scan-order ladder ahead of the load-bearing pair; the guard takes the `col == line_first` check its `?` sibling always had. Floor 28 bytes.
+  - **the `?` explicit-key first-token guard's dead off-by-one (r313, PR #1466, issue #1467)** — `col` was pre-incremented before the arm compared `col == line_first`, so the guard never fired; the phantom riding plain disappears and the existing r311 all-splits copy carries (zero new carry power). Floor 20 bytes (`---<PS> ? -<PS> ? &2:i`).
 
 ## [0.6.74] - 2026-11-18
 
