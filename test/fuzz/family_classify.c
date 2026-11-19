@@ -926,6 +926,22 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             memset(&key, 0, sizeof(key));
             memset(&val, 0, sizeof(val));
             *term_at = nxt;
+            /* the r319 widening (run 44470194441): the silent comma
+             * ride after the indicator member on the SEQ root — the
+             * engines consume ONE stray ',' past the member terminator
+             * byte-exact (the floor's `?,,g` member: `{e,e}` map then
+             * the plain `g`; the probes `[1,?,,g,h]` -> (1,{e,e},g,h),
+             * `[1,?,,]` -> (1,{e,e}), `[1,?,g]` -> (1,{e,e},g)). One
+             * comma only: the triple-comma form is a BOTH-ERROR shape
+             * (`[1,?,,,g]`) and a blank/break between the commas too
+             * (`[1,?,\rg]` errors yeptris) — both stay outside. The MAP
+             * root errors the ride (`{1,?,,g}` BOTH-ERROR) — SEQ-rooted
+             * only. The libyaml model's member loop already skips the
+             * leading FLOW-ENTRY (its flow_sequence_entry law), so this
+             * is the yeptris-model side only. */
+            if (!y_cur_is_map(c) && nxt + 1 < n && (p[nxt + 1] == ',' || p[nxt + 1] == ']')) {
+                *term_at = nxt + 1;
+            }
             if (y_cur_is_map(c)) {
                 fc_render_val(&c->out, p, &key);
                 fc_render_val(&c->out, p, &val);
@@ -1079,10 +1095,20 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             }
             e++;
         }
-        if (seps >= 2 || e >= n) {
+        /* the commas inside the run are COMMENT TEXT on both engines —
+         * the r319 widening (run 44470194441): the run's separator
+         * count is inert (the artifact's `?<CR>#, 12?1#|,?<CR>/...`
+         * member carries two commas inside the eat and both engines
+         * render the identical steal; the probes `[a,?\r#x,y,b\nc]` /
+         * `[a,?\r#x,y,z,b\nc]` render the r245 `+MAP(c,)` byte-exact).
+         * An eat running to EOF still declines, and the root matrix
+         * keeps its shape: a comma-carrying run on the MAP root stays
+         * untested-declined (the r245 steal stays SEQ-rooted), a clean
+         * eat on the SEQ root stays untested-declined. */
+        if (e >= n) {
             return y_fail(c);
         }
-        if (seps == 1 && y_cur_is_map(c)) {
+        if (seps >= 1 && y_cur_is_map(c)) {
             return y_fail(c); /* the r245 steal stays SEQ-rooted */
         }
         if (seps == 0 && !y_cur_is_map(c)) {
@@ -1101,7 +1127,17 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             (ks + 1 >= n || fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0)) {
             return y_fail(c); /* a colon-led stolen key: untested */
         }
-        if (!fc_plain_pieces(p, n, ks, n, 0, &key, &stop, &sep)) {
+        /* the stolen key rides the SAME plain walk the split
+         * plain-key slot takes — SEQ-rooted, so the r272 KEY-implicit
+         * colon cut applies (the r319 artifact's stolen key
+         * `/<LF><CR><CR><PS> 51:<CR><CR>1.0e17.tag` cuts at the
+         * colon+break boundary: key = `/\n\n\n51`, the common colon
+         * path opens the value `1.0e17.tag` — the engine renders
+         * `+MAP(/\\n\\n\\n51,1.0e17.tag)` byte-exact). The MAP-rooted
+         * clean eat keeps the plain law (the r277 law's colon-inside
+         * key). Flat stolen keys never see the difference (no colon,
+         * no cut — every r245 probe shape unchanged). */
+        if (!fc_plain_pieces(p, n, ks, n, !y_cur_is_map(c), &key, &stop, &sep)) {
             return y_fail(c);
         }
     } else if (p[ks] == '{') {
