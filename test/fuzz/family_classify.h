@@ -100,6 +100,32 @@
  *      between a member's plain tail and its separator: inert on both
  *      engines, the plain ends at the run and terminates at the next
  *      flow indicator.
+ *      the r319 widenings (run 44470194441): (1) the comment run's
+ *      separator count is INERT comment text — the artifact's
+ *      `?<CR>#, 12?1#|,?<CR>/...` member carries two commas inside the
+ *      eat and both engines render the identical SEQ-rooted steal
+ *      (the probes `[a,?\r#x,y,b\nc]` / `[a,?\r#x,y,z,b\nc]` render
+ *      the r245 `+MAP(c,)` byte-exact); the root matrix keeps its
+ *      shape (a comma-carrying run on the MAP root and a clean eat on
+ *      the SEQ root stay untested-declined; an eat to EOF declines);
+ *      (2) the stolen key rides the SAME plain walk the split
+ *      plain-key slot takes — SEQ-rooted, so the r272 KEY-implicit
+ *      colon cut applies (the artifact's stolen key
+ *      `/<LF><CR><CR><PS> 51:<CR><CR>1.0e17.tag` cuts at the
+ *      colon+break boundary: key = `/\n\n\n51`, the common colon path
+ *      opens the value `1.0e17.tag`); the MAP-rooted clean eat keeps
+ *      the plain law; flat stolen keys never see the difference; (3)
+ *      the INDICATOR-form `?` member's silent comma ride on the SEQ
+ *      root: the engines consume ONE stray ',' past the member
+ *      terminator byte-exact (the floor's `?,,g` member —
+ *      `{e,e}` map then the plain `g`; `[1,?,,g,h]` -> (1,{e,e},g,h),
+ *      `[1,?,,]` -> (1,{e,e})); one comma only — the triple form and
+ *      the break-between form are BOTH-ERROR shapes and the MAP root
+ *      errors the ride; the libyaml model's member loop already
+ *      skipped the leading FLOW-ENTRY. The A/B: libfyaml 04e0b58 joins
+ *      the shared reading on the steal probes byte-exact and rejects
+ *      the ride as a third reading — comparator carry, no engine
+ *      change.
  *  (g) the r278 quoted-tail law (run 43675241311): inside a glued-`?`
  *      member the quoted-span bytes ride yeptris's flat plain as
  *      content (the plain fold law joins the piece breaks), while

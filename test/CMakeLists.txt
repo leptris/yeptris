@@ -6509,6 +6509,74 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-key-map-r318-artifact.bin
     )
 
+    # the r319 nightly red (run 44470194441, main 4732ed9f — the first
+    # post-r318 red, and the first input the r316 timeout raise let the
+    # comparator FINISH: the same `?##`+CR+`1.0e17.tag`+`2002:binary`+
+    # `&m,` soup family as the r316 timeout sibling, one level deeper).
+    # The 9525-byte artifact is a flow SEQ of glued-`?` soup members;
+    # THE DIVERGENCE is the law-(a) member the libyaml side resolves
+    # through its 1.1 KEY-token + unconditional-comment quirk: the
+    # member `?#` fires libyaml's flow KEY token (the 1.1 unconditional
+    # quirk), the GLUED `#` (the scanner lands on it post-token, no
+    # blank-before requirement) comment-eats THROUGH the member's `,`
+    # separator AND the next member's `?` up to the CR, and the
+    # post-break bytes rebind as that map's KEY (the artifact's `?## &m`
+    # twin rebinds onto the ANCHOR: `+MAP, =VAL : &m , =VAL : , -MAP`
+    # — law-c's prop-on-empty-scalar rendering), while yeptris keeps
+    # `?#` a flat SEQ-member plain (the glued `#` is not blank-preceded,
+    # the 1.2 comment condition) and `?<CR>/...` a split-explicit-key
+    # member. The libyaml model already derived the artifact byte-exact
+    # (16731 bytes); the YEPTRIS model needed three widenings, ALL on
+    # shapes both comparator engines render byte-identically (EQUAL
+    # probes — comparator carry, no engine change):
+    #  1. the silent comma ride (the floor's `?,,g` member): the
+    #     engines consume ONE stray ',' past the indicator member's
+    #     terminator byte-exact (`[1,?,,g,h]` -> (1,{e,e},g,h),
+    #     `[1,?,,]` -> (1,{e,e})); one comma only — the triple form
+    #     (`[1,?,,,g]`) and the break-between form (`[1,?,\rg]`) are
+    #     BOTH-ERROR shapes, and the MAP root errors the ride
+    #     (`{1,?,,g}`) — SEQ-rooted only; the libyaml model's member
+    #     loop already skipped the leading FLOW-ENTRY;
+    #  2. the comment-run separator count is INERT comment text: the
+    #     artifact's `?<CR>#, 12?1#|,?<CR>/...` member carries TWO
+    #     commas inside the eat and both engines render the identical
+    #     r245 steal (the probes `[a,?\r#x,y,b\nc]` /
+    #     `[a,?\r#x,y,z,b\nc]` render `+MAP(c,)` byte-exact) — the
+    #     root matrix keeps its shape (a comma-carrying run on the MAP
+    #     root and a clean eat on the SEQ root stay untested-declined),
+    #     an eat to EOF still declines;
+    #  3. the stolen key rides the SAME plain walk the split plain-key
+    #     slot takes — SEQ-rooted, so the r272 KEY-implicit colon cut
+    #     applies (the artifact's stolen key `/<LF><CR><CR><PS>
+    #     51:<CR><CR>1.0e17.tag` cuts at the colon+break boundary:
+    #     key = `/\n\n\n51`, the common colon path opens the value
+    #     `1.0e17.tag`); the MAP-rooted clean eat keeps the r277 plain
+    #     law; flat stolen keys never see the difference.
+    # THE A/B: libfyaml 04e0b58 joins the shared reading on the steal
+    # probes byte-exact (`[a,?\r#x,b\nc]` / the multi-comma twins) and
+    # rejects the ride as a third reading ("flow sequence with invalid
+    # extra comma") — the r318 precedent's comparator-carry class, no
+    # engine change.
+    # the ddmin floor: 28 of 9525 bytes survive the dual bar (pre-patch
+    # DIFFER exit 77 + post-patch carry exit 0):
+    # `[1,?,,g\r?#<PS>,?#,?#,?\r/<PS>m]` — the `?`-indicator member
+    # with the silent-comma ride, the both-agreeing `g ?#` fold plain,
+    # and the two `?#` KEY-token/comment-eat members whose rebind
+    # steals the `?<CR>/<PS>m` split-key member's bytes; every further
+    # single deletion loses the red arm (717-run ddmin).
+    # the 50-mutant paired battery (30 single + 20 double, seed 319):
+    # 5 newly-carried (family members the widenings explain), 20
+    # clean-both, 0 anomalies, and 25 HONEST NON-CLAIMS (the
+    # YEPTRIS-ONLY-ACCEPT verdict classes the classifier is never
+    # consulted on — the floor's single-bit mutants land the lenient
+    # UTF-8-lead class).
+    add_test(
+        NAME fuzz-diff-r319-comma-ride-commentrun
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-comma-ride-r319.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-comma-ride-r319-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
