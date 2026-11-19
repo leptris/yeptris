@@ -6813,6 +6813,58 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-tail-r324-artifact.bin
     )
 
+    # the r325 nightly red (run 44611344281, main 37e7e09d — the
+    # r317/r320/r321/r323/r324 folded-header family's SIXTH composition,
+    # the first since the r324 tail grammar landed): the 35-byte artifact
+    # "> #<LS> :<LF>  <NEL> 5%<LS> :<LF> <LS> <NEL> 0<LF> <NEL>" — the
+    # header comment whose line break is the LS (the r283 shape), the
+    # more-indented kept-exotic body line at indent 2 (the r317 shape,
+    # now with a mid-plain `%` riding as inert content), and the
+    # exotic-led normal-indent line behind it. THE TWO NEW DIMENSIONS
+    # the r324 tail grammar cannot reach (both MID-BODY, not the EOF
+    # tail): (1) the fold-DROPPED realign — libyaml's 1.1 fold branch
+    # discards the more-indented line's break yeptris spells literally
+    # (the r297 spent-NEL law's shape at an escape-vs-triple site), so
+    # a carries ONE surplus escape and the raw LS/PS triple behind it is
+    # the SAME break libyaml's READ_LINE kept raw at the blank line —
+    # the walk eats a's escape and rejoins byte-bound at the coinciding
+    # triple; gated on the full 3-byte coincidence, and verdict-
+    # preserving for every existing member (whenever the gate fires,
+    # r197's fires too and both leave the walk at the identical state);
+    # (2) the EOF fold-space surplus — the r303/r304/r323 lattice
+    # completed: the blank-led final line's fold space rides beside the
+    # ONE clip escape with NO kept exotic behind (r176 owns the bare
+    # escape, r303/r304/r323 demand the NEL pair, the r324 grammar
+    # demands >= ONE exotic in the run), claimed only when a's whole
+    # remainder is exactly SP + escape and the r161 strcmp binds b's
+    # remainder. THE A/B: libfyaml 04e0b58 ERRORS on both floor and
+    # artifact ("missing document start" at the final blank-led line —
+    # a third reading), so the r318-class dual-engine consensus law
+    # does NOT carry this composition; libyaml 90a56d4 reads the 1.1
+    # split; yeptris keeps the exotics raw per the 1.2 whole-route —
+    # comparator carry only, no engine change (the r317 precedent).
+    # The artifact's full path rides the r299 twin-trail, the new
+    # realign arm, the r323 blank-run interleave and the r324 walk-end
+    # grammar; deeper mid-body plain permutations stay declined — the
+    # grammar boundary this round documents.
+    # Floor: 24 of 35 bytes survive the dual bar (greedy single-byte
+    # ddmin; pre-patch DIFFER exit 77 + post-patch carry exit 0 on
+    # BOTH the floor and the full artifact; every single-byte deletion
+    # of the floor loses the dual bar — the r320 ultra-minimal form).
+    # The 50-mutant paired battery (30 single + 20 double, seed 325):
+    # see the round issue. Both the floor and the full artifact ride
+    # the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r325-folded-header-family-realign
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-realign-r325.bin
+    )
+    add_test(
+        NAME fuzz-diff-r325-folded-header-family-realign-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-realign-r325-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
