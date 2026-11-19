@@ -6763,6 +6763,56 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-blankrun-kept-exotic-r323-artifact.bin
     )
 
+    # the r324 nightly red (run 44597736377, main 4a75570c — the
+    # r317/r320/r321/r323 folded-header family's FIFTH composition):
+    # the 32-byte artifact's doubled "> #<PS> :" comment headers, the
+    # mid-body kept-NEL line at indent 2, and the EOF tail grown to
+    # the "SP <NEL> SP <NEL>" DOUBLE kept-exotic run behind a "0"
+    # content line. The headers and the mid-body line ride the
+    # r283/r197/r317 laws behind the walk's earlier pairings; the
+    # site the r303/r304/r323 tail arms cannot reach is the doubled
+    # exotic tail: yeptris's 1.2 whole-route keeps the tail raw (NEL,
+    # interior spaces, NEL) and spells its own clip escape behind,
+    # while libyaml's 1.1 trailing-breaks join collapses the whole
+    # tail into the few escapes its ledger counted. THE WIDENING —
+    # the family's GENERALIZING TAIL GRAMMAR, not a sixth pin: a's
+    # remainder is a pure run of spaces / kept NELs / kept LS-PS
+    # triples (>= ONE kept exotic — the family signature; a
+    # pure-space surplus is the real divergence shape, still
+    # declined), everything behind the run is byte-identical to b's
+    # WHOLE remainder (the r161 strcmp law — b-side bytes are never
+    # eaten), and at most the ONE clip escape rides beside it as
+    # surplus. The grammar sits at TWO arrival points: the walk's END
+    # (behind every member, so each existing member keeps its exact
+    # path) and inside the NEL-site branch's r < k cap (behind the
+    # r294 sub-case, whose exact path holds) — the floor's alignment
+    # shifts one escape earlier than the artifact's, so the same
+    # shape arrives with the cap's return in between. THE A/B:
+    # libyaml 90a56d4 eats the twin's whole exotic tail (the value
+    # empties, then it demands the document start), libfyaml 04e0b58
+    # keeps BOTH NELs raw ("=VAL > 0\n \N \N" — 1.2: no exotic break
+    # is a break) — the two 1.2 readers agree the exotics are
+    # content, comparator carry only, no engine change (the r317
+    # precedent).
+    # Floor: 25 of 32 bytes survive the dual bar (greedy single-byte
+    # ddmin; pre-patch DIFFER exit 77 + post-patch carry exit 0 on
+    # BOTH the floor and the full artifact, plain and _lf; every
+    # single-byte deletion of the floor reads clean pre-patch — the
+    # r320 ultra-minimal form). The 50-mutant paired battery (30
+    # single + 20 double, seed 324): 43 clean-both, 7 newly-carried,
+    # 0 declines, 0 anomalies. Both the floor and the full artifact
+    # ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r324-folded-header-family-tail
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-tail-r324.bin
+    )
+    add_test(
+        NAME fuzz-diff-r324-folded-header-family-tail-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-tail-r324-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
