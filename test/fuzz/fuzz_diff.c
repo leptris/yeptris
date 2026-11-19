@@ -7575,6 +7575,81 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             b++;
             continue;
         }
+        /* the r317 pre-NEL fold-space site (the nightly's round 317,
+         * run 44439765034, main f540eeed; 30-byte artifact "> #<PS> :
+         * \n <NEL>\n<PS> :\n  <NEL> 0\n 2 t"): the NEL-terminated
+         * content line's PRECEDING break rides the fold space. The
+         * r283 header-comment-PS splits the two engines' line models
+         * one line EARLIER than the kept-NEL site: yeptris's 1.2
+         * reader treats the " <NEL>" line as CONTENT (the whole-route
+         * normalizer keeps the pair raw in block bodies), so the
+         * normal break before it folds to the ONE space and the NEL
+         * itself stays as first-class content ("SP NEL"); libyaml's
+         * 1.1 reader breaks AT the NEL (IS_BREAK), the line is a
+         * blank, and BOTH breaks escape ("ESC ESC" -- the NEL's own
+         * normalization plus the blank line's). Pair the s fold
+         * spaces and k kept NELs to the FIRST s+k escapes -- each
+         * yeptris element renders exactly one libyaml break (the
+         * space is the single-break fold, the NEL the kept content
+         * of its break); a SHORTER escape run still declines
+         * (yeptris seeing more breaks than libyaml is no documented
+         * law), and the surplus escapes stay in libyaml's stream for
+         * the byte-bound continuation or the documented downstream
+         * laws (the r290 class). Behind the run the NEL branch's own
+         * space-run surplus logic continues (the r208 class). The
+         * r197 polarity owns the raw LS/PS site that follows (the
+         * header-comment-PS normalization delta: yeptris's
+         * in_comment arm folds it to LF, libyaml's READ_LINE keeps
+         * the triple), the r288 fold-space and the r176 tail own the
+         * more-indented end. A/B: libyaml 90a56d4 ERRORS on the
+         * pure-NEL body twins ("> \n<NEL>y" -- "did not find expected
+         * <document start>") while accepting the mixed seed, and
+         * libfyaml 04e0b58 KEEPS the raw NEL as block content (the
+         * LF twins' "\N" render) -- the comparators split, so this
+         * is comparator carry only, no engine change. Sits BEFORE
+         * the NEL branch with s >= 1 so every existing member keeps
+         * its exact path (the s == 0 shapes ride the original
+         * branch). */
+        if (a[0] == ' ' && (unsigned char)a[1] == 0xC2) {
+            size_t s = 0;
+            const char* sp = a;
+            while (sp[0] == ' ') {
+                sp++;
+                s++;
+            }
+            int k = 0;
+            const char* p = sp;
+            while ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0x85) {
+                p += 2;
+                k++;
+            }
+            if (s >= 1 && k >= 1) {
+                int r = 0;
+                while (b[2 * r] == '\\' && b[2 * r + 1] == 'n') {
+                    r++;
+                }
+                if (r >= s + k) {
+                    int na = 0;
+                    while (p[0] == ' ') {
+                        p++;
+                        na++;
+                    }
+                    const char* q = b + 2 * (s + k);
+                    int nb = 0;
+                    while (q[0] == ' ') {
+                        q++;
+                        nb++;
+                    }
+                    if (na - nb < 0) {
+                        return 0;
+                    }
+                    a = p;
+                    b = q;
+                    subs += 2;
+                    continue;
+                }
+            }
+        }
         /* the NEL site: yeptris keeps raw NELs, libyaml escaped them
          * (or, the r294 fold sub-case, folded the break into the one
          * plain-fold space -- the esc-less site) */

@@ -6429,6 +6429,46 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-anchor-breakride-r315-artifact.bin
     )
 
+    # the r317 nightly red (run 44439765034, main f540eeed — the first
+    # post-#1478 budget raise, 11s in): the 30-byte folded-scalar
+    # artifact "> #<PS> :\n <NEL>\n<PS> :\n  <NEL> 0\n 2 t" — a `>`
+    # header whose space-preceded comment is terminated by a raw PS
+    # with doubled NEL pairs riding the body lines. The divergence is
+    # the r283 header-comment-LS/PS split landing one line EARLIER
+    # than the kept-NEL site: yeptris's whole-route normalizer folds
+    # the header-comment PS (the in_comment arm) and keeps the body
+    # NEL pairs raw in block bodies (1.2 content), so the break before
+    # the NEL line folds to the ONE space ("SP NEL"); libyaml's 1.1
+    # reader breaks AT the NEL (IS_BREAK), the line is a blank, and
+    # both breaks escape, while its READ_LINE keeps the raw PS triple
+    # in the value where yeptris spells the escape. The walk model
+    # gains ONE branch (the pre-NEL fold-space site: pair the s fold
+    # spaces + k kept NELs to the first s+k escapes, short-run
+    # declines, surplus stays — the r290 direction law); the r197
+    # polarity, the r288 fold-space and the r176 tail own everything
+    # behind. THE A/B: libyaml 90a56d4 ERRORS on the pure-NEL body
+    # twins ("> \n<NEL>y" — "did not find expected <document start>")
+    # while accepting the mixed seed, and libfyaml 04e0b58 KEEPS the
+    # raw NEL as block content (the LF twins' "\N" render) — the
+    # comparators split, so this is comparator carry only, no engine
+    # change.
+    # the ddmin floor: 20 of 30 bytes survive the dual bar
+    # (pre-patch DIFFER exit 77 + post-patch carry exit 0): "> #<PS>
+    # :\n <NEL>\n<PS><NEL> 0" — the header-comment-PS, the NEL-riding
+    # blank-ish line, and the glued PS-NEL pair; every further single
+    # deletion loses the unclaimed-DIFFER arm.
+    # the 50-mutant paired battery (30 single + 20 double, seed 317):
+    # 13 newly-carried (family members the branch explains), 35
+    # clean-both, 0 anomalies, and 2 HONEST DECLINES (del '0'/del the
+    # LF behind it — the `:` line's break becomes libyaml's
+    # dropped-fold-break surplus, the r283 gap class, still red).
+    add_test(
+        NAME fuzz-diff-r317-folded-header-ps-nel
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-ps-nel-r317.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-ps-nel-r317-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
