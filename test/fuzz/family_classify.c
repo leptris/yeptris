@@ -1353,13 +1353,60 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
          * the SEQ root (a MAP key slot rides the r76 anchor-keymap
          * arm). */
         size_t as = i + 1;
+        /* the engine's yep_scan_prop_end cut (scan.c): pure prop
+         * charset — not blank, not break, not flow indicator, ',' or
+         * '#', with the multibyte breaks ending the name. NO colon
+         * follower exception (that is the alias walk's Y2GN law; the
+         * anchor scan is pure charset — `&m:(}` names `m:(`). */
+        size_t apl = 0;
+        while (as + apl < n && !fc_blank(p[as + apl]) && !fc_flow_ind(p[as + apl]) &&
+               p[as + apl] != '#' && fc_break_len(p, n, as + apl) == 0) {
+            apl++;
+        }
         size_t al = 0;
         while (as + al < n && fc_alpha(p[as + al])) {
             al++;
         }
         size_t ae = as + al;
-        if (al == 0 || y_cur_is_map(c)) {
+        if (al == 0) {
             return y_fail(c);
+        }
+        if (y_cur_is_map(c)) {
+            /* the r318 widening (run 44458062455): the MAP key slot's
+             * charset-divergent anchor member. When the two cuts
+             * disagree and libyaml's cut lands on a GLUED ':' (the
+             * artifact's `&m:(}` — the engine's prop charset keeps
+             * `:(` inside the name per the suite (2SXE/W5VH; libyaml
+             * is behind the suite, the r311 law), libyaml's scan_anchor
+             * cuts at `m` and re-lexes the tail: the 1.1 flow VALUE
+             * token fires on the glued ':' (key = anchored-empty `&m`,
+             * value = the plain `(`), while yeptris keeps the whole
+             * name so NO VALUE token fires and the parser inserts the
+             * empty value at the closer. The member derives as the
+             * anchored-empty key (`=VAL : &m:( `) + the inserted empty
+             * (`=VAL : `); the libyaml walk derives the cut tail
+             * independently and the entry's dual byte-equality is the
+             * firewall. Gates: the ':' glued AT the libyaml cut (a
+             * blank/break between cut and ':' re-opens the value-slot
+             * compositions the probes never cover), the prop name
+             * terminated by a flow indicator, and the divergence real
+             * (apl > al — an agreeing name is the r76-arm territory,
+             * declined). A first non-alpha cut byte that is not ':'
+             * re-lexes as plain content with no VALUE token — the
+             * libyaml parser errors there (not a DIFFER shape). */
+            if (apl <= al || ae >= n || p[ae] != ':') {
+                return y_fail(c);
+            }
+            size_t te = as + apl;
+            if (te >= n || !fc_flow_ind(p[te])) {
+                return y_fail(c);
+            }
+            *term_at = te;
+            fo_str(&c->out, "=VAL : &");
+            fo_bytes(&c->out, p + as, apl);
+            fo_str(&c->out, " \n");
+            fo_str(&c->out, "=VAL : \n"); /* the parser's inserted empty */
+            return 1;
         }
         /* the r315 widening (run 44411162279): a blank/break run between
          * the anchor name and the member terminator rides like the alias

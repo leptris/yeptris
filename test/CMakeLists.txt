@@ -6469,6 +6469,46 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-ps-nel-r317-artifact.bin
     )
 
+    # the r318 nightly red (run 44458062455, main af1c8e72 — the first
+    # post-r317 red): the 12-byte artifact "{?*L:\n,&m:(}" — a flow map
+    # whose first member is the GLUED-`?` explicit key with an ALIAS as
+    # the key (`?*L:` — the law-(d)/(c) plain-? + alias-as-plain-content
+    # split: yeptris renders `=VAL : ?*L` + the empty value, libyaml's
+    # 1.1 KEY-token split surfaces `=ALI *L`), then the bare-anchor
+    # member `&m:(}` at the MAP key slot. THE DIVERGENCE is the anchor
+    # charset cut at that key slot: the engine's yep_scan_prop_end
+    # keeps `:(` inside the name per the suite (2SXE/W5VH — the r311
+    # law, libyaml behind the suite), so NO flow VALUE token fires and
+    # the parser inserts the empty value at the closer (`=VAL : &m:( ` +
+    # `=VAL : `); libyaml's scan_anchor cuts at `m` (IS_ALPHA) and the
+    # 1.1 flow VALUE token fires on the GLUED ':' (key = anchored-empty
+    # `&m`, value = the plain `(`). The family classifier's `&` member
+    # walk owned both gates that declined it — the MAP level and the
+    # agreeing-name charset — and gains ONE branch: the MAP key slot's
+    # charset-divergent anchor member (the ':' glued AT the libyaml
+    # cut, the prop name terminated by a flow indicator, the divergence
+    # real, MAP levels only); the libyaml walk derives the cut tail
+    # independently and the entry's dual byte-equality is the firewall.
+    # THE A/B: libfyaml 04e0b58 reads yeptris's stream byte-exact on
+    # every probe (`{&m:(}` / `{*L,&m:}` / the artifact) — comparator
+    # carry only, no engine change.
+    # the ddmin floor: 8 of 12 bytes survive the dual bar (pre-patch
+    # DIFFER exit 77 + post-patch carry exit 0): "{*L,&m:}" — the bare
+    # alias member both engines agree on (`=ALI *L`) and the `&m:}`
+    # name-cut twin; every further single deletion loses the red arm.
+    # the 50-mutant paired battery (30 single + 20 double, seed 318):
+    # 8 newly-carried (family members the branch explains), 21
+    # clean-both, 0 anomalies, and 21 HONEST DECLINES (the `:` line's
+    # break deleted — the comma glued after the colon declines in the
+    # law-(d) member walk's own gate — and the YEPTRIS-ONLY-ACCEPT
+    # verdict classes the classifier is never consulted on).
+    add_test(
+        NAME fuzz-diff-r318-anchor-charset-key-map
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-key-map-r318.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-key-map-r318-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
