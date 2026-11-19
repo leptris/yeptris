@@ -117,9 +117,26 @@ jobs:
       - name: fuzz_transcode
         run: ulimit -s 32768 || true; ./build/test/fuzz_transcode_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus
 
-      # semantic differential: both libraries accept, streams differ
+      # semantic differential: both libraries accept, streams differ.
+      # The diff leg rides -timeout=30 (every other harness keeps 5):
+      # its per-input cost is the COMPARATOR's, not the engine's -- the
+      # probe chain rides ~50+ full-input engine-pair dumps (the
+      # anchor-charset arm's verify copies, the r311 split ladder's
+      # O(nsplits) bounded prefix pairs), and that volume grew through
+      # r211-r315's gray-consult additions while every individual arm
+      # stayed linear (the r316 nightly, run 44426641672: the r210
+      # pinned unit timeout-a9991d98... -- byte-identical to the
+      # r210 corpus seed -- re-crossed the 5s alarm in Debug+ASan+UBSan
+      # with NO divergence: the standalone Debug harness classifies it
+      # clean, the Release build runs it in ~2s, and the leaf profile
+      # shows the cost spread over engine re-parses, not the r210
+      # O(events^2) append returning -- that amortization held). The
+      # alarm is budget adjudication per the r285 precedent: 30s keeps
+      # ~2x headroom over the CI Debug worst while a genuine hang still
+      # trips; the pure-engine harnesses parse this unit in
+      # milliseconds and stay at 5.
       - name: fuzz_diff
-        run: ulimit -s 32768 || true; ./build/test/fuzz_diff_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=5 -rss_limit_mb=4096 corpus-comparator
+        run: ulimit -s 32768 || true; ./build/test/fuzz_diff_lf -max_total_time="$YEP_FUZZ_SECS" -timeout=30 -rss_limit_mb=4096 corpus-comparator
 
       - name: CBOR seeds
         run: python3 scripts/gen-cbor-seeds.py
