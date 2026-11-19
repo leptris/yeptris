@@ -61,6 +61,18 @@ static void wr_maybe_flush(yep_writer* w) {
  * (marshal/to_json.c) writes through the same engine (#904 item 5's
  * move kept ONE writer). */
 
+/* The out-of-line gate on the #1490 helpers: inlined, the purity scans
+ * bloated every hot caller's frame (the auto-vectorizer spills). MSVC
+ * has no GNU attributes — __declspec(noinline) is the same switch
+ * (port.h's popcount/ctz branches are the idiom). */
+#if defined(_MSC_VER) && !defined(__clang__)
+#define WR_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__)
+#define WR_NOINLINE __attribute__((noinline))
+#else
+#define WR_NOINLINE
+#endif
+
 /* The column is in CHARACTERS (code points) wherever a span carries
  * multi-byte text (#1490: libyaml's emitter->column counts characters);
  * a UTF-8 continuation byte (10xxxxxx) adds nothing. */
@@ -72,7 +84,7 @@ static inline int wr_char_cols(const char* p, uint32_t n) {
     return cols;
 }
 
-static void __attribute__((noinline)) wr_col_update_mb(yep_writer* w, const char* p, uint32_t n);
+static void WR_NOINLINE wr_col_update_mb(yep_writer* w, const char* p, uint32_t n);
 
 void wr_col_update(yep_writer* w, const char* p, uint32_t n) {
     if (w->skip_col) {
@@ -96,7 +108,7 @@ void wr_col_update(yep_writer* w, const char* p, uint32_t n) {
  * already is (no second pass). Out of line ON PURPOSE: inlined into
  * wr_put, the dual loop re-bloated the hot frame and the walk lanes
  * paid it per scalar (the #1490 restoration's measured lesson). */
-static void __attribute__((noinline)) wr_col_update_mb(yep_writer* w, const char* p, uint32_t n) {
+static void WR_NOINLINE wr_col_update_mb(yep_writer* w, const char* p, uint32_t n) {
     unsigned hi = 0;
     for (uint32_t i = n; i > 0; i--) { /* last newline wins */
         unsigned char c = (unsigned char)p[i - 1];
@@ -415,7 +427,7 @@ static void emit_sq(yep_writer* w, const char* p, uint32_t n) {
  * registers into every caller's prologue — the fold walks paid the
  * spill/cleanup per scalar (the -6% the lanes caught). A real call per
  * span on the dirty paths is cheaper than the prologue everywhere. */
-static int __attribute__((noinline)) wr_span_ascii(const char* p, uint32_t n) {
+static int WR_NOINLINE wr_span_ascii(const char* p, uint32_t n) {
     uint32_t i = 0;
     uint64_t acc = 0;
     for (; i + 8 <= n; i += 8) {
@@ -438,7 +450,7 @@ typedef struct wr_span_scan {
     int space;
 } wr_span_scan;
 
-static wr_span_scan __attribute__((noinline)) wr_span_facts(const char* p, uint32_t n) {
+static wr_span_scan WR_NOINLINE wr_span_facts(const char* p, uint32_t n) {
     uint64_t hi = 0, sp = 0;
     uint32_t i = 0;
     for (; i + 8 <= n; i += 8) {
@@ -1686,8 +1698,8 @@ static void emit_flow(yep_emitter* em, uint32_t id) {
  * otherwise. Out of line so emit_block_map's hot loop keeps main's
  * exact frame on clean documents (the gated body in the loop cost the
  * wide lane -3%). */
-static void __attribute__((noinline)) wr_fused_cols_mb(yep_writer* w, yep_view kv, yep_view vv,
-                                                       uint32_t f_total, uint32_t f_nl) {
+static void WR_NOINLINE wr_fused_cols_mb(yep_writer* w, yep_view kv, yep_view vv, uint32_t f_total,
+                                         uint32_t f_nl) {
     int cols = (int)f_total;
     if (!wr_span_ascii(kv.p, kv.len)) {
         cols += wr_char_cols(kv.p, kv.len) - (int)kv.len;
