@@ -60,17 +60,27 @@ static void wr_maybe_flush(yep_writer* w) {
 /* the write primitives below are writer.h-visible: the marshal reader
  * (marshal/to_json.c) writes through the same engine (#904 item 5's
  * move kept ONE writer). */
+/* The column is in CHARACTERS (code points), libyaml's
+ * emitter->column: a UTF-8 continuation byte (10xxxxxx) adds nothing. */
+static inline int wr_char_cols(const char* p, uint32_t n) {
+    int cols = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        cols += ((unsigned char)p[i] & 0xC0u) != 0x80u;
+    }
+    return cols;
+}
+
 void wr_col_update(yep_writer* w, const char* p, uint32_t n) {
     if (w->skip_col) {
         return; /* the non-pretty JSON lanes never read col (#739) */
     }
     for (uint32_t i = n; i > 0; i--) { /* last newline wins */
         if (p[i - 1] == '\n') {
-            w->col = (int)(n - i);
+            w->col = wr_char_cols(p + i, n - i);
             return;
         }
     }
-    w->col += (int)n;
+    w->col += wr_char_cols(p, n);
 }
 
 void wr_reserve(yep_writer* w, size_t need);
@@ -199,8 +209,8 @@ void wr_byte(yep_writer* w, char c) {
     if (!w->skip_col) {
         if (c == '\n') {
             w->col = 0;
-        } else {
-            w->col++;
+        } else if (((unsigned char)c & 0xC0u) != 0x80u) {
+            w->col++; /* characters, not bytes: continuations add nothing */
         }
     }
     if (w->dry) {
@@ -380,10 +390,10 @@ static void emit_sq(yep_writer* w, const char* p, uint32_t n) {
  * (IS_SPACE — a tab is content). EXCEPTION (#1268): single-quoted
  * bodies may carry breaks when the value is single-able (no
  * space_break/break_space/specials) — emit_sq_folded renders those
- * breaks per libyaml's write_single_quoted. Columns are BYTES, matching
- * the engine's existing 13B flow fold; libyaml counts characters, so
- * multi-byte content folds at slightly different points (documented
- * divergence, ASCII input folds byte-identically). */
+ * breaks per libyaml's write_single_quoted. Columns are CHARACTERS
+ * (code points), as in libyaml, so multi-byte content folds at the
+ * same points; the walk keeps the pending run in bytes (for the write)
+ * and in characters (for the column). */
 
 /* The fold break: libyaml's write_indent mid-scalar — indention is
  * always clear there, so it is exactly a break plus the pad. */
@@ -394,22 +404,25 @@ static void wr_fold_break(yep_writer* w, int fold_col) {
 
 /* The shared walk for a plain body (no doubling to apply). The fold
  * decision prices the PENDING run in (it flushes only at a fold): the
- * live column at the candidate space is w->col + run — exactly
- * libyaml's emitter->column at the same byte. */
+ * live column at the candidate space is w->col + run_cols — exactly
+ * libyaml's emitter->column at the same character. */
 static void emit_plain_folded(yep_writer* w, const char* p, uint32_t n, int fold_col) {
-    uint32_t run = 0; /* pending flush span length */
+    uint32_t run = 0; /* pending flush span length (bytes) */
+    int run_cols = 0; /* the same span in characters */
     uint32_t i = 0;
     while (i < n) {
-        if (p[i] == ' ' && i > 0 && i + 1 < n && w->col + (int)run > w->best_width &&
+        if (p[i] == ' ' && i > 0 && i + 1 < n && w->col + run_cols > w->best_width &&
             p[i - 1] != ' ' && p[i + 1] != ' ' && p[i - 1] != '\t' && p[i + 1] != '\t') {
             if (run) {
                 wr_put(w, p + i - run, run);
                 run = 0;
+                run_cols = 0;
             }
             wr_fold_break(w, fold_col);
             i++; /* the fold consumes the space (libyaml: MOVE without WRITE) */
             continue;
         }
+        run_cols += ((unsigned char)p[i] & 0xC0u) != 0x80u;
         i++;
         run++;
     }
@@ -456,6 +469,7 @@ static int writer_sq_allowed(const char* p, uint32_t n) {
 static void emit_sq_folded(yep_writer* w, const char* p, uint32_t n, int fold_col) {
     wr_byte(w, '\'');
     uint32_t run = 0;
+    int run_cols = 0;
     uint32_t i = 0;
     int breaks = 0;
     while (i < n) {
@@ -463,6 +477,7 @@ static void emit_sq_folded(yep_writer* w, const char* p, uint32_t n, int fold_co
             if (run) {
                 wr_put(w, p + i - run, run);
                 run = 0;
+                run_cols = 0;
             }
             if (!breaks && p[i] == '\n') {
                 wr_byte(w, '\n');
@@ -480,21 +495,24 @@ static void emit_sq_folded(yep_writer* w, const char* p, uint32_t n, int fold_co
             if (run) {
                 wr_put(w, p + i - run, run);
                 run = 0;
+                run_cols = 0;
             }
             wr_put(w, "''", 2);
             i++;
             continue;
         }
-        if (p[i] == ' ' && i > 0 && i + 1 < n && w->col + (int)run > w->best_width &&
+        if (p[i] == ' ' && i > 0 && i + 1 < n && w->col + run_cols > w->best_width &&
             p[i - 1] != ' ' && p[i + 1] != ' ' && p[i - 1] != '\t' && p[i + 1] != '\t') {
             if (run) {
                 wr_put(w, p + i - run, run);
                 run = 0;
+                run_cols = 0;
             }
             wr_fold_break(w, fold_col);
             i++;
             continue;
         }
+        run_cols += ((unsigned char)p[i] & 0xC0u) != 0x80u;
         i++;
         run++;
     }
@@ -559,7 +577,7 @@ static void emit_dq_json_raw(yep_writer* w, const char* p, uint32_t n) {
     size_t total = (size_t)n + 2;
     w->last = '"';
     if (!w->skip_col) {
-        w->col += (int)total;
+        w->col += 2 + wr_char_cols(p, n);
     }
     if (w->dry) {
         w->len += total;
@@ -1552,10 +1570,14 @@ static void emit_block_map(yep_emitter* em, uint32_t id, int content_col) {
             }
             if (fused) {
                 w->last = vv.len > 0 ? (char)vv.p[vv.len - 1] : ':';
+                /* the column in characters: the key and value spans
+                 * may be multi-byte */
+                int f_cols = (int)f_total - (int)kv.len - (int)vv.len + wr_char_cols(kv.p, kv.len) +
+                             wr_char_cols(vv.p, vv.len);
                 if (f_nl) {
-                    w->col = (int)(f_total - 1u); /* the break resets, then the line */
+                    w->col = f_cols - 1; /* the break resets, then the line */
                 } else {
-                    w->col += (int)f_total;
+                    w->col += f_cols;
                 }
                 if (w->dry) {
                     w->len += f_total;
@@ -1993,7 +2015,12 @@ static int emit_json_pair_fused(yep_writer* w, const yep_dnode* kn, const yep_dn
      * byte that actually lands last (a digit tail for plain tokens) */
     w->last = (typed && !vquoted && vtl > 0) ? vt[vtl - 1] : '"';
     if (!w->skip_col) {
-        w->col += (int)total;
+        /* characters: the key and a string value may be multi-byte
+         * (typed tokens are ASCII) */
+        w->col += (int)total - (int)kv.len + wr_char_cols(kv.p, kv.len);
+        if (!typed) {
+            w->col += wr_char_cols(vv.p, vv.len) - (int)vv.len;
+        }
     }
     if (w->dry) {
         w->len += total;

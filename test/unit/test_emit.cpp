@@ -924,10 +924,10 @@ TEST(EmitFold, DefaultUnfoldsSmall) {
  *
  * Reference bytes below were produced by libyaml 0.2.5's own emitter
  * (yaml_emitter_set_width / best_indent) on the same parsed content.
- * ASCII fold parity is byte-exact; the documented divergence is the
- * column model (bytes here, characters in libyaml) and that
- * double-quoted bodies never fold (libyaml folds them; the engine's
- * canonical/DQ form is fixed by design). */
+ * Fold parity is byte-exact (the column counts characters, as in
+ * libyaml); the documented divergence is that double-quoted bodies
+ * never fold (libyaml folds them; the engine's canonical/DQ form is
+ * fixed by design). */
 
 namespace {
 
@@ -1187,6 +1187,62 @@ TEST(EmitFold903, StreamMatchesBufferedWithFold) {
     EXPECT_EQ(slen, buffered.size());
     EXPECT_EQ(acc.out, buffered);
     yeptris_document_free(doc);
+}
+
+/* The fold column counts characters (code points), not bytes, like
+ * libyaml's emitter->column. Reference bytes are Psych.dump /
+ * Psych::Nodes#to_yaml (libyaml) on the same data. */
+TEST(EmitFold903, MultibyteFoldsByCharacterColumn) {
+    yeptris_emit_options opts = {sizeof(yeptris_emit_options), 0, 80, 0, 0, 1};
+#define RUS                                                                                        \
+    "\xD0\xBF\xD1\x80\xD0\xBE\xD1\x86\xD0\xB5\xD1\x81\xD1\x81 "                                    \
+    "\xD0\xBF\xD0\xBE\xD0\xB3\xD0\xBB\xD0\xBE\xD1\x89\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F "            \
+    "\xD0\xB0\xD1\x82\xD0\xBC\xD0\xBE\xD1\x81\xD1\x84\xD0\xB5\xD1\x80\xD0\xBD\xD1\x8B\xD0\xBC\xD0" \
+    "\xB8 \xD0\xB3\xD0\xB0\xD0\xB7\xD0\xB0\xD0\xBC\xD0\xB8 "                                       \
+    "\xD1\x8D\xD0\xBB\xD0\xB5\xD0\xBA\xD1\x82\xD1\x80\xD0\xBE\xD0\xBC\xD0\xB0\xD0\xB3\xD0\xBD\xD0" \
+    "\xB8\xD1\x82\xD0\xBD\xD0\xBE\xD0\xB3\xD0\xBE "                                                \
+    "\xD0\xB8\xD0\xB7\xD0\xBB\xD1\x83\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"
+    /* "процесс поглощения атмосферными газами электромагнитного
+     * излучения": 66 characters, 127 bytes */
+    ASSERT_EQ(strlen(RUS), 127u);
+
+    /* glossarist's localized concept: the content line is 79
+     * characters (140 bytes) — under the width, so it stays whole */
+    const char* gl = "data:\n  definition:\n  - content: " RUS "\n";
+    EXPECT_EQ(ser_opts(gl, opts), gl);
+
+    /* past the width the break lands where libyaml's does: after the
+     * 88th character, not the 50th byte-column word */
+    EXPECT_EQ(ser_opts("k: " RUS " " RUS "\n", opts),
+              "k: " RUS " \xD0\xBF\xD1\x80\xD0\xBE\xD1\x86\xD0\xB5\xD1\x81\xD1\x81 "
+              "\xD0\xBF\xD0\xBE\xD0\xB3\xD0\xBB\xD0\xBE\xD1\x89\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F\n  "
+              "\xD0\xB0\xD1\x82\xD0\xBC\xD0\xBE\xD1\x81\xD1\x84\xD0\xB5\xD1\x80\xD0\xBD\xD1\x8B\xD0"
+              "\xBC\xD0\xB8 \xD0\xB3\xD0\xB0\xD0\xB7\xD0\xB0\xD0\xBC\xD0\xB8 "
+              "\xD1\x8D\xD0\xBB\xD0\xB5\xD0\xBA\xD1\x82\xD1\x80\xD0\xBE\xD0\xBC\xD0\xB0\xD0\xB3\xD0"
+              "\xBD\xD0\xB8\xD1\x82\xD0\xBD\xD0\xBE\xD0\xB3\xD0\xBE "
+              "\xD0\xB8\xD0\xB7\xD0\xBB\xD1\x83\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F\n");
+
+    /* the single-quoted walk counts the same way */
+    EXPECT_EQ(ser_opts("k: '" RUS " " RUS "'\n", opts),
+              "k: '" RUS " \xD0\xBF\xD1\x80\xD0\xBE\xD1\x86\xD0\xB5\xD1\x81\xD1\x81 "
+              "\xD0\xBF\xD0\xBE\xD0\xB3\xD0\xBB\xD0\xBE\xD1\x89\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F\n  "
+              "\xD0\xB0\xD1\x82\xD0\xBC\xD0\xBE\xD1\x81\xD1\x84\xD0\xB5\xD1\x80\xD0\xBD\xD1\x8B\xD0"
+              "\xBC\xD0\xB8 \xD0\xB3\xD0\xB0\xD0\xB7\xD0\xB0\xD0\xBC\xD0\xB8 "
+              "\xD1\x8D\xD0\xBB\xD0\xB5\xD0\xBA\xD1\x82\xD1\x80\xD0\xBE\xD0\xBC\xD0\xB0\xD0\xB3\xD0"
+              "\xBD\xD0\xB8\xD1\x82\xD0\xBD\xD0\xBE\xD0\xB3\xD0\xBE "
+              "\xD0\xB8\xD0\xB7\xD0\xBB\xD1\x83\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F'\n");
+#undef RUS
+
+    /* CJK: three-byte characters; twenty space-separated 4-character
+     * words fold after the 16th (column 82), as libyaml does */
+#define CJK4 "\xE6\x95\xB0\xE5\xAD\xA6\xE5\x85\xAC\xE5\xBC\x8F" /* 数学公式 */
+#define CJK4x4 CJK4 " " CJK4 " " CJK4 " " CJK4
+    EXPECT_EQ(ser_opts("k: " CJK4x4 " " CJK4x4 " " CJK4x4 " " CJK4x4 " " CJK4x4 "\n", opts),
+              "k: " CJK4x4 " " CJK4x4 " " CJK4x4 " " CJK4x4 "\n  " CJK4x4 "\n");
+    EXPECT_EQ(ser_opts("k: '" CJK4x4 " " CJK4x4 " " CJK4x4 " " CJK4x4 " " CJK4x4 "'\n", opts),
+              "k: '" CJK4x4 " " CJK4x4 " " CJK4x4 " " CJK4x4 "\n  " CJK4x4 "'\n");
+#undef CJK4x4
+#undef CJK4
 }
 
 /* #168: a TAGGED literal-styled scalar keeps the block form even
