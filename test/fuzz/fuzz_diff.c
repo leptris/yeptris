@@ -7731,6 +7731,77 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                         continue;
                     }
                 }
+                /* the r324 family-tail grammar at the cap site (the
+                 * nightly's round 324, run 44597736377, main 4a75570c;
+                 * the 25-byte dual-bar floor "> #<PS> :<LF>  <NEL>
+                 * 0<LF><PS> 0<NEL><NEL>" -- the r317/r320/r321/r323
+                 * folded-header family's FIFTH composition): the
+                 * EOF-tail join where the kept exotics DOUBLE. Pair
+                 * the r ESCs to the FIRST r kept NELs (the r320 ledger
+                 * law bounds libyaml's join: it can never exceed the
+                 * breaks it read), and the (k - r) NELs + interior
+                 * spaces behind become the EOF-join surplus -- the
+                 * family tail grammar (see the walk's end arm): the
+                 * surplus run is pure spaces / kept NELs / kept LS-PS
+                 * triples (>= ONE kept exotic -- here guaranteed by
+                 * k > r), everything behind it is byte-identical to
+                 * b's whole remainder (the r161 strcmp law -- b-side
+                 * bytes are never eaten), and at most the ONE clip
+                 * escape rides beside it as surplus. On the floor the
+                 * alignment shifts one escape earlier than the full
+                 * artifact, so the walk arrives HERE with the second
+                 * NEL still unpaired ([NEL NEL ESC] vs the one escape
+                 * -- the full artifact's copy of the shape reaches the
+                 * walk's end arm instead, b exhausted by the byte-
+                 * match). Everything else still declines: the cap's
+                 * "yeptris seeing more breaks than libyaml" bar holds
+                 * for every non-tail shape (mid-body fold accounting
+                 * -- the r290 law). THE A/B: libyaml 90a56d4 eats the
+                 * twin's whole exotic tail, libfyaml 04e0b58 keeps
+                 * BOTH NELs raw ("=VAL > 0\n \N \N" -- 1.2: no exotic
+                 * break is a break) -- comparator carry only, no
+                 * engine change (the r317 precedent). Sits BEHIND the
+                 * r294 sub-case (whose k == 1 + fold-space gate keeps
+                 * its exact path) and covers only the strcmp-bound
+                 * tail residue. */
+                {
+                    const char* at = a + 2 * r;
+                    const char* qb = b + 2 * r;
+                    const char* pe = at;
+                    int x = 0;
+                    while (*pe != '\0') {
+                        if (pe[0] == ' ') {
+                            pe++;
+                            continue;
+                        }
+                        if ((unsigned char)pe[0] == 0xC2 && (unsigned char)pe[1] == 0x85) {
+                            pe += 2;
+                            x++;
+                            continue;
+                        }
+                        if ((unsigned char)pe[0] == 0xE2 && (unsigned char)pe[1] == 0x80 &&
+                            ((unsigned char)pe[2] == 0xA8 || (unsigned char)pe[2] == 0xA9)) {
+                            pe += 3;
+                            x++;
+                            continue;
+                        }
+                        break;
+                    }
+                    if (x >= 1) {
+                        if (strcmp(pe, qb) == 0) {
+                            a = pe;
+                            b = qb;
+                            subs += 2;
+                            continue;
+                        }
+                        if (pe[0] == '\\' && pe[1] == 'n' && strcmp(pe + 2, qb) == 0) {
+                            a = pe + 2;
+                            b = qb;
+                            subs += 2;
+                            continue;
+                        }
+                    }
+                }
                 return 0;
             }
             const char* q = b + 2 * k;
@@ -8302,6 +8373,86 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             a += 1;
             subs += 2;
             continue;
+        }
+        /* the r324 family-tail grammar (the nightly's round 324, run
+         * 44597736377, main 4a75570c; the 32-byte artifact
+         * crash-f0051cdb4f00a19a92728ee572e540a5a1ec2a9e, 25-byte
+         * dual-bar floor "> #<PS> :<LF>  <NEL> 0<LF><PS> 0<NEL><NEL>",
+         * the r317/r320/r321/r323 folded-header family's FIFTH
+         * composition): the family's GENERALIZING tail law -- the
+         * consolidation that retires the per-composition tail-pin
+         * treadmill (three of the five compositions red at the tail:
+         * r303's site, the r323 both-side fold-space site, this one).
+         * The doubled "> #<PS> :" header and the mid-body kept-NEL
+         * line ride the r283/r197/r317 laws behind the walk's earlier
+         * pairings; the site the r303/r304/r323 tail arms cannot
+         * reach is the EOF-tail run where the kept exotics DOUBLE
+         * behind a content line: yeptris's 1.2 whole-route keeps the
+         * " <NEL> <NEL>" tail raw (the r317 kept-NEL law at the frame
+         * end -- NEL, interior spaces, NEL) and spells its own clip
+         * escape behind, while libyaml's 1.1 trailing-breaks join
+         * collapses the whole tail -- the blank-per-1.1 lines' breaks
+         * AND the EOF NELs -- into the few escapes its ledger counted
+         * (the r320 ledger law bounds it: libyaml's join can never
+         * exceed the breaks it read). On the full artifact the
+         * byte-match spends the one aligned escape pair first and the
+         * walk reaches [NEL SP NEL ESC] against an exhausted b; on
+         * the floor the alignment shifts one escape earlier and the
+         * walk reaches [NEL NEL ESC] against b's single escape (the
+         * NEL-site branch's r < k cap declines -- the cap's site-
+         * local fold accounting, not the EOF-join law the r303 site
+         * already carries). THE GRAMMAR: a's remainder is a pure run
+         * of spaces / kept NELs / kept LS-PS triples carrying >= ONE
+         * kept exotic (the family signature; a pure-space surplus is
+         * the real divergence shape, still declined), everything
+         * behind the run is byte-identical to b's WHOLE remainder
+         * (the r161 strcmp law -- b-side bytes are never eaten), and
+         * at most the ONE clip escape rides beside the run as surplus
+         * (the wider escape surplus stays with the r290/r216 caps).
+         * THE A/B: libyaml 90a56d4 eats the twin's whole exotic tail
+         * (the value empties, then it demands the document start; the
+         * mixed floor keeps the PS raw mid-body), libfyaml 04e0b58
+         * keeps BOTH NELs raw ("=VAL > 0\n \N \N" -- 1.2: no exotic
+         * break is a break), yeptris keeps them raw and folds around
+         * them -- the comparators split, and the two 1.2 readers
+         * agree the exotics are content, so this is comparator carry
+         * only, no engine change (the r317 precedent). Sits at the
+         * walk's END, behind every member, so each existing member
+         * keeps its exact path; the family's future tail compositions
+         * ride this grammar instead of a seventh per-shape pin. */
+        if (a[0] == ' ' || (unsigned char)a[0] == 0xC2 || (unsigned char)a[0] == 0xE2) {
+            const char* pa = a;
+            int exotic = 0;
+            while (*pa != '\0') {
+                if (pa[0] == ' ') {
+                    pa++;
+                    continue;
+                }
+                if ((unsigned char)pa[0] == 0xC2 && (unsigned char)pa[1] == 0x85) {
+                    pa += 2;
+                    exotic++;
+                    continue;
+                }
+                if ((unsigned char)pa[0] == 0xE2 && (unsigned char)pa[1] == 0x80 &&
+                    ((unsigned char)pa[2] == 0xA8 || (unsigned char)pa[2] == 0xA9)) {
+                    pa += 3;
+                    exotic++;
+                    continue;
+                }
+                break;
+            }
+            if (exotic >= 1) {
+                if (strcmp(pa, b) == 0) {
+                    a = pa;
+                    subs += 2;
+                    continue;
+                }
+                if (pa[0] == '\\' && pa[1] == 'n' && strcmp(pa + 2, b) == 0) {
+                    a = pa + 2;
+                    subs += 2;
+                    continue;
+                }
+            }
         }
         return 0;
     }
