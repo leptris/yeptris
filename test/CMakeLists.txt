@@ -6628,6 +6628,74 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-comment-nel-inversion-r320.bin
     )
 
+    # the r321 scheduled-nightly red (run 44511876660, main 40e5dac9 —
+    # the r317/r320 folded-header family's third composition): the
+    # 32-byte artifact "> #<PS> :<LF>  <NEL> 5<LF><PS> #<PS><NEL>
+    # 0<LF>  t" — the folded `>` header whose space-preceded comment
+    # terminates at the raw PS, a kept-NEL content line, and the
+    # PS-comment line with a trailing ` 0`/`  t` behind. The 18-byte
+    # ddmin floor "> #<PS> <NEL><PS> <PS><NEL>" is the family's
+    # ALL-BLANK-BODY composition: every body line is spaces + an
+    # exotic break (never a folding break), so libyaml's 1.1 reader
+    # composes an EMPTY value (blank lines feed max_indent, the clip
+    # chomps every trailing break) while yeptris's 1.2 whole-route
+    # normalizer keeps the exotic breaks raw IN the body (the r317
+    # kept-NEL law: the post-header bytes are ONE content line at the
+    # auto-indent, the leading space stripped once, interior spaces
+    # riding raw) and the clip appends the one LF escape. The walk
+    # gains the all-blank-body site (the r321 site: b's value EMPTY at
+    # an empty-value line end, a's value one raw NEL/PS/SP run with a
+    # kept NEL or PS, terminated by the clip's LF escape) and the
+    # r216-class libyaml surplus-escape mirror (the older four-pass
+    # walk's own law, composed into this walk's r197+r283 chain: the
+    # artifact's PS-comment line pairs esc-esc-# esc against PS # PS
+    # esc and leaves libyaml's ONE NEL-break escape uneaten — yeptris's
+    # comment/fold accounting consumed the exotic break pair into the
+    # ONE escape it spells). THE A/B: libfyaml 04e0b58 renders the
+    # same EMPTY value as libyaml on the floor (both comparators agree
+    # against yeptris's raw-kept reading) — comparator carry only, no
+    # engine change (the r317 precedent).
+    # Floor: the artifact was NOT pre-minimized — the 18-byte floor is
+    # the dual-bar survivor (ddmin 251 runs; pre-patch DIFFER exit 77 +
+    # post-patch carry exit 0 on BOTH the floor and the full artifact).
+    add_test(
+        NAME fuzz-diff-r321-folded-header-allblank-body
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-allblank-body-r321.bin
+    )
+
+    # the r321 scheduled-nightly red's second composition (the same
+    # run, the DIFFER that fired first — the soup family one level
+    # deeper than r319): the 18555-byte artifact's flow soup of
+    # `?##`-comment-run members, CR breaks, `1.0e17.tag`/`2002:binary`
+    # tag-plain members, and `&m,` anchor rides. The 18-byte ddmin
+    # floor "[1,?#,:<CR>1,?/<PS>:<CR>]" composes THREE documented
+    # laws: (1) the `?#` KEY-token + comment-eat member (the r245/r319
+    # law — libyaml's post-break `1` rebinds as the map's key, the
+    # SEQ's comma closes it as {1: empty}); (2) the bare-colon member
+    # (the r281 colon-led law — yeptris opens the pair that STAYS
+    # open, key empty); (3) the pair member `?/` with the post-break
+    # `:` VALUE boundary — the classifier's pair walk gains the
+    # colon-boundary widening (the engine re-lexes the post-break `:`
+    # as the VALUE token; the value node rides y_value_node exactly
+    # like the MAP-root/plain member path; only the plain/empty value
+    # form claims — every isolated probe instance is YEPTRIS-ONLY, so
+    # the classifier is consulted only on the composed DIFFER shapes).
+    # The full artifact additionally needed the l_tokenize correction:
+    # libyaml's fetch law fires the `---`/`...` document indicator
+    # ONLY when the byte after the triple is IS_BLANKZ — the
+    # artifact's `...L` tail member (a `...` followed by a non-blank
+    # at a line start) rides as PLAIN CONTENT, and the model's
+    # check was stricter than the engine (false decline).
+    # Floor: 18 of 18555 bytes survive the dual bar (ddmin 984 runs;
+    # pre-patch DIFFER exit 77 + post-patch carry exit 0 on BOTH the
+    # floor and the full artifact, plain and _lf).
+    add_test(
+        NAME fuzz-diff-r321-qsoup-colon-boundary-pair
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-colon-boundary-pair-r321.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

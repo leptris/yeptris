@@ -1716,24 +1716,49 @@ static int y_pair_member(yctx* c, size_t i, size_t* term_at) {
         return y_fail(c);
     }
     /* the plain member: glued colons and questions ride as content (P5's
-     * `a:b`, P7's `?a`) — a `:`-VALUE boundary declines (the pair value
-     * under an open pair is unprobed) */
+     * `a:b`, P7's `?a`). The r321 widening (the scheduled nightly's
+     * round 321, run 44511876660, main 40e5dac9 — the 18-byte floor
+     * `[1,?#,:<CR>1,?/<PS>:<CR>]`): a `:`-VALUE boundary after the
+     * piece's break run now rides the common value slot — the
+     * engine re-lexes the post-break `:` as the VALUE token (the
+     * boundary arms of fc_piece/fc_plain_pieces already detect it:
+     * `:` + flow indicator and `:` + break both terminate the plain),
+     * and the value node rides y_value_node exactly like the
+     * MAP-root/plain member path above (the probes `[1,:<CR>m,b<PS>:<CR>]`
+     * -> key `b` value empty, `...b<PS>:<CR>9` -> value `9`,
+     * `...b<PS>:,` -> the `:`+flow-ind form, all byte-exact on the
+     * engine — every isolated instance is YEPTRIS-ONLY (libyaml's
+     * raw-spell parser error), so the classifier is consulted only on
+     * the composed DIFFER shapes the other members' laws reach). Only
+     * the plain/empty value form claims (an alias, an anchor, a
+     * nested map, or a second boundary in the value: unprobed under
+     * the open pair, declines). */
     fcnode key;
     memset(&key, 0, sizeof(key));
+    fcnode val;
+    memset(&val, 0, sizeof(val));
     size_t stop;
     int sep;
     if (!fc_plain_pieces(p, n, i, n, 0, &key, &stop, &sep)) {
         return y_fail(c);
     }
     if (key.colon) {
-        return y_fail(c);
+        if (!y_value_node(c, key.colon_at + 1, &stop, &val)) {
+            fc_val_drop(&val);
+            return 0;
+        }
+        if (val.colon || val.alias_len > 0 || val.anchor_len > 0 || val.nest_buf != NULL) {
+            fc_val_drop(&val);
+            return y_fail(c); /* a non-plain value under the open pair: unprobed */
+        }
     }
     if (stop >= n || !fc_flow_ind(p[stop])) {
+        fc_val_drop(&val);
         return y_fail(c);
     }
     *term_at = stop;
     fc_render_val(&c->out, p, &key);
-    fo_str(&c->out, "=VAL : \n");
+    fc_render_val(&c->out, p, &val);
     return 1;
 }
 
@@ -2548,9 +2573,17 @@ static int l_tokenize(lctx* c) {
             plain = 1;
             break;
         default:
-            /* the document indicators at a line start */
+            /* the document indicators at a line start — libyaml's fetch
+             * law (scanner.c's fetch_next_token) fires the indicator
+             * only when the byte AFTER the triple is IS_BLANKZ (blank,
+             * break, or EOF); `...L` (the r321 artifact's tail member,
+             * run 44511876660) rides as PLAIN CONTENT — the model's
+             * check was stricter than the engine and declined the
+             * whole soup on it. */
             if (col0 && n - c->pos >= 3 &&
-                (memcmp(p + c->pos, "---", 3) == 0 || memcmp(p + c->pos, "...", 3) == 0)) {
+                (memcmp(p + c->pos, "---", 3) == 0 || memcmp(p + c->pos, "...", 3) == 0) &&
+                (n - c->pos == 3 || fc_blank(p[c->pos + 3]) ||
+                 fc_break_len(p, n, c->pos + 3) > 0)) {
                 return l_fail(c);
             }
             plain = 1;
