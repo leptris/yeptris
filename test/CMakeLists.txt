@@ -6577,6 +6577,57 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-comma-ride-r319-artifact.bin
     )
 
+    # the r320 nightly red (run 44499300534, main 40e5dac9 — the first
+    # post-r319 red, DIFFER 33s into the diff leg): the 17-byte artifact
+    # "> #<PS> <NEL><LF><PS><NEL> 0" — a folded-scalar header whose
+    # space-preceded comment carries a raw PS, with a NEL/LF/PS/NEL
+    # break run and a trailing ` 0` plain behind. The r317 sibling
+    # covered the PRE-NEL fold-space site in this same walk; the r320
+    # shape is the folded-HEADER side and its tail INVERTS: yeptris's
+    # #638 normalizer folds the header-comment PS (the in_comment arm,
+    # the r283 header-comment shape) and its bs-content token consumes
+    # the " <NEL>" line FOLD-BLIND (the r317 kept-NEL law — the NEL
+    # rides raw into the buffer and the engine reads the line as
+    # CONTENT at indent 1 off its leading space), so the kept-NEL line
+    # absorbs its own break into the fold composition (breaks_before 3
+    # → the fold emits n-1) and the value reads
+    # [kept NEL][ESC][ESC][0][clip ESC]; libyaml's 1.1 reader breaks AT
+    # the NEL — four blank lines whose breaks join LITERALLY — so its
+    # value reads [ESC][ESC][raw PS][ESC][0] (the PS-line's READ_LINE
+    # keeps the triple; the r197 polarity pairs it behind the walk's
+    # first three pairings). At the value tail the one-short ledger
+    # INVERTS the final break/content pair: yeptris [plain][ESC] where
+    # libyaml [ESC][plain]. The walk gains ONE branch (the kept-NEL
+    # fold-ledger inversion site): one escape on each side, the SAME
+    # plain byte behind each (not a space — the space-run pairing is
+    # the NEL-site law's own material; not an escape — the r197
+    # polarity owns those; not a raw NEL/LS/PS lead byte), and the
+    # remainders behind the claim coincide completely (the r161 strcmp
+    # law). All existing members keep their exact path (the branch
+    # sits behind the r197 polarity and ahead of the r283
+    # dropped-fold-break arm, whose gate wants a ON the escape).
+    # THE A/B: libyaml 90a56d4 reads the four blank lines literally
+    # ("=VAL : \n\n<PS>\n0"), libfyaml 04e0b58 keeps BOTH the PS and
+    # the NEL raw as the body's verbatim content
+    # ("=VAL > <PS><NEL> 0\n" — 1.2: no exotic break is a break) — the
+    # comparators split THREE ways, so this is comparator carry only,
+    # no engine change (the r317 precedent).
+    # Floor: the nightly's artifact arrives PRE-MINIMIZED — the 17
+    # bytes ARE the dual-bar floor (pre-patch DIFFER exit 77 +
+    # post-patch carry exit 0): all 17 single-byte deletions lose the
+    # red arm (pre-patch clean on every deletion), so the seed and the
+    # artifact are one file here.
+    # the 50-mutant paired battery (30 single + 20 double, seed 320):
+    # 50 clean-both, 0 newly-carried, 0 anomalies, 0 declines — the
+    # 17-byte ultra-minimal floor's neighborhood is entirely
+    # agreements (consistent with the deletion sweep: the divergence
+    # needs all 17 bytes).
+    add_test(
+        NAME fuzz-diff-r320-folded-header-comment-nel-inversion
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-comment-nel-inversion-r320.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
