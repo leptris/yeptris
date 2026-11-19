@@ -6865,6 +6865,49 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-realign-r325-artifact.bin
     )
 
+    # r326 (run 44624659366, main 51d167d5): the glued-?/# flow-soup
+    # family's alias-slot comment ride — the nightly artifact's
+    # `?\t*%L #|...` split-explicit-key alias whose post-name blank/break
+    # run reaches a blank-preceded `#` instead of a bare boundary. On
+    # yeptris the engine's comment condition fires: the run eats
+    # inertly to its break and the member boundary derives after it
+    # (the floor's `?\t*L #\n,` site — the separator), or a ':' +
+    # blank/break re-lexes as the VALUE boundary (the artifact's L3
+    # `:\t ,` — the pair's empty value opens, `=ALI *%L` + the inserted
+    # empty, identical rendering). On libyaml the member never scans:
+    # its law-a `?`-KEY + comment-eat swallows the whole line tail
+    # INCLUDING the alias (the artifact's `*%L` rides the `?##|#|`
+    # member's eat), so the engine's wider alias-name cut (libyaml's
+    # scan_anchor stops at the non-IS_ALPHA `%`, yeptris keeps `%L`
+    # per the suite's prop-charset law) never surfaces against it.
+    # The soup plains themselves (m1/m2/m5: `?#?#|#|+``, `?##|#|`,
+    # `:#|#|+``) ride the law-a comment-eat + law-d plain-? + the
+    # glued-colon plain law verbatim; the bare backtick member rides
+    # the y-side plain-content walk while libyaml eats it inside the
+    # m2 comment. THE A/B: libfyaml 04e0b58 reads the soup plains
+    # yeptris's way (members 1-2 parse as scalars byte-identically)
+    # and then ERRORS on the bare backtick member ("plain scalar
+    # cannot start with '`'" — spec-tight, a third reading); no
+    # two-engine consensus exists, so the r318-class consensus law
+    # does NOT carry — comparator carry only, no engine change.
+    # Floor: 18 of 67 bytes survive the dual bar (greedy single-byte
+    # ddmin; pre-patch DIFFER exit 77 + NOT classified, post-patch
+    # carry exit 0 + classified, on BOTH the floor and the full
+    # artifact; the ddmin converges to the same floor from both runs —
+    # the r320 ultra-minimal form). The 50-mutant paired battery
+    # (30 single + 20 double, seed 326): see the round issue. Both the
+    # floor and the full artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r326-alias-comment-ride
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-alias-comment-ride-r326.bin
+    )
+    add_test(
+        NAME fuzz-diff-r326-alias-comment-ride-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-alias-comment-ride-r326-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

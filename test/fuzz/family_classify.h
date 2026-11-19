@@ -36,6 +36,22 @@
  *      (`=ALI *<name>` in the value position) with the same
  *      blank/break run to the terminator the bare-alias member walks;
  *      a ':' after the alias and any other byte stay out;
+ *      the r326 widening (run 44624659366): the split explicit-key
+ *      slot's alias ride reaches a blank/break-preceded `#` — the
+ *      engine's comment condition fires, the run eats inertly to its
+ *      break (the r279/r309 boundary matrix, now on the alias slot:
+ *      the floor's `?\t*L #\n,` site and the artifact's
+ *      `?\t*%L #|...` one), and after the ride either the
+ *      separator/closer derives as before or a ':' + blank/break
+ *      re-lexes as the VALUE boundary (the pair's empty value opens —
+ *      `=ALI *<name>` + the inserted empty, identical rendering).
+ *      libyaml never scans such an alias: the law-a KEY + comment-eat
+ *      swallows the whole member tail including the name, so the
+ *      engine's wider alias-name cut (the floor's `*%L` — libyaml's
+ *      scan_anchor stops at the non-IS_ALPHA `%`) never surfaces
+ *      against it. A ':' across the PLAIN ride (no comment), the same
+ *      comment ride on the bare-alias member, an eat to EOF, and any
+ *      other byte stay declined;
  *      the r315 widening (run 44411162279): the ANCHOR slots take the
  *      same run — the bare-anchor member, the anchored-empty value
  *      slot, and the open-pair fold-in member ride a blank/break run
