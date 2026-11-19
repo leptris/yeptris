@@ -801,7 +801,13 @@ static int yd_qcolon_walk(const char* ldump, const char* ydump2) {
  * ("&-:x+"). The probe spaces the follower out ("&- :x+"): both
  * engines then read anchor '-' + plain ":x+", so both engines' dumps
  * of the spacing must equal libyaml's original. Block context only —
- * the flow-'&'-colon composite rides yd_flow_anchor_colon_divergence. */
+ * the flow-'&'-colon composite rides yd_flow_anchor_colon_divergence.
+ * The r322 nightly (run 44560533569, crash-650d364f: the 11-byte
+ * "- :\"\n- &g:-" floor) is the same family one line earlier: the
+ * quote-led ':"' entry precedes the anchor line, so the tracker's
+ * quote-open arm must leave a block-glued quote as plain content
+ * (the guard's block-glued arm) or the phantom quote swallows the
+ * newline and the '&' never gates. */
 static int yd_anchor_glued_follower_divergence(const uint8_t* data, size_t size, const char* ydump,
                                                const char* ldump) {
     if (ydump == NULL || ldump == NULL || size < 4 || size > 8192) {
@@ -827,14 +833,28 @@ static int yd_anchor_glued_follower_divergence(const uint8_t* data, size_t size,
             node_pos = 0;
             continue;
         }
-        if ((c == '\'' || c == '"') && !(i > 0 && ((data[i - 1] >= 'a' && data[i - 1] <= 'z') ||
-                                                   (data[i - 1] >= 'A' && data[i - 1] <= 'Z') ||
-                                                   (data[i - 1] >= '0' && data[i - 1] <= '9') ||
-                                                   data[i - 1] == '_' || data[i - 1] == '-'))) {
+        int mid_word = i > 0 && ((data[i - 1] >= 'a' && data[i - 1] <= 'z') ||
+                                 (data[i - 1] >= 'A' && data[i - 1] <= 'Z') ||
+                                 (data[i - 1] >= '0' && data[i - 1] <= '9') || data[i - 1] == '_' ||
+                                 data[i - 1] == '-');
+        int block_glued = depth == 0 && i > 0 && data[i - 1] != ' ' && data[i - 1] != '\t' &&
+                          data[i - 1] != '\n' && data[i - 1] != '\r' && data[i - 1] != '!';
+        if ((c == '\'' || c == '"') && !(mid_word || block_glued)) {
             /* quotes open only at token starts: a mid-word quote is
              * plain CONTENT (the catch-85 word-start law) — "k-':"
              * kept the tracker inside a phantom quote and the '&' on
-             * the next line never gated */
+             * the next line never gated. The r322 nightly (run
+             * 44560533569, crash-650d364f) widens the law to EVERY
+             * block-glued lead: at depth 0 a quote whose previous
+             * byte is not a separator, a line break, or the tag lead
+             * ('!!str"x"' legally glues a REAL quote) rides INSIDE a
+             * plain — the plain-first ':'/non-indicator leads both
+             * engines read as plain (the HM87/652Z suite law;
+             * libyaml's block plain breaks only on ':'+blank or ' #'
+             * — '- :"', '- ."', '- \\"' all keep the '"' as content),
+             * so the tracker rides the newline to the '&' line. In
+             * FLOW the ':'+quote pair is the VALUE indicator plus a
+             * REAL quote ("{"a":"b"}") — the arm stays depth-gated. */
             quote = (c == '\'') ? '\'' : '"';
             node_pos = 0;
             continue;

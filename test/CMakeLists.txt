@@ -6696,6 +6696,40 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-colon-boundary-pair-r321.bin
     )
 
+    # the r322 scheduled-nightly red (run 44560533569, main cc1b3c33 —
+    # the r62 anchor-glued-follower family one line earlier): the
+    # 11-byte floor "- :\"\n- &g:-" — a block seq whose FIRST entry is
+    # the ':'-led plain ':"' and whose SECOND entry is '&g:-'. libyaml
+    # anchors 'g' and reads the plain ':-' (its anchor charset accepts
+    # the glued ':' follower); yeptris's props scan requires a
+    # separator after the name and bails the WHOLE token to plain
+    # (the r62 law, the trailing-space shape of the bail riding since
+    # that carry). The classifier's anchor-glued-follower walk ALREADY
+    # claims the one-line forms ('- &g:-' alone passes the probe) —
+    # the nightly escape was the tracker's quote-open arm: the '"'
+    # glued to the block ':' of the FIRST entry opened a phantom quote
+    # that swallowed the newline and the '&' on line 2 never gated.
+    # The widening: a quote glued to a ':' at depth 0 is plain CONTENT
+    # (both engines' glued-indicator plain reading — the HM87/652Z
+    # suite law; libyaml's block plain breaks only on ':'+blank), so
+    # the tracker rides the newline; in flow the ':'+quote pair is the
+    # VALUE indicator plus a REAL quote and the arm stays depth-gated.
+    # THE A/B: the three-oracle spread on '&g:-' (libyaml 90a56d4
+    # anchor 'g' + plain ':-'; libfyaml 04e0b58 anchor 'g' + EMPTY
+    # value; yeptris the whole-token plain bail) — three lenient
+    # readings of one glued-indicator form, the r62 adjudication —
+    # comparator carry only, no engine change.
+    # Floor: the artifact IS the floor — 11 of 11 bytes survive the
+    # dual bar (ddmin found no removable byte; pre-patch DIFFER exit
+    # 77 + post-patch carry exit 0, plain and _lf; the space-separated
+    # rewrite "- :\"\n- &g :-" reads EQUAL on both engines and equals
+    # libyaml's original dump byte-exact).
+    add_test(
+        NAME fuzz-diff-r322-anchor-glued-quote-led
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-anchor-glued-follower-quote-led-r322.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
