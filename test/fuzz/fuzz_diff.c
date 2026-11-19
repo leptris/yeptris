@@ -7859,6 +7859,33 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             subs += 2;
             continue;
         }
+        /* the r323 EOF-tail fold-space kept-NEL fold-space site (the
+         * nightly's round 323, run 44579814561, main 37327760; the
+         * 23-byte dual-bar floor of the 158-byte artifact "> #<PS><PS>
+         * <NEL><LF><PS> 0<LF> <NEL>"): the SAME EOF-tail kept NEL as
+         * the r304 site, with the fold space riding on BOTH sides of
+         * the kept NEL -- the final blank-per-1.1 line's leading space
+         * and the fold space the 1.2 route spells behind the break
+         * ("... LF SP <NEL>": yeptris's tail reads SP NEL SP ESC while
+         * libyaml's trailing-breaks join collapses the whole tail --
+         * the line LF, the final line's space, the EOF NEL -- into
+         * the ONE escape still pending on b). The claim eats a's
+         * surplus spaces + kept NEL and pairs the ONE clip escape on
+         * each side; the remainders behind must coincide completely
+         * (the r161 strcmp law -- the claim can never swallow
+         * divergence past the value). Sits BEHIND the r304 site (whose
+         * gate wants the escape at a[3] -- this site's a[3] is the
+         * fold space -- disjoint) and behind the r176 tail (a ON the
+         * escape). Previously this shape declined unconditionally
+         * here, so no existing member's path changes. */
+        if (a[0] == ' ' && (unsigned char)a[1] == 0xC2 && (unsigned char)a[2] == 0x85 &&
+            a[3] == ' ' && a[4] == '\\' && a[5] == 'n' && b[0] == '\\' && b[1] == 'n' &&
+            strcmp(a + 6, b + 2) == 0) {
+            a += 6;
+            b += 2;
+            subs += 2;
+            continue;
+        }
         /* the r176 tail: yeptris's clip break libyaml dropped at a
          * breakless EOF -- accept ONLY when y's whole remainder is
          * the one escape followed by a byte-identical frame suffix
@@ -7989,6 +8016,83 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 a = ap + 2;
                 subs += 2;
                 continue;
+            }
+        }
+        /* the r323 blank-run kept-exotic interleave site (the nightly's
+         * round 323, run 44579814561, main 37327760; 158-byte artifact,
+         * 23-byte dual-bar floor "> #<PS><PS> <NEL><LF><PS> 0<LF> <NEL>",
+         * the r317/r320/r321 folded-header family's fourth composition):
+         * the doubled "> #<PS> :" comment headers ride the r283/r320
+         * laws, the long f-plain bodies ride the r317 kept-NEL law, and
+         * BETWEEN content lines the body carries blank-per-1.1 lines --
+         * "SP <NEL><NEL> SP" before a "0" -- so this is the r321
+         * all-blank run seen at inter-line position: yeptris's 1.2
+         * whole-route keeps the blank line's material RAW in the value
+         * (the leading space, the kept NEL/LS/PS run, the space behind
+         * -- the r317 law at inter-line position), while libyaml's
+         * trailing-breaks join spells the run as its 1..k LF escapes
+         * and eats the spaces (a blank-per-1.1 line only feeds
+         * max_indent). Fire only when a sits on the space-led kept run
+         * (at least ONE kept NEL/LS/PS -- the family's signature; a
+         * pure-space run is the blank agreement the byte-match owns),
+         * b on the join escapes bounded by the kept run (libyaml's
+         * join can never exceed the breaks it read -- the r320 ledger
+         * law), and the plain byte behind both sides COINCIDES (not a
+         * space -- the space-run pairing is the NEL-site law's own
+         * material; not an escape -- the r197 polarity and the r283
+         * surplus own those; not a raw NEL/LS/PS lead byte -- the NEL
+         * branch owns those; not the frame end -- the r321 empty-value
+         * arm owns that end), so the walk rejoins byte-bound at an
+         * agreement byte and the relation behind the site stays owned
+         * by the loop's budgeted laws. Previously this shape declined
+         * unconditionally here, so no existing member's path changes.
+         * THE A/B: libfyaml 04e0b58 keeps BOTH the PS and the NEL raw
+         * as the body's verbatim content (its --testsuite dump "=VAL
+         * >> #\P : \N 0\n" -- 1.2: no exotic break is a break),
+         * splitting THREE ways exactly as the r320 A/B did --
+         * comparator carry only, no engine change (the r317
+         * precedent). Sits behind the r321 all-blank arm (whose gate
+         * wants the EMPTY b value -- disjoint from this gate's join
+         * escapes behind content) and behind the r320 inversion arm
+         * (whose gate wants a ON the plain byte -- disjoint from this
+         * gate's space lead). */
+        if (a[0] == ' ') {
+            const char* pa = a;
+            int run = 0;
+            while (pa[0] == ' ') {
+                pa++;
+            }
+            for (;;) {
+                if ((unsigned char)pa[0] == 0xC2 && (unsigned char)pa[1] == 0x85) {
+                    pa += 2;
+                    run++;
+                    continue;
+                }
+                if ((unsigned char)pa[0] == 0xE2 && (unsigned char)pa[1] == 0x80 &&
+                    ((unsigned char)pa[2] == 0xA8 || (unsigned char)pa[2] == 0xA9)) {
+                    pa += 3;
+                    run++;
+                    continue;
+                }
+                break;
+            }
+            if (run >= 1) {
+                while (pa[0] == ' ') {
+                    pa++;
+                }
+                const char* pb = b;
+                int esc = 0;
+                while (pb[0] == '\\' && pb[1] == 'n') {
+                    pb += 2;
+                    esc++;
+                }
+                if (esc >= 1 && esc <= run && pa[0] == pb[0] && pa[0] != '\0' && pa[0] != ' ' &&
+                    pa[0] != '\\' && (unsigned char)pa[0] != 0xC2 && (unsigned char)pa[0] != 0xE2) {
+                    a = pa;
+                    b = pb;
+                    subs += 2;
+                    continue;
+                }
             }
         }
         /* the r283 dropped-fold-break surplus (the nightly's round
