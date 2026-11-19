@@ -6750,11 +6750,17 @@ add_test(
     # Floor: 23 of 158 bytes survive the dual bar (ddmin; pre-patch
     # DIFFER exit 77 + post-patch carry exit 0 on BOTH the floor and
     # the full artifact, plain and _lf; every single-byte deletion of
-    # the floor either reads clean or drifts the face).
+    # the floor either reads clean or drifts the face). Both the floor
+    # and the full artifact ride the corpus (the r321 seed law).
     add_test(
         NAME fuzz-diff-r323-folded-header-blankrun-kept-exotic
         COMMAND fuzz_diff
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-blankrun-kept-exotic-r323.bin
+    )
+    add_test(
+        NAME fuzz-diff-r323-folded-header-blankrun-kept-exotic-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-blankrun-kept-exotic-r323-artifact.bin
     )
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
