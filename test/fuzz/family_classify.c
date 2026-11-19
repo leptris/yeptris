@@ -1048,15 +1048,55 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
              * separator/closer follow-on derives: a ':' reached across
              * the run (a VALUE boundary the probes never cover) is not
              * a flow indicator and any other byte fails the gate --
-             * both decline. */
+             * both decline.
+             *
+             * the r326 widening (run 44624659366): the run may reach a
+             * blank/break-preceded `#` instead — the engine's comment
+             * condition fires, the run eats inertly to its break, and
+             * the boundary derives after it (the artifact's
+             * `?\t*%L #|...` site — libyaml never scans the alias, its
+             * law-a KEY+comment-eat swallows the whole member tail
+             * including the name). After the ride the separator/closer
+             * derives as before, or a ':' + blank/break re-lexes as the
+             * VALUE boundary (the r309 law's slot: the pair's empty
+             * value opens, `=ALI *<name>` + the inserted empty). A ':'
+             * across the PLAIN ride (no comment) stays declined; an eat
+             * to EOF and any other byte decline. */
             size_t ve = fc_skip_blank_break(p, n, ae);
-            if (ve >= n || !fc_flow_ind(p[ve])) {
+            int rode_comment = 0;
+            if (ve < n && p[ve] == '#') {
+                size_t e2 = ve + 1;
+                while (e2 < n && fc_break_len(p, n, e2) == 0) {
+                    e2++;
+                }
+                if (e2 >= n) {
+                    return y_fail(c); /* the eat runs to EOF: never
+                                       * terminates */
+                }
+                ve = fc_skip_blank_break(p, n, e2 + (size_t)fc_break_run_len(p, n, e2));
+                rode_comment = 1;
+            }
+            if (ve >= n) {
                 return y_fail(c); /* bytes after the alias name that are
                                    * not a blank/break-then-boundary ride:
                                    * outside the family */
             }
-            stop = ve;
-            sep = 1;
+            if (fc_flow_ind(p[ve])) {
+                stop = ve;
+                sep = 1;
+            } else if (rode_comment && p[ve] == ':' &&
+                       (ve + 1 >= n || fc_blank(p[ve + 1]) || fc_break_len(p, n, ve + 1) > 0)) {
+                /* the VALUE boundary across the comment ride (the r309
+                 * slot; the common colon path below opens the empty
+                 * value — the artifact renders `=ALI *%L` + the empty
+                 * exactly as the separator form does) */
+                key.colon = 1;
+                key.colon_at = ve;
+                stop = ve;
+                sep = 0;
+            } else {
+                return y_fail(c);
+            }
         }
     } else if (p[ks] == '#') {
         /* the comment at the key position (the r245 `?\r###|` members):
