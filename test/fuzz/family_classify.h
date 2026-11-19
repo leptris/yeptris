@@ -47,6 +47,27 @@
  *      comment condition fires there), and the open-pair fold-in's
  *      GLUED-`?` plain member rides P7's content law while the SPLIT
  *      explicit-key spell stays out;
+ *      the r318 widening (run 44458062455): the MAP key slot's
+ *      charset-divergent ANCHOR member joins. When the engine's yep_scan_prop_end cut
+ *      and libyaml's scan_anchor cut DISAGREE and libyaml's cut lands
+ *      on a GLUED ':' (the artifact's `&m:(}` — the engine's prop
+ *      charset keeps `:(` inside the name per the suite (2SXE/W5VH;
+ *      libyaml is behind the suite, the r311 law), libyaml re-lexes
+ *      the tail: the 1.1 flow VALUE token fires on the glued ':'
+ *      (key = anchored-empty `&m`, value = the plain `(`), while
+ *      yeptris keeps the whole name so NO VALUE token fires and the
+ *      parser inserts the empty value at the closer (`=VAL : &m:( ` +
+ *      `=VAL : `). libfyaml 04e0b58 reads yeptris's stream byte-exact
+ *      on every probe (`{&m:(}` / `{*L,&m:}` / the 12-byte artifact) —
+ *      comparator carry only. Gates: the ':' glued AT the libyaml cut
+ *      (a blank/break between cut and ':' re-opens the value-slot
+ *      compositions the probes never cover), the prop name terminated
+ *      by a flow indicator, the divergence real (an agreeing name is
+ *      the r76-arm territory, declined), and the MAP level (a SEQ
+ *      anchor member with a divergent name errors libyaml's parser —
+ *      not a DIFFER shape); the libyaml walk derives the cut tail
+ *      independently and the entry's dual byte-equality is the
+ *      firewall;
  *  (d) the plain-`?` law (suite HM87/652Z + r199/r209/r264): a `?`-led
  *      member with a non-blank follower keeps the whole text as one
  *      plain key (colon rides inside when a non-blank follows), values
