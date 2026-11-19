@@ -7957,6 +7957,37 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             subs += 2;
             continue;
         }
+        /* the r325 EOF fold-space surplus site (the nightly's round 325,
+         * run 44611344281, main 37e7e09d; the same 24-byte dual-bar floor
+         * as the fold-dropped realign arm above): the r303/r304/r323
+         * EOF-tail lattice completed -- the blank-led final line's FOLD
+         * SPACE rides beside the ONE clip escape with NO kept exotic
+         * behind it (the r304 shape minus the NEL pair: the final
+         * normal-indent line's break folds to the one space and the
+         * breakless EOF leaves only the clip escape, while libyaml's
+         * trailing-breaks join collapses the whole tail and its clip
+         * chomp emits nothing at the breakless end -- b's dump line
+         * just ends). The r176 tail owns the bare escape (no space),
+         * the r303/r304/r323 arms all demand the kept-NEL pair, and the
+         * r324 walk-end grammar demands >= ONE exotic in the run -- the
+         * space-lead esc-only remainder declined unconditionally. Fire
+         * ONLY when a's whole remainder is exactly the ONE space plus
+         * the ONE clip escape and b's remainder equals a's behind the
+         * space (the r161 strcmp law -- b-side bytes are never eaten,
+         * so the claim can never swallow divergence past the value).
+         * Sits behind the r323 tail arm (whose gate wants the NEL pair
+         * at a[1..2] -- disjoint) and behind the r176 tail (whose gate
+         * wants a ON the escape -- disjoint). Previously this shape
+         * declined unconditionally here, so no existing member's path
+         * changes. The r324 grammar's declined pure-space surplus is a
+         * different shape -- an ARBITRARY pure-space RUN with b's
+         * remainder still behind it; this arm claims exactly ONE space
+         * at the exact EOF with b fully consumed by the strcmp. */
+        if (a[0] == ' ' && a[1] == '\\' && a[2] == 'n' && strcmp(a + 3, b) == 0) {
+            a += 3;
+            subs += 2;
+            continue;
+        }
         /* the r176 tail: yeptris's clip break libyaml dropped at a
          * breakless EOF -- accept ONLY when y's whole remainder is
          * the one escape followed by a byte-identical frame suffix
@@ -7965,6 +7996,58 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
          * divergence past the value) */
         if (a[0] == '\\' && a[1] == 'n' && strcmp(a + 2, b) == 0) {
             return subs > 0;
+        }
+        /* the r325 fold-dropped realign site (the nightly's round 325,
+         * run 44611344281, main 37e7e09d; the 35-byte artifact
+         * crash-f0ddbd7d876ccfc0e659a05254d6ed6ddb00d5ab "> #<LS> :<LF>
+         * <SP><SP><NEL> 5%<LS> :<LF> <SP><LS> <SP><NEL> 0<LF>
+         * <SP><NEL>", 24-byte dual-bar floor "> #<LS> :<LF> <SP><SP><NEL>
+         * :<LF> <SP><LS><NEL> 0" -- the r317/r320/r321/r323/r324
+         * folded-header family's SIXTH composition, the first since the
+         * r324 tail grammar landed): libyaml's 1.1 fold branch DROPPED
+         * a break yeptris's 1.2 whole-route spells literally -- the
+         * more-indented kept-exotic line's break the trailing-breaks
+         * join discards (trailing_breaks non-empty clears
+         * leading_break, scanner.c's fold gate; the r297 spent-NEL
+         * law's shape at an ESCAPE-vs-TRIPLE site) -- so a carries ONE
+         * surplus escape with no b counterpart, and the raw LS/PS
+         * triple BEHIND the escape on a is the SAME input break
+         * libyaml's READ_LINE kept raw at the blank line it sits on.
+         * Eat a's escape; the walk rejoins byte-bound at the
+         * coinciding triple. Gated on the full 3-byte coincidence
+         * (b ON the raw triple and memcmp(a + 2, b, 3) == 0), so the
+         * claim can never swallow arbitrary divergence; the byte-bound
+         * continuation binds the rest. PLACEMENT: sits immediately
+         * ahead of the r197 polarity and is verdict-preserving for
+         * every existing member -- whenever this gate fires, r197's
+         * gate fires too, and both leave the walk at the IDENTICAL
+         * state (r197 steps a past the escape and b past the triple;
+         * this arm steps a past the escape and the loop's own
+         * byte-match consumes the triple on both sides), so the only
+         * delta is the subs count behind an accept bar that is
+         * subs > 0. Previously the shape rode r197's pairing (or
+         * declined when the pairing derailed the alignment mid-body);
+         * no existing member's verdict changes. THE A/B: libfyaml
+         * 04e0b58 ERRORS on both the floor and the full artifact
+         * ("missing document start" at the final blank-led line -- it
+         * reads only the first kept-exotic segment then stops), so the
+         * r318-class dual-engine consensus law does NOT carry this
+         * composition; libyaml 90a56d4 reads the 1.1 split; yeptris
+         * keeps the exotics raw per the 1.2 whole-route -- the
+         * comparators split, comparator carry only, no engine change
+         * (the r317 precedent). The full artifact's remaining path
+         * rides the r299 twin-trail, this arm, the r323 blank-run
+         * interleave and the r324 walk-end grammar; deeper mid-body
+         * plain permutations (both engines spelling the same input
+         * byte at different walk positions) stay declined -- the
+         * grammar boundary this round documents. */
+        if (a[0] == '\\' && a[1] == 'n' && (unsigned char)b[0] == 0xE2 &&
+            (unsigned char)b[1] == 0x80 &&
+            ((unsigned char)b[2] == 0xA8 || (unsigned char)b[2] == 0xA9) &&
+            memcmp(a + 2, b, 3) == 0) {
+            a += 2;
+            subs += 2;
+            continue;
         }
         /* the r197 polarity: yeptris spelled the break it normalized
          * to an escape while libyaml's block reader kept the raw
