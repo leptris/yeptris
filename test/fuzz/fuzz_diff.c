@@ -7862,6 +7862,57 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             subs++;
             continue;
         }
+        /* the r320 kept-NEL fold-ledger inversion site (the nightly's
+         * round 320, run 44499300534, main 40e5dac9; 17-byte floor
+         * "> #<PS> <NEL><LF><PS><NEL> 0" -- every further single
+         * deletion loses the red arm). The block scalar's HEADER
+         * COMMENT carries a raw PS: yeptris's #638 normalizer folds
+         * it in-comment (the header line ends at the fold; the r283
+         * header-comment shape), libyaml's IS_BREAKZ comment law ends
+         * the comment at the same PS and SKIP_LINE eats it. Behind
+         * the header yeptris's bs-content token consumed the
+         * " <NEL>" line FOLD-BLIND (the r317 kept-NEL law: the NEL
+         * rides raw into the buffer and the engine reads the line as
+         * CONTENT at indent 1 off its leading space), while libyaml's
+         * 1.1 reader breaks AT the NEL -- a blank line whose space
+         * only feeds max_indent. The kept-NEL line absorbs its own
+         * break into the fold composition (breaks_before 3 -> the
+         * fold emits n-1), so yeptris's value reads
+         * [kept NEL][ESC][ESC][0][clip ESC] where libyaml's
+         * leading-breaks join spells every blank-line break
+         * LITERALLY ([ESC][ESC][raw PS][ESC][0] -- the PS-line's
+         * READ_LINE keeps the triple, the r197 polarity pairs it
+         * behind the walk's first three pairings) -- at the value
+         * tail the one-short ledger INVERTS the final break/content
+         * pair: yeptris [plain][ESC] where libyaml [ESC][plain], the
+         * plain byte coinciding on both sides and nothing behind.
+         * A/B: libyaml 90a56d4 reads the four blank lines literally
+         * ("=VAL : \\n\\n<PS>\\n0"), libfyaml 04e0b58 keeps BOTH the
+         * PS and the NEL raw as the body's verbatim content
+         * ("=VAL > <PS><NEL> 0\\n" -- 1.2: no exotic break is a
+         * break) -- the comparators split three ways, so this is
+         * comparator carry only, no engine change (the r317
+         * precedent). Fire ONLY on the single-inversion tail: one
+         * escape on each side, the SAME plain byte behind each (not
+         * a space -- the space-run pairing is the NEL-site law's own
+         * material; not an escape -- the r197 polarity owns those;
+         * not a raw NEL/LS/PS lead byte), and the remainders behind
+         * the claim coincide completely (the r161 strcmp law -- the
+         * claim can never swallow divergence past the value). Sits
+         * behind the r197 polarity (the pairing that reaches the
+         * site) and ahead of the r283 dropped-fold-break arm (whose
+         * gate wants a ON the escape -- disjoint from this gate's
+         * plain lead). Previously this shape declined
+         * unconditionally here, so no existing member's path
+         * changes. */
+        if (a[0] == b[2] && a[1] == '\\' && a[2] == 'n' && b[0] == '\\' && b[1] == 'n' &&
+            a[0] != ' ' && a[0] != '\\' && a[0] != '\0' && (unsigned char)a[0] != 0xC2 &&
+            (unsigned char)a[0] != 0xE2 && strcmp(a + 3, b + 3) == 0) {
+            a += 3;
+            b += 3;
+            subs += 2;
+            continue;
+        }
         /* the r283 dropped-fold-break surplus (the nightly's round
          * 283, run 43737119210, crash-ecc6b77ecd2b58249874b855d2ca80
          * 9878a1743e, 32 bytes; greedy floor 12 bytes "> SP # PS SP :
