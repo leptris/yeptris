@@ -6730,6 +6730,33 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-anchor-glued-follower-quote-led-r322.bin
     )
 
+    # the r323 scheduled-nightly red (run 44579814561, main 37327760 —
+    # the r317/r320/r321 folded-header family's fourth composition):
+    # the 158-byte artifact's doubled "> #<PS> :" comment headers, the
+    # long f-plain bodies, and the blank-per-1.1 interleave lines.
+    # The headers and plains ride the existing r283/r197/r320/r317
+    # laws; the two NEW sites are (1) the blank-run kept-exotic
+    # interleave BETWEEN content lines ("SP <NEL><NEL> SP" before a
+    # "0" — yeptris keeps the blank line's material RAW in the value
+    # while libyaml's trailing-breaks join spells it as its 1..k LF
+    # escapes and eats the spaces) and (2) the EOF-tail kept NEL with
+    # the fold space riding on BOTH sides ("LF SP <NEL>": yeptris's
+    # tail reads SP NEL SP ESC where libyaml collapses the whole tail
+    # into the ONE escape). THE A/B: libfyaml 04e0b58 keeps BOTH the
+    # PS and the NEL raw as the body's verbatim content (1.2: no
+    # exotic break is a break), splitting THREE ways exactly as the
+    # r320 A/B did — comparator carry only, no engine change (the
+    # r317 precedent).
+    # Floor: 23 of 158 bytes survive the dual bar (ddmin; pre-patch
+    # DIFFER exit 77 + post-patch carry exit 0 on BOTH the floor and
+    # the full artifact, plain and _lf; every single-byte deletion of
+    # the floor either reads clean or drifts the face).
+    add_test(
+        NAME fuzz-diff-r323-folded-header-blankrun-kept-exotic
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-blankrun-kept-exotic-r323.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
