@@ -7913,6 +7913,64 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             subs += 2;
             continue;
         }
+        /* the r321 all-blank-body site (the scheduled nightly's round
+         * 321, run 44511876660, main 40e5dac9 — the r317/r320 folded-
+         * header family's third composition; the 18-byte floor
+         * "> #<PS> <NEL><PS> <PS><NEL>"): the block body is ENTIRELY
+         * blank-per-1.1 lines (each line spaces + an exotic break,
+         * never a folding break), so libyaml's block reader breaks at
+         * every NEL/PS (the 1.1 IS_BREAK set), the space-only lines
+         * feed max_indent as blanks, and the clip chomps every
+         * trailing break -- the value is EMPTY. yeptris's 1.2
+         * whole-route normalizer keeps the exotic breaks raw IN the
+         * body (the r317 kept-NEL law: the post-header bytes are ONE
+         * content line at the auto-indent, the leading space stripped
+         * once, interior spaces riding raw) and the clip appends the
+         * one LF escape -- the value is the raw NEL/PS/SP run. Claim
+         * ONLY the exact shape: b's value is EMPTY (the dump line
+         * ends at the value position), a's value is one raw
+         * NEL/PS/SP run carrying at least one kept NEL or PS (the
+         * family's signature; a pure-space run is the all-blank
+         * agreement, never claimed) terminated by the clip's LF
+         * escape and the dump line end, so the walk rejoins byte-
+         * bound at -STR. Previously this shape declined
+         * unconditionally here, so no existing member's path
+         * changes. THE A/B: libfyaml 04e0b58 renders the same EMPTY
+         * value as libyaml (the all-blank body; the r317 A/B kept
+         * the raw NEL only when real content lines followed -- here
+         * both comparators agree against yeptris's raw-kept
+         * reading), so this is comparator carry only, no engine
+         * change (the r317 precedent). Sits on the empty-value line
+         * end ONLY (b backs onto "=VAL : "), so no other dump
+         * position can claim. */
+        if (b[0] == '\n' && b >= ldump + 7 && memcmp(b - 7, "=VAL : ", 7) == 0 &&
+            ((unsigned char)a[0] == 0xC2 || (unsigned char)a[0] == 0xE2)) {
+            const char* ap = a;
+            int kept = 0;
+            while (*ap != '\0' && ap[0] != '\n') {
+                if ((unsigned char)ap[0] == 0xC2 && (unsigned char)ap[1] == 0x85) {
+                    kept = 1;
+                    ap += 2;
+                    continue;
+                }
+                if ((unsigned char)ap[0] == 0xE2 && (unsigned char)ap[1] == 0x80 &&
+                    ((unsigned char)ap[2] == 0xA8 || (unsigned char)ap[2] == 0xA9)) {
+                    kept = 1;
+                    ap += 3;
+                    continue;
+                }
+                if (ap[0] == ' ') {
+                    ap += 1;
+                    continue;
+                }
+                break;
+            }
+            if (kept && ap[0] == '\\' && ap[1] == 'n' && ap[2] == '\n') {
+                a = ap + 2;
+                subs += 2;
+                continue;
+            }
+        }
         /* the r283 dropped-fold-break surplus (the nightly's round
          * 283, run 43737119210, crash-ecc6b77ecd2b58249874b855d2ca80
          * 9878a1743e, 32 bytes; greedy floor 12 bytes "> SP # PS SP :
@@ -7940,6 +7998,43 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             a += 2;
             subs += 2;
             continue;
+        }
+        /* the r216-class libyaml surplus-escape mirror (the nightly's
+         * round 216 law, run 42549204693 -- the site the OLDER
+         * four-pass family walk (yd_block_nel_walk_mult) has carried
+         * since r216; the scheduled nightly's round 321 (run
+         * 44511876660, main 40e5dac9) composed it INTO this walk's
+         * r197+r283 chain: the 32-byte artifact
+         * "> #<PS> :<LF>  <NEL> 5<LF><PS> #<PS><NEL> 0<LF>  t" pairs
+         * yeptris's esc-esc-# esc against libyaml's PS # PS esc at
+         * the body's PS-comment line (r197 pairs a's first esc with
+         * the raw PS triple, r283 drops a's second esc on the `#`
+         * alignment, r197 pairs the next) and leaves libyaml's ONE
+         * NEL-break escape with no yeptris counterpart -- yeptris's
+         * comment/fold accounting consumed the exotic break pair into
+         * the ONE escape it spells. Eat libyaml's ONE surplus escape,
+         * gated exactly as the r216 arm gates it: the run is exactly
+         * one escape, a sits on a PLAIN content byte (not the frame's
+         * end, not a space -- the r317/r215 sites, not an escape --
+         * r197/r283/r320 own those, not a raw NEL/LS/PS lead byte the
+         * NEL branch owns), and the byte behind libyaml's escape
+         * EQUALS it, so the walk rejoins byte-bound at an agreement
+         * byte. Previously this shape declined unconditionally here,
+         * so no existing member's path changes. Sits behind the r283
+         * arm (whose gate wants a ON the escape -- disjoint). */
+        if (b[0] == '\\' && b[1] == 'n' && a[0] != '\0') {
+            const char* pb = b;
+            int y = 0;
+            while (pb[0] == '\\' && pb[1] == 'n') {
+                pb += 2;
+                y++;
+            }
+            if (y == 1 && pb[0] == a[0] && a[0] != ' ' && a[0] != '\\' &&
+                (unsigned char)a[0] != 0xC2 && (unsigned char)a[0] != 0xE2) {
+                b = pb;
+                subs += 2;
+                continue;
+            }
         }
         /* the r288 fold-space surplus (run 43778032929): the same
          * dropped-fold-break law as above, but the space-run form --
