@@ -7833,6 +7833,65 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
             subs++;
             continue;
         }
+        /* the r327 kept-NEL/kept-triple polarity split site (the
+         * nightly's round 327, run 44638379551, main 7c033da3; the
+         * 21-byte dual-bar floor "> #<PS><PS> <NEL><LF><PS> <NEL> -" --
+         * the r317/r320/r321/r323/r324/r325 folded-header family's
+         * SEVENTH composition, the first mid-body split past the r325
+         * boundary note): the body's SECOND kept exotic faces libyaml's
+         * kept LS/PS raw triple -- at the same alignment slot EACH
+         * engine's value carries the OTHER exotic's raw bytes (yeptris
+         * keeps the NEL pair as 1.2 content -- the r317 law -- while
+         * libyaml's READ_LINE LS|PS branch keeps the triple it broke
+         * ON -- the r197 law's keep side). The blank-line joins behind
+         * them spell differently too: libyaml's trailing-breaks join
+         * emits the ONE break-spelling escape (its NEL became the LF
+         * escape the join carries), while yeptris keeps the fold-blind
+         * interior space of its own content line -- so a reads [NEL]
+         * [spaces][plain P][tail] where b reads [triple][ONE escape]
+         * [the same P]. Pair the kept NEL and the kept triple (each
+         * engine's own exotic family -- the polarity law's keep-keep
+         * composition), eat a's spaces (libyaml ate them as the
+         * continuation's indent -- the r297 class) and b's EXACTLY ONE
+         * escape (the r320 ledger law bounds the join: one break per
+         * site), and require the plain byte behind both sides to
+         * COINCIDE on non-space/non-escape/non-exotic-lead/non-frame-
+         * end content (the r323 coincidence law), so the walk rejoins
+         * byte-bound at an agreement byte and the tail behind stays
+         * owned by the loop's existing laws (the r176 clip tail's
+         * strcmp completes the binding). Previously this shape declined
+         * unconditionally here (the NEL-site branch skips b-on-triple,
+         * r297's gate excludes the raw LS/PS lead, the r324-end
+         * grammar's strcmp never matches past a's plain P), so no
+         * existing member's path changes. THE A/B: libyaml 90a56d4
+         * spells the kept triple and the two join escapes
+         * ("=VAL : <PS>\\n\\n<PS>\\n-"), libfyaml 04e0b58 keeps BOTH
+         * exotics raw as one content line ("=VAL ><PS> <NEL> -\\n" --
+         * 1.2: no exotic break is a break), yeptris keeps the NELs and
+         * folds the PS to its normalized LF -- the comparators split
+         * three ways exactly as the r320/r323 A/B did, comparator
+         * carry only, no engine change (the r317 precedent). Sits
+         * immediately ahead of the r297 spent-NEL arm (whose gate
+         * excludes the raw LS/PS lead -- this site's b is ON that
+         * lead -- disjoint) and behind the NEL-site branch (whose gate
+         * wants b on an escape or a space -- disjoint). */
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 &&
+            (unsigned char)a[2] != 0xC2 && (unsigned char)b[0] == 0xE2 &&
+            (unsigned char)b[1] == 0x80 &&
+            ((unsigned char)b[2] == 0xA8 || (unsigned char)b[2] == 0xA9)) {
+            const char* t = a + 2;
+            while (t[0] == ' ') {
+                t++;
+            }
+            const char* ub = b + 3;
+            if (ub[0] == '\\' && ub[1] == 'n' && t[0] != '\0' && t[0] == ub[2] && t[0] != ' ' &&
+                t[0] != '\\' && (unsigned char)t[0] != 0xC2 && (unsigned char)t[0] != 0xE2) {
+                a = t;
+                b = ub + 2;
+                subs += 2;
+                continue;
+            }
+        }
         /* the r297 spent-NEL site (run 43952064060): libyaml's fold
          * accounting SPENT the break -- the NEL was leading_break at
          * the next content line and the fold branch dropped it
