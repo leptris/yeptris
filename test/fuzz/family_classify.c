@@ -694,7 +694,56 @@ static int fc_quoted_value(const uint8_t* p, size_t n, size_t s, size_t e, fout*
             break; /* the close */
         }
         if (c == '\\') {
-            return 0; /* escapes are outside the family */
+            /* the r337 widening (run 44832174407, main ffc37f20): two
+             * escape followers join the family, everything else stays
+             * outside. Both arms ride the tight gates — no pending
+             * fold run, no pending blanks at the escape (untested
+             * compositions decline). */
+            if (run > 0 || blank_n > 0 || i + 1 >= e) {
+                return 0;
+            }
+            int ebl = fc_break_len(p, n, i + 1);
+            if (ebl > 0) {
+                /* the ESCAPED-BREAK continuation: `\` glued to a break
+                 * drops BOTH (the 1.2 escaped-continuation law; the
+                 * minimal's `"\<CR>g"` renders `g` byte-exact on the
+                 * engine; libyaml's scan_flow_scalar twin rides its
+                 * leading-blanks loop to the same). The following byte
+                 * must be CONTENT — a blank (the drop's blank law is
+                 * untested here), a second break, or the closer
+                 * (untested compositions) decline. */
+                if (i + 1 + (size_t)ebl >= e) {
+                    return 0;
+                }
+                unsigned char f2 = p[i + 1 + (size_t)ebl];
+                if (fc_blank(f2) || fc_break_len(p, n, i + 1 + (size_t)ebl) > 0 || f2 == '"') {
+                    return 0;
+                }
+                first_content = 0;
+                i += 1 + (size_t)ebl;
+                continue;
+            }
+            if (p[i + 1] != 'n') {
+                return 0; /* every other escape follower: outside */
+            }
+            /* the `\n` ESCAPE decodes to the LF byte — the engines
+             * agree and the dump re-escapes it (`\n`, the same two
+             * bytes yd_escape_append writes for LF). The artifact's
+             * span body carries six of them; the pending-state gates
+             * above keep the fold interaction untouched. */
+            if (first_content) {
+                first_content = 0;
+                if (lead_run > 1) {
+                    return 0; /* a multi-break-led span: untested */
+                }
+                if (lead_run == 1) {
+                    fo_str(o, " ");
+                }
+                /* lead_run == 0 here: blank_n == 0 was gated above */
+            }
+            fo_str(o, "\\n");
+            i += 2;
+            continue;
         }
         if (fc_blank(c)) {
             if (blank_n == 0) {
