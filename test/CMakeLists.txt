@@ -7122,6 +7122,58 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-qsplat-r330-artifact.bin
     )
 
+    # r331 (run 44697552012, main 311da7ef): the family's SECOND
+    # mutant-of-own-pin red — the artifact is r330's own pinned seed
+    # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB
+    # (`&2?: '<PS><TAB>'`, 11 bytes). The r238 arm's blanket no-tab
+    # gate declined it; the tab delta is the QUOTED-BODY exotic-tab
+    # law and it is CONTAINER-INDEPENDENT: the dual-bar floor drops
+    # clean out of the anchor family to the 8-byte `? '<PS><TAB>'`
+    # (greedy ddmin — `&`/`2`/`:` all die), where BOTH engines agree
+    # on the structure and the ONLY delta is the tab itself. The law:
+    # yeptris (1.2) keeps a tab run behind a kept-raw LS/PS break as
+    # CONTENT (one escaped \t per tab — the exotic break arms no fold
+    # state), libyaml's blank-state swallows the whole run and emits
+    # NOTHING (no fold space behind the exotic join — probed
+    # `<PS><TAB>a` reads `<PS>a`); mid-content tabs stay content on
+    # BOTH engines, and behind a clean CR/LF fold the run vanishes on
+    # BOTH. libfyaml 04e0b58 sides with yeptris byte-exact (probed: it
+    # re-emits `&2?: '` + the raw PS + the tab, the whole riding anchor
+    # name kept) — comparator carry only, no engine change (the
+    # r318/r330 precedent). THE CARRY: (1) the r238 arm's no-tab gate
+    # becomes body-region-scoped and its body walkers gain the
+    # measured post-break tab law for both sub-shapes (the riding
+    # anchor + the anchored-empty-key) — the artifact's path; (2) a
+    # new differ-only arm owns the DIRECT-QUOTED containers: the
+    # floor form (`? '<...>'` — the quoted scalar is the KEY, the
+    # value empty) and the plain-key value form (`<run>: '<...>'`,
+    # keys `2`, `2?`, `?`, `?2`, `ab`, `2_`, `3&2`, `o&2` — the
+    # glued-& anchor rides mid-plain CONTENT on both engines, never
+    # leading — all byte-equal on both
+    # engines), both dumps derived from the input and required
+    # byte-exact. The NEL spellings are SPLITS, not differs (probed
+    # `2: '<NEL>'`, `2: '<NEL><TAB>'`, `2: '<LS><CR>'` — yeptris
+    # REJECTS while libyaml accepts — the differ-only routing
+    # declines, the r170 law); the bare-exotic and CR/LF+tab
+    # spellings AGREE (no claim needed). Floor: 8 of 11 bytes survive
+    # the dual bar (greedy ddmin to a fixed point; pre-patch DIFFER
+    # exit 77 + NOT classified, post-patch carry exit 0, on BOTH the
+    # floor `? '<PS><TAB>'` and the full artifact; no further
+    # single-byte deletion keeps the dual bar). The 50-mutant paired
+    # battery (30 single + 20 double, seed 331): see the round issue.
+    # Both the floor and the full artifact ride the corpus (the r321
+    # seed law).
+    add_test(
+        NAME fuzz-diff-r331-quoted-exotic-tab
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r331.bin
+    )
+    add_test(
+        NAME fuzz-diff-r331-quoted-exotic-tab-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r331-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

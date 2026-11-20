@@ -10298,13 +10298,16 @@ static int yd_r218_blank_line(const uint8_t* d, size_t n, size_t* at) {
  * '<LS><CR>', 'a<CR><LF>') ALL AGREE -- the fold delta exists only
  * under the collapse. Gate: '&' + the r227 conservative riding-name
  * set ending on its ':', exactly one space, a SINGLE-QUOTED body (no
- * tabs, no consecutive breaks), the closing quote, then EOF. A
- * differ-only routing arm beside the r218 claim -- every existing
- * member keeps its exact path. */
+ * consecutive breaks; the r331 widening admits the measured exotic-tab
+ * spellings -- a tab INSIDE the body rides the post-break tab law, any
+ * tab in the name or the separator still declines), the closing quote,
+ * then EOF. A differ-only routing arm beside the r218 claim -- every
+ * existing member keeps its exact path. */
 static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const char** c) {
     const char* a = *c;
     size_t i = bo;
     int prev_break = 0;
+    int last_exotic = 0; /* the r331 law: LS/PS arms no fold state in yeptris */
     while (i < be) {
         if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
             if ((unsigned char)a[0] != 0xC2 || (unsigned char)a[1] != 0x85) {
@@ -10313,6 +10316,7 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
             a += 2;
             i += 2;
             prev_break = 0;
+            last_exotic = 0;
         } else if ((unsigned char)body[i] == 0xE2 && (unsigned char)body[i + 1] == 0x80 &&
                    ((unsigned char)body[i + 2] == 0xA8 || (unsigned char)body[i + 2] == 0xA9)) {
             if ((unsigned char)a[0] != 0xE2 || (unsigned char)a[1] != 0x80 ||
@@ -10322,6 +10326,7 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
             a += 3;
             i += 3;
             prev_break = 0;
+            last_exotic = 1;
         } else if (body[i] == '\r' || body[i] == '\n') {
             if (prev_break || a[0] != ' ') {
                 return 0;
@@ -10358,6 +10363,44 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
                     i += 1;
                 }
                 prev_break = 0;
+                last_exotic = 0;
+            }
+        } else if (body[i] == '\t') {
+            /* the r331 widening (the nightly's round 331, run
+             * 44697552012, main 311da7ef): the tab rides by POSITION.
+             * After a kept-raw LS/PS triple yeptris arms NO fold state
+             * (the exotic break is kept content, not a fold break), so
+             * the tab run behind it is CONTENT -- one escaped \t per
+             * tab, whether it ends the body or content follows; behind
+             * a clean CR/LF fold the run merges with the fold
+             * (rendered nothing, body-end only -- the content spelling
+             * is unmeasured); a tab with no break behind it rides the
+             * OTHER arms (the anchor-charset arm carries the agreeing
+             * mid-content spell -- probed: byte-equal both engines). */
+            size_t s = i;
+            while (s < be && body[s] == '\t') {
+                s++;
+            }
+            if (prev_break) {
+                if (s != be) {
+                    return 0;
+                }
+                i = s;
+            } else if (last_exotic) {
+                if (s < be && (body[s] == '\r' || body[s] == '\n')) {
+                    i = s; /* the run merges into the break's one fold space */
+                } else {
+                    while (i < s) {
+                        if (a[0] != '\\' || a[1] != 't') {
+                            return 0;
+                        }
+                        a += 2;
+                        i += 1;
+                    }
+                    last_exotic = 0;
+                }
+            } else {
+                return 0;
             }
         } else if (body[i] >= 0x20) {
             if (a[0] != (char)body[i]) {
@@ -10366,6 +10409,7 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
             a += 1;
             i += 1;
             prev_break = 0;
+            last_exotic = 0;
         } else {
             return 0;
         }
@@ -10457,6 +10501,25 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
                 }
                 prev_break = 0;
             }
+        } else if (body[i] == '\t') {
+            /* the r331 widening: libyaml's blank-state swallows the
+             * whole run and renders NOTHING -- behind a kept-raw
+             * exotic the content that follows rides byte-equal with NO
+             * fold space (the exotic join emits only the raw break --
+             * probed: "<PS><TAB>a" reads "<PS>a"), and a following
+             * CR/LF rides the existing quark/fold branches; behind a
+             * clean fold only the body-end spelling is measured. */
+            size_t s = i;
+            while (s < be && body[s] == '\t') {
+                s++;
+            }
+            if (!pending_exotic && !prev_break) {
+                return 0;
+            }
+            if (prev_break && !pending_exotic && s < be && body[s] != '\r' && body[s] != '\n') {
+                return 0;
+            }
+            i = s;
         } else if (body[i] >= 0x20) {
             if (b[0] != (char)body[i]) {
                 return 0;
@@ -10482,11 +10545,6 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
     }
     if (ydump == NULL || ldump == NULL) {
         return 0;
-    }
-    for (i = 0; i < size; i++) {
-        if (data[i] == '\t') {
-            return 0;
-        }
     }
     if (data[0] != '&') {
         return 0;
@@ -10535,6 +10593,18 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
     {
         size_t bo = i;
         int prev_break = 0;
+        /* the r331 widening (the nightly's round 331, run 44697552012,
+         * main 311da7ef): the arm's blanket no-tab gate becomes
+         * body-region-scoped -- a tab INSIDE the quoted body rides the
+         * measured exotic-tab law (the walkers below), any tab in the
+         * name, the separator, or behind the quote still declines
+         * (the r241 alias-tab family and the anchor-charset arm own
+         * those shapes). */
+        for (size_t t = 0; t < bo; t++) {
+            if (data[t] == '\t') {
+                return 0;
+            }
+        }
         while (i < size && data[i] != '\'') {
             if ((unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
                 i += 2;
@@ -10549,6 +10619,8 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                 }
                 i += 1;
                 prev_break = 1;
+            } else if (data[i] == '\t') {
+                i += 1; /* the body tab: the walkers pin its position */
             } else if (data[i] >= 0x20) {
                 i += 1;
                 prev_break = 0;
@@ -10656,6 +10728,289 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
             }
             if (strncmp(b, "\n-MAP\n-STR\n", 12) != 0) {
                 return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+/* The direct-quoted exotic-tab member (the nightly's round 331, run
+ * 44697552012, main 311da7ef): the r331 artifact is r330's own pinned
+ * seed `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB — the family's
+ * second mutant-of-own-pin red. The tab delta is CONTAINER-INDEPENDENT:
+ * the dual-bar floor drops clean out of the anchor family to the 8-byte
+ * `? '<PS><TAB>'` (greedy ddmin: `&`/`2`/`:` all die), where BOTH
+ * engines agree on the structure and the ONLY delta is the tab itself —
+ * yeptris (YAML 1.2) keeps a tab run that follows a kept-raw LS/PS break
+ * as CONTENT (one escaped \t per tab — the exotic break arms no fold
+ * state), libyaml's blank-state swallows the whole run and emits NOTHING
+ * (no fold space behind the exotic join — probed: `<PS><TAB>a` reads
+ * `<PS>a`). The same delta rides the plain-key value form (`2: '<PS>
+ * <TAB>'`, keys `2`, `2?`, `?`, `?2`, `ab`, `2_`, `3&2`, `o&2` — the
+ * glued-& anchor rides mid-plain CONTENT on both engines, never
+ * leading — all byte-equal on both
+ * engines) and composes across sites (`a<PS><TAB>b<LS><TAB>c`,
+ * `<PS><TAB><TAB>a<TAB>b` — mid-content tabs stay content on BOTH
+ * engines). libfyaml 04e0b58 sides with yeptris byte-exact (probed: it
+ * re-emits `&2?: '` + the raw PS + the tab, the whole riding anchor
+ * name kept) — comparator carry only, no engine change (the r318/r330
+ * precedent). The NEL spellings are SPLITS, not differs: in direct
+ * value position yeptris REJECTS every NEL form and every LS/PS+CR
+ * form (probed `2: '<NEL>'`, `2: '<NEL><TAB>'`, `2: '<LS><CR>'` —
+ * "(error)") while libyaml accepts, so the differ-only routing
+ * declines them (the r170 law); the bare-exotic and CR/LF+tab spellings
+ * AGREE (no claim needed). Gate: `? '` + body + `'` EOF (the floor
+ * form — the quoted scalar is the KEY, the value empty) or a plain
+ * [A-Za-z0-9_-?] run + `: '` + body + `'` EOF (the key form); the body
+ * carries at least one LS/PS triple directly followed by a TAB run,
+ * printables byte-equal, tabs as content, NO CR/LF/NEL (unmeasured
+ * or split). Walk: both dumps derived from the input and required
+ * byte-exact — `+STR/+MAP/=VAL : <body>/=VAL : /-MAP/-STR` for the
+ * floor form, `+STR/+MAP/=VAL : <key>/=VAL : <body>/-MAP/-STR` for the
+ * key form, the libyaml body swallowing every post-exotic tab run.
+ * Anything the gate cannot pin declines (the escalation clause stays
+ * live). */
+static int yd_r331_body_walk_y(const uint8_t* body, size_t bo, size_t be, const char** c) {
+    const char* a = *c;
+    size_t i = bo;
+    while (i < be) {
+        if ((unsigned char)body[i] == 0xE2 && (unsigned char)body[i + 1] == 0x80 &&
+            ((unsigned char)body[i + 2] == 0xA8 || (unsigned char)body[i + 2] == 0xA9)) {
+            if ((unsigned char)a[0] != 0xE2 || (unsigned char)a[1] != 0x80 ||
+                (unsigned char)a[2] != body[i + 2]) {
+                return 0;
+            }
+            a += 3;
+            i += 3;
+        } else if (body[i] == '\t') {
+            /* content on yeptris: the exotic break armed no fold state */
+            if (a[0] != '\\' || a[1] != 't') {
+                return 0;
+            }
+            a += 2;
+            i += 1;
+        } else if ((unsigned char)body[i] >= 0x20 && body[i] != '\'') {
+            if (a[0] != (char)body[i]) {
+                return 0;
+            }
+            a += 1;
+            i += 1;
+        } else {
+            return 0; /* CR/LF/NEL/control decline (split or unmeasured) */
+        }
+    }
+    *c = a;
+    return 1;
+}
+
+static int yd_r331_body_walk_l(const uint8_t* body, size_t bo, size_t be, const char** c) {
+    const char* b = *c;
+    size_t i = bo;
+    int after_exotic = 0;
+    while (i < be) {
+        if ((unsigned char)body[i] == 0xE2 && (unsigned char)body[i + 1] == 0x80 &&
+            ((unsigned char)body[i + 2] == 0xA8 || (unsigned char)body[i + 2] == 0xA9)) {
+            if ((unsigned char)b[0] != 0xE2 || (unsigned char)b[1] != 0x80 ||
+                (unsigned char)b[2] != body[i + 2]) {
+                return 0;
+            }
+            b += 3;
+            i += 3;
+            after_exotic = 1;
+        } else if (body[i] == '\t') {
+            if (after_exotic) {
+                /* the blank state swallows the whole run, no fold space */
+                while (i < be && body[i] == '\t') {
+                    i += 1;
+                }
+            } else {
+                /* mid-content tab: content on both engines */
+                if (b[0] != '\\' || b[1] != 't') {
+                    return 0;
+                }
+                b += 2;
+                i += 1;
+            }
+        } else if ((unsigned char)body[i] >= 0x20 && body[i] != '\'') {
+            if (b[0] != (char)body[i]) {
+                return 0;
+            }
+            b += 1;
+            i += 1;
+            after_exotic = 0;
+        } else {
+            return 0;
+        }
+    }
+    *c = b;
+    return 1;
+}
+
+static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, const char* ydump,
+                                          const char* ldump) {
+    size_t i;
+    size_t ko = 0;
+    size_t ke = 0;
+    int floor_form;
+    if (size < 8) { /* "? '<LS><TAB>'" minimum */
+        return 0;
+    }
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    if (data[0] == '?') {
+        if (data[1] == ':') {
+            floor_form = 0; /* "?: '<...>'" — the key is the '?' run */
+            ko = 0;
+            ke = 1;
+            i = 2; /* at the space */
+        } else if (data[1] == ' ') {
+            floor_form = 1; /* "? '<...>'" — the quoted scalar is the key */
+            i = 1;          /* at the space */
+        } else {
+            return 0;
+        }
+    } else {
+        /* the plain-key form: a [A-Za-z0-9_-?&] run then ':' — the
+         * '&' joins the set on the battery's measured glued spellings
+         * (`3&2`, `o&2`: the anchor rides mid-plain CONTENT on both
+         * engines, key byte-equal), never LEADING (the r238 arm owns
+         * every anchor-entry shape) */
+        if (data[0] == '&') {
+            return 0;
+        }
+        size_t r = 0;
+        while (r < size &&
+               (((data[r]) >= 'A' && (data[r]) <= 'Z') || ((data[r]) >= 'a' && (data[r]) <= 'z') ||
+                ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
+                (data[r]) == '?' || (data[r]) == '&')) {
+            r++;
+        }
+        if (r == 0 || r >= size || data[r] != ':') {
+            return 0;
+        }
+        floor_form = 0; /* the key form */
+        ko = 0;
+        ke = r;
+        i = r + 1; /* at the space */
+    }
+    if (i >= size || data[i] != ' ') {
+        return 0; /* exactly one space */
+    }
+    i++;
+    if (i >= size || data[i] != '\'') {
+        return 0;
+    }
+    i++;
+    {
+        size_t bo = i;
+        int site = 0; /* an LS/PS triple directly followed by a TAB run */
+        while (i < size && data[i] != '\'') {
+            if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+                ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+                size_t t = i + 3;
+                while (t < size && data[t] == '\t') {
+                    t++;
+                }
+                if (t > i + 3) {
+                    site = 1;
+                }
+                i = t;
+            } else if (data[i] == '\t' || (data[i] >= 0x20 && data[i] != '\'')) {
+                i += 1;
+            } else {
+                return 0; /* CR/LF/NEL/control decline */
+            }
+        }
+        if (i >= size) {
+            return 0; /* unterminated */
+        }
+        i++; /* the closing quote */
+        if (i != size) {
+            return 0; /* EOF behind the quote */
+        }
+        if (!site) {
+            return 0; /* the family's essential delta is absent */
+        }
+        if (floor_form) {
+            /* both engines: the quoted scalar is the KEY, value empty */
+            if (strncmp((const char*)ydump, "+STR\n+MAP\n=VAL : ", 17) != 0) {
+                return 0;
+            }
+            {
+                const char* a = ydump + 17;
+                if (!yd_r331_body_walk_y(data, bo, size - 1, &a)) {
+                    return 0;
+                }
+                if (strncmp(a, "\n=VAL : \n-MAP\n-STR\n", 19) != 0) {
+                    return 0;
+                }
+            }
+            if (strncmp((const char*)ldump, "+STR\n+MAP\n=VAL : ", 17) != 0) {
+                return 0;
+            }
+            {
+                const char* b = ldump + 17;
+                if (!yd_r331_body_walk_l(data, bo, size - 1, &b)) {
+                    return 0;
+                }
+                if (strncmp(b, "\n=VAL : \n-MAP\n-STR\n", 19) != 0) {
+                    return 0;
+                }
+            }
+        } else {
+            /* both engines agree on the key; the body is the value */
+            if (strncmp((const char*)ydump, "+STR\n+MAP\n=VAL : ", 17) != 0) {
+                return 0;
+            }
+            {
+                const char* a = ydump + 17;
+                for (size_t k = ko; k < ke; k++) {
+                    if (a[0] != (char)data[k]) {
+                        return 0;
+                    }
+                    a++;
+                }
+                if (a[0] != '\n') {
+                    return 0;
+                }
+                a++;
+                if (strncmp(a, "=VAL : ", 7) != 0) {
+                    return 0;
+                }
+                a += 7;
+                if (!yd_r331_body_walk_y(data, bo, size - 1, &a)) {
+                    return 0;
+                }
+                if (strncmp(a, "\n-MAP\n-STR\n", 12) != 0) {
+                    return 0;
+                }
+            }
+            if (strncmp((const char*)ldump, "+STR\n+MAP\n=VAL : ", 17) != 0) {
+                return 0;
+            }
+            {
+                const char* b = ldump + 17;
+                for (size_t k = ko; k < ke; k++) {
+                    if (b[0] != (char)data[k]) {
+                        return 0;
+                    }
+                    b++;
+                }
+                if (b[0] != '\n') {
+                    return 0;
+                }
+                b++;
+                if (strncmp(b, "=VAL : ", 7) != 0) {
+                    return 0;
+                }
+                b += 7;
+                if (!yd_r331_body_walk_l(data, bo, size - 1, &b)) {
+                    return 0;
+                }
+                if (strncmp(b, "\n-MAP\n-STR\n", 12) != 0) {
+                    return 0;
+                }
             }
         }
     }
@@ -20533,6 +20888,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_r212_root_alias_double_head_breakless_gray(data, size, ydump, ldump) ||
          yd_r218_root_alias_blank_run_gray(data, size, ydump, ldump) ||
          yd_r238_root_anchor_quoted_follow_gray(data, size, ydump, ldump) ||
+         yd_r331_quoted_exotic_tab_gray(data, size, ydump, ldump) ||
          yd_r240_flow_qtail_clip_gray(data, size, ydump, ldump) ||
          yd_r241_alias_tab_fold_gray(data, size, ydump, ldump) ||
          yd_r242_flow_glued_q_members_gray(data, size, ydump, ldump) ||
