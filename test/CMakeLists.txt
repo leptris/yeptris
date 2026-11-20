@@ -7275,6 +7275,57 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-comment-tail-r333-artifact.bin
     )
 
+    # the r334 folded-header round (the nightly's run 44793963941, main
+    # af1bacea; the 45693-byte artifact -- the folded-header family
+    # CROSSING INTO the tag-soup composition: the first document's
+    # "> " fold carries the kept-NEL delta while the trailing tag soup
+    # ("!!int :app-" / "!intege" / digit-run plains behind "---"
+    # markers) byte-matches on both engines -- and its 28-byte dual-bar
+    # floor "> \n<NEL><NEL>\n <NEL><NEL><NEL><NEL>\n <NEL><NEL><NEL>
+    # <NEL> <" -- greedy ddmin to a fixed point, UTF-8-validity
+    # constrained; pre-patch DIFFER abort, post-patch carry exit 0, on
+    # BOTH shapes, plain and lf harnesses): the r216-class
+    # surplus-escape mirror widens y==1 -> y>=1 -- the blank-line
+    # ledger. libyaml's join spells one escape per break it read (the
+    # r320 ledger law), every blank-per-1.1 line riding a kept-NEL site
+    # adds exactly one surplus escape on its side while yeptris's 1.2
+    # fold collapsed that run into the single LF the byte-match paired
+    # -- so the surplus accumulates per blank-adjacent NEL site (the
+    # floor's decline sites hold y=2, byte-traced on this composition's
+    # own floor; the r216 floor's y==1 member keeps its exact path --
+    # the widening admits shapes that previously declined
+    # unconditionally, so no existing member's path changes; unbounded
+    # in principle -- blank runs are unbounded, the r321 all-blank
+    # precedent -- and bounded in fact by the coincidence + plain-byte
+    # + frame guards with the byte-bound continuation binding the
+    # rest). THE A/B: libfyaml 04e0b58 reads the artifact's first
+    # document byte-exact as yeptris (the kept-NEL 1.2 reading,
+    # fy-tool --testsuite --yaml-1.2) while its --yaml-1.1 pass matches
+    # libyaml 90a56d4 escape-for-escape -- the comparators split along
+    # the version line exactly as the r317 precedent did -- comparator
+    # carry only, no engine change. Floor exhaustion: no
+    # landmark-preserving single-unit deletion keeps the dual bar (pre
+    # DIFFER + post classify) under the UTF-8 validity constraint; the
+    # unconstrained byte minimizer drifts to the 4-byte "\n<c2>" twin,
+    # a different (encoding-face) divergence that stays out. Battery
+    # (100 mutants, 30 single + 20 double per shape, seed 334): floor
+    # 24 admitted/equal + 26 ledger-enforced splits + 0 declines + 0
+    # crashes; artifact 27 newly-admitted (pre DIFFER -> post
+    # classified) + 22 splits + 1 admitted/equal + 0 declines + 0
+    # crashes; 0 over-restrictions (no mutant the old walk admitted
+    # turned red). Both the floor and the full artifact ride the corpus
+    # (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r334-folded-header-blank-ledger
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-blank-ledger-r334.bin
+    )
+    add_test(
+        NAME fuzz-diff-r334-folded-header-blank-ledger-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-blank-ledger-r334-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
