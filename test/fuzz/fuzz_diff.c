@@ -4598,7 +4598,7 @@ static int yd_qgh_alias_restart_fold_pair(const char* y, size_t yl, const char* 
     return 1;
 }
 
-static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size);
+static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size, int swan);
 
 /* The family entry: the ORIGINAL walk first (frame 0 -- every member
  * that rode before r178 keeps its exact path: the killed-member frame
@@ -4646,6 +4646,8 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
     int depth = 0;
     int quote = 0;
     int hits = 0;
+    int swan = 0;  /* the r337 swan tell: a swallow crossed a quoted-
+                    * span opener (see the hits branch below) */
     int plain = 0; /* a plain run is active: glued quotes are content */
     for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
@@ -4714,15 +4716,40 @@ static int yd_qflow_glued_hash_differ(const uint8_t* data, size_t size, const ch
         }
         if (c == '?' && depth > 0 && i + 1 < size && (data[i + 1] == '#' || data[i + 1] == '!')) {
             hits++;
+            if (data[i + 1] == '#') {
+                /* the r337 swan tell: libyaml's post-'?'-token
+                 * comment-glue runs the glued '#' from scan-to-token
+                 * position to the NEXT BREAK whatever bytes ride in
+                 * between — when a '"' sits inside that run (and a
+                 * break terminates it, so libyaml parses), the swallow
+                 * crossed a quoted-span opener: the span never opens in
+                 * libyaml's reading while yeptris's own walk parses it,
+                 * and the pending KEY token re-pairs with the
+                 * post-break continuation (the quoted-swan ride's
+                 * input-side gate; the dump-side pins live in the
+                 * walk's arm). Line-local by construction — the comment
+                 * cannot cross a break. */
+                size_t j = i + 2;
+                int line_quote = 0;
+                while (j < size && data[j] != '\n' && data[j] != '\r') {
+                    if (data[j] == '"') {
+                        line_quote = 1;
+                    }
+                    j++;
+                }
+                if (line_quote && j < size) {
+                    swan = 1;
+                }
+            }
         }
     }
     if (hits == 0) {
         return 0;
     }
-    if (yd_qgh_differ_walk(ydump, ldump, 0, (int)size)) {
+    if (yd_qgh_differ_walk(ydump, ldump, 0, (int)size, swan)) {
         return 1;
     }
-    return yd_qgh_differ_walk(ydump, ldump, 1, (int)size);
+    return yd_qgh_differ_walk(ydump, ldump, 1, (int)size, swan);
 }
 
 /* The GLUED-'?'-QUOTE pair (r193, run 42434624908, main 6eec12e,
@@ -4907,7 +4934,7 @@ static int yd_r193_glued_question_quote_divergence(const uint8_t* data, size_t s
     return known;
 }
 
-static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size) {
+static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, int size, int swan) {
     /* the shared skip cap (r180): the frame pass scales with the input
      * size -- every skip consumes dump lines, so the walk stays
      * line-bounded by construction; the constant 64 stayed under the
@@ -5802,6 +5829,80 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                                     continue;
                                 }
                             }
+                        }
+                    }
+                }
+                if (swan && yn != NULL && ln != NULL) {
+                    /* the r337 QUOTED-SWAN ride (run 44832174407, main
+                     * ffc37f20, crash-635f2e34): libyaml's post-'?'-token
+                     * comment-glue ate the glued '?#' from scan-to-token
+                     * position THROUGH a quoted-span opener -- the pass-1
+                     * swan tell pinned a '"' inside the run (a break
+                     * terminates it, so libyaml parses) -- so the span
+                     * NEVER OPENS in libyaml's reading and its body rides
+                     * the comment; the pending KEY token then re-paired
+                     * with the POST-BREAK continuation plain (the
+                     * r144/r149 re-pairing law), whose plain-scan rides
+                     * the span's CLOSING QUOTE as plain content (the
+                     * quote is not a plain stop, the 1.1 law). The
+                     * wrapper's KEY therefore renders yeptris's swallowed
+                     * member's own TAIL plus the closer quote, while
+                     * yeptris's suite-pinned laws keep the marker plain
+                     * (the HM87/652Z law) and parse the span (escapes
+                     * decode, the break folds -- the dump side is
+                     * byte-exact; the family_classify model's
+                     * escaped-break continuation arm carries the law
+                     * side). The r143/r149 rides declined (their gates
+                     * demand the KEY be the killed member's or the next
+                     * member's EXACT suffix; the closer residue breaks
+                     * both compares) and r168/r172 declined with them
+                     * (the same exact-suffix pin); this gate is consulted
+                     * after all four by code order, and the shapes stay
+                     * disjoint -- r167 demands the empty key, mine the
+                     * non-empty residue. The ride claims the marker plus
+                     * the swallowed member against the whole salvage
+                     * block when: the killed member is glue-led (the
+                     * r167 lead-form family pin -- libyaml's KEY law
+                     * fires only on '?'-led members), the next member is
+                     * a kept-content VAL (the span; a structure line or
+                     * an empty val declines), the wrapper is the
+                     * well-formed salvage block (opener / content KEY
+                     * ending in the quote / "=VAL : " null / bare
+                     * "-MAP"), and the KEY minus its closer quote is the
+                     * byte-exact suffix of that member's content (the
+                     * direct observation that the KEY's bytes are the
+                     * kept plain's own tail -- an invented key declines).
+                     * Bounded: the fixed four-line block, the byte-exact
+                     * suffix pin, both pointers advance every claim, and
+                     * the shared skip cap still bounds the total (the
+                     * same six-line unit the r149 ride charges); the
+                     * claim stands only on full exhaustion of BOTH
+                     * skeletons (the walk's law). */
+                    const char* l1 = ln + 1;
+                    const char* l1n = strchr(l1, '\n');
+                    size_t l1l = l1n != NULL ? (size_t)(l1n - l1) : strlen(l1);
+                    size_t kl = l1l > vp ? l1l - vp : 0;
+                    const char* y2 = yn + 1;
+                    const char* y2n = strchr(y2, '\n');
+                    size_t y2l = y2n != NULL ? (size_t)(y2n - y2) : strlen(y2);
+                    if (kl > 1 && l1[l1l - 1] == '"' && y2l > vp && l1n != NULL && y2n != NULL &&
+                        yl > vp + 1 && y[vp] == '?' && y[vp + 1] == '#') {
+                        size_t kq = kl - 1; /* the closer quote's residue */
+                        const char* l2b = l1n + 1;
+                        const char* l2b_n = strchr(l2b, '\n');
+                        size_t l2l = l2b_n != NULL ? (size_t)(l2b_n - l2b) : strlen(l2b);
+                        const char* l3b = l2b_n != NULL ? l2b_n + 1 : l2b + l2l;
+                        if (kq > 0 && kq <= y2l - vp && memcmp(y2 + y2l - kq, l1 + vp, kq) == 0 &&
+                            l2l == vp && memcmp(l2b, val_prefix, vp) == 0 &&
+                            memcmp(l3b, "-MAP", 4) == 0 && (l3b[4] == '\n' || l3b[4] == '\0')) {
+                            skips += 4;
+                            if (skips > skip_cap) {
+                                return 0;
+                            }
+                            diffs += 6;
+                            y = y2n + 1;
+                            l = l3b[4] == '\0' ? l3b + 4 : l3b + 5;
+                            continue;
                         }
                     }
                 }

@@ -7437,6 +7437,59 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-colonrun-r336-artifact.bin
     )
 
+    # r337 (run 44832174407, main ffc37f20): the r330/r331 quoted-body
+    # family's next composition of the #949 KEY-token comment-glue. The
+    # artifact `[1,?#,"+S:(<LF><LF>T |U:(<LF><LF>T |U %- |V|r<LF>- 42
+    # <LF>T |U %<CR>g",?g:m]` (60 bytes) hangs a double-quoted member
+    # (LF escapes, a raw CR fold, a `- 42` block-entry token inside the
+    # body) between the glued `?#` member and the `?g:m` member.
+    # yeptris's 1.2 laws keep `?#` ONE plain (HM87/652Z: a flow '?' with
+    # a non-blank follower rides as plain content; a '#' comments only
+    # behind a blank), parse the span normally (the `\n` escapes decode,
+    # the CR folds to the one space, the `- 42` is body text) and keep
+    # `?g:m` a second glued plain; libyaml's flow-'?' KEY-token law
+    # fires on ANY follower and its scan-to-next-token then comment-eats
+    # the glued '#' to the next break — the run swallows `,"+S:...%-`
+    # up to the interior raw CR, crossing the span opener and the `- 42`
+    # token alike, and the pending KEY re-pairs with the post-break
+    # plain `g"` (the 1.1 plain-scan rides the span CLOSER as plain
+    # content — a quote is not a plain stop). The dumps: two single-pair
+    # salvage wrappers ({g": empty}, {g:m: empty}) against yeptris's
+    # quoted scalar and the `?g:m` plain. libfyaml 04e0b58 reads the
+    # artifact stream matching yeptris's reading (three members, the
+    # escaped continuation dropped) — comparator carry only, no engine
+    # change (the r317/r330/r336 precedent). THE CARRY: the qflow walk's
+    # salvage-block arm gains the r337 quoted-swan reading — the pass-1
+    # marker pins a glued `?#` whose comment-run carries a '"' and
+    # terminates at a break; a well-formed salvage block
+    # (+MAP / "=VAL : k"" / "=VAL : " / -MAP) is claimed against
+    # yeptris's marker member plus the swallowed span member when the
+    # KEY minus its closing quote is the byte-exact suffix of the span's
+    # content; the family_classify model gains the matching y-side arms
+    # (the `\n` escape decode and the escaped-break continuation, both
+    # under tight no-pending-fold/no-pending-blank gates; every other
+    # escape follower stays UNKNOWN). Dual-bar floor: 17 bytes
+    # (`[1,?#,"\<CR>g",?g:m]`, greedy ddmin fixed point — the swallow
+    # must cross the span opener AND terminate at a break for both
+    # engines to parse; dropping the CR lands on libyaml-error shapes,
+    # dropping the trailing `?g:m` member rides the existing r167
+    # empty-wrapper arm). Both the floor and the artifact ride the
+    # corpus (the r321 seed law). Next-round pointer: a swallow crossing
+    # TWO span openers, or a KEY riding a doubled continuation
+    # (`\<CR><CR>g`), stays DECLINED (unmeasured shapes); a red there
+    # means the multi-continuation KEY law needs its own measurement
+    # round.
+    add_test(
+        NAME fuzz-diff-r337-key-glue-quoted-swan
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/key-glue-quoted-swan-r337.bin
+    )
+    add_test(
+        NAME fuzz-diff-r337-key-glue-quoted-swan-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/key-glue-quoted-swan-r337-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
