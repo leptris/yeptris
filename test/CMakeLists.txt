@@ -7326,6 +7326,65 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-blank-ledger-r334-artifact.bin
     )
 
+    # the r335 non-specific-tag round (the nightly's run 44808502141,
+    # main af1bacea; the 18-byte artifact [!,?#,"\rg",?g?,""] -- the
+    # glued-?/# comment-piece family CROSSING INTO the tag-member
+    # composition: a flow SEQ whose members are the bare `!` tag, the
+    # glued-`?#` piece, a double-quoted body carrying a RAW CR, the
+    # bare `?g?`, and the empty "" tail). The 15-byte dual-bar floor
+    # [!,?#,"\rg",?g?] (greedy ddmin to a fixed point under the dual
+    # bar; pre-patch DIFFER abort, post-patch carry exit 0, BOTH
+    # shapes, plain and lf harnesses): the y-side NON-SPECIFIC-TAG
+    # MEMBER arm. The bare `!` riding a flow-SEQ member slot resolves
+    # to the non-specific tag; the member's flow-indicator terminator
+    # leaves the tagged node EMPTY, the tag drops from the dump
+    # (resolves by style), and BOTH engines render `=VAL : ` --
+    # byte-exact, the classifier's l-walk already models the bare-`!`
+    # drop in l_render_node, so the y-side arm is the last model gap.
+    # Gates: the bare `!` EXACTLY (a `!name`/`!!` handle or a
+    # `!<verbatim>` form carries dump props and a scalar payload --
+    # untested, the single-byte adjacency keeps them out), the flow
+    # indicator GLUED after the tag (a blank/break run opens the
+    # tagged scalar-value slot the probes never cover -- the r315
+    # anchor-arm run shape, declined on the tag slot; the battery's
+    # `[! ,?...` mutant proves the gate), and the SEQ slot (a MAP key
+    # slot renders the tagged-empty KEY plus the parser's inserted
+    # empty -- untested). The other candidate faces ride existing law:
+    # the quoted-CR body via the r308 member-led quoted-span fold
+    # (CR is a break like any other; the ONE-break fold joins the
+    # close... here the interior fold renders ` g` plain on yeptris
+    # byte-exact) and the r330 law's CR-as-comment-terminator (the
+    # law-a comment-eat stops at the CR via fc_break_len, the post-CR
+    # bytes rebind as libyaml's explicit key `g"`), the `?g?` tail
+    # via the law-d plain-`?` walk (fc_flow_ind's break list has no
+    # `?`, so the trailing indicator rides content on BOTH engines).
+    # THE A/B: libfyaml 04e0b58 errors the artifact outright
+    # ("invalid tag terminator", both --yaml-1.1 and --yaml-1.2
+    # passes) -- no third vote; the comparators split along the
+    # libyaml-is-the-compat-bar line exactly as the r317 precedent
+    # did -- comparator carry only, no engine change. Floor
+    # exhaustion: the ddmin drops exactly the `,""` tail member (the
+    # quoted-empty arm carries it on the artifact); no other
+    # single-unit deletion keeps the dual bar. Battery (100 mutants,
+    # 30 single + 20 double per shape, seed 335): floor 36
+    # admitted/equal + 13 newly-admitted + 1 declined + 0
+    # over-restrictions + 0 crashes; artifact 39 admitted/equal + 10
+    # newly-admitted + 1 declined + 0 over-restrictions + 0 crashes
+    # (the declines: the battery's `[! ,?...` blank-after-tag shape
+    # and the double-CR quoted body -- both correctly gated).
+    # Both the floor and the full artifact ride the corpus (the r321
+    # seed law).
+    add_test(
+        NAME fuzz-diff-r335-tag-member
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tag-r335.bin
+    )
+    add_test(
+        NAME fuzz-diff-r335-tag-member-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tag-r335-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
