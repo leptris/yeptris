@@ -6957,6 +6957,66 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-polarity-r327-artifact.bin
     )
 
+    # r328 (run 44655871592, main e4c86cc6): the folded-header family's
+    # EIGHTH composition — the artifact's `> #<PS> :<NEL> <PS> :<NEL>
+    # ` rides the r283/r320 header-comment law and the r317 kept-NEL
+    # body, but its kept exotics sit ADJACENT to the content colons —
+    # the SPACING dimension (the r320-r327 carries held line-position
+    # exotics; the greedy dual-bar floor GLUES the NEL to the PS
+    # triple, a spacing variant every earlier arm declined). The
+    # artifact site is esc-free on BOTH sides: libyaml's fold branch
+    # SUPPRESSED the fold space at its kept-triple site
+    # (trailing_breaks non-empty clears the fold gate — scanner.c), so
+    # a reads [NEL][SP][PS][SP]`:`... (yeptris's 1.2 verbatim
+    # continuation, the r317 law at mid-body position) where b reads
+    # [PS]`:`... (libyaml's READ_LINE LS|PS keep + the suppressed
+    # fold). The kept-NEL/kept-triple esc-free arm pairs the two exotics
+    # (the r327 polarity law's keep-keep composition, now esc-free),
+    # eats a's verbatim continuation run (spaces + kept NELs + kept
+    # LS/PS triples, >= ONE exotic — the family signature; the SPACING
+    # generalization: the exotic's position within the run is free),
+    # and requires the plain byte behind both sides to coincide on
+    # non-space/non-escape/non-exotic-lead/non-frame-end content (the
+    # r323 coincidence law) so the walk rejoins byte-bound; the tail
+    # behind stays owned by the loop's existing laws. The floor's own
+    # site is the NEL-site lead-space entry: the kept NEL leads its
+    # sub-line BEHIND a verbatim space libyaml consumed as the
+    # sub-line's INDENTATION and spent its ONE escape on the NEL itself
+    # (a reads [SP][NEL][SP...][clip ESC], b reads [ESC][content SP]) —
+    # the r317 fold-accounting gate (r >= L + k) declines there, so the
+    # lead-space entry arm eats a's leading spaces (no b counterpart —
+    # the eaten indent, the r282/r288 class), pairs the k kept NELs to
+    # the FIRST r escapes (r >= k — the r320 ledger law), fires ONLY
+    # when the r317 gate FAILED (r < L + k — the fold-space mapping
+    # owns r >= L + k), and demands the trailing surplus na >= nb (the
+    # branch's own law). THE A/B: libyaml 90a56d4 reads the 1.1 split
+    # (artifact value `:<PS>:\n ` — NEL->LF, the PS kept raw
+    # suppressing the fold, hand-derived byte-exact against scanner.c),
+    # libfyaml 04e0b58 reads the artifact EMPTY (pure 1.2: the PS is no
+    # break, the `#` comment eats to the breakless EOF — nobody agrees
+    # with anybody), yeptris keeps the whole body verbatim + the clip
+    # escape — the comparators split three ways; comparator carry only,
+    # no engine change (the r317 precedent).
+    # Floor: 18 of 20 bytes survive the dual bar (greedy ddmin,
+    # single-byte deletion to a fixed point; pre-patch DIFFER exit 77 +
+    # NOT classified, post-patch carry exit 0, on BOTH the floor and
+    # the full artifact; no further single-byte deletion keeps the dual
+    # bar — the r320 ultra-minimal form). The 50-mutant paired battery
+    # (30 single + 20 double, seed 328): 49 clean-both, 1
+    # newly-carried, 0 stayed-red, 0 crashes — see the round issue.
+    # Both the floor and the full artifact ride the corpus (the r321
+    # seed law).
+    add_test(
+        NAME fuzz-diff-r328-folded-header-family-spacing
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-spacing-r328.bin
+    )
+    add_test(
+        NAME fuzz-diff-r328-folded-header-family-spacing-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-spacing-r328-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

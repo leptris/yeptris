@@ -7892,6 +7892,80 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 continue;
             }
         }
+        /* the r328 kept-NEL/kept-triple esc-free site (the nightly's
+         * round 328, run 44655871592, main e4c86cc6; the 20-byte
+         * artifact crash-dce1a80fa55d8889bfe22af217be9cf19fc00251,
+         * 18-byte dual-bar floor "> #<PS> :<NEL><PS> <NEL>  " -- the
+         * r317/r320/r321/r323/r324/r325/r327 folded-header family's
+         * EIGHTH composition, the first past the r327 polarity split):
+         * the SPACING dimension -- the kept exotics sit ADJACENT to the
+         * content colons (the r320-r327 carries held line-position
+         * exotics; the greedy floor GLUES the NEL to the PS triple,
+         * a spacing variant every earlier arm declined). At the site
+         * BOTH sides are esc-free: libyaml's fold branch SUPPRESSED the
+         * fold space at the triple site (trailing_breaks non-empty
+         * clears the fold gate -- scanner.c), so no escape rides behind
+         * its kept triple -- a reads [NEL][SP][PS][SP]`:`... (yeptris's
+         * 1.2 verbatim continuation: the r317 law at mid-body position,
+         * the exotic bytes content wherever the input spaces put them)
+         * where b reads [PS]`:`... (libyaml's READ_LINE LS|PS keep +
+         * the suppressed fold). Pair the kept NEL and the kept triple
+         * (the r327 polarity law's keep-keep composition, now
+         * esc-free), eat a's verbatim continuation run (spaces + kept
+         * NELs + kept LS/PS triples, >= ONE exotic -- the family
+         * signature; THE SPACING GENERALIZATION: the exotic's position
+         * within the run is free), and require the plain byte behind
+         * both sides to COINCIDE on non-space/non-escape/non-exotic-
+         * lead/non-frame-end content (the r323 coincidence law), so the
+         * walk rejoins byte-bound at an agreement byte and the tail
+         * behind stays owned by the loop's existing laws. Sits behind
+         * the r327 split (whose gate demands the ONE escape behind the
+         * triple and a pure-space a-run -- disjoint: this site's
+         * continuation carries the exotic) and behind the NEL-site
+         * branch (whose gate wants b on an escape or a space --
+         * disjoint). Previously this shape declined unconditionally
+         * here, so no existing member's path changes. THE A/B: libyaml
+         * 90a56d4 reads the 1.1 split (artifact value ":<PS>:\n " --
+         * NEL->LF, the PS kept raw suppressing the fold, hand-derived
+         * byte-exact against scanner.c), libfyaml 04e0b58 reads the
+         * artifact EMPTY (pure 1.2: the PS is no break, the `#` comment
+         * eats to the breakless EOF -- nobody agrees with anybody),
+         * yeptris keeps the whole body verbatim + the clip escape
+         * (":<NEL> <PS> :<NEL>  " minus the one indent space) -- the
+         * comparators split three ways, comparator carry only, no
+         * engine change (the r317 precedent). */
+        if ((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85 &&
+            (unsigned char)b[0] == 0xE2 && (unsigned char)b[1] == 0x80 &&
+            ((unsigned char)b[2] == 0xA8 || (unsigned char)b[2] == 0xA9)) {
+            const char* pa = a + 2;
+            int run = 0;
+            while (*pa != '\0') {
+                if (pa[0] == ' ') {
+                    pa++;
+                    continue;
+                }
+                if ((unsigned char)pa[0] == 0xC2 && (unsigned char)pa[1] == 0x85) {
+                    pa += 2;
+                    run++;
+                    continue;
+                }
+                if ((unsigned char)pa[0] == 0xE2 && (unsigned char)pa[1] == 0x80 &&
+                    ((unsigned char)pa[2] == 0xA8 || (unsigned char)pa[2] == 0xA9)) {
+                    pa += 3;
+                    run++;
+                    continue;
+                }
+                break;
+            }
+            const char* pb = b + 3;
+            if (run >= 1 && pb[0] != '\0' && pb[0] != '\\' && pa[0] == pb[0] && pa[0] != ' ' &&
+                pa[0] != '\\' && (unsigned char)pa[0] != 0xC2 && (unsigned char)pa[0] != 0xE2) {
+                a = pa;
+                b = pb;
+                subs += 2;
+                continue;
+            }
+        }
         /* the r297 spent-NEL site (run 43952064060): libyaml's fold
          * accounting SPENT the break -- the NEL was leading_break at
          * the next content line and the fold branch dropped it
@@ -8303,6 +8377,75 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                     pa[0] != '\\' && (unsigned char)pa[0] != 0xC2 && (unsigned char)pa[0] != 0xE2) {
                     a = pa;
                     b = pb;
+                    subs += 2;
+                    continue;
+                }
+            }
+        }
+        /* the r328 NEL-site lead-space entry (the nightly's round 328,
+         * run 44655871592, main e4c86cc6; the 18-byte dual-bar floor
+         * "> #<PS> :<NEL><PS> <NEL>  " of the 20-byte artifact
+         * crash-dce1a80fa55d8889bfe22af217be9cf19fc00251): the floor's
+         * kept NEL leads its sub-line BEHIND a verbatim space (the
+         * "<PS> <NEL>  " tail -- input spaces yeptris keeps verbatim,
+         * the r317 law) while libyaml's reader consumed the space as
+         * the sub-line's INDENTATION and spent its ONE escape on the
+         * NEL itself -- at the site a reads [SP][NEL][SP...][clip ESC]
+         * where b reads [ESC][content SP]. The r317 pre-NEL arm's
+         * fold-accounting gate (r >= L + k) declines -- libyaml's
+         * escape count covers the NEL only, the leading space is not
+         * fold material but the eaten indent (the r282/r288 class) --
+         * and the r323 interleave's coincidence fails (a's run ends in
+         * the clip escape where b carries the content space), so the
+         * NEL-site branch (whose entry wants a ON the NEL) never sees
+         * the shape. Fire the NEL-site pairing entered one space-run
+         * earlier: eat a's leading spaces (no b counterpart -- the
+         * eaten indent), pair the k kept NELs to the FIRST r escapes
+         * (r >= k -- the r320 ledger law bounds libyaml's join: it can
+         * never exceed the breaks it read), ONLY when the r317 gate
+         * FAILED (r < L + k -- the fold-space mapping owns r >= L + k),
+         * and the trailing surplus na >= nb (the branch's own law).
+         * The byte-bound continuation behind binds the rest (here the
+         * mirror polarity's frame coincidence + the r176 tail's strcmp
+         * complete the floor). Sits behind the r323 interleave (whose
+         * accepted shapes keep their exact path -- this arm only sees
+         * what the coincidence declined) and behind r317 (whose gate
+         * owns r >= L + k). Previously this shape declined
+         * unconditionally here, so no existing member's path changes. */
+        if (a[0] == ' ' && (unsigned char)a[1] == 0xC2 && (unsigned char)a[2] == 0x85 &&
+            b[0] == '\\' && b[1] == 'n') {
+            const char* sp = a;
+            int lead = 0;
+            while (sp[0] == ' ') {
+                sp++;
+                lead++;
+            }
+            int k2 = 0;
+            const char* p2 = sp;
+            while ((unsigned char)p2[0] == 0xC2 && (unsigned char)p2[1] == 0x85) {
+                p2 += 2;
+                k2++;
+            }
+            int r2 = 0;
+            const char* q2 = b;
+            while (q2[0] == '\\' && q2[1] == 'n') {
+                q2 += 2;
+                r2++;
+            }
+            if (k2 >= 1 && r2 >= k2 && r2 < lead + k2) {
+                int na2 = 0;
+                while (p2[0] == ' ') {
+                    p2++;
+                    na2++;
+                }
+                int nb2 = 0;
+                while (q2[0] == ' ') {
+                    q2++;
+                    nb2++;
+                }
+                if (na2 - nb2 >= 0) {
+                    a = p2;
+                    b = q2;
                     subs += 2;
                     continue;
                 }
