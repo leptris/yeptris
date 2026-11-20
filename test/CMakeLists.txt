@@ -7067,6 +7067,61 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-crossfamily-r329-artifact.bin
     )
 
+    # r330 (run 44682066625, main 22dd1700): the r238 root-anchor-
+    # quoted-follow family's first WIDENED member — the artifact
+    # `&2?*: '<PS><CR>'` (12 bytes) glues the '?'/'*' INTO the anchor
+    # name ahead of the riding ':': yeptris keeps the whole `2?*:`
+    # (1.2 ns-anchor-char, the 2SXE/W5VH/Y2GN suite law — libyaml is
+    # behind the suite, the r311 law) and reads ONE root anchored
+    # scalar whose body is the quoted `<PS><CR>` (the PS kept raw, the
+    # CR folded to the one space — the r238 y-walk), while libyaml's
+    # 1.1 IS_ALPHA cut lands at the FIRST out-of-charset byte (the
+    # '?'), the cut residual `?*` re-lexes as the key's PLAIN content
+    # (the plain-'?' law — '?' glued to a non-blank is content, the
+    # r199 law), the freed ': ' fires the VALUE token, and the quoted
+    # scalar parses as the map value (`+MAP / =VAL : &2 ?* / =VAL :
+    # <PS>\n` — the PS kept raw, the CR normalized to the kept LF, no
+    # fold space — the r238 l-walk's blank-state quark). The fresh
+    # territory is the QUOTED-BODY exotic dimension (the r329
+    # crossover): every pre-r330 member of the shape (the ASCII-body
+    # `&2?*: 'a'`, the PS-only body, the no-quote tails) is carried by
+    # the anchor-name-charset arm, because its split copy (`&2 ?*:
+    # '...'`) agrees there — but the split copy is YEPTRIS-REJECTED
+    # under the PS/CR body ("wrongly indented single-quoted scalar":
+    # the PS is a 1.2 line break and the map-value continuation sits
+    # at column 0 — the indent law), so the charset arm's verify leg 1
+    # dies and the composition reds. THE A/B (probed): libfyaml
+    # 04e0b58 reads yeptris's artifact stream byte-exact (SCALAR
+    # anchor `2?*:` value `<PS>+<SP>` on both), and rejects the split
+    # copy IDENTICALLY to yeptris (the same indent error) where
+    # libyaml accepts — comparator carry only, no engine change (the
+    # r318 precedent). THE CARRY: the r238 arm's riding-name set gains
+    # the glued '?'/'*' and its libyaml model cuts at the first
+    # out-of-charset byte with the residual (cut..colon) rendered as
+    # the key's plain content — a leading '?' then the plain-safe run
+    # ([A-Za-z0-9_-?*]; a ':' inside would re-lex the VALUE boundary,
+    # a '*' lead would re-lex as an ALIAS — both stay out, unmeasured
+    # shapes); every existing r238 member keeps its exact path (their
+    # names cut AT the riding ':', the anchored-empty-key arm).
+    # Floor: 11 of 12 bytes survive the dual bar (greedy ddmin,
+    # single-byte deletion to a fixed point; pre-patch DIFFER exit 77
+    # + NOT classified, post-patch carry exit 0, on BOTH the floor
+    # `&2?: '<PS><CR>'` and the full artifact; no further single-byte
+    # deletion keeps the dual bar — the r320 ultra-minimal form). The
+    # 50-mutant paired battery (30 single + 20 double, seed 330): see
+    # the round issue. Both the floor and the full artifact ride the
+    # corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r330-root-anchor-quoted-follow-qsplat
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-qsplat-r330.bin
+    )
+    add_test(
+        NAME fuzz-diff-r330-root-anchor-quoted-follow-qsplat-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-qsplat-r330-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
