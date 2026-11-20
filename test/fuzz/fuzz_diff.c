@@ -8185,6 +8185,80 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
         if (a[0] == '\\' && a[1] == 'n' && strcmp(a + 2, b) == 0) {
             return subs > 0;
         }
+        /* the r333 comment-eaten EOF-tail kept-exotic site (the same
+         * nightly round, run 44774423077; the 24-byte artifact's tail
+         * " <PS><NEL>#0" -- the tenth composition's mid-body face): at
+         * the FINAL value slot yeptris keeps the raw LS/PS triple plus
+         * kept NEL pairs plus the GLUED '#'-led content line where
+         * libyaml's walk carries only its ONE clip escape. The
+         * mechanism is libyaml's block END at the column-0 comment
+         * line: its breaks-scan left indent=1, the content loop's
+         * col==indent test failed on the '#'-led line, the "#0"
+         * re-lexed as the blank-preceded document-level comment eaten
+         * to EOF, and the clip joined the EMPTY leading_break -- so
+         * b's remainder is exactly the ONE escape and the dump-line
+         * end, while yeptris's 1.2 whole-route kept the exotics raw in
+         * the fold content and the "#0" as the block's own material.
+         * The r197 polarity owns the a-escape/b-triple orientation
+         * (disjoint: this gate has a ON the raw triple), and the
+         * r205 aligned-triple arm owns both-sides-triple (disjoint: b
+         * here is ON the escape). The byte-bound pairing upstream spent
+         * b's ONE clip escape against a's fold-space escape (esc-vs-esc
+         * through the plain match), so b sits AT the dump-line end when
+         * this site fires, and a still carries the kept material PLUS
+         * its own clip escape. Eat exactly that: the raw triple lead,
+         * then spaces / kept NEL pairs, then the GLUED '#'-led content
+         * (the comment signature IS the mechanism; a non-'#' tail opens
+         * libyaml's second document and stays out), no escape, no raw
+         * exotic lead and no dump line break inside it -- then the ONE
+         * clip escape -- and require the remainders behind the claim to
+         * coincide completely with b's (the r161 strcmp law -- b-side
+         * bytes are never eaten, so the claim can never swallow
+         * divergence past the value). THE A/B: libfyaml 04e0b58 reads the artifact
+         * an EMPTY STREAM ("+STR\n-STR", the r333 arm's re-measured
+         * floor) -- comparator carry only, no engine change (the r317
+         * precedent). Sits behind the r176 tail (whose gate wants a ON
+         * the escape -- disjoint from this gate's raw-triple lead),
+         * behind the r303/r304 EOF-tail arms (NEL-led -- disjoint) and
+         * ahead of the r325 realign arm (whose gate wants a ON the
+         * escape -- disjoint). Previously this shape declined
+         * unconditionally here, so no existing member's path changes. */
+        if (b[0] == '\n' &&
+            (a[0] == ' ' || ((unsigned char)a[0] == 0xE2 && (unsigned char)a[1] == 0x80 &&
+                             ((unsigned char)a[2] == 0xA8 || (unsigned char)a[2] == 0xA9)))) {
+            const char* p = a;
+            while (p[0] == ' ') {
+                p++;
+            }
+            if ((unsigned char)p[0] == 0xE2 && (unsigned char)p[1] == 0x80 &&
+                ((unsigned char)p[2] == 0xA8 || (unsigned char)p[2] == 0xA9)) {
+                p += 3;
+                while (*p != '\0') {
+                    if (p[0] == ' ') {
+                        p++;
+                        continue;
+                    }
+                    if ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0x85) {
+                        p += 2;
+                        continue;
+                    }
+                    break;
+                }
+                if (p[0] == '#' && p[1] != '\\' && p[1] != '\0' && p[1] != '\n') {
+                    const char* q = p + 1;
+                    while (q[0] != '\0' && q[0] != '\\' && q[0] != '\n' &&
+                           (unsigned char)q[0] != 0xC2 && (unsigned char)q[0] != 0xE2) {
+                        q++;
+                    }
+                    if (q > p + 1 && q[0] == '\\' && q[1] == 'n' && q[2] == '\n' &&
+                        strcmp(q + 2, b) == 0) {
+                        a = q + 2;
+                        subs += 2;
+                        continue;
+                    }
+                }
+            }
+        }
         /* the r325 fold-dropped realign site (the nightly's round 325,
          * run 44611344281, main 37e7e09d; the 35-byte artifact
          * crash-f0ddbd7d876ccfc0e659a05254d6ed6ddb00d5ab "> #<LS> :<LF>
@@ -8358,6 +8432,66 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 a = ap + 2;
                 subs += 2;
                 continue;
+            }
+        }
+        /* the r333 normalized-blank floor site (the nightly's round 333,
+         * run 44774423077, main feb599b5; the 24-byte artifact
+         * crash-501717408099949c4c94a58f39949f40b6922ce3 "> #<PS> :\n
+         * <SP><SP><NEL> :\n <SP><PS><NEL>#0", the 14-byte dual-bar floor
+         * "> #<PS>\n<NEL><PS>#0" -- the r317/r320/r321/r323/r324/r325/
+         * r327/r328/r329 folded-header family's TENTH composition, the
+         * first where yeptris's whole value reads NORMALIZED): the
+         * document-level break normalizer (#638, the exotic->LF copy the
+         * engine parses) turned the all-blank-per-1.2 body's exotic
+         * breaks into the LF escapes yeptris's fold ledger spells
+         * literally, and the glued "#0" line rides as the block's one
+         * content line at the auto-indent, so a's value reads [esc
+         * run]["#0"][clip esc] where libyaml's 1.1 block reader ends
+         * the block at the column-0 line (its breaks-scan auto-indent
+         * lands 1, the content loop's col==indent test fails) and the
+         * "#0" re-lexes as the DOCUMENT-LEVEL comment -- blank-preceded
+         * '#' -- eaten to EOF, the clip joining the EMPTY leading_break:
+         * b's value is EMPTY. Pair the normalized face only: b at the
+         * empty-value line-end (the r321 gate shape), a on a maximal
+         * escape run (>= ONE -- the normalized body; a raw C2/E2 lead
+         * is the r321 arm's own material), then the GLUED '#'-led
+         * content -- the comment signature IS the mechanism this arm
+         * documents (libyaml's comment condition: blank-preceded '#';
+         * a non-'#' tail would open libyaml's SECOND document, a
+         * different divergence class that stays out), no escape, no raw
+         * exotic lead and no dump-line break inside it, then the ONE
+         * clip escape and the dump line end, so the walk rejoins
+         * byte-bound at the next dump line. THE A/B: libfyaml 04e0b58
+         * reads BOTH the floor and the artifact as an EMPTY STREAM
+         * (fy-tool --testsuite --yaml-1.2: "+STR\n-STR", zero documents
+         * -- re-measured on THIS composition's own floor, the r325
+         * lesson), so the dual-engine consensus law does not carry the
+         * family here either -- comparator carry only, no engine change
+         * (the r317 precedent). Sits BEHIND the r321 arm (whose gate
+         * wants a on the raw C2/E2 lead -- disjoint from this gate's
+         * escape lead) and AHEAD of the r323 blank-run interleave (whose
+         * gate wants a on the space lead -- disjoint). Previously this
+         * shape declined unconditionally here, so no existing member's
+         * path changes. */
+        if (b[0] == '\n' && b >= ldump + 7 && memcmp(b - 7, "=VAL : ", 7) == 0 && a[0] == '\\' &&
+            a[1] == 'n') {
+            const char* p = a;
+            int n = 0;
+            while (p[0] == '\\' && p[1] == 'n') {
+                p += 2;
+                n++;
+            }
+            if (n >= 1 && p[0] == '#' && p[1] != '\\' && p[1] != '\0' && p[1] != '\n') {
+                const char* q = p + 1;
+                while (q[0] != '\0' && q[0] != '\\' && q[0] != '\n' &&
+                       (unsigned char)q[0] != 0xC2 && (unsigned char)q[0] != 0xE2) {
+                    q++;
+                }
+                if (q > p + 1 && q[0] == '\\' && q[1] == 'n' && q[2] == '\n') {
+                    a = q + 2;
+                    subs += 2;
+                    continue;
+                }
             }
         }
         /* the r323 blank-run kept-exotic interleave site (the nightly's

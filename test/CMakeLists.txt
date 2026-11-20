@@ -7235,6 +7235,46 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/dotted-key-exotic-tab-r332-artifact.bin
     )
 
+    # the r333 fold-header round (the nightly's run 44774423077, main
+    # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
+    # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor
+    # "> #<PS>\n<NEL><PS>#0" — greedy ddmin to a fixed point; pre-patch
+    # DIFFER exit 77, post-patch carry exit 0, on BOTH shapes; no
+    # landmark-preserving single-unit deletion keeps the dual bar — the
+    # 10th composition of the folded-header family, the first where
+    # yeptris's WHOLE value reads normalized): the document-level break
+    # normalizer (#638) turned the all-blank-per-1.2 body's exotic
+    # breaks into the LF escapes the fold ledger spells literally, the
+    # glued "#0" line rides as the block's one content line at the
+    # auto-indent (yeptris), while libyaml's 1.1 reader ends the block
+    # at the column-0 line and re-lexes the "#0" as the document-level
+    # comment eaten to EOF (the clip joins the EMPTY leading_break, the
+    # value is EMPTY). The artifact's mid-body face rides the r317/r208
+    # pairing class (the more-indented kept-NEL line) and the new
+    # comment-eaten EOF-tail arm; the floor rides the new
+    # normalized-blank arm (behind the r321 gate, disjoint). THE A/B:
+    # libfyaml 04e0b58 reads BOTH shapes an EMPTY STREAM
+    # (fy-tool --testsuite --yaml-1.2: "+STR\n-STR", zero documents —
+    # re-measured on this composition's own floor after the r325
+    # lesson), so the dual-engine consensus law does not carry the
+    # family here either — comparator carry only, no engine change (the
+    # r317 precedent). The over-broad guard holds: the non-'#' tail
+    # twins ("x0", the libyaml second-document class) and the
+    # structural tails ("#0\n|\n y") still decline; both shapes' 50
+    # -mutant paired battery (30 single + 20 double, seed 333): see the
+    # round issue. Both the floor and the full artifact ride the corpus
+    # (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r333-folded-header-comment-tail
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-comment-tail-r333.bin
+    )
+    add_test(
+        NAME fuzz-diff-r333-folded-header-comment-tail-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-comment-tail-r333-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
