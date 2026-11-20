@@ -3702,6 +3702,8 @@ static int yd_r203_dq_escape(char* sub, size_t* subn, unsigned char b) {
  * ORIGINAL dump arbitrates: both engines must read the rewrite
  * exactly as libyaml read the original, or the claim declines. */
 static int yd_dump_eq_mod_lsps_fold(const char* ydump, const char* ldump);
+static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                  const char* ldump);
 static int yd_r203_flow_seq_question_multiline_divergence(const uint8_t* data, size_t size,
                                                           const char* ydump, const char* ldump) {
     if (ydump == NULL || ldump == NULL || size < 5 || size > 262144) {
@@ -7545,6 +7547,59 @@ static int yd_block_nel_content_divergence(const uint8_t* data, size_t size, con
     char* ldump3 = yd_libyaml_dump((const char*)sub, o, &lok3);
     int known3 = yok3 != 0 && lok3 != 0 && ydump2 != NULL && ldump3 != NULL &&
                  strcmp(ldump3, ldump) == 0 && strcmp(ydump2, ldump) == 0;
+    if (!known3 && yok3 != 0 && lok3 != 0 && ydump2 != NULL && ldump3 != NULL &&
+        strcmp(ldump3, ldump) == 0) {
+        /* the r329 composed stage (the nightly's round 329, run
+         * 44667118830, main 7d252607; the 924-byte artifact
+         * crash-fc8b9ce73c182e2862fbcd3656f548e88a0aa58e, 22-byte dual-bar
+         * floor "> #<PS><PS> <NEL><LF>---<LF>S<PS>'" -- the r317/r320/
+         * r321/r323/r324/r325/r327/r328 folded-header family's NINTH
+         * composition, the first CROSS-FAMILY one): the kept-NEL delta
+         * rides in one document while the LS/PS delta rides in another --
+         * the header comment's PS pair is rewritten to LFs by the
+         * whole-route normalizer (the comment splits, the kept NEL
+         * becomes the body's one content line -- the r317/r320 family
+         * root) and BEHIND the document marker a plain (the floor) or a
+         * literal line (the artifact's emit block) carries its OWN
+         * documented LS/PS delta: yeptris's plain-fold space vs
+         * libyaml's raw-kept triple (the round-56 plain law) / the
+         * space-after-triple yeptris keeps where libyaml strips it (the
+         * ps-space law). Every stage-1 binding dies: the exact strcmp
+         * wants the twin's whole dump equal (the residual LS/PS delta
+         * blocks it), the r56 fold walk wants full alignment of the RAW
+         * dumps (the kept NEL blocks it), the ps-space walk likewise.
+         * The stage: after the NEL carpet is PURE to libyaml (the same
+         * strcmp(ldump3, ldump) gate above -- its 1.1 reader breaks at
+         * the NEL either way), the residual pair (yeptris's dump of the
+         * carpet, libyaml's ORIGINAL dump) must ride one of the two
+         * documented LS/PS dump walks -- both byte-bound, both
+         * demanding diffs > 0 at every admitted site. Gates: the twin
+         * still carries an LS/PS triple followed by a space (the
+         * ps-space gate scans the CARPET, whose triples are untouched),
+         * or any triple at all (the plain law's own has gate ran on the
+         * original already; the walk itself is the binding), and the
+         * 8192 cap bounds the dumps. Previously this shape declined
+         * unconditionally here, so no existing member's path changes.
+         * THE A/B: libyaml 90a56d4 reads the 1.1 split (doc 1 EMPTY --
+         * the NEL is a break and the clip chomps it; doc 2 keeps the
+         * raw triple), libfyaml 04e0b58 reads doc 1 EMPTY too (pure
+         * 1.2: the comment eats to the LF, the marker bounds the doc)
+         * and doc 2 raw ("S<PS>'"; on the artifact's emit line it keeps
+         * PS AND space AND NEL raw -- "<PS> <NEL>" -- while libyaml
+         * strips the space) -- the comparators side against yeptris on
+         * the kept-NEL document exactly as the r321 floor's A/B did,
+         * and split three ways on the artifact's LS/PS line -- the r320/
+         * r321 precedents' polarities, comparator carry only, no engine
+         * change (the r317 precedent). */
+        int known4 = yd_ps_space_divergence(sub, o, ydump2, ldump);
+        if (!known4) {
+            known4 = yd_dump_eq_mod_lsps_fold(ydump2, ldump);
+        }
+        free(sub);
+        free(ydump2);
+        free(ldump3);
+        return known4;
+    }
     free(sub);
     free(ydump2);
     free(ldump3);

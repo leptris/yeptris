@@ -7017,6 +7017,56 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-spacing-r328-artifact.bin
     )
 
+    # r329 (run 44667118830, main 7d252607): the folded-header family's
+    # NINTH composition and the first CROSS-FAMILY one — the kept-NEL
+    # delta rides in one document while the LS/PS delta rides in another,
+    # so every existing single-family binding dies. The artifact opens
+    # `> #<PS><PS> <NEL><LF>---` (the r320 doubled-PS header comment, the
+    # kept-NEL body line) with the whole empty-or-newline-only-quoted-
+    # strings testsuite seed spliced BEHIND the block scalar: yeptris's
+    # doc 1 keeps `ESC NEL ESC` (the whole-route normalizer rewrites the
+    # comment's PS pair to LFs — the comment splits, the kept NEL becomes
+    # the body's one content line, the r317/r320 family root) where both
+    # comparators read EMPTY (libyaml: the NEL is a 1.1 break and the clip
+    # chomps it; libfyaml 04e0b58: pure 1.2, the comment eats to the LF
+    # and the marker bounds the doc — the r321 A/B's polarity), and doc 2
+    # diverges at its own LS/PS site: the emit block's `e: '<PS> <NEL>...'
+    # line keeps the space AFTER the raw PS in yeptris where libyaml
+    # strips it (the ps-space law) while libfyaml keeps PS AND space AND
+    # NEL raw (a three-way split, the r320/r327 polarities). The 22-byte
+    # dual-bar floor `> #<PS><PS> <NEL><LF>---<LF>S<PS>'` carries the
+    # plain sibling: doc 2 is `S<PS>'` where yeptris's plain folds the PS
+    # to the ONE space (the round-56 plain law) and BOTH comparators keep
+    # the raw triple. The stage (inside the r220 NEL-carpet arm, behind
+    # its exact-strcmp stage): when the carpet is PURE to libyaml (the
+    # same strcmp(ldump3, ldump) gate — its 1.1 reader breaks at the NEL
+    # either way), the residual pair (yeptris's dump of the carpet,
+    # libyaml's ORIGINAL dump) must ride one of the two documented LS/PS
+    # dump walks — the ps-space walk (the artifact's residual) or the
+    # plain fold walk (the floor's residual) — both byte-bound, both
+    # demanding diffs > 0 at every admitted site. Comparator carry only,
+    # no engine change (the r317 precedent).
+    # Floor: 22 of 924 bytes survive the dual bar (greedy ddmin to a
+    # fixed point; pre-patch DIFFER exit 77 + NOT classified, post-patch
+    # carry exit 0, on BOTH the floor and the full artifact, plain and
+    # _lf). The 50-mutant paired battery (30 single + 20 double, seed
+    # 329): 49 clean-both / 0 newly-carried / 1 declined / 0 crashes —
+    # the declined mutant (`>` + LF + `#<PS><PS> <NEL>` + the same tail,
+    # space→LF at position 1) composes THREE families (the root-block
+    # content law's `#` body line x the kept-NEL carpet x the plain
+    # LS/PS fold — a deeper chain the r325 grammar-boundary precedent
+    # documents as declined); see the round issue.
+    add_test(
+        NAME fuzz-diff-r329-folded-header-family-crossfamily
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-crossfamily-r329.bin
+    )
+    add_test(
+        NAME fuzz-diff-r329-folded-header-family-crossfamily-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-crossfamily-r329-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
