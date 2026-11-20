@@ -6908,6 +6908,55 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-alias-comment-ride-r326-artifact.bin
     )
 
+    # r327 (run 44638379551, main 7c033da3): the folded-header family's
+    # SEVENTH composition — the artifact's `> #<PS><PS> <NEL><LF><PS>
+    # <NEL> ---` rides the r320/r323 doubled-PS header comment and the
+    # r317 kept-NEL body, but its SECOND kept exotic faces libyaml's
+    # kept LS/PS raw triple: at the same alignment slot EACH engine's
+    # value carries the OTHER exotic's raw bytes (yeptris keeps the NEL
+    # pair as 1.2 content, libyaml's READ_LINE LS|PS branch keeps the
+    # triple it broke ON — the polarity law's keep-keep composition,
+    # the first MID-BODY split past the r325 boundary note). The
+    # tail's `---` is NOT the dimension (the byte-exact dumps join it
+    # as scalar content on BOTH engines — single =VAL, no -DOC split —
+    # and the dual-bar floor drops it to a lone `-` with the divergence
+    # intact): the fresh site is the kept-NEL/kept-triple split with
+    # libyaml's ONE break-spelling escape (its trailing-breaks join
+    # spells the NEL's break as the LF escape) and yeptris's fold-blind
+    # interior space behind it. The arm pairs the kept NEL and the kept
+    # triple, eats a's spaces (libyaml's eaten indent — the r297 class)
+    # and b's EXACTLY ONE escape (the r320 ledger law: one break per
+    # site), and requires the plain byte behind both sides to coincide
+    # on non-space/non-escape/non-exotic-lead/non-frame-end content (the
+    # r323 coincidence law) so the walk rejoins byte-bound and the
+    # r176 clip tail's strcmp completes the binding. THE A/B: libyaml
+    # 90a56d4 spells the kept triple and the join escapes
+    # ("=VAL : <PS>\n\n<PS>\n-"), libfyaml 04e0b58 keeps BOTH exotics
+    # raw as one content line ("=VAL ><PS> <NEL> -\n" — 1.2: no exotic
+    # break is a break), yeptris keeps the NELs and folds the PS to its
+    # normalized LF — the comparators split three ways exactly as the
+    # r320/r323 A/B did; comparator carry only, no engine change (the
+    # r317 precedent).
+    # Floor: 21 of 23 bytes survive the dual bar (greedy ddmin:
+    # run-length collapse then single-byte deletion; pre-patch DIFFER
+    # exit 77 + NOT classified, post-patch carry exit 0, on BOTH the
+    # floor and the full artifact; no single-byte deletion of the floor
+    # keeps the dual bar — the r320 ultra-minimal form). The 50-mutant
+    # paired battery (30 single + 20 double, seed 327): 94 clean-both,
+    # 6 newly-carried, 0 stayed-red, 0 crashes — see the round issue.
+    # Both the floor and the full artifact ride the corpus (the r321
+    # seed law).
+    add_test(
+        NAME fuzz-diff-r327-folded-header-family-polarity
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-polarity-r327.bin
+    )
+    add_test(
+        NAME fuzz-diff-r327-folded-header-family-polarity-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-family-polarity-r327-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
