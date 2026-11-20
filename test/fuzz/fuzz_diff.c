@@ -10777,7 +10777,13 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
          * split copy IDENTICALLY ("wrongly indented single-quoted
          * scalar") and reads yeptris's artifact stream byte-exact
          * (probed: SCALAR anchor `2?*:` value `<PS>+<SP>` on both),
-         * so the carry stays comparator-only. */
+         * so the carry stays comparator-only. The r336 widening
+         * (run 44822270874, main 71939ad1) joins the residual's pure
+         * glued-colon run: the artifact `&2:: '<PS><CR>'` -- the r330
+         * seed with the tail colon DOUBLED -- cuts to the residual
+         * `:` which re-lexes as the key's plain content (every
+         * interior ':' glues to the next non-blank byte: the run or
+         * the riding ':'); see the widened residual law below. */
         while (i < size &&
                (((data[i]) >= 'A' && (data[i]) <= 'Z') || ((data[i]) >= 'a' && (data[i]) <= 'z') ||
                 ((data[i]) >= '0' && (data[i]) <= '9') || (data[i]) == '_' || (data[i]) == '-' ||
@@ -10903,28 +10909,78 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                 }
                 b++;
             } else {
-                /* the r330 members: the cut residual is the key's
-                 * plain content, byte-equal against the dump */
-                if (data[cut] != '?') {
-                    return 0;
+                int colon_run = data[cut] == ':';
+                for (size_t r = cut; colon_run && r < colon; r++) {
+                    if (data[r] != ':') {
+                        colon_run = 0;
+                    }
                 }
-                for (size_t r = cut; r < colon; r++) {
-                    if (!((data[r] == '?' || data[r] == '*') ||
-                          ((data[r] >= '0' && data[r] <= '9') ||
-                           (data[r] >= 'A' && data[r] <= 'Z') ||
-                           (data[r] >= 'a' && data[r] <= 'z') || data[r] == '_' ||
-                           data[r] == '-'))) {
+                if (colon_run) {
+                    /* the r336 widening (run 44822270874, main
+                     * 71939ad1): the cut residual may be a PURE
+                     * glued-colon run -- the artifact
+                     * `&2:: '<PS><CR>'` (11 bytes, the r330 seed with
+                     * the name tail's trailing colon DOUBLED).
+                     * yeptris rides the whole 1.2 ns-anchor-char name
+                     * `2::` (colons are legal anchor chars; the
+                     * quoted PS/CR fold follows the r308 g2 law) and
+                     * reads ONE anchored scalar; libyaml cuts at the
+                     * FIRST out-of-charset byte (the ':'), and the
+                     * residual `:`/`::` re-lexes as the key's plain
+                     * content: every interior ':' glues to the next
+                     * non-blank byte (the rest of the run or the
+                     * name's riding ':'), so the plain content law
+                     * holds -- `+MAP / =VAL : &2 : / =VAL : <body>`
+                     * byte-exact. A/B: libfyaml 04e0b58 reads
+                     * yeptris's stream byte-exact (probed: SCALAR
+                     * anchor `2::` single-quoted value `<PS>+<SP>`;
+                     * the CR-only floor reads the bare fold space) --
+                     * comparator carry only, no engine change (the
+                     * r318/r330 precedent). Dual-bar floor: the artifact is its
+                     * own floor -- 11 bytes, greedy ddmin fixed point:
+                     * dropping the PS or the CR lands on single-break
+                     * bodies the r142 charset arm already classifies
+                     * (probed pre-patch: exit 0) and dropping either
+                     * colon lands on the r238 root arm -- no
+                     * single-byte deletion keeps the pre-patch bar
+                     * (exit 77). This delivers the r330 next-round
+                     * pointer: "a residual containing ':' ... means
+                     * the plain-content law needs its own measurement
+                     * round." */
+                    for (size_t r = cut; r < colon; r++) {
+                        if (b[0] != ':') {
+                            return 0;
+                        }
+                        b++;
+                    }
+                    if (b[0] != '\n') {
                         return 0;
                     }
-                    if (b[0] != (char)data[r]) {
+                    b++;
+                } else {
+                    /* the r330 members: the cut residual is the key's
+                     * plain content, byte-equal against the dump */
+                    if (data[cut] != '?') {
+                        return 0;
+                    }
+                    for (size_t r = cut; r < colon; r++) {
+                        if (!((data[r] == '?' || data[r] == '*') ||
+                              ((data[r] >= '0' && data[r] <= '9') ||
+                               (data[r] >= 'A' && data[r] <= 'Z') ||
+                               (data[r] >= 'a' && data[r] <= 'z') || data[r] == '_' ||
+                               data[r] == '-'))) {
+                            return 0;
+                        }
+                        if (b[0] != (char)data[r]) {
+                            return 0;
+                        }
+                        b++;
+                    }
+                    if (b[0] != '\n') {
                         return 0;
                     }
                     b++;
                 }
-                if (b[0] != '\n') {
-                    return 0;
-                }
-                b++;
             }
             if (strncmp(b, "=VAL : ", 7) != 0) {
                 return 0;

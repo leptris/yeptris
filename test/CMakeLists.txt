@@ -7385,6 +7385,58 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tag-r335-artifact.bin
     )
 
+    # r336 (run 44822270874, main 71939ad1): the r238 root-anchor-
+    # quoted-follow family's third composition of the r330
+    # neighborhood -- the artifact `&2:: '<PS><CR>'` (11 bytes) is the
+    # r330 seed with the name tail's trailing colon DOUBLED. yeptris
+    # keeps the whole 1.2 ns-anchor-char name `2::` (colons are legal
+    # anchor chars; the quoted PS/CR fold follows the r308 g2 law --
+    # the PS kept raw, the CR folded to the one space) and reads ONE
+    # root anchored scalar, while libyaml 90a56d4 cuts the name at
+    # the FIRST out-of-charset byte (the ':'), the cut residual `:`
+    # re-lexes as the key's PLAIN content (a ':' glued to a non-blank
+    # is content -- the block plain-first gate at scannerc.c's
+    # fetch_next_token), the freed ': ' fires the VALUE token, and
+    # the quoted scalar parses as the map value (`+MAP / =VAL : &2 :
+    # / =VAL : <PS>\n`). The r330 next-round pointer fires verbatim:
+    # "a residual containing ':' ... stays DECLINED, a red there
+    # means the plain-content law needs its own measurement round."
+    # The single-break bodies (PS-only `&2:: '<PS>'`, CR-only
+    # `&2:: '<CR>'`) are already classified by the anchor-name-
+    # charset arm (its split copy agrees there); under the PS+CR body
+    # the split copy is yeptris-rejected (the indent law -- the PS is
+    # a 1.2 line break and the map-value continuation sits at column
+    # 0) so the charset arm's verify leg dies, exactly as at r330.
+    # THE A/B (probed): libfyaml 04e0b58 reads yeptris's artifact
+    # stream byte-exact (SCALAR anchor `2::` single-quoted value
+    # `<PS>+<SP>` on both; the CR-only floor reads the bare fold
+    # space) -- comparator carry only, no engine change (the
+    # r318/r330 precedent). THE CARRY: the r238 arm's residual law
+    # gains the PURE glued-colon run beside the r330 '?'-led
+    # plain-safe run (byte-exact walks on both sides; every interior
+    # ':' glues to the next non-blank byte -- the rest of the run or
+    # the name's riding ':'). Floor: the artifact is its own dual-bar
+    # floor (11 bytes, greedy ddmin fixed point -- dropping the PS or
+    # the CR lands on charset-arm-classified single-break bodies
+    # (probed pre-patch: exit 0) and dropping either colon lands on
+    # the r238 root arm, so no single-byte deletion keeps the
+    # pre-patch bar's exit 77). Both the floor and the artifact ride
+    # the corpus (the r321 seed law; here they are byte-identical).
+    # Next-round pointer: a residual MIXING ':' into the '?'-led run
+    # (the `?:x`-class) or led by '*'/'.' stays DECLINED (unmeasured
+    # shapes); a red there means the mixed plain-content law needs
+    # its own measurement round.
+    add_test(
+        NAME fuzz-diff-r336-root-anchor-quoted-follow-colonrun
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-colonrun-r336.bin
+    )
+    add_test(
+        NAME fuzz-diff-r336-root-anchor-quoted-follow-colonrun-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-colonrun-r336-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
