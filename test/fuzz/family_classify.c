@@ -1505,6 +1505,41 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
         fo_str(&c->out, " \n");
         return 1;
     }
+    if (ch == '!') {
+        /* the r335 non-specific-tag member (the nightly's run
+         * 44808502141, main af1bacea): a flow-SEQ member that IS the
+         * bare `!` tag (the artifact's `!,` slot — the tag-glued
+         * comment-piece family's `!` riding before a glued-`?#`
+         * member). The engine's yep_scan_tag resolves the bare `!` to
+         * the non-specific tag and the member's flow-indicator
+         * terminator leaves the tagged node EMPTY — the dump drops the
+         * tag (the non-specific `!` resolves by style, the r335
+         * artifact's actual `=VAL : ` line byte-exact on BOTH engines:
+         * libyaml's parser renders the same tagged empty, and the
+         * classifier's l-walk already models the bare-`!` drop in
+         * l_render_node — the y-side arm is the last model gap). The
+         * arm claims the member so the walk reaches the later members
+         * (`?#`, the quoted-CR span, `?g?`, `""`). Gates: the bare `!`
+         * EXACTLY (a `!name`/`!!` handle or a `!<verbatim>` form
+         * carries dump props and a scalar payload — untested, the
+         * single-byte adjacency keeps them out), the flow indicator
+         * GLUED after the tag (a blank/break run opens the tagged
+         * scalar-value slot the probes never cover — the r315
+         * anchor-arm's run shape, declined on the tag slot), and the
+         * SEQ slot (a MAP key slot renders the tagged-empty KEY plus
+         * the parser's inserted empty — untested; the artifact's slot
+         * is SEQ). libfyaml 04e0b58 errors the artifact outright
+         * ("invalid tag terminator", both --yaml-1.1 and --yaml-1.2
+         * passes) — no third vote; the comparators split along the
+         * libyaml-is-the-compat-bar line exactly as the r317 precedent
+         * did — comparator carry only, no engine change. */
+        if (y_cur_is_map(c) || i + 1 >= n || !fc_flow_ind(p[i + 1])) {
+            return y_fail(c);
+        }
+        *term_at = i + 1;
+        fo_str(&c->out, "=VAL : \n");
+        return 1;
+    }
     if (ch == '\'' || ch == '!' || ch == '#' || ch == '{') {
         return y_fail(c); /* outside the family's flat-member shape */
     }
