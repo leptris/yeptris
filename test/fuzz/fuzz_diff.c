@@ -10494,10 +10494,29 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
     i = 1;
     {
         size_t name_o = i;
+        /* the r330 widening (run 44682066625, main 22dd1700): the
+         * riding-name set gains the glued '?'/'*' (the 1.2
+         * ns-anchor-char set over libyaml's IS_ALPHA cut -- the
+         * artifact's `&2?*: '<PS><CR>'`, 12 bytes, seed-corpus
+         * adjacent to the r238 floor "&2: '<LS>\r'"): yeptris glues
+         * `?*:` into ONE anchor name (the suite's 2SXE/W5VH/Y2GN law),
+         * libyaml cuts at the FIRST out-of-charset byte (the '?'), the
+         * cut residual `?*` re-lexes as the key's PLAIN content (the
+         * plain-'?' law -- '?' glued to a non-blank is content, the
+         * r199 law), and the freed ': ' fires the VALUE token with the
+         * quoted scalar as the map value. The composition was
+         * uncarried because the charset arm's split copy (`&2 ?*:
+         * '...'`) is YEPTRIS-REJECTED there: the quoted body's raw PS
+         * is a 1.2 line break and the map-value continuation sits at
+         * column 0 (the indent law) -- libfyaml 04e0b58 rejects the
+         * split copy IDENTICALLY ("wrongly indented single-quoted
+         * scalar") and reads yeptris's artifact stream byte-exact
+         * (probed: SCALAR anchor `2?*:` value `<PS>+<SP>` on both),
+         * so the carry stays comparator-only. */
         while (i < size &&
                (((data[i]) >= 'A' && (data[i]) <= 'Z') || ((data[i]) >= 'a' && (data[i]) <= 'z') ||
                 ((data[i]) >= '0' && (data[i]) <= '9') || (data[i]) == '_' || (data[i]) == '-' ||
-                (data[i]) == '.' || (data[i]) == ':')) {
+                (data[i]) == '.' || (data[i]) == '?' || (data[i]) == '*' || (data[i]) == ':')) {
             i++;
         }
         if (i == name_o || data[i - 1] != ':') {
@@ -10568,26 +10587,66 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                 return 0;
             }
         }
-        /* the libyaml side: +STR / +MAP / =VAL : &<cut> / =VAL :
-         * <body-l> / -MAP / -STR -- the cut name ends at the FIRST
-         * out-of-charset byte (the interior ':') */
-        if (strncmp((const char*)ldump, "+STR\n+MAP\n=VAL : &", 18) != 0) {
-            return 0;
-        }
+        /* the libyaml side: +STR / +MAP / =VAL : &<cut> [<residual>] /
+         * =VAL : <body-l> / -MAP / -STR -- the cut name ends at the
+         * FIRST out-of-charset byte (the interior ':' for the r238
+         * root members; the r330 members cut earlier, at the glued
+         * '?'), and the r330 residual (cut..colon) re-lexes as the
+         * key's plain content: a leading '?' then the plain-safe run
+         * (the plain-'?' law; a ':' inside would re-lex the VALUE
+         * boundary and a '*' lead would re-lex as an ALIAS -- both
+         * stay out, unmeasured shapes) */
         {
+            size_t colon = name_e - 1; /* the name's trailing ':' */
+            size_t cut = 1;
+            while (cut < name_e && yd_anchor_byte_in_libyaml_set(data[cut])) {
+                cut++;
+            }
+            if (strncmp((const char*)ldump, "+STR\n+MAP\n=VAL : &", 18) != 0) {
+                return 0;
+            }
             const char* b = ldump + 18;
-            size_t n = 1;
-            while (n < name_e && data[n] != ':') {
+            for (size_t n = 1; n < cut; n++) { /* the kept name run */
                 if (b[0] != (char)data[n]) {
                     return 0;
                 }
                 b++;
-                n++;
             }
-            if (b[0] != ' ' || b[1] != '\n') {
+            if (b[0] != ' ') {
                 return 0;
             }
-            b += 2;
+            b++;
+            if (cut == colon) {
+                /* the r238 root members: the key is the anchored EMPTY
+                 * scalar */
+                if (b[0] != '\n') {
+                    return 0;
+                }
+                b++;
+            } else {
+                /* the r330 members: the cut residual is the key's
+                 * plain content, byte-equal against the dump */
+                if (data[cut] != '?') {
+                    return 0;
+                }
+                for (size_t r = cut; r < colon; r++) {
+                    if (!((data[r] == '?' || data[r] == '*') ||
+                          ((data[r] >= '0' && data[r] <= '9') ||
+                           (data[r] >= 'A' && data[r] <= 'Z') ||
+                           (data[r] >= 'a' && data[r] <= 'z') || data[r] == '_' ||
+                           data[r] == '-'))) {
+                        return 0;
+                    }
+                    if (b[0] != (char)data[r]) {
+                        return 0;
+                    }
+                    b++;
+                }
+                if (b[0] != '\n') {
+                    return 0;
+                }
+                b++;
+            }
             if (strncmp(b, "=VAL : ", 7) != 0) {
                 return 0;
             }
