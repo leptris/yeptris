@@ -7345,16 +7345,42 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
              * 8-byte minimum), so the r215 round is exonerated -- a
              * fresh site, fired here LAST where the handler previously
              * declined unconditionally, so every existing member keeps
-             * its exact path. The arm eats libyaml's ONE surplus escape,
-             * gated hard: the run is exactly one escape (a wider
-             * surplus is a different shape and keeps aborting), a sits
-             * on a PLAIN content byte (not the frame's end, not a
-             * space -- the r173/r215 sites -- not an escape, not a raw
-             * NEL/LS/PS lead byte the NEL branch owns), and the byte
-             * behind libyaml's escape EQUALS it, so the walk rejoins
+             * its exact path. The arm eats libyaml's surplus escapes,
+             * gated hard but WIDE since r334: the run is the
+             * blank-line ledger -- libyaml's join spells ONE escape
+             * per break it read (the r320 ledger law), and every
+             * blank-per-1.1 line riding a kept-NEL site adds exactly
+             * ONE surplus escape on its side while yeptris's 1.2 fold
+             * collapsed that break-run into the single LF the
+             * byte-match already paired -- so the surplus accumulates
+             * per blank-adjacent NEL site (the nightly's round 334,
+             * run 44793963941, main af1bacea: the 45693-byte artifact
+             * -- the folded-header family CROSSING INTO the tag-soup
+             * composition, the tail soup byte-matching while the first
+             * document's fold carries the delta -- holds decline sites
+             * at y=2, byte-traced on this composition's own floor,
+             * where the r216 round's y==1 gate held them aborting; the
+             * r216 floor's y==1 member keeps its exact path -- the widening admits
+             * shapes that previously declined unconditionally, so no
+             * existing member's path changes), unbounded in principle
+             * (blank runs are unbounded -- the r321 all-blank
+             * precedent) and bounded in fact by the coincidence + the
+             * plain-byte + frame guards below with the byte-bound
+             * continuation binding everything behind the agreement
+             * byte -- nothing past it rides. a sits on a PLAIN
+             * content byte (not the frame's end, not a space -- the
+             * r173/r215 sites -- not an escape, not a raw NEL/LS/PS
+             * lead byte the NEL branch owns), and the byte behind
+             * libyaml's escape run EQUALS it, so the walk rejoins
              * byte-bound at an agreement byte and the relation behind
              * the site stays owned by the loop and the NEL branch's
-             * budgeted laws -- nothing past the agreement byte rides. */
+             * budgeted laws. THE A/B: libfyaml 04e0b58 reads the
+             * artifact's first document byte-exact as yeptris (the
+             * kept-NEL 1.2 reading, fy-tool --testsuite --yaml-1.2)
+             * while its --yaml-1.1 pass matches libyaml 90a56d4's
+             * fold escape-for-escape -- the comparators split along
+             * the version line exactly as the r317 precedent did,
+             * comparator carry only, no engine change. */
             if (b[0] == '\\' && b[1] == 'n' && a[0] != '\0') {
                 const char* pb = b;
                 int y = 0;
@@ -7362,7 +7388,7 @@ static int yd_block_nel_walk_mult(const char* ydump, const char* ldump, int mult
                     pb += 2;
                     y++;
                 }
-                if (y == 1 && pb[0] == a[0] && a[0] != ' ' && a[0] != '\\' &&
+                if (y >= 1 && pb[0] == a[0] && a[0] != ' ' && a[0] != '\\' &&
                     (unsigned char)a[0] != 0xC2 && (unsigned char)a[0] != 0xE2) {
                     b = pb;
                     subs += 2;
