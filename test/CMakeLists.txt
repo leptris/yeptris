@@ -7174,6 +7174,67 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r331-artifact.bin
     )
 
+    # r332 (run 44721335253, main e00d1138): r331's own next-round
+    # pointer fires — the artifact is the 11-byte `...: '<PS><TAB>'`,
+    # the quoted-body exotic-tab law riding the family's DOTTED-KEY
+    # container: `.` glued to the riding ':' denies libyaml's `...`
+    # doc-end cut (that one needs the blank behind the run), so yeptris
+    # keeps the whole dotted run as the key's plain content and libyaml
+    # 90a56d4 reads the SAME key byte-equal — probed `.`, `..`, `...`,
+    # `.x`, `x.y`, `2.2`, `...x`, `..?`, `..&2`, `x..`, `?.`, `._`,
+    # `.-`, `..2`, `2..`, `2._3`, `.-2` — all key-equal, all DIFFER
+    # only in the body (the r331 pointer's "dotted keys ... a red
+    # there means the container law needs its own measurement round").
+    # THE WIDENING (all measured this round): (1) the blank run joins
+    # the tab run and takes the exotic join's ADJACENCY law — a blank
+    # run (tabs AND spaces, mixed) directly BEHIND a kept-raw LS/PS
+    # break or DIRECTLY BEFORE one is swallowed whole on libyaml
+    # (rendered NOTHING — probed `<PS><TAB><SP>a`, `a<SP><PS><TAB>b`,
+    # the leading `<SP><PS><TAB>a`, the mixed
+    # `<PS><SP><TAB><SP><TAB><SP>b`, and the anchor family's own
+    # `&2?: '<PS><SP>a'`/`&2?: '<PS><TAB><SP>a'`/
+    # `&2?: '<PS><SP><TAB><SP>b'` — all read `<PS>…` on libyaml); a
+    # run with NO exotic adjacency stays content on BOTH engines
+    # (space literal, tab as the escaped \t — probed `<PS>a<SP>`,
+    # `<SP>a`, `<TAB>a`, `'<PS>a<TAB>'` all byte-equal). yeptris
+    # keeps every blank as content everywhere (the exotic break arms
+    # no fold state — the r331 law, unchanged). (2) the r331 arm's
+    # plain-key charset admits '.', and the '?' lead rides the run
+    # (`?.` probed); the NEL/CR/LF/LS+CR/PS+CR spellings stay SPLITS
+    # (probed `.: '<NEL><TAB>'`, `.: '<LS><CR>'`, `.: '<PS><CR>'`,
+    # `.: '<CR><LF><TAB>'` — yeptris REJECTS while libyaml accepts,
+    # the r170 law; the bare-exotic and NEL+space spellings are EQUAL,
+    # no claim) and the empty-key `: '<PS><TAB>'` form is a
+    # YEPTRIS-ONLY-ACCEPT split (libyaml rejects the empty key with a
+    # quoted body — declined, unmeasured as a differ shape). The
+    # shared r238 walkers gain the same measured adjacency law for
+    # the anchor sub-shapes (the pre-break tab run joins walk_y, the
+    # space run joins walk_l; the fold-adjacent composition — a clean
+    # break behind, an exotic ahead — stays unmeasured and declines).
+    # libfyaml 04e0b58 sides with yeptris byte-exact (probed: it
+    # re-emits the dotted key + the raw PS + every blank of the body,
+    # `x.y: '<PS><TAB>'`, `.: '<LS><TAB>'`, the mixed blankrun, and
+    # `.: 'a<SP><PS><TAB>b'` all kept whole) — comparator carry only,
+    # no engine change (the r318/r330/r331 precedent).
+    # Floor: 9 of 11 bytes survive the dual bar (greedy ddmin to a
+    # fixed point; pre-patch DIFFER exit 77 + NOT classified, post-
+    # patch carry exit 0, on BOTH the floor `.: '<PS><TAB>'` and the
+    # full artifact; no further single-byte deletion keeps the dual
+    # bar — the third dot dies into the empty-key split, not into a
+    # carry). The 50-mutant paired battery (30 single + 20 double,
+    # seed 332): see the round issue. Both the floor and the full
+    # artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r332-dotted-key-exotic-tab
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/dotted-key-exotic-tab-r332.bin
+    )
+    add_test(
+        NAME fuzz-diff-r332-dotted-key-exotic-tab-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/dotted-key-exotic-tab-r332-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

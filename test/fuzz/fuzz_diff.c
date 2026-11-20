@@ -10400,7 +10400,29 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
                     last_exotic = 0;
                 }
             } else {
-                return 0;
+                /* the r332 widening (run 44721335253, main e00d1138):
+                 * the PRE-BREAK tab run -- the run's tail faces a
+                 * kept-raw LS/PS triple -- rides CONTENT on yeptris
+                 * (one \t per tab; libyaml trims the break-adjacent
+                 * run, probed `&2?: '<TAB><PS><TAB>a'` reads `\t<PS>
+                 * \ta` on yeptris, `<PS>a` on libyaml). A no-break tab
+                 * still rides the OTHER arms (the anchor-charset arm
+                 * carries the agreeing mid-content spell -- probed:
+                 * byte-equal both engines). */
+                int pre_exotic =
+                    (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
+                     (unsigned char)body[s + 1] == 0x80 &&
+                     ((unsigned char)body[s + 2] == 0xA8 || (unsigned char)body[s + 2] == 0xA9));
+                if (!pre_exotic) {
+                    return 0;
+                }
+                while (i < s) {
+                    if (a[0] != '\\' || a[1] != 't') {
+                        return 0;
+                    }
+                    a += 2;
+                    i += 1;
+                }
             }
         } else if (body[i] >= 0x20) {
             if (a[0] != (char)body[i]) {
@@ -10491,6 +10513,19 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
                     return 0;
                 }
                 i = s;
+            } else if (pending_exotic || (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
+                                          (unsigned char)body[s + 1] == 0x80 &&
+                                          ((unsigned char)body[s + 2] == 0xA8 ||
+                                           (unsigned char)body[s + 2] == 0xA9))) {
+                /* the r332 widening (run 44721335253, main e00d1138):
+                 * the exotic join's blank state swallows the whole
+                 * space run -- behind the kept-raw LS/PS break
+                 * (pending, probed `&2?: '<PS><SP>a'` reads `<PS>a`)
+                 * or directly before it (probed `&2?: '<SP><PS><TAB>a'`
+                 * and `&2?: 'a<SP><PS><TAB>b'`). pending_exotic stays
+                 * armed: a following blank run rides the same state
+                 * (probed `&2?: '<PS><SP><TAB><SP>b'` reads `<PS>b`). */
+                i = s;
             } else {
                 while (i < s) {
                     if (b[0] != ' ') {
@@ -10513,11 +10548,23 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
             while (s < be && body[s] == '\t') {
                 s++;
             }
-            if (!pending_exotic && !prev_break) {
-                return 0;
-            }
-            if (prev_break && !pending_exotic && s < be && body[s] != '\r' && body[s] != '\n') {
-                return 0;
+            {
+                /* the r332 widening (run 44721335253, main e00d1138):
+                 * a PRE-BREAK tab run -- the run's tail facing a
+                 * kept-raw LS/PS triple -- is swallowed too (probed
+                 * `&2?: '<TAB><PS><TAB>a'` reads `<PS>a` on libyaml);
+                 * the fold-adjacent composition (a clean break behind,
+                 * an exotic ahead) stays unmeasured and declines. */
+                int pre_exotic =
+                    (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
+                     (unsigned char)body[s + 1] == 0x80 &&
+                     ((unsigned char)body[s + 2] == 0xA8 || (unsigned char)body[s + 2] == 0xA9));
+                if (!pending_exotic && !prev_break && !pre_exotic) {
+                    return 0;
+                }
+                if (prev_break && !pending_exotic && s < be && body[s] != '\r' && body[s] != '\n') {
+                    return 0;
+                }
             }
             i = s;
         } else if (body[i] >= 0x20) {
@@ -10761,15 +10808,26 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
  * declines them (the r170 law); the bare-exotic and CR/LF+tab spellings
  * AGREE (no claim needed). Gate: `? '` + body + `'` EOF (the floor
  * form — the quoted scalar is the KEY, the value empty) or a plain
- * [A-Za-z0-9_-?] run + `: '` + body + `'` EOF (the key form); the body
- * carries at least one LS/PS triple directly followed by a TAB run,
- * printables byte-equal, tabs as content, NO CR/LF/NEL (unmeasured
+ * [A-Za-z0-9_.-?&] run + `: '` + body + `'` EOF (the key form — the
+ * r332 widening, run 44721335253, main e00d1138, admits the '.' byte:
+ * the r331 pointer's DOTTED-KEY territory — the artifact
+ * `...: '<PS><TAB>'` glues the doc-end lookalike into the key's plain
+ * content; `.` is no 1.2 indicator so yeptris keeps the whole dotted
+ * run as the key and libyaml 90a56d4 reads the SAME key byte-equal
+ * — the `...` doc-end cut needs a blank behind the run and the glued
+ * ':' denies it); the body
+ * carries at least one LS/PS triple with an ADJACENT blank run — the
+ * r332 law: tabs AND spaces, on either side of the break (behind it
+ * the whole run swallows on libyaml with no fold space; before it the
+ * run is the break line's trimmed tail; no-adjacency blanks stay
+ * content on both engines), printables byte-equal, tabs as content,
+ * NO CR/LF/NEL (unmeasured
  * or split). Walk: both dumps derived from the input and required
  * byte-exact — `+STR/+MAP/=VAL : <body>/=VAL : /-MAP/-STR` for the
  * floor form, `+STR/+MAP/=VAL : <key>/=VAL : <body>/-MAP/-STR` for the
- * key form, the libyaml body swallowing every post-exotic tab run.
- * Anything the gate cannot pin declines (the escalation clause stays
- * live). */
+ * key form, the libyaml body swallowing every exotic-adjacent blank
+ * run. Anything the gate cannot pin declines (the escalation clause
+ * stays live). */
 static int yd_r331_body_walk_y(const uint8_t* body, size_t bo, size_t be, const char** c) {
     const char* a = *c;
     size_t i = bo;
@@ -10817,19 +10875,50 @@ static int yd_r331_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
             b += 3;
             i += 3;
             after_exotic = 1;
-        } else if (body[i] == '\t') {
-            if (after_exotic) {
-                /* the blank state swallows the whole run, no fold space */
-                while (i < be && body[i] == '\t') {
-                    i += 1;
+        } else if (body[i] == '\t' || body[i] == ' ') {
+            /* the r332 widening (run 44721335253, main e00d1138): the
+             * blank run rides the exotic join's ADJACENCY law -- a run
+             * BEHIND a kept-raw LS/PS break (after_exotic) or DIRECTLY
+             * BEFORE one (the run's tail faces the triple) is swallowed
+             * whole by libyaml's blank state, tabs AND spaces rendered
+             * NOTHING (probed: `<PS><TAB><SP>a` and `a<SP><PS><TAB>b`
+             * and the leading `<SP><PS><TAB>a` all read `<PS>...a` on
+             * libyaml); a run with NO exotic adjacency stays content on
+             * BOTH engines (space literal, tab as the escaped \t --
+             * probed `<PS>a<SP>` and `<SP>a` byte-equal). The exotic
+             * break itself never arms a fold state, so nothing follows
+             * the swallow. */
+            size_t s = i;
+            while (s < be && (body[s] == '\t' || body[s] == ' ')) {
+                s++;
+            }
+            {
+                int pre_exotic =
+                    (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
+                     (unsigned char)body[s + 1] == 0x80 &&
+                     ((unsigned char)body[s + 2] == 0xA8 || (unsigned char)body[s + 2] == 0xA9));
+                if (after_exotic || pre_exotic) {
+                    i = s; /* the blank state swallows the whole run */
+                    if (!pre_exotic) {
+                        after_exotic = 0;
+                    }
+                } else {
+                    while (i < s) {
+                        if (body[i] == ' ') {
+                            if (b[0] != ' ') {
+                                return 0;
+                            }
+                            b += 1;
+                        } else {
+                            if (b[0] != '\\' || b[1] != 't') {
+                                return 0;
+                            }
+                            b += 2;
+                        }
+                        i += 1;
+                    }
+                    after_exotic = 0;
                 }
-            } else {
-                /* mid-content tab: content on both engines */
-                if (b[0] != '\\' || b[1] != 't') {
-                    return 0;
-                }
-                b += 2;
-                i += 1;
             }
         } else if ((unsigned char)body[i] >= 0x20 && body[i] != '\'') {
             if (b[0] != (char)body[i]) {
@@ -10858,24 +10947,39 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
     if (ydump == NULL || ldump == NULL) {
         return 0;
     }
-    if (data[0] == '?') {
+    if (data[0] == '?' && (data[1] == ':' || data[1] == ' ')) {
         if (data[1] == ':') {
             floor_form = 0; /* "?: '<...>'" — the key is the '?' run */
             ko = 0;
             ke = 1;
             i = 2; /* at the space */
-        } else if (data[1] == ' ') {
+        } else {
             floor_form = 1; /* "? '<...>'" — the quoted scalar is the key */
             i = 1;          /* at the space */
-        } else {
+        }
+        if (i >= size || data[i] != ' ') {
+            return 0; /* exactly one space (the r331 floor law) */
+        }
+        i++;
+        if (i >= size || data[i] != '\'') {
             return 0;
         }
+        i++;
     } else {
-        /* the plain-key form: a [A-Za-z0-9_-?&] run then ':' — the
-         * '&' joins the set on the battery's measured glued spellings
-         * (`3&2`, `o&2`: the anchor rides mid-plain CONTENT on both
-         * engines, key byte-equal), never LEADING (the r238 arm owns
-         * every anchor-entry shape) */
+        /* the plain-key form: a [A-Za-z0-9_.-?&] run then ':' — the
+         * r332 widening (run 44721335253, main e00d1138) admits the
+         * '.' byte: the r331 pointer's "dotted keys" territory. The
+         * artifact `...: '<PS><TAB>'` glues the doc-end lookalike into
+         * the key's plain CONTENT — '.' is no 1.2 indicator, so
+         * yeptris keeps the whole dotted run as the key, and libyaml
+         * 90a56d4 reads the SAME key byte-equal (the `...`+blank
+         * doc-end cut needs the blank after the run; the glued ':'
+         * denies it) — probed `.`, `..`, `...`, `.x`, `x.y`, `2.2`,
+         * `...x`, `..?`, `..&2`, `x..`, `?.`, `._`, `.-`, `..2`,
+         * `2..`, `2._3`, `.-2` — all key-equal, all DIFFER only in
+         * the body. A '?' lead rides the same run (`?.` probed); the
+         * '&' joins mid-plain (the r331 battery's `3&2`/`o&2`), never
+         * LEADING (the r238 arm owns every anchor-entry shape) */
         if (data[0] == '&') {
             return 0;
         }
@@ -10883,36 +10987,77 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
         while (r < size &&
                (((data[r]) >= 'A' && (data[r]) <= 'Z') || ((data[r]) >= 'a' && (data[r]) <= 'z') ||
                 ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
-                (data[r]) == '?' || (data[r]) == '&')) {
+                (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.')) {
+            r++;
+        }
+        /* the r332 battery's GLUED spellings (each dump-verified
+         * byte-equal on both engines): a quote glued ahead of the
+         * value colon (`..': '<...>'` — the mid-plain quote law) and
+         * colons glued to colons (`..:: '<...>'` — a colon glues
+         * into the key's plain content when a non-blank follows,
+         * probed keys `..:` and `...:`); the ':' facing a blank is
+         * the VALUE colon. */
+        if (r < size && data[r] == '\'' && r + 1 < size && data[r + 1] == ':') {
+            r++;
+        }
+        ko = 0;
+        ke = r; /* the key's plain run ends here — a separator TAB (see
+                 * below) does NOT join it: the key dumps end at the tab
+                 * on both engines */
+        /* a TAB between the key and the value colon separates on BOTH
+         * engines (probed `..\t: '<PS><TAB>'` — the key ends at the
+         * tab, byte-equal) */
+        while (r < size && (data[r] == '\t' || data[r] == ' ')) {
             r++;
         }
         if (r == 0 || r >= size || data[r] != ':') {
             return 0;
         }
+        while (r + 1 < size && data[r] == ':' && data[r + 1] == ':') {
+            r++;
+            ke = r; /* the glued colon rides the key's plain content */
+        }
+        if (r >= size || data[r] != ':') {
+            return 0;
+        }
         floor_form = 0; /* the key form */
         ko = 0;
-        ke = r;
-        i = r + 1; /* at the space */
-    }
-    if (i >= size || data[i] != ' ') {
-        return 0; /* exactly one space */
-    }
-    i++;
-    if (i >= size || data[i] != '\'') {
-        return 0;
-    }
-    i++;
+        i = r + 1; /* behind the value colon */
+        while (i < size && data[i] == ' ') {
+            i++; /* the two-space spelling (`..:  '<...>'`) rides too */
+        }
+        if (i >= size || data[i] != '\'') {
+            return 0;
+        }
+        i++;
+    };
     {
         size_t bo = i;
-        int site = 0; /* an LS/PS triple directly followed by a TAB run */
+        int site = 0; /* an LS/PS triple with an ADJACENT blank run (the
+                       * r332 widening, run 44721335253, main e00d1138:
+                       * the blank run joins the tab run — tabs AND
+                       * spaces, and the run may sit on EITHER side of
+                       * the break: behind it (the artifact's spelling),
+                       * or directly before it (the leading/mid-content
+                       * spellings `a<SP><PS><TAB>b`, `<SP><PS><TAB>a`);
+                       * a bare exotic with no adjacent blanks stays
+                       * site-less — that spelling is EQUAL, no claim
+                       * needed) */
         while (i < size && data[i] != '\'') {
             if ((unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
                 ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
                 size_t t = i + 3;
-                while (t < size && data[t] == '\t') {
+                size_t q = i;
+                while (t < size && (data[t] == '\t' || data[t] == ' ')) {
                     t++;
                 }
                 if (t > i + 3) {
+                    site = 1;
+                }
+                while (q > bo && (data[q - 1] == '\t' || data[q - 1] == ' ')) {
+                    q--;
+                }
+                if (q < i) {
                     site = 1;
                 }
                 i = t;
@@ -11103,34 +11248,6 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
  * sides; any byte the grammar cannot classify declines (the
  * escalation clause stays live). */
 
-/* The UTF-16BE mid-stream BOM composite rides the r144/r226 front-end
- * family (the nightly's round 243, crash-1a7cef2a, 5206-byte artifact
- * that is already single-byte-deletion minimal, main f04fd40-era,
- * nightly run 42942836432): a UTF-16BE stream opening with THREE
- * `feff 0085` (BOM + NEL) code-unit pairs. yeptris (the r144 fix)
- * consumes ONLY the stream-initial BOM and keeps every mid-stream
- * that follows each folds per the 1.2 plain-fold law in the plain
- * scalar; libyaml's UTF-16 reader eats the mid-stream `feff` code
- * units as BOMs too, so both its FEFF characters and their fold
- * residue vanish. The relation is exact and dump-shaped (the
- * yd_ps_space_divergence pattern): libyaml's dump equals yeptris's
- * dump with every UTF-8 U+FEFF triple removed TOGETHER with the fold
- * render of the break run that follows it in unit space — the render
- * is DERIVED from the input (one break folds ONE space, n>1 breaks
- * fold n-1 escaped newlines; boundary blanks drop; the r280 floor
- * `feff feff 0085 feff 0085 2029 220a`: the second FEFF's NEL+PS
- * two-break run renders one "\n" escape libyaml swallowed whole with
- * the breaks). A FEFF with NO break run keeps the legacy single-space
- * strip (a mid-content FEFF's neighbor blank); a run past the cap, a
- * run that eats to EOF, and a FEFF past the table decline (the
- * escalation clause stays live). At the dump tail the harness's
- * 4096-byte line cap truncates BOTH giant dumps at possibly DIFFERENT
- * char phases (the r280 artifact, 5206 bytes): the residue window
- * decodes as [one partial char tail — up to three continuation bytes
- * —][complete chars][one partial char head], and EITHER fragment
- * proves the window is the cap cut, not extra content. Gate: the
- * input starts with the UTF-16BE BOM `fe ff` and contains at least
- * one more `fe ff` code unit mid-stream. */
 #define YD_R243_MAX_RES 256u                          /* mid-stream FEFFs modeled */
 #define YD_R243_MAX_RUN 8u                            /* breaks per fold run */
 #define YD_R243_RES_MAX (2u * (YD_R243_MAX_RUN - 1u)) /* render bytes */
