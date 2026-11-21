@@ -11671,15 +11671,54 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
             floor_form = 1; /* "? '<...>'" — the quoted scalar is the
                              * key */
             i = qpos + 1;   /* at the space */
-            /* the floor gate stays EXACTLY ONE SPACE (the r341
-             * re-measurement: `?<TAB>'<PS><TAB>'` is a YEPTRIS-ONLY-
-             * ACCEPT split — the '?' IS the key indicator, it leaves
-             * simple_key_allowed = 1, libyaml declines to eat the tab
-             * and it errors at fetch_next_token) */
+            /* the r350 widening (the nightly's round 350, run
+             * 44950120928, main e7ef0a4a): the separator widens from
+             * the r340 EXACTLY-ONE-SPACE law to a SPACES-RUN — the
+             * first byte after the '?' must still be a space, further
+             * spaces ride to the quote. The artifact is the 26-byte
+             * `  # Comment\n?  '<PS><TAB>'  \n\n\n` — the r340
+             * comment-led explicit-key container's variant: the key
+             * line is BARE `?` (zero indent; the r340 artifact's own
+             * spelling was the column-1 ` ? `, and the zero-indent
+             * face itself is already carried — probed rc=0 pre-patch
+             * with the one-space gap behind the comment lead) and the
+             * post-'?' gap is TWO spaces (the r340 gate note's
+             * exactly-one-space floor was the measured boundary). The
+             * gap is inert on BOTH engines: the two-, three-, and
+             * eight-space faces all DIFFER with dumps byte-exact to
+             * the r331 floor shape (`=VAL : <PS>\t` vs `=VAL : <PS>`,
+             * the value empty), identical to the one-space form's.
+             * THE FACES THAT STAY OUT (re-measured): the space+tab,
+             * tab+space, and two-space+tab gap faces surface rc=0 on
+             * the current harness (no divergence — the r341
+             * yeptris-only-accept face's current reading; no claim
+             * needed) and the gate keeps them out regardless (spaces
+             * only — the r341 tab law's decline); the glued-quote
+             * no-gap face `?'...` is rc=0 too and stays declined by
+             * the first-byte-must-be-a-space law. THE A/B: libfyaml
+             * 04e0b58 re-measured on THIS composition's own floor (the
+             * r325 lesson): its --yaml-1.2 pass sides with yeptris
+             * BYTE-EXACT on the floor AND the artifact (it re-emits
+             * the quoted key with the raw PS + the kept tab,
+             * "27 e2 80 a9 09 27 3a 20 0a") while its --yaml-1.1 pass
+             * ERRORS ("invalid tab used as indentation" — the
+             * documented third reading) — comparator carry only, no
+             * engine change (the r318/r330/r331/r332/r340/r341/r346/
+             * r347/r348 precedent). The dual-bar floor (greedy
+             * single-byte ddmin under the dump-pair shape bar, both
+             * dumps byte-exact to the r331 floor fingerprint) is the
+             * 9-byte `?  '<PS><TAB>'` — either space's deletion is the
+             * ALREADY-CLASSIFIED r340 territory (exit 0 pre-patch), so
+             * the dual bar denies both deletions; the comment lead and
+             * the `  \n\n\n` trailer die as inert. Anything the gate
+             * cannot pin declines (the escalation clause stays
+             * live). */
             if (i >= size || data[i] != ' ') {
                 return 0;
             }
-            i++;
+            while (i < size && data[i] == ' ') {
+                i++;
+            }
             if (i >= size || data[i] != '\'') {
                 return 0;
             }

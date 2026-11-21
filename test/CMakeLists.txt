@@ -7849,6 +7849,59 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-doclead-r349-artifact.bin
     )
 
+    # the r350 quoted-exotic-tab round (the nightly's run 44950120928,
+    # main e7ef0a4a; the 26-byte artifact
+    # crash-c49a3640eb8b53891f0d7053c823ba4a9616ba59
+    # "  # Comment\n?  '<PS><TAB>'  \n\n\n" -- the quoted-exotic-tab
+    # family's SIXTH container: the r340 comment-led explicit-key
+    # container's variant where the key line is BARE `?` (zero indent --
+    # the r340 artifact's own spelling was the column-1 " ? "; the
+    # zero-indent face itself is already carried, probed rc=0 pre-patch
+    # with the one-space gap behind the comment lead) and the post-?
+    # gap is TWO spaces (the r340 gate note's exactly-one-space floor
+    # was the measured boundary). The 9-byte dual-bar floor
+    # "?  '<PS><TAB>'" (greedy single-byte ddmin to a fixed point under
+    # the dump-pair shape bar: both dumps keep the r331 floor
+    # fingerprint "=VAL : <PS>\t" vs "=VAL : <PS>", the value empty;
+    # pre-patch DIFFER exit 77 + NOT classified, post-patch carry exit
+    # 0, on BOTH shapes, plain and lf harnesses -- either space's
+    # deletion is the ALREADY-CLASSIFIED r340 territory exit 0
+    # pre-patch, so the dual bar denies both; the comment lead and the
+    # "  \n\n\n" trailer die as inert). THE MECHANISM: the gap is INERT
+    # on both engines -- the two-, three-, and eight-space faces all
+    # DIFFER with dumps byte-exact to the r331 floor shape, identical
+    # to the one-space form's. THE WIDENING: the floor form's
+    # separator widens from the r340 EXACTLY-ONE-SPACE law to a
+    # SPACES-RUN (the first byte after the ? must still be a space,
+    # further spaces ride to the quote). THE FACES THAT STAY OUT
+    # (re-measured): the space+tab, tab+space, and two-space+tab gap
+    # faces surface rc=0 on the current harness (no divergence -- the
+    # r341 yeptris-only-accept face's current reading; no claim
+    # needed) and the gate keeps them out regardless (spaces only);
+    # the glued-quote no-gap face "?'..." is rc=0 too and stays
+    # declined by the first-byte-must-be-a-space law. THE A/B:
+    # libfyaml 04e0b58 re-measured on THIS composition's own floor
+    # (the r325 lesson): its --yaml-1.2 pass sides with yeptris
+    # BYTE-EXACT on the floor AND the artifact (it re-emits the quoted
+    # key with the raw PS + the kept tab,
+    # "27 e2 80 a9 09 27 3a 20 0a") while its --yaml-1.1 pass ERRORS
+    # ("invalid tab used as indentation" -- the documented third
+    # reading) -- comparator carry only, no engine change (the
+    # r318/r330/r331/r332/r340/r341/r346/r347/r348 precedent).
+    # Anything the gate cannot pin declines (the escalation clause
+    # stays live). Both the floor and the full artifact ride the
+    # corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r350-quoted-exotic-tab-double-space-key-gap
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r350.bin
+    )
+    add_test(
+        NAME fuzz-diff-r350-quoted-exotic-tab-double-space-key-gap-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r350-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor
