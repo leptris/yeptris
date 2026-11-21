@@ -7517,6 +7517,83 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-verbatim-tag-cr-fold-r344-artifact.bin
     )
 
+    # the r345 folded-header round (the nightly's run 44911747812, main
+    # d8647d47; the 37-byte artifact crash-ac657c873c5add6f8105374fd9f31c34902752f8
+    # "> #<PS> :\n  <NEL><NEL> :\n <PS><NEL>#0 :\n <PS><NEL>#0" -- the
+    # VALUE-COLON face meeting the exotic-doubled body, the 7-byte dual-bar
+    # floor "> LF SP <NEL>#0" -- greedy ddmin to a fixed point under the
+    # DUMP-PAIR SHAPE bar (the r343 lesson: the naive dual bar drifts -- it
+    # drifted here to the bare exotic-break fold face, so the bar carried
+    # the family signature: single-VAL pair, raw NEL content on yeptris's
+    # side and none on libyaml's, the '#0'-led tail INSIDE yeptris's value
+    # and OUTSIDE libyaml's, and libyaml's value an in-order subsequence of
+    # yeptris's under the one raw-NEL-to-escape substitution; no
+    # landmark-preserving single-unit deletion keeps the dual bar; pre-patch
+    # DIFFER exit 77, post-patch carry exit 0, on BOTH shapes, plain and lf
+    # harnesses -- the r317/r320/r321/r323/r324/r325/r327/r328/r329/r333/
+    # r334/r343/r344 folded-header family's FOURTEENTH composition, the
+    # first past the r343 direct-hash entry): the body's content line is
+    # "SP <NEL>#0" -- the NEL rides AFTER the indent space (mid-line, not
+    # line-led and not header-terminated -- the r333 kept-exotic arm owns
+    # the space/LS-PS leads, the r343 direct-hash arm the direct '#').
+    # libyaml's 1.1 reader breaks AT the NEL (the 1.1 IS_BREAK set; 1.2's
+    # b-break is CRLF|CR|LF only -- the NEL is printable content,
+    # docs/spec/yaml-1.2.2 [21]), the line is a blank, and the '#'-led tail
+    # sits at COLUMN 0 behind the exotic-break blank -- below the block
+    # indent: the content loop ends the block, the "#0" re-lexes as the
+    # blank-preceded document-level comment eaten to EOF, and the clip
+    # joins the EMPTY leading_break -- the value EMPTY (the r333/r343
+    # comment-eaten mechanism). yeptris's 1.2 whole-route keeps the NEL as
+    # the block's own content (the r317 kept-NEL law) with the '#0' glued
+    # behind it -- the value reads [NEL]['#0'][ONE clip ESC]. On the
+    # ARTIFACT the same face arrives at the walk's tail AFTER the head's
+    # kept-NEL pairing, at a raw-PS lead with a '#0'-colon-'#0' tail (the
+    # VALUE-COLON content riding INSIDE the eaten region -- the r333 arm's
+    # inner walk stops its run at the mid-tail raw triple). The r345 arm
+    # eats exactly the ONE deterministic interval: a's remainder up to the
+    # FIRST escape or raw dump-line break (spaces / plain bytes / kept NEL
+    # pairs / kept LS-PS triples -- choice-free), demanding at least ONE
+    # '#' inside it (the comment signature IS the mechanism; a non-'#' tail
+    # opens libyaml's second document and stays out -- and a second
+    # document would break the strcmp anyway), then the ONE clip escape and
+    # the dump-line end, the remainders behind the claim coinciding
+    # completely with b's (the r161 strcmp law -- b-side bytes are never
+    # eaten). Sits behind the r333 kept-exotic and r343 direct-hash arms
+    # (disjoint leads), disjoint from every escape-oriented arm
+    # (r176/r325/r197/r320/r283/r288/r290/r216) and from the r303
+    # EOF-tail arm (which demands the escape behind the NEL -- this
+    # demands the glued '#'). THE A/B: libfyaml 04e0b58 re-measured on
+    # THIS composition's own floor (the r325 lesson): its --yaml-1.2 pass
+    # sides with yeptris ("+DOC\n=VAL >\\N#0\\n\n-DOC" -- the raw NEL kept
+    # as block content, the \\N its render) while its --yaml-1.1 pass
+    # ERRORS on the floor ("block scalar with wrong indented line after
+    # spaces only") and matches libyaml 90a56d4's value byte-exact on the
+    # artifact ("=VAL >:\\n \\n\\n:\\n" -- its folded style mark, libyaml's
+    # plain) -- the comparators split along the version line exactly as the
+    # r317/r343 precedent, no comparator sides with either side outright,
+    # the libyaml-is-the-compat-bar line carries, comparator carry only,
+    # no engine change. Both shapes' 50-mutant paired battery (30 single +
+    # 20 double, seed 345, unit-aware palette mutations guarding the header
+    # lead; solo runs): floor 0 newly-carried / 50 stable-carried / 0
+    # stable-red / 0 regressions; artifact 0 / 49 / 1 stable-red (mutant
+    # 30 -- line 2's tail colon deleted + the last '#'->'*': its pair dies
+    # at the NEL-site r<k cap, the r290/r320 ledger decline direction,
+    # pre-existing on main, out of round scope) / 0 regressions; the
+    # floor's own tail-twin ("> LF SP <NEL>#0 LF <NEL>#0", pre-77) is a
+    # manual newly-carried face -- the tail line document-level on BOTH
+    # sides. See the round issue. Both the floor and the full artifact ride
+    # the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r345-folded-header-value-colon-hash-eof-tail
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-value-colon-hash-eof-tail-r345.bin
+    )
+    add_test(
+        NAME fuzz-diff-r345-folded-header-value-colon-hash-eof-tail-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-value-colon-hash-eof-tail-r345-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor

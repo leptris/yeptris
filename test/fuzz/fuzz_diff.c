@@ -8476,6 +8476,108 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 continue;
             }
         }
+        /* the r345 kept-exotic-lead glued-'#' EOF-tail site (the nightly's
+         * round 345, run 44911747812, main d8647d47; the 37-byte artifact
+         * crash-ac657c873c5add6f8105374fd9f31c34902752f8 "> #<PS> :\n  "
+         * "<NEL><NEL> :\n <PS><NEL>#0 :\n <PS><NEL>#0" -- the folded-header
+         * family's value-colon face meeting the exotic-doubled body, the
+         * 7-byte dual-bar floor "> LF SP <NEL>#0" -- greedy ddmin to a
+         * fixed point under the DUMP-PAIR SHAPE bar (the r343 lesson: the
+         * naive dual bar drifts -- here it drifted to the bare exotic-break
+         * fold face, so the bar carried the family signature: single-VAL
+         * pair, raw NEL content on yeptris's side and none on libyaml's,
+         * the '#0'-led tail INSIDE yeptris's value and OUTSIDE libyaml's,
+         * and libyaml's value an in-order subsequence of yeptris's under
+         * the one raw-NEL-to-escape substitution; no landmark-preserving
+         * single-unit deletion keeps the dual bar -- the r317/r320/r321/
+         * r323/r324/r325/r327/r328/r329/r333/r334/r343/r344 family's
+         * FOURTEENTH composition, the first past the r343 direct-hash
+         * entry, the r333 comment-eaten law's neighborhood arriving with
+         * the raw-NEL carrier and the value-colon content INSIDE the
+         * eaten region): the body's content line is "SP <NEL>#0" -- the
+         * NEL rides AFTER the indent space (mid-line, not line-led and
+         * not header-terminated -- the r333 kept-exotic arm owns the
+         * space/LS-PS leads, the r343 direct-hash arm owns the direct
+         * '#'). libyaml's 1.1 reader breaks AT the NEL (the 1.1
+         * IS_BREAK set; 1.2's b-break is CRLF|CR|LF only -- the NEL is
+         * printable content, docs/spec/yaml-1.2.2 [21]), the line is a
+         * blank, and the '#'-led tail sits at COLUMN 0 behind the
+         * exotic-break blank -- below the block indent: the content loop
+         * ends the block and the "#0" re-lexes as the blank-preceded
+         * document-level comment eaten to EOF, the clip joining the
+         * EMPTY leading_break -- the value EMPTY (the r333/r343
+         * comment-eaten mechanism). yeptris's 1.2 whole-route keeps the
+         * NEL as the block's own content (the r317 kept-NEL law) and the
+         * '#0' glued behind it as material -- the value reads [NEL]['#0']
+         * [ONE clip ESC]. On the ARTIFACT the same face arrives at the
+         * walk's tail AFTER the head's kept-NEL pairing (the NEL site's
+         * r == k pairing spends "NEL NEL" vs "\ESC\ESC"), at a raw-PS
+         * lead with a '#0'-colon-#0 tail ("PS NEL #0 SP : SP PS NEL #0"
+         * -- the VALUE-COLON content riding INSIDE the eaten region, the
+         * r333 arm's inner walk stops its run at the mid-tail raw
+         * triple). THE A/B: libfyaml 04e0b58 re-measured on THIS
+         * composition's own floor (the r325 lesson): its --yaml-1.2 pass
+         * sides with yeptris ("+DOC\n=VAL >\\N#0\\n\n-DOC" -- the raw
+         * NEL kept as block content, the "\\N" its render) while its
+         * --yaml-1.1 pass ERRORS ("block scalar with wrong indented line
+         * after spaces only") on the floor and matches libyaml
+         * 90a56d4's value byte-exact on the artifact ("=VAL >:\\n \\n\\n
+         * :\\n" -- its folded style mark, libyaml's plain) -- the
+         * comparators split along the version line exactly as the
+         * r317/r343 precedent, no comparator sides with either side
+         * outright, the libyaml-is-the-compat-bar line carries,
+         * comparator carry only, no engine change. Eat exactly the ONE
+         * deterministic interval: a's remainder up to the FIRST escape
+         * or raw dump-line break (spaces / plain bytes / kept NEL pairs
+         * / kept LS-PS triples -- the walk is total and
+         * choice-free), demanding at least ONE '#' inside it (the
+         * comment signature IS the mechanism; a non-'#' tail opens
+         * libyaml's second document and stays out -- and a second
+         * document would break the strcmp anyway), then the ONE clip
+         * escape and the dump-line end, the remainders behind the claim
+         * coinciding completely with b's (the r161 strcmp law -- b-side
+         * bytes are never eaten, so the claim can never swallow
+         * divergence past the value; the structural-tail twins "#0\\n|"
+         * stop at the raw dump-line break and decline). Sits BEHIND the
+         * r333 kept-exotic arm (whose gate takes the space/LS-PS lead
+         * and whose inner walk stops at the mid-tail exotic -- this
+         * fires only after that claim failed) and BEHIND the r343
+         * direct-hash arm (whose gate demands the direct '#' lead --
+         * disjoint from this gate's raw-exotic lead); the r303 EOF-tail
+         * arm demands the escape behind the NEL (this demands the
+         * glued '#' -- disjoint), the r304/r323 arms the space lead
+         * (disjoint), and every escape-oriented arm (r176/r325/r197/
+         * r320/r283/r288/r290/r216) wants a ON the escape (disjoint
+         * from this gate's exotic lead). Previously this shape declined
+         * unconditionally here, so no existing member's path changes. */
+        if (b[0] == '\n' && (((unsigned char)a[0] == 0xC2 && (unsigned char)a[1] == 0x85) ||
+                             ((unsigned char)a[0] == 0xE2 && (unsigned char)a[1] == 0x80 &&
+                              ((unsigned char)a[2] == 0xA8 || (unsigned char)a[2] == 0xA9)))) {
+            const char* q = a;
+            int hash = 0;
+            while (q[0] != '\0' && q[0] != '\\' && q[0] != '\n') {
+                if (q[0] == '#') {
+                    hash++;
+                    q++;
+                    continue;
+                }
+                if ((unsigned char)q[0] == 0xC2 && (unsigned char)q[1] == 0x85) {
+                    q += 2;
+                    continue;
+                }
+                if ((unsigned char)q[0] == 0xE2 && (unsigned char)q[1] == 0x80 &&
+                    ((unsigned char)q[2] == 0xA8 || (unsigned char)q[2] == 0xA9)) {
+                    q += 3;
+                    continue;
+                }
+                q++;
+            }
+            if (hash >= 1 && q[0] == '\\' && q[1] == 'n' && q[2] == '\n' && strcmp(q + 2, b) == 0) {
+                a = q + 2;
+                subs += 2;
+                continue;
+            }
+        }
         /* the r325 fold-dropped realign site (the nightly's round 325,
          * run 44611344281, main 37e7e09d; the 35-byte artifact
          * crash-f0ddbd7d876ccfc0e659a05254d6ed6ddb00d5ab "> #<LS> :<LF>
