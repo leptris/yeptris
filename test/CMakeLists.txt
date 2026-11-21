@@ -7490,6 +7490,49 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/key-glue-quoted-swan-r337-artifact.bin
     )
 
+    # r338 (run 44847828414, main 794aa99e): the BOM-content family's
+    # INDENTED composition of the r306 BOM-ride and the r156 prop-split.
+    # The 27-byte artifact `<BOM><BOM>'                 &U:#'` inserts a
+    # 17-space root-indentation run between the content BOM and the
+    # anchor name: yeptris keeps the whole run as plain content (the
+    # leading BOM anchors the plain head -- catch-121; the spaces become
+    # interior), reading `=VAL : <BOM>'                 &U:#'`; libyaml
+    # consumes the run as root indentation (position-free whitespace at
+    # the document root) and cuts the anchor at the 1.1 charset
+    # boundary, reading props `&U` + the separator blank + `:#` as
+    # glued plain content (the catch-85 law -- no blank follower, the
+    # glued '#' opens no comment). THE CARRY: the r156 prop-split twin's
+    # guard widens by the maximal space-run skip (the r156 no-space form
+    # is the run-empty special case); the filing strips the BOM and the
+    # run and inserts the separator blank at the 1.1-charset cut,
+    # byte-exact on both dumps. The A/B: libfyaml 04e0b58 keeps the BOM
+    # + run + glued tail as CONTENT (the double-quoted render is
+    # yeptris's own reading) -- comparator carry only, no engine change
+    # (the r318/r330/r336/r337 precedent). Dual-bar floor: 11 bytes
+    # (`<BOM><BOM> &U:#`, single-space run -- the no-space 10-byte
+    # `&U:` member rides the same arm and the bare `&U` form is already
+    # carried by the r154 line-start removal probe); 50-mutant battery:
+    # 26 pass pre-patch, 46 pass post (20 widened -- the space-run
+    # lengths, the name charset members, the glued tails, the trailing
+    # BOM/CR/CRLF/doc-end riders), 4 declined-both (the structural
+    # block-entry tail, the doubled anchor line, and the two multi-line
+    # continuations -- the single-line tight gate holds). Both the floor
+    # and the artifact ride the corpus (the r321 seed law). Next-round
+    # pointer: a space-run composition with a STRUCTURAL follower
+    # (block-entry `- x`, a doubled anchor line, or a multi-line plain
+    # continuation) stays DECLINED -- unmeasured shapes; a red there
+    # means the multi-line/follower law needs its own measurement round.
+    add_test(
+        NAME fuzz-diff-r338-bom-anchored-key-indent
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-anchored-key-indent-r338.bin
+    )
+    add_test(
+        NAME fuzz-diff-r338-bom-anchored-key-indent-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-anchored-key-indent-r338-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
