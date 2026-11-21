@@ -11181,7 +11181,37 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
  * byte-exact — `+STR/+MAP/=VAL : <body>/=VAL : /-MAP/-STR` for the
  * floor form, `+STR/+MAP/=VAL : <key>/=VAL : <body>/-MAP/-STR` for the
  * key form, the libyaml body swallowing every exotic-adjacent blank
- * run. Anything the gate cannot pin declines (the escalation clause
+ * run. The r341 widening (the nightly's round 341, run 44880972632,
+ * main 6faef227) admits, KEY-FORM ONLY (the plain-key form AND the
+ * `?:` glue — both ':' spellings close a SAVED SIMPLE KEY, and
+ * fetch_value's simple-key branch leaves simple_key_allowed = 0,
+ * the exact state libyaml's scan_to_next_token exempts from the
+ * no-tab rule: it eats the whole blank run, spaces AND tabs mixed,
+ * behind the colon), a blank RUN in the separator slot behind the
+ * value colon — the artifact is the 9-byte `.:<TAB>'<PS><TAB>'`,
+ * the r332 floor's own next mutation (the SPACE behind the value
+ * colon ChangeBit'd to a TAB; the bare-colon sibling of the r332
+ * dotted-key container — probed `.:<TAB>'`, `.:<TAB><TAB>'`,
+ * `.:<TAB> '`, `.: <TAB>'`, `.:<TAB> <TAB> '`, the dotted `..:<TAB>'`,
+ * the pre-colon composition `.<TAB>:<TAB>'`, keys `.`/`..`/`?`/`N`
+ * — all key-equal on both engines, all DIFFER only in the body).
+ * The floor form's `? ` gate stays EXACTLY ONE SPACE: the tab faces
+ * are SPLITS there (`?\t'<PS><TAB>'` re-measured this round — the
+ * '?' IS the key indicator, it leaves simple_key_allowed = 1, the
+ * tab reaches fetch_next_token and errors: YEPTRIS-ONLY-ACCEPT),
+ * and the empty-key face stays declined (`:<TAB>'<PS><TAB>'` — the
+ * complex-value ':' keeps simple_key_allowed = 1: YEPTRIS-ONLY-
+ * ACCEPT, re-measured). The key-form EOF law moves too: a space/LF
+ * TRAILER rides the key form (the walk's body bound becomes the
+ * CLOSING QUOTE instead of size - 1 — probed
+ * `.:<TAB>'<PS><TAB>'<LF>`: inert on both engines, the dumps
+ * byte-exact to the EOF form's); the comment-led PREFIX stays
+ * floor-form-only. libfyaml 04e0b58 sides with yeptris
+ * (probed fresh: `.:<TAB>'<PS><TAB>'`, `..:<TAB>'<PS><TAB>'`,
+ * `?:<TAB><TAB>'<PS><TAB>'`, `.:<TAB>'a'` — the key byte-equal and
+ * the whole body kept, PS raw + tab kept) — comparator carry only,
+ * no engine change (the r318/r330/r331/r332/r340 precedent).
+ * Anything the gate cannot pin declines (the escalation clause
  * stays live). */
 static int yd_r331_body_walk_y(const uint8_t* body, size_t bo, size_t be, const char** c) {
     const char* a = *c;
@@ -11330,9 +11360,11 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
      * spellings derive the SAME dumps as the old floor form (the prefix
      * and the trailer contribute nothing on either engine — the actual
      * dumps of the floor and the artifact are byte-identical to the
-     * r331 floor's shape); anything else declines. The plain-key form
-     * keeps its EOF law untouched (no prefix, no trailer — unmeasured
-     * there). */
+     * r331 floor's shape); anything else declines. The plain-key form's
+     * own law moved in r341: the TRAILER rides there too (probed
+     * `.:<TAB>'<PS><TAB>'<LF>` — inert on both engines, dumps
+     * byte-exact to the EOF form's), the comment-led PREFIX stays
+     * floor-form-only (unmeasured there). */
     size_t lead = 0; /* the prefix length: the '?' line's start */
     size_t qpos = 0; /* the '?' byte */
     for (;;) {
@@ -11371,20 +11403,39 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
             floor_form = 0; /* "?: '<...>'" — the key is the '?' run */
             ko = qpos;
             ke = qpos + 1;
-            i = qpos + 2; /* at the space */
+            i = qpos + 2; /* at the separator */
+            /* the r341 widening: the ':' here closed a SAVED SIMPLE
+             * KEY (the glued '?' is plain content — no indicator —
+             * IS_BLANKZ_AT denies the '?' its KEY slot), so the whole
+             * blank run (spaces AND tabs) rides: probed
+             * `?:<TAB>'<PS><TAB>'`, `?:<TAB><TAB>'<PS><TAB>'`,
+             * `?: <TAB>'<PS><TAB>'`, `?:<TAB> '<PS><TAB>'` — key `?`
+             * on both engines, all DIFFER only in the body */
+            while (i < size && (data[i] == ' ' || data[i] == '\t')) {
+                i++;
+            }
+            if (i >= size || data[i] != '\'') {
+                return 0;
+            }
+            i++;
         } else {
             floor_form = 1; /* "? '<...>'" — the quoted scalar is the
                              * key */
             i = qpos + 1;   /* at the space */
+            /* the floor gate stays EXACTLY ONE SPACE (the r341
+             * re-measurement: `?<TAB>'<PS><TAB>'` is a YEPTRIS-ONLY-
+             * ACCEPT split — the '?' IS the key indicator, it leaves
+             * simple_key_allowed = 1, libyaml declines to eat the tab
+             * and it errors at fetch_next_token) */
+            if (i >= size || data[i] != ' ') {
+                return 0;
+            }
+            i++;
+            if (i >= size || data[i] != '\'') {
+                return 0;
+            }
+            i++;
         }
-        if (i >= size || data[i] != ' ') {
-            return 0; /* exactly one space (the r331 floor law) */
-        }
-        i++;
-        if (i >= size || data[i] != '\'') {
-            return 0;
-        }
-        i++;
     } else {
         /* the plain-key form: a [A-Za-z0-9_.-?&] run then ':' — the
          * r332 widening (run 44721335253, main e00d1138) admits the
@@ -11446,7 +11497,20 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
         floor_form = 0; /* the key form */
         ko = 0;
         i = r + 1; /* behind the value colon */
-        while (i < size && data[i] == ' ') {
+        /* the r341 widening (the nightly's round 341, run
+         * 44880972632, main 6faef227): the ':' closed a SAVED SIMPLE
+         * KEY — fetch_value's simple-key branch leaves
+         * simple_key_allowed = 0, the exact state libyaml's
+         * scan_to_next_token exempts from the no-tab rule — so the
+         * WHOLE blank run (spaces AND tabs, mixed) rides behind the
+         * colon: probed `.:<TAB>'`, `.:<TAB><TAB>'`, `.:<TAB> '`,
+         * `.: <TAB>'`, `.:<TAB> <TAB> '<PS><TAB>'` — all key-equal,
+         * all DIFFER only in the body. The empty-key face declines
+         * UNCHANGED (`:<TAB>'<PS><TAB>'` re-measured this round — the
+         * complex-value ':' keeps simple_key_allowed = 1, the tab
+         * errors at fetch_next_token: YEPTRIS-ONLY-ACCEPT, the r332
+         * law). */
+        while (i < size && (data[i] == ' ' || data[i] == '\t')) {
             i++; /* the two-space spelling (`..:  '<...>'`) rides too */
         }
         if (i >= size || data[i] != '\'') {
@@ -11557,7 +11621,15 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                     return 0;
                 }
                 a += 7;
-                if (!yd_r331_body_walk_y(data, bo, size - 1, &a)) {
+                /* the r341 widening: the bound is the CLOSING QUOTE,
+                 * not size - 1 — the key form admits the space/LF
+                 * TRAILER too (the common gate above already walks
+                 * it; probed `.:<TAB>'<PS><TAB>'<LF>` — the trailing
+                 * LF is inert on BOTH engines, the dumps byte-exact
+                 * to the EOF form's). The comment-led PREFIX stays
+                 * floor-form-only (the `lead != 0` decline above is
+                 * untouched — unmeasured there). */
+                if (!yd_r331_body_walk_y(data, bo, bclose, &a)) {
                     return 0;
                 }
                 if (strncmp(a, "\n-MAP\n-STR\n", 12) != 0) {
@@ -11583,7 +11655,9 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                     return 0;
                 }
                 b += 7;
-                if (!yd_r331_body_walk_l(data, bo, size - 1, &b)) {
+                /* the r341 widening: the closing-quote bound, as in
+                 * the yeptris walk above */
+                if (!yd_r331_body_walk_l(data, bo, bclose, &b)) {
                     return 0;
                 }
                 if (strncmp(b, "\n-MAP\n-STR\n", 12) != 0) {

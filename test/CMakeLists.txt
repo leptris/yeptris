@@ -7311,6 +7311,54 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r340-artifact.bin
     )
 
+    # r341 (the nightly's run 44880972632, main 6faef227): the quoted-
+    # exotic-tab family's FOURTH mutation-treadmill red — the 9-byte
+    # artifact `.:<TAB>'<PS><TAB>'` is the r332 floor's OWN next
+    # mutation (the SPACE behind the value colon ChangeBit'd to a
+    # TAB): the bare-colon sibling of the r332 dotted-key container,
+    # riding the same r331/r332 quoted-body law (yeptris keeps the
+    # post-exotic-break tab as content, libyaml's blank state swallows
+    # it — dumps `=VAL : <PS>\t` vs `=VAL : <PS>`, the key `.` byte-
+    # equal on both). THE MECHANISM (this round's measurement): the
+    # ':' closed a SAVED SIMPLE KEY, and libyaml's fetch_value
+    # simple-key branch leaves simple_key_allowed = 0 — the exact
+    # state scan_to_next_token exempts from the no-tab rule — so the
+    # WHOLE blank run (spaces AND tabs, mixed) rides behind the value
+    # colon (probed `.:<TAB>'`, `.:<TAB><TAB>'`, `.:<TAB> '`,
+    # `.: <TAB>'`, `.:<TAB> <TAB> '`, the dotted `..:<TAB>'`, the
+    # pre-colon composition `.<TAB>:<TAB>'`, and the `?:` glue faces
+    # `?:<TAB>'`/`?:<TAB><TAB>'`/`?: <TAB>'`/`?:<TAB> '` — keys
+    # `.`/`..`/`?`/`N`, all key-equal, all DIFFER only in the body;
+    # the key-form trailing-LF trailer is inert too). THE SPLITS THAT
+    # STAY OUT (both re-measured): the floor `? ` tab faces
+    # (`?<TAB>'<PS><TAB>'` — the '?' IS the key indicator, it leaves
+    # simple_key_allowed = 1, the tab errors: YEPTRIS-ONLY-ACCEPT)
+    # and the empty-key face (`:<TAB>'<PS><TAB>'` — the complex-value
+    # ':' keeps simple_key_allowed = 1: YEPTRIS-ONLY-ACCEPT). THE A/B:
+    # libfyaml 04e0b58 sides with yeptris on the fresh faces (probed
+    # `.:<TAB>'<PS><TAB>'`, `..:<TAB>'<PS><TAB>'`,
+    # `?:<TAB><TAB>'<PS><TAB>'`, `.:<TAB>'a'` — key byte-equal, PS
+    # raw + tab kept whole) — comparator carry only, no engine change
+    # (the r318/r330/r331/r332/r340 precedent). Floor: 9 of 9 bytes —
+    # the artifact is ALREADY the dual-bar floor (greedy single-byte
+    # ddmin to a fixed point: all nine deletions die pre-patch —
+    # EQUAL, splits, the classified r332 floor behind the space, or
+    # unterminated; pre-patch DIFFER exit 77 + NOT classified,
+    # post-patch carry exit 0). The 50-mutant paired battery (30
+    # single + 20 double, seed 341): see the round issue. Both the
+    # floor and the full artifact ride the corpus (the r321 seed law;
+    # byte-identical this round).
+    add_test(
+        NAME fuzz-diff-r341-quoted-exotic-tab
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r341.bin
+    )
+    add_test(
+        NAME fuzz-diff-r341-quoted-exotic-tab-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r341-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor
