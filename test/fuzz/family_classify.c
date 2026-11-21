@@ -295,8 +295,9 @@ typedef struct {
  * plain there (sets *ended_comment, the caller derives the run's ride;
  * the r279 law) instead of refusing. Returns the stop position and
  * whether it is a separator/close. */
-static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, int qm, size_t* piece_at,
-                    size_t* piece_len, size_t* stop, int* stop_sep, int* ended_comment) {
+static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, int qm, int rider,
+                    size_t* piece_at, size_t* piece_len, size_t* stop, int* stop_sep,
+                    int* ended_comment) {
     size_t k = q;
     size_t blank_n = 0;
     *ended_comment = 0;
@@ -317,9 +318,24 @@ static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, int qm, si
                 break; /* the VALUE boundary */
             }
             if (fc_flow_ind(nx)) {
-                if (!qm) {
+                if (!qm && !rider) {
                     return 0; /* ':' + flow indicator: libyaml's "unexpected
-                               * ':'" scanner error — outside the family */
+                               * ':'" scanner error — outside the family.
+                               * The rider carve-out (the r339 widening, run
+                               * 44864014989): a GLUED-`?` member whose
+                               * follower is an ALIAS never opens a plain on
+                               * libyaml — its flow `?` fires the KEY token
+                               * and the `*` fires the ALIAS token
+                               * (fetch_key's remove_simple_key +
+                               * `simple_key_allowed = (!flow_level)` = 0,
+                               * so the alias saves no key; fetch_value's
+                               * complex-key path is check-free in flow) —
+                               * the r291 "still-open plain" premise is
+                               * false there and the glued colon + flow
+                               * indicator derives as the VALUE boundary on
+                               * BOTH engines (the artifact's `?*L:,&m:(}`
+                               * member; libfyaml 04e0b58 reads yeptris's
+                               * stream byte-exact on it). */
                 }
                 /* the glued-`?` member (the r272 floor): the engine's
                  * KEY-implicit walk treats the colon + closer as the
@@ -359,8 +375,8 @@ static int fc_piece(const uint8_t* p, size_t n, size_t q, size_t end, int qm, si
 
 /* The full plain-node walk: pieces separated by break runs. Returns 0
  * on any gate (comment lead-in, ':' + flow indicator, budget). */
-static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int qm, fcnode* node,
-                           size_t* stop_at, int* stop_sep) {
+static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int qm, int rider,
+                           fcnode* node, size_t* stop_at, int* stop_sep) {
     memset(node, 0, sizeof(*node));
     size_t pos = i;
     for (;;) {
@@ -464,7 +480,7 @@ static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int
         size_t pat, plen, stop;
         int sep;
         int commented = 0;
-        if (!fc_piece(p, n, q, end, qm, &pat, &plen, &stop, &sep, &commented)) {
+        if (!fc_piece(p, n, q, end, qm, rider, &pat, &plen, &stop, &sep, &commented)) {
             return 0;
         }
         if (plen > 0) {
@@ -519,7 +535,14 @@ static int fc_plain_pieces(const uint8_t* p, size_t n, size_t i, size_t end, int
         }
         if (stop < end && p[stop] == ':' &&
             (stop + 1 >= end || fc_blank(p[stop + 1]) || fc_break_len(p, n, stop + 1) > 0 ||
-             (qm && stop + 1 < end && fc_flow_ind(p[stop + 1])))) {
+             ((qm || rider) && stop + 1 < end && fc_flow_ind(p[stop + 1])))) {
+            /* the rider arm (the r339 widening, run 44864014989): the
+             * GLUED-`?` alias-rider member's colon + flow indicator is the
+             * VALUE boundary the same way the SEQ-rooted qm arm takes it
+             * — libyaml's KEY→ALIAS path leaves no plain open, so the
+             * r291 decline premise does not apply and the boundary
+             * derives on both engines (the artifact's `?*L:,&m:(}`; the
+             * value slot walks on from the colon). */
             node->colon = 1;
             node->colon_at = stop;
             *stop_at = stop;
@@ -942,7 +965,7 @@ static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
         return y_fail(c);
     }
     int sep;
-    if (!fc_plain_pieces(p, c->n, q, c->n, 0, val, stop, &sep)) {
+    if (!fc_plain_pieces(p, c->n, q, c->n, 0, 0, val, stop, &sep)) {
         return y_fail(c);
     }
     return 1;
@@ -1005,8 +1028,17 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
         /* GLUED: the `?` is content; the plain scan starts at it. The
          * SEQ-rooted walk rides the qm colon+flow-indicator boundary
          * (the r272 `[?::]` floor's KEY-implicit cut); the MAP-rooted
-         * walk keeps the plain law. */
-        if (!fc_plain_pieces(p, n, i, n, !y_cur_is_map(c), &key, &stop, &sep)) {
+         * walk keeps the plain law — EXCEPT the alias rider (the r339
+         * widening, run 44864014989): a `*` follower never opens a
+         * plain on libyaml (the KEY token fires, then the ALIAS token;
+         * no simple key saves in flow after the explicit `?`), so the
+         * r291 still-open-plain premise is false and the glued colon +
+         * flow indicator derives as the VALUE boundary on both
+         * engines. A plain follower keeps the decline (the libyaml
+         * plain opens and the boundary shape is the documented
+         * qflow/yd_r242 family, not the classifier's). */
+        int rider = (nxt < n && p[nxt] == '*');
+        if (!fc_plain_pieces(p, n, i, n, !y_cur_is_map(c), rider, &key, &stop, &sep)) {
             return y_fail(c);
         }
         if (key.colon) {
@@ -1226,7 +1258,7 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
          * clean eat keeps the plain law (the r277 law's colon-inside
          * key). Flat stolen keys never see the difference (no colon,
          * no cut — every r245 probe shape unchanged). */
-        if (!fc_plain_pieces(p, n, ks, n, !y_cur_is_map(c), &key, &stop, &sep)) {
+        if (!fc_plain_pieces(p, n, ks, n, !y_cur_is_map(c), 0, &key, &stop, &sep)) {
             return y_fail(c);
         }
     } else if (p[ks] == '{') {
@@ -1305,7 +1337,7 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             key.colon = 1;
             key.colon_at = ks;
         } else {
-            if (!fc_plain_pieces(p, n, ks, n, 0, &key, &stop, &sep)) {
+            if (!fc_plain_pieces(p, n, ks, n, 0, 0, &key, &stop, &sep)) {
                 return y_fail(c);
             }
         }
@@ -1682,7 +1714,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
             return 0;
         }
     } else {
-        if (!fc_plain_pieces(p, n, i, n, 0, &key, &stop, &sep)) {
+        if (!fc_plain_pieces(p, n, i, n, 0, 0, &key, &stop, &sep)) {
             return y_fail(c);
         }
         if (key.colon) {
@@ -1863,7 +1895,7 @@ static int y_pair_member(yctx* c, size_t i, size_t* term_at) {
     memset(&val, 0, sizeof(val));
     size_t stop;
     int sep;
-    if (!fc_plain_pieces(p, n, i, n, 0, &key, &stop, &sep)) {
+    if (!fc_plain_pieces(p, n, i, n, 0, 0, &key, &stop, &sep)) {
         return y_fail(c);
     }
     if (key.colon) {
