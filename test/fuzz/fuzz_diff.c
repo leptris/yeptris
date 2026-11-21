@@ -9145,6 +9145,74 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 }
             }
         }
+        /* the r344 CR-fold-vs-kept-break site (the nightly's round 344,
+         * run 44905293937, main d5980c44; the 75-byte artifact
+         * crash-4e0e552d710e457aa24099c2274be50bd800663c "> LF SP
+         * -!<NEL> SP SP !www...`www0e17.tag CR SP ,?bar}www...xt8text9",
+         * the 17-byte dual-bar floor "> LF SP -!<NEL> SP SP .tag CR SP
+         * 9" -- greedy ddmin to a fixed point; pre-patch DIFFER abort,
+         * post-patch carry exit 0, on BOTH shapes, plain and lf
+         * harnesses; no landmark-preserving single-byte deletion keeps
+         * the dual bar -- the r317/r320/r321/r323/r324/r325/r327/r328/
+         * r329/r333/r334/r343 folded-header family's THIRTEENTH
+         * composition, the first past the r343 direct-hash entry, the
+         * family CROSSING INTO the verbatim-tag face): the body's
+         * content line opens "-!<" -- dash + the VERBATIM-tag opener
+         * glued -- and carries a kept NEL mid-line, a ".tag" tag-shaped
+         * run, and a bare CR boundary. libyaml's 1.1 reader breaks AT
+         * the NEL (the 1.1 IS_BREAK set; 1.2's b-break is CRLF|CR|LF
+         * only -- the NEL is printable content, docs/spec/yaml-1.2.2
+         * [21]) and its continuation line ("SP SP .tag", two spaces
+         * over the auto-indent 1) reads MORE-INDENTED -- the keep emits
+         * the line break literally and POISONS THE NEXT BOUNDARY: after
+         * a kept line the fold branch's gate (`*trailing_breaks.start
+         * == '\0'`, scanner.c -- the r177/r328 documented mechanism)
+         * suppresses the fold space at the CR site and the break rides
+         * as the ONE kept escape, the "SP 9" line's leading space eaten
+         * as the continuation's indent (the r237 flavor) -- b spells
+         * [ESC][9] where the break alone (no NEL upstream -- the
+         * cr-only probe) folds to the same ONE space BOTH engines
+         * spell. yeptris's 1.2 whole-route never broke at the NEL (the
+         * r317 kept-NEL law: the byte rides raw as content), both lines
+         * sit at the auto-indent 1, and the CR boundary folds to the
+         * ONE space -- a spells [SP][9]. The site fires only when every
+         * existing arm declined (this sits LAST in the chain), so the
+         * kept-NEL pairing's own paths are untouched. THE A/B: libfyaml
+         * 04e0b58 re-measured on THIS composition's own floor (the
+         * r325 lesson) -- its --yaml-1.2 pass reads the value
+         * byte-exact as yeptris ("=VAL >-!<\N  .tag 9\n": the NEL kept
+         * raw rendered \N, the CR boundary folded to the ONE space,
+         * the clip escape) while its --yaml-1.1 pass matches libyaml
+         * 90a56d4 escape-for-escape ("=VAL >-!<\n .tag\n9\n") -- the
+         * comparators split along the version line exactly as the
+         * r317 precedent did, comparator carry only, no engine change.
+         * Eat exactly ONE byte per side: a's fold space and b's ONE
+         * kept break -- the plain-byte coincidence gate (a[1] ==
+         * b[2], non-space/non-escape/non-exotic-lead/non-frame-end,
+         * the r323 coincidence law) AUTOMATICALLY bounds b's escape
+         * run to exactly one (a second escape would need a[1] == '\\')
+         * and a's space run likewise (a second space needs a[1] ==
+         * ' '), so the walk rejoins byte-bound at an agreement byte
+         * and the tail behind stays owned by the loop's budgeted laws
+         * (the r176 clip tail's strcmp completes the floor's binding).
+         * Sits BEHIND the r328 NEL-site lead-space entry (whose gate
+         * demands the kept-NEL pair at a[1..2] -- disjoint from this
+         * gate's plain lead), behind the r304/r323 EOF-tail arms (NEL
+         * pairs -- disjoint), behind the r325 EOF arm (whose gate wants
+         * a[1] == '\\' -- disjoint) and the r323 interleave (whose
+         * exotic-run gate fails on this plain lead), and behind the
+         * r216-class mirror (whose gate wants a on a PLAIN byte --
+         * disjoint from this gate's space lead). Previously this shape
+         * declined unconditionally here, so no existing member's path
+         * changes. */
+        if (a[0] == ' ' && b[0] == '\\' && b[1] == 'n' && a[1] == b[2] && a[1] != '\0' &&
+            a[1] != ' ' && a[1] != '\\' && (unsigned char)a[1] != 0xC2 &&
+            (unsigned char)a[1] != 0xE2) {
+            a += 1;
+            b += 2;
+            subs += 2;
+            continue;
+        }
         return 0;
     }
     return *a == '\0' && *b == '\0' && subs > 0;
