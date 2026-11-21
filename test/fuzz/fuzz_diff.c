@@ -348,29 +348,61 @@ static int yd_bom_content_divergence(const char* ydump, const char* ldump) {
      * keeps a column-0 BOM, and the blank position is the documented
      * 1.1 anchor-name cut (the r76 law). Fires only on an exact dump
      * match, so the claim stays byte-pinned; the r154 bare form is
-     * the tail-empty special case this law degenerates to. */
-    if (linelen > 7 && line[7] == '&' && memchr(line + 7, ' ', linelen - 7) == NULL) {
-        size_t k = 0;
-        while (8 + k < linelen && yd_anchor_byte_in_libyaml_set((unsigned char)line[8 + k])) {
-            k++;
+     * the tail-empty special case this law degenerates to. The
+     * INDENTED widening (the nightly's round r338, crash-c7f764eb,
+     * run 44847828414, main 794aa99e): the fresh 27-byte artifact
+     * "BOM BOM 17spc '&U:#'" inserts an indentation space-RUN between
+     * the content BOM and the anchor name, so after the one-BOM strip
+     * the residual opens with the run, the '&' falls past line[7], and
+     * the no-space guard declined. libyaml consumes the run as root
+     * indentation (leading blanks are position-free whitespace at the
+     * document root) and cuts at the same 1.1 anchor-charset boundary,
+     * so its dump is exactly the r156 reading with the run consumed;
+     * yeptris keeps the run whole -- the leading content BOM anchors
+     * the plain head (the catch-121 law), the spaces become interior
+     * content, and the glued tail rides. The composition claim widens
+     * by the maximal space-run skip: strip the BOM AND the maximal
+     * blank run behind it, then file the residual into libyaml's prop
+     * form at the 1.1-charset cut -- the separator blank goes AFTER
+     * the name, preserving the glued tail byte-for-byte (the
+     * run-empty case degenerates to the r156 form). The A/B: libfyaml
+     * 04e0b58 keeps the BOM + run + glued tail as CONTENT (the
+     * double-quoted render is yeptris's own reading) -- comparator
+     * carry only, no engine change (the r318/r330/r336/r337
+     * precedent). Fires only on an exact dump match, so the claim
+     * stays byte-pinned; a residual blank past the run is an invented
+     * key and declines. */
+    {
+        size_t at = 7;
+        while (at < linelen && line[at] == ' ') {
+            at++; /* the consumed root-indentation run (r338) */
         }
-        if (k > 0) {
-            char split[8192];
-            size_t ahead = (size_t)(line - stripped);
-            size_t atail = nl ? strlen(nl) : 0; /* from the line's break on */
-            if (ahead + linelen + 1 + atail + 1 < sizeof(split)) {
-                memcpy(split, stripped, ahead);     /* lines before the scalar */
-                memcpy(split + ahead, line, 8 + k); /* "=VAL : &" + the name */
-                split[ahead + 8 + k] = ' ';         /* the props separator blank at
-                                                       the 1.1-charset cut */
-                memcpy(split + ahead + 8 + k + 1, line + 8 + k, linelen - 8 - k);
-                if (nl != NULL) {
-                    memcpy(split + ahead + linelen + 1, nl, atail + 1);
-                } else {
-                    split[ahead + linelen + 1] = '\0';
-                }
-                if (strcmp(split, ldump) == 0) {
-                    return 1;
+        if (at < linelen && line[at] == '&' && memchr(line + at, ' ', linelen - at) == NULL) {
+            size_t k = 0;
+            while (at + 1 + k < linelen &&
+                   yd_anchor_byte_in_libyaml_set((unsigned char)line[at + 1 + k])) {
+                k++;
+            }
+            if (k > 0) {
+                char split[8192];
+                size_t ahead = (size_t)(line - stripped);
+                size_t atail = nl ? strlen(nl) : 0; /* from the line's break on */
+                size_t reslen = linelen - at;       /* "&name" + the glued tail */
+                if (ahead + 7 + reslen + 1 + atail + 1 < sizeof(split)) {
+                    memcpy(split, stripped, ahead);              /* lines before the scalar */
+                    memcpy(split + ahead, line, 7);              /* "=VAL : " */
+                    memcpy(split + ahead + 7, line + at, 1 + k); /* "&" + the name */
+                    split[ahead + 7 + 1 + k] = ' ';              /* the props separator blank at
+                                                                    the 1.1-charset cut */
+                    memcpy(split + ahead + 7 + 1 + k + 1, line + at + 1 + k, reslen - 1 - k);
+                    if (nl != NULL) {
+                        memcpy(split + ahead + 7 + reslen + 1, nl, atail + 1);
+                    } else {
+                        split[ahead + 7 + reslen + 1] = '\0';
+                    }
+                    if (strcmp(split, ldump) == 0) {
+                        return 1;
+                    }
                 }
             }
         }
