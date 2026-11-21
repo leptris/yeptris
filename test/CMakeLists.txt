@@ -7726,6 +7726,62 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r347-artifact.bin
     )
 
+    # the r348 quoted-exotic-tab round (the nightly's run 44934770024, main
+    # 8b10ff33; the 11-byte artifact crash-8371179c0e73967d004d14345187590e1e475180
+    # "..,: '<PS><TAB>'" -- the QUOTED-PS/TAB body (the r331/r332/r340/r341/r346/
+    # r347 law, byte-identical here) riding a DOT-DOT-COMMA plain key behind a
+    # STANDARD space separator, the quoted-exotic-tab family's SEVENTH
+    # composition and FIFTH key-form container -- the comma is the r339
+    # alias-rider comma-glue law's neighbor, here INSIDE plain key content
+    # (',' is a flow indicator only: plain content in BLOCK context on BOTH
+    # engines, and no plain-FIRST on EITHER engine -- the comma-LEAD face
+    # ",: '<PS><TAB>'" is a BOTH-ERROR, so the 10-byte dual-bar floor
+    # ".,: '<PS><TAB>'" drops the leading dot (plain content byte-equal; the
+    # SECOND dot cannot die -- its deletion ",: '...'" is the comma-lead
+    # BOTH-ERROR face; the comma itself cannot die -- its deletion "..: '...'"
+    # is the ALREADY-CLASSIFIED r341/r346 territory, exit 0 pre-patch; the
+    # space behind the colon dies into the glued-quote/EQUAL face "..,:'...'"
+    # -- no value colon ever fires); pre-patch DIFFER exit 77 + NOT classified,
+    # post-patch carry exit 0, on BOTH shapes, plain and lf harnesses). THE
+    # MECHANISM: the DIFFER is the r331/r346 quoted-body law (yeptris keeps
+    # the post-exotic-break tab as content, libyaml's blank state swallows it
+    # -- dumps "=VAL : <PS>\\t" vs "=VAL : <PS>", the KEY byte-equal on both
+    # engines). The widening admits the ',' byte into the plain-key charset
+    # (head faces probed byte-equal on BOTH engines, all DIFFER only in the
+    # body: `.,`, `..,`, `.x,`, `x,`, `2,2`, `.,.`, `..,2`, `.,_`, `.,-`,
+    # `.-,`, `.?,`, `.&,`, `$.`, `..,$`, `.,$x`, `.,$` (the r347 '$'
+    # compositions ride), the GLUED-COLON compositions `.,:x` / `..,:x`, the
+    # GLUED-QUOTE spelling `.,':` (key `.,'`, the r332 law), and the r346
+    # COLON-HEAD compositions `:.,` / `:.x,`; the lead law composes unchanged
+    # (CR x1/x2, CRLF, LF, spaces probed), the trailer law rides (LF, CR,
+    # CRLF probed), and the r341 separator-TAB ride composes). THE DECLINES
+    # THAT STAY OUT (re-measured): the comma-LEAD is the BOTH-ERROR wall
+    # (never a differ), the interior-space key (`.., x`), the mid-plain-quote
+    # key (`.,'x`), the ';'-led charset escape, and the quote-mid-glue face
+    # (`x,y'<TAB>:`) -- all DIFFER with the family shape pre- AND post-patch,
+    # stable-reds, the escalation clause's territory. THE A/B: libfyaml
+    # 04e0b58 re-measured on THIS composition's own floor (the r325 lesson):
+    # its --yaml-1.2 pass sides with yeptris BYTE-EXACT on the floor AND the
+    # artifact (it re-emits the comma-bearing key + the raw PS + the kept tab,
+    # "2e 2c 3a 20 27 e2 80 a9 09 27 0a" on the floor) while its --yaml-1.1
+    # pass ERRORS ("invalid tab used as indentation" -- the documented third
+    # reading) -- comparator carry only, zero src/ change, no budget raises.
+    # Both shapes' 50-mutant paired battery (30 single + 20 double, seed 348,
+    # unit-aware palette mutations, LS/PS triples atomic; solo runs -- the
+    # r345 lesson): floor and artifact counts in the round issue -- the
+    # battery's value is the 0-regression gate. See the round issue. Both the
+    # floor and the full artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r348-quoted-exotic-tab-comma-plain-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r348.bin
+    )
+    add_test(
+        NAME fuzz-diff-r348-quoted-exotic-tab-comma-plain-key-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r348-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor
