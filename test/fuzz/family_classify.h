@@ -242,6 +242,30 @@
  *      bytes under the dual bar). A glued colon (not a VALUE boundary)
  *      after the collection key and any other non-boundary byte stay
  *      out.
+ *  (l2) the r349 document-marker LEAD law (run 44941446715): a run of
+ *      document-marker lines ahead of the flow root is INERT and
+ *      byte-equal on both engines, each marker BUT THE LAST opening an
+ *      EMPTY first document (one `=VAL : \n` per prior marker:
+ *      `---\n[...` -> none, `---\n---\n[...]` -> one, three -> two; the
+ *      r349 artifact's `---\n---\n[11 ,?##|,...]` lead renders
+ *      `+STR\n=VAL : \n+SEQ...` on BOTH engines). Marker units: `---`
+ *      at a LINE START (the first at input pos 0 exactly — an indented
+ *      ` ---` is plain CONTENT on both engines, the probes' `=VAL :
+ *      ---` doc, and stays OUT), padded with blanks (the tab-padded
+ *      form dump-verified beside the spaces form), then LF, CR, or
+ *      CRLF, or the INLINE root spelling (`--- [...]`, zero empties;
+ *      a GLUED `---[` has no blankz after the triple — never a
+ *      marker). Between units: spaces, LF/CR/CRLF breaks, and
+ *      whole-line `#` comments at a line start (inert on both
+ *      engines). Anything unverified — a tab or exotic break in the
+ *      intervening run, a doc-end `...` line, the same-line `--- ---`
+ *      pair, a comment behind marker padding — ends the lead at the
+ *      last committed marker and the entry gate declines the tail
+ *      exactly as before. libfyaml 04e0b58 corroborates the lead on
+ *      the floor with BOTH passes (`+DOC ---` + `=VAL :` empty +
+ *      `+DOC ---` + the seq on 1.2 and 1.1 alike) while its body
+ *      reading joins yeptris's flat glued-`?` plain — the documented
+ *      third reading; comparator carry only, no engine change.
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
