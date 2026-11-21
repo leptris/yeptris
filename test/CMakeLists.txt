@@ -7672,6 +7672,60 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r346-artifact.bin
     )
 
+    # the r347 quoted-exotic-tab round (the nightly's run 44927174304, main
+    # 5488d800; the 10-byte artifact crash-a6c7bf66f7669eb53667e23c415fcfe55bc981c2
+    # "$.: '<PS><TAB>'" -- the QUOTED-PS/TAB body (the r331/r332/r340/r341/r346
+    # law, byte-identical here) riding a DOLLAR-LED plain key behind a STANDARD
+    # space separator, the quoted-exotic-tab family's SIXTH composition and
+    # fourth key-form container -- the 9-byte dual-bar floor "$: '<PS><TAB>'"
+    # drops the dot ('$' is no 1.2 indicator, plain content byte-equal on both
+    # engines; the '$' itself cannot die -- its deletion ".: '<PS><TAB>'" is the
+    # ALREADY-CLASSIFIED r332 dotted-key territory, exit 0 pre-patch, so the
+    # dual bar denies it; no further single-byte deletion keeps the dual bar;
+    # pre-patch DIFFER exit 77 + NOT classified, post-patch carry exit 0, on
+    # BOTH shapes, plain and lf harnesses). THE MECHANISM (this round's
+    # measurement): the DIFFER itself is the r331/r346 quoted-body law (yeptris
+    # keeps the post-exotic-break tab as content, libyaml's blank state
+    # swallows it -- dumps "=VAL : <PS>\\t" vs "=VAL : <PS>"); the r347
+    # widening admits the '$' byte into the plain-key charset (head faces probed
+    # byte-equal on BOTH engines, all DIFFER only in the body: `$`, `$.`, `$x`,
+    # `$2`, `$_`, `$-`, `$-k`, `$?`, `$.x`, `$$`, `$$.`, `$2_3`, `$-2`, `$?2`,
+    # `$&2` (the '&' rides mid-plain, never the head -- the r238 arm), the
+    # GLUED-COLON composition `$:x`, the GLUED-QUOTE spelling `$':` (key `$'`,
+    # the r332 law), and the r346 COLON-HEAD composition `:$`; the lead law
+    # composes unchanged (CR x1/x2, CRLF, LF, spaces probed) and the trailer
+    # law rides (LF, CR, CRLF probed)). THE DECLINES THAT STAY OUT
+    # (re-measured): the interior-space key (`$ x`), the mid-plain-quote key
+    # (`$'x`), and the ';'-/'/'-led charset escapes and the ',' mid-key splice
+    # -- all DIFFER with the family shape pre- AND post-patch, stable-reds,
+    # the escalation clause's territory; the '&' HEAD is EQUAL on both engines
+    # (no differ at all). THE A/B: libfyaml 04e0b58 re-measured on THIS
+    # composition's own floor (the r325 lesson): its --yaml-1.2 pass sides
+    # with yeptris BYTE-EXACT on the floor AND the artifact (it re-emits the
+    # dollar-led key + the raw PS + the kept tab, "24 3a 20 27 e2 80 a9 09 27"
+    # on the floor) while its --yaml-1.1 pass ERRORS ("invalid tab used as
+    # indentation" -- under 1.1 the PS is a break, so the quoted body's tab
+    # rides it as an indentation tab -- the documented third reading) --
+    # comparator carry only, zero src/ change, no budget raises. Both shapes'
+    # 50-mutant paired battery (30 single + 20 double, seed 347, unit-aware
+    # palette mutations, LS/PS triples atomic; solo runs -- the r345 lesson):
+    # floor 1 newly-carried / 49 stable-carried / 0 stable-red / 0
+    # regressions; artifact 3 newly-carried / 47 stable-carried / 0
+    # stable-red / 0 regressions -- the $-container faces are rare among
+    # random mutants (the body/lead mutations were classified by the
+    # earlier rounds), and the battery's value is the 0-regression gate. See the round issue. Both the floor and the
+    # full artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r347-quoted-exotic-tab-dollar-plain-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r347.bin
+    )
+    add_test(
+        NAME fuzz-diff-r347-quoted-exotic-tab-dollar-plain-key-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r347-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor

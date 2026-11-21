@@ -11746,6 +11746,49 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * third reading) — comparator carry only, no engine change
          * (the r318/r330/r331/r332/r340/r341 precedent). Anything the
          * gate cannot pin declines (the escalation clause stays
+         * live).
+         *
+         * The r347 widening (the nightly's round 347, run
+         * 44927174304, main 5488d800): the '$' byte joins the plain
+         * charset, and the artifact is the 10-byte `$.: '<PS><TAB>'`
+         * — the QUOTED-PS/TAB body (the r331/r332/r340/r341/r346 law,
+         * byte-identical here) riding a DOLLAR-LED plain key behind a
+         * STANDARD space separator — the quoted-exotic-tab family's
+         * SIXTH composition and fourth key-form container. '$' is no
+         * 1.2 indicator (plain content on BOTH engines — the key
+         * dumps byte-equal), so the dual-bar floor drops the dot to
+         * the 9-byte `$: '<PS><TAB>'` (greedy single-byte ddmin under
+         * the dump-pair shape bar: the '.' dies into the `$`-alone
+         * key; the '$' itself cannot die — its deletion
+         * `.: '<PS><TAB>'` is the ALREADY-CLASSIFIED r332 dotted-key
+         * territory, exit 0 pre-patch, so the dual bar denies it; the
+         * space behind the colon dies into the glued-quote/EQUAL face
+         * `$:'...'` — no value colon ever fires). Head faces probed
+         * byte-equal on BOTH engines, all DIFFER only in the body:
+         * `$`, `$.`, `$x`, `$2`, `$_`, `$-`, `$-k`, `$?`, `$.x`, `$$`,
+         * `$$.`, `$2_3`, `$-2`, `$?2`, `$&2` (the '&' rides mid-plain,
+         * never the head: the r238 arm), the GLUED-COLON composition
+         * `$:x`, the GLUED-QUOTE spelling `$':` (the r332 mid-plain
+         * quote law, key `$'`), and the r346 COLON-HEAD composition
+         * `:$`; the lead law composes unchanged (CR x1, CR x2, CRLF,
+         * LF x1, spaces-only probed) and the trailer law rides (LF,
+         * CR, CRLF probed). THE DECLINES THAT STAY OUT (re-measured):
+         * the interior-space key (`$ x`), the mid-plain-quote key
+         * (`$'x`), and the ';'-, '/'-led charset escapes and the ','
+         * mid-key splice — all DIFFER with the family shape pre- AND
+         * post-patch, stable-reds (the escalation clause's
+         * territory); the '&' HEAD declines (the r238 arm, re-measured
+         * `&$:` EQUAL). THE A/B: libfyaml 04e0b58 re-measured on THIS
+         * composition's own floor (the r325 lesson): its --yaml-1.2
+         * pass sides with yeptris BYTE-EXACT on the floor AND the
+         * artifact (it re-emits the dollar-led key + the raw PS + the
+         * kept tab, "24 3a 20 27 e2 80 a9 09 27" on the floor) while
+         * its --yaml-1.1 pass ERRORS ("invalid tab used as
+         * indentation" — under 1.1 the PS is a break, so the quoted
+         * body's tab rides it as an indentation tab — the documented
+         * third reading) — comparator carry only, no engine change
+         * (the r318/r330/r331/r332/r340/r341/r346 precedent). Anything
+         * the gate cannot pin declines (the escalation clause stays
          * live). */
         if (prefix_comment) {
             return 0; /* the r340 comment-led prefix stays floor-form
@@ -11794,7 +11837,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
         while (r < size &&
                (((data[r]) >= 'A' && (data[r]) <= 'Z') || ((data[r]) >= 'a' && (data[r]) <= 'z') ||
                 ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
-                (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.')) {
+                (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' || (data[r]) == '$')) {
             r++;
         }
         /* the r332 battery's GLUED spellings (each dump-verified
@@ -11814,11 +11857,11 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * and the value colon separates on BOTH engines (probed
          * `..\t: '<PS><TAB>'` — the key ends at the tab, byte-equal) */
         for (;;) {
-            while (r < size &&
-                   (((data[r]) >= 'A' && (data[r]) <= 'Z') ||
-                    ((data[r]) >= 'a' && (data[r]) <= 'z') ||
-                    ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
-                    (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.')) {
+            while (r < size && (((data[r]) >= 'A' && (data[r]) <= 'Z') ||
+                                ((data[r]) >= 'a' && (data[r]) <= 'z') ||
+                                ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
+                                (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' ||
+                                (data[r]) == '.' || (data[r]) == '$')) {
                 r++;
             }
             ke = r;
