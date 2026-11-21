@@ -88,7 +88,19 @@
  *      member with a non-blank follower keeps the whole text as one
  *      plain key (colon rides inside when a non-blank follows), values
  *      empty; libyaml splits the explicit key and its IS_ALPHA cut
- *      surfaces `=ALI *M`-style keys;
+ *      surfaces `=ALI *M`-style keys; the r339 widening (run
+ *      44864014989): when the follower is an ALIAS (`?*L` — the r318
+ *      composition's comma-glued-colon face) the member's colon +
+ *      flow-indicator boundary derives as the VALUE boundary on both
+ *      engines even GLUED — libyaml's flow `?` fires the KEY token and
+ *      the `*` fires the ALIAS token (fetch_key removes the simple key
+ *      and `simple_key_allowed = (!flow_level)` = 0 saves no key; the
+ *      complex-key fetch_value path is check-free in flow), so NO plain
+ *      is ever open at the colon and the r291 decline's still-open-plain
+ *      premise is false (libfyaml 04e0b58 reads the artifact byte-exact
+ *      yeptris's way; a plain follower keeps the decline — there the
+ *      libyaml plain opens and the boundary shape is the
+ *      yd_r242/yd_qflow family, not the classifier's);
  *  (e) the r230 double-split residual-colon law and the m43/m44
  *      finding: a spliced/dropped `:` at a fold point moves neither
  *      dump (the fold-point `:` re-lexes as the VALUE token on both).

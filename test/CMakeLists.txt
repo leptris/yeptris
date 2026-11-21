@@ -6509,6 +6509,43 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-key-map-r318-artifact.bin
     )
 
+    # the r339 nightly red (run 44864014989, main 026d7a11): the 12-byte
+    # artifact "\n{?*L:,&m:(}" — the r318 composition's COMMA-GLUED-COLON
+    # face. Member 1 is the law-(d)/(c) plain-? + alias-as-plain-content
+    # split with its colon boundary GLUED to the flow separator (`?*L:,`
+    # — yeptris renders `=VAL : ?*L` + the empty value, libyaml's 1.1
+    # KEY-token split surfaces `=ALI *L` + the empty value), member 2
+    # the r318 anchor charset cut (`&m:(}` — `=VAL : &m:( ` + `=VAL : `
+    # vs libyaml's `=VAL : &m ` + `=VAL : (`). The family classifier
+    # declined exactly where the r318 session's honest-declines list
+    # pinned it: "the law-(d) member walk's own gate on the
+    # comma-glued-colon line" — fc_piece's `:` + flow-indicator decline
+    # fires under the MAP-root qm=0 walk. THE WIDENING (the rider
+    # carve-out): libyaml's flow `?` fires the KEY token and the `*`
+    # follower fires the ALIAS token — fetch_key removes the simple key
+    # and sets `simple_key_allowed = (!flow_level)` = 0, so the alias
+    # saves NO key, and fetch_value's complex-key path is check-free in
+    # flow — NO PLAIN IS EVER OPEN at the glued colon, so the r291
+    # "still-open plain hits the unexpected ':' error" premise is false
+    # and the colon + flow indicator derives as the VALUE boundary on
+    # BOTH engines. THE A/B: libfyaml 04e0b58 reads the artifact
+    # byte-exact yeptris's way (parse-dump: `SCALAR ?*L` / `SCALAR ` /
+    # `SCALAR &m:( ` / `SCALAR `) — comparator carry only, no engine
+    # change. The floor: 10 of 12 bytes survive the dual bar
+    # "{?*L:,&m:}" (the leading break and the `(` are inert — the r318
+    # cut fires on the glued `:` alone); the 50-mutant paired battery
+    # (30 single + 20 double, seed 339): 6 newly-carried (alias-name
+    # variants `?*U`/`?*8`/`?*g`/`?*4` and the `&o` twin), 21 honest
+    # declines (plain/indicator followers that keep the r291 premise
+    # — `?9`-style plain heads, `!`/`&` riders, the break-form twin
+    # without its comma), 23 clean-both, 0 anomalies.
+    add_test(
+        NAME fuzz-diff-r339-alias-rider-glued-colon
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-alias-rider-glued-colon-r339.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-alias-rider-glued-colon-r339-artifact.bin
+    )
+
     # the r319 nightly red (run 44470194441, main 4732ed9f — the first
     # post-r318 red, and the first input the r316 timeout raise let the
     # comparator FINISH: the same `?##`+CR+`1.0e17.tag`+`2002:binary`+
