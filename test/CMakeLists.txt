@@ -7782,6 +7782,73 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r348-artifact.bin
     )
 
+    # the r349 soup round (the nightly's run 44941446715, main e1771de9;
+    # the 10740-byte artifact crash-3114175b7b973b0b87f34f5e77a83abf63a61c97
+    # "---\n---\n[11 ,?##|,?<CR>/..." -- the r306-lineage soup body
+    # byte-identical to the r307/r319 artifact line, riding a DOUBLE
+    # document-marker lead: two consecutive "---" lines before the "["
+    # flow-open, the doc-marker structural dimension's DOUBLE arrival
+    # state (the single marker was never classifier territory -- the
+    # entry gate declined every non-blank lead byte -- and every prior
+    # soup escape carried had a single-or-no document lead). The 34-byte
+    # dual-bar floor "---\n---\n[1,?#<CR>/<LF><CR><CR><NEL><CR><CR><CR>
+    # <CR><CR>?,?/<NEL>]" (greedy ddmin to a fixed point under the
+    # dump-pair shape bar: both dumps keep the "+STR\n=VAL : \n" empty
+    # -first-document fingerprint and the first divergence is the law-a
+    # split -- a naive DIFFER-only bar cannot drop the second marker:
+    # the single-marker spelling renders "+STR\n+SEQ" on both engines,
+    # a DIFFERENT document shape, so the byte deletions die at the
+    # marker lines; pre-patch DIFFER exit 77 + NOT classified, post-
+    # patch carry exit 0, on BOTH shapes, plain and lf harnesses).
+    # THE MECHANISM (this round's measurement): the doc-marker lead is
+    # INERT and byte-equal on BOTH engines -- each marker but the last
+    # opens an EMPTY first document ("---\n[...]" -> "+STR\n+SEQ",
+    # "---\n---\n[...]" -> "+STR\n=VAL : \n+SEQ", three markers -> two
+    # empties; probes: spaces/tabs padding after the triple, LF/CR/CRLF
+    # breaks, blank lines between markers (pure and space-carrying),
+    # whole-line comments, the inline root spelling "--- [...]", and
+    # four markers -- all byte-equal), and the DIFFER itself is the
+    # r306-lineage body law: the glued "?#" member stays ONE flat plain
+    # on yeptris (the 1.2 fold: LF CR CR NEL CRx5 -> eight newlines)
+    # while libyaml fires the flow KEY token, comment-eats from the
+    # '#', and rebinds the post-break bytes as the key with an empty
+    # value (the law-a split + the law-b fold arithmetic). THE r349
+    # WIDENING (the new law l2 in family_classify.h): the doc-marker
+    # LEAD walk -- fc_doc_lead admits exactly the verified marker-line
+    # shapes (the first marker at input pos 0 exactly -- an indented
+    # ' ---' is plain CONTENT on both engines, the probes' "=VAL : ---"
+    # doc, and stays OUT; blanks pad the marker line; LF/CR/CRLF or the
+    # inline root follow; between units: spaces, LF/CR/CRLF breaks, and
+    # whole-line comments; anything unverified -- a tab or exotic break
+    # in the intervening run, a doc-end '...' line, the same-line
+    # '--- ---' pair -- ends the lead at the last committed marker and
+    # the entry gate declines the tail exactly as before). THE DECLINES
+    # THAT STAY OUT (re-measured): the indented-marker lead (" ---\n---
+    # \n" renders "=VAL : ---" byte-equal then the body diverges --
+    # DIFFER pre- AND post-patch, stable-red, the escalation clause's
+    # territory), the tab-carrying blank line between markers (never a
+    # differ on the probes), the doc-end lead ("...\n---\n" -- equal),
+    # and the glued "---[" fetch-law face (no blankz after the triple).
+    # THE A/B: libfyaml 04e0b58 re-measured on THIS composition's own
+    # floor (the r325 lesson): BOTH passes corroborate the lead --
+    # "+DOC ---" + "=VAL :" empty + "+DOC ---" + the seq on --yaml-1.2
+    # AND --yaml-1.1 alike -- while its body reading joins yeptris's
+    # flat glued-? plain (the documented third reading; the full
+    # artifact's depth errors its 1.2 pass at member ~30) -- comparator
+    # carry only, zero src/ change, no budget raises. Both shapes' probe
+    # matrix rides this block's history; see the round issue. Both the
+    # floor and the full artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r349-flow-qsoup-doclead
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-doclead-r349.bin
+    )
+    add_test(
+        NAME fuzz-diff-r349-flow-qsoup-doclead-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-doclead-r349-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor

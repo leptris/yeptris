@@ -138,6 +138,113 @@ static size_t fc_skip_blank_break(const uint8_t* p, size_t n, size_t i) {
     return i;
 }
 
+/* The r349 document-marker LEAD law (run 44941446715): a run of
+ * document-marker lines ahead of the flow root is INERT and byte-equal
+ * on both engines, every marker EXCEPT the last opening an EMPTY first
+ * document (one "=VAL : \n" per prior marker; the probes:
+ * `---\n[1]` -> `+STR\n+SEQ`, `---\n---\n[1]` -> `+STR\n=VAL : \n+SEQ`,
+ * `---\n---\n---\n[1]` -> two empties, the spaces-padded `---  \n---\n`
+ * and the comment-line `---\n# c\n---\n` forms riding the same count).
+ * Each marker unit: `---` at a LINE START (the first at input pos 0
+ * exactly — an indented ` ---` is plain content on both engines, the
+ * probes' `=VAL : ---` doc), padded with blanks (the tab-padded
+ * `---\t\n` form dump-verified byte-equal beside the spaces form), then
+ * a break (LF, CR, CRLF only — the exotic breaks stay out), the inline
+ * root's blanks (`--- [1]`), or the inline root directly (`---[1]` is
+ * no doc indicator at all — the lead ends there and the gate declines).
+ * Between units: spaces, LF/CR/CRLF breaks, and whole-line `#` comments
+ * at a line start (inert on both engines). Anything else — a tab, an
+ * exotic break, a non-blankz byte after the triple (`---x`, `----`,
+ * `---[`) — ends the lead at the last committed marker, and the entry
+ * gate declines the tail exactly as before. Returns the marker count
+ * (0 = no lead; *end then rides 0 and every walk is unchanged). */
+static int fc_doc_lead(const uint8_t* p, size_t n, size_t* end) {
+    size_t i = 0;
+    int markers = 0;
+    *end = 0;
+    if (n < 3 || p[0] != '-' || p[1] != '-' || p[2] != '-') {
+        return 0;
+    }
+    for (;;) {
+        /* the marker unit: i is at the triple, at a line start */
+        i += 3;
+        int padded = 0;
+        while (i < n && fc_blank(p[i])) {
+            i++; /* blanks pad the marker line; the tab-padded form is
+                  * dump-verified byte-equal beside the spaces form */
+            padded = 1;
+        }
+        if (i >= n) {
+            *end = i;
+            return markers + 1;
+        }
+        if (padded && (p[i] == '[' || p[i] == '{')) {
+            /* the INLINE root spelling (the r349 probe `--- [1]` ->
+             * `+STR\n+SEQ`, zero empties): the marker is invisible, the
+             * root bracket follows the padding directly. A GLUED
+             * `---[` has no blankz after the triple — the engine's
+             * fetch law makes it plain content, never a marker: the
+             * lead ends here and the gate declines the rest */
+            markers++;
+            *end = i;
+            return markers;
+        }
+        if (p[i] != '\r' && p[i] != '\n') {
+            /* a non-blankz byte after the padding that is neither the
+             * inline root nor a break (e.g. `--- # c`): not a doc
+             * indicator tail the probes cover — the lead ends at the
+             * last committed marker; the first unit failing here is no
+             * lead at all */
+            if (markers == 0) {
+                return 0;
+            }
+            *end = i;
+            return markers;
+        }
+        i += (size_t)fc_break_run_len(p, n, i);
+        markers++;
+        /* the intervening walk: spaces, LF/CR/CRLF breaks, whole-line
+         * comments; anything unverified declines the WHOLE lead (the
+         * input keeps its pre-patch decline — never a partial hop over
+         * an unverified byte) */
+        int at_ls = 1;
+        for (;;) {
+            if (i >= n) {
+                *end = i;
+                return markers;
+            }
+            unsigned char ch = p[i];
+            if (ch == ' ') {
+                i++;
+                at_ls = 0;
+                continue;
+            }
+            if (ch == '\r' || ch == '\n') {
+                i += (size_t)fc_break_run_len(p, n, i);
+                at_ls = 1;
+                continue;
+            }
+            if (ch == '\t' || ch == 0xC2 || ch == 0xE2) {
+                return 0; /* tab or exotic break: unverified, decline */
+            }
+            if (ch == '#' && at_ls) {
+                while (i < n && p[i] != '\r' && p[i] != '\n') {
+                    if (p[i] == 0xC2 || p[i] == 0xE2) {
+                        return 0; /* exotic break in the comment: out */
+                    }
+                    i++;
+                }
+                continue; /* the break itself rides the loop */
+            }
+            if (ch == '-' && at_ls && i + 2 < n && p[i + 1] == '-' && p[i + 2] == '-') {
+                break; /* the next marker unit */
+            }
+            *end = i;
+            return markers;
+        }
+    }
+}
+
 /* libyaml IS_ALPHA: [0-9A-Za-z_-] (the alias/anchor name cut). */
 static int fc_alpha(unsigned char c) {
     return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' ||
@@ -629,6 +736,10 @@ typedef struct {
                                             * following members render as map entries (key +
                                             * empty value; the bare colon member keeps its
                                             * empty-key + value slot) until the closer */
+    size_t lead_end;                       /* the r349 doc-marker lead's end (the root bracket's
+                                            * position; 0 = no lead) */
+    int lead_docs;                         /* the lead's marker count (each but the last opens an
+                                            * empty first document) */
 } yctx;
 
 static int y_fail_at(yctx* c, int line) {
@@ -2047,12 +2158,19 @@ static int y_root(yctx* c) {
     const uint8_t* p = c->p;
     size_t n = c->n;
     c->pos_trace = 1;
-    /* the leading blank/break run before the root bracket (the r296
-     * artifact's `\n [` head): both engines scan-to-token before the
-     * root, so the members start past the run (the caller's gate
-     * rejects any other lead byte) */
-    size_t lead = fc_skip_blank_break(p, n, 0);
+    /* the lead: the r349 doc-marker run (its walk consumed every hop;
+     * the entry gate verified the bracket AT c->lead_end), else the
+     * blank/break run before the root bracket (the r296 artifact's
+     * `\n [` head) — both engines scan-to-token before the root, so
+     * the members start past it */
+    size_t lead = fc_skip_blank_break(p, n, c->lead_end);
     fo_str(&c->out, "+STR\n");
+    /* the r349 law: each doc marker but the last opens an EMPTY first
+     * document (`---\n---\n[...]` renders one `=VAL : ` on both
+     * engines) */
+    for (int k = 1; k < c->lead_docs; k++) {
+        fo_str(&c->out, "=VAL : \n");
+    }
     fo_str(&c->out, c->is_map ? "+MAP\n" : "+SEQ\n");
     size_t after = 0;
     if (!y_members(c, c->is_map ? (unsigned char)'}' : (unsigned char)']', lead + 1, &after)) {
@@ -2075,12 +2193,15 @@ static int y_root(yctx* c) {
     return 1;
 }
 
-static int y_derive(const uint8_t* data, size_t size, int is_map, fout* out) {
+static int y_derive(const uint8_t* data, size_t size, int is_map, size_t lead_end, int lead_docs,
+                    fout* out) {
     yctx c;
     memset(&c, 0, sizeof(c));
     c.p = data;
     c.n = size;
     c.is_map = is_map;
+    c.lead_end = lead_end; /* the r349 doc-marker lead (0 = no lead) */
+    c.lead_docs = lead_docs;
     c.out = *out;
     int ok = y_root(&c);
     if (!ok || c.out.bad) {
@@ -2137,6 +2258,10 @@ typedef struct {
     ltok* toks;
     size_t ntoks;
     size_t captoks;
+    size_t lead_end; /* the r349 doc-marker lead's end (the root bracket;
+                      * the tokenizer starts there, 0 = no lead) */
+    int lead_docs;   /* the lead's marker count (the render emits one
+                      * empty first document per marker but the last) */
 } lctx;
 
 static int l_fail_at(lctx* c, int line) {
@@ -3132,6 +3257,11 @@ static int l_render_stream(lctx* c, fout* o) {
         }
     }
     fo_str(o, "+STR\n");
+    /* the r349 law: each doc marker but the last opens an EMPTY first
+     * document (byte-equal on both engines — see y_root's render) */
+    for (int k = 1; k < c->lead_docs; k++) {
+        fo_str(o, "=VAL : \n");
+    }
     ltok* t = &c->toks[ip];
     int is_seq;
     if (t->kind == LT_FLSEQ) {
@@ -3238,11 +3368,15 @@ static int l_render_stream(lctx* c, fout* o) {
     return 1;
 }
 
-static int l_derive(const uint8_t* data, size_t size, fout* out) {
+static int l_derive(const uint8_t* data, size_t size, size_t lead_end, int lead_docs, fout* out) {
     lctx c;
     memset(&c, 0, sizeof(c));
     c.p = data;
     c.n = size;
+    c.pos = lead_end; /* the r349 doc-marker lead: the tokenizer starts
+                       * past it (0 = no lead, the old walk) */
+    c.lead_end = lead_end;
+    c.lead_docs = lead_docs;
     c.sk_allowed = 1; /* libyaml's fetch_stream_start arms the flag */
     int ok = l_tokenize(&c);
     if (ok) {
@@ -3278,13 +3412,19 @@ int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, cons
     if (size < 4 || size > FC_MAX_INPUT) {
         return 0; /* the budget gate (law n) */
     }
-    size_t root = fc_skip_blank_break(data, size, 0);
+    size_t lead_end = 0;
+    int lead_docs = fc_doc_lead(data, size, &lead_end);
+    size_t root = lead_docs > 0 ? lead_end : fc_skip_blank_break(data, size, 0);
     if (root >= size || (data[root] != '[' && data[root] != '{')) {
         return 0; /* the family is flow-rooted (law j): a leading
                    * blank/break run is scan-to-token territory on both
-                   * engines (the r296 artifact's `\n [` head) — any
-                   * other lead byte (a comment, a directive, a document
-                   * marker) still declines */
+                   * engines (the r296 artifact's `\n [` head), and the
+                   * r349 doc-marker LEAD walk admits exactly the
+                   * verified marker-line shapes (fc_doc_lead, one empty
+                   * first document per marker but the last) — any other
+                   * lead byte (a comment, a directive, a doc-end run the
+                   * lead walk declined, an indented `---`) still
+                   * declines */
     }
     int is_map = data[root] == '{';
     /* the r306 BOM-ride gate: a MID-LINE BOM is inert content — both
@@ -3320,9 +3460,9 @@ int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, cons
     }
     fout yd = {NULL, 0, 0, 0};
     fout ld = {NULL, 0, 0, 0};
-    int ok = y_derive(data, size, is_map, &yd);
+    int ok = y_derive(data, size, is_map, lead_end, lead_docs, &yd);
     if (ok) {
-        ok = l_derive(data, size, &ld);
+        ok = l_derive(data, size, lead_end, lead_docs, &ld);
     }
     int classified = ok && fc_str_eq(&yd, ydump) && fc_str_eq(&ld, ldump);
     if (getenv("YD_FC_DEBUG") != NULL) {
