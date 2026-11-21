@@ -7458,6 +7458,65 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-direct-hash-r343-artifact.bin
     )
 
+    # the r344 folded-header round (the nightly's run 44905293937, main
+    # d5980c44; the 75-byte artifact crash-4e0e552d710e457aa24099c2274be50bd800663c
+    # "> LF SP -!<NEL> SP SP !w…`w0e17.tag CR SP ,?bar}w…xt8text9", the
+    # 17-byte dual-bar floor "> LF SP -!<NEL> SP SP .tag CR SP 9" --
+    # greedy ddmin to a fixed point; pre-patch DIFFER abort, post-patch
+    # carry exit 0, on BOTH shapes, plain and lf harnesses; no
+    # landmark-preserving single-byte deletion keeps the dual bar --
+    # the 13th composition of the folded-header family, the first past
+    # the r343 direct-hash entry, the family CROSSING INTO the
+    # verbatim-tag face): the body's content line opens "-!<" (dash +
+    # the VERBATIM-tag opener glued) and carries a kept NEL mid-line, a
+    # ".tag" tag-shaped run, and a bare CR boundary. libyaml's 1.1
+    # reader breaks AT the NEL (the 1.1 IS_BREAK set; 1.2's b-break is
+    # CRLF|CR|LF only -- the NEL is printable content,
+    # docs/spec/yaml-1.2.2 [21]) and its continuation line ("SP SP
+    # .tag", two spaces over the auto-indent 1) reads MORE-INDENTED --
+    # the keep emits the line break literally and POISONS THE NEXT
+    # BOUNDARY: after a kept line the fold branch's gate
+    # (`*trailing_breaks.start == '\0'`, scanner.c -- the r177/r328
+    # documented mechanism) suppresses the fold space at the CR site
+    # and the break rides as the ONE kept escape, the "SP 9" line's
+    # leading space eaten as the continuation's indent (the r237
+    # flavor) -- b spells [ESC][9] where the break alone (no NEL
+    # upstream -- the cr-only probe) folds to the same ONE space BOTH
+    # engines spell. yeptris's 1.2 whole-route never broke at the NEL
+    # (the r317 kept-NEL law: the byte rides raw as content), both
+    # lines sit at the auto-indent 1, and the CR boundary folds to the
+    # ONE space -- a spells [SP][9]. The arm sits LAST in the pair
+    # walk's chain (fires only when every existing arm declined) and
+    # eats exactly ONE byte per side behind the plain-byte coincidence
+    # gate (a[1] == b[2], non-space/non-escape/non-exotic-lead/
+    # non-frame-end, the r323 coincidence law) -- the coincidence
+    # AUTOMATICALLY bounds b's escape run and a's space run to exactly
+    # one, so the walk rejoins byte-bound at an agreement byte (the
+    # r176 clip tail's strcmp completes the floor's binding). Both the
+    # NEL-only and the CR-only sub-shapes classify clean on the
+    # pre-patch walk (the r208/r176 pairing and the r140 clip carry
+    # own them) -- the DIFFER is the JOINT face only. THE A/B: libfyaml
+    # 04e0b58 re-measured on THIS composition's own floor (the r325
+    # lesson) -- its --yaml-1.2 pass reads the value byte-exact as
+    # yeptris ("=VAL >-!<\N  .tag 9\n": the NEL kept raw rendered \N,
+    # the CR boundary folded to the ONE space, the clip escape) while
+    # its --yaml-1.1 pass matches libyaml 90a56d4 escape-for-escape
+    # ("=VAL >-!<\n .tag\n9\n") -- the comparators split along the
+    # version line exactly as the r317 precedent did, comparator carry
+    # only, no engine change. Both shapes' 50-mutant paired battery
+    # (30 single + 20 double, seed 344): see the round issue. Both the
+    # floor and the full artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r344-folded-header-verbatim-tag-cr-fold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-verbatim-tag-cr-fold-r344.bin
+    )
+    add_test(
+        NAME fuzz-diff-r344-folded-header-verbatim-tag-cr-fold-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-verbatim-tag-cr-fold-r344-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor
