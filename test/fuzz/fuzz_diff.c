@@ -8418,6 +8418,64 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
                 }
             }
         }
+        /* the r343 direct-'#' entry site (the nightly's round 343, run
+         * 44895282842, main 56b542af; the 7-byte artifact
+         * crash-f5d8fce2a23a0c73ab015a3ef9614ff73a6eb810 "SP SP > NEL
+         * # SP", the 5-byte dual-bar floor "SP > NEL #" -- greedy ddmin
+         * to a fixed point; pre-patch DIFFER exit 77, post-patch carry
+         * exit 0, on BOTH shapes; no landmark-preserving single-unit
+         * deletion keeps the dual bar -- the r317/r320/r321/r323/r324/
+         * r325/r327/r328/r329/r333/r334 folded-header family's TWELFTH
+         * composition, the r333 law's neighborhood: the NEL-led body x
+         * the blank-ledger walk x the '#' content byte, with NO lead
+         * material ahead of the '#'): the indented bare '>' header is
+         * NEL-terminated (no comment, no indicator suffix -- the r283
+         * commented-header shape's zero-comment twin) and the '#'
+         * rides the body's FIRST byte at COLUMN 0 -- below the header
+         * indent. libyaml's 1.1 reader breaks AT the NEL (the 1.1
+         * IS_BREAK set; 1.2's b-break is CRLF|CR|LF only -- the NEL is
+         * printable content, docs/spec/yaml-1.2.2 [21]), its
+         * breaks-scan lands the column-0 line BELOW the block indent,
+         * the content loop ends the block, and the '#' re-lexes as the
+         * blank-preceded document-level comment eaten to EOF -- the
+         * clip joining the EMPTY leading_break, the value EMPTY (the
+         * r333 comment-eaten mechanism, zero lead). yeptris's 1.2
+         * whole-route keeps the NEL-led line as the block's own
+         * material (the r317 kept-NEL law) and the clip appends the
+         * ONE LF escape -- the value reads ['#'][glued plain run][ONE
+         * clip ESC][line end]. THE A/B: libfyaml 04e0b58 ERRORS the
+         * 1.2 pass ("block scalar no linebreak found" -- its header
+         * law demands a 1.2 break, and the NEL is not one) while its
+         * 1.1 pass reads the EMPTY value byte-exact as libyaml
+         * (re-measured on THIS composition's own floor, the r325
+         * lesson) -- no comparator sides with the kept content, the
+         * libyaml-is-the-compat-bar line carries, comparator carry
+         * only, no engine change (the r317 precedent). Eat exactly
+         * the claim: a opens the GLUED '#' at the value's first byte
+         * (no space, no raw exotic lead -- the r333 kept-exotic arm
+         * above owns those leads), a glued plain run behind it (no
+         * escape, no raw exotic lead, no dump-line break), then the
+         * ONE clip escape and the dump-line end, the remainders behind
+         * the claim coinciding completely with b's (the r161 strcmp
+         * law -- b-side bytes are never eaten, so the claim can never
+         * swallow divergence past the value). Sits BEHIND the r333
+         * kept-exotic arm (whose gate demands the space/LS-PS lead --
+         * disjoint from this gate's direct '#') and AHEAD of the r325
+         * realign arm (whose gate wants a ON the escape -- disjoint).
+         * Previously this shape declined unconditionally here, so no
+         * existing member's path changes. */
+        if (b[0] == '\n' && a[0] == '#') {
+            const char* q = a + 1;
+            while (q[0] != '\0' && q[0] != '\\' && q[0] != '\n' && (unsigned char)q[0] != 0xC2 &&
+                   (unsigned char)q[0] != 0xE2) {
+                q++;
+            }
+            if (q[0] == '\\' && q[1] == 'n' && q[2] == '\n' && strcmp(q + 2, b) == 0) {
+                a = q + 2;
+                subs += 2;
+                continue;
+            }
+        }
         /* the r325 fold-dropped realign site (the nightly's round 325,
          * run 44611344281, main 37e7e09d; the 35-byte artifact
          * crash-f0ddbd7d876ccfc0e659a05254d6ed6ddb00d5ab "> #<LS> :<LF>
@@ -9103,50 +9161,67 @@ static int yd_block_nel_moreindent_divergence(const uint8_t* data, size_t size, 
      * law's auto-indent accounting) and one space-preceded comment,
      * and must terminate at a break byte (LF, CR, NEL, LS or PS -- the
      * five breaks both readers take). The r282 shape's bare ">" LF is
-     * the zero-space no-comment case. */
-    if (data[0] != '>' && data[0] != '|') {
-        return 0;
-    }
+     * the zero-space no-comment case. The r343 widening: the header
+     * may carry its own INDENTATION -- a leading blank run before the
+     * indicator (the r343 floor's "SP >" -- presentation indent, no
+     * law change behind it; the walk's byte-bound laws still bind the
+     * dumps). */
     {
-        size_t i = 1;
-        int brk = 0;
-        while (i < size) {
-            if ((unsigned char)data[i] == '\n' || (unsigned char)data[i] == '\r') {
-                brk = 1;
-            } else if (i + 1 < size && (unsigned char)data[i] == 0xC2 &&
-                       (unsigned char)data[i + 1] == 0x85) {
-                brk = 1; /* the NEL pair */
-            } else if (i + 2 < size && (unsigned char)data[i] == 0xE2 &&
-                       (unsigned char)data[i + 1] == 0x80 &&
-                       ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
-                brk = 1; /* the LS/PS triple */
-            } else if ((data[i] == ' ' || data[i] == '\t') && !brk) {
-                i++;
-                continue;
-            } else if (data[i] == '#' && i > 1 && !brk) {
-                /* the space-preceded comment: the rest of the header
-                 * line, up to (not including) its break */
-                i++;
-                while (
-                    i < size && (unsigned char)data[i] != '\n' && (unsigned char)data[i] != '\r' &&
-                    !(i + 1 < size && (unsigned char)data[i] == 0xC2 &&
-                      (unsigned char)data[i + 1] == 0x85) &&
-                    !(i + 2 < size && (unsigned char)data[i] == 0xE2 &&
-                      (unsigned char)data[i + 1] == 0x80 &&
-                      ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9))) {
-                    i++;
-                }
-                if (i < size) {
+        size_t i = 0;
+        while (i < size && (data[i] == ' ' || data[i] == '\t')) {
+            i++;
+        }
+        if (i >= size || (data[i] != '>' && data[i] != '|')) {
+            return 0;
+        }
+        i++;
+        {
+            int brk = 0;
+            int blank_before = 0; /* the r343 gate: blank-precedence is a
+                                   * flag now -- the header may carry its
+                                   * own indent, so position alone no
+                                   * longer implies it */
+            while (i < size) {
+                if ((unsigned char)data[i] == '\n' || (unsigned char)data[i] == '\r') {
                     brk = 1;
+                } else if (i + 1 < size && (unsigned char)data[i] == 0xC2 &&
+                           (unsigned char)data[i + 1] == 0x85) {
+                    brk = 1; /* the NEL pair */
+                } else if (i + 2 < size && (unsigned char)data[i] == 0xE2 &&
+                           (unsigned char)data[i + 1] == 0x80 &&
+                           ((unsigned char)data[i + 2] == 0xA8 ||
+                            (unsigned char)data[i + 2] == 0xA9)) {
+                    brk = 1; /* the LS/PS triple */
+                } else if ((data[i] == ' ' || data[i] == '\t') && !brk) {
+                    blank_before = 1;
+                    i++;
+                    continue;
+                } else if (data[i] == '#' && blank_before && !brk) {
+                    /* the space-preceded comment: the rest of the header
+                     * line, up to (not including) its break */
+                    i++;
+                    while (i < size && (unsigned char)data[i] != '\n' &&
+                           (unsigned char)data[i] != '\r' &&
+                           !(i + 1 < size && (unsigned char)data[i] == 0xC2 &&
+                             (unsigned char)data[i + 1] == 0x85) &&
+                           !(i + 2 < size && (unsigned char)data[i] == 0xE2 &&
+                             (unsigned char)data[i + 1] == 0x80 &&
+                             ((unsigned char)data[i + 2] == 0xA8 ||
+                              (unsigned char)data[i + 2] == 0xA9))) {
+                        i++;
+                    }
+                    if (i < size) {
+                        brk = 1;
+                    }
+                    break;
+                } else {
+                    break;
                 }
-                break;
-            } else {
                 break;
             }
-            break;
-        }
-        if (!brk) {
-            return 0;
+            if (!brk) {
+                return 0;
+            }
         }
     }
     int has = 0;
