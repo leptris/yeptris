@@ -11164,7 +11164,13 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
  * content; `.` is no 1.2 indicator so yeptris keeps the whole dotted
  * run as the key and libyaml 90a56d4 reads the SAME key byte-equal
  * — the `...` doc-end cut needs a blank behind the run and the glued
- * ':' denies it); the body
+ * ':' denies it); the r340 widening (the nightly's round 340, run
+ * 44871442691, main 1bcebd79) admits, FLOOR-FORM ONLY, a comment-led
+ * prefix ahead of the `?` (full blank/comment lines, spaces-only
+ * indents, LF-terminated — the #949 comment-eat law: no node, no
+ * indent state on either engine) and a space/LF TRAILING RIDE behind
+ * the quote (the dual-bar floor `? '<PS><TAB>'\n`, the artifact's
+ * `  \n\n\n`; CR and content bytes decline); the body
  * carries at least one LS/PS triple with an ADJACENT blank run — the
  * r332 law: tabs AND spaces, on either side of the break (behind it
  * the whole run swallows on libyaml with no fold space; before it the
@@ -11296,15 +11302,80 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
     if (ydump == NULL || ldump == NULL) {
         return 0;
     }
-    if (data[0] == '?' && (data[1] == ':' || data[1] == ' ')) {
-        if (data[1] == ':') {
+    /* the r340 widening (the nightly's round 340, run 44871442691, main
+     * 1bcebd79): the floor form gains a COMMENT-LED PREFIX and a
+     * TRAILING BLANK/BREAK ride behind the quote — the artifact is the
+     * 26-byte `  # Comment\n ? '<PS><TAB>'  \n\n\n`, three carried law
+     * families in one composition: the #949 comment-eat (the indented
+     * `  # Comment` line is inert on BOTH engines — no node, no indent
+     * state), the r331 explicit-key slot (the ` ? ` line opens the block
+     * map, indent 1, quoted scalar the KEY, value empty — probed on
+     * libfyaml 04e0b58: it reads the artifact byte-exact as yeptris, the
+     * key `<PS><TAB>` raw — comparator carry only, the r318/r330/r331
+     * precedent), and the r331/r332 quoted-body exotic-tab law itself
+     * (yeptris keeps the post-exotic-break tab run as content, libyaml's
+     * blank state swallows it). The dual-bar floor (greedy single-byte
+     * ddmin to a fixed point, 9 of 26 bytes) is `? '<PS><TAB>'\n` — the
+     * trailing LF alone defeats the old EOF gate (the r331 floor form's
+     * `i != size` decline), so the trailer admits exactly the measured
+     * set: space/LF bytes only, to EOF (the artifact's `  \n\n\n` and the
+     * floor's lone `\n`; CR and any content byte decline — the CRLF and
+     * post-quote-content compositions are unmeasured). The prefix admits
+     * exactly the measured set too: full lines of SPACES (no tabs — the
+     * tab-indentation law is another family) that end in an optional
+     * `#`-comment running to the LF (any byte but CR inside the comment
+     * text is inert) or in nothing (a blank line), LF-terminated to the
+     * last; the `?` line then carries its own spaces-only indent (the
+     * artifact's column 1). Both the comment-led and the bare-`?`-line
+     * spellings derive the SAME dumps as the old floor form (the prefix
+     * and the trailer contribute nothing on either engine — the actual
+     * dumps of the floor and the artifact are byte-identical to the
+     * r331 floor's shape); anything else declines. The plain-key form
+     * keeps its EOF law untouched (no prefix, no trailer — unmeasured
+     * there). */
+    size_t lead = 0; /* the prefix length: the '?' line's start */
+    size_t qpos = 0; /* the '?' byte */
+    for (;;) {
+        size_t k = lead;
+        while (k < size && data[k] == ' ') {
+            k++;
+        }
+        if (k >= size) {
+            return 0; /* spaces to EOF: no '?' line */
+        }
+        if (data[k] == '#') {
+            /* the comment runs to the LF (the #949 comment-eat
+             * law); every byte inside is inert comment text */
+            while (k < size && data[k] != '\n') {
+                if (data[k] == '\r') {
+                    return 0; /* CR in the comment line: unmeasured */
+                }
+                k++;
+            }
+            if (k >= size) {
+                return 0;
+            }
+            lead = k + 1; /* past the LF */
+            continue;
+        }
+        if (data[k] == '\n') {
+            lead = k + 1; /* a blank line */
+            continue;
+        }
+        qpos = k; /* the '?' line begins at data[lead] */
+        break;
+    }
+    i = lead;
+    if (data[qpos] == '?' && (data[qpos + 1] == ':' || data[qpos + 1] == ' ')) {
+        if (data[qpos + 1] == ':') {
             floor_form = 0; /* "?: '<...>'" — the key is the '?' run */
-            ko = 0;
-            ke = 1;
-            i = 2; /* at the space */
+            ko = qpos;
+            ke = qpos + 1;
+            i = qpos + 2; /* at the space */
         } else {
-            floor_form = 1; /* "? '<...>'" — the quoted scalar is the key */
-            i = 1;          /* at the space */
+            floor_form = 1; /* "? '<...>'" — the quoted scalar is the
+                             * key */
+            i = qpos + 1;   /* at the space */
         }
         if (i >= size || data[i] != ' ') {
             return 0; /* exactly one space (the r331 floor law) */
@@ -11329,6 +11400,9 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * the body. A '?' lead rides the same run (`?.` probed); the
          * '&' joins mid-plain (the r331 battery's `3&2`/`o&2`), never
          * LEADING (the r238 arm owns every anchor-entry shape) */
+        if (lead != 0) {
+            return 0; /* the r340 widening is floor-form only */
+        }
         if (data[0] == '&') {
             return 0;
         }
@@ -11419,9 +11493,19 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
         if (i >= size) {
             return 0; /* unterminated */
         }
-        i++; /* the closing quote */
-        if (i != size) {
-            return 0; /* EOF behind the quote */
+        size_t bclose = i; /* the closing quote */
+        i++;
+        /* the r340 widening: behind the quote, space/LF bytes only, to
+         * EOF (the floor's lone `\n`, the artifact's `  \n\n\n`); CR or
+         * any content byte declines (the CRLF fold and post-quote
+         * content compositions are unmeasured). The trailer is inert on
+         * both engines — the map's value stays empty and the dumps keep
+         * the r331 floor shape byte-exact. */
+        while (i < size) {
+            if (data[i] != ' ' && data[i] != '\n') {
+                return 0;
+            }
+            i++;
         }
         if (!site) {
             return 0; /* the family's essential delta is absent */
@@ -11433,7 +11517,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
             }
             {
                 const char* a = ydump + 17;
-                if (!yd_r331_body_walk_y(data, bo, size - 1, &a)) {
+                if (!yd_r331_body_walk_y(data, bo, bclose, &a)) {
                     return 0;
                 }
                 if (strncmp(a, "\n=VAL : \n-MAP\n-STR\n", 19) != 0) {
@@ -11445,7 +11529,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
             }
             {
                 const char* b = ldump + 17;
-                if (!yd_r331_body_walk_l(data, bo, size - 1, &b)) {
+                if (!yd_r331_body_walk_l(data, bo, bclose, &b)) {
                     return 0;
                 }
                 if (strncmp(b, "\n=VAL : \n-MAP\n-STR\n", 19) != 0) {

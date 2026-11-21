@@ -7272,6 +7272,45 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/dotted-key-exotic-tab-r332-artifact.bin
     )
 
+    # r340 (the nightly's run 44871442691, main 1bcebd79): the
+    # quoted-body exotic-tab family's THIRD composition red — the
+    # 26-byte artifact `  # Comment\n ? '<PS><TAB>'  \n\n\n` is the
+    # r331 law riding a fresh three-family container: the #949
+    # comment-eat (the indented `  # Comment` line is inert on BOTH
+    # engines), the r331 explicit-key slot at INDENT 1 (the ` ? ` line
+    # opens the block map, quoted scalar the KEY, value empty), and
+    # the r331/r332 quoted-body exotic-tab law itself (yeptris keeps
+    # the post-exotic-break tab as content, libyaml's blank state
+    # swallows it — dumps `=VAL : <PS>\t` vs `=VAL : <PS>`, the value
+    # empty on both). THE A/B: libfyaml 04e0b58 reads the artifact
+    # AND the floor byte-exact as yeptris (the key scalar `<PS><TAB>`
+    # raw on both — the probe above) — comparator carry only, no
+    # engine change (the r318/r330/r331/r332 precedent). THE
+    # WIDENING (floor-form only): the r331 arm's gate gains a
+    # comment-led PREFIX (full blank/comment lines, spaces-only
+    # indents, LF-terminated; CR and tabs decline) and a space/LF
+    # TRAILING RIDE behind the quote (CR/content bytes decline); the
+    # prefix and the trailer are inert on both engines and the dumps
+    # keep the r331 floor shape byte-exact; the plain-key form keeps
+    # its EOF law. Floor: 9 of 26 bytes survive the dual bar (greedy
+    # single-byte ddmin to a fixed point; pre-patch DIFFER exit 77 +
+    # NOT classified, post-patch carry exit 0, on BOTH the floor
+    # `? '<PS><TAB>'\n` and the full artifact; no further single-byte
+    # deletion keeps the dual bar — the lone trailing LF defeats the
+    # old EOF gate). The 50-mutant paired battery (30 single + 20
+    # double, seed 340): see the round issue. Both the floor and the
+    # full artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r340-quoted-exotic-tab-comment-led
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r340.bin
+    )
+    add_test(
+        NAME fuzz-diff-r340-quoted-exotic-tab-comment-led-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r340-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor
