@@ -7594,6 +7594,84 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-value-colon-hash-eof-tail-r345-artifact.bin
     )
 
+    # the r346 quoted-exotic-tab round (the nightly's run 44918966386, main
+    # 2fed1cb1; the 12-byte artifact crash-7a29d0923479791b85abe71fcf388b1e7247cdc2
+    # "CR CR :.: TAB '<PS> TAB '" -- the QUOTED-PS/TAB body (the r331/r332/
+    # r340/r341 law, byte-identical here) riding a COLON-LED plain key behind
+    # a doubled-CR blank lead, the quoted-exotic-tab family's FIFTH
+    # composition -- the 9-byte dual-bar floor ":: TAB '<PS> TAB '" -- greedy
+    # single-byte ddmin to a fixed point under the DUMP-PAIR SHAPE bar (the
+    # r343 lesson; the bar carried the family signature: single-VAL pair, the
+    # key byte-equal on both engines, the raw PS triple kept on BOTH sides,
+    # the TAB rendered as the escaped \\t INSIDE yeptris's value and ABSENT
+    # from libyaml's, libyaml's value an in-order subsequence of yeptris's
+    # under the one tab-to-escape substitution; both CRs die, the '.' dies
+    # into the ':'-alone key; no further single-byte deletion keeps the dual
+    # bar; pre-patch DIFFER exit 77 + NOT classified, post-patch carry exit
+    # 0, on BOTH shapes, plain and lf harnesses). THE MECHANISM (this
+    # round's measurement): the ':' is the KEY PLAIN's head -- a plain
+    # scalar starts with ':' when a NON-BLANK follows (the ns-plain-first
+    # law; ':' in indicator position only when blank follows -- that face is
+    # the empty-key split, still declined), so the second ':' is the VALUE
+    # colon and fetch_value's simple-key branch leaves simple_key_allowed =
+    # 0 -- the exact state libyaml's scan_to_next_token exempts from the
+    # no-tab rule (the r341 law) -- so the separator TAB rides, and the
+    # DIFFER itself is the r331/r332/r340/r341 quoted-body law (yeptris
+    # keeps the post-exotic-break tab as content, libyaml's blank state
+    # swallows it -- dumps "=VAL : <PS>\\t" vs "=VAL : <PS>"). The r346
+    # widening: (1) the ':' plain HEAD (probed byte-equal on BOTH engines,
+    # all DIFFER only in the body: keys `:`, `:.`, `:x`, `:2`, `:-`, `:?`,
+    # `:&` (the '&' rides mid-plain, never the head), `:.x`, and the
+    # GLUED-COLON composition keys `::2`/`:::x` -- the r332 glued-colon law
+    # GENERALIZES to the stated ':' + non-blank = plain-content rule; the
+    # old `..::`/`..':` spellings keep their exact keys); (2) the inert
+    # break LEAD (full lines of CR / LF / CRLF pairs and spaces-only runs,
+    # any order, any repetition -- the dumps byte-identical to the
+    # lead-less form; probed CR x1, CR x3, CRLF, LF x1, LF x2, the LF+CR
+    # and CR+LF+CR mixes, the SP-indent ` ::` line, the CR-led `?:`-glue
+    # face; TAB pieces decline -- the CR-TAB lead and the tab-indent line
+    # are splits/others -- and '#'-comment lines stay floor-form-only, the
+    # r340 law); (3) the trailer law gains the CR byte (`...'\\r` and
+    # `...'\\r\\n` are final blank breaks, inert on BOTH engines, measured
+    # on the key form AND the floor form -- the r340 "CR declines" wall was
+    # the unmeasured spelling). THE DECLINES THAT STAY OUT (re-measured):
+    # the empty-key faces (`:<TAB>'<PS><TAB>'`, `: '<PS><TAB>'`,
+    # `: : '<PS><TAB>'` -- YEPTRIS-ONLY-ACCEPT, the r332/r341 law) and the
+    # glued-run-then-quote faces (`:::'<PS><TAB>'`, `:.::'<PS><TAB>'` -- no
+    # value colon ever fires, EQUAL/other, never a differ). THE STABLE-REDS
+    # (all pre-existing on main, the pre-patch binary DIFFs identically,
+    # the escalation clause's territory): the ';'-led and '/'-led key
+    # charset escapes (`;:<TAB>'<PS><TAB>'`, `:/...`), the ',' mid-key
+    # splice, the '?' content byte inside the lead, and the unmeasured
+    # interior-space key (`:x y:`) / mid-plain-quote key (`:'x:`) faces --
+    # all DIFFER with the family shape pre- AND post-patch, declined by
+    # the TIGHTEST gate. THE A/B: libfyaml 04e0b58 re-measured on THIS
+    # composition's own floor (the r325 lesson): its --yaml-1.2 pass sides
+    # with yeptris BYTE-EXACT on the floor AND the artifact (it re-emits
+    # the colon-led key + the raw PS + the kept tab, "3a 3a 20 27 e2 80 a9
+    # 09 27" on the floor) while its --yaml-1.1 pass ERRORS ("invalid tab
+    # used as indentation" at the separator -- the documented third
+    # reading) -- comparator carry only, no engine change (the
+    # r318/r330/r331/r332/r340/r341 precedent). Both shapes' 50-mutant
+    # paired battery (30 single + 20 double, seed 346, unit-aware palette
+    # mutations, LS/PS triples atomic; solo runs -- the r345 lesson): floor
+    # 9 newly-carried / 40 stable-carried / 1 stable-red (';' key-head
+    # ChangeBit, pre-existing) / 0 regressions; artifact 16 newly-carried /
+    # 31 stable-carried / 3 stable-red ('.'->'/' ChangeBit, the TAB->','
+    # splice, the '?'-in-lead double, all pre-existing) / 0 regressions.
+    # See the round issue. Both the floor and the full artifact ride the
+    # corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r346-quoted-exotic-tab-colon-head
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r346.bin
+    )
+    add_test(
+        NAME fuzz-diff-r346-quoted-exotic-tab-colon-head-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r346-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor

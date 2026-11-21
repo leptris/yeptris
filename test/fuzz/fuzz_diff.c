@@ -11610,8 +11610,11 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
      * `.:<TAB>'<PS><TAB>'<LF>` — inert on both engines, dumps
      * byte-exact to the EOF form's), the comment-led PREFIX stays
      * floor-form-only (unmeasured there). */
-    size_t lead = 0; /* the prefix length: the '?' line's start */
-    size_t qpos = 0; /* the '?' byte */
+    size_t lead = 0;        /* the prefix length: the '?' line's start */
+    size_t qpos = 0;        /* the '?' byte */
+    int prefix_comment = 0; /* a '#' line rode the prefix (the r340
+                             * comment-eat walk) — the KEY form declines
+                             * it (the r346 law: unmeasured there) */
     for (;;) {
         size_t k = lead;
         while (k < size && data[k] == ' ') {
@@ -11623,6 +11626,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
         if (data[k] == '#') {
             /* the comment runs to the LF (the #949 comment-eat
              * law); every byte inside is inert comment text */
+            prefix_comment = 1;
             while (k < size && data[k] != '\n') {
                 if (data[k] == '\r') {
                     return 0; /* CR in the comment line: unmeasured */
@@ -11687,22 +11691,106 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * '.' byte: the r331 pointer's "dotted keys" territory. The
          * artifact `...: '<PS><TAB>'` glues the doc-end lookalike into
          * the key's plain CONTENT — '.' is no 1.2 indicator, so
-         * yeptris keeps the whole dotted run as the key, and libyaml
-         * 90a56d4 reads the SAME key byte-equal (the `...`+blank
-         * doc-end cut needs the blank after the run; the glued ':'
-         * denies it) — probed `.`, `..`, `...`, `.x`, `x.y`, `2.2`,
-         * `...x`, `..?`, `..&2`, `x..`, `?.`, `._`, `.-`, `..2`,
-         * `2..`, `2._3`, `.-2` — all key-equal, all DIFFER only in
-         * the body. A '?' lead rides the same run (`?.` probed); the
-         * '&' joins mid-plain (the r331 battery's `3&2`/`o&2`), never
-         * LEADING (the r238 arm owns every anchor-entry shape) */
-        if (lead != 0) {
-            return 0; /* the r340 widening is floor-form only */
+         * yeptris keeps the whole dotted run as the key's plain
+         * content, and libyaml 90a56d4 reads the SAME key byte-equal
+         * (the `...`+blank doc-end cut needs the blank after the run;
+         * the glued ':' denies it) — probed `.`, `..`, `...`, `.x`,
+         * `x.y`, `2.2`, `...x`, `..?`, `..&2`, `x..`, `?.`, `._`,
+         * `.-`, `..2`, `2..`, `2._3`, `.-2` — all key-equal, all
+         * DIFFER only in the body. A '?' lead rides the same run
+         * (`?.` probed); the '&' joins mid-plain (the r331 battery's
+         * `3&2`/`o&2`), never LEADING (the r238 arm owns every
+         * anchor-entry shape).
+         *
+         * The r346 widening (the nightly's round 346, run 44918966386,
+         * main 2fed1cb1): TWO new laws ride the form — (1) the ':'
+         * plain HEAD, (2) the inert break LEAD; the artifact is the
+         * 12-byte `CR CR :.:<TAB>'<PS><TAB>'` — the quoted-PS/TAB
+         * body (the r331/r332/r340/r341 law, byte-identical here)
+         * riding a COLON-LED plain key behind a doubled-CR blank
+         * lead. (1) THE HEAD: a plain scalar may START with ':' when
+         * a non-blank follows (the ns-plain-first law; `:` is
+         * indicator-position only when blank follows — that face is
+         * the empty-key split, declined below) — the dual-bar floor
+         * drops the `.` AND the CRs to the 9-byte `::<TAB>'<PS><TAB>'`
+         * (greedy single-byte ddmin under the dump-pair shape bar:
+         * both CRs die, the `.` dies into the `:`-alone key — both
+         * engines read the key byte-equal, probed `:`; the old
+         * `.`-less r341 container declines classified behind the
+         * space). Head faces probed byte-equal on BOTH engines, all
+         * DIFFER only in the body: `:.:`, `:x:`, `:2:`, `:-:`, `:?:`,
+         * `:&:` (the '&' rides mid-plain — never the head: the r238
+         * arm), `: :...` two-char keys `:.x`, and the GLUED-COLON
+         * composition `::2`/`:::x` (the r332 law generalizes: a ':'
+         * glues into the key's plain content when a NON-BLANK follows
+         * — probed keys `::2`, `:::x`, `..:x`, `2:x`, the old
+         * `..::`-to-`..:` and `..':` spellings byte-unchanged;
+         * `:::'` + quote GLUES too and then declines — no value colon
+         * ever fires, the face is EQUAL/other, never a differ). (2)
+         * THE LEAD: full break lines of CR / LF / CRLF pairs and
+         * spaces-only runs ride INERT ahead of the key line — the
+         * dumps are byte-identical to the lead-less form (probed CR
+         * x1, CR x3, CRLF, LF x1, LF x2, the LF+CR and CR+LF+CR
+         * mixes, the SP-indent ` ::` line, and the CR-led `?:`-glue
+         * face) — TAB pieces decline (the CR-TAB lead and the
+         * tab-indent line are splits/others) and '#'-comment lines
+         * stay floor-form-only (the r340 law, unmeasured in the key
+         * form). The TRAILER law gains the CR byte: `...'\r` is a
+         * final break, inert on BOTH engines (probed on the key form
+         * AND the floor form — the r340 "CR declines" wall was the
+         * unmeasured spelling, both now measured). libfyaml 04e0b58
+         * sides with yeptris BYTE-EXACT on the floor AND the artifact
+         * (its `--yaml-1.2` pass re-emits the colon-led key + the raw
+         * PS + the kept tab; its `--yaml-1.1` pass errors "invalid
+         * tab used as indentation" at the separator — the documented
+         * third reading) — comparator carry only, no engine change
+         * (the r318/r330/r331/r332/r340/r341 precedent). Anything the
+         * gate cannot pin declines (the escalation clause stays
+         * live). */
+        if (prefix_comment) {
+            return 0; /* the r340 comment-led prefix stays floor-form
+                       * only; the r346 lead law admits break lines
+                       * only (the '#' byte never rode the key form) */
         }
-        if (data[0] == '&') {
+        {
+            /* the r346 lead walk: pieces of spaces-only runs, LF blank
+             * lines, CR blank breaks, and CRLF pairs — any order, any
+             * repetition; the key line begins at data[ko]. A TAB piece
+             * (or any content byte) ends the walk and must be the key
+             * line's own first byte. */
+            size_t k = lead;
+            while (k < size) {
+                if (data[k] == ' ') {
+                    while (k < size && data[k] == ' ') {
+                        k++;
+                    }
+                    continue;
+                }
+                if (data[k] == '\n') {
+                    k++;
+                    continue;
+                }
+                if (data[k] == '\r') {
+                    k++;
+                    if (k < size && data[k] == '\n') {
+                        k++;
+                    }
+                    continue;
+                }
+                break;
+            }
+            ko = k;
+        }
+        if (ko < size && data[ko] == '&') {
             return 0;
         }
-        size_t r = 0;
+        size_t r = ko;
+        if (r < size && data[r] == ':' && r + 1 < size && data[r + 1] != ' ' &&
+            data[r + 1] != '\t' && data[r + 1] != '\n' && data[r + 1] != '\r') {
+            r++; /* the r346 ':' plain head — ':' leads a plain only
+                  * when a non-blank follows; the blank-following face
+                  * is the value colon (the empty-key split) */
+        }
         while (r < size &&
                (((data[r]) >= 'A' && (data[r]) <= 'Z') || ((data[r]) >= 'a' && (data[r]) <= 'z') ||
                 ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
@@ -11712,36 +11800,53 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
         /* the r332 battery's GLUED spellings (each dump-verified
          * byte-equal on both engines): a quote glued ahead of the
          * value colon (`..': '<...>'` — the mid-plain quote law) and
-         * colons glued to colons (`..:: '<...>'` — a colon glues
-         * into the key's plain content when a non-blank follows,
-         * probed keys `..:` and `...:`); the ':' facing a blank is
-         * the VALUE colon. */
+         * colons glued to colons (`..:: '<...>'`); the r346 widening
+         * moves the glued-colon law into the content loop below and
+         * generalizes it to the STATED r332 rule (':' + non-blank =
+         * plain content), so the colon head composes (`::2`, `:::x`)
+         * and every old spelling keeps its exact key */
         if (r < size && data[r] == '\'' && r + 1 < size && data[r + 1] == ':') {
             r++;
         }
-        ko = 0;
-        ke = r; /* the key's plain run ends here — a separator TAB (see
-                 * below) does NOT join it: the key dumps end at the tab
-                 * on both engines */
-        /* a TAB between the key and the value colon separates on BOTH
-         * engines (probed `..\t: '<PS><TAB>'` — the key ends at the
-         * tab, byte-equal) */
+        /* ko was set by the lead walk above: the key's plain run is
+         * data[ko..ke) — a separator TAB does NOT join it: the key
+         * dumps end at the tab on both engines; a TAB between the key
+         * and the value colon separates on BOTH engines (probed
+         * `..\t: '<PS><TAB>'` — the key ends at the tab, byte-equal) */
+        for (;;) {
+            while (r < size &&
+                   (((data[r]) >= 'A' && (data[r]) <= 'Z') ||
+                    ((data[r]) >= 'a' && (data[r]) <= 'z') ||
+                    ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
+                    (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.')) {
+                r++;
+            }
+            ke = r;
+            if (r + 1 < size && data[r] == ':' && data[r + 1] != ' ' && data[r + 1] != '\t' &&
+                data[r + 1] != '\n' && data[r + 1] != '\r') {
+                r++; /* the glued colon: plain content (the r332 law,
+                      * the r346 generalization) */
+                continue;
+            }
+            break;
+        }
+        if (ke == ko) {
+            return 0; /* the empty-key decline (the old `r == 0` law):
+                       * the ':'-followed-by-blank faces are the
+                       * YEPTRIS-ONLY-ACCEPT splits (re-measured
+                       * `:<TAB>'<PS><TAB>'`, `: '<PS><TAB>'`,
+                       * `: : '<PS><TAB>'` — the complex-value ':' keeps
+                       * simple_key_allowed = 1, the TAB errors at
+                       * fetch_next_token, the r332/r341 law) */
+        }
         while (r < size && (data[r] == '\t' || data[r] == ' ')) {
             r++;
-        }
-        if (r == 0 || r >= size || data[r] != ':') {
-            return 0;
-        }
-        while (r + 1 < size && data[r] == ':' && data[r + 1] == ':') {
-            r++;
-            ke = r; /* the glued colon rides the key's plain content */
         }
         if (r >= size || data[r] != ':') {
             return 0;
         }
         floor_form = 0; /* the key form */
-        ko = 0;
-        i = r + 1; /* behind the value colon */
+        i = r + 1;      /* behind the value colon */
         /* the r341 widening (the nightly's round 341, run
          * 44880972632, main 6faef227): the ':' closed a SAVED SIMPLE
          * KEY — fetch_value's simple-key branch leaves
@@ -11805,13 +11910,18 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
         size_t bclose = i; /* the closing quote */
         i++;
         /* the r340 widening: behind the quote, space/LF bytes only, to
-         * EOF (the floor's lone `\n`, the artifact's `  \n\n\n`); CR or
-         * any content byte declines (the CRLF fold and post-quote
-         * content compositions are unmeasured). The trailer is inert on
-         * both engines — the map's value stays empty and the dumps keep
-         * the r331 floor shape byte-exact. */
+         * EOF (the floor's lone `\n`, the artifact's `  \n\n\n`); any
+         * content byte declines (the CRLF fold and post-quote content
+         * compositions are unmeasured). The r346 widening admits the CR
+         * byte: `...'\r` (and `...'\r\n`) is a final blank break, inert
+         * on BOTH engines — the r340 "CR declines" wall was the
+         * unmeasured spelling, now measured on the key form AND the
+         * floor form (both DIFFER with the r331 shape, unclaimed
+         * pre-patch). The trailer is inert on both engines — the map's
+         * value stays empty and the dumps keep the r331 floor shape
+         * byte-exact. */
         while (i < size) {
-            if (data[i] != ' ' && data[i] != '\n') {
+            if (data[i] != ' ' && data[i] != '\n' && data[i] != '\r') {
                 return 0;
             }
             i++;
@@ -11867,13 +11977,14 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                 }
                 a += 7;
                 /* the r341 widening: the bound is the CLOSING QUOTE,
-                 * not size - 1 — the key form admits the space/LF
+                 * not size - 1 — the key form admits the space/LF/CR
                  * TRAILER too (the common gate above already walks
-                 * it; probed `.:<TAB>'<PS><TAB>'<LF>` — the trailing
-                 * LF is inert on BOTH engines, the dumps byte-exact
-                 * to the EOF form's). The comment-led PREFIX stays
-                 * floor-form-only (the `lead != 0` decline above is
-                 * untouched — unmeasured there). */
+                 * it; probed `.:<TAB>'<PS><TAB>'<LF>` and the r346
+                 * `::<TAB>'<PS><TAB>'\r` — inert on BOTH engines, the
+                 * dumps byte-exact to the EOF form's). The comment-led
+                 * PREFIX stays floor-form-only (the r346
+                 * `prefix_comment` decline above — unmeasured in the
+                 * key form). */
                 if (!yd_r331_body_walk_y(data, bo, bclose, &a)) {
                     return 0;
                 }
