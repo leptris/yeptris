@@ -7359,6 +7359,55 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r341-artifact.bin
     )
 
+    # r342 (the nightly's run 44891943987, main 56b542af): the
+    # soup/alias family's member-end ride red — the 33-byte artifact
+    # `[11<CR><PS> 7.tag<CR> ,?##|,?<CR>*00:<LF>  m,]` composes the
+    # doubled CR+PS break fold (the law-b/g dance, derived byte-exact
+    # on both models pre-patch), the #949 glued-`?` member `?##|`, and
+    # the NEW shape: the split-`?` explicit-key pair whose alias name
+    # rides a colon closed by a BREAK (`*00:` + LF is ONE name `00:` —
+    # the engine's prop walk has no break exception on the colon, the
+    # 2SXE member-end law probed again this round), with the post-break
+    # plain `m` binding as the pair's VALUE with no VALUE token ever
+    # firing. libyaml's IS_ALPHA scan_anchor cut hands the glued ':'
+    # to its flow VALUE token, so the dumps agree but for the NAME
+    # bytes (`=ALI *00:` vs `=ALI *00`, the r311/r318 charset law).
+    # THE A/B: libfyaml 04e0b58 corroborates the riding name event
+    # (`=ALI *00:` on the artifact AND the floor) and declines the
+    # binding itself (its strict grammar inserts the empty value and
+    # errors "missing comma" on the post-run plain — the documented
+    # third reading) — comparator carry only, no engine change (the
+    # r318/r339/r340/r341 precedent). THE WIDENING: (1) fc_alias_name
+    # drops the break from its colon-split set (probes: `? *00:<LF>,`
+    # -> `=ALI *00:`, `[*00:<LF>,]` -> `=ALI *00:` bare-member twin,
+    # `&a:<LF>` -> `&a:` anchor twin; `*00: x` / `*00:,` still cut);
+    # (2) the split-key slot's post-name run may reach CONTENT — the
+    # colon-less explicit-key VALUE binding (`? *a<LF>  m,` ->
+    # pair(*a, m), `? *a:<LF>  m, n` -> pair(*a:, m) + the member n,
+    # the separator's empty value included; an alias, an anchor, a
+    # nested map, or any ':' across the run stays declined); (3) the
+    # SEQ single-pair wrapper renders the alias key event exactly as
+    # the MAP branch does. Floor: 9 of 33 bytes — `[?<CR>*0:<LF>m]`
+    # (greedy single-byte ddmin under the shape bar — the naive dual
+    # bar drifts to the PS-fold and bare-alias families; no further
+    # single-byte deletion keeps the dual bar + the pair shape —
+    # pre-patch DIFFER exit 77 + NOT classified, post-patch carry
+    # exit 0, on BOTH the floor and the full artifact). The 50-mutant
+    # paired battery (30 single + 20 double, seed 342): 22 classified,
+    # 0 declined-DIFFER, 28 honest split/error flips — see the round
+    # issue. Both the floor and the full artifact ride the corpus (the
+    # r321 seed law).
+    add_test(
+        NAME fuzz-diff-r342-alias-memberend-ride
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-alias-memberend-ride-r342.bin
+    )
+    add_test(
+        NAME fuzz-diff-r342-alias-memberend-ride-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-alias-memberend-ride-r342-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor

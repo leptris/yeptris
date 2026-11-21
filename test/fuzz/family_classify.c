@@ -655,7 +655,13 @@ static int y_cur_is_map(const yctx* c) {
 /* The alias name run (the engine's e_alias walk): prop chars = not
  * blank, not break, not flow indicator, ',', or '#'; an interior ':'
  * rides unless a blank or flow indicator follows it ("*an:chor" is one
- * name — Y2GN; at the member end it rides too — 2SXE). */
+ * name — Y2GN; at the member end it rides too — 2SXE, probed again at
+ * the r342 nightly: the r342 widening removed the BREAK from the split
+ * set — the engine keeps the colon when a break follows ("*0:" + LF is
+ * ONE name `0:` — the split-key artifact's `*00:` site, the bare-alias
+ * member's `[*00:<LF>,]` probe, and the anchor twin `&a:` render the
+ * colon into BOTH events; only a blank or a flow indicator closes the
+ * name — probed `*00: x` and `*00:,` cut before the colon). */
 static size_t fc_alias_name(const uint8_t* p, size_t n, size_t i, size_t end) {
     size_t s = i;
     while (i < end) {
@@ -665,8 +671,9 @@ static size_t fc_alias_name(const uint8_t* p, size_t n, size_t i, size_t end) {
         }
         if (c == ':') {
             size_t j = i + 1;
-            if (j < end && (fc_blank(p[j]) || fc_flow_ind(p[j]) || fc_break_len(p, n, j) > 0)) {
-                break; /* ':' separates before blank/flow indicator */
+            if (j < end && (fc_blank(p[j]) || fc_flow_ind(p[j]))) {
+                break; /* ':' separates before blank/flow indicator (a
+                        * break follower RIDES: the r342 widening) */
             }
         }
         i++;
@@ -1175,6 +1182,31 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
                 key.colon_at = ve;
                 stop = ve;
                 sep = 0;
+            } else if (p[ve] != ':' && p[ve] != '*' && p[ve] != '&' && p[ve] != '{') {
+                /* the r342 widening (run 44891943987): the COLON-LESS
+                 * explicit-key VALUE binding. When the name cut ends at
+                 * a colon-riding break (the r342 charset widening above
+                 * — the artifact's `*00:` + LF) and the blank/break run
+                 * after the name reaches CONTENT (the floor's `m`), the
+                 * engine's flow-map parser binds that node as the
+                 * pair's VALUE with no VALUE token ever firing (probed
+                 * `? *a<LF>  m,` -> pair(*a, m), `? *a:<LF>  m, n` ->
+                 * pair(*a:, m) + the member n, `? *a:<LF>  ,` -> the
+                 * empty value the separator form renders — y_value_node
+                 * covers it). libyaml never sees the colon-ride: its
+                 * scan_anchor cut is IS_ALPHA, so the glued ':' fires
+                 * its flow VALUE token and the same post-run plain
+                 * lands in its value slot — the dumps agree but for the
+                 * NAME bytes (the r311/r318 charset divergence;
+                 * libfyaml 04e0b58 corroborates the riding name event
+                 * `=ALI *00:` and declines the binding itself — the
+                 * documented third reading). Structural starts (an
+                 * alias, an anchor, a nested map) and any ':' stay
+                 * declined; quotes/tags/nested sequences ride
+                 * y_value_node's own decls. */
+                if (!y_value_node(c, ve, &stop, &val)) {
+                    return y_fail(c);
+                }
             } else {
                 return y_fail(c);
             }
@@ -1368,7 +1400,16 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
     } else {
         /* the SEQ single-pair wrapper (the engine's KEY-implicit map) */
         fo_str(&c->out, "+MAP\n");
-        fc_render_val(&c->out, p, &key);
+        if (key_is_alias) {
+            /* the r342 widening: the wrapper renders the alias key
+             * event exactly as the MAP branch does (the artifact's
+             * SEQ-rooted pair renders `=ALI *0:` byte-exact) */
+            fo_str(&c->out, "=ALI *");
+            fo_bytes(&c->out, p + alias_at, alias_len);
+            fo_str(&c->out, "\n");
+        } else {
+            fc_render_val(&c->out, p, &key);
+        }
         fc_render_val(&c->out, p, &val);
         fo_str(&c->out, "-MAP\n");
     }

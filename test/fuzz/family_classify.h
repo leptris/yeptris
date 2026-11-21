@@ -52,6 +52,26 @@
  *      against it. A ':' across the PLAIN ride (no comment), the same
  *      comment ride on the bare-alias member, an eat to EOF, and any
  *      other byte stay declined;
+ *      the r342 widening (run 44891943987): the alias-name cut rides a
+ *      colon CLOSED BY A BREAK (the artifact's `*00:` + LF is ONE name
+ *      `00:` — the engine's prop walk has no break exception on the
+ *      colon; probed `? *00:<LF>,` -> `=ALI *00:`, the bare-alias
+ *      member `[*00:<LF>,]` twin, and the anchor twin `&a:`; a blank or
+ *      a flow indicator still closes the name — probed `*00: x` /
+ *      `*00:,` cut before the colon). With the ride, the split
+ *      explicit-key slot's run after the name may reach CONTENT: the
+ *      engine's flow-map parser binds that node as the pair's VALUE
+ *      with no VALUE token ever firing (the floor `? *0:<LF>m` ->
+ *      pair(*0:, m); probed `? *a<LF>  m,`, `? *a:<LF>  m, n`, the
+ *      separator's empty value included). libyaml never scans the ride
+ *      — its IS_ALPHA cut hands the glued ':' to its flow VALUE token
+ *      and the same post-run plain lands in ITS value slot, so the
+ *      dumps agree but for the NAME bytes (the r311/r318 charset
+ *      divergence); libfyaml 04e0b58 corroborates the riding name
+ *      event and declines the binding itself (the documented third
+ *      reading). The SEQ single-pair wrapper renders the alias key
+ *      event exactly as the MAP branch does. An alias, an anchor, a
+ *      nested map, or any ':' reached across the run stay declined;
  *      the r315 widening (run 44411162279): the ANCHOR slots take the
  *      same run — the bare-anchor member, the anchored-empty value
  *      slot, and the open-pair fold-in member ride a blank/break run
