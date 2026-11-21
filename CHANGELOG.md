@@ -6,6 +6,18 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [0.6.76] - 2026-11-22
+
+### Changed
+
+- **the emitter's fold column rides characters, not bytes (#1490, PR #1493)** — the emitter tracked its output column in bytes while libyaml/Psych count characters, so multi-byte text folded earlier than Psych produced. The column is now code points (continuation bytes add nothing) across every column site (writer, plain/quoted fold walks, the fused arms). **Performance restored on top (#1493)**: the purity fact is a parse product (`gate_scan` → dom → writer, one arena scan per run) — ASCII documents keep the byte arithmetic verbatim; mixed documents pay per-span SWAR scans out-of-line. All emitter lanes at-or-above pre-change levels (scalar-heavy +19%, wide +18%, block +17% vs the first cut), the 11-case multibyte corpus byte-exact vs libyaml, round-trips byte-stable. The validate face's stream-attribution comment on ci.yml's ENGINE_REF is also retired — the piece shipped in a release.
+
+### the comparator era (r314-r350, all zero-`src/`)
+
+- **the comparator carries ~37 nightly escapes plus the #1490-era round roll** — the folded-header family's compositions (fold-ledger inversion, blank-run interleave, the family tail grammar, fold-dropped realign, kept-NEL/kept-triple polarity split, glued spacing, verbatim-tag CR-fold, direct-hash entry, comment-eaten tail, normalized-blank), the quoted-exotic-TAB family's six containers (bare-colon, dotted-key, comment-led explicit-key, $-plain, comma-inside-key, two-space key gap), the BOM-led prop-split × anchor-charset composition, the doubled-colon anchor cut, the verbatim-tag face, the alias-member break-doubling, the alias rider's comma-glued colon, the double doc-marker lead (law l2), and the soup family's tagged-document tail. One timeout-budget raise (the diff leg 5→30s, the r210 unit's amortized gray-consult cost). Every round pinned + seeded; the classifier self-test rides 119 seeds; zero engine divergence outstanding beyond #1411's deliberate fix and #1468's same-day repair (released in 0.6.75).
+
 ## [0.6.75] - 2026-11-18
 
 ## [0.6.75] - 2026-11-19
