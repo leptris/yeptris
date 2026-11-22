@@ -4391,6 +4391,35 @@ if(YEPTRIS_LIBYAML_ROOT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/roundtrip-root-anchor-colon-lead-r235.bin
     )
 
+    # The r358 nightly (run 45040187068, main dd156125, crash-
+    # 753f0d6ec8ce167d93ae14aec28d24caa4eda111): the round-44
+    # trailing-colon anchor law's empty-inline twin — a DOM anchor
+    # whose name ends at ':' on an EMPTY plain value spelled the
+    # anchor line-final ("&4:- \"\": &4: " + EOL; the non-empty rider
+    # "k: &n: v" always carried its own follower byte), and the
+    # re-parse's riding-colon follower scan crossed the break into
+    # the props-led "&1 ..." line, un-consumed the colon, and the
+    # stripped ':' died ("mapping values are not allowed in this
+    # context" at pass1 line 8 col 12) — yeptris rejecting its own
+    # emitter's output, the roundtrip guarantee's face. The empty
+    # twin now takes the explicit-empty quoted spell ("&4: ''"): the
+    # quote byte is a plain-led follower, the name rides whole, and
+    # the sticky quoted style re-spells byte-identically at pass2.
+    # Adjudication: ENGINE (emit-side), not comparator — parse1's
+    # DOM is the pinned suite-1.2 anchor law (libfyaml 04e0b58 reads
+    # the same long names; libyaml 90a56d4's [0-9A-Za-z_-] charset
+    # and libfyaml both REJECT the artifact input outright, so the
+    # roundtrip contract here is yeptris-internal), and the emitter
+    # owns a stable spell. Regression triage: the artifact round-
+    # trips byte-stable post-fix; non-empty riders spell unchanged
+    # ("k: &n: v"); the round-44 unserializable fails stay. Seed:
+    # anchor-colon-empty-value-r358.bin (this pin).
+    add_test(
+        NAME fuzz-roundtrip-r358-anchor-colon-empty-value
+        COMMAND fuzz_roundtrip
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/roundtrip/anchor-colon-empty-value-r358.bin
+    )
+
     # The r236 nightly (run 42752605314, main 5632789, crash-6a632d98)
     # rode the r231 flow-'?' x LS/PS fold family with EXOTIC content
     # between the break runs: the 38-byte artifact

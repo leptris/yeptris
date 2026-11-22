@@ -1703,6 +1703,80 @@ TEST(Emit, AnchorNameTailColonBlockStyleIsUnserializable) {
     EXPECT_EQ(roundtrip(rider), want);
 }
 
+TEST(Emit, AnchorNameTailColonEmptyValueSpellsQuoted) {
+    /* the r358 nightly (run 45040187068, main dd156125, crash-
+     * 753f0d6ec8ce167d93ae14aec28d24caa4eda111): the round-44
+     * trailing-colon law assumed the inline rider always spells
+     * same-line content ("k: &n: v"), but an EMPTY inline value
+     * spells as NOTHING (issue #290's null rendering) — the anchor
+     * line ended at the riding colon ("&4:- \"\": &4: " + EOL) and
+     * the re-parse's follower scan handed the law to the NEXT line:
+     * the props-led "&1 ..." follower un-consumed the colon and the
+     * stripped ':' died ("mapping values are not allowed in this
+     * context" at the artifact's pass1 line 8 col 12) — yeptris
+     * rejecting its own emitter's output. The empty twin now takes
+     * the explicit-empty quoted spell ("k: &n: ''"): the quote byte
+     * is a plain-led follower, so the riding law keeps the name
+     * whole, and the quoted style is sticky — pass2 re-spells
+     * byte-identically. */
+    const YeptrisParseOptions compat = {YEPTRIS_SCHEMA_11_COMPAT, 0, 0, 0, 0};
+    const char* y = ": &b:\n"; /* null key: anchor("b:") empty value */
+    YeptrisStatus st = YEPTRIS_OK;
+    YeptrisDocument d = yeptris_parse_ex(y, strlen(y), &compat, &st);
+    ASSERT_NE(d, nullptr) << y;
+    size_t l1 = 0;
+    char* s1 = yeptris_serialize(d, &l1);
+    yeptris_document_free(d);
+    ASSERT_NE(s1, nullptr);
+    EXPECT_EQ(std::string(s1, l1), "\"\": &b: ''\n") << s1;
+    /* the re-parse keeps the anchor whole and re-spells identically */
+    YeptrisDocument d2 = yeptris_parse(s1, l1, &st);
+    ASSERT_NE(d2, nullptr) << s1;
+    size_t l2 = 0;
+    char* s2 = yeptris_serialize(d2, &l2);
+    yeptris_document_free(d2);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_TRUE(l1 == l2 && memcmp(s1, s2, l1) == 0) << s1;
+    free(s2);
+    free(s1);
+
+    /* the artifact's full composition: three documents whose third
+     * carries the anchored-empty map (parse1 is compat — the default
+     * grammar rejects the artifact, as do libyaml and libfyaml; the
+     * roundtrip contract is yeptris-internal). Pre-fix this emitted
+     * "&4:- \"\": &4: " + "\n&1 ..." and the re-parse died. */
+    const char* art =
+        "--\n*0:a\n---\n9-\n*0:a\n---\n9m: &4:-\n&4? '\xe2\x80\xa9\t'\n: &4:-\n&4:: &1\n:\n\n[0,\n?"
+        "#,:m?\rg,?]";
+    YeptrisDocument da = yeptris_parse_ex(art, strlen(art), &compat, &st);
+    ASSERT_NE(da, nullptr) << "artifact parse1";
+    size_t la1 = 0;
+    char* sa1 = yeptris_serialize(da, &la1);
+    yeptris_document_free(da);
+    ASSERT_NE(sa1, nullptr);
+    /* the empty twin carries the quoted spell */
+    ASSERT_NE(strstr(sa1, "&4: ''"), nullptr) << sa1;
+    ASSERT_EQ(strstr(sa1, "&4: \n"), nullptr) << sa1;
+    YeptrisDocument da2 = yeptris_parse(sa1, la1, &st);
+    ASSERT_NE(da2, nullptr) << sa1;
+    size_t la2 = 0;
+    char* sa2 = yeptris_serialize(da2, &la2);
+    yeptris_document_free(da2);
+    ASSERT_NE(sa2, nullptr);
+    EXPECT_TRUE(la1 == la2 && memcmp(sa1, sa2, la1) == 0) << sa1;
+    free(sa2);
+    free(sa1);
+
+    /* the non-empty rider keeps its bare inline spell (no gate churn) */
+    const char* rider = "k: &n: v\n";
+    YeptrisDocument dr = yeptris_parse(rider, strlen(rider), &st);
+    ASSERT_NE(dr, nullptr);
+    std::string want = ser(dr);
+    yeptris_document_free(dr);
+    EXPECT_EQ(roundtrip(rider), want);
+    EXPECT_EQ(want, "k: &n: v\n");
+}
+
 TEST(EmitStream, ScalarLargerThanTheWindowChunks) {
     /* the 2026-10-31 audit's streaming-overflow finding: one wr_put
      * of a scalar larger than the fixed window memcpy'd straight past
