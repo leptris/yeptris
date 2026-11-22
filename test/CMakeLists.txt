@@ -8314,6 +8314,56 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r360-artifact.bin
     )
 
+    # the r361 tag-soup round (the nightly's run 45066041954, main
+    # d90ffbc4; the 148,798-byte artifact
+    # crash-1f709c41ac13d656c4c6a641201adc458d0a4892 — the biggest
+    # classifier-era nightly artifact; the 73,133-byte floor
+    # bd8d4d466a98183e450d48f493de7078d2d9a5b54db682e2fd4a6df4f7344dee
+    # — the dual bar (unclassified DIFFER, run-twice confirmed) under
+    # prefix/suffix/window/prefix+closer/middle-blank-fill/line-shape
+    # thinning probes, which ALL leave the band, then byte-class ddmin:
+    # 30 byte classes thin, every class keeps exactly one copy ('.'
+    # -6094, 'a' -5087, ':' -4930, '|' -3010, 'e' -2908, '7' -2900,
+    # 'y' -2834, 'r' -2271, 'b' -1904, 'i' -1856, '&' -938, 'l' -879,
+    # 'o' -634, '-' -569, '"' -184, 'M' -76, TAB -61, '0' -2580 of the
+    # head classes; CRs/commas/'#'/'?'/'1's keep one each — the tail
+    # classes are load-bearing), so the floor is a SIZE-BOUND face: the
+    # engines' flow readings of the early members depend on the
+    # collection's full extent, and the composition is the r190
+    # nightly's OWN artifact family grown past every arm's reach (the
+    # r190 pin IS this soup truncated at 32,772 bytes — its spell's
+    # all-hits rewrite at r361 scale is 3,942 deletions that no longer
+    # re-parse on either engine, the byte-strict verify cannot
+    # arbitrate, measured BOTH-ERROR): the faces are all carried laws
+    # (the 2SXE/HM87 plain-'?', the r132/r187/r224 unconditional '#'
+    # comment-eat, the r56/r240 PS-raw-ride vs PS-normalized fold, the
+    # r76/r318 anchor-charset cut — the CR-GLUED-HASH member
+    # "51:<CR>#|,?" is the fresh spelling no tail grammar models), the
+    # composition at artifact scale is the suite-gray zone, documented
+    # by input per the r129 exact-bytes law, scaled by SIZE + SHA-256
+    # content hash (the bytes ride the corpus pins; a hash stands in
+    # for the r129 inline array because the shapes are 220KB combined).
+    # THE A/B: libfyaml 04e0b58 declines BOTH passes on the floor
+    # candidate ("plain scalar cannot start with '>'" at the '>-led
+    # member, --yaml-1.2 AND --yaml-1.1 alike) while the 18-byte
+    # classified core "[11 ,?##|,?<CR>/<LF>&m,]" re-emits yeptris's
+    # reading BYTE-SHAPED in both passes ("[11, ?##|, {/ &m: }]") —
+    # comparator carry only, no engine change (the
+    # r318/r330/r331/r340/r346/r356 precedent). Arm pin: the floor and
+    # the artifact run deterministically (every reduction probe ran
+    # twice). pre-patch DIFFER exit 77 / abort, post-patch carry
+    # exit 0, on BOTH shapes.
+    add_test(
+        NAME fuzz-diff-r361-tag-soup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-tag-soup-r361.bin
+    )
+    add_test(
+        NAME fuzz-diff-r361-tag-soup-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-tag-soup-r361-artifact.bin
+    )
+
     # the r355 anchor-blank-alias round (the nightly's run 45016455586,
     # main b3b8b07f; the 18-byte artifact
     # crash-87fa092da7c94269ad4500d91d33fc49bb928276 "{?*L:<LF>,&m:=ALI *(}",
