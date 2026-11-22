@@ -7968,6 +7968,70 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-emptyflowkey-r351-artifact.bin
     )
 
+    # the r352 quoted-exotic-tab round (the nightly's run 44996391690,
+    # main 1d179811; the 12-byte artifact
+    # crash-018b47aaea96e2cc3f016b526e4bc4894e87a45e
+    # "..*.: '<PS><TAB>'" -- the quoted-exotic-tab family's EIGHTH
+    # composition and SEVENTH key-form container: the quoted-PS/TAB body
+    # (the r331/r332/r340/r341/r346/r347/r348 law, byte-identical here)
+    # riding a DOT-DOT-STAR-DOT plain key behind a STANDARD space
+    # separator; the star is the alias-indicator law's neighbor -- here
+    # it rides INSIDE plain key CONTENT. '*' is a plain-FIRST indicator
+    # on BOTH engines, but only at the token HEAD: a star glued INTO a
+    # plain run never opens an alias token, so the mid-plain/trailing
+    # star faces are plain content byte-equal on both engines (probed
+    # keys "..*.", ".*.", "..*", ".*", "x*x", "2*2", ".*x", ".**." --
+    # all key-equal, all DIFFER only in the body). The 10-byte dual-bar
+    # floor ".*: '<PS><TAB>'" (greedy single-byte ddmin under the
+    # dump-pair shape bar: dot one dies, dot four dies; the STAR cannot
+    # die -- its deletion ".: '<PS><TAB>'" is the ALREADY-CLASSIFIED
+    # r332 territory exit 0 pre-patch (from the artifact the
+    # "..: '<PS><TAB>'" deletion likewise); the dot-one deletion's own
+    # star-LEAD face "*: '...'" is the BOTH-ERROR wall (re-measured:
+    # yeptris errors the empty-name alias, libyaml errors too -- never
+    # a differ, the dual bar denies); the space behind the colon dies
+    # into the glued-quote/EQUAL face ".*:'...'" (exit 0 pre-patch --
+    # no value colon ever fires); the body TAB dies into the EQUAL
+    # ".*: '<PS>'" face (exit 0 -- no exotic-adjacent blank, no claim);
+    # per-byte PS deletions are invalid-UTF-8 error faces and the quote
+    # deletion is the unterminated-quote error; pre-patch DIFFER exit
+    # 77 + NOT classified, post-patch carry exit 0, on BOTH shapes).
+    # THE WIDENING: the '*' byte joins the plain-key charset, never the
+    # HEAD -- the new head-guard declines the star-led key line (the
+    # '&' head-guard's twin, the r238 arm owns every prop-entry shape):
+    # the empty-name face is BOTH-ERROR and the named-alias face
+    # "*L: '<PS><TAB>'" rides "=ALI *L" KEYS byte-equal on both engines
+    # with the same body delta -- a DIFFERENT derivation ("=ALI", not
+    # "=VAL"), the gate declines it, and it stays a stable-red (the
+    # escalation clause's territory). Compositions ride: the
+    # GLUED-COLON "..*:x", the GLUED-QUOTE "..*':" (key "..*'", the
+    # r332 law), the r346 COLON-HEAD ":.*.", the r347 '$' "$.*", the
+    # r348 ',' ".*,", the CR lead, the LF trailer, and the r341
+    # separator-TAB ride "..*.:\t'<PS><TAB>'". THE DECLINES THAT STAY
+    # OUT (re-measured): the star-LEAD both faces, the interior-space
+    # key ("..* x" -- a stable-red), and the tame-body face
+    # ("..*.: 'a<TAB>b'" -- EQUAL, no claim). THE A/B: libfyaml 04e0b58
+    # re-measured on THIS composition's own floor (the r325 lesson):
+    # its --yaml-1.2 pass sides with yeptris BYTE-EXACT on the floor
+    # AND the artifact (it re-emits the star-bearing key + the raw PS +
+    # the kept tab, "2e 2a 3a 20 27 e2 80 a9 09 27 0a" on the floor)
+    # while its --yaml-1.1 pass ERRORS ("invalid tab used as
+    # indentation" -- the documented third reading) -- comparator carry
+    # only, no engine change (the r318/r330/r331/r332/r340/r341/r346/
+    # r347/r348 precedent). Anything the gate cannot pin declines (the
+    # escalation clause stays live). Both the floor and the full
+    # artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r352-dot-star-plain-quoted-exotic-tab
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r352.bin
+    )
+    add_test(
+        NAME fuzz-diff-r352-dot-star-plain-quoted-exotic-tab-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r352-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor

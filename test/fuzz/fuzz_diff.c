@@ -11874,6 +11874,68 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * indentation" — the documented third reading) — comparator
          * carry only, no engine change (the r318/r330/r331/r332/r340/
          * r341/r346/r347 precedent). Anything the gate cannot pin
+         * declines (the escalation clause stays live).
+         *
+         * The r352 widening (the nightly's round 352, run 44996391690,
+         * main 1d179811): the '*' byte joins the plain charset, and the
+         * artifact is the 12-byte `..*.: '<PS><TAB>'` — the QUOTED-PS/TAB
+         * body (the r331/r332/r340/r341/r346/r347/r348 law,
+         * byte-identical here) riding a DOT-DOT-STAR-DOT plain key behind
+         * a STANDARD space separator — the quoted-exotic-tab family's
+         * EIGHTH composition and SEVENTH key-form container (the star is
+         * the alias-indicator law's neighbor: the r339 alias-rider and
+         * the r342 block alias-name-cut family live one slot over — here
+         * the star rides INSIDE plain key CONTENT). '*' is a plain-FIRST
+         * indicator on BOTH engines, but only at the token HEAD: a star
+         * glued INTO a plain run never opens an alias token, so the
+         * mid-plain/trailing star faces are plain content byte-equal on
+         * both engines (probed keys `..*.`, `.*.`, `..*`, `.*`, `x*x`,
+         * `2*2`, `.*x`, `.**.` — all key-equal, all DIFFER only in the
+         * body), and the dual-bar floor drops the leading and trailing
+         * dots to the 10-byte `.*: '<PS><TAB>'` (greedy single-byte ddmin
+         * under the dump-pair shape bar: dot one dies, dot four dies; the
+         * STAR itself cannot die — its deletion `.: '<PS><TAB>'` is the
+         * ALREADY-CLASSIFIED r332 territory, exit 0 pre-patch (from the
+         * artifact the `..: '<PS><TAB>'` deletion likewise); the dot-one
+         * deletion's own star-LEAD face `*: '...'` is the BOTH-ERROR wall
+         * (re-measured: yeptris errors the empty-name alias, libyaml
+         * errors too — never a differ, the dual bar denies); the space
+         * behind the colon dies into the glued-quote/EQUAL face
+         * `.*:'...'` (exit 0 pre-patch — no value colon ever fires); the
+         * body TAB dies into the EQUAL `.*: '<PS>'` face (exit 0 — no
+         * exotic-adjacent blank, no claim); per-byte PS deletions are
+         * invalid-UTF-8 error faces and the quote deletion is the
+         * unterminated-quote error). THE STAR-LEAD WALL (the new
+         * head-guard, re-measured): `*` at the key line's first byte is
+         * the ALIAS entry (the `&` head-guard's twin — the r238 arm owns
+         * every prop-entry shape): the empty-name face
+         * `*: '<PS><TAB>'` is BOTH-ERROR (never a differ), and the
+         * named-alias face `*L: '<PS><TAB>'` rides `=ALI *L` KEYS
+         * byte-equal on both engines with the same body delta — a
+         * DIFFERENT derivation (`=ALI`, not `=VAL`), the gate declines
+         * it, and it stays a stable-red (the escalation clause's
+         * territory). Head faces probed byte-equal on BOTH engines, all
+         * DIFFER only in the body: `..*.`, `.*.`, `..*`, `.*`, `x*x`,
+         * `2*2`, `.*x`, `.**.`, the GLUED-COLON composition `..*:x`, the
+         * GLUED-QUOTE spelling `..*':` (key `..*'`, the r332 law), the
+         * r346 COLON-HEAD composition `:.*.`, the r347 '$' composition
+         * `$.*`, and the r348 ',' composition `.*,`; the lead law
+         * composes unchanged (CR x1 probed) and the trailer law rides
+         * (LF probed); the r341 separator-TAB ride composes
+         * (`..*.:\t'<PS><TAB>'`). THE DECLINES THAT STAY OUT
+         * (re-measured): the star-LEAD both faces (the BOTH-ERROR wall
+         * and the `=ALI *L` named-alias shape), the interior-space key
+         * (`..* x` — DIFFER with the family shape pre- AND post-patch,
+         * a stable-red), and the tame-body face (`..*.: 'a<TAB>b'` —
+         * EQUAL, no claim needed). THE A/B: libfyaml 04e0b58 re-measured
+         * on THIS composition's own floor (the r325 lesson): its
+         * --yaml-1.2 pass sides with yeptris BYTE-EXACT on the floor AND
+         * the artifact (it re-emits the star-bearing key + the raw PS +
+         * the kept tab, "2e 2a 3a 20 27 e2 80 a9 09 27 0a" on the floor)
+         * while its --yaml-1.1 pass ERRORS ("invalid tab used as
+         * indentation" — the documented third reading) — comparator
+         * carry only, no engine change (the r318/r330/r331/r332/r340/
+         * r341/r346/r347/r348 precedent). Anything the gate cannot pin
          * declines (the escalation clause stays live). */
         if (prefix_comment) {
             return 0; /* the r340 comment-led prefix stays floor-form
@@ -11909,8 +11971,14 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
             }
             ko = k;
         }
-        if (ko < size && data[ko] == '&') {
-            return 0;
+        if (ko < size && (data[ko] == '&' || data[ko] == '*')) {
+            return 0; /* the '&' head (the r238 arm owns every
+                       * anchor-entry shape) and the r352 '*' head twin:
+                       * the empty-name star face `*: '...'` is the
+                       * BOTH-ERROR wall (never a differ) and the
+                       * named-alias face `*L: '...'` rides `=ALI *L`
+                       * keys — a derivation this arm does not own; the
+                       * star rides mid-plain CONTENT only */
         }
         size_t r = ko;
         if (r < size && data[r] == ':' && r + 1 < size && data[r + 1] != ' ' &&
@@ -11923,7 +11991,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                (((data[r]) >= 'A' && (data[r]) <= 'Z') || ((data[r]) >= 'a' && (data[r]) <= 'z') ||
                 ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
                 (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' || (data[r]) == '$' ||
-                (data[r]) == ',')) {
+                (data[r]) == ',' || (data[r]) == '*')) {
             r++;
         }
         /* the r332 battery's GLUED spellings (each dump-verified
@@ -11943,11 +12011,12 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * and the value colon separates on BOTH engines (probed
          * `..\t: '<PS><TAB>'` — the key ends at the tab, byte-equal) */
         for (;;) {
-            while (r < size && (((data[r]) >= 'A' && (data[r]) <= 'Z') ||
-                                ((data[r]) >= 'a' && (data[r]) <= 'z') ||
-                                ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
-                                (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' ||
-                                (data[r]) == '.' || (data[r]) == '$' || (data[r]) == ',')) {
+            while (r < size &&
+                   (((data[r]) >= 'A' && (data[r]) <= 'Z') ||
+                    ((data[r]) >= 'a' && (data[r]) <= 'z') ||
+                    ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
+                    (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' ||
+                    (data[r]) == '$' || (data[r]) == ',' || (data[r]) == '*')) {
                 r++;
             }
             ke = r;
