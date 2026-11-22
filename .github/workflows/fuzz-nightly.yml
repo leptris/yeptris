@@ -96,8 +96,14 @@ jobs:
         # classifier claims the composition (the r310 law's SEQ twin at
         # the split-explicit-key slot + the bare-collection comment
         # ride), the family is mutation-dense, and the pins carry the
-        # bytes under the full ctest.
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-midstream-bom-*' -delete
+        # bytes under the full ctest. The quoted-exotic-tab family
+        # joins at r353: ten documented members (r331-r353), the
+        # classifier claims the whole plain-key/paren composition
+        # space, and the r353 red itself was one InsertByte from the
+        # pinned r352 artifact seed -- the per-round arm-extension
+        # treadmill this snapshot exists to stop; the pins carry the
+        # bytes under the full ctest (the fuzz-diff-r331..r353 pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-midstream-bom-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete
 
       - name: Fuzz budget
         run: |
