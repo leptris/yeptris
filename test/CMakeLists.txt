@@ -7902,6 +7902,72 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r350-artifact.bin
     )
 
+    # the r351 glued-hash round (the nightly's run 44956787130, main
+    # 41f81ab7; the 45-byte artifact
+    # crash-75907871e7b02cf327e039852c75eb9a48b715ab
+    # "{?#?#,?##|#|,`|,` \n:\t , ?\t[]: #|#|+` \n,< \n\t }", 27-byte
+    # dual-bar floor "{?#?#,?##|#|,`|,`\n,[] #\n,<}" — greedy single-byte
+    # ddmin to a fixed point under the dump-pair shape bar (both dumps
+    # byte-exact to the artifact's: yeptris keeps the four glued-hash
+    # lead members as content-key pairs (`?#?#`, `?##|#|`, `` `| ``,
+    # `` ` `` — the law-a/d split), libyaml comment-eats them into ONE
+    # empty pair, and BOTH engines render the `[]` empty-flow-seq member
+    # identically (+SEQ/-SEQ as the key, the parser's inserted empty
+    # value); pre-patch DIFFER exit 77, post-patch carry exit 0, on BOTH
+    # shapes): the glued-hash family's empty-flow-collationToken
+    # composition. THE MECHANISM: the `[]` members are AGREEING bytes —
+    # the bare `,[] #\n,` member (the comment eats inertly between the
+    # closer and the separator on both engines) and the artifact's
+    # `?\t[]: #|#|+` ` explicit-key member (the nested EMPTY sequence
+    # hangs off the split explicit key, the GLUED ':' is the VALUE
+    # boundary, the comment ride in the value slot is the r309 law) —
+    # the divergence stays entirely in the lead, the documented
+    # glued-hash law set (a #949 comment-eat vs the suite-pinned
+    # plain-?/glued-# content law d). THE WIDENING (yd_family_classify,
+    # two gates): (1) the split-explicit-key slot's nested-collection
+    # carve gains the SEQ twin — the r310 `{` law's mechanics at `[`
+    # (the prelude's flow-indicator carve-out covered `{` only, so the
+    # `[` died as a bare terminator before the key-slot walk; the r351
+    # arm mirrors the r310 gates: the GLUED or run-to colon boundary
+    # with a blank/break/flow-ind follower, recursion under the depth
+    # budget); (2) the bare-collection member arm rides a BLANK-preceded
+    # comment between the closer and the member terminator (the
+    # y_members loop-top law's own; the value slot stays EMPTY — a
+    # post-comment ':' and a GLUED `]#` decline, the untested and
+    # split-zone compositions). THE FACES (yepdiff-measured): every
+    # probed neighbor (`[] #\n` SEQ-root twin, glued `]#`,
+    # post-comment `:c`, `{}` twin, space-only, glued `:`, run-to-colon,
+    # `:`+flow-ind, bare `?\t[]`, SEQ-root `?\t[]:`, `?\t{}:`, the
+    # artifact's own tail) is EQUAL or a yeptris/libyaml-ONLY-ACCEPT
+    # split (the gray zone the ledger documents by input) — zero
+    # unclaimed-abort faces; the DIFFER twins (`{\?#?#,[] #\n,<}`,
+    # `{a,?:,}`) ride the existing arms quietly. THE BATTERY: 50
+    # seeded floor mutants (flip/delete/insert), paired engine-verdict x
+    # harness-claim: 22 classifier-claimed, 1 arm-claimed, 18 gray-zone
+    # splits, 9 both-error, ZERO unclaimed aborts. THE A/B: libfyaml
+    # 04e0b58 re-measured on THIS composition's own floor (the r325
+    # lesson): it ERRORS both shapes outright ("plain scalar cannot
+    # start with '`'", both --yaml-1.1 and --yaml-1.2 passes) — no
+    # third vote; the comparators split along the libyaml-is-the-compat-
+    # bar line exactly as the r317/r350 precedent (comparator carry
+    # only, no engine change). The engine-level cores are honest
+    # neighbors, not this family: the DIFFER-class core `{?#,[].}` (8B)
+    # and the yeptris-only-accept backtick split `{`,[]}` (6B — the
+    # suite-gray zone) both stay OUT of the dual-bar floor (the shape
+    # bar denies them). Seeds ride the corpus (the r321 seed law) and
+    # join the nightly's comparator-snapshot exclusion (the family is
+    # dense — the exclusion is the r269/r271/r298 discipline). */
+    add_test(
+        NAME fuzz-diff-r351-emptyflowkey-glued-hash
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-emptyflowkey-r351.bin
+    )
+    add_test(
+        NAME fuzz-diff-r351-emptyflowkey-glued-hash-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-emptyflowkey-r351-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor

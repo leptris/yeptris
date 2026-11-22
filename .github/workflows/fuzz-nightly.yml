@@ -91,8 +91,13 @@ jobs:
         # mutations of one pinned 14-byte seed -- a UTF-16BE seed is
         # one ChangeByte from a fresh documented-law composition, so
         # the diff leg explores fresh space; the seeds stay under the
-        # full ctest (the fuzz-diff-r243/r280/r298 pins).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-midstream-bom-*' -delete
+        # full ctest (the fuzz-diff-r243/r280/r298 pins). The r351
+        # empty-flow-key glued-hash seeds join the same way: the
+        # classifier claims the composition (the r310 law's SEQ twin at
+        # the split-explicit-key slot + the bare-collection comment
+        # ride), the family is mutation-dense, and the pins carry the
+        # bytes under the full ctest.
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-midstream-bom-*' -delete
 
       - name: Fuzz budget
         run: |
