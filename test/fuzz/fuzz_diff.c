@@ -22327,16 +22327,33 @@ static int yd_anchor_keymap_splice(const char* ydump, const char* ldump) {
  *    that a mid-plain fold delivers to scan_plain_scalar's loop-top
  *    comment check, a spelling no carried arm's tail grammar models),
  *    and
- *  - SCALE: the fold-state context each member needs is the whole
- *    multi-thousand-line collection -- the dual-bar floor under
- *    byte-class ddmin bottoms out at 73,133 bytes (the size band is
- *    load-bearing: prefixes, suffixes, middle-blank fills, line-shape
+ *  - SCALE: the dual-bar floor under byte-class ddmin bottoms out at
+ *    73,133 bytes (prefixes, suffixes, middle-blank fills, line-shape
  *    thinning and per-byte-class thinning beyond the measured floor all
- *    leave the band -- the engines' flow readings of the early members
- *    depend on the collection's full extent), and at that scale the
- *    r190 spell's all-hits rewrite (3,942 hit deletions) no longer
- *    re-parses on either engine, so its byte-strict verify cannot
- *    arbitrate (measured: the rewrite is a BOTH-ERROR input).
+ *    leave the band), and at that scale the r190 spell's all-hits
+ *    rewrite (3,942 hit deletions) no longer re-parses on either
+ *    engine, so its byte-strict verify cannot arbitrate (measured: the
+ *    rewrite is a BOTH-ERROR input).
+ *
+ * THE R362 CORRECTION (the nightly's run 45078029712, the floor's
+ * one-byte mutation at offset 56680): the size-band reading above was
+ * WRONG about the cause. The r362 drill measured the ENGINES
+ * size-independent on this family -- the glued-`?` face ("?##|" plain
+ * on yeptris, "+MAP" on libyaml) is byte-identical at 8 bytes
+ * ("[11,?##]") and at 73KB, and yeptris consults no budget on the flow
+ * reading path (libyaml streams identically at every size). What was
+ * load-bearing at 73KB was the FAMILY CLASSIFIER's own conservatism
+ * budgets: the floor (8,243 members) declined at FC_MAX_MEMBERS 8192,
+ * and the 148,798-byte artifact declines at FC_MAX_INPUT 131072 and
+ * FC_MAX_TOKENS 16384 (the token walk trips at pos 96431) -- the
+ * reduction probes of this round were raw truncations, whose unclosed
+ * flow splits the parse, so no reduction ever reached the classifier
+ * and the band LOOKED engine-bound. With the budgets raised (the
+ * r362 raise), the classifier derives BOTH engines' actual dumps
+ * byte-exact on the floor, the mutation, AND the artifact: the law
+ * covers the whole composition at arbitrary scale, and the exact-byte
+ * pins below are now belt-and-braces (they still match; the
+ * classifier claims the family shape around them).
  *
  * Per the r129 law this composition is NOT soundly generalizable from a
  * per-face dig -- the faces are carried, the composition at artifact

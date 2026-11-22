@@ -299,7 +299,15 @@
  *  (l)   a mismatch inside a quoted span (beyond the law-b folds) ->
  *        UNKNOWN;
  *  (m)   the classifier consults no arm pins -- it stands alone;
- *  (n)   total budget bounded (refuses inputs over 16 KB -> UNKNOWN).
+ *  (n)   total budget bounded (refuses inputs over 256 KB, derived
+ *        dumps over 1 MB, collections past 16,384 members, libyaml
+ *        token walks past 65,536 tokens -> UNKNOWN; the r362 raise
+ *        carried the 73,133-byte r361 floor (8,243 members) and the
+ *        148,798-byte r361 artifact (~25K tokens) by law — the dig
+ *        measured the ENGINES size-independent on this family (the
+ *        glued-`?` face is byte-identical at 8 bytes and 73KB), so
+ *        the old exact-byte pins were carrying only the classifier's
+ *        budget gates, not a reading dependence).
  *
  * Memory: no allocation escapes the call; all scratch is heap and freed
  * before return. Pure over its four arguments: same inputs, same
