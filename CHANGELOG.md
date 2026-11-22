@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **the roundtrip guarantee's empty-inline anchor twin (r358, PR #1584)** — the fuzz_roundtrip nightly caught yeptris rejecting its own emitter's output: an anchor whose name ends at `:` on an EMPTY plain value spelled the anchor line-final (`"&4:- \"\": &4: "` + EOL), and the re-parse's riding-colon follower scan crossed the break into the props-led follower line, un-consumed the colon, and re-lexed it as a VALUE indicator — "mapping values are not allowed in this context" at pass1 line 8. The fix (`emit/writer.c`): the `YEP_SC_NOTHING` arm spells the explicit-empty quoted form (`"k: &n: ''"`) when the anchor name's last byte is `:` — the quote byte is a plain-led follower so the riding law keeps the name whole, and the sticky quoted style re-spells byte-identically on round 2 (104→106 bytes on the artifact). Non-empty riders unchanged; keys already quoted; flow items keep `~`; round-trips byte-stable; emit lanes benched no-regression. First engine fix since #1468 (0.6.75).
+
+### the comparator era (r351-r357, all zero-`src/`)
+
+- **seven more nightly escapes carried and pinned** — the empty-flow-key composition joins the glued-hash family (r351, #1568); the dot-star-plain and paren-lead plain keys join the quoted-exotic-tab family (r352/r353, #1570/#1572); the alnum-with-bracket plain key joins it too, with the bracket-LEAD head-guard (the flow-collection wall errors on BOTH engines — never a differ) (r354, #1576); the anchor-glued-colon alias tail joins the flow-qsoup key-map family via a new `family_classify` MAP-key sibling branch (r355, #1578); the embedded second anchor joins the root-anchor-quoted-follow family (r356, #1580); the alias glued-colon key joins the flow-qsoup anchor-charset family (r357, #1582). Every round: floor minimized under the dual+shape bar, libfyaml 04e0b58 adjudicated byte-exact or comparators split along the libyaml-compat bar, 50-mutant paired batteries 0 regressions, nine corpus walks green, ctest full pass, leaks 0.
+
 ## [0.6.76] - 2026-11-21
 
 ## [0.6.76] - 2026-11-22
