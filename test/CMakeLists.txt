@@ -8032,6 +8032,64 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r352-artifact.bin
     )
 
+    # the r353 paren-lead round (the nightly's run 45002991060, main
+    # b197e2eb; the 13-byte artifact
+    # crash-de9d378cbb8374742f6265d0f9eb2f3f64e346ea ")..*.: '<PS><TAB>'",
+    # 9-byte dual-bar floor "): '<PS><TAB>'" — greedy single-byte ddmin
+    # under the dump-pair shape bar; pre-patch DIFFER exit 77, post-patch
+    # carry exit 0, on BOTH shapes; no landmark-preserving deletion keeps
+    # the dual bar below 9 bytes — the paren's own deletion is the
+    # classified r352 territory, the colon deletion loses the value
+    # colon, the space deletion dies into the glued face, the quote
+    # deletions are the unterminated-quote error, the per-byte PS
+    # deletions are invalid-UTF-8 error faces and the body-TAB deletion
+    # is the EQUAL no-adjacent-blank face): the QUOTED-EXOTIC-TAB
+    # family's TENTH member and the key-form family's EIGHTH container —
+    # the r352 dot-star key-form with a LEADING `)` (one InsertByte from
+    # the r352 artifact pin: the seed-ride treadmill the comparator
+    # snapshot law names). THE WIDENING: the ')' byte joins the
+    # plain-key charset with NO head-guard — ')' is in no engine's
+    # c-indicator set, so a paren HEAD is a legal plain head on BOTH
+    # engines (the '&'/'*' prop-entry twins own their heads; the paren
+    # owns none): the floor key `)` and the artifact key `)..*.` dump
+    # BYTE-EQUAL across the engines, every DIFFER rides the body alone.
+    # Head faces probed byte-equal on BOTH engines, all DIFFER only in
+    # the body: `)x`, `x)x`, `))`, the GLUED-QUOTE spelling `)':` (key
+    # `)'`, the r332 law), the GLUED-COLON composition `):x:` (key
+    # `):x`), the r341 separator-TAB ride, the r350 two-space gap, the
+    # CR lead, the LF trailer, and the dot compositions `.).` and
+    # `).*.`. THE DECLINES THAT STAY OUT (re-measured): the '&' and '*'
+    # heads (the prop-entry arms; the empty-name face the BOTH-ERROR
+    # wall), the empty-key split (`: '<PS><TAB>'` — rc=0), the
+    # tame-body face (`): 'a<TAB>b'` — EQUAL, no claim needed), and the
+    # two STABLE-REDS that stay out with their pre- and post-patch 77s
+    # re-measured (the interior-space key `) x: '...'` and the
+    # stuck-quote face `):': '...'`, key `):'` — the quote after the
+    # glued colon is outside the charset walk; the escalation clause's
+    # territory, carried documented-red like the r352 interior-space
+    # twin). THE A/B:
+    # libfyaml 04e0b58 re-measured on THIS composition's OWN floor (the
+    # r325 lesson): its --yaml-1.2 pass sides with yeptris BYTE-EXACT on
+    # the floor AND the artifact (it re-emits the paren key + the raw PS
+    # + the kept tab, "29 3a 20 27 e2 80 a9 09 27 0a" on the floor)
+    # while its --yaml-1.1 pass ERRORS ("invalid tab used as
+    # indentation" — the documented third reading) — comparator carry
+    # only, no engine change (the r318/r330/r331/r332/r340/r341/r346/
+    # r347/r348/r352 precedent). Anything the gate cannot pin declines
+    # (the escalation clause stays live). Both the floor and the full
+    # artifact ride the corpus (the r321 seed law) and join the nightly
+    # comparator-snapshot exclusion.
+    add_test(
+        NAME fuzz-diff-r353-paren-lead-plain-quoted-exotic-tab
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r353.bin
+    )
+    add_test(
+        NAME fuzz-diff-r353-paren-lead-plain-quoted-exotic-tab-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r353-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor

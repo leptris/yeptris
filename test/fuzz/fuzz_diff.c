@@ -11936,7 +11936,67 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * indentation" — the documented third reading) — comparator
          * carry only, no engine change (the r318/r330/r331/r332/r340/
          * r341/r346/r347/r348 precedent). Anything the gate cannot pin
-         * declines (the escalation clause stays live). */
+         * declines (the escalation clause stays live).
+         *
+         * The r353 widening (the nightly's round 353, run 45002991060,
+         * main b197e2eb): the ')' byte joins the plain charset, and the
+         * artifact is the 13-byte `)..*.: '<PS><TAB>'` — the QUOTED-PS/TAB
+         * body (the family law, byte-identical) riding a PAREN-LEAD plain
+         * key — the quoted-exotic-tab family's TENTH member and the
+         * key-form family's EIGHTH container (the r352 dot-star
+         * key-form with a LEADING `)`, one InsertByte from the r352
+         * artifact pin — the seed-ride treadmill the snapshot law
+         * names). ')' is in NO engine's c-indicator set, so a paren
+         * HEAD is a legal plain head on BOTH engines — no head-guard
+         * (the '&'/'*' prop-entry twins own their heads; the paren owns
+         * none): the artifact's key `)..*.` and the 9-byte floor's key
+         * `)` dump BYTE-EQUAL across the engines, every DIFFER rides
+         * the body alone. Dual-bar floor 9B paren-colon over the
+         * quoted PS/TAB body (greedy single-byte ddmin under the
+         * dump-pair shape bar: all four dot/star bytes die into the
+         * unclassified paren-lead territory, one at a time, key
+         * byte-equal throughout; the PAREN itself cannot die — its
+         * deletion `..*.: '<PS><TAB>'` is the ALREADY-CLASSIFIED r352
+         * territory, exit 0 pre-patch; the colon deletion `) '...'`
+         * loses the value colon and both engines reject; the space
+         * behind the colon dies into the glued face `):'...'` (exit 0
+         * pre-patch, no value colon ever fires); the open-quote and
+         * close-quote deletions are the unterminated-quote error; the
+         * per-byte PS deletions are invalid-UTF-8 error faces; the
+         * body TAB dies into the EQUAL `): '<PS>'` face (exit 0 — no
+         * exotic-adjacent blank, no claim); pre-patch DIFFER exit 77 +
+         * NOT classified, post-patch carry exit 0, both shapes). THE
+         * HEAD FACES (probed byte-equal on BOTH engines, all DIFFER
+         * only in the body): `)x`, `x)x`, `))`, the GLUED-QUOTE
+         * spelling `)':` (key `)'`, the r332 law's mid-plain quote
+         * ahead of the value colon), the GLUED-COLON composition
+         * `):x:` (key `):x`), the r341 separator-TAB ride `):\t'...'`,
+         * the r350 two-space gap, the CR x1 lead, the LF trailer, and
+         * the dot compositions `.).` and `).*.` (the artifact's own
+         * spine). THE DECLINES THAT STAY OUT (re-measured): the '&' and
+         * '*' heads (the prop-entry arms — the `*: '...'` empty-name
+         * face is the BOTH-ERROR wall), the empty-key split
+         * (`: '<PS><TAB>'` — rc=0, the yeptris-only-accept territory),
+         * the tame-body face (`): 'a<TAB>b'` — EQUAL, no claim), and
+         * the two STABLE-REDS that stay out with their pre- and
+         * post-patch 77s re-measured: the interior-space key
+         * (`) x: '...'` — key `) x`, the r352 twin's spelling) and the
+         * stuck-quote face `):': '...'` (key `):'` — the quote sits
+         * AFTER the glued colon, outside the charset walk, so the
+         * r332 glued-quote law cannot reach it; both DIFFER with the
+         * family shape pre- AND post-patch — the escalation clause's
+         * territory, carried documented-red like the r352 twin).
+         * THE A/B: libfyaml 04e0b58 re-measured on THIS composition's
+         * OWN floor (the r325 lesson): its --yaml-1.2 pass sides with
+         * yeptris BYTE-EXACT on the floor AND the artifact (it re-emits
+         * the paren key + the raw PS + the kept tab, "29 3a 20 27 e2 80
+         * a9 09 27 0a" on the floor, "292e 2e2a 2e3a 2027 e280a90927"
+         * on the artifact) while its --yaml-1.1 pass ERRORS ("invalid
+         * tab used as indentation" — the documented third reading) —
+         * comparator carry only, no engine change (the r318/r330/r331/
+         * r332/r340/r341/r346/r347/r348/r352 precedent). Anything the
+         * gate cannot pin declines (the escalation clause stays
+         * live). */
         if (prefix_comment) {
             return 0; /* the r340 comment-led prefix stays floor-form
                        * only; the r346 lead law admits break lines
@@ -11991,7 +12051,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                (((data[r]) >= 'A' && (data[r]) <= 'Z') || ((data[r]) >= 'a' && (data[r]) <= 'z') ||
                 ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
                 (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' || (data[r]) == '$' ||
-                (data[r]) == ',' || (data[r]) == '*')) {
+                (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')')) {
             r++;
         }
         /* the r332 battery's GLUED spellings (each dump-verified
@@ -12016,7 +12076,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                     ((data[r]) >= 'a' && (data[r]) <= 'z') ||
                     ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
                     (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' ||
-                    (data[r]) == '$' || (data[r]) == ',' || (data[r]) == '*')) {
+                    (data[r]) == '$' || (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')')) {
                 r++;
             }
             ke = r;
