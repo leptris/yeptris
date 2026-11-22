@@ -5293,6 +5293,31 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-midstream-bom-r280-artifact.bin
     )
 
+    # the r359 nightly escape (run 45047942019): the UTF-16BE column-0
+    # eaten-FEFF pair composed with a KEPT mid-scalar FEFF. The r243
+    # relation stripped EVERY U+FEFF triple from yeptris's dump, but
+    # libyaml's scan_to_next_token eat is a COLUMN-0 law: the eaten
+    # sites are the mark-follower and the after-break FEFFs (any break
+    # kind resets the column; the r226 byte probes), while the
+    # mid-scalar FEFF (behind the 住-run content) rides BOTH engines as
+    # plain content -- so libyaml's dump RETAINS its triple and the
+    # all-sites strip mismatched. The 16-byte floor rides the same law:
+    # `fe ff fe ff 0085 fe ff 0085 0085 4f4f fe ff` -- yeptris's scalar
+    # opens at the kept mark-follower FEFF and folds the double-NEL to
+    # one "\n" escape libyaml never sees (its scalar opens at the 住).
+    # The walk now splits the sites: eaten sites strip triple+residue
+    # (the r243 law unchanged), kept sites verify the triple verbatim
+    # in libyaml's window and advance both. A kept site libyaml lacks
+    # still declines. Comparator carry only -- no engine change.
+    # Seeds: utf16-kept-mid-feff-r359.bin (this pin) and the raw
+    # artifact.
+    add_test(
+        NAME fuzz-diff-r359-utf16-kept-mid-feff
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-kept-mid-feff-r359.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-kept-mid-feff-r359-artifact.bin
+    )
+
     # the r281 nightly escape (run 43705128492): the glued-`?#` soup
     # composed with ONE under-modeled container shape — the nested flow
     # map. The 9-byte floor `{?#,:<LF>{}}` splits on the slot the

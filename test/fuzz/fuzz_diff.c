@@ -12516,6 +12516,7 @@ static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, co
      * ends the derivation, and EOF after a run stays unmodelable */
     uint8_t res[YD_R243_MAX_RES][YD_R243_RES_MAX];
     size_t resn[YD_R243_MAX_RES];
+    uint8_t res_eaten[YD_R243_MAX_RES];
     size_t nres = 0;
     for (i = 2; i + 1 < size;) {
         unsigned hi;
@@ -12532,6 +12533,24 @@ static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, co
         }
         r = res[nres];
         resn[nres] = 0;
+        /* the r359 nightly (run 45047942019, main d37f75a6, crash-
+         * bc217300: "fe ff (fe ff) 0085 fe ff 0085 0085 4f4f fe ff" --
+         * the kept-mid-scalar composite) splits the sites: libyaml's
+         * scan_to_next_token BOM eat is a COLUMN-0 law, so a FEFF whose
+         * previous unit is the mark (column 0) or ANY break unit
+         * (LF/CR/NEL/LS/PS reset the column; the r226/r154 byte probes)
+         * is eaten, while a FEFF behind CONTENT (or behind a blank
+         * chain, which advances the column) sits at column >= 1 and
+         * rides BOTH engines as plain content -- the catch-121 law's
+         * other face, verbatim in both dumps. The relation walk strips
+         * the eaten sites' triples and their derived fold residues;
+         * kept sites verify as matching content on both sides. */
+        res_eaten[nres] =
+            (uint8_t)(i == 2 ||
+                      (i >= 4 &&
+                       ((data[i - 2] == 0x00 &&
+                         (data[i - 1] == 0x0A || data[i - 1] == 0x0D || data[i - 1] == 0x85)) ||
+                        (data[i - 2] == 0x20 && (data[i - 1] == 0x28 || data[i - 1] == 0x29)))));
         u = i + 2;
         while (u + 1 < size && data[u] == 0x00 && (data[u + 1] == 0x20 || data[u + 1] == 0x09)) {
             u += 2; /* boundary blanks drop into the fold */
@@ -12719,13 +12738,19 @@ static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, co
             }
         }
         /* the relation: libyaml's dump == yeptris's dump minus every
-         * U+FEFF triple and its derived fold render -- with ONE tail
+         * EATEN U+FEFF triple and its derived fold render -- with ONE tail
          * allowance: the harness's 4096-byte line cap truncates BOTH
          * giant dumps at possibly different char phases, and libyaml's
          * window carries the residue (the r280 artifact). Sites add a
          * second allowance: yeptris's ONE fold space facing libyaml's
          * ONE raw LS/PS triple rides the r56 plain law (bounded by the
-         * unit-space site count). */
+         * unit-space site count). KEPT sites (the r359 nightly, run
+         * 45047942019, crash-bc217300: the column-0 eaten pair composed
+         * with a MID-SCALAR FEFF -- "fe ff (fe ff) 0085 fe ff 0085 0085
+         * 4f4f fe ff") ride as content on BOTH sides: the triple
+         * verifies verbatim in libyaml's window and both advance -- the
+         * fold behind a kept unit folds identically in the two engines,
+         * so no residue is consumed there. */
         {
             const char* a = ydump;
             const char* b = ldump;
@@ -12734,18 +12759,30 @@ static int yd_r243_utf16_midstream_bom_gray(const uint8_t* data, size_t size, co
             while (a[0] != '\0') {
                 if ((unsigned char)a[0] == 0xEF && (unsigned char)a[1] == 0xBB &&
                     (unsigned char)a[2] == 0xBF) {
-                    a += 3; /* the U+FEFF triple vanishes */
-                    if (ri < nres && resn[ri] > 0) {
-                        if (memcmp(a, res[ri], resn[ri]) != 0) {
-                            return 0; /* the derived fold render is absent */
+                    if (ri < nres && res_eaten[ri]) {
+                        a += 3; /* the U+FEFF triple vanishes */
+                        if (ri < nres && resn[ri] > 0) {
+                            if (memcmp(a, res[ri], resn[ri]) != 0) {
+                                return 0; /* the derived fold render is absent */
+                            }
+                            a += resn[ri];
+                        } else if (a[0] == ' ') {
+                            a++; /* the legacy single-space strip (a FEFF with
+                                  * no break run: the neighbor blank) */
                         }
-                        a += resn[ri];
-                    } else if (a[0] == ' ') {
-                        a++; /* the legacy single-space strip (a FEFF with
-                              * no break run: the neighbor blank) */
+                        ri++;
+                        continue;
                     }
-                    ri++;
-                    continue;
+                    /* the kept site: content on both sides (the catch-121
+                     * law's other face) */
+                    if ((unsigned char)b[0] == 0xEF && (unsigned char)b[1] == 0xBB &&
+                        (unsigned char)b[2] == 0xBF) {
+                        a += 3;
+                        b += 3;
+                        ri++;
+                        continue;
+                    }
+                    break; /* the kept unit libyaml lacks: a real mismatch */
                 }
                 if (sites < nsite && (unsigned char)a[0] == ' ' && (unsigned char)b[0] == 0xE2 &&
                     (unsigned char)b[1] == 0x80 &&
