@@ -1211,9 +1211,10 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
                                    * finding — the r301 alias-blank path
                                    * freed the uninitialized nest_buf
                                    * slot; the layout shift exposed it) */
-    if (ks >= n || (fc_flow_ind(p[ks]) && p[ks] != '{')) {
+    if (ks >= n || (fc_flow_ind(p[ks]) && p[ks] != '{' && p[ks] != '[')) {
         /* (`{` is carved out: it opens the nested-collection KEY slot
-         * walk below -- the r310 widening) */
+         * walk below -- the r310 widening; the r351 widening carves the
+         * SEQ twin `[` the same way) */
         memset(&key, 0, sizeof(key)); /* the empty key node */
         stop = ks;
         sep = (ks < n && fc_flow_ind(p[ks]));
@@ -1456,7 +1457,65 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             fc_val_drop(&key);
             return y_fail(c);
         }
-    } else if (p[ks] == '"' || p[ks] == '\'' || p[ks] == '&' || p[ks] == '!' || p[ks] == '[') {
+    } else if (p[ks] == '[') {
+        /* the nested flow SEQUENCE at the split-explicit-key member's
+         * KEY slot (the r351 widening, run 44956787130): the r310 law's
+         * SEQ twin one slot up -- the artifact's root member
+         * `?\t[]: #|#|+` ` hangs the EMPTY nested collection off the
+         * split explicit key ITSELF (the `?` drops, the `[` opens the
+         * key node, and the GLUED ':' after the close is the VALUE
+         * boundary the same slot walk takes; the comment ride in the
+         * value slot is the r309 law's own). The same member laws
+         * derive the collection recursively (the r314 mechanics, maps
+         * and seqs alike); a post-close run to a non-boundary byte and
+         * any other composition declines. Both engines render the
+         * collection as the KEY with the parser's inserted empty value
+         * — the member is an AGREEING composition; its bytes ride the
+         * dual byte-equality firewall. */
+        if (c->depth >= (int)FC_MAX_NEST) {
+            return y_fail(c); /* past the nesting budget */
+        }
+        if (getenv("YD_FC_TRACE") != NULL) {
+            fprintf(stderr, "split-key nested SEQ at %zu\n", ks);
+        }
+        fout nf = {NULL, 0, 0, 0};
+        fo_str(&nf, "+SEQ\n");
+        fout outer = c->out;
+        c->out = nf;
+        c->depth++;
+        c->seq_at[c->depth] = 1; /* the level is a SEQUENCE (the r314
+                                  * stamp; the member walks below ride
+                                  * y_cur_is_map) */
+        size_t after = 0;
+        int ok = y_members(c, ']', ks + 1, &after);
+        c->depth--;
+        nf = c->out;
+        c->out = outer;
+        if (!ok || nf.bad) {
+            free(nf.buf);
+            return 0;
+        }
+        fo_str(&nf, "-SEQ\n");
+        if (nf.bad) {
+            free(nf.buf);
+            return y_fail(c);
+        }
+        memset(&key, 0, sizeof(key));
+        key.nest_buf = nf.buf;
+        key.nest_len = nf.len;
+        stop = fc_skip_blank_break(p, n, after);
+        if (stop < n && p[stop] == ':' &&
+            (stop + 1 >= n || fc_blank(p[stop + 1]) || fc_break_len(p, n, stop + 1) > 0 ||
+             fc_flow_ind(p[stop + 1]))) {
+            key.colon = 1; /* the VALUE boundary after the collection
+                            * key (the r286 shape; the common colon
+                            * path below opens the empty value) */
+            key.colon_at = stop;
+        } else if (stop >= n || !fc_flow_ind(p[stop])) {
+            fc_val_drop(&key);
+            return y_fail(c);
+        }
+    } else if (p[ks] == '"' || p[ks] == '\'' || p[ks] == '&' || p[ks] == '!') {
         return y_fail(c);
     } else {
         if (p[ks] == ':' && ks + 1 < n &&
@@ -1829,8 +1888,26 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
         memset(&key, 0, sizeof(key));
         key.nest_buf = nf.buf;
         key.nest_len = nf.len;
+        /* the r351 widening (run 44956787130): a BLANK-preceded comment
+         * ride sits between the closer and the member terminator (the
+         * artifact's `[] #\n,` site — the comment law is the y_members
+         * loop-top's own: a blank/break precedes the `#`, both engines
+         * eat to the break, and the walk re-enters at the separator;
+         * the value slot stays EMPTY — the parser's inserted scalar).
+         * A post-comment ':' is the composition the artifact never
+         * covers (untested shapes stay out), and a GLUED `]#` stays out
+         * with it (the documented yeptris-rejects/libyaml-accepts
+         * comment split, never a comment). */
+        int rode_comment = 0;
         stop = fc_skip_blank_break(p, n, after);
-        if (stop < n && p[stop] == ':') {
+        while (stop < n && p[stop] == '#' && stop > after) {
+            rode_comment = 1;
+            while (stop < n && fc_break_len(p, n, stop) == 0) {
+                stop++;
+            }
+            stop = fc_skip_blank_break(p, n, stop);
+        }
+        if (stop < n && p[stop] == ':' && !rode_comment) {
             key.colon = 1; /* the VALUE boundary after the collection
                             * key: a `:` splits UNCONDITIONALLY after a
                             * closer on both engines (no plain context
