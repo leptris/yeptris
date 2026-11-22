@@ -16,28 +16,29 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.75 — live across all five runtimes** (C +
-ruby `0.6.75.0` + py `0.6.75.0` + rs/ts `0.6.75`, registry-checked
-2026-11-19). v0.6.75 is a memory-safety cut: the CBOR DOM strtab
-**heap-use-after-free (#1468, PR #1469)** — the sinks' arena-staged
-tag/value pieces re-entered `str_put` as source pointers, and the
-copy's own `str_grow` freed the buffer under them; `str_put` now
-snapshots the self-offset before the grow (one SSOT fix across all
-seven decode.c staging sites, the artifact pinned). Over the
-r311-r313 comparator hardening: the anchor-charset prefix ladder,
-the seq-dash position guard, and the `?` explicit-key guard's dead
-off-by-one — thirty-five nightly escapes retired, zero YAML engine
-divergence outstanding beyond #1411's deliberate fix. The previous
-cuts: v0.6.74 (the r306-r310 carries — the mid-line-BOM ride and
-the #741 pair-stays-open side, the multi-comment value-tail loop,
-the quoted-span exotic fold, the value-slot comment ride, the
-split-key nested collection) and v0.6.73 (the r303-r305 carries)
-over the contract cut. v0.6.67 was
-that cut: the 0.6.66 downstream regression (relaton #1359,
-png_conform #1366) verdict-closed — the engine REFUTED innocent
-(records byte-perfect from every library; the corruption was the
-binding's char-indexed arena slicing), the byte-offset law pinned at
-its C home (#1367).
+**Latest release: v0.6.76 — live across all five runtimes** (C +
+ruby `0.6.76.0` + py `0.6.76.0` + rs/ts `0.6.76`, registry-checked
+2026-11-22). v0.6.76 ships the **character-column emitter
+(#1490, PR #1493)**: the fold column rode bytes while libyaml/Psych
+count characters, so multi-byte text folded early — the column now
+rides code points with the purity fact as a parse product (ASCII
+documents keep the byte arithmetic verbatim; mixed documents pay
+per-span SWAR scans), all emitter lanes at-or-above the pre-change
+levels, the multibyte corpus byte-exact vs libyaml, round-trips
+byte-stable. Over the r314-r350 comparator roll: ~37 pinned nightly
+escapes across the folded-header family (the tail grammar, the
+fold-dropped realign, the kept-NEL/kept-triple polarity split, the
+glued spacing, the verbatim-tag CR-fold, the direct-hash entry,
+the comment-eaten tail, the normalized-blank), the quoted-exotic-TAB
+family's six key-form containers, the BOM-led prop-split ×
+anchor-charset composition, the doubled-colon anchor cut, the
+alias-member break-doubling, the double doc-marker lead (law l2),
+and the tagged-document tail — plus the diff leg's timeout-budget
+raise (5→30s). Zero YAML engine divergence outstanding beyond
+#1411's deliberate fix and #1468's same-day repair (released in
+v0.6.75). The previous cut: v0.6.75 (the CBOR DOM strtab
+heap-use-after-free repair, released same-day) over the contract
+cut lineage.
 The cut before it closes the six long-horizon competition fronts
 with measured verdicts (#474/#739/#742/#331/#352 + the binding faces
 #862/#857, every attempt ledgered): anchor-heavy — the last DOM
