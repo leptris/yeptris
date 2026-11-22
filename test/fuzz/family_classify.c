@@ -8,7 +8,9 @@
  *    quoted spans; glued-`?` members stay one flat plain (law a/d);
  *    bare alias members ride the engine's e_alias name cut (law c —
  *    the alias event renders the name verbatim, a ':'-blank boundary
- *    opens the VALUE slot, a separator/closer leaves the empty
+ *    opens the VALUE slot, a ':'-with-flow-indicator-follower GLUED
+ *    boundary inserts the empty at the terminator (the r357 widening),
+ *    a separator/closer leaves the empty
  *    scalar); `?`+blank/break splits the explicit key (the split slot's
  *    alias rides the same blank/break run to the separator/closer the
  *    bare-alias member walks — the r301 widening; a ':' across the run
@@ -1692,6 +1694,39 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
             fo_bytes(&c->out, p + as, al);
             fo_str(&c->out, "\n");
             fc_render_val(&c->out, p, &val);
+            return 1;
+        }
+        if (y_cur_is_map(c) && ae < n && p[ae] == ':' && ae + 1 < n && fc_flow_ind(p[ae + 1])) {
+            /* the r357 widening (the nightly's run 45033480083, main
+             * 1e53f6b7): the GLUED-':' VALUE boundary at the flow MAP
+             * key slot — the artifact `{*L:,&-:}`'s first member. The
+             * r342 cut law is the face's own law: a flow indicator
+             * closes the engine's alias-name walk BEFORE the colon
+             * (probed `*00:,` cut before the colon), and the artifact's
+             * own y-dump (`=ALI *L` + `=VAL : `) pins the same cut at
+             * the key slot. The glued ':' fires the VALUE token on BOTH
+             * engines — libyaml's flow fetch_value on the alias's
+             * saved simple key (probed `{*L:,}` EQUAL pre-patch) — and
+             * the member derives as the alias key + the parser's
+             * inserted empty at the terminator. Gates: the follower is
+             * a flow indicator EXACTLY (a content follower `{*L:x}` is
+             * EQUAL — never a DIFFER, no claim exists; a break follower
+             * rides the r342 break law INTO the name and stays the
+             * split-key family's territory), and the MAP level (the
+             * SEQ slot `[*L:,]` is EQUAL, never a DIFFER). Comparator
+             * carry only, no engine change: the divergence this walk
+             * unlocks lives in the NEXT member's anchor-name charset
+             * (the r318 law — libfyaml 04e0b58 reads the artifact's
+             * key node anchor byte-exact yeptris's way, `<-:` glued,
+             * BOTH --yaml-1.2 and --yaml-1.1 passes; the alias member
+             * itself is libfyaml's documented third reading), the
+             * charset suite-pinned (2SXE/W5VH; libyaml behind the
+             * suite, the r311 law). */
+            *term_at = ae + 1;
+            fo_str(&c->out, "=ALI *");
+            fo_bytes(&c->out, p + as, al);
+            fo_str(&c->out, "\n");
+            fo_str(&c->out, "=VAL : \n"); /* the parser's inserted empty */
             return 1;
         }
         size_t ve = fc_skip_blank_break(p, n, ae);
