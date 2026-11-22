@@ -12107,7 +12107,75 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * indentation" — the documented third reading) — comparator
          * carry only, no engine change (the r318/r330/r331/r332/r340/
          * r341/r346/r347/r348/r352/r353 precedent). Anything the gate
-         * cannot pin declines (the escalation clause stays live). */
+         * cannot pin declines (the escalation clause stays live).
+         *
+         * The r360 widening (the nightly's round 360, run 45056549705,
+         * main 336bbaeb): the ';' byte joins the plain charset, and the
+         * artifact is the 12-byte `...;: '<PS><TAB>'`
+         * (crash-0d590a8d210c3fb74d70a683a3b16b6db10b3fb6) — the
+         * QUOTED-PS/TAB body (the family law, byte-identical) riding a
+         * DOT-DOT-DOT-SEMICOLON plain key behind a STANDARD space
+         * separator — the quoted-exotic-tab family's TWELFTH member and
+         * the key-form family's TENTH container (the r348 comma twin
+         * with the ';' riding INSIDE plain key CONTENT; the ';'-lead
+         * spelling itself was the r347 decline note's stable-red, now
+         * measured and carried). ';' is in NO engine's c-indicator set
+         * and is plain-FIRST on NEITHER engine — a semicolon HEAD is a
+         * legal plain head on BOTH engines, so NO head-guard (the r353
+         * paren law's twin; the '&'/'*' prop twins and the r354
+         * '[' flow-entry twin own their heads, the paren and the
+         * semicolon own none): the artifact's key `...;` and the 9-byte
+         * floor's key `;` dump BYTE-EQUAL across the engines, every
+         * DIFFER rides the body alone. Dual-bar floor 9B semicolon-
+         * colon over the quoted PS/TAB body (greedy single-byte ddmin
+         * under the dump-pair shape bar, key-equal + the r331 body
+         * delta on every surviving deletion): all three dots die into
+         * the semicolon-bearing territory one at a time (each
+         * truncation keeps the DIFFER shape); the SEMICOLON itself
+         * cannot die — its deletion `: '<PS><TAB>'` is the ALREADY-
+         * DOCUMENTED empty-key YEPTRIS-ONLY-ACCEPT split (the
+         * r332/r341/r353 decline, re-measured rc=134 with that banner
+         * pre-patch — a DIFFERENT derivation, the dual bar denies);
+         * the colon deletion `; '...'` loses the value colon (exit 0,
+         * both reject); the space behind the colon dies into the glued
+         * face `;:'...'` (exit 0 pre-patch, no value colon ever
+         * fires); the open-quote and close-quote deletions are the
+         * unterminated-quote error; the per-byte PS deletions are
+         * YEPTRIS-ONLY-ACCEPT invalid-UTF-8 split faces; the body TAB
+         * dies into the EQUAL `;: '<PS>'` face (exit 0 — no
+         * exotic-adjacent blank, no claim); pre-patch DIFFER exit 77 +
+         * NOT classified, post-patch carry exit 0, both shapes. THE
+         * HEAD FACES (probed byte-equal on BOTH engines, all DIFFER
+         * only in the body pre-patch): `;` (the floor), `;x`, `x;x`,
+         * `;;`, `;.`, `.;`, `2;2`, the r347 '$' composition `;$`, the
+         * r352 '*' composition `.*;`, the r353 ')' composition `);`,
+         * the r354 '[' composition `A[;`, the GLUED-COLON composition
+         * `;:x:` (key `;:x`), the GLUED-QUOTE spelling `;':` (key `;'`,
+         * the r332 law), the r346 COLON-HEAD composition `:;:` (key
+         * `:;`), the r341 separator-TAB ride `;:<TAB>'<PS><TAB>'`, the
+         * CR x1 lead, and the LF + CRLF trailers. THE DECLINES THAT
+         * STAY OUT (re-measured): the interior-space key
+         * (`; x: '...'` — stable-red), the mid-plain-quote key
+         * (`;'x: '...'` — stable-red), the '/'-led charset escape
+         * (`/: '...'` — DIFFER with the family shape pre- AND
+         * post-patch — the NEXT treadmill round's byte, carried
+         * documented-red like the r354 ']'), the ']' mid-key face
+         * (`A].: '...'` — stable-red, the r354 note), the comma-LEAD
+         * composition (`,;: '...'` — the BOTH-ERROR wall, never a
+         * differ), the tame-body face (`;: 'a<TAB>b'` — EQUAL, no
+         * claim), and the empty-key split (`: '<PS><TAB>'` — the
+         * YEPTRIS-ONLY-ACCEPT banner, unchanged). THE A/B: libfyaml
+         * 04e0b58 re-measured on THIS composition's OWN floor (the
+         * r325 lesson): its --yaml-1.2 pass sides with yeptris
+         * BYTE-EXACT on the floor AND the artifact (it re-emits the
+         * semicolon key + the raw PS + the kept tab, "3b 3a 20 27 e2
+         * 80 a9 09 27 0a" on the floor, "2e2e2e 3b3a 2027 e280a90927
+         * 0a" on the artifact) while its --yaml-1.1 pass ERRORS
+         * ("invalid tab used as indentation" — the documented third
+         * reading) — comparator carry only, no engine change (the
+         * r318/r330/r331/r332/r340/r341/r346/r347/r348/r352/r353/r354
+         * precedent). Anything the gate cannot pin declines (the
+         * escalation clause stays live). */
         if (prefix_comment) {
             return 0; /* the r340 comment-led prefix stays floor-form
                        * only; the r346 lead law admits break lines
@@ -12169,7 +12237,8 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                (((data[r]) >= 'A' && (data[r]) <= 'Z') || ((data[r]) >= 'a' && (data[r]) <= 'z') ||
                 ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
                 (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' || (data[r]) == '$' ||
-                (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')' || (data[r]) == '[')) {
+                (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')' || (data[r]) == '[' ||
+                (data[r]) == ';')) {
             r++;
         }
         /* the r332 battery's GLUED spellings (each dump-verified
@@ -12189,12 +12258,13 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * and the value colon separates on BOTH engines (probed
          * `..\t: '<PS><TAB>'` — the key ends at the tab, byte-equal) */
         for (;;) {
-            while (r < size && (((data[r]) >= 'A' && (data[r]) <= 'Z') ||
-                                ((data[r]) >= 'a' && (data[r]) <= 'z') ||
-                                ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
-                                (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' ||
-                                (data[r]) == '.' || (data[r]) == '$' || (data[r]) == ',' ||
-                                (data[r]) == '*' || (data[r]) == ')' || (data[r]) == '[')) {
+            while (r < size &&
+                   (((data[r]) >= 'A' && (data[r]) <= 'Z') ||
+                    ((data[r]) >= 'a' && (data[r]) <= 'z') ||
+                    ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
+                    (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' ||
+                    (data[r]) == '$' || (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')' ||
+                    (data[r]) == '[' || (data[r]) == ';')) {
                 r++;
             }
             ke = r;

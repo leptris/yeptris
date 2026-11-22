@@ -8252,6 +8252,68 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r354-artifact.bin
     )
 
+    # the r360 semicolon round (the nightly's run 45056549705, main
+    # 336bbaeb; the 12-byte artifact
+    # crash-0d590a8d210c3fb74d70a683a3b16b6db10b3fb6 "...;: '<PS><TAB>'",
+    # 9-byte dual-bar floor ";: '<PS><TAB>'" — greedy single-byte ddmin
+    # under the dump-pair shape bar: the three dots die one at a time
+    # (key-equal throughout); the semicolon's deletion is the
+    # ALREADY-DOCUMENTED empty-key YEPTRIS-ONLY-ACCEPT split, the colon
+    # deletion loses the value colon, the space deletion dies into the
+    # glued face, the quote deletions are the unterminated-quote error,
+    # the per-byte PS deletions are YEPTRIS-ONLY-ACCEPT invalid-UTF-8
+    # split faces and the body-TAB deletion is the EQUAL
+    # no-adjacent-blank face; pre-patch DIFFER exit 77, post-patch
+    # carry exit 0, on BOTH shapes): the QUOTED-EXOTIC-TAB family's
+    # TWELFTH member and the key-form family's TENTH container — the
+    # SEMICOLON riding INSIDE plain key CONTENT (the r348 comma twin;
+    # the ';'-lead spelling itself was the r347 decline note's
+    # stable-red, now measured and carried). THE WIDENING: the ';'
+    # byte joins the plain-key charset, never needing a HEAD-GUARD —
+    # ';' is in NO engine's c-indicator set and is plain-FIRST on
+    # NEITHER engine (the r353 paren law's twin: a semicolon head is a
+    # legal plain head on BOTH engines, the '&'/'*' prop twins and the
+    # r354 '[' flow twin own their heads, the paren and the semicolon
+    # own none) — the artifact's key "...;" and the floor's key ";"
+    # dump BYTE-EQUAL across the engines, every DIFFER rides the body
+    # alone. Compositions ride: ";x", "x;x", ";;", ";.", ".;", "2;2",
+    # the r347 '$' composition ";$", the r352 '*' composition ".*;",
+    # the r353 ')' composition ");", the r354 '[' composition "A[;",
+    # the GLUED-COLON ";:x:" (key ";:x"), the GLUED-QUOTE ";':" (key
+    # ";'", the r332 law), the r346 COLON-HEAD ":;:" (key ":;"), the
+    # r341 separator-TAB ride ";:<TAB>'<PS><TAB>'", the CR x1 lead, and
+    # the LF + CRLF trailers. THE DECLINES THAT STAY OUT (re-measured):
+    # the interior-space key ("; x" — a stable-red), the mid-plain-quote
+    # key (";'x" — a stable-red), the '/'-led charset escape ("/:"
+    # — DIFFER with the family shape pre- AND post-patch — the NEXT
+    # treadmill round's byte, carried documented-red like the r354
+    # ']'), the ']' mid-key face ("A]." — the r354 note), the comma-LEAD
+    # composition (",;" — the BOTH-ERROR wall, never a differ), the
+    # tame-body face (";: 'a<TAB>b'" — EQUAL, no claim), and the
+    # empty-key split (": '<PS><TAB>'" — the YEPTRIS-ONLY-ACCEPT
+    # banner, unchanged). THE A/B: libfyaml 04e0b58 re-measured on THIS
+    # composition's OWN floor (the r325 lesson): its --yaml-1.2 pass
+    # sides with yeptris BYTE-EXACT on the floor AND the artifact (it
+    # re-emits the semicolon key + the raw PS + the kept tab, "3b 3a 20
+    # 27 e2 80 a9 09 27 0a" on the floor) while its --yaml-1.1 pass
+    # ERRORS ("invalid tab used as indentation" — the documented third
+    # reading) — comparator carry only, no engine change (the r318/
+    # r330/r331/r332/r340/r341/r346/r347/r348/r352/r353/r354
+    # precedent). Anything the gate cannot pin declines (the escalation
+    # clause stays live). Both the floor and the full artifact ride the
+    # corpus (the r321 seed law) and join the nightly
+    # comparator-snapshot exclusion.
+    add_test(
+        NAME fuzz-diff-r360-semicolon-plain-quoted-exotic-tab
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r360.bin
+    )
+    add_test(
+        NAME fuzz-diff-r360-semicolon-plain-quoted-exotic-tab-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r360-artifact.bin
+    )
+
     # the r355 anchor-blank-alias round (the nightly's run 45016455586,
     # main b3b8b07f; the 18-byte artifact
     # crash-87fa092da7c94269ad4500d91d33fc49bb928276 "{?*L:<LF>,&m:=ALI *(}",
