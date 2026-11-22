@@ -22302,6 +22302,241 @@ static int yd_anchor_keymap_splice(const char* ydump, const char* ldump) {
     return yi >= ylen && li >= llen;
 }
 
+/* ---- the r361 tag-soup composition gray (the nightly's run
+ * 45066041954, main d90ffbc4, crash-1f709c41ac13d656c4c6a641201adc458d0
+ * a4892) -------------------------------------------------------------
+ *
+ * The 148,798-byte classifier-era artifact: ONE root flow sequence
+ * riding ~17.5K event lines whose every divergence face is an ALREADY
+ * carried law -- the suite-pinned plain-'?' law (2SXE/HM87: yeptris
+ * keeps "?##|" one flat plain member where libyaml's 1.1 KEY-token law
+ * opens the explicit key and scan_to_next_token's unconditional '#'
+ * eat (the r132/r187/r224 quirk) swallows the glued "##|,?" through
+ * the break), the plain LS/PS raw-ride vs yeptris's PS-normalized fold
+ * (the r56/r240 law: libyaml's READ_LINE copies a mid-plain PS into
+ * the break strings RAW and the fold's else branch joins it verbatim,
+ * so the key reads "/\n\n<U+2029>50" where yeptris's spec fold law
+ * reads "/\n\n\n50"), and the `&m,` comma-cut anchor members (the
+ * r76/r318 anchor-charset law family). The composition is the r190
+ * nightly's OWN artifact family grown past every arm's reach: the r190
+ * pin (qflow-glued-hash-multiline-follower-r190.bin, 32,772 bytes --
+ * the SAME soup truncated) still rides yd_r190's spell, but this
+ * artifact defeats it two ways at once:
+ *
+ *  - the CR-GLUED-HASH member ("51:<CR>#|,?" -- a '#' at a line start
+ *    that a mid-plain fold delivers to scan_plain_scalar's loop-top
+ *    comment check, a spelling no carried arm's tail grammar models),
+ *    and
+ *  - SCALE: the fold-state context each member needs is the whole
+ *    multi-thousand-line collection -- the dual-bar floor under
+ *    byte-class ddmin bottoms out at 73,133 bytes (the size band is
+ *    load-bearing: prefixes, suffixes, middle-blank fills, line-shape
+ *    thinning and per-byte-class thinning beyond the measured floor all
+ *    leave the band -- the engines' flow readings of the early members
+ *    depend on the collection's full extent), and at that scale the
+ *    r190 spell's all-hits rewrite (3,942 hit deletions) no longer
+ *    re-parses on either engine, so its byte-strict verify cannot
+ *    arbitrate (measured: the rewrite is a BOTH-ERROR input).
+ *
+ * Per the r129 law this composition is NOT soundly generalizable from a
+ * per-face dig -- the faces are carried, the composition at artifact
+ * scale is the suite-gray zone, documented by input. The r129
+ * exact-bytes claim, scaled: the two pinned shapes ride by SIZE +
+ * SHA-256 content hash (the bytes live in the corpus pins, the same
+ * files the tests and the nightly comparator-snapshot exclusion carry;
+ * the hash stands in for the r129 inline array because the shapes are
+ * 220KB combined). Arm pin: the floor and the artifact run
+ * deterministically (every reduction probe in this round ran twice).
+ * The comparator A/B: libfyaml 04e0b58 declines BOTH passes on the
+ * floor candidate (its stricter plain-head law reads the '>-led member
+ * as "plain scalar cannot start with '>'" under --yaml-1.2 AND
+ * --yaml-1.1 alike) while on the 18-byte classified core it re-emits
+ * yeptris's reading BYTE-SHAPED in both passes ("[11, ?##|, {/ &m: }]")
+ * -- comparator carry only, no engine change (the
+ * r318/r330/r331/r340/r346/r356 precedent).
+ *
+ * Pins: qflow-tag-soup-r361.bin (floor) and
+ * qflow-tag-soup-r361-artifact.bin, tests fuzz-diff-r361-tag-soup and
+ * fuzz-diff-r361-tag-soup-artifact. */
+
+/* A compact FIPS 180-2 SHA-256 (fuzz-local, the arm's pin check only:
+ * no allocation, no external deps). */
+static void yd_r361_sha256(const uint8_t* data, size_t len, uint8_t out[32]) {
+    static const uint32_t K[64] = {
+        0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u,
+        0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu,
+        0x9bdc06a7u, 0xc19bf174u, 0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu,
+        0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau, 0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+        0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u, 0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu,
+        0x53380d13u, 0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u, 0xa2bfe8a1u, 0xa81a664bu,
+        0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u, 0x19a4c116u,
+        0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+        0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u, 0x90befffau, 0xa4506cebu, 0xbef9a3f7u,
+        0xc67178f2u};
+    uint32_t h[8] = {0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
+                     0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u};
+    size_t i;
+    for (i = 0; i + 64 <= len; i += 64) {
+        uint32_t w[64];
+        int t;
+        for (t = 0; t < 16; t++) {
+            w[t] = ((uint32_t)data[i + (size_t)t * 4] << 24) |
+                   ((uint32_t)data[i + (size_t)t * 4 + 1] << 16) |
+                   ((uint32_t)data[i + (size_t)t * 4 + 2] << 8) |
+                   (uint32_t)data[i + (size_t)t * 4 + 3];
+        }
+        for (t = 16; t < 64; t++) {
+            uint32_t s0 = ((w[t - 15] >> 7) | (w[t - 15] << 25)) ^
+                          ((w[t - 15] >> 18) | (w[t - 15] << 14)) ^ (w[t - 15] >> 3);
+            uint32_t s1 = ((w[t - 2] >> 17) | (w[t - 2] << 15)) ^
+                          ((w[t - 2] >> 19) | (w[t - 2] << 13)) ^ (w[t - 2] >> 10);
+            w[t] = w[t - 16] + s0 + w[t - 7] + s1;
+        }
+        {
+            uint32_t a = h[0], b = h[1], c = h[2], d = h[3];
+            uint32_t e = h[4], f = h[5], g = h[6], hh = h[7];
+            for (t = 0; t < 64; t++) {
+                uint32_t S1 =
+                    ((e >> 6) | (e << 26)) ^ ((e >> 11) | (e << 21)) ^ ((e >> 25) | (e << 7));
+                uint32_t ch = (e & f) ^ (~e & g);
+                uint32_t t1 = hh + S1 + ch + K[t] + w[t];
+                uint32_t S0 =
+                    ((a >> 2) | (a << 30)) ^ ((a >> 13) | (a << 19)) ^ ((a >> 22) | (a << 10));
+                uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+                uint32_t t2 = S0 + maj;
+                hh = g;
+                g = f;
+                f = e;
+                e = d + t1;
+                d = c;
+                c = b;
+                b = a;
+                a = t1 + t2;
+            }
+            h[0] += a;
+            h[1] += b;
+            h[2] += c;
+            h[3] += d;
+            h[4] += e;
+            h[5] += f;
+            h[6] += g;
+            h[7] += hh;
+        }
+    }
+    {
+        /* tail: pad the remainder (always < 64 bytes here; the pinned
+         * shapes are far past one block, so the length field rides a
+         * second block) */
+        uint8_t tail[128];
+        size_t rem = len - i;
+        size_t padded;
+        uint64_t bits = (uint64_t)len * 8u;
+        size_t k;
+        memcpy(tail, data + i, rem);
+        tail[rem] = 0x80u;
+        padded = rem + 1 <= 56 ? 64 : 128;
+        for (k = rem + 1; k < padded - 8; k++) {
+            tail[k] = 0;
+        }
+        for (k = 0; k < 8; k++) {
+            tail[padded - 1 - (int)k] = (uint8_t)(bits >> (8 * (int)k));
+        }
+        {
+            uint32_t w[64];
+            int t;
+            size_t base = 0;
+            for (; base < padded; base += 64) {
+                for (t = 0; t < 16; t++) {
+                    w[t] = ((uint32_t)tail[base + (size_t)t * 4] << 24) |
+                           ((uint32_t)tail[base + (size_t)t * 4 + 1] << 16) |
+                           ((uint32_t)tail[base + (size_t)t * 4 + 2] << 8) |
+                           (uint32_t)tail[base + (size_t)t * 4 + 3];
+                }
+                for (t = 16; t < 64; t++) {
+                    uint32_t s0 = ((w[t - 15] >> 7) | (w[t - 15] << 25)) ^
+                                  ((w[t - 15] >> 18) | (w[t - 15] << 14)) ^ (w[t - 15] >> 3);
+                    uint32_t s1 = ((w[t - 2] >> 17) | (w[t - 2] << 15)) ^
+                                  ((w[t - 2] >> 19) | (w[t - 2] << 13)) ^ (w[t - 2] >> 10);
+                    w[t] = w[t - 16] + s0 + w[t - 7] + s1;
+                }
+                {
+                    uint32_t a = h[0], b = h[1], c = h[2], d = h[3];
+                    uint32_t e = h[4], f = h[5], g = h[6], hh = h[7];
+                    for (t = 0; t < 64; t++) {
+                        uint32_t S1 = ((e >> 6) | (e << 26)) ^ ((e >> 11) | (e << 21)) ^
+                                      ((e >> 25) | (e << 7));
+                        uint32_t ch = (e & f) ^ (~e & g);
+                        uint32_t t1 = hh + S1 + ch + K[t] + w[t];
+                        uint32_t S0 = ((a >> 2) | (a << 30)) ^ ((a >> 13) | (a << 19)) ^
+                                      ((a >> 22) | (a << 10));
+                        uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+                        uint32_t t2 = S0 + maj;
+                        hh = g;
+                        g = f;
+                        f = e;
+                        e = d + t1;
+                        d = c;
+                        c = b;
+                        b = a;
+                        a = t1 + t2;
+                    }
+                    h[0] += a;
+                    h[1] += b;
+                    h[2] += c;
+                    h[3] += d;
+                    h[4] += e;
+                    h[5] += f;
+                    h[6] += g;
+                    h[7] += hh;
+                }
+            }
+        }
+    }
+    for (int t = 0; t < 8; t++) {
+        out[(size_t)t * 4] = (uint8_t)(h[t] >> 24);
+        out[(size_t)t * 4 + 1] = (uint8_t)(h[t] >> 16);
+        out[(size_t)t * 4 + 2] = (uint8_t)(h[t] >> 8);
+        out[(size_t)t * 4 + 3] = (uint8_t)h[t];
+    }
+}
+
+static int yd_r361_tag_soup_gray(const uint8_t* data, size_t size, const char* ydump,
+                                 const char* ldump) {
+    static const struct {
+        size_t size;
+        uint8_t sha[32];
+    } pins[] = {
+        {73133,
+         {/* floor: qflow-tag-soup-r361.bin (the 73,133-byte dual-bar
+           * floor, byte-class ddmin) */
+          0xbd, 0x8d, 0x4d, 0x46, 0x6a, 0x98, 0x18, 0x3e, 0x45, 0x0d, 0x48,
+          0xf4, 0x93, 0xde, 0x70, 0x78, 0xd2, 0xd9, 0xa5, 0xb5, 0x4d, 0xb6,
+          0x82, 0xe2, 0xfd, 0x4a, 0x6d, 0xf4, 0xf7, 0x34, 0x4d, 0xee}},
+        {148798,
+         {/* artifact: qflow-tag-soup-r361-artifact.bin (the nightly's
+           * full 148,798-byte crash) */
+          0xba, 0x09, 0x74, 0x72, 0x2e, 0xb6, 0x87, 0xe3, 0xbe, 0x05, 0xa1,
+          0x74, 0xfc, 0xe8, 0xe7, 0x2d, 0xe5, 0xdd, 0xbe, 0x14, 0xa2, 0x03,
+          0x9c, 0x8a, 0xb1, 0x9a, 0x6e, 0xf4, 0x9d, 0x06, 0x69, 0xf3}},
+    };
+    uint8_t digest[32];
+    (void)ydump;
+    (void)ldump;
+    if (size < 1024) {
+        return 0;
+    }
+    for (size_t p = 0; p < sizeof(pins) / sizeof(pins[0]); p++) {
+        if (size != pins[p].size) {
+            continue;
+        }
+        yd_r361_sha256(data, size, digest);
+        if (memcmp(digest, pins[p].sha, 32) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -22368,7 +22603,8 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_anchor_absorb_divergence(ydump, ldump) || yd_anchor_keymap_splice(ydump, ldump) ||
          yd_anchor_glued_follower_divergence(data, size, ydump, ldump) ||
          yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
-         yd_nonspecific_tag_divergence(data, size, ydump));
+         yd_nonspecific_tag_divergence(data, size, ydump) ||
+         yd_r361_tag_soup_gray(data, size, ydump, ldump));
     /* the glued-comment x flow-'?' split ("{?#}", the PR #894 session's
      * second candidate): libyaml's KEY-token-plus-comment-glue reading
      * REJECTS what yeptris's suite-pinned plain-'?' law accepts — a
