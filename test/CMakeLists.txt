@@ -8090,6 +8090,66 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r353-artifact.bin
     )
 
+    # the r354 alnum-with-bracket round (the nightly's run 45010144045,
+    # main e90b43fe; the 11-byte artifact
+    # crash-b472e1d7865a62ebd2139ac37ef0721aa13361c4 "A[.: '<PS><TAB>'",
+    # 10-byte dual-bar floor "A[: '<PS><TAB>'" — greedy single-byte ddmin
+    # under the dump-pair shape bar: only the dot dies (key "A[" byte-
+    # equal throughout); the bracket's deletion is the ALREADY-CLASSIFIED
+    # r350 alnum territory, the A's deletion is the bracket-LEAD wall
+    # (exit 0, no divergence), the colon deletion loses the value colon,
+    # the space deletion dies into the glued face, the quote deletions
+    # are the unterminated-quote error, the per-byte PS deletions are
+    # YEPTRIS-ONLY-ACCEPT invalid-UTF-8 split faces and the body-TAB
+    # deletion is the EQUAL no-adjacent-blank face; pre-patch DIFFER
+    # exit 77, post-patch carry exit 0, on BOTH shapes): the
+    # QUOTED-EXOTIC-TAB family's ELEVENTH member and the key-form
+    # family's NINTH container — the FLOW-SEQ-OPEN indicator riding
+    # INSIDE an ALNUM-LED plain key (the r353 paren-lead was a CLOSING
+    # char at the line START; this is an OPENING bracket mid-key). THE
+    # WIDENING: the '[' byte joins the plain-key charset, never the
+    # HEAD — the new head-guard declines the bracket-led key line (the
+    # r352 star twin): '[' at the first byte opens a FLOW COLLECTION, a
+    # derivation this arm does not own — the unterminated faces
+    # "[: '<PS><TAB>'" and "[A: '<PS><TAB>'" are the BOTH-ERROR wall
+    # (never a differ) and the CLOSED flow face "[A: '<PS><TAB>']"
+    # reads EQUAL (the flow-context quoted body does not diverge); the
+    # dual bar denies every bracket-lead shape, so the bracket rides
+    # mid-plain CONTENT only (the 1.2 ns-plain-char law excludes the
+    # flow indicators only in flow context — key byte-equal on both
+    # engines, every DIFFER rides the body alone). Compositions ride:
+    # "A[", "x[x", "2[2", "A[A", "A[[", the GLUED-COLON "A[:x:" (key
+    # "A[:x"), the GLUED-QUOTE "A[':" (key "A['", the r332 law), the
+    # r346 COLON-HEAD ":[A:", the r341 separator-TAB ride
+    # "A[.:<TAB>'<PS><TAB>'", the CR x1 lead, and the LF trailer. THE
+    # DECLINES THAT STAY OUT (re-measured): the bracket-LEAD wall
+    # faces, the interior-space key ("A[ x" — a stable-red), the ']'
+    # mid-key face ("A]." — key "A].", DIFFER body-only, stays OUT of
+    # the charset — the closing bracket is the NEXT treadmill round's
+    # byte, carried documented-red), and the tame-body face
+    # ("A[.: 'a<TAB>b'" — EQUAL, no claim). THE A/B: libfyaml 04e0b58
+    # re-measured on THIS composition's OWN floor (the r325 lesson):
+    # its --yaml-1.2 pass sides with yeptris BYTE-EXACT on the floor
+    # AND the artifact (it re-emits the bracket key + the raw PS + the
+    # kept tab, "41 5b 3a 20 27 e2 80 a9 09 27 0a" on the floor) while
+    # its --yaml-1.1 pass ERRORS ("invalid tab used as indentation" —
+    # the documented third reading) — comparator carry only, no engine
+    # change (the r318/r330/r331/r332/r340/r341/r346/r347/r348/r352/
+    # r353 precedent). Anything the gate cannot pin declines (the
+    # escalation clause stays live). Both the floor and the full
+    # artifact ride the corpus (the r321 seed law) and join the nightly
+    # comparator-snapshot exclusion.
+    add_test(
+        NAME fuzz-diff-r354-alnum-bracket-plain-quoted-exotic-tab
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r354.bin
+    )
+    add_test(
+        NAME fuzz-diff-r354-alnum-bracket-plain-quoted-exotic-tab-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r354-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor

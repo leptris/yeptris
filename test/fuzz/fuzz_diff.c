@@ -11996,7 +11996,71 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * comparator carry only, no engine change (the r318/r330/r331/
          * r332/r340/r341/r346/r347/r348/r352 precedent). Anything the
          * gate cannot pin declines (the escalation clause stays
-         * live). */
+         * live).
+         *
+         * The r354 widening (the nightly's round 354, run 45010144045,
+         * main e90b43fe): the '[' byte joins the plain charset, and the
+         * artifact is the 11-byte `A[.: '<PS><TAB>'` — the QUOTED-PS/TAB
+         * body (the family law, byte-identical) riding an ALNUM-LED
+         * plain key carrying the FLOW-SEQ-OPEN indicator mid-key — the
+         * quoted-exotic-tab family's ELEVENTH member and the key-form
+         * family's NINTH container (the r353 paren-lead was a CLOSING
+         * char at the line START; here an OPENING bracket rides INSIDE
+         * an alnum-led run, one InsertByte from the r350 alnum+dots
+         * spine). '[' is a plain-FIRST indicator on BOTH engines (the
+         * flow-seq entry), but only at the token HEAD: a bracket GLUED
+         * INTO a block plain run is plain content on both engines (the
+         * 1.2 ns-plain-char law excludes the flow indicators only in
+         * flow context), so the mid-plain bracket faces are key-equal
+         * and every DIFFER rides the body alone. THE HEAD-GUARD (the
+         * r352 star twin, re-measured): a '[' at the key line's first
+         * byte opens a FLOW COLLECTION — a derivation this arm does not
+         * own: the unterminated faces `[: '<PS><TAB>'` and
+         * `[A: '<PS><TAB>'` are the BOTH-ERROR wall (never a differ)
+         * and the CLOSED flow face `[A: '<PS><TAB>']` reads EQUAL (the
+         * flow-context quoted body does not diverge) — the dual bar
+         * denies every bracket-lead shape, so the bracket rides
+         * mid-plain CONTENT only. Head faces probed byte-equal on BOTH
+         * engines, all DIFFER only in the body: `A[.`, `A[`, `x[x`,
+         * `2[2`, `A[A`, `A[[`, the GLUED-COLON composition `A[:x:` (key
+         * `A[:x`), the GLUED-QUOTE spelling `A[':` (key `A['`, the r332
+         * law), the r346 COLON-HEAD composition `:[A:`, the r341
+         * separator-TAB ride `A[.:<TAB>'<PS><TAB>'`, the CR x1 lead,
+         * and the LF trailer. THE DECLINES THAT STAY OUT (re-measured):
+         * the bracket-LEAD wall faces, the interior-space key
+         * (`A[ x: '...'` — DIFFER with the family shape pre- AND
+         * post-patch, a stable-red), the ']' mid-key face
+         * (`A].: '...'` — key `A].`, DIFFER body-only, stays OUT of the
+         * charset — the closing bracket is the NEXT treadmill round's
+         * byte, carried documented-red), and the tame-body face
+         * (`A[.: 'a<TAB>b'` — EQUAL, no claim). Dual-bar floor 10B
+         * `A[: '<PS><TAB>'` over the quoted PS/TAB body (greedy
+         * single-byte ddmin under the dump-pair shape bar: the dot dies
+         * into the bracket-bearing territory, key `A[` byte-equal
+         * throughout; the BRACKET cannot die — its deletion
+         * `A.: '<PS><TAB>'` is the ALREADY-CLASSIFIED r350 alnum
+         * territory, exit 0 pre-patch (from the artifact the `A.`-key
+         * deletion likewise); the A's deletion `[.: '...'` is the
+         * bracket-LEAD wall (exit 0, no divergence); the colon
+         * deletion `A[. '...'` loses the value colon (exit 0, both
+         * reject); the space dies into the glued face `A[.:'...'`
+         * (exit 0 pre-patch, no value colon ever fires); the open-quote
+         * and close-quote deletions are the unterminated-quote error;
+         * the per-byte PS deletions are YEPTRIS-ONLY-ACCEPT
+         * invalid-UTF-8 split faces; the body TAB dies into the EQUAL
+         * `A[: '<PS>'` face (exit 0 — no exotic-adjacent blank, no
+         * claim); pre-patch DIFFER abort + NOT classified, post-patch
+         * carry exit 0, both shapes). THE A/B: libfyaml 04e0b58
+         * re-measured on THIS composition's OWN floor (the r325
+         * lesson): its --yaml-1.2 pass sides with yeptris BYTE-EXACT on
+         * the floor AND the artifact (it re-emits the bracket key +
+         * the raw PS + the kept tab, "41 5b 3a 20 27 e2 80 a9 09 27 0a"
+         * on the floor, "415b 2e3a 2027 e280a90927 0a" on the artifact)
+         * while its --yaml-1.1 pass ERRORS ("invalid tab used as
+         * indentation" — the documented third reading) — comparator
+         * carry only, no engine change (the r318/r330/r331/r332/r340/
+         * r341/r346/r347/r348/r352/r353 precedent). Anything the gate
+         * cannot pin declines (the escalation clause stays live). */
         if (prefix_comment) {
             return 0; /* the r340 comment-led prefix stays floor-form
                        * only; the r346 lead law admits break lines
@@ -12031,14 +12095,21 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
             }
             ko = k;
         }
-        if (ko < size && (data[ko] == '&' || data[ko] == '*')) {
+        if (ko < size && (data[ko] == '&' || data[ko] == '*' || data[ko] == '[')) {
             return 0; /* the '&' head (the r238 arm owns every
-                       * anchor-entry shape) and the r352 '*' head twin:
-                       * the empty-name star face `*: '...'` is the
+                       * anchor-entry shape), the r352 '*' head twin
+                       * (the empty-name star face `*: '...'` is the
                        * BOTH-ERROR wall (never a differ) and the
                        * named-alias face `*L: '...'` rides `=ALI *L`
-                       * keys — a derivation this arm does not own; the
-                       * star rides mid-plain CONTENT only */
+                       * keys — a derivation this arm does not own), and
+                       * the r354 '[' head: a bracket at the key line's
+                       * first byte opens a FLOW COLLECTION — the
+                       * unterminated faces are the BOTH-ERROR wall and
+                       * the closed flow face reads EQUAL (re-measured
+                       * `[: '<PS><TAB>'`, `[A: '<PS><TAB>'`,
+                       * `[A: '<PS><TAB>']` — never a differ, the dual
+                       * bar denies); the bracket rides mid-plain
+                       * CONTENT only */
         }
         size_t r = ko;
         if (r < size && data[r] == ':' && r + 1 < size && data[r + 1] != ' ' &&
@@ -12051,7 +12122,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                (((data[r]) >= 'A' && (data[r]) <= 'Z') || ((data[r]) >= 'a' && (data[r]) <= 'z') ||
                 ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
                 (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' || (data[r]) == '$' ||
-                (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')')) {
+                (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')' || (data[r]) == '[')) {
             r++;
         }
         /* the r332 battery's GLUED spellings (each dump-verified
@@ -12071,12 +12142,12 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * and the value colon separates on BOTH engines (probed
          * `..\t: '<PS><TAB>'` — the key ends at the tab, byte-equal) */
         for (;;) {
-            while (r < size &&
-                   (((data[r]) >= 'A' && (data[r]) <= 'Z') ||
-                    ((data[r]) >= 'a' && (data[r]) <= 'z') ||
-                    ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
-                    (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' ||
-                    (data[r]) == '$' || (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')')) {
+            while (r < size && (((data[r]) >= 'A' && (data[r]) <= 'Z') ||
+                                ((data[r]) >= 'a' && (data[r]) <= 'z') ||
+                                ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
+                                (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' ||
+                                (data[r]) == '.' || (data[r]) == '$' || (data[r]) == ',' ||
+                                (data[r]) == '*' || (data[r]) == ')' || (data[r]) == '[')) {
                 r++;
             }
             ke = r;
