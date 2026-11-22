@@ -16,29 +16,36 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.76 — live across all five runtimes** (C +
-ruby `0.6.76.0` + py `0.6.76.0` + rs/ts `0.6.76`, registry-checked
-2026-11-22). v0.6.76 ships the **character-column emitter
-(#1490, PR #1493)**: the fold column rode bytes while libyaml/Psych
-count characters, so multi-byte text folded early — the column now
-rides code points with the purity fact as a parse product (ASCII
-documents keep the byte arithmetic verbatim; mixed documents pay
-per-span SWAR scans), all emitter lanes at-or-above the pre-change
-levels, the multibyte corpus byte-exact vs libyaml, round-trips
-byte-stable. Over the r314-r350 comparator roll: ~37 pinned nightly
-escapes across the folded-header family (the tail grammar, the
-fold-dropped realign, the kept-NEL/kept-triple polarity split, the
-glued spacing, the verbatim-tag CR-fold, the direct-hash entry,
-the comment-eaten tail, the normalized-blank), the quoted-exotic-TAB
-family's six key-form containers, the BOM-led prop-split ×
-anchor-charset composition, the doubled-colon anchor cut, the
-alias-member break-doubling, the double doc-marker lead (law l2),
-and the tagged-document tail — plus the diff leg's timeout-budget
-raise (5→30s). Zero YAML engine divergence outstanding beyond
-#1411's deliberate fix and #1468's same-day repair (released in
-v0.6.75). The previous cut: v0.6.75 (the CBOR DOM strtab
-heap-use-after-free repair, released same-day) over the contract
-cut lineage.
+**Latest release: v0.6.77 — live across all five runtimes** (C +
+ruby `0.6.77.0` + py `0.6.77.0` + rs/ts `0.6.77`, registry-checked
+2026-11-23). v0.6.77 ships the **first engine fix since #1468** —
+the roundtrip guarantee's empty-inline anchor twin (PR #1584): an
+anchor whose name ends at `:` on an EMPTY plain value spelled
+line-final, the re-parse's riding-colon follower scan crossed the
+break into the props-led follower line, and the un-consumed colon
+re-lexed as a VALUE indicator — yeptris rejected its own emitter's
+output. The emitter now spells the explicit-empty quoted form
+(`k: &n: ''`) whenever the anchor name's last byte is `:` — the
+quote byte is a plain-led follower so the riding law keeps the name
+whole, the sticky quoted style re-spells byte-identically on round 2,
+and the emit lanes bench no-regression. Over the r351-r359 comparator
+roll: eight more pinned nightly escapes — the empty-flow-key
+composition joining the glued-hash family; the dot-star, paren-lead
+and alnum-with-bracket plain keys joining the quoted-exotic-TAB
+family (the bracket with its flow-wall head-guard); the
+anchor-glued-colon alias tail and the alias glued-colon key joining
+the flow-qsoup families via the new `family_classify` MAP-key sibling
+branch; the embedded second anchor joining the
+root-anchor-quoted-follow family; the UTF-16BE kept mid-scalar U+FEFF
+joining the r243 midstream-BOM family's eaten-vs-kept split. Zero
+YAML engine divergence outstanding beyond #1411's deliberate fix,
+#1468's same-day repair (released in v0.6.75) and this cut's #1584.
+The previous cut: v0.6.76 — the character-column emitter (#1490,
+PR #1493): the fold column rides code points with the purity fact as
+a parse product (ASCII keeps the byte arithmetic verbatim; mixed
+pays per-span SWAR scans), all emitter lanes at-or-above the
+pre-change levels, the multibyte corpus byte-exact vs libyaml, over
+the r314-r350 comparator roll (~37 pinned nightly escapes).
 The cut before it closes the six long-horizon competition fronts
 with measured verdicts (#474/#739/#742/#331/#352 + the binding faces
 #862/#857, every attempt ledgered): anchor-heavy — the last DOM
@@ -82,10 +89,11 @@ Corpora are fetched pinned by `scripts/fetch-corpora.sh`. Unit +
 port + flow suites run beside them; TSAN enforces the one-document-
 per-thread contract.
 
-The fuzz nightly is the safety campaign: 270+ rounds so far, every
-catch shipped the round it was confirmed — the CHANGELOG carries
-rounds r116–r273: 218 fuzz artifacts, eighteen of them genuine
-engine fixes and ZERO since r248 (#1281) — the rest comparator-side
+The fuzz nightly is the safety campaign: 360+ rounds so far, every
+catch drilled the same day — genuine engine fixes are rare and loudly
+reported (the latest: r358's roundtrip-guarantee repair, #1584,
+released in v0.6.77; before it #1468's CBOR strtab use-after-free in
+v0.6.75 and #1411 in v0.6.71) — the rest comparator-side
 carries where libyaml diverges from the suite (the suite-pinned law
 wins, the carry documents the exact shape; since the r250–r254
 treadmill fix the comparator leg fuzzes its own corpus snapshot).
