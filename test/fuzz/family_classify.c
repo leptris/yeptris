@@ -1766,13 +1766,77 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
                 return y_fail(c);
             }
             size_t te = as + apl;
-            if (te >= n || !fc_flow_ind(p[te])) {
+            if (te < n && fc_flow_ind(p[te])) {
+                *term_at = te;
+                fo_str(&c->out, "=VAL : &");
+                fo_bytes(&c->out, p + as, apl);
+                fo_str(&c->out, " \n");
+                fo_str(&c->out, "=VAL : \n"); /* the parser's inserted empty */
+                return 1;
+            }
+            /* the r355 widening (the nightly's run 45016455586, main
+             * b3b8b07f): the engine cut ends at a BLANK/BREAK RUN and an
+             * ALIAS fires on the anchored node — the artifact's `&m:=ALI
+             * *(}` member. The engine's prop charset keeps the glued ':'
+             * and the tail run up to the blank (`m:=ALI` — the r318
+             * suite-pinned cut, 2SXE/W5VH); the blank closes it, and the
+             * next token decides the node: a `*` fires the engine's
+             * alias walk, whose name cut rides to the member terminator
+             * (`(` rides the alias charset — the r342/r353 paren law's
+             * charset neighbor; probed `{*(: 1}` -> `=ALI *(`). The
+             * anchor prop does NOT render on the alias event: the
+             * member derives as the bare `=ALI *<name>` plus the
+             * parser's inserted empty (`=VAL : `) at the closer.
+             * libyaml's walk derives its own reading independently (the
+             * IS_ALPHA cut at `m`, the glued ':' re-lexed as the VALUE
+             * token, the tail as one flat plain — mid-plain `*(` is
+             * content), and the entry's dual byte-equality is the
+             * firewall. Probes (byte-exact both sides): `{&m:=ALI *(}`,
+             * `{&m:I *(}`, `{&m:ALI *(}` — all DIFFER with this shape
+             * (the artifact's own floor `{?*L,&m:=ALI *(}` and role
+             * floor `{?*L,&m:I *(}` ride it after the glued-? rider
+             * member); the ALIAS-START twin `{&m: *x}` DIFFERs with the
+             * same y-side (the libyaml value is an ALIAS event there,
+             * its valid IS_ALPHA name — the l-walk derives it and the
+             * firewall keeps the claim honest). The `(`-name
+             * star-first twin `{&m: *(}` is libyaml's scan_anchor ERROR
+             * (a split, the ledger's territory — no claim here). Gates:
+             * the run is blank/break only (a `#` inside it is the
+             * engine's comment condition — untested, declined), the
+             * node is the alias marker EXACTLY (a plain-leading tail
+             * keeps the alias INSIDE the plain — probed `{a:I *(}` /
+             * `{a:*(}` EQUAL, and the anchored-plain ride
+             * `{&m:  I *(}` / `{&m:\nI *(}` classifies through the
+             * plain arms), the name cut is non-zero and ends AT a flow
+             * indicator (the member terminator), and the divergence is
+             * real (apl > al). Comparator carry only, no engine change:
+             * libfyaml 04e0b58 errors the floor and the artifact
+             * outright ("unexpected alias" at the star, both --yaml-1.2
+             * and --yaml-1.1 passes) — no third vote, the comparators
+             * split along the libyaml-compat-bar line exactly as the
+             * r335/r317 precedent did, and the underlying charset laws
+             * are suite-pinned (2SXE/W5VH; libyaml is behind the suite,
+             * the r311 law). */
+            if (te >= n || (!fc_blank(p[te]) && fc_break_len(p, n, te) == 0)) {
                 return y_fail(c);
             }
-            *term_at = te;
-            fo_str(&c->out, "=VAL : &");
-            fo_bytes(&c->out, p + as, apl);
-            fo_str(&c->out, " \n");
+            size_t av = fc_skip_blank_break(p, n, te);
+            if (av >= n || p[av] != '*') {
+                return y_fail(c);
+            }
+            size_t ans = av + 1;
+            size_t anl = fc_alias_name(p, n, ans, n);
+            if (anl == 0) {
+                return y_fail(c);
+            }
+            size_t ate = ans + anl;
+            if (ate >= n || !fc_flow_ind(p[ate])) {
+                return y_fail(c);
+            }
+            *term_at = ate;
+            fo_str(&c->out, "=ALI *");
+            fo_bytes(&c->out, p + ans, anl);
+            fo_str(&c->out, "\n");
             fo_str(&c->out, "=VAL : \n"); /* the parser's inserted empty */
             return 1;
         }
