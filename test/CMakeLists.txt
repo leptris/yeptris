@@ -8150,6 +8150,66 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r354-artifact.bin
     )
 
+    # the r355 anchor-blank-alias round (the nightly's run 45016455586,
+    # main b3b8b07f; the 18-byte artifact
+    # crash-87fa092da7c94269ad4500d91d33fc49bb928276 "{?*L:<LF>,&m:=ALI *(}",
+    # 16-byte dual-bar floor "{?*L,&m:=ALI *(}" — greedy single-byte ddmin
+    # under the artifact dump-pair shape bar: only the key colon and the
+    # break die (both engines fill the missing value with the inserted
+    # empty, dumps byte-identical throughout); the 13-byte role-bar twin
+    # "{?*L,&m:I *(}" drops the "=AL" dump-vocabulary prefix (any
+    # non-empty plain tail keeps the face role); pre-patch DIFFER exit 77
+    # + abort, post-patch carry exit 0, on ALL THREE shapes): the
+    # FLOW-SOUP family's anchor-charset arm grown past a BLANK — the r318
+    # key-map artifact "{?*L:<LF>,&m:(}" (pinned) with the dump-vocabulary
+    # bytes "=ALI " inserted before the trailing "(": one InsertByte from
+    # a pinned seed, the per-round arm-extension treadmill this carry
+    # exists to stop. THE WIDENING (family_classify.c, the r318 MAP-key
+    # arm's sibling branch): the engine's prop cut ends at the
+    # blank/break run (`m:=ALI` — the r318 suite-pinned charset keeps the
+    # glued ':'), and the next token decides the node: the `*` fires the
+    # engine's alias walk, whose name cut rides to the member terminator
+    # ("(" rides the alias charset — the r342/r353 paren law's charset
+    # neighbor, probed "{*(: 1}" -> "=ALI *("); the anchor prop does NOT
+    # render on the alias event, so the member derives as the bare
+    # "=ALI *<name>" plus the parser's inserted empty, while libyaml's
+    # walk derives its own reading independently (the IS_ALPHA cut at
+    # "m", the glued ':' re-lexed as the VALUE token, the tail as ONE
+    # flat plain — mid-plain "*(" is content) and the entry's dual
+    # byte-equality is the firewall. Probes byte-exact both sides:
+    # "{&m:=ALI *(}", "{&m:I *(}", "{&m:ALI *(}" (all DIFFER with this
+    # shape), the ALIAS-START twin "{&m: *x}" (the same y-side; libyaml's
+    # value is an ALIAS event there, its valid IS_ALPHA name), and the
+    # plain-leading twins that keep the alias INSIDE the plain ("{a:I
+    # *(}", "{a:*(}" — EQUAL, the anchored-plain ride "{&m:  I *(}" /
+    # "{&m:<LF>I *(}" already classifies through the plain arms). THE
+    # DECLINES THAT STAY OUT (re-measured): the star-first "("-name face
+    # "{&m: *(}" is libyaml's scan_anchor ERROR (a split, the ledger's
+    # territory), the alias-with-value faces "{&m: *x: 1}" (libyaml
+    # errors after the alias value), and the SEQ slot "[&m: I *(]"
+    # (libyaml opens a nested MAP — a different derivation). THE A/B:
+    # libfyaml 04e0b58 errors the floor and the artifact outright
+    # ("unexpected alias" at the star, both --yaml-1.2 and --yaml-1.1
+    # passes) — no third vote, the comparators split along the
+    # libyaml-compat-bar line exactly as the r335/r317 precedent did,
+    # and the underlying charset laws are suite-pinned (2SXE/W5VH;
+    # libyaml is behind the suite, the r311 law) — comparator carry
+    # only, no engine change (the r318/r330/r331/r332/r340/r341/r346/
+    # r347/r348/r352/r353/r354 precedent). Anything the gate cannot pin
+    # declines (the escalation clause stays live). Both the floor and
+    # the full artifact ride the corpus (the r321 seed law) and join the
+    # nightly comparator-snapshot exclusion (the flow-qsoup* pattern).
+    add_test(
+        NAME fuzz-diff-r355-anchor-blank-alias-flow-qsoup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-anchor-blank-alias-r355.bin
+    )
+    add_test(
+        NAME fuzz-diff-r355-anchor-blank-alias-flow-qsoup-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-anchor-blank-alias-r355-artifact.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor
