@@ -103,7 +103,23 @@
  *      anchor member with a divergent name errors libyaml's parser —
  *      not a DIFFER shape); the libyaml walk derives the cut tail
  *      independently and the entry's dual byte-equality is the
- *      firewall;
+ *      firewall; the r357 widening (run 45033480083): the BARE-ALIAS
+ *      member at the flow MAP key slot takes the GLUED-':' VALUE
+ *      boundary when a flow indicator follows the colon (the artifact
+ *      `{*L:,&-:}`'s first member — the r342 cut law's own face at the
+ *      key slot: a flow indicator closes the engine's alias-name walk
+ *      BEFORE the colon, probed `*00:,`, and the artifact's own y-dump
+ *      `=ALI *L` + `=VAL : ` pins it; the glued ':' fires the VALUE
+ *      token on BOTH engines — libyaml's flow fetch_value on the
+ *      alias's saved simple key; probed `{*L:,}` EQUAL). The member
+ *      derives as the alias key + the parser's inserted empty at the
+ *      terminator; a content follower (`{*L:x}` — EQUAL, never a
+ *      DIFFER, no claim exists) and the SEQ slot stay out. libfyaml
+ *      04e0b58 reads the artifact's divergent member byte-exact
+ *      yeptris's way in BOTH passes (the key node's anchor is `<-:` —
+ *      the glued-colon prop ride, the r318 law; its alias-member third
+ *      reading documented), the charset law suite-pinned (2SXE/W5VH;
+ *      libyaml behind the suite, the r311 law);
  *  (d) the plain-`?` law (suite HM87/652Z + r199/r209/r264): a `?`-led
  *      member with a non-blank follower keeps the whole text as one
  *      plain key (colon rides inside when a non-blank follows), values

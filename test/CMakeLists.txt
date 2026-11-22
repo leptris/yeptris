@@ -8258,6 +8258,49 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-anchor-blank-alias-r355-artifact.bin
     )
 
+    # the r357 alias-glued-colon round (the nightly's run 45033480083,
+    # main 1e53f6b7; the 9-byte artifact
+    # crash-b328cda046b9de5a068400380805697a5e5c985b "{*L:,&-:}", which
+    # IS its own floor — greedy single-byte ddmin under the artifact
+    # dump-pair shape bar kept every byte: each drop-one either exits 0
+    # (classified/equal — the brace drop falls to block context, the
+    # comma drop merges the members, the '&' drop leaves a plain "-:"
+    # key) or dies the shape bar): the r318 MAP-key anchor-charset face
+    # ("&-:" — the engine's prop charset keeps the glued ':' in the
+    # name, "=VAL : &-: ", while libyaml's IS_ALPHA cut hands the ':' to
+    # the VALUE token, "=VAL : &- " + the inserted empty) composed with
+    # an ALIAS first member whose glued ':' is the VALUE boundary — the
+    # face the r318/r355 members never had. THE WIDENING
+    # (family_classify.c, the bare-alias member arm): the engine's
+    # alias-name walk closes BEFORE a colon that a flow indicator
+    # follows (the r342 probed cut, "*00:," — the artifact's own y-dump
+    # "=ALI *L" + "=VAL : " pins the same face at the flow MAP key
+    # slot), and the glued ':' fires the VALUE token on BOTH engines
+    # (libyaml's flow fetch_value on the alias's saved simple key;
+    # probed "{*L:,}" EQUAL pre-patch), so the member derives as the
+    # alias key + the parser's inserted empty and the walk reaches the
+    # divergent second member, which the r318 arm already derives. The
+    # entry's dual byte-equality is the firewall. THE DECLINES THAT STAY
+    # OUT (re-measured): the content follower "{*L:x}" and the SEQ slot
+    # "[*L:,]" are EQUAL — never a DIFFER, no claim exists; the break
+    # follower rides the r342 law INTO the alias name (the split-key
+    # family's territory). THE A/B: libfyaml 04e0b58 reads the
+    # artifact's divergent member byte-exact yeptris's way — the key
+    # node's anchor is "<-:" glued, empty value, BOTH --yaml-1.2 and
+    # --yaml-1.1 passes (the r318 seed "{&m:(}" corroborates, anchor
+    # "<m:(>"); its alias member is the documented third reading — the
+    # charset law suite-pinned (2SXE/W5VH; libyaml behind the suite,
+    # the r311 law) — comparator carry only, no engine change (the
+    # r318/r330/r331/r332/r340/r341/r346/r347/r348/r352/r353/r354/r355/
+    # r356 precedent). The artifact rides the corpus (the r321 seed
+    # law; floor == artifact) and joins the nightly comparator-snapshot
+    # exclusion (the flow-qsoup* pattern).
+    add_test(
+        NAME fuzz-diff-r357-alias-glued-colon-key-flow-qsoup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-alias-glued-colon-key-r357.bin
+    )
+
     # the r333 fold-header round (the nightly's run 44774423077, main
     # feb599b5; the 24-byte artifact crash-501717408099949c4c94a58f39949f40b6922ce3
     # "> #<PS> :\n  <NEL> :\n <PS><NEL>#0", 14-byte dual-bar floor
