@@ -11161,14 +11161,57 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
          * seed with the tail colon DOUBLED -- cuts to the residual
          * `:` which re-lexes as the key's plain content (every
          * interior ':' glues to the next non-blank byte: the run or
-         * the riding ':'); see the widened residual law below. */
+         * the riding ':'); see the widened residual law below.
+         *
+         * The r356 widening (run 45023668328, main 73f5b517): the
+         * riding-name set gains the '&', MID-name only. The nightly's
+         * artifact `&2?*&: '<PS><CR>'` (13 bytes) is ONE InsertByte
+         * from the r330 artifact pin (`&2?*: '<PS><CR>'` -- the
+         * dump-vocabulary byte grown before the riding ':'): yeptris
+         * glues the '&' INTO the anchor name (`=VAL : &2?*&: <PS>+<SP>`
+         * -- the prop charset walk; '&' is a 1.2 ns-anchor-char there),
+         * libyaml cuts at the FIRST out-of-charset byte (the '?') and
+         * the residual `?*&` re-lexes as the key's plain content, the
+         * '&' GLUING MID-PLAIN (a non-leading indicator is ns-plain
+         * content in 1.1 too -- the r331 battery's `3&2`/`o&2` faces
+         * and the r346 `:&:` face own the plain-key slot's copy of that
+         * law; never the head -- "the r238 arm owns every anchor-entry
+         * shape"). A/B (probed, DOM level): libfyaml 04e0b58 reads
+         * yeptris's structure BYTE-EXACT on BOTH modes -- root SCALAR,
+         * anchor `<2?*&:>` riding (its 1.2 value `e280a9` = the raw PS,
+         * the trailing CR folded away at the scalar end; its 1.1 value
+         * empty, the PS itself a 1.1 break) -- NEVER libyaml's map;
+         * comparator carry only, no engine change (the
+         * r318/r330/r331/r332/r336/r346 precedent). Dual-bar floor: the
+         * 12-byte `&2?&: '<PS><CR>'` (greedy single-byte ddmin: the '*'
+         * dies into the already-widened shape; the '&' deletion is the
+         * CLASSIFIED r330 seed, exit 0; the PS/CR deletions land on the
+         * classified single-break bodies, exit 0; the '?' deletion's
+         * '&'-LEAD residual re-lexes as the nested-anchor shape and
+         * dies the shape bar; every other deletion loses a face), so
+         * the residual walk below admits the '&' mid-run -- the lead
+         * stays the '?' (an '&' lead would re-lex as the key's own
+         * ANCHOR, the `&2&: ...` twin probed shape-dead), a ':' inside
+         * still re-lexes the VALUE boundary (the r336 pure-run law
+         * keeps its shape), a '*' lead still re-lexes as an ALIAS. */
         while (i < size &&
                (((data[i]) >= 'A' && (data[i]) <= 'Z') || ((data[i]) >= 'a' && (data[i]) <= 'z') ||
                 ((data[i]) >= '0' && (data[i]) <= '9') || (data[i]) == '_' || (data[i]) == '-' ||
-                (data[i]) == '.' || (data[i]) == '?' || (data[i]) == '*' || (data[i]) == ':')) {
+                (data[i]) == '.' || (data[i]) == '?' || (data[i]) == '*' || (data[i]) == ':' ||
+                (data[i]) == '&')) {
             i++;
         }
         if (i == name_o || data[i - 1] != ':') {
+            return 0;
+        }
+        if (data[name_o] == '&') {
+            /* the r356 widening (run 45023668328, main 73f5b517) joins
+             * the '&' to the riding-name set -- MID-name only (see the
+             * r356 widening note above): a name-head '&' (`&&...`) is
+             * libyaml's scan_anchor ERROR shape ("did not find expected
+             * alphabetic or numeric character"), unmeasured -- decline
+             * (the r346 ':&:' face's never-the-head law, the anchor
+             * slot's own copy). */
             return 0;
         }
         name_e = i; /* one past the ':' */
@@ -11337,12 +11380,16 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                     b++;
                 } else {
                     /* the r330 members: the cut residual is the key's
-                     * plain content, byte-equal against the dump */
+                     * plain content, byte-equal against the dump; the
+                     * r356 widening admits the '&' MID-run (the
+                     * artifact's `?*&` -- a non-leading indicator glues
+                     * as plain content, the r331/r346 plain-key law;
+                     * the lead stays the pinned '?') */
                     if (data[cut] != '?') {
                         return 0;
                     }
                     for (size_t r = cut; r < colon; r++) {
-                        if (!((data[r] == '?' || data[r] == '*') ||
+                        if (!((data[r] == '?' || data[r] == '*' || data[r] == '&') ||
                               ((data[r] >= '0' && data[r] <= '9') ||
                                (data[r] >= 'A' && data[r] <= 'Z') ||
                                (data[r] >= 'a' && data[r] <= 'z') || data[r] == '_' ||

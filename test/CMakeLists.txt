@@ -7159,6 +7159,54 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-qsplat-r330-artifact.bin
     )
 
+    # r356 (run 45023668328, main 73f5b517): the r330 family's next
+    # mutant-of-own-pin red — the nightly's artifact
+    # `&2?*&: '<PS><CR>'` (13 bytes) is ONE InsertByte from the r330
+    # artifact pin `&2?*: '<PS><CR>'`: the dump-vocabulary '&' grown
+    # before the riding ':'. yeptris glues the '&' INTO the anchor name
+    # (`=VAL : &2?*&: <PS>+<SP>` — the prop charset walk, '&' a 1.2
+    # ns-anchor-char), libyaml cuts at the FIRST out-of-charset byte
+    # (the '?') and the residual `?*&` re-lexes as the key's plain
+    # content with the '&' GLUING MID-PLAIN (a non-leading indicator is
+    # ns-plain content in 1.1 — the r331 battery's `3&2`/`o&2` faces
+    # and the r346 `:&:` face own the plain-key slot's copy of that
+    # law; never the head: "the r238 arm owns every anchor-entry
+    # shape"), and the freed ': ' fires the VALUE token exactly as the
+    # r330 members. The A/B (probed, DOM level): libfyaml 04e0b58 reads
+    # yeptris's structure BYTE-EXACT on BOTH modes — root SCALAR,
+    # anchor `<2?*&:>` riding (its 1.2 value `e280a9` = the raw PS, the
+    # trailing CR folded away at the scalar end; its 1.1 value empty,
+    # the PS itself a 1.1 break) — NEVER libyaml's map; comparator
+    # carry only, no engine change (the r318/r330/r331/r332/r336/r346
+    # precedent). THE CARRY: the r238 arm's riding-name set gains the
+    # '&', MID-name only (a name-head '&' is libyaml's scan_anchor
+    # ERROR shape, unmeasured — declined), and the residual walk admits
+    # the '&' mid-run with the lead staying the pinned '?' (an '&'-lead
+    # residual would re-lex as the key's own ANCHOR — the `&2&: ...`
+    # twin probed shape-dead; a ':' inside still re-lexes the VALUE
+    # boundary, a '*' lead still re-lexes as an ALIAS). Floor: the
+    # 12-byte `&2?&: '<PS><CR>'` (greedy single-byte ddmin: the '*'
+    # dies into the already-widened shape; the '&' deletion is the
+    # CLASSIFIED r330 seed exit 0; the PS/CR deletions land on the
+    # classified single-break bodies exit 0; the '?' deletion dies the
+    # shape bar; no other deletion keeps the dual bar). The 50-mutant
+    # paired battery (seed 356, 20 flips + 10 deletions + 20 doubles
+    # per shape): 0 regressions over 100 paired runs — every verdict
+    # class identical pre/post except the widening's own differ→carry
+    # turns (4 mutants); 41 stable-reds recorded (red pre AND post —
+    # the pre-existing unclaimed faces; see the round issue). Both the
+    # floor and the full artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r356-root-anchor-quoted-follow-amp
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-amp-r356.bin
+    )
+    add_test(
+        NAME fuzz-diff-r356-root-anchor-quoted-follow-amp-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-amp-r356-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB
