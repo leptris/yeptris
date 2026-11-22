@@ -8364,6 +8364,32 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-tag-soup-r361-artifact.bin
     )
 
+    # the r362 round (the nightly's run 45078029712, main 22bf9231; the
+    # mutation crash-1814d75b207ad9f267bacaaf430467140f36681a, sha256
+    # fc2222e3...): the r361 floor's ONE-BYTE mutation (offset 56680,
+    # '5' -> '4' in the "m,15t" member) escaped the SIZE + SHA-256 pin
+    # and the nightly aborted unclassified. THE DIG (this round's
+    # measured finding): the engines' flow readings are SIZE-
+    # INDEPENDENT on this family — the glued-`?` face ("?##|" plain on
+    # yeptris, "+MAP" on libyaml) is byte-identical at 8 bytes
+    # ("[11,?##]") and at 73KB, and no engine budget consults the
+    # collection's extent. The binding gates were the CLASSIFIER's
+    # conservatism budgets (the floor's 8,243 members vs
+    # FC_MAX_MEMBERS 8192; the artifact's 148,798 bytes vs
+    # FC_MAX_INPUT 131072 and its ~25K-token libyaml walk vs
+    # FC_MAX_TOKENS 16384). THE CARRY: the r362 budget raise — the
+    # family classifier now derives BOTH engines' actual dumps
+    # byte-exact on the floor, the mutation, AND the artifact, so the
+    # whole composition rides the LAW at arbitrary scale (the
+    # exact-byte pins above stay as belt-and-braces; no new pin for
+    # the mutation). pre-patch DIFFER exit 77 / abort, post-patch law
+    # carry exit 0.
+    add_test(
+        NAME fuzz-diff-r362-tag-soup-mutation
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-tag-soup-r362-mutation.bin
+    )
+
     # the r355 anchor-blank-alias round (the nightly's run 45016455586,
     # main b3b8b07f; the 18-byte artifact
     # crash-87fa092da7c94269ad4500d91d33fc49bb928276 "{?*L:<LF>,&m:=ALI *(}",
