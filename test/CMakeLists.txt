@@ -7302,6 +7302,50 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-bslash-r366-artifact.bin
     )
 
+    # r367 (run 45136829807, main 1340927a): the root-block-content
+    # family's EXOTIC-BREAK composition — the nightly's 23-byte
+    # artifact `>\n#mL> <NEL>\n# :<NEL><PS> <NEL>  ` rides the r367
+    # floor `>\n#<PS>` (6 bytes, greedy ddmin fixed point: every
+    # deletion classified pre-patch except the LS/PS/NEL carriers and
+    # the `#` line itself). The floor splits exactly like the family's
+    # LF twin — yeptris takes the column-0 `#` line as the block
+    # scalar's body (the suite pins the root reading: M7A3 spec
+    # example 9.3 and DWX9 spec example 8.8 take the root literal's
+    # col-0 line as content; libyaml 90a56d4's unconditional
+    # min-indent-1 clamp is the ledgered upstream deviation; libfyaml
+    # 04e0b58 reads the floor faces byte-exact as yeptris in BOTH
+    # modes, `=VAL >c\n` / `=VAL >#c\n`, while PyYAML 6.0.2 sides with
+    # the clamp — the r317 version-line split) — but the LS/PS
+    # spelling defeats the arm's byte-equality gate: the indented
+    # copy's re-dump pair carries the adjudicated #638 exotic deltas
+    # (yeptris folds LS/PS to LF and keeps blank-run NELs as 1.2
+    # content; libyaml keeps LS/PS raw per READ_LINE LS|PS->LS|PS and
+    # breaks at every NEL). THE WIDENING: when the input carries a raw
+    # exotic break, the arm also binds the COMPOSED claim — the
+    # yd_composed_break_divergence move: rebuild the input with the
+    # exotic spellings normalized to LF on top of the col-0 indent and
+    # require BOTH engines to agree on that copy, with the same
+    # breakless-EOF clip residual the clean gate already composes (the
+    # only delta the nightly's rebuild leaves). The claim stays
+    # byte-bounded: any divergence not carried by the two transform
+    # families survives the rebuild and keeps the pair red. Comparator
+    # carry only, no engine change (the r317/r318/r330 precedent).
+    # The 50-mutant paired battery (seed 367: the floor + the full
+    # artifact, 20 flips + 10 deletions + 20 doubles per shape; plus
+    # 300 paired runs over the r364/r365/r366 pins): 0 regressions;
+    # the 8 turns all ride artifact exotic positions; the standing
+    # pins' shapes stay exactly as the pre-patch harness left them.
+    add_test(
+        NAME fuzz-diff-r367-root-block-content-exotic
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-block-content-exotic-r367.bin
+    )
+    add_test(
+        NAME fuzz-diff-r367-root-block-content-exotic-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-block-content-exotic-r367-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB

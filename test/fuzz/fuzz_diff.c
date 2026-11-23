@@ -20417,10 +20417,34 @@ static int yd_composed_break_divergence(const uint8_t* data, size_t size) {
  * unindented line and reports an empty value (crash-5caf49d3:
  * "|-" + "##"). Indent every column-0 content line by one space --
  * which changes no content byte -- and require libyaml's dump of THAT
- * to equal yeptris's dump of the original. */
+ * to equal yeptris's dump of the original. When the body carries the
+ * adjudicated exotic-break deltas (raw NEL/LS/PS spellings), the
+ * composed binding below extends the same law through the
+ * normalization rebuild. */
 static int yd_clip_breakless_divergence(const uint8_t* data, size_t size, const char* ydump);
 static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* ydump,
                                   const char* ldump);
+
+/* The residual-consult gate: a raw NEL spelling (the UTF-8 pair or a
+ * lone 0x85 byte) or a raw LS/PS triple anywhere in the input -- the
+ * block-NEL family's own precondition (yd_block_nel_content_divergence's
+ * scan), mirrored here so clean byte-equal members never reach the
+ * composed rebuild below. */
+static int yd_input_has_raw_exotic_break(const uint8_t* data, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        if (i + 1 < size && (unsigned char)data[i] == 0xC2 && (unsigned char)data[i + 1] == 0x85) {
+            return 1; /* the UTF-8 NEL pair */
+        }
+        if ((unsigned char)data[i] == 0x85 && (i == 0 || (unsigned char)data[i - 1] != 0xC2)) {
+            return 1; /* a lone raw 0x85 byte */
+        }
+        if (i + 2 < size && (unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            return 1; /* the LS/PS triple */
+        }
+    }
+    return 0;
+}
 
 static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
     if (size == 0) {
@@ -20549,6 +20573,64 @@ static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
               * residual is the documented clip carry, not this family
               * failing its own transform */
              (v == YD_DIFFER && yd_clip_breakless_divergence(sub, o, tdump));
+    if (!ok && yd_input_has_raw_exotic_break(data, size)) {
+        /* the r367 composition (run 45136829807, main 1340927a,
+         * crash-461d11ba, 23 bytes ">\n#mL> <NEL>\n# :<NEL><PS> <NEL>  ",
+         * 6-byte ddmin floor ">\n#<PS>"): when the body ALSO carries
+         * the adjudicated exotic-break deltas, the indented copy's
+         * re-dump pair is no longer byte-equal (yeptris's #638 posture
+         * folds LS/PS to LF and keeps blank-run NELs as 1.2 content
+         * while libyaml 90a56d4 breaks at the NELs and keeps LS/PS raw
+         * per its READ_LINE LS|PS->LS|PS branch) and neither single
+         * family's walk reaches across BOTH deltas. The composed
+         * binding (the yd_composed_break_divergence move — rebuild the
+         * input with the transform stack and require BOTH engines to
+         * agree): substitute every raw NEL spelling and LS/PS triple
+         * in the indented copy with LF (the yd_composed_break_divergence/
+         * r220 direction — yeptris normalizes them and libyaml's NEL
+         * breaks are its own 1.1 reading), re-dump BOTH engines on
+         * that copy, and require agreement byte-for-byte — with the
+         * same breakless-EOF clip residual as the clean gate above
+         * (the final break yeptris keeps at breakless EOF and libyaml
+         * drops, the only delta the r367 nightly's rebuild leaves).
+         * The claim stays byte-bounded: any divergence NOT carried by
+         * the two transform families survives the rebuild and keeps
+         * the pair red. The reading is suite-pinned: M7A3 (spec
+         * example 9.3) and DWX9 (spec example 8.8) take the root
+         * literal's column-0 line as content; libyaml's unconditional
+         * min-indent-1 clamp is the ledgered upstream deviation, and
+         * libfyaml 04e0b58 reads the floor faces byte-exact as yeptris
+         * in BOTH modes ("=VAL >c\n" for ">\nc\n", "=VAL >#c\n" for
+         * ">\n#c\n") while PyYAML 6.0.2 sides with libyaml's clamp —
+         * the comparator split follows the r317 version-line
+         * precedent, comparator carry only, no engine change. */
+        char* sub2 = malloc(o + 1);
+        if (sub2 != NULL) {
+            size_t o2 = 0;
+            for (size_t i = 0; i < o;) {
+                if (i + 1 < o && (unsigned char)sub[i] == 0xC2 &&
+                    (unsigned char)sub[i + 1] == 0x85) {
+                    sub2[o2++] = '\n';
+                    i += 2;
+                } else if (i + 2 < o && (unsigned char)sub[i] == 0xE2 &&
+                           (unsigned char)sub[i + 1] == 0x80 &&
+                           ((unsigned char)sub[i + 2] & 0xFE) == 0xA8) {
+                    sub2[o2++] = '\n';
+                    i += 3;
+                } else {
+                    sub2[o2++] = sub[i++];
+                }
+            }
+            char* tdump2 = NULL;
+            char* tldump2 = NULL;
+            yd_verdict v2 = yd_diff_classify((const char*)sub2, o2, &tdump2, &tldump2);
+            ok = v2 == YD_EQUAL ||
+                 (v2 == YD_DIFFER && yd_clip_breakless_divergence(sub2, o2, tdump2));
+            free(tdump2);
+            free(tldump2);
+            free(sub2);
+        }
+    }
     free(tdump);
     free(tldump);
     free(sub);
