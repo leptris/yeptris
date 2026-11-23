@@ -7441,6 +7441,69 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-nel-blank-r369-artifact.bin
     )
 
+    # r371 (run 45217557947, main 783f203a): the nested `[?::]`
+    # flow-soup member — the nightly's artifact `[?::[?::JJ]]` (12
+    # bytes, crash-eb8e447ef01cc0af943507fa7c9729e9580e86f3) is a
+    # NESTED flow-seq composition of the `?::` explicit-key face (the
+    # r272 [?::] model's namesake family): inner `[?::JJ]`, `JJ` tail.
+    # The r272-era model covered the single-level glued-`?` member
+    # (plain/empty value slots), the r281 widening took the value-slot
+    # `{` MAP and the r314 law the member-slot `[` — the value-slot `[`
+    # stayed declined as an untested shape, and the artifact measures
+    # exactly that slot. THE LAW (the y-side widening): the glued-`?`
+    # KEY-implicit member's VALUE slot admits the nested flow SEQUENCE
+    # — the r281 nested-map arm's SEQ twin (the same member laws derive
+    # its content recursively; +SEQ/-SEQ stashed on the node, the
+    # caller renders the key line then the stash). The inner `?::JJ`
+    # glues the `?` into the plain (law d) — its colons ride as
+    # content, neither a blank/break nor a flow indicator following, so
+    # no VALUE boundary fires; yeptris: `+MAP / =VAL : ?: / +SEQ /
+    # =VAL : ?::JJ / -SEQ / -MAP`. THE LAW (the l-side, already
+    # standing): the 1.1 explicit-KEY law through the nested level —
+    # the member-start `?` fires the KEY token (the single-pair +MAP
+    # wrapper), the key slot empty on the VALUE at the mapping-key
+    # state (libyaml's flow_sequence_entry_mapping_key CONSUMES the
+    # VALUE token and inserts the empty scalar), and the SECOND VALUE
+    # is consumed by the mapping-value state with the node after it as
+    # the pair's value (the scanner's fetch_value emits VALUE in flow
+    # unconditionally — the complex-key arm); libyaml: `+SEQ / +MAP /
+    # =VAL :  / +SEQ / +MAP / =VAL :  / =VAL : JJ / -MAP / -SEQ /
+    # -MAP / -SEQ`. The A/B (probed, JSON mode byte-exact): libfyaml
+    # 04e0b58 reads yeptris's artifact stream byte-exact (`{"?:":
+    # ["?::JJ"]}` — the outer pair key `?:` riding, the inner seq's
+    # plain `?::JJ`) in BOTH --yaml-1.2 and --yaml-1.1 passes — the
+    # comparators split along the libyaml-compat bar. Comparator carry
+    # only, no engine change (the r318/r330/r331/r332/r336/r346/r356/
+    # r366/r368/r369/r370 precedent). FLOOR: the greedy ddmin fixed
+    # point AT the artifact — every chunk (6/3-byte) and single-byte
+    # deletion (18 probes) loses the dual+shape bar (the nested
+    # composition fully load-bearing: the outer wrapper, the `?::`
+    # head, the inner `[`, the double colon — libyaml's second VALUE —
+    # and the `JJ` pair value), so ONE pin carries the bytes (floor ==
+    # artifact). THE COMPOSITION ROW (measured, the r361 lesson): the
+    # artifact and the deeper nestings `[?::[[?::JJ]]]` /
+    # `[?::[?::[?::JJ]]]` classifier-claimed; the sibling faces
+    # `[?::[?::]]`, `[?::[?::J]]`, `[?::[JJ]]`, `[?::[::JJ]]`,
+    # `[?::[?::JJ,JJ]]`, `[?::[?::JJ],[?::KK]]`, the MAP-root twin
+    # `{?::[?::JJ]}`, the r281 value-slot map twin `[?::{?::JJ}]`, the
+    # single-colon head `[?:[?::JJ]]`, and the triple-colon heads
+    # `[?::[?:::JJ]]` / `[?::::[?::JJ]]` are engine-EQUAL (never a
+    # DIFFER, never consulted); the unclosed / extra-closer /
+    # `[?::[?::JJ]x]` faces are BOTH-ERROR — never consulted. The
+    # 50-mutant paired battery (seed 371): 0 regressions (6
+    # newly-carried, 44 stable-carried); the standing
+    # r330/r366/r367/r368/r369/r370 pins byte-identical; the
+    # classifier self-test green (124 seeds, 6651 dump-tamper declines,
+    # 803 mutants, 0 failures). THE TREADMILL: no workflow snapshot
+    # change — the comparator snapshot's flow-qhash-nest exclusion
+    # already covers this family (the r370-era list); the pin stays
+    # under the full ctest.
+    add_test(
+        NAME fuzz-diff-r371-flow-qhash-nest
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r371.bin
+    )
+
     # r370 (run 45200249484, main fff9640f): the r366 pin's mutant-of-
     # own-pin red riding the qsplat HEAD-CHARSET — the nightly's
     # artifact `&2?/: '<PS><CR>\'` (13 bytes) is the pinned r366 floor

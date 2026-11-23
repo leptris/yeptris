@@ -25,7 +25,10 @@
  *    opens a nested flow map derived recursively by the same member
  *    laws (law i), and so does a `{` at the split-explicit-key
  *    member's KEY slot — the blank/break run after the close rides to
- *    the `:` VALUE boundary (the r310 widening);
+ *    the `:` VALUE boundary (the r310 widening); the value slot's `[`
+ *    opens the nested flow SEQUENCE the same way (the r281 map arm's
+ *    SEQ twin — the r371 widening, run 45217557947: the nested
+ *    `[?::]` composition, the inner `?::JJ` plain riding law d);
  *  - the libyaml model: the 0.2.x scanner/parser contract the corpus
  *    walks adjudicated — scan_to_next_token eats blanks/tabs and every
  *    break kind in flow and comment-eats from any `#` to the line
@@ -1058,8 +1061,9 @@ static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
     if (p[q] == '{') {
         /* the nested flow map (the r281 law, run 43705128492): the
          * value node IS the nested collection — the same member laws
-         * derive its content recursively (+MAP/-MAP around them; a
-         * nested `[` declines, maps only). The render is stashed on
+         * derive its content recursively (+MAP/-MAP around them; the
+         * value-slot `[` took its own SEQ twin below, the r371
+         * widening). The render is stashed on
          * the node — the caller renders the key line first, then the
          * stash. The blank/break run after the close skips so the
          * caller's member-terminator check sees the post-value byte. */
@@ -1092,7 +1096,68 @@ static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
         *stop = fc_skip_blank_break(p, c->n, after);
         return 1;
     }
-    if (p[q] == '"' || p[q] == '\'' || p[q] == '!' || p[q] == '[') {
+    if (p[q] == '[') {
+        /* the nested flow sequence (the r371 widening, run 45217557947):
+         * the value node IS the nested collection — the r281 nested-map
+         * arm's SEQ twin at the value slot (the r314 law owns the same
+         * nested seq at the MEMBER slot; the r281 widening took the
+         * value-slot `{` and the value-slot `[` stayed declined as an
+         * untested shape — the nightly's artifact measures it now): the
+         * same member laws derive its content recursively (+SEQ/-SEQ
+         * around them; the artifact's inner `?::JJ` glues the `?` into
+         * the plain — law d — its colons riding content, neither a blank
+         * nor a flow indicator following, so no VALUE boundary fires).
+         * The render is stashed on the node — the caller renders the key
+         * line first, then the stash. The blank/break run after the
+         * close skips so the caller's member-terminator check sees the
+         * post-value byte. The libyaml side rides the l-side nested-seq
+         * law (the tokenizer level slots + the recursive seq body —
+         * law i): the inner member-start `?` fires the KEY token (the
+         * single-pair +MAP wrapper), the key slot empty on the VALUE at
+         * the mapping-key state, the SECOND VALUE consumed by the
+         * mapping-value state with the node after it as the pair's
+         * value — the artifact's `[?::[?::JJ]]` derives both dumps
+         * byte-exact (yeptris: the outer KEY-implicit pair key `?:` +
+         * the nested seq's plain `?::JJ`; libyaml: the outer
+         * empty-key/double-VALUE pair + the inner empty-key/JJ wrapper;
+         * libfyaml 04e0b58 reads yeptris's stream byte-exact — JSON
+         * mode `{"?:": ["?::JJ"]}` — in BOTH --yaml-1.2 and --yaml-1.1
+         * passes; comparator carry only, no engine change, the
+         * r318/r330/r331/r332/r336/r346/r356/r366/r368/r369/r370
+         * precedent). A quoted / `!` value keeps its decline (untested
+         * shapes stay out). */
+        if (c->depth >= (int)FC_MAX_NEST) {
+            return y_fail(c); /* past the nesting budget */
+        }
+        fout nf = {NULL, 0, 0, 0};
+        fo_str(&nf, "+SEQ\n");
+        fout outer = c->out;
+        c->out = nf;
+        c->depth++;
+        c->seq_at[c->depth] = 1; /* the level is a SEQUENCE (the r314
+                                  * stamp; the member walks below ride
+                                  * y_cur_is_map) */
+        size_t after = 0;
+        int ok = y_members(c, ']', q + 1, &after);
+        c->depth--;
+        nf = c->out;
+        c->out = outer;
+        if (!ok || nf.bad) {
+            free(nf.buf);
+            return 0;
+        }
+        fo_str(&nf, "-SEQ\n");
+        if (nf.bad) {
+            free(nf.buf);
+            return y_fail(c);
+        }
+        memset(val, 0, sizeof(*val));
+        val->nest_buf = nf.buf;
+        val->nest_len = nf.len;
+        *stop = fc_skip_blank_break(p, c->n, after);
+        return 1;
+    }
+    if (p[q] == '"' || p[q] == '\'' || p[q] == '!') {
         return y_fail(c);
     }
     int sep;
@@ -1968,8 +2033,9 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
          * the glued-`?` plain `?&m` inside the nested seq (the HM87/652Z
          * plain-? law, d) against libyaml's KEY-token wrapper (the 1.1
          * flow-`?` law — `&` is an indicator follower, outside the r183
-         * arm's plain-safe gate). A quoted / `?`-slot / value-slot `[`
-         * keeps its decline (untested shapes stay out). */
+         * arm's plain-safe gate). A quoted / `?`-slot `[` keeps its
+         * decline (untested shapes stay out); the value-slot `[` took
+         * the r371 widening (the nested-seq VALUE arm above). */
         if (c->depth >= (int)FC_MAX_NEST) {
             return y_fail(c); /* past the nesting budget */
         }
