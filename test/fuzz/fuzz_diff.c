@@ -8454,20 +8454,73 @@ static int yd_block_nel_moreindent_pair(const char* ydump, const char* ldump) {
          * the claim: a opens the GLUED '#' at the value's first byte
          * (no space, no raw exotic lead -- the r333 kept-exotic arm
          * above owns those leads), a glued plain run behind it (no
-         * escape, no raw exotic lead, no dump-line break), then the
-         * ONE clip escape and the dump-line end, the remainders behind
-         * the claim coinciding completely with b's (the r161 strcmp
-         * law -- b-side bytes are never eaten, so the claim can never
-         * swallow divergence past the value). Sits BEHIND the r333
+         * OTHER escape, no raw exotic lead, no dump-line break -- the
+         * r363 widening below rides the escaped-backslash PAIR), then
+         * the ONE clip escape and the dump-line end, the remainders
+         * behind the claim coinciding completely with b's (the r161
+         * strcmp law -- b-side bytes are never eaten, so the claim can
+         * never swallow divergence past the value). THE r363
+         * ESCAPE-RIDE WIDENING (the post-r362 Fuzz Nightly, run
+         * 45094381057, main c02ff708; the 16-byte artifact
+         * crash-dc904f6dc4a435df2e95e665c8bc8927e497ee0d "SP SP > NEL
+         * #[\"\\u0821\" SP" -- the DQ-escape SPELLING "ࠡ" glued
+         * behind the '#' as the block's own plain text, trailing
+         * space, unclosed; the 7-byte harness-bar floor "SP > NEL #
+         * \u" -- greedy ddmin to a fixed point under the classified-
+         * DIFFER + dump-pair shape bar, no further chunk deletion
+         * keeps the bar -- the r343 direct-hash law's escape-bearing
+         * composition): the
+         * input backslash renders in the dump as the ESCAPED PAIR
+         * '\\', and the run walk stopped at its first byte, declining
+         * every escape-bearing run. The ride: a dump '\\' pair is ONE
+         * input backslash -- plain material, skip the pair and keep
+         * walking; every OTHER escape shape (\n \r \t \xNN from raw
+         * breaks/tabs/controls), the raw exotic leads and the
+         * dump-line breaks still stop the walk, and the claim is
+         * untouched (the ONE clip escape, the dump-line end, the r161
+         * strcmp). Verdict-preserving: the pair's second byte can
+         * never be the claim's 'n', so every shape the widened walk
+         * reaches FURTHER on previously declined at this arm -- no
+         * existing member's path changes. Sits BEHIND the r333
          * kept-exotic arm (whose gate demands the space/LS-PS lead --
          * disjoint from this gate's direct '#') and AHEAD of the r325
-         * realign arm (whose gate wants a ON the escape -- disjoint).
-         * Previously this shape declined unconditionally here, so no
-         * existing member's path changes. */
+         * realign arm (whose gate wants a ON the escape -- disjoint),
+         * the ordering unchanged. THE A/B: libfyaml 04e0b58
+         * re-measured on THIS composition's own floor AND artifact
+         * (the r325 lesson): its --yaml-1.2 pass ERRORS both ("block
+         * scalar no linebreak found" -- the NEL is not a 1.2 break)
+         * while its --yaml-1.1 pass reads the EMPTY folded scalar
+         * byte-exact as libyaml on both -- no comparator sides with
+         * the kept content, the libyaml-is-the-compat-bar line
+         * carries, comparator carry only, no engine change (the
+         * r317/r343 precedent). Probes (pre-patch DIFFER exit 77 + NOT
+         * classified, post-patch carry exit 0 on plain and lf
+         * harnesses): the floor, the full artifact, the literal-text
+         * twin "SP > NEL # \n" (the spelling rides, same mechanism)
+         * and the EOF-backslash twin "SP > NEL # \" -- the raw-TAB
+         * twin "SP > NEL # <TAB>" stays DIFFER-declined (the \t
+         * escape still stops the walk mid-run; the raw-control twin
+         * "SP > NEL # <0x01>" rides the pre-existing
+         * YEPTRIS-ONLY-ACCEPT control split, outside this law) --
+         * next round's material if the nightly escapes there. The
+         * 50-mutant paired battery (30 single + 20 double, seed 363):
+         * see the round issue. Both the floor and the full artifact
+         * ride the corpus (the r321 seed law). */
         if (b[0] == '\n' && a[0] == '#') {
             const char* q = a + 1;
-            while (q[0] != '\0' && q[0] != '\\' && q[0] != '\n' && (unsigned char)q[0] != 0xC2 &&
+            /* the r363 ride: a dump '\\' pair is ONE input backslash
+             * -- skip the pair, keep walking; plain bytes walk as
+             * before and every OTHER escape shape still stops the
+             * walk */
+            while (q[0] != '\0' && q[0] != '\n' && (unsigned char)q[0] != 0xC2 &&
                    (unsigned char)q[0] != 0xE2) {
+                if (q[0] == '\\') {
+                    if (q[1] == '\\') {
+                        q += 2;
+                        continue;
+                    }
+                    break;
+                }
                 q++;
             }
             if (q[0] == '\\' && q[1] == 'n' && q[2] == '\n' && strcmp(q + 2, b) == 0) {
