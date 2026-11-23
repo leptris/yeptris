@@ -11004,12 +11004,81 @@ static int yd_r218_blank_line(const uint8_t* d, size_t n, size_t* at) {
  * tab in the name or the separator still declines), the closing quote,
  * then EOF. A differ-only routing arm beside the r218 claim -- every
  * existing member keeps its exact path. */
-static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const char** c) {
+/* The r368 CLAMP-TAIL law (the nightly's round 368, run 45152658419,
+ * main 26a6ade2, crash-418cc31aecc236ac7d6662e518d54353068a1bea): the
+ * family composed with a body long enough that the shared dump
+ * vocabulary's per-event line budget cuts BOTH engines' scalar lines.
+ * yd_line rides char line[4096]; the artifact's single-quoted body
+ * (10,882 bytes -- the tail `:'` closes the quote opened at byte 6,
+ * so the whole ~1000-deep `[{"":[{"":...` chain rides INSIDE the
+ * scalar as content and neither depth wall ever fires) clamps both
+ * dumps at 4095 chars per line, and the strict byte walks ran off the
+ * visible region and declined their own family. The clamp is the
+ * comparator's own vocabulary, not an engine fact (the r59/r61 line
+ * clamp and the BOM arm's r280 cap-cut precedent) -- comparator carry.
+ * THE LAW: when the walk's cursor reaches the caller-computed visible
+ * region end (the clamp cut, passed as `ce`), the remaining body may
+ * ride ONLY the units whose spellings are FORCED EQUAL on both
+ * engines beyond the cut: printables byte-equal, mid-body space runs,
+ * and lone clean CR/LF breaks (one fold space on both sides -- the
+ * measured standalone law). Everything whose dump spelling is
+ * state-carrying or escape-vocabulary declines as unmeasured past the
+ * cut: tabs (the r331 position law), backslashes (the r366 pair),
+ * NEL/LS/PS triples (the r231 verbatim keep + the blank-state quark),
+ * 0x7f (the \xNN escape), and any other control byte. A space run
+ * touching the body's end declines too (the no-fold trailing
+ * spelling is unmeasured). Both clamp phases are exact-length pinned
+ * by the caller (4082/4081 visible chars on the y side, 4088/4087 on
+ * the l side -- the 4095-char cut line minus the render prefix), so a
+ * tamper-truncated dump loses the exact-length gate and declines. */
+static int yd_r238_clamp_tail_safe(const uint8_t* body, size_t bo, size_t be, size_t i,
+                                   int prev_break) {
+    size_t s = i;
+    int pb = prev_break;
+    (void)bo;
+    while (s < be) {
+        if (body[s] == '\r' || body[s] == '\n') {
+            if (pb) {
+                return 0; /* consecutive breaks: the fold delta is unmeasured */
+            }
+            pb = 1;
+            s += 1;
+        } else if (body[s] == ' ') {
+            size_t e = s;
+            while (e < be && body[e] == ' ') {
+                e++;
+            }
+            if (e == be) {
+                return 0; /* the trailing run's no-fold spelling: unmeasured */
+            }
+            pb = (body[e] == '\r' || body[e] == '\n') ? 1 : 0;
+            s = (pb ? e + 1 : e);
+        } else if (body[s] >= 0x20 && body[s] < 0x7f && body[s] != '\\' && body[s] != '\t') {
+            pb = 0;
+            s += 1;
+        } else {
+            return 0; /* tab / backslash / control / multibyte lead: unmeasured */
+        }
+    }
+    return 1;
+}
+
+static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const char** c,
+                               const char* ce) {
     const char* a = *c;
     size_t i = bo;
     int prev_break = 0;
     int last_exotic = 0; /* the r331 law: LS/PS arms no fold state in yeptris */
     while (i < be) {
+        if (ce != NULL && a >= ce) {
+            /* the r368 clamp-tail law: the visible region is spent; the
+             * remaining body rides the forced-equal units only */
+            if (!yd_r238_clamp_tail_safe(body, bo, be, i, prev_break)) {
+                return 0;
+            }
+            *c = ce;
+            return 1;
+        }
         if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
             if ((unsigned char)a[0] != 0xC2 || (unsigned char)a[1] != 0x85) {
                 return 0;
@@ -11164,13 +11233,23 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
     return 1;
 }
 
-static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const char** c) {
+static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const char** c,
+                               const char* ce) {
     const char* b = *c;
     size_t i = bo;
     int pending_exotic = 0;
     int prev_break = 0;
     int last_esc = 0;
     while (i < be) {
+        if (ce != NULL && b >= ce) {
+            /* the r368 clamp-tail law (see walk_y): the same forced-equal
+             * unit set past the visible region */
+            if (!yd_r238_clamp_tail_safe(body, bo, be, i, prev_break)) {
+                return 0;
+            }
+            *c = ce;
+            return 1;
+        }
         if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
             if ((unsigned char)b[0] != 0xC2 || (unsigned char)b[1] != 0x85) {
                 return 0;
@@ -11424,6 +11503,36 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
          * 1.1, the CR folded to the one space in 1.2). Comparator
          * carry only, no engine change (the r318/r330/r331/r332/
          * r336/r346/r356 precedent). */
+        /* The r368 widening (run 45152658419, main 26a6ade2,
+         * crash-418cc31aecc236ac7d6662e518d54353068a1bea): the
+         * CLAMP-TAIL. The nightly's artifact (10,890 bytes) is the
+         * r366 head `&2?*: '<PS><CR>"\u1: ` grown a ~10.8KB
+         * single-quoted body -- `[{"":[{"":` chain units (2157 maps,
+         * 2156 seqs) plus a `U:ba:\n- 4-ba:I::*:::::` tail -- whose
+         * closing `:'` sits at the LAST byte, so the whole chain rides
+         * INSIDE the scalar as content and NEITHER engine's depth wall
+         * fires (no collection events at all: the hand-off's
+         * depth-limit face is content, not structure; `~foo:` /
+         * `- &g:o:` likewise ride the body). Both dumps stay the r330
+         * structure (yeptris ONE anchored scalar, anchor `2?*:`; the
+         * raw PS + the CR fold exactly the r231/r366 floor law) -- but
+         * the shared dump vocabulary's per-event line budget
+         * (char line[4096]) cuts BOTH scalar lines at 4095 chars
+         * (ydump 4105 total, ldump 4128: measured), the strict walks
+         * ran off the visible region ~4KB into the body, and the arm
+         * declined its own family. THE WIDENING: the walkers take the
+         * caller-computed visible region end; past the cut the body
+         * rides the clamp-tail law (forced-equal units only:
+         * printables, mid-body space runs, lone clean CR/LF; the
+         * clamp-tail helper declines tabs/backslashes/exotics/
+         * trailing-run-end as unmeasured). Clamp detection is
+         * EXACT-LENGTH (region 4082/4081 y, 4088/4087 l), so a
+         * tamper-truncated dump loses the gate and declines (the
+         * firewall holds). Boundary probed: the 4088-byte
+         * A4100 twin (body escaped 4081) still walks to its sentinel
+         * and classifies pre-patch; 4091 bytes DIFFER. Comparator
+         * carry only, no engine change (the r318/r330/r331/r332/
+         * r336/r346/r356/r366 precedent). */
         while (i < size &&
                (((data[i]) >= 'A' && (data[i]) <= 'Z') || ((data[i]) >= 'a' && (data[i]) <= 'z') ||
                 ((data[i]) >= '0' && (data[i]) <= '9') || (data[i]) == '_' || (data[i]) == '-' ||
@@ -11506,6 +11615,8 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
         {
             const char* a = ydump + 13;
             size_t n;
+            const char* ce = NULL;         /* the r368 clamp cut, NULL when unclamped */
+            int tail_nl = 1;               /* the cut line's own newline: kept (1) or fused (0) */
             for (n = 1; n < name_e; n++) { /* the riding name run, ':' included */
                 if (a[0] != (char)data[n]) {
                     return 0;
@@ -11516,10 +11627,29 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                 return 0;
             }
             a++;
-            if (!yd_r238_body_walk_y(data, bo, size - 1, &a)) {
+            {
+                /* the r368 clamp detection: the dump's per-event line
+                 * budget (char line[4096] in both dump paths) cuts a
+                 * giant scalar's line at exactly 4095 chars -- the
+                 * visible value region is then 4082 chars (the cut
+                 * fused with the `-STR\n` sentinel) or 4081 (the cut
+                 * line kept its own newline). Exact lengths only: a
+                 * tampered dump loses the gate and declines. */
+                size_t yl = strlen(ydump);
+                if (yl >= 5 + 5 && strncmp(ydump + yl - 5, "-STR\n", 5) == 0) {
+                    size_t region = (yl - 5) - (size_t)(a - ydump);
+                    if (region == 4082 && ydump[yl - 6] != '\n') {
+                        ce = ydump + yl - 5;
+                        tail_nl = 0;
+                    } else if (region == 4081 && ydump[yl - 6] == '\n') {
+                        ce = ydump + yl - 6;
+                    }
+                }
+            }
+            if (!yd_r238_body_walk_y(data, bo, size - 1, &a, ce)) {
                 return 0;
             }
-            if (strncmp(a, "\n-STR\n", 6) != 0) {
+            if (tail_nl ? strncmp(a, "\n-STR\n", 6) != 0 : strncmp(a, "-STR\n", 5) != 0) {
                 return 0;
             }
         }
@@ -11641,11 +11771,30 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                 return 0;
             }
             b += 7;
-            if (!yd_r238_body_walk_l(data, bo, size - 1, &b)) {
-                return 0;
-            }
-            if (strncmp(b, "\n-MAP\n-STR\n", 12) != 0) {
-                return 0;
+            {
+                /* the r368 clamp detection, libyaml side: the cut value
+                 * line leaves 4088 visible chars fused with
+                 * `-MAP\n-STR\n`, or 4087 with the line's own newline
+                 * kept. Exact lengths only (the tamper gate). */
+                const char* ce = NULL;
+                int tail_nl = 1;
+                size_t ll = strlen(ldump);
+                if (ll >= 10 + 7 && strncmp(ldump + ll - 10, "-MAP\n-STR\n", 10) == 0) {
+                    size_t region = (ll - 10) - (size_t)(b - ldump);
+                    if (region == 4088 && ldump[ll - 11] != '\n') {
+                        ce = ldump + ll - 10;
+                        tail_nl = 0;
+                    } else if (region == 4087 && ldump[ll - 11] == '\n') {
+                        ce = ldump + ll - 11;
+                    }
+                }
+                if (!yd_r238_body_walk_l(data, bo, size - 1, &b, ce)) {
+                    return 0;
+                }
+                if (tail_nl ? strncmp(b, "\n-MAP\n-STR\n", 12) != 0
+                            : strncmp(b, "-MAP\n-STR\n", 10) != 0) {
+                    return 0;
+                }
             }
         }
     }
