@@ -8882,6 +8882,53 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-anchor-colon-r364-artifact.bin
     )
 
+    # r365 (run 45114990688, main bff9b53e): the r364 floor's own
+    # map-follower twin -- the r338 pointer's predicted round, now
+    # measured. The 23-byte artifact
+    # `<BOM><BOM>- &U:#<BOM><BOM>- &U:` (11-byte dual-bar floor
+    # `<BOM><BOM>- &U:`) closes the follower line on an END-OF-INPUT
+    # COLON: yeptris strips only the stream-start mark (catch-121),
+    # the second BOM opens the plain as CONTENT so the `&` loses its
+    # indicator power and rides verbatim, and the end-of-input `:`
+    # closes the opening line as ONE implicit ROOT-MAP key --
+    # `+STR/+MAP/=VAL : <BOM>- &U/=VAL : /-MAP/-STR`; libyaml strips
+    # BOTH (the r226 law), opens `+SEQ` whose entry is an implicit MAP
+    # with the anchored empty key (the Y2GN colon-cut,
+    # `+SEQ/+MAP/=VAL : &U /=VAL : /-MAP/-SEQ`). BOTH carried probes
+    # decline: the r226 both-accept bar misses because the removal
+    # twin (`- &U:`) itself SPLITS -- yeptris reads a seq entry whose
+    # absorbed anchor rides the colon as plain content (`=VAL : &U: `,
+    # the 2SXE/Y2GN riding law) while libyaml opens the anchored empty
+    # key -- and the r364 composition gate (yok2 == 0) misses the
+    # floor face because the removal twin PARSES on yeptris there (it
+    # only errors on the artifact's longer tail). THE CARRY: the BOM
+    # line-start arm grows the map-follower probe -- libyaml's strip
+    # must be PURE (its removal dump equals its original) and
+    # yeptris's dump must equal the derived root-map spelling
+    # `+STR\n+MAP\n=VAL : <input minus the stream-start BOM minus the
+    # final colon>\n=VAL : \n-MAP\n-STR` (key bytes verbatim, empty
+    # value); any other reading moves a byte and declines. The A/B:
+    # libfyaml 04e0b58 reads the same root-map shape on BOTH its 1.2
+    # and 1.1 passes (the quoted key `<FEFF>- &U` with the empty
+    # value -- the r318 dual-consensus face); the suite is silent (no
+    # BOM tests at the da267a5c pin); spec 5.1 allows the BOM at the
+    # document start and libyaml's line-start strip is its own
+    # ledgered r226 deviation -- comparator carry only, no engine
+    # change (the r318/r330/r336/r337/r338/r364 precedent). Floor
+    # re-verified: greedy ddmin to a fixed point, 11 bytes, all
+    # single-byte deletions break the dual+shape bar. Both the floor
+    # and the artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r365-bom-line-start-map-follower
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-map-follower-r365.bin
+    )
+    add_test(
+        NAME fuzz-diff-r365-bom-line-start-map-follower-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-map-follower-r365-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
