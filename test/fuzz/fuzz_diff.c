@@ -50,7 +50,10 @@ static const char* probe_id = NULL;
  * byte-probed on the r226 probes), while yeptris keeps every content
  * BOM (the catch-121 law); the UTF-8 NEL (C2 85) and LS/PS (E2 80
  * A8/A9) sequences now open lines here too, matching the UTF-16 unit
- * arm below. */
+ * arm below. The r364 nightly (run 45102166994, crash-f05b6bab,
+ * "BOM BOM - SP &U:#") added the COMPOSITION face below: the removal
+ * twin itself can split on an anchor-colon ride, so the claim rides
+ * the two laws' dumps directly instead. */
 static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const char* ydump,
                                         const char* ldump) {
     /* the 3-byte BOM + one follower byte is a legal member (the
@@ -110,6 +113,44 @@ static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const 
     int known = (yok2 && lok2 && ydump2 != NULL && ldump2 != NULL && strcmp(ydump2, ldump) == 0 &&
                  strcmp(ldump2, ldump) == 0);
     free(ydump2);
+    if (!known) {
+        /* the COMPOSITION twin (the r364 nightly, run 45102166994,
+         * crash-f05b6bab and its 12-byte floor "BOM BOM - SP &U:#"):
+         * the removal twin itself can SPLIT -- yeptris ERRORS on it
+         * (the anchor-colon face: the 2SXE/Y2GN-riding charset walk
+         * absorbs "U:" then refuses the unspaced '#', while libyaml
+         * cuts the anchor at the colon -- its ledgered Y2GN
+         * deviation -- and accepts with the plain ":#"), so the
+         * both-accept bar of the removal probe can never hold. The
+         * composition rides the two carried laws directly:
+         * libyaml's line-start strip is PURE (its dump of the
+         * original must equal its dump of the removal, ldump2 ==
+         * ldump), and yeptris keeps every later line-start mark as
+         * CONTENT (the catch-121 law: one mark stripped at stream
+         * start, content BOMs ride) so the whole opening line spells
+         * as ONE plain scalar -- its dump must equal the derived
+         * "+STR\n=VAL : <input minus the stream-start BOM>\n-STR"
+         * spelling, the value being the raw bytes verbatim. Any
+         * other yeptris reading (a seq, an anchor, a map, folded
+         * lines) moves a byte and declines. libfyaml 04e0b58 reads
+         * the same one-scalar shape on BOTH its 1.2 and 1.1 passes
+         * (the r318 dual-consensus face); the suite is silent (no
+         * BOM tests at the da267a5c pin). */
+        if (yok2 == 0 && lok2 == 1 && ldump2 != NULL && strcmp(ldump2, ldump) == 0 && size >= 6 &&
+            ydump != NULL && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF &&
+            data[3] == 0xEF && data[4] == 0xBB && data[5] == 0xBF) {
+            size_t need = 12 + (size - 3) + 6; /* "+STR\n=VAL : " ... "\n-STR\n" */
+            char* want = malloc(need + 1);
+            if (want != NULL) {
+                memcpy(want, "+STR\n=VAL : ", 12);
+                memcpy(want + 12, data + 3, size - 3); /* the mark rides as content */
+                memcpy(want + 12 + (size - 3), "\n-STR\n", 6);
+                want[need] = '\0';
+                known = (strlen(ydump) == need && memcmp(ydump, want, need) == 0);
+                free(want);
+            }
+        }
+    }
     free(ldump2);
     free(sub);
     if (known) {
