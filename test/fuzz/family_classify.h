@@ -331,6 +331,37 @@
  *        (the pinned plain-`?` split) — the escape member itself
  *        renders EQUAL on both engines, but the old blanket escape
  *        decline left any DIFFER sharing a seq with it red.
+ *  (l3)  the r375 tag-property LEAD law (run 45281713143, main
+ *        4e6f0e78): a bare non-specific `!` tag at input offset 0
+ *        followed by a blank/break run and then the ROOT bracket is an
+ *        INERT lead for the member walks — the property rides the ROOT
+ *        collection header on both engines (`+SEQ <!>`/`+MAP <!>`,
+ *        byte-equal across the probe matrix: LF, blank, CRLF, blank+LF
+ *        and LF+LF runs all agree; the collection's tag never
+ *        "resolves by style" — only the scalar's empty render drops
+ *        it, the r335 law). Gates, probe-backed: the bare `!` EXACTLY
+ *        (a `!!` handle lead is a YEPTRIS-ONLY-ACCEPT split — yeptris
+ *        renders `<tag:yaml.org,2002:>`, libyaml 90a56d4 ERRORS the
+ *        parse; `!name`/`!<verbatim>` leads carry other resolved tags
+ *        — the probes' `<!x>`/`<x>` renders agree but stay out),
+ *        the run NON-EMPTY (a GLUED `![` is a YEPTRIS-ONLY-ACCEPT
+ *        split — libyaml errors the tag-end), no comment inside the
+ *        run (`! # c\n[1]` agrees on both engines but the comment
+ *        form is a separate composition, stays out), and the bracket
+ *        DIRECTLY after the run. The r375 artifact `!\n[?+<LS>:#,?]`
+ *        (13 bytes) DIFFERs at the SIBLING member — the law-d
+ *        plain-`?` map-count split (libyaml's 1.1 unconditional flow
+ *        KEY-token law wraps `+<LS>:#` in the implicit single-pair
+ *        map while yeptris keeps the flat glued plain with the LS
+ *        folded to the fold space, the r374 matrix law) — the lead
+ *        itself was the underivable byte: the flow-rooted gate
+ *        declined every non-bracket head, so the whole tag-led
+ *        composition stayed red. THE A/B: libfyaml 04e0b58 reads the
+ *        member BYTE-EXACT yeptris's way (`?+\L:#` one plain scalar,
+ *        the LS kept raw) in BOTH strict-1.2 and 1.1 passes — the
+ *        comparators split along the libyaml-compat bar, engine
+ *        defect REFUTED (the r318/r330/.../r371/r374 precedent).
+ *        Comparator carry only, no engine change.
  *
  * Memory: no allocation escapes the call; all scratch is heap and freed
  * before return. Pure over its four arguments: same inputs, same

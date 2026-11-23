@@ -51,6 +51,16 @@
  *    following VALUE/FLOW-ENTRY token — the `[?#,x]` error shape); the
  *    flow-mapping body recurses at FLOW-MAPPING-START nodes (law i).
  *
+ * The entry gates: the family is flow-rooted (law j) with three
+ * verified lead walks — the blank/break run (the r296 law), the `---`
+ * doc-marker line run (the r349 law), and the bare-`!` tag-property
+ * line head (the r375 widening, run 45281713143: the property rides
+ * the ROOT collection header `<!>` byte-equal on both engines — the
+ * bare tag never "resolves by style" on a collection, the r335 law;
+ * `!!`/`!h!` handles and `!<verbatim>` forms carry other resolved
+ * tags and stay out, the glued `![` head is a YEPTRIS-ONLY-ACCEPT
+ * engine split and stays out).
+ *
  * Any byte either model cannot place -> UNKNOWN (0). The comparison is
  * byte-exact strcmp against the caller's actual dumps; a single flipped
  * dump byte on a family-shaped input therefore stays red.
@@ -174,6 +184,12 @@ static size_t fc_skip_blank_break(const uint8_t* p, size_t n, size_t i) {
  * `---[`) — ends the lead at the last committed marker, and the entry
  * gate declines the tail exactly as before. Returns the marker count
  * (0 = no lead; *end then rides 0 and every walk is unchanged). */
+/* libyaml IS_ALPHA: [0-9A-Za-z_-] (the alias/anchor name cut). */
+static int fc_alpha(unsigned char c) {
+    return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' ||
+           c == '-';
+}
+
 static int fc_doc_lead(const uint8_t* p, size_t n, size_t* end) {
     size_t i = 0;
     int markers = 0;
@@ -261,10 +277,71 @@ static int fc_doc_lead(const uint8_t* p, size_t n, size_t* end) {
     }
 }
 
-/* libyaml IS_ALPHA: [0-9A-Za-z_-] (the alias/anchor name cut). */
-static int fc_alpha(unsigned char c) {
-    return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' ||
-           c == '-';
+/* The TAG-PROPERTY lead (the r375 artifact's `!`+LF head, run
+ * 45281713143): a bare non-specific `!` tag at offset 0, a blank/break
+ * run after it, then the ROOT bracket. The property rides the root
+ * collection on both engines (the header `+SEQ <!>`/`+MAP <!>`
+ * byte-equal across the r375 probe matrix: LF, blank, CRLF, blank+LF
+ * and LF+LF runs all agree). Gates, probe-backed:
+ *  - the bare `!` EXACTLY — a `!!` handle lead is a YEPTRIS-ONLY-ACCEPT
+ *    split (yeptris renders `<tag:yaml.org,2002:>`, libyaml 90a56d4
+ *    ERRORS the parse — the probe matrix's `!!\n[1]` dump cut), and a
+ *    `!name`/`!<verbatim>` lead carries a different resolved tag (the
+ *    probes' `<!x>`/`<x>` renders — agreeable but unverified by this
+ *    walk, stays out);
+ *  - the run NON-EMPTY — a GLUED `![` is a YEPTRIS-ONLY-ACCEPT split
+ *    (yeptris accepts the tag-glued root, libyaml errors the tag-end
+ *    "did not find expected whitespace or line break" — the probe
+ *    matrix's `![1]` dump cut), so the run must exist;
+ *  - no comment inside the run (`! # c\n[1]` agrees on both engines
+ *    but the comment form is a separate composition, stays out);
+ *  - the bracket DIRECTLY after the run (the probes never cover a
+ *    second tag or an anchor between the run and the root);
+ *  - the run admits ONLY the probe-verified bytes: the space and the
+ *    LF/CR/CRLF breaks (a TAB or an exotic break — NEL/LS/PS — in the
+ *    run is untested, stays out; the r349 marker walk's discipline —
+ *    its tab form was dump-verified BEFORE admission).
+ * `end` lands ON the root bracket (the root walks' blank/break skip
+ * re-checks it; the l-tokenizer starts at offset 0 so its TAG token
+ * precedes the root — l_derive threads lead_tag for that). */
+static int fc_tag_lead(const uint8_t* p, size_t n, size_t* end) {
+    if (n < 2 || p[0] != '!') {
+        return 0;
+    }
+    if (p[1] == '!' || fc_alpha(p[1]) || p[1] == '<') {
+        return 0; /* a handle / verbatim form: unverified, stays out */
+    }
+    size_t i = 1;
+    int moved = 0;
+    for (;;) {
+        if (i < n && p[i] == ' ') {
+            i++;
+            moved = 1;
+            continue;
+        }
+        if (i < n && p[i] == '\n') {
+            i++;
+            moved = 1;
+            continue;
+        }
+        if (i < n && p[i] == '\r') {
+            i++;
+            if (i < n && p[i] == '\n') {
+                i++;
+            }
+            moved = 1;
+            continue;
+        }
+        break; /* a tab, an exotic break, or the next token: the run ends */
+    }
+    if (!moved) {
+        return 0; /* the run is empty (the glued `![` engine split) */
+    }
+    if (i >= n || (p[i] != '[' && p[i] != '{')) {
+        return 0; /* the bracket is not directly after the run */
+    }
+    *end = i;
+    return 1;
 }
 
 static int fc_hex(unsigned char c) {
@@ -756,6 +833,9 @@ typedef struct {
                                             * position; 0 = no lead) */
     int lead_docs;                         /* the lead's marker count (each but the last opens an
                                             * empty first document) */
+    int lead_tag;                          /* the r375 tag-property lead (the bare `!` + blank/
+                                            * break run head): the tag rides the ROOT collection
+                                            * header (`+SEQ <!>`/`+MAP <!>`) */
 } yctx;
 
 static int y_fail_at(yctx* c, int line) {
@@ -2533,7 +2613,16 @@ static int y_root(yctx* c) {
     for (int k = 1; k < c->lead_docs; k++) {
         fo_str(&c->out, "=VAL : \n");
     }
-    fo_str(&c->out, c->is_map ? "+MAP\n" : "+SEQ\n");
+    /* the r375 tag-property lead: the tag rides the ROOT header (the
+     * bare `!` resolves to the non-specific tag the renderer keeps on
+     * a collection — only the scalar's empty render drops it, the
+     * r335 law — byte-equal `<!>` on both engines across the probe
+     * matrix) */
+    if (c->lead_tag) {
+        fo_str(&c->out, c->is_map ? "+MAP <!>\n" : "+SEQ <!>\n");
+    } else {
+        fo_str(&c->out, c->is_map ? "+MAP\n" : "+SEQ\n");
+    }
     size_t after = 0;
     if (!y_members(c, c->is_map ? (unsigned char)'}' : (unsigned char)']', lead + 1, &after)) {
         return 0;
@@ -2556,7 +2645,7 @@ static int y_root(yctx* c) {
 }
 
 static int y_derive(const uint8_t* data, size_t size, int is_map, size_t lead_end, int lead_docs,
-                    fout* out) {
+                    int lead_tag, fout* out) {
     yctx c;
     memset(&c, 0, sizeof(c));
     c.p = data;
@@ -2564,6 +2653,7 @@ static int y_derive(const uint8_t* data, size_t size, int is_map, size_t lead_en
     c.is_map = is_map;
     c.lead_end = lead_end; /* the r349 doc-marker lead (0 = no lead) */
     c.lead_docs = lead_docs;
+    c.lead_tag = lead_tag; /* the r375 tag-property lead (the header `<!>`) */
     c.out = *out;
     int ok = y_root(&c);
     if (!ok || c.out.bad) {
@@ -2624,6 +2714,9 @@ typedef struct {
                       * the tokenizer starts there, 0 = no lead) */
     int lead_docs;   /* the lead's marker count (the render emits one
                       * empty first document per marker but the last) */
+    int lead_tag;    /* the r375 tag-property lead: the tokenizer starts
+                      * at offset 0 so the TAG token precedes the root
+                      * (l_render_stream renders the header `<!>`) */
 } lctx;
 
 static int l_fail_at(lctx* c, int line) {
@@ -3363,6 +3456,12 @@ static int l_tokenize(lctx* c) {
 
 static int l_render_map(lctx* c, fout* o, size_t* ip);
 static int l_render_seq(lctx* c, fout* o, size_t* ip);
+static int l_render_map_rt(lctx* c, fout* o, size_t* ip, int root_tag);
+
+/* the nested arm: the root header rides bare (root_tag 0) */
+static int l_render_map(lctx* c, fout* o, size_t* ip) {
+    return l_render_map_rt(c, o, ip, 0);
+}
 
 static int l_render_node(lctx* c, fout* o, size_t* ip) {
     ltok* t = &c->toks[*ip];
@@ -3465,9 +3564,11 @@ static int l_render_node(lctx* c, fout* o, size_t* ip) {
  * token. KEY-without-node and value-without-token insert the empty
  * scalar; a keyless member renders the node into the key slot; the
  * separator re-peek keeps the trailing-comma shape. */
-static int l_render_map(lctx* c, fout* o, size_t* ip) {
+static int l_render_map_rt(lctx* c, fout* o, size_t* ip, int root_tag) {
     (*ip)++; /* past FLMAP-START */
-    fo_str(o, "+MAP\n");
+    /* the r375 tag-property lead rides the ROOT map's header (the
+     * nested maps always render bare — root_tag is 0 below the root) */
+    fo_str(o, root_tag ? "+MAP <!>\n" : "+MAP\n");
     int first = 1;
     for (;;) {
         if (*ip >= c->ntoks) {
@@ -3689,12 +3790,35 @@ static int l_render_stream(lctx* c, fout* o) {
         fo_str(o, "=VAL : \n");
     }
     ltok* t = &c->toks[ip];
+    /* the r375 tag-property lead (run 45281713143): the bare `!` tag
+     * token precedes the root collection (parse_node's properties
+     * walk) — the tag rides the ROOT header byte-equal on both engines
+     * (`+SEQ <!>`/`+MAP <!>` across the r375 probe matrix; the
+     * collection's tag never "resolves by style" — only the scalar's
+     * empty render drops it, the r335 law). Gates: the bare `!` token
+     * EXACTLY (a `!!`/`!h!` handle or a `!<verbatim>` form carries a
+     * different resolved tag — unverified shapes stay out), and the
+     * collection DIRECTLY after the lead run (fc_tag_lead already
+     * declined every other shape upstream). */
+    int root_tag = 0;
+    if (t->kind == LT_TAG) {
+        if (t->tlen != 1 || t->text == NULL || t->text[0] != '!') {
+            return l_fail(c);
+        }
+        root_tag = 1;
+        ip++;
+        if (ip >= c->ntoks) {
+            return l_fail(c);
+        }
+        t = &c->toks[ip];
+    }
     int is_seq;
     if (t->kind == LT_FLSEQ) {
         is_seq = 1;
     } else if (t->kind == LT_FLMAP) {
-        /* the flow mapping (recursive body — the r281 nested-map law) */
-        if (!l_render_map(c, o, &ip)) {
+        /* the flow mapping (recursive body — the r281 nested-map law);
+         * the tag lead rides the root header (the r375 widening) */
+        if (!l_render_map_rt(c, o, &ip, root_tag)) {
             return l_fail(c);
         }
         if (ip >= c->ntoks || c->toks[ip].kind != LT_EOS) {
@@ -3706,7 +3830,11 @@ static int l_render_stream(lctx* c, fout* o) {
         return l_fail(c);
     }
     ip++;
-    fo_str(o, is_seq ? "+SEQ\n" : "+MAP\n");
+    if (root_tag) {
+        fo_str(o, is_seq ? "+SEQ <!>\n" : "+MAP <!>\n");
+    } else {
+        fo_str(o, is_seq ? "+SEQ\n" : "+MAP\n");
+    }
     int first = 1;
     for (;;) {
         if (ip >= c->ntoks) {
@@ -3794,15 +3922,21 @@ static int l_render_stream(lctx* c, fout* o) {
     return 1;
 }
 
-static int l_derive(const uint8_t* data, size_t size, size_t lead_end, int lead_docs, fout* out) {
+static int l_derive(const uint8_t* data, size_t size, size_t lead_end, int lead_docs, int lead_tag,
+                    fout* out) {
     lctx c;
     memset(&c, 0, sizeof(c));
     c.p = data;
     c.n = size;
-    c.pos = lead_end; /* the r349 doc-marker lead: the tokenizer starts
-                       * past it (0 = no lead, the old walk) */
+    c.pos = lead_tag ? 0 : lead_end; /* the r349 doc-marker lead: the
+                                      * tokenizer starts past it (0 =
+                                      * no lead, the old walk); the
+                                      * r375 tag-property lead restarts
+                                      * AT the `!` so the TAG token is
+                                      * emitted ahead of the root */
     c.lead_end = lead_end;
     c.lead_docs = lead_docs;
+    c.lead_tag = lead_tag;
     c.sk_allowed = 1; /* libyaml's fetch_stream_start arms the flag */
     int ok = l_tokenize(&c);
     if (ok) {
@@ -3840,14 +3974,24 @@ int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, cons
     }
     size_t lead_end = 0;
     int lead_docs = fc_doc_lead(data, size, &lead_end);
-    size_t root = lead_docs > 0 ? lead_end : fc_skip_blank_break(data, size, 0);
+    int lead_tag = 0;
+    if (lead_docs == 0 && data[0] == '!') {
+        /* the r375 tag-property lead (the bare `!` + blank/break run
+         * ahead of the root bracket): the walk admits exactly the
+         * probe-verified shapes (fc_tag_lead) — every other lead byte
+         * still declines */
+        lead_tag = fc_tag_lead(data, size, &lead_end);
+    }
+    size_t root = (lead_docs > 0 || lead_tag) ? lead_end : fc_skip_blank_break(data, size, 0);
     if (root >= size || (data[root] != '[' && data[root] != '{')) {
         return 0; /* the family is flow-rooted (law j): a leading
                    * blank/break run is scan-to-token territory on both
-                   * engines (the r296 artifact's `\n [` head), and the
+                   * engines (the r296 artifact's `\n [` head), the
                    * r349 doc-marker LEAD walk admits exactly the
                    * verified marker-line shapes (fc_doc_lead, one empty
-                   * first document per marker but the last) — any other
+                   * first document per marker but the last), and the
+                   * r375 tag-property lead admits the bare-`!` + run
+                   * head (fc_tag_lead) — any other
                    * lead byte (a comment, a directive, a doc-end run the
                    * lead walk declined, an indented `---`) still
                    * declines */
@@ -3886,9 +4030,9 @@ int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, cons
     }
     fout yd = {NULL, 0, 0, 0};
     fout ld = {NULL, 0, 0, 0};
-    int ok = y_derive(data, size, is_map, lead_end, lead_docs, &yd);
+    int ok = y_derive(data, size, is_map, lead_end, lead_docs, lead_tag, &yd);
     if (ok) {
-        ok = l_derive(data, size, lead_end, lead_docs, &ld);
+        ok = l_derive(data, size, lead_end, lead_docs, lead_tag, &ld);
     }
     int classified = ok && fc_str_eq(&yd, ydump) && fc_str_eq(&ld, ldump);
     if (getenv("YD_FC_DEBUG") != NULL) {
