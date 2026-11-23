@@ -16,37 +16,46 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.77 — live across all five runtimes** (C +
-ruby `0.6.77.0` + py `0.6.77.0` + rs/ts `0.6.77`, registry-checked
-2026-11-23). v0.6.77 ships the **first engine fix since #1468** —
-the roundtrip guarantee's empty-inline anchor twin (PR #1584): an
-anchor whose name ends at `:` on an EMPTY plain value spelled
-line-final, the re-parse's riding-colon follower scan crossed the
-break into the props-led follower line, and the un-consumed colon
-re-lexed as a VALUE indicator — yeptris rejected its own emitter's
-output. The emitter now spells the explicit-empty quoted form
-(`k: &n: ''`) whenever the anchor name's last byte is `:` — the
-quote byte is a plain-led follower so the riding law keeps the name
-whole, the sticky quoted style re-spells byte-identically on round 2,
-and the emit lanes bench no-regression. Over the r351-r359 comparator
-roll: eight more pinned nightly escapes — the empty-flow-key
-composition joining the glued-hash family; the dot-star, paren-lead
-and alnum-with-bracket plain keys joining the quoted-exotic-TAB
-family (the bracket with its flow-wall head-guard); the
-anchor-glued-colon alias tail and the alias glued-colon key joining
-the flow-qsoup families via the new `family_classify` MAP-key sibling
-branch; the embedded second anchor joining the
-root-anchor-quoted-follow family; the UTF-16BE kept mid-scalar U+FEFF
-joining the r243 midstream-BOM family's eaten-vs-kept split. Zero
-YAML engine divergence outstanding beyond #1411's deliberate fix,
-#1468's same-day repair (released in v0.6.75) and this cut's #1584.
-The previous cut: v0.6.76 — the character-column emitter (#1490,
+**Latest release: v0.6.78 — live across all five runtimes** (C +
+ruby `0.6.78.0` + py `0.6.78.0` + rs/ts `0.6.78`, registry-checked
+2026-11-24). v0.6.78 ships the **feed-contract fold-line fix
+(catch 134, PR #1615)** — the fuzz_feed nightly (yeptris vs ITSELF:
+whole-input vs chunked-input recorder identity, the split-feed
+guarantee) caught the fold-line state machine treating a fold break
+as line-end ONLY on `\n`: a CR-terminated fold line swallowed the
+following line's flow openers and explicit-key `?` markers, so a
+chunked feed cut mid-token inside the still-open flow and
+materialized a different event stream than the same bytes fed whole.
+The fix routes both scan arms through the `norm_next_fold_break`
+SSOT carrying the visited-break-arm line-start state;
+whole-vs-chunked identity restored byte-for-byte (17-byte floor,
+critical boundary 247|248), the recorder lanes benched flat.
+Over the r360-r373 comparator roll: fourteen more pinned nightly
+escapes and two classifier-law generalizations — the semicolon key
+joining the quoted-exotic-TAB family; the nested `[?::[?::JJ]]`
+member (the artifact its own 12-byte fixed point); the size-bound
+tag-soup CONTINUUM riding the classifier law at arbitrary scale after
+the four conservatism budgets raised to measured demand (the r362
+dig REFUTED the size-dependence theory — the divergence is
+byte-identical at every size; test-side budgets were what bound); the
+folded-header backslash-escape ride; the three double-BOM faces (the
+one-scalar spelling, the map-follower end-of-input colon, the `?/`
+head-charset row); the root-block-content exotic-break rebuild; the
+4090-byte dump-line-clamp-tail floor; the r369 NEL-blank-state
+walkers replacing units no engine produces; and the r373 exotic-
+spelling rebuild (`yd_exotic_rebuild_divergence`) generalizing the
+r367 composed-claim move. Zero YAML engine divergence outstanding
+beyond #1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and
+this cut's #1615. The previous cut: v0.6.77 — the roundtrip
+guarantee's empty-inline anchor twin (#1584): the emitter spells
+`k: &n: ''` whenever the anchor name's last byte is `:`, byte-stable
+round-trips, over the r351-r359 roll (eight pinned escapes).
+The cut before it: v0.6.76 — the character-column emitter (#1490,
 PR #1493): the fold column rides code points with the purity fact as
-a parse product (ASCII keeps the byte arithmetic verbatim; mixed
-pays per-span SWAR scans), all emitter lanes at-or-above the
-pre-change levels, the multibyte corpus byte-exact vs libyaml, over
-the r314-r350 comparator roll (~37 pinned nightly escapes).
-The cut before it closes the six long-horizon competition fronts
+a parse product, all emitter lanes at-or-above the pre-change
+levels, over the r314-r350 comparator roll (~37 pinned nightly
+escapes).
+The cut before that closes the six long-horizon competition fronts
 with measured verdicts (#474/#739/#742/#331/#352 + the binding faces
 #862/#857, every attempt ledgered): anchor-heavy — the last DOM
 shape that trailed — rides the per-line memo to 1.34x vs rapidyaml;
