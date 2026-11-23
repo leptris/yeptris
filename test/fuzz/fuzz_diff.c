@@ -53,7 +53,14 @@ static const char* probe_id = NULL;
  * arm below. The r364 nightly (run 45102166994, crash-f05b6bab,
  * "BOM BOM - SP &U:#") added the COMPOSITION face below: the removal
  * twin itself can split on an anchor-colon ride, so the claim rides
- * the two laws' dumps directly instead. */
+ * the two laws' dumps directly instead. The r365 nightly (run
+ * 45114990688, crash-bf711026, "BOM BOM - SP &U:#<BOM BOM - SP &U:")
+ * added the MAP-FOLLOWER face below: the follower line closing on an
+ * end-of-input colon turns yeptris's content-BOM line into ONE
+ * implicit root-map key, and the removal twin splits on both engines
+ * (the anchored empty key on libyaml, the colon-riding plain on
+ * yeptris), so both earlier bars miss and the arm derives the root-map
+ * spelling instead. */
 static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const char* ydump,
                                         const char* ldump) {
     /* the 3-byte BOM + one follower byte is a legal member (the
@@ -135,8 +142,17 @@ static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const 
          * lines) moves a byte and declines. libfyaml 04e0b58 reads
          * the same one-scalar shape on BOTH its 1.2 and 1.1 passes
          * (the r318 dual-consensus face); the suite is silent (no
-         * BOM tests at the da267a5c pin). */
-        if (yok2 == 0 && lok2 == 1 && ldump2 != NULL && strcmp(ldump2, ldump) == 0 && size >= 6 &&
+         * BOM tests at the da267a5c pin). The r365 battery (seed 365)
+         * widened the gate: the removal twin's fate on yeptris does
+         * not matter for the ORIGINAL's explanation -- when it
+         * PARSES but splits on the ANCHOR-COLON RIDE (the '#'-tail
+         * mutants: "- &U:L" reads "=VAL : &U:L " on yeptris, the
+         * 2SXE/Y2GN colon absorbed into the anchored plain, vs
+         * "=VAL : &U :L" on libyaml, the anchor cut at the colon),
+         * the r226 bar still misses while the pure-strip +
+         * verbatim-spelling pair still fully explains the original,
+         * so the claim no longer demands the removal error. */
+        if (lok2 == 1 && ldump2 != NULL && strcmp(ldump2, ldump) == 0 && size >= 6 &&
             ydump != NULL && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF &&
             data[3] == 0xEF && data[4] == 0xBB && data[5] == 0xBF) {
             size_t need = 12 + (size - 3) + 6; /* "+STR\n=VAL : " ... "\n-STR\n" */
@@ -148,6 +164,59 @@ static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const 
                 want[need] = '\0';
                 known = (strlen(ydump) == need && memcmp(ydump, want, need) == 0);
                 free(want);
+            }
+        }
+        if (!known) {
+            /* the MAP-FOLLOWER twin (the r365 nightly, run 45114990688,
+             * crash-bf711026 and its 11-byte floor
+             * "<BOM><BOM>- SP &U:", the r338 pointer's predicted
+             * round): the same double line-start BOM, but the follower
+             * line CLOSES ON AN END-OF-INPUT COLON. Both carried
+             * probes decline on it -- the r226 both-accept bar misses
+             * because the removal twin ("- &U:", both BOMs stripped)
+             * itself SPLITS: yeptris reads a seq entry whose absorbed
+             * anchor rides the colon as plain content ("=VAL : &U: ",
+             * the 2SXE/Y2GN riding law) while libyaml opens seq>map
+             * with the anchored EMPTY key ("=VAL : &U ", the
+             * end-of-input colon implicit-key law) -- and the r364
+             * composition arm's ONE-PLAIN-SCALAR spelling cannot
+             * match a root-map dump, so neither carried probe claims
+             * the face. The
+             * map-follower arm rides the laws directly: libyaml's
+             * line-start strip is PURE (lok2 == 1 and its removal dump
+             * equals its original), and yeptris keeps the second mark
+             * as CONTENT (catch-121: the BOM opens the plain, so the
+             * '&' loses its indicator power and rides verbatim) while
+             * the end-of-input colon closes the opening line as ONE
+             * implicit root-map key -- its dump must equal the derived
+             * "+STR\n+MAP\n=VAL : <input minus the stream-start BOM
+             * minus the final colon>\n=VAL : \n-MAP\n-STR\n" spelling,
+             * the key being the raw bytes verbatim and the value
+             * empty. Any other yeptris reading (a seq, an anchor, a
+             * folded line, a non-empty value) moves a byte and
+             * declines. THE A/B: libfyaml 04e0b58 reads the same
+             * root-map shape on BOTH its 1.2 and 1.1 passes (the
+             * quoted key "<FEFF>- &U" with the empty value -- the
+             * r318 dual-consensus face); the suite is silent (no BOM
+             * tests at the da267a5c pin); spec 5.1 allows the BOM at
+             * the document start and libyaml's line-start strip is its
+             * own ledgered r226 deviation -- comparator carry only, no
+             * engine change (the r318/r330/r336/r337/r338/r364
+             * precedent). */
+            if (lok2 == 1 && ldump2 != NULL && strcmp(ldump2, ldump) == 0 && size >= 8 &&
+                ydump != NULL && data[size - 1] == ':' && data[0] == 0xEF && data[1] == 0xBB &&
+                data[2] == 0xBF && data[3] == 0xEF && data[4] == 0xBB && data[5] == 0xBF) {
+                size_t klen = size - 4;       /* minus stream-start BOM, minus the closing colon */
+                size_t need = 17 + klen + 19; /* the full root-map spelling */
+                char* want = malloc(need + 1);
+                if (want != NULL) {
+                    memcpy(want, "+STR\n+MAP\n=VAL : ", 17);
+                    memcpy(want + 17, data + 3, klen); /* the mark rides inside the key */
+                    memcpy(want + 17 + klen, "\n=VAL : \n-MAP\n-STR\n", 19);
+                    want[need] = '\0';
+                    known = (strlen(ydump) == need && memcmp(ydump, want, need) == 0);
+                    free(want);
+                }
             }
         }
     }
