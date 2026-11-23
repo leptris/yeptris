@@ -11080,12 +11080,22 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
             return 1;
         }
         if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
-            if ((unsigned char)a[0] != 0xC2 || (unsigned char)a[1] != 0x85) {
+            /* the r369 widening (run 45180416420, main 031e326e): NEL is
+             * a BREAK on both engines inside the quoted body -- yeptris's
+             * #638 normalizer rewrites it to '\n' everywhere (quoted
+             * regions included) and libyaml's READ_LINE spells it '\n'
+             * (NEL -> LF, the one exotic it does not keep raw), so both
+             * folds speak the ONE-SPACE spelling (probed `&2?: '<NEL>a'`
+             * reads ` a` on both; the r238-era raw-raw unit modeled a
+             * spelling no engine path produces). last_exotic clears:
+             * behind a kept-raw PS the fold is yeptris's own (probed
+             * `<PS><NEL>a` reads `<PS> a` on y). */
+            if (a[0] != ' ') {
                 return 0;
             }
-            a += 2;
+            a += 1;
             i += 2;
-            prev_break = 0;
+            prev_break = 1;
             last_exotic = 0;
         } else if ((unsigned char)body[i] == 0xE2 && (unsigned char)body[i + 1] == 0x80 &&
                    ((unsigned char)body[i + 2] == 0xA8 || (unsigned char)body[i + 2] == 0xA9)) {
@@ -11125,15 +11135,32 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
                 }
                 i = s;
             } else {
-                while (i < s) {
-                    if (a[0] != ' ') {
-                        return 0;
+                /* the r369 widening (run 45180416420, main 031e326e):
+                 * the run's tail facing a NEL breaks -- yeptris strips
+                 * the trailing blanks before the normalized break
+                 * (probed `&2?: '<SP><NEL>a'` reads ` a`: the run is
+                 * gone, the NEL's fold speaks alone), and behind a
+                 * just-folded break the run was the fold's own
+                 * line-start blanks -- already consumed by it (probed
+                 * `&2?: '<NEL><SP>a'` reads ` a` too). A content-state
+                 * run still rides verbatim (the r332 exotic-join law:
+                 * probed `<PS><SP>a` reads `<PS> a`). */
+                if (s + 1 < be && (unsigned char)body[s] == 0xC2 &&
+                    (unsigned char)body[s + 1] == 0x85) {
+                    i = s; /* the run strips; the NEL's fold speaks */
+                } else if (prev_break && !last_exotic) {
+                    i = s; /* the fold ate the run with it */
+                } else {
+                    while (i < s) {
+                        if (a[0] != ' ') {
+                            return 0;
+                        }
+                        a += 1;
+                        i += 1;
                     }
-                    a += 1;
-                    i += 1;
+                    prev_break = 0;
+                    last_exotic = 0;
                 }
-                prev_break = 0;
-                last_exotic = 0;
             }
         } else if (body[i] == '\t') {
             /* the r331 widening (the nightly's round 331, run
@@ -11251,13 +11278,35 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
             return 1;
         }
         if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
-            if ((unsigned char)b[0] != 0xC2 || (unsigned char)b[1] != 0x85) {
+            /* the r369 widening (run 45180416420, main 031e326e): READ_LINE
+             * spells the NEL '\n' (NEL -> LF -- the one exotic it does not
+             * keep raw), so the fold gate speaks for it: the clean NEL
+             * folds to the ONE-SPACE spelling (probed `&2?: '<NEL>a'` reads
+             * ` a`) -- the r238-era raw-raw unit modeled a spelling no
+             * engine path produces. Behind a kept-raw LS/PS the composition
+             * diverges on the raw-join machinery (probed `<PS><NEL>a` reads
+             * `<PS>\na` here) -- unmeasured, declines. A clean NEL directly
+             * before a kept-raw LS/PS is the floor face: the '\n' is the
+             * leading break and the raw triple the trailing one -- the NEL
+             * renders NOTHING and the LS/PS rides raw (probed `<NEL><PS>a`
+             * reads `<PS>a`); the LS/PS unit re-arms the blank state. */
+            if (pending_exotic) {
                 return 0;
             }
-            b += 2;
+            if (i + 4 < be && (unsigned char)body[i + 2] == 0xE2 &&
+                (unsigned char)body[i + 3] == 0x80 &&
+                ((unsigned char)body[i + 4] == 0xA8 || (unsigned char)body[i + 4] == 0xA9)) {
+                i += 2; /* silent: the raw triple joins over it */
+                continue;
+            }
+            if (b[0] != ' ') {
+                return 0;
+            }
+            b += 1;
             i += 2;
-            pending_exotic = 1;
-            prev_break = 0;
+            pending_exotic = 0;
+            prev_break = 1;
+            last_esc = 0;
         } else if ((unsigned char)body[i] == 0xE2 && (unsigned char)body[i + 1] == 0x80 &&
                    ((unsigned char)body[i + 2] == 0xA8 || (unsigned char)body[i + 2] == 0xA9)) {
             if ((unsigned char)b[0] != 0xE2 || (unsigned char)b[1] != 0x80 ||
@@ -11316,10 +11365,13 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
                     return 0;
                 }
                 i = s;
-            } else if (pending_exotic || (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
-                                          (unsigned char)body[s + 1] == 0x80 &&
-                                          ((unsigned char)body[s + 2] == 0xA8 ||
-                                           (unsigned char)body[s + 2] == 0xA9))) {
+            } else if (pending_exotic || prev_break ||
+                       (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
+                        (unsigned char)body[s + 1] == 0x80 &&
+                        ((unsigned char)body[s + 2] == 0xA8 ||
+                         (unsigned char)body[s + 2] == 0xA9)) ||
+                       (s + 1 < be && (unsigned char)body[s] == 0xC2 &&
+                        (unsigned char)body[s + 1] == 0x85)) {
                 /* the r332 widening (run 44721335253, main e00d1138):
                  * the exotic join's blank state swallows the whole
                  * space run -- behind the kept-raw LS/PS break
@@ -11328,6 +11380,12 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
                  * and `&2?: 'a<SP><PS><TAB>b'`). pending_exotic stays
                  * armed: a following blank run rides the same state
                  * (probed `&2?: '<PS><SP><TAB><SP>b'` reads `<PS>b`). */
+                /* the r369 widening (run 45180416420, main 031e326e):
+                 * the run's tail facing a NEL is the same CLEAR --
+                 * whitespaces die on the first break, exotic or not
+                 * (probed `&2?: '<SP><NEL>a'` reads ` a`), and behind a
+                 * just-folded break the run rides the SKIP branch
+                 * (probed `&2?: '<NEL><SP>a'` reads ` a`). */
                 i = s;
             } else {
                 while (i < s) {
