@@ -7560,6 +7560,55 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-direct-hash-r343-artifact.bin
     )
 
+    # the r363 escape-ride round (the post-r362 Fuzz Nightly, run
+    # 45094381057, main c02ff708; the 16-byte artifact
+    # crash-dc904f6dc4a435df2e95e665c8bc8927e497ee0d "SP SP > NEL
+    # #[\"\\u0821\" SP" -- the DQ-escape SPELLING "ࠡ" glued behind the
+    # '#' as the block's own plain text, trailing space, unclosed; the
+    # 7-byte harness-bar floor "SP > NEL # \u" -- greedy ddmin to a
+    # fixed point under the classified-DIFFER + dump-pair shape bar;
+    # pre-patch DIFFER exit 77, post-patch carry exit 0, on BOTH
+    # shapes, plain and lf harnesses; the r343 direct-hash law's
+    # escape-bearing composition): the r343 eat walk stopped at the
+    # input backslash's ESCAPED dump pair '\\' -- the first byte of
+    # the pair, so every escape-bearing run declined. The ride: the
+    # dump '\\' pair IS one input backslash -- plain material, the
+    # walk skips the pair and keeps walking; every OTHER escape shape
+    # (\n \r \t \xNN from raw breaks/tabs/controls), the raw exotic
+    # leads and the dump-line breaks still stop the walk, and the
+    # claim is untouched (the ONE clip escape, the dump-line end, the
+    # r161 strcmp). Verdict-preserving: the pair's second byte can
+    # never be the claim's 'n', so every shape the widened walk
+    # reaches FURTHER on previously declined at this arm -- no
+    # existing member's path changes. THE A/B: libfyaml 04e0b58
+    # re-measured on THIS composition's own floor AND artifact (the
+    # r325 lesson): its --yaml-1.2 pass ERRORS both ("block scalar no
+    # linebreak found" -- the NEL is not a 1.2 break) while its
+    # --yaml-1.1 pass reads the EMPTY folded scalar byte-exact as
+    # libyaml on both -- no comparator sides with the kept content,
+    # the libyaml-is-the-compat-bar line carries, comparator carry
+    # only, no engine change (the r317/r343 precedent). Probes: the
+    # literal-text twin "SP > NEL # \n" and the EOF-backslash twin
+    # "SP > NEL # \" carry with the law; the raw-TAB twin
+    # "SP > NEL # <TAB>" stays DIFFER-declined (the \t escape still
+    # stops the walk mid-run; the raw-control twin
+    # "SP > NEL # <0x01>" rides the pre-existing YEPTRIS-ONLY-ACCEPT
+    # control split, outside this law) -- next round's material if
+    # the nightly escapes there. Both shapes' 50-mutant paired
+    # battery (30 single + 20 double, seed 363): see the round issue.
+    # Both the floor and the full artifact ride the corpus (the r321
+    # seed law).
+    add_test(
+        NAME fuzz-diff-r363-folded-header-direct-hash-escride
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-direct-hash-escride-r363.bin
+    )
+    add_test(
+        NAME fuzz-diff-r363-folded-header-direct-hash-escride-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/folded-header-direct-hash-escride-r363-artifact.bin
+    )
+
     # the r344 folded-header round (the nightly's run 44905293937, main
     # d5980c44; the 75-byte artifact crash-4e0e552d710e457aa24099c2274be50bd800663c
     # "> LF SP -!<NEL> SP SP !w…`w0e17.tag CR SP ,?bar}w…xt8text9", the
