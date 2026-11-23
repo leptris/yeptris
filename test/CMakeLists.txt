@@ -7261,6 +7261,47 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-amp-r356-artifact.bin
     )
 
+    # r366 (run 45125049264, main 79e66828): the family's THIRD
+    # mutant-of-own-pin red — the nightly's floor
+    # `&2?*: '<PS><CR>\'` (13 bytes) is ONE InsertByte from the r330
+    # artifact pin `&2?*: '<PS><CR>'`: the dump-vocabulary backslash
+    # grown INSIDE the single-quoted body (the full nightly artifact
+    # is the 100-byte tail-content form `&2?*: '<PS><CR>"\u1: ...:::'`,
+    # the same body backslash plus riding content). A single-quoted
+    # scalar has no escapes (1.2 8.1.2): the `\` rides BOTH engines'
+    # values as content and both dumps spell it `\\` through the
+    # shared yd_escape_append table — the r238 arm's byte-equal
+    # content branch stranded the second `\` before the tail sentinel
+    # and the strict walks declined their own family. THE WIDENING:
+    # both body walkers gain the backslash branch (one dump `\\` pair
+    # per body `\`, fold/exotic state cleared with it). The structure
+    # face is unchanged — the r330 law (2SXE/W5VH/Y2GN pin the
+    # ns-anchor-char riding name `2?*:`; libyaml cuts at the first
+    # out-of-charset byte, its IS_ALPHA 1.1 set; libfyaml 04e0b58
+    # reads yeptris byte-exact on BOTH modes, probed again on the
+    # r366 floor: `=VAL &2?*: '\P \\` 1.2). Comparator carry only, no
+    # engine change (the r318/r330/r331/r332/r336/r346/r356
+    # precedent). Floor: the 13-byte `&2?*: '<PS><CR>\'` (greedy
+    # single-byte ddmin fixed point pre-patch: DIFFER exit 77 on the
+    # floor alone, every deletion classified exit 0 — INCLUDING the
+    # '*' deletion, which drops into the r330 floor shape the arm
+    # already carries). The 50-mutant paired battery (seed 366, 20
+    # flips + 10 deletions + 20 doubles per shape): 0 regressions
+    # over 100 paired runs; every 77->0 turn rides a
+    # body-backslash-retaining family shape; stable-reds stay stable.
+    # Both the floor and the full artifact ride the corpus (the r321
+    # seed law).
+    add_test(
+        NAME fuzz-diff-r366-root-anchor-quoted-follow-bslash
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-bslash-r366.bin
+    )
+    add_test(
+        NAME fuzz-diff-r366-root-anchor-quoted-follow-bslash-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-bslash-r366-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB

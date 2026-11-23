@@ -11125,6 +11125,29 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
                     i += 1;
                 }
             }
+        } else if (body[i] == '\\') {
+            /* the r366 widening (run 45125049264, main 79e66828): the
+             * dump-vocabulary byte INSIDE the quoted body -- the
+             * nightly's floor `&2?*: '<PS><CR>\'` (13 bytes) is ONE
+             * InsertByte from the r330 artifact pin
+             * `&2?*: '<PS><CR>'`: the literal backslash rides the
+             * single-quoted body as CONTENT in BOTH engines (a
+             * single-quoted scalar has no escapes -- 1.2 8.1.2, "no
+             * escaped characters"), but both dumps spell it through
+             * the shared yd_escape_append table (`\` -> `\\`), so the
+             * byte-equal content branch above consumed one dump byte
+             * and left the second `\` stranded before the tail
+             * sentinel. The law: one dump `\\` pair per body `\`,
+             * wherever it sits (behind a kept-raw exotic, behind a
+             * fold, at the body end); like every content byte it
+             * clears the fold/exotic state. */
+            if (a[0] != '\\' || a[1] != '\\') {
+                return 0;
+            }
+            a += 2;
+            i += 1;
+            prev_break = 0;
+            last_exotic = 0;
         } else if (body[i] >= 0x20) {
             if (a[0] != (char)body[i]) {
                 return 0;
@@ -11268,6 +11291,25 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
                 }
             }
             i = s;
+        } else if (body[i] == '\\') {
+            /* the r366 widening (run 45125049264, main 79e66828): the
+             * literal backslash rides the single-quoted body as
+             * CONTENT here too (libyaml spells the single-quote body
+             * verbatim; a lone `\` has no escape meaning in 1.1
+             * single-quoted either), and libyaml's dump escapes it
+             * through the same table (`\` -> `\\`) -- one dump pair
+             * per body byte, the fold/exotic state cleared with it
+             * (the r366 floor `&2?*: '<PS><CR>\'` reads
+             * `<PS>\n\\` here: the PS raw, the CR the blank-state
+             * escaped break, then the pair). */
+            if (b[0] != '\\' || b[1] != '\\') {
+                return 0;
+            }
+            b += 2;
+            i += 1;
+            pending_exotic = 0;
+            prev_break = 0;
+            last_esc = 0;
         } else if (body[i] >= 0x20) {
             if (b[0] != (char)body[i]) {
                 return 0;
@@ -11357,6 +11399,31 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
          * ANCHOR, the `&2&: ...` twin probed shape-dead), a ':' inside
          * still re-lexes the VALUE boundary (the r336 pure-run law
          * keeps its shape), a '*' lead still re-lexes as an ALIAS. */
+        /* The r366 widening (run 45125049264, main 79e66828): the
+         * quoted-BODY set gains the literal backslash. The nightly's
+         * artifact (100 bytes, `&2?*: '<PS><CR>"\u1: ...:::'` -- the
+         * tail content run with a `\u1` glyph inside) and its floor
+         * `&2?*: '<PS><CR>\'` (13 bytes, greedy ddmin fixed point:
+         * every single-byte deletion classified pre-patch, exit 0 --
+         * INCLUDING the '*' deletion, which drops into the r330 floor
+         * shape the arm already carries; the pre-patch red is the
+         * floor itself alone) are ONE InsertByte from the r330
+         * artifact pin (`\` grown before the final quote). The escape
+         * face is dump-vocabulary only: a single-quoted scalar has no
+         * escapes (1.2 8.1.2), the `\` rides BOTH engines' values as
+         * content, and both dumps spell it `\\` through the shared
+         * yd_escape_append table -- the byte-equal content branch
+         * stranded the second `\` before the tail sentinel and the
+         * strict walks declined their own family. The structure face
+         * is unchanged (the r330 law: yeptris rides the 1.2
+         * ns-anchor-char name `2?*:` -- 2SXE/W5VH/Y2GN pin the colon
+         * and the glued `?`/`*`/`&` names; libyaml cuts at the first
+         * out-of-charset byte, its IS_ALPHA 1.1 set; libfyaml
+         * 04e0b58 reads yeptris byte-exact on BOTH modes, probed
+         * again on the r366 floor: `=VAL &2?*: '\P \\` 1.2 / PS kept
+         * 1.1, the CR folded to the one space in 1.2). Comparator
+         * carry only, no engine change (the r318/r330/r331/r332/
+         * r336/r346/r356 precedent). */
         while (i < size &&
                (((data[i]) >= 'A' && (data[i]) <= 'Z') || ((data[i]) >= 'a' && (data[i]) <= 'z') ||
                 ((data[i]) >= '0' && (data[i]) <= '9') || (data[i]) == '_' || (data[i]) == '-' ||
