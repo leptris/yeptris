@@ -23197,6 +23197,92 @@ static int yd_r361_tag_soup_gray(const uint8_t* data, size_t size, const char* y
     return 0;
 }
 
+/* The exotic-spelling rebuild (the r373 nightly, run 45244905519, main
+ * f1019048): the artifact `> #<PS> #<PS><PS> <NEL>\n<PS> <NEL> -` (26
+ * bytes, a CopyPart mutation off 0cef14c6) splits in the block-scalar
+ * break-run rendering — yeptris `=VAL : #\n<NEL>\n<NEL> -\n` vs libyaml
+ * `=VAL : #<PS><PS>\n\n<PS>\n-` — while the LF-spelled twin of the same
+ * input classifies (the floor's rebuild rides yd_clip_breakless_
+ * divergence exactly). The break-set bar both engines ride is the
+ * 1.1/1.2 line: YAML 1.2.2 (yaml-spec main, Line Break Characters)
+ * defines b-char ::= x0A | x0D ONLY — "Note that these include the
+ * non-ASCII line breaks: next line (x85), line separator (x2028) and
+ * paragraph separator (x2029). [YAML 1.1] did support the above
+ * non-ASCII line break characters; ... YAML treats them as non-break
+ * characters as of version 1.2" — so yeptris's #638/#839 walk keeps the
+ * raw spellings as 1.2 content in block-content lines (the r171 carry
+ * ends only the HEADER line at any spelling; the r220 NEL-carpet law
+ * keeps content-line NELs first-class; the r372 fold-line crossing
+ * spells the fold's line ends) while libyaml 90a56d4 breaks at every
+ * spelling (IS_BREAKZ) and renders per READ_LINE (NEL -> LF; LS|PS ->
+ * raw), its ledgered 1.1 posture. The suite carries ZERO raw NEL/LS/PS
+ * rows (scanned da267a5c: no .in.yaml/.test file contains the bytes),
+ * so the comparator splits along the compat bar (the r335/r317/r369
+ * precedent) and the pair is adjudicated on the engines' own tables —
+ * libfyaml 04e0b58 confirms the version line on the floor (1.2 mode
+ * `-<LF>`: no `#` content, the header comment rides through the PS;
+ * 1.1 mode `#<SP><SP>\n\n-<LF>`: the first PS ended the header and the
+ * second `#` is content — libyaml's family). THE WIDENING (the r367
+ * off the root-content face): when a DIFFER's only fresh ingredient is
+ * the raw spelling — rebuild the input with every NEL/LS/PS normalized
+ * to LF, re-classify BOTH engines on that copy, and claim the pair
+ * only when the copy agrees byte-for-byte or rides exactly the
+ * breakless-EOF clip residual (the r140/L24T#2 law, the r367 arm's own
+ * composed gate). The claim stays byte-bounded: a divergence the
+ * rebuild does not carry survives and keeps the pair red. Comparator
+ * carry only, no engine change (the r318/r330/r331/r332/r336/r346/
+ * r356/r366/r367/r369 precedent). */
+static int yd_exotic_rebuild_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                        const char* ldump) {
+    (void)ydump;
+    (void)ldump;
+    if (size == 0 || size > 65536) {
+        return 0;
+    }
+    int has = 0;
+    for (size_t i = 0; i < size; i++) {
+        if ((unsigned char)data[i] == 0xC2 && i + 1 < size && (unsigned char)data[i + 1] == 0x85) {
+            has = 1;
+            break;
+        }
+        if (i + 2 < size && (unsigned char)data[i] == 0xE2 && (unsigned char)data[i + 1] == 0x80 &&
+            ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            has = 1;
+            break;
+        }
+    }
+    if (!has) {
+        return 0;
+    }
+    unsigned char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    for (size_t i = 0; i < size;) {
+        if ((unsigned char)data[i] == 0xC2 && i + 1 < size && (unsigned char)data[i + 1] == 0x85) {
+            sub[o++] = '\n';
+            i += 2;
+        } else if (i + 2 < size && (unsigned char)data[i] == 0xE2 &&
+                   (unsigned char)data[i + 1] == 0x80 &&
+                   ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+            sub[o++] = '\n';
+            i += 3;
+        } else {
+            sub[o++] = data[i];
+            i++;
+        }
+    }
+    char* tdump = NULL;
+    char* tldump = NULL;
+    yd_verdict tv = yd_diff_classify((const char*)sub, o, &tdump, &tldump);
+    int ok = tv == YD_EQUAL || (tv == YD_DIFFER && yd_clip_breakless_divergence(sub, o, tdump));
+    free(tdump);
+    free(tldump);
+    free(sub);
+    return ok;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -23228,6 +23314,7 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_plain_nel_lsps_fold_divergence(data, size, ydump, ldump) ||
          yd_block_nel_content_divergence(data, size, ydump, ldump) ||
          yd_block_nel_moreindent_divergence(data, size, ydump, ldump) ||
+         yd_exotic_rebuild_divergence(data, size, ydump, ldump) ||
          yd_r121_permuted_gray(data, size, ydump, ldump) ||
          yd_r229_flow_quote_comment_glue_gray(data, size, ydump, ldump) ||
          yd_r137_soup_gray(data, size, ydump, ldump) ||

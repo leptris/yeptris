@@ -7504,6 +7504,62 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r371.bin
     )
 
+    # r373 (run 45244905519, main f1019048): the PS/NEL-dense block
+    # break-run split. The nightly's artifact `> #<PS> #<PS><PS>
+    # <NEL>\n<PS> <NEL> -` (26 bytes, CopyPart off 0cef14c6) DIFFERs in
+    # the block-scalar break-run rendering: yeptris `=VAL : #\n<NEL>\n
+    # <NEL> -\n` vs libyaml `=VAL : #<PS><PS>\n\n<PS>\n-`. The
+    # hand-off's header-termination guess (the PS/NEL PLAIN-fold
+    # space-retention face) died on the probes: the r171 carry already
+    # ends yeptris's header LINE at any break spelling (the header
+    # boundary converges — the `#` rides content on both sides) and the
+    # r372 carry spells the fold's line ends — the residual is purely
+    # the CONTENT-line break-run rendering. THE LAW (the break-set bar
+    # both engines ride): YAML 1.2.2 (yaml-spec main, Line Break
+    # Characters) defines b-char ::= x0A | x0D ONLY — the spec's own
+    # note: "Note that these include the non-ASCII line breaks: next
+    # line (x85), line separator (x2028) and paragraph separator
+    # (x2029). [YAML 1.1] did support the above non-ASCII line break
+    # characters; ... YAML treats them as non-break characters as of
+    # version 1.2." yeptris's #638/#839 walk keeps the raw spellings as
+    # 1.2 content in block-content lines (the r171 carry ends only the
+    # header line at any spelling; the r220 NEL-carpet law keeps
+    # content-line NELs first-class; the r372 fold-line crossing spells
+    # the fold's line ends) while libyaml 90a56d4 breaks at every
+    # spelling (IS_BREAKZ) and renders per READ_LINE (NEL -> LF; LS|PS
+    # -> raw), its ledgered 1.1 posture. The suite carries ZERO raw
+    # NEL/LS/PS rows (scanned da267a5c), so the comparator splits along
+    # the compat bar (the r335/r317/r369 precedent); libfyaml 04e0b58
+    # confirms the version line on the floor `> #<PS> #<PS><PS> <NEL>\n -`:
+    # 1.2 mode sides with yeptris's family (`-\n` — the `#` runs ride the
+    # header comment, no `#` content), 1.1 mode sides with libyaml's
+    # (`#  \n\n-\n` — the first PS ended the header and the second `#` is
+    # content). THE WIDENING (the r367 composed-claim move generalized
+    # off the root-content face): the new yd_exotic_rebuild_divergence
+    # arm — when a DIFFER's only fresh ingredient is the raw spelling,
+    # normalize every NEL/LS/PS to LF in a copy, re-classify BOTH
+    # engines on that copy, and claim the pair only when the copy
+    # agrees byte-for-byte or rides exactly the breakless-EOF clip
+    # residual (the r140/L24T#2 law). FLOOR: the 20-byte greedy ddmin
+    # fixed point `> #<PS> #<PS><PS> <NEL>\n -` (hex 3e 20 23 e2 80 a9
+    # 20 23 e2 80 a9 e2 80 a9 20 c2 85 0a 20 2d) — red pre-patch on
+    # both harnesses (lf exit 77, standalone abort), its LF rebuild
+    # riding yd_clip_breakless_divergence exactly. The claim stays
+    # byte-bounded: a divergence the rebuild does not carry survives
+    # and keeps the pair red. Comparator carry only, no engine change
+    # (the r318/r330/r331/r332/r336/r346/r356/r366/r367/r369
+    # precedent).
+    add_test(
+        NAME fuzz-diff-r373-block-exotic-rebuild
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-exotic-spelling-rebuild-r373.bin
+    )
+    add_test(
+        NAME fuzz-diff-r373-block-exotic-rebuild-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-exotic-spelling-rebuild-r373-artifact.bin
+    )
+
     # r370 (run 45200249484, main fff9640f): the r366 pin's mutant-of-
     # own-pin red riding the qsplat HEAD-CHARSET — the nightly's
     # artifact `&2?/: '<PS><CR>\'` (13 bytes) is the pinned r366 floor
