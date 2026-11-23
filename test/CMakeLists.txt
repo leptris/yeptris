@@ -7441,6 +7441,73 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-nel-blank-r369-artifact.bin
     )
 
+    # r370 (run 45200249484, main fff9640f): the r366 pin's mutant-of-
+    # own-pin red riding the qsplat HEAD-CHARSET — the nightly's
+    # artifact `&2?/: '<PS><CR>\'` (13 bytes) is the pinned r366 floor
+    # `&2?*: '<PS><CR>\'` with exactly ONE ChangeByte at offset 3,
+    # `*` (0x2a) -> `/` (0x2f). The r366/r368/r369 body widenings all
+    # hold (the `<PS><CR>\` units match byte-exact); only the HEAD
+    # spelling declines — the r238 arm's riding-name walk stopped at
+    # the `/`, unmodeled. The law: `/` IS a 1.2.2 ns-anchor-char
+    # (ns-anchor-char = ns-char - c-flow-indicator; ns-char excludes
+    # only the breaks, so every printable non-break byte outside
+    # `,[]{}` is legal in an anchor name — the 2SXE/W5VH suite law
+    # pins the colon case), yeptris rides the name `2?/:` (ONE
+    # anchored scalar, `=VAL : &2?/: <PS>+<SP> \\`), libyaml cuts at
+    # the FIRST out-of-IS_ALPHA byte (the '?') and the residual `?/`
+    # re-lexes as the key's plain content exactly as the r330/r356
+    # residuals (`+MAP / =VAL : &2 ?/ / =VAL : <PS>\n\\`; `/` glued
+    # mid-plain is 1.1 content — libyaml's IS_ALPHA cut is its
+    # ledgered 1.1 divergence). THE WIDENING: the head-charset row,
+    # measured (the r361 lesson: state a charset row, not a byte
+    # list) — every member probed at engine level through BOTH faces
+    # (`&2?X: '<PS><CR>\'` composed, `&2X: '<PS><CR>\'` bare): the
+    # family face holds for `/` and every printable non-break byte
+    # probed (`"` `'` backtick `$` `%` parens `+` `;` `<` `=` `>` `@`
+    # `^` `~` `|` `\` `*` `&` `?` alnum, the high bytes U+00E9 /
+    # U+00A0 / U+4E2D / U+2027, and the composed runs `?`+`*`,
+    # `?<><`, `?U+00E9/`, `?"x`, `?'x`, `?\x`, backtick/percent/at/
+    # tilde/pipe/gt composed — the catch-85 mid-word law holds;
+    # libyaml's scan_anchor follow set is never reached because the
+    # '?' cut precedes them). MEASURED OUT with verdict classes: the
+    # c-flow-indicator six and `#` (yeptris rejects the name —
+    # LIBYAML-ONLY-ACCEPT composed / BOTH-ERROR bare-head), `!`
+    # (structure-unstable: a glued `!` + tag-char run re-lexes as a
+    # TAG prop — `?!$` reads an anchored SEQ and the PS body then
+    # sits at column 0), 0x7F and U+0080 (yeptris glues but libyaml
+    # rejects — the YEPTRIS-ONLY-ACCEPT class this arm does not
+    # own), space/tab/breaks, and the interior-residual `:` (the
+    # r336 pure-run branch owns pure-colon residuals). The non-`?`
+    # residual leads stay out: libyaml's scan_anchor follow set
+    # errors the bare-heads (`&2/:` / `&2$:` probed, both
+    # YEPTRIS-ONLY-ACCEPT). A/B (probed, JSON mode byte-exact):
+    # libfyaml 04e0b58 reads yeptris's artifact stream byte-exact in
+    # 1.2 (root SCALAR, anchor `2?/:` riding, value
+    # U+2029+fold-space+backslash); its 1.1 mode rides the
+    # PS-as-break matching libyaml's value. Floor: the 12-byte
+    # `&2?/: '<PS>'` (greedy single-byte ddmin fixed point — the CR
+    # deletion dies into the classified PS-only body, the `\`
+    # deletion into the r366-classified body; every deletion
+    # classified, the floor alone DIFFERs exit 77 pre-patch). The
+    # 50-mutant paired battery (seed 370): 0 regressions, the
+    # standing pins byte-identical (see the round issue). THE
+    # TREADMILL: the crasher is one ChangeByte from a PINNED SEED
+    # and the comparator snapshot's exclusion list did not cover
+    # this family — the workflow snapshot gains the
+    # root-anchor-quoted-follow exclusion this round. Comparator
+    # carry only, no engine change (the r318/r330/r331/r332/r336/
+    # r346/r356/r366/r368/r369 precedent).
+    add_test(
+        NAME fuzz-diff-r370-root-anchor-quoted-follow-slash
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-slash-r370.bin
+    )
+    add_test(
+        NAME fuzz-diff-r370-root-anchor-quoted-follow-slash-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-slash-r370-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB
