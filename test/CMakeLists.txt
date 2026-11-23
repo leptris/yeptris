@@ -7346,6 +7346,55 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-block-content-exotic-r367-artifact.bin
     )
 
+    # r368 (run 45152658419, main 26a6ade2): the r366 qsplat head
+    # composed with the CLAMP-OVERFLOW body — the nightly's 10,890-byte
+    # artifact `&2?*: '<PS><CR>"\u1: ...\n-f &"": [{"":[{"":...{U:ba:
+    # \n- 4-ba:I::*:::::'` grows the r366 head a ~10.8KB single-quoted
+    # body: 2157 `[{"":[` map-in-seq chain units plus a `U:ba:\n- 4-ba:
+    # I::*:::::` tail whose closing `:'` sits at the LAST byte, so the
+    # whole ~4300-deep chain rides INSIDE the scalar as content and
+    # NEITHER engine's depth wall fires (probed: the chain alone is
+    # BOTH-ERROR — both engines reject the ~4300-deep flow chain at
+    # their own limits, the r354 bracket-LEAD error-equality law; the
+    # head alone is BOTH-ERROR too — the unterminated quote). Both
+    # dumps stay the r330 structure (yeptris ONE anchored scalar, raw
+    # PS + CR fold exactly the r231/r366 law; libyaml the anchor-`2`
+    # map with the `\n` blank-state escape) — but the shared dump
+    # vocabulary's per-event line budget (char line[4096]) cuts BOTH
+    # scalar lines at 4095 chars (ydump 4105 total, ldump 4128:
+    # measured), the strict byte walks ran off the visible region ~4KB
+    # into the body, and the arm declined its own family. THE WIDENING:
+    # the walkers take the caller-computed visible region end; past
+    # the cut the body rides the clamp-tail law (forced-equal units
+    # only — printables byte-equal, mid-body space runs, lone clean
+    # CR/LF; tabs/backslashes/exotics/trailing-run-end decline as
+    # unmeasured past the cut). Clamp detection is EXACT-LENGTH
+    # (region 4082/4081 y, 4088/4087 l — the 4095-char cut line minus
+    # the render prefix), so a tamper-truncated dump loses the gate
+    # and declines (the firewall holds). Boundary probed: the 4088-byte
+    # twin (body escaped 4081) still walks to its sentinel and
+    # classifies pre-patch; 4091 bytes DIFFER. Floor: the 4090-byte
+    # size-bound clamp-boundary form `&2?*: '"":[{"":[...{U:ba:\n-
+    # 4-ba:I::*:::::'` (greedy single-byte ddmin to the clamp boundary:
+    # the DIFFER band ends exactly at the clamp-overflow length, the
+    # size IS the finding — the r361 size-bound floor precedent). The
+    # 50-mutant paired battery (seed 368, 20 flips + 10 deletions +
+    # 20 doubles per shape): 0 regressions; every 77->0 turn rides the
+    # clamp-overflow family shape; stable-reds stay stable. Both the
+    # floor and the full artifact ride the corpus (the r321 seed law).
+    # Comparator carry only, no engine change (the r318/r330/r331/
+    # r332/r336/r346/r356/r366 precedent).
+    add_test(
+        NAME fuzz-diff-r368-qflow-depth-clamp
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-depth-clamp-r368.bin
+    )
+    add_test(
+        NAME fuzz-diff-r368-qflow-depth-clamp-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-depth-clamp-r368-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB
