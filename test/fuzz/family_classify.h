@@ -294,8 +294,11 @@
  *  (j)   block context -> UNKNOWN (the family is flow-only);
  *  (k)   any member outside the family's flat-member shape (anchors it
  *        cannot resolve, tags, nesting it cannot place — nested flow
- *        SEQUENCES, member-start collections, single quotes, escapes)
- *        -> UNKNOWN;
+ *        SEQUENCES, member-start collections, single quotes) ->
+ *        UNKNOWN; ESCAPES stay outside except the two admitted
+ *        followers: the r337 `\n` (decodes to the LF byte, the dump
+ *        re-escapes it) and the r374 `\uXXXX` (see (g3)) — every
+ *        other escape follower declines;
  *  (l)   a mismatch inside a quoted span (beyond the law-b folds) ->
  *        UNKNOWN;
  *  (m)   the classifier consults no arm pins -- it stands alone;
@@ -308,6 +311,26 @@
  *        glued-`?` face is byte-identical at 8 bytes and 73KB), so
  *        the old exact-byte pins were carrying only the classifier's
  *        budget gates, not a reading dependence).
+ *  (g3)  the r374 `\uXXXX` law (run 45259544033, main 84150a76): a
+ *        well-formed `\uXXXX` inside a member-led double-quoted span
+ *        derives on BOTH engines byte-identically — the 21-row
+ *        matrix measured yeptris's and libyaml's decode EQUAL
+ *        mid-content, chained, at the lead, at the close edge, and
+ *        across the fold compositions; the decoded codepoint rides
+ *        the dump escape (backslash/LF/CR/TAB/\xNN, non-ASCII raw —
+ *        probed `A`, the decoded backslash, LF, C0, DEL, the C1 NEL
+ *        byte, NBSP, the decoded LS, U+FFFD, U+FFFE). The decline
+ *        domain is BOTH-ERROR, never a consult: surrogate halves and
+ *        the malformed spellings (short hex, a bad digit) error on
+ *        both engines. The escape flushes the pending fold run /
+ *        blank run exactly as a content byte does; a surrogate
+ *        declines (cheap — it can only be a both-error). The r374
+ *        artifact's member-led span `"\r g61クリス"` (the CR lead
+ *        folds, three chained BMP escapes) and the 19-byte floor
+ *        `[1,"ク",?g?,""]` DIFFER only at the SIBLING `?g?` member
+ *        (the pinned plain-`?` split) — the escape member itself
+ *        renders EQUAL on both engines, but the old blanket escape
+ *        decline left any DIFFER sharing a seq with it red.
  *
  * Memory: no allocation escapes the call; all scratch is heap and freed
  * before return. Pure over its four arguments: same inputs, same

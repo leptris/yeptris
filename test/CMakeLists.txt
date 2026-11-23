@@ -7504,6 +7504,73 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qhash-nest-r371.bin
     )
 
+    # r374 (run 45259544033, main 84150a76): the `\uXXXX` escape joins
+    # the classifier. The nightly's artifact
+    # `[1,?#,"\rg61クリス",?g?,""]` (38 bytes,
+    # crash-c50fa796bab07be63af8816fc6e0d4af8b3f3f8b) is a ROOT flow
+    # sequence whose DIFFER decomposes into TWO faces: (1) the `?#`
+    # member — libyaml's 1.1 unconditional flow KEY-token law fires the
+    # KEY on the `?`, the `#` sits at a fresh token position so the
+    # comment-eat runs to the RAW CR (the input's only break), eating
+    # `,"\` and landing the DQ span's tail on the new line, where
+    # `g61クリス"` re-lexes as the KEY's PLAIN content
+    # (literal backslash-u bytes, the closing quote glued in — plains
+    # carry quotes mid-text) and the parser binds the implicit
+    # single-pair map — the law-a comment-eat + post-break rebinding
+    # the r244-era model already derives; yeptris reads TWO members
+    # (`?#` flat by the plain-`?` law, the DQ span folded+decoded by
+    # the 1.2 laws); (2) the `?g?` member — the pinned plain-`?` law-d
+    # split (libyaml MAPs it, yeptris keeps the flat plain). The
+    # residual red was NEITHER face: the classifier's blanket escape
+    # decline (the r337 arm admitted only the escaped-break and `\n`
+    # followers) could not derive the artifact's THREE `\uXXXX`
+    # members-wide escapes, so any DIFFER sharing a seq with an
+    # escape-bearing member stayed red even when the escape member
+    # itself renders byte-identical on both engines (the floor's
+    # literal-katakana twin `[1,"ク",?g?,""]` classified all along).
+    # THE LAW (the 21-row matrix, measured this session): yeptris and
+    # libyaml decode a well-formed `\uXXXX` IDENTICALLY — mid-content,
+    # chained, at the lead, at the close edge, across the fold
+    # compositions (`["a<CR>クb"]`); the decoded codepoint rides the
+    # dump escape (`A`, the decoded backslash, LF, C0, DEL, the C1 NEL
+    # byte, NBSP, the decoded LS, U+FFFD, U+FFFE — all EQUAL); the
+    # decline domain is BOTH-ERROR, never a consult (surrogate halves,
+    # short hex, a bad hex digit). The widening takes the `\u` follower
+    # in BOTH quoted-span walkers (fc_quoted_value ahead of the r337
+    # tight gates — ITS pending-state compositions are measured; the
+    # libyaml-side l_dq_scan twin mirrors the same admission), the
+    # pending fold run / blank run flushes exactly as a content byte
+    # does, a surrogate declines (cheap), and every other escape
+    # follower stays out. THE A/B (probed, the fyprobe scalars):
+    # libfyaml 04e0b58 reads floor and artifact BYTE-EXACT yeptris's
+    # way in BOTH 1.2 and 1.1 modes (flat `?#`, ` g61クリス` with the
+    # CR folded to the leading space and the escapes decoded, flat
+    # `?g?`) — the comparators split along the libyaml-compat bar,
+    # engine defect REFUTED (the r318/r330/r331/r332/r336/r346/r356/
+    # r366/r368/r369/r370/r371 precedent). Comparator carry only, no
+    # engine change. FLOOR: the greedy ddmin fixed point
+    # `[1,"ク",?g?,""]` (19 bytes, hex 5b312c225c7533306166222c
+    # 3f673f2c22225d) — the `?#`+CR fused face dropped out (its own
+    # derivation was already sound), the escape spelling stayed
+    # load-bearing against the classifier only. RED pre-patch on both
+    # harnesses (lf exit 77, standalone abort 134); CLASSIFIED
+    # post-patch (floor + artifact, both harnesses). The 50-mutant
+    # paired battery (seed 374): 0 regressions (11 newly-carried, 26
+    # stable-green, 13 stable-red); the standing r2xx/r3xx pins
+    # verdict-identical pre/post (347 files, 0 divergences); the
+    # classifier self-test green (126 seeds, 6759 dump-tamper
+    # declines, 814 mutants, 0 failures).
+    add_test(
+        NAME fuzz-diff-r374-flow-u-escape
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-u-escape-r374.bin
+    )
+    add_test(
+        NAME fuzz-diff-r374-flow-u-escape-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-u-escape-r374-artifact.bin
+    )
+
     # r373 (run 45244905519, main f1019048): the PS/NEL-dense block
     # break-run split. The nightly's artifact `> #<PS> #<PS><PS>
     # <NEL>\n<PS> <NEL> -` (26 bytes, CopyPart off 0cef14c6) DIFFERs in

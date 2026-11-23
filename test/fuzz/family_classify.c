@@ -853,10 +853,119 @@ static int fc_quoted_value(const uint8_t* p, size_t n, size_t s, size_t e, fout*
         if (c == '\\') {
             /* the r337 widening (run 44832174407, main ffc37f20): two
              * escape followers join the family, everything else stays
-             * outside. Both arms ride the tight gates — no pending
-             * fold run, no pending blanks at the escape (untested
-             * compositions decline). */
-            if (run > 0 || blank_n > 0 || i + 1 >= e) {
+             * outside; both ride the tight gates — no pending fold
+             * run, no pending blanks at the escape (untested
+             * compositions decline). The r374 widening (run
+             * 45259544033, main 84150a76) takes the `\uXXXX`
+             * follower ahead of those gates: ITS pending-state
+             * compositions are measured (see the arm below). */
+            if (i + 1 >= e) {
+                return 0;
+            }
+            if (p[i + 1] == 'u') {
+                /* the r374 widening (run 45259544033, main 84150a76):
+                 * the `\uXXXX` follower joins the family. The
+                 * artifact's member-led span `"\r g61クリス"`
+                 * (the CR lead folds, three chained BMP escapes) and
+                 * the 19-byte floor `["ク",?g?,""]` DIFFER only at
+                 * a SIBLING member — the escape member renders
+                 * byte-identical on both engines, but the classifier
+                 * could not derive a single escape byte, so any DIFFER
+                 * sharing a seq with it stayed red. THE MEASURED LAW
+                 * (the 21-row matrix, this session): yeptris and
+                 * libyaml decode a well-formed `\uXXXX` IDENTICALLY —
+                 * mid-content, chained, at the lead, at the close
+                 * edge, and across the fold compositions
+                 * (`["a<CR>クb"]`); the decoded codepoint lands as
+                 * content bytes the dump re-escapes
+                 * (yd_escape_append's format — `\\` for a decoded
+                 * backslash, `\n`/`\r`/`\t`, `\xNN` for the other
+                 * C0/DEL, every non-ASCII byte raw — probed `A`, the
+                 * decoded backslash, LF, C0, DEL, the C1 NEL byte,
+                 * NBSP, the decoded LS, U+FFFD, U+FFFE — all EQUAL).
+                 * The decline domain is BOTH-ERROR, never a consult: a
+                 * surrogate half (`\ud800`/`\udfff`) and the malformed
+                 * spellings (short hex, a bad hex digit) error on BOTH
+                 * engines. Gates: the four hex digits must complete
+                 * inside the span, and a surrogate codepoint declines
+                 * (a decline is cheap; a surrogate can only be a
+                 * both-error, never this family's DIFFER). The escape
+                 * rides the pending state exactly as a content byte
+                 * does: a pending fold run or blank run flushes first
+                 * (the `["a<CR>クb"]` probe — the fold space then
+                 * the escape; the `["a クb"]` probe — the blanks
+                 * ride byte-exact), the lead handling matches the `\n`
+                 * arm (lead_run == 1 folds to the one space;
+                 * lead_run > 1 declines). */
+                if (run > 0) {
+                    if (first_content) {
+                        if (lead_run > 1) {
+                            return 0; /* a multi-break-led span */
+                        }
+                        fo_str(o, " "); /* the one-break lead fold */
+                        lead_run = 0;
+                    } else {
+                        fo_fold_run(o, run);
+                    }
+                    run = 0;
+                    first_content = 0;
+                }
+                if (blank_n > 0) {
+                    if (first_content) {
+                        return 0; /* a blank-led span: untested (the
+                                   * r287 arm takes the break twin) */
+                    }
+                    fo_escape(o, p + blank_at, blank_n);
+                    blank_n = 0;
+                    first_content = 0;
+                }
+                if (i + 6 > e) {
+                    return 0; /* the four hex digits must be inside the
+                               * span (a truncated escape is a
+                               * both-error, never this family) */
+                }
+                unsigned v = 0;
+                for (int k = 2; k <= 5; k++) {
+                    if (!fc_hex(p[i + (size_t)k])) {
+                        return 0; /* a bad hex digit: both-error domain */
+                    }
+                    v = (v << 4) + fc_hexval(p[i + (size_t)k]);
+                }
+                if (v >= 0xD800 && v <= 0xDFFF) {
+                    return 0; /* a surrogate half: both engines reject */
+                }
+                uint8_t utf[4];
+                size_t un;
+                if (v < 0x80) {
+                    utf[0] = (uint8_t)v;
+                    un = 1;
+                } else if (v < 0x800) {
+                    utf[0] = (uint8_t)(0xC0 | (v >> 6));
+                    utf[1] = (uint8_t)(0x80 | (v & 0x3F));
+                    un = 2;
+                } else {
+                    utf[0] = (uint8_t)(0xE0 | (v >> 12));
+                    utf[1] = (uint8_t)(0x80 | ((v >> 6) & 0x3F));
+                    utf[2] = (uint8_t)(0x80 | (v & 0x3F));
+                    un = 3;
+                }
+                if (first_content) {
+                    first_content = 0;
+                    if (lead_run > 1) {
+                        return 0; /* a multi-break-led span: untested */
+                    }
+                    if (lead_run == 1) {
+                        fo_str(o, " ");
+                    }
+                }
+                fo_escape(o, utf, un); /* the decoded bytes ride the
+                                        * dump escape (backslash, LF/
+                                        * CR/TAB, \xNN for the other
+                                        * C0/DEL, non-ASCII raw) */
+                i += 6;
+                continue;
+            }
+            if (run > 0 || blank_n > 0) {
                 return 0;
             }
             int ebl = fc_break_len(p, n, i + 1);
@@ -2813,8 +2922,72 @@ static int l_dq_scan(lctx* c, fout* o, size_t* stop) {
         if (cc == '"') {
             break;
         }
+        if (cc == '\\' && i + 1 < n && p[i + 1] == 'u') {
+            /* the r374 widening (run 45259544033, main 84150a76): the
+             * `\uXXXX` escape decodes on the libyaml side too — the
+             * matrix measured libyaml's scan_flow_scalar decode
+             * IDENTICAL to yeptris's (mid-content, chained, at the
+             * lead, at the close edge, across the fold compositions;
+             * surrogates and the malformed spellings are both-errors,
+             * never a consult). The decoded bytes ride the dump escape;
+             * the pending fold run / blank run flushes exactly as a
+             * content byte does (libyaml's leading_blanks semantics,
+             * fc_quoted_value's twin arm). A surrogate codepoint
+             * declines (a decline is cheap; it can only be a
+             * both-error, never this family's DIFFER). */
+            if (run_n > 0) {
+                fc_brk_join(o, kinds, run_n); /* the pending fold joins
+                                               * (the escape is content:
+                                               * libyaml's leading_blanks
+                                               * flush, the r287 twin) */
+                run_n = 0;
+                blank_n = 0;
+            } else if (blank_n > 0) {
+                if (first && (run_n != 1 || kinds[0].raw)) {
+                    return l_fail(c); /* the blank-led span gate, the
+                                       * content path's twin at the
+                                       * escape byte */
+                }
+                fo_escape(o, p + blank_at, blank_n);
+                blank_n = 0;
+            }
+            first = 0;
+            if (i + 6 > n) {
+                return l_fail(c); /* the hex digits must be inside the
+                                   * input (a truncated escape is a
+                                   * both-error, never this family) */
+            }
+            unsigned v = 0;
+            for (int k = 2; k <= 5; k++) {
+                if (!fc_hex(p[i + (size_t)k])) {
+                    return l_fail(c); /* a bad hex digit: both-error */
+                }
+                v = (v << 4) + fc_hexval(p[i + (size_t)k]);
+            }
+            if (v >= 0xD800 && v <= 0xDFFF) {
+                return l_fail(c); /* a surrogate half: both reject */
+            }
+            uint8_t utf[4];
+            size_t un;
+            if (v < 0x80) {
+                utf[0] = (uint8_t)v;
+                un = 1;
+            } else if (v < 0x800) {
+                utf[0] = (uint8_t)(0xC0 | (v >> 6));
+                utf[1] = (uint8_t)(0x80 | (v & 0x3F));
+                un = 2;
+            } else {
+                utf[0] = (uint8_t)(0xE0 | (v >> 12));
+                utf[1] = (uint8_t)(0x80 | ((v >> 6) & 0x3F));
+                utf[2] = (uint8_t)(0x80 | (v & 0x3F));
+                un = 3;
+            }
+            fo_escape(o, utf, un);
+            i += 6;
+            continue;
+        }
         if (cc == '\\') {
-            return l_fail(c); /* escapes are outside the family */
+            return l_fail(c); /* every other escape follower: outside */
         }
         if (fc_blank(cc)) {
             if (blank_n == 0) {
