@@ -103,7 +103,17 @@ jobs:
         # pinned r352 artifact seed -- the per-round arm-extension
         # treadmill this snapshot exists to stop; the pins carry the
         # bytes under the full ctest (the fuzz-diff-r331..r353 pins).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-midstream-bom-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete
+        # The root-anchor-quoted-follow family joins at r370 (the
+        # snapshot's second gap, issue #1610): four documented
+        # mutant-of-own-pin reds in five rounds (r356/r366/r368/r370),
+        # each ONE ChangeByte/InsertByte from a pinned family seed,
+        # now across the MEASURED head-charset row (the r370 widening
+        # admits every printable non-break name byte outside
+        # `,[]{}`/#/!/0x7F) -- the family is mutation-dense along its
+        # whole row, so the diff leg must not seed from it; the pins
+        # carry the bytes under the full ctest (the
+        # fuzz-diff-r238..r370 pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-midstream-bom-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete
 
       - name: Fuzz budget
         run: |

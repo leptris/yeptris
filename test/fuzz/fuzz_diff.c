@@ -11463,6 +11463,45 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
     return 1;
 }
 
+/* The r370 HEAD-CHARSET row (run 45200249484, main fff9640f,
+ * crash-6c3924da8e3eaaf7607393b6f845c9fa63b011de): the riding-name
+ * set and the residual's plain-content continuation admit the MEASURED
+ * continuum, stated as a row (the r361 lesson) -- every printable
+ * non-break byte EXCEPT the measured exclusions, each with its probed
+ * verdict class (the full sweep note rides the gray function below):
+ * the c-flow-indicator six `,[]{}` and '#' (yeptris rejects the name),
+ * '!' (yeptris re-lexes it as a TAG prop -- the `?!$` SEQ face), 0x7F
+ * and U+0080 (the measured YEPTRIS-ONLY-ACCEPT face -- libyaml
+ * rejects, a verdict class this arm does not own), whitespace and
+ * controls (never name bytes), and the UTF-8 break sequences (NEL C2
+ * 85, LS E2 80 A8, PS E2 80 A9). Every other byte rides: `/` (the
+ * artifact's face) probed with the whole composed set (quotes,
+ * reserved, high bytes, multi-byte runs). */
+static int yd_r238_wide_name_byte(const uint8_t* data, size_t size, size_t i) {
+    unsigned char b = data[i];
+    if (b >= 0x80) {
+        /* the UTF-8 break sequences are breaks, never name bytes;
+         * every other high byte rides -- a malformed sequence is
+         * rejected by yeptris's encoding layer and declines through
+         * the NULL-dump gates */
+        if (b == 0xC2 && i + 1 < size && data[i + 1] == 0x85) {
+            return 0;
+        }
+        if (b == 0xE2 && i + 2 < size && data[i + 1] == 0x80 &&
+            (data[i + 2] == 0xA8 || data[i + 2] == 0xA9)) {
+            return 0;
+        }
+        return 1;
+    }
+    if (b <= 0x20 || b >= 0x7f) {
+        return 0; /* whitespace/controls/DEL */
+    }
+    if (b == '#' || b == '!' || b == ',' || b == '[' || b == ']' || b == '{' || b == '}') {
+        return 0;
+    }
+    return 1;
+}
+
 static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t size,
                                                   const char* ydump, const char* ldump) {
     size_t i;
@@ -11591,11 +11630,90 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
          * and classifies pre-patch; 4091 bytes DIFFER. Comparator
          * carry only, no engine change (the r318/r330/r331/r332/
          * r336/r346/r356/r366 precedent). */
-        while (i < size &&
-               (((data[i]) >= 'A' && (data[i]) <= 'Z') || ((data[i]) >= 'a' && (data[i]) <= 'z') ||
-                ((data[i]) >= '0' && (data[i]) <= '9') || (data[i]) == '_' || (data[i]) == '-' ||
-                (data[i]) == '.' || (data[i]) == '?' || (data[i]) == '*' || (data[i]) == ':' ||
-                (data[i]) == '&')) {
+        /* The r370 widening (run 45200249484, main fff9640f,
+         * crash-6c3924da8e3eaaf7607393b6f845c9fa63b011de): the
+         * qsplat HEAD-CHARSET. The nightly's artifact (13 bytes,
+         * `&2?/: '<PS><CR>\'`) is the pinned r366 floor
+         * (`&2?*: '<PS><CR>\'`) with exactly ONE ChangeByte at
+         * offset 3, `*` (0x2a) -> `/` (0x2f) -- a mutant-of-own-pin
+         * whose byte lands in the HEAD-CHARSET arm, not the body
+         * walkers (the r366/r368/r369 body widenings hold: the
+         * `<PS><CR>\` units all match; only the head spelling
+         * declines -- the riding-name walk stops at the `/`, which
+         * was unmodeled). yeptris rides the 1.2 anchor name `2?/:`
+         * (=VAL : &2?/: <PS>+<SP> \\ -- ONE anchored scalar; `/` IS
+         * a 1.2.2 ns-anchor-char: ns-anchor-char = ns-char -
+         * c-flow-indicator and ns-char excludes only the breaks, so
+         * every printable non-break byte outside `,[]{}` is legal --
+         * the 2SXE/W5VH suite law pins the colon case, this round
+         * measures the rest of the continuum), libyaml cuts at the
+         * FIRST out-of-IS_ALPHA byte (the '?') and the residual `?/`
+         * re-lexes as the key's plain content exactly as the
+         * r330/r356 residuals (`+MAP / =VAL : &2 ?/ / =VAL :
+         * <PS>\n\\` -- `/` glued mid-plain is 1.1 content; libyaml's
+         * IS_ALPHA cut is its ledgered 1.1 divergence).
+         *
+         * THE CHARSET ROW (the r361 lesson: pins cannot carry a
+         * continuum; the row is measured, not assumed -- every
+         * member probed at engine level through BOTH faces,
+         * `&2?X: '<PS><CR>\'` composed and `&2X: '<PS><CR>\'`
+         * bare). The family face (yeptris ONE anchored scalar
+         * riding the full name; libyaml cut at the `?` + the
+         * residual `?X` plain content, byte-exact) holds for X =
+         * `/` (the artifact) and every other printable non-break
+         * byte probed: `"` `'` backtick `$` `%` `(` `)` `+` `;` `<`
+         * `=` `>` `@` `^` `_` `-` `.` `~` `|` `\` `*` `&` `?` alnum,
+         * the high bytes U+00E9 / U+00A0 / U+4E2D / U+2027, and the
+         * composed runs `?`+`*`, `?<><`, `?U+00E9/`, `?/U+00E9`,
+         * `?U+00E9<U+00A0>U+4E2D`, `?"x`, `?'x`, `?\x`, `` ?`x ``,
+         * `?%x`, `?@x`, `?~x`, `?|x`, `?>x` (the catch-85 mid-word
+         * law holds in yeptris: quotes/reserved glued MID-plain are
+         * content; libyaml's scan_anchor follow set is never
+         * reached because the `?` cut precedes them). MEASURED OUT,
+         * each with its own verdict class: the c-flow-indicator six
+         * (`,` `[` `]` `{` `}` -- yeptris rejects the name:
+         * LIBYAML-ONLY-ACCEPT composed, BOTH-ERROR bare-head;
+         * libyaml's block-plain keeps them as content but the
+         * family shape never forms), `#` (LIBYAML-ONLY-ACCEPT
+         * composed / BOTH-ERROR bare-head -- yeptris rejects the
+         * name), `!` (structure-unstable in yeptris: a glued `!` +
+         * tag-char run re-lexes as a TAG prop -- `?!$` reads an
+         * anchored SEQ, the PS body then sits at column 0 and
+         * yeptris rejects), 0x7F and U+0080 (yeptris GLUES them but
+         * libyaml REJECTS -- YEPTRIS-ONLY-ACCEPT, a different
+         * verdict class this arm does not own), space/tab
+         * (BOTH-ERROR composed / LIBYAML-ONLY-ACCEPT bare-head),
+         * the breaks (LS bare-head BOTH-ERROR), and the
+         * interior-residual `:` (the r336 pure-run branch owns
+         * pure-colon residuals; a mixed `?x:` face stays
+         * unmeasured). The non-`?` residual LEADS stay out
+         * (unmeasured): libyaml's scan_anchor follow set
+         * (`? : , ] } % @ ` and the backtick) errors the
+         * bare-heads (`&2/:` -> "did not find expected alphabetic
+         * or numeric character", `&2$:` -> "found character that
+         * cannot start any token") -- the YEPTRIS-ONLY-ACCEPT
+         * class, never the DIFFER face. The A/B (probed, JSON mode
+         * byte-exact): libfyaml 04e0b58 reads yeptris's artifact
+         * stream byte-exact in 1.2 -- root SCALAR, anchor `2?/:`
+         * riding, value U+2029 + fold-space + backslash; its 1.1
+         * mode rides the PS-as-break (value ` \n\\`, matching
+         * libyaml's value spelling); comparator carry only, no
+         * engine change (the r318/r330/r331/r332/r336/r346/r356/
+         * r366/r368/r369 precedent). Dual-bar floor: the 12-byte
+         * `&2?/: '<PS>'` (greedy single-byte ddmin fixed point: the
+         * CR deletion dies into the classified PS-only single-break
+         * body, the `\` deletion into the r366-classified
+         * `'<PS><CR>'` body -- exit 0 both; every deletion of the
+         * 12-byte floor is classified, the floor alone DIFFERs
+         * exit 77 pre-patch). Both the floor and the full artifact
+         * ride the corpus (the r321 seed law). THE TREADMILL: the
+         * crasher is one ChangeByte from a PINNED SEED and the
+         * comparator snapshot's exclusion list did not cover this
+         * family (seven families did) -- the workflow's snapshot
+         * gains the root-anchor-quoted-follow exclusion this round
+         * (the family is mutation-dense across its whole
+         * head-charset row; the pins stay under the full ctest). */
+        while (i < size && yd_r238_wide_name_byte(data, size, i)) {
             i++;
         }
         if (i == name_o || data[i - 1] != ':') {
@@ -11802,16 +11920,22 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                      * r356 widening admits the '&' MID-run (the
                      * artifact's `?*&` -- a non-leading indicator glues
                      * as plain content, the r331/r346 plain-key law;
-                     * the lead stays the pinned '?') */
+                     * the lead stays the pinned '?'). The r370 widening
+                     * rides the head-charset row for the continuation
+                     * (`?/` -- `/` glued mid-plain is 1.1 content, the
+                     * measured row in yd_r238_wide_name_byte); the
+                     * interior ':' stays OUT (the r336 pure-run branch
+                     * owns pure-colon residuals, a mixed `?x:` face is
+                     * unmeasured), and the lead stays the pinned '?'
+                     * (an '&'-lead residual would re-lex as the key's
+                     * own ANCHOR -- the `&2&: ...` twin probed
+                     * shape-dead; a '*' lead still re-lexes as an
+                     * ALIAS) */
                     if (data[cut] != '?') {
                         return 0;
                     }
                     for (size_t r = cut; r < colon; r++) {
-                        if (!((data[r] == '?' || data[r] == '*' || data[r] == '&') ||
-                              ((data[r] >= '0' && data[r] <= '9') ||
-                               (data[r] >= 'A' && data[r] <= 'Z') ||
-                               (data[r] >= 'a' && data[r] <= 'z') || data[r] == '_' ||
-                               data[r] == '-'))) {
+                        if (data[r] == ':' || !yd_r238_wide_name_byte(data, size, r)) {
                             return 0;
                         }
                         if (b[0] != (char)data[r]) {
