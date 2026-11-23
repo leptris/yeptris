@@ -8840,6 +8840,48 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-anchored-key-indent-r338-artifact.bin
     )
 
+    # r364 (run 45102166994, main 30fe527d): the r338 pointer's own
+    # next round -- the BOM-led composition now rides a STRUCTURAL
+    # follower. The 28-byte artifact
+    # `<BOM><BOM>SPx7-SPx10&U:#` (12-byte dual-bar floor
+    # `<BOM><BOM>- &U:#`) puts a block-sequence entry indicator after
+    # the double line-start BOM: yeptris strips ONLY the stream-start
+    # mark (the catch-121 law) and keeps the second as CONTENT, so the
+    # `-` never opens an entry -- the whole line spells as ONE plain
+    # scalar `=VAL : <BOM>- &U:#`; libyaml strips BOTH (its
+    # column-0 scan_to_next_token, the r226 law), reaches the `-` as a
+    # real entry indicator and opens `+SEQ` with the anchor riding,
+    # `=VAL : &U :#`. THE CATCH: the r226 removal probe cannot reach
+    # it -- the BOM-less twin `- &U:#` itself SPLITS (yeptris's
+    # 2SXE/Y2GN-riding charset walk absorbs `U:` then refuses the
+    # unspaced `#`, an error at column 6, while libyaml cuts the
+    # anchor at the colon -- its ledgered Y2GN deviation -- and
+    # accepts with the plain `:#`). THE CARRY: the BOM line-start arm
+    # grows the composition probe -- libyaml's strip must be PURE
+    # (its dump of the original equals its dump of the removal) and
+    # yeptris's dump must equal the derived one-plain-scalar spelling
+    # `+STR\n=VAL : <input minus the stream-start BOM>\n-STR` (the
+    # value being the raw bytes verbatim); any other yeptris reading
+    # moves a byte and declines. The A/B: libfyaml 04e0b58 reads the
+    # same one-scalar shape on BOTH its 1.2 and 1.1 passes (the r318
+    # dual-consensus face); the suite is silent (no BOM tests at the
+    # da267a5c pin); spec 5.1 allows a BOM at the start of any
+    # document and example 5.2 errors only mid-document -- comparator
+    # carry only, no engine change (the r318/r330/r336/r337/r338
+    # precedent). Floor re-verified: greedy ddmin to a fixed point,
+    # all 12 single-byte deletions break the dual+shape bar. Both the
+    # floor and the artifact ride the corpus (the r321 seed law).
+    add_test(
+        NAME fuzz-diff-r364-bom-line-start-anchor-colon
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-anchor-colon-r364.bin
+    )
+    add_test(
+        NAME fuzz-diff-r364-bom-line-start-anchor-colon-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-anchor-colon-r364-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
