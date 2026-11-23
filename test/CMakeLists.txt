@@ -7395,6 +7395,52 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-depth-clamp-r368-artifact.bin
     )
 
+    # r369 (run 45180416420, main 031e326e): the r368 pin's THIRD
+    # mutant-of-own-pin red — the artifact is the r368 pin byte-for-byte
+    # with a 36-byte dump-vocabulary text block inserted at offset 1048,
+    # inside the quoted body's visible region:
+    # `+STR\n=VAL : :\\n<NEL> 5%<PS> :\\n<NEL> 5%<PS>` (literal
+    # backslash-n pairs riding the r366 escape law, two raw NELs, two
+    # raw PS). The r238 walkers declined at the NEL units — both
+    # modeled a RAW-NEL dump spelling no engine path produces.
+    # THE ADJUDICATION: suite-first, the suite carries ZERO raw
+    # NEL/LS/PS rows (scanned da267a5c: no .in.yaml/.test file
+    # contains the bytes), the JSONTestSuite y_string_u+2028/2029 rows
+    # pin raw LS/PS as VALID content inside double quotes (satisfied
+    # by both engines), so the face resolves on the engines' own
+    # pinned laws — yeptris's #638/#839 normalizer (NEL folds
+    # EVERYWHERE including quoted regions; LS/PS stay raw content
+    # there), libyaml's READ_LINE (NEL -> LF; LS|PS -> raw) with the
+    # fold gate `leading_break[0]=='\n'`. THE WIDENING (all units
+    # probed at engine level, 8 shapes): NEL is a BREAK on both
+    # engines — the clean NEL folds to the one-space spelling on both
+    # (`<NEL>a` reads ` a`); the space run strips before it (`<SP>
+    # <NEL>a` reads ` a`) and a just-folded break eats the following
+    # run (`<NEL><SP>a` reads ` a`); behind a kept-raw PS the faces
+    # split exactly on the pinned normalizer law — yeptris rides the
+    # blank as content (`<PS><SP>a` reads `<PS> a`), libyaml's
+    # blank-state swallows it (`<PS>a`, the r332 law re-proven), and a
+    # clean NEL directly before a kept-raw LS/PS renders NOTHING on
+    # libyaml (the '\n' is the leading break, the raw triple the
+    # trailing one: `<NEL><PS>a` reads `<PS>a`) against yeptris's
+    # fold-plus-raw (`<PS> a`). Floor: the 16-byte form
+    # `&2: '<PS> :<NEL><PS>'` (greedy ddmin, 285 candidates — both
+    # faces of the law pair in one scalar). The 50-mutant paired
+    # battery (seed 369, replace/unit/insert/delete palette per
+    # shape): 0 regressions; stable-reds stay stable. Comparator carry
+    # only, no engine change (the r318/r330/r331/r332/r336/r346/r356/
+    # r366/r368 precedent).
+    add_test(
+        NAME fuzz-diff-r369-nel-blank-state
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-nel-blank-r369.bin
+    )
+    add_test(
+        NAME fuzz-diff-r369-nel-blank-state-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-nel-blank-r369-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB
