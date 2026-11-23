@@ -6,6 +6,16 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **the feed contract's fold-line break law rode LF only (catch 134, r372, PR #1615)** — the fuzz_feed nightly (yeptris vs itself: whole-input vs chunked-input recorder identity, the split-feed guarantee) caught the fold-line state machine treating a fold break as line-end ONLY on `\n`: a NEL/CR/LS/PS break at the fold point left the fold state stale across the feed boundary, so a document fed in chunks materialized a different event stream than the same bytes fed whole (332-byte NEL/PS-dense flow soup over a `---` lead, abort at fuzz_feed.c:219). The fix: the fold-line break test rides the full break class (CR/NEL/LS/PS), restoring whole-vs-chunked identity byte-for-byte on the artifact and the 50-mutant battery; bench lanes green. First engine fix since #1584 (0.6.77).
+
+### the comparator era (r360-r371, all zero-`src/`)
+
+- **eleven more nightly escapes carried, pinned, or law-widened** — the semicolon key joins the quoted-exotic-TAB family (r360, #1590); the UTF-16BE kept mid-scalar U+FEFF split (r359 rode 0.6.77); the flow-qsoup family grew the alias glued-colon VALUE boundary (r357 rode 0.6.77) and the nested `[?::[?::JJ]]` member (r371, #1613 — the artifact is its own 12-byte fixed point); the size-bound tag-soup continuum rides the classifier law at arbitrary scale after the four conservatism budgets raised to measured demand (r361/r362, #1593/#1595 — the r362 dig REFUTED the size-dependence theory: the divergence is byte-identical at every size, test-side budgets were what bound); the folded-header direct-hash law gained the backslash-escape ride (r363, #1597); the double-BOM faces — the one-scalar spelling, the map-follower end-of-input colon, and the `?/` head-charset — joined `yd_bom_line_start_divergence` (r364/r365/r370, #1599/#1601/#1611); the root-block-content exotic-break rebuild composed the col-0 body law with the #638 break posture (r367, #1605); the r368 clamp-family carried by the dump-line-clamp-tail law (4090-byte size-bound floor at the `char line[4096]` boundary, #1607); the r369 NEL-blank-state walkers replaced the r238-era units no engine produces (#1609). Every round: floor minimized under the dual+shape bar, libfyaml 04e0b58 adjudicated byte-exact or comparators split along the libyaml-compat bar, batteries 0 regressions, walks green, ctest full pass, leaks 0.
+
 ## [0.6.77] - 2026-11-22
 
 ### Fixed
