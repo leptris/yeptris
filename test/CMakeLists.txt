@@ -7571,6 +7571,62 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-u-escape-r374-artifact.bin
     )
 
+    # r375 (run 45281713143, main 4e6f0e78): the tag-property lead joins
+    # the classifier. The nightly's artifact `!\n[?+<LS>:#,?]` (13 bytes,
+    # crash-e9eb1b947b10bfff4113afb851d18234c27ca0f4, MS:
+    # 1 PersAutoDict- DE: "[?+\342\200\250:#,?]" — a persistent
+    # auto-dictionary entry, not derived from any pinned seed) is a
+    # TAG-INDICATOR line lead (`!` + LF) ahead of a ROOT flow sequence
+    # whose first member is the GLUED `?+` plain carrying a RAW LS
+    # (U+2028) mid-member followed by a GLUED `:#`, then a comma and a
+    # trailing `?]`. The DIFFER: yeptris renders `+SEQ <!>` then ONE
+    # FLAT plain member `?+ :#` (the LS folded to the fold space, the
+    # glued `#` riding content per the plain law) followed by the
+    # parser's inserted empty-`?`-member map — total ONE map; libyaml
+    # renders `+SEQ <!>` (the tag rides identically) then an IMPLICIT
+    # single-pair map FIRST (key `+ :#` — the 1.1 unconditional flow
+    # KEY-token law with the LS folded the same way — value empty), then
+    # a SECOND `+MAP` for the trailing `?` — total TWO maps. The
+    # member split is the PINNED plain-`?` law-d (libfyaml 04e0b58
+    # reads the member byte-exact yeptris's way, `?+\L:#` one plain
+    # scalar with the LS kept raw, in BOTH strict-1.2 and 1.1 — the
+    # comparators split along the libyaml-compat bar, engine defect
+    # REFUTED, the r318/.../r374 precedent); the NEW face was the
+    # LEAD: the flow-rooted gate declined every non-bracket head, so
+    # the whole tag-led composition stayed red even though the lead
+    # itself is an AGREEING composition. THE LAW (the probe matrix,
+    # measured this session): a bare `!` tag at offset 0 followed by a
+    # blank/break run and then the root bracket rides the ROOT header
+    # `<!>` byte-equal on both engines across LF, blank, CRLF,
+    # blank+LF and LF+LF runs, seq AND map roots (the collection's tag
+    # never "resolves by style" — only the scalar's empty render drops
+    # it, the r335 law). Gates: the bare `!` EXACTLY (a `!!` handle
+    # lead is a YEPTRIS-ONLY-ACCEPT split — yeptris renders
+    # `<tag:yaml.org,2002:>`, libyaml errors the parse; a `!name`/
+    # `!<verbatim>` lead carries another resolved tag and stays out),
+    # the run NON-EMPTY (a GLUED `![` is a YEPTRIS-ONLY-ACCEPT split —
+    # libyaml errors the tag-end), no comment inside the run, and the
+    # bracket DIRECTLY after the run. FLOOR: the greedy ddmin fixed
+    # point IS the artifact (13 bytes, hex 210a5b3f2be280a83a232c3f5d)
+    # — every byte load-bearing under the dual bar + shape bar (the
+    # tag lead, the LS, the glued `:#`, the `?` heads, the trailing
+    # `,?` all drop the DIFFER or flip the shape alone; LS->PS
+    # reproduces the byte-exact pair, LS->SP/LF/CR resolves it). RED
+    # pre-patch on the lf harness (exit 77, the map-count split);
+    # CLASSIFIED post-patch. The 50-mutant paired battery (30 single +
+    # 20 double per target, seed 375): 0 unexplained regressions
+    # (100/100 exit 0). The r373/r374 pins verdict-identical pre/post;
+    # the classifier self-test green (126 seeds, 6759 dump-tamper
+    # declines, 814 mutants, 0 failures). The seed joins the
+    # flow-qsoup* comparator-snapshot exclusion (the law-d family is
+    # mutation-dense; the classify self-test carries the bytes under
+    # the full ctest).
+    add_test(
+        NAME fuzz-diff-r375-taglead-flow-qsoup
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-taglead-r375.bin
+    )
+
     # r373 (run 45244905519, main f1019048): the PS/NEL-dense block
     # break-run split. The nightly's artifact `> #<PS> #<PS><PS>
     # <NEL>\n<PS> <NEL> -` (26 bytes, CopyPart off 0cef14c6) DIFFERs in
