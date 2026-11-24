@@ -1308,6 +1308,118 @@ static int yd_bom_utf16_line_start_divergence(const uint8_t* data, size_t size, 
         }
         free(ys);
         free(ls);
+        if (!known) {
+            /* the r383 CAP-CUT arm (the r382 soak's proactive find,
+             * issue #1645, artifact crash-e8479c97d512d617f13c7f1d75e
+             * 7aca72c316df4, 2736 bytes "mark<NEL><BOM><NEL><BOM><NEL>"
+             * + a 1362-unit fused-BMP root plain): the pinned r226 NEL
+             * member grown a giant body -- a block-level ddmin cannot
+             * shrink it (the whole body is ONE root plain, every
+             * single-byte deletion moves a dump byte), and the strip
+             * comparison above declines it because the yeptris-side
+             * dump now crosses the shared vocabulary's per-event line
+             * budget (yd_line's char line[4096]): the value renders
+             * 4094 bytes (two kept marks + two fold spaces + the
+             * 4086-byte body), the escape-append clamps at the
+             * 4095th char, swallows the trailing newline, and the
+             * -STR event's line GLUES onto the cut -- the visible
+             * yeptris value is 4088 bytes, so the strip sees
+             * 4080-of-4086 body bytes and length-mismatches (the
+             * libyaml side renders 4093 and stays whole). The clamp
+             * is the comparator's own vocabulary, not an engine fact
+             * (the r59/r61 line clamp, the r280 cap-cut and the r368
+             * clamp-tail precedent): the ENGINE carries the whole
+             * value -- probed at the artifact scale, the scalar
+             * event's value_len is 4094 and the tail bytes are the
+             * body's final fused units (U+7222 U+0A0A, exactly
+             * libyaml's tail). THE ARM pins the cut geometry exactly
+             * and derives the uncut claim from the input alone:
+             *   - the head units are the r226 shape exactly (mark,
+             *     NEL, mark, NEL, mark, NEL -- content from unit 6);
+             *   - the yeptris dump is EXACTLY the cut spelling: one
+             *     scalar line of 4099 bytes ("=VAL : " + the 4088
+             *     visible value bytes + the glued "-STR", no newline
+             *     before it), then the -STR event's line, then end --
+             *     4105 bytes total;
+             *   - the visible value = the two kept marks + their two
+             *     fold spaces + the FIRST 4080 content bytes;
+             *   - the libyaml dump is WHOLE (its line renders under
+             *     the budget) and equals the derived content spelling:
+             *     "=VAL : " + every content unit re-encoded UTF-8,
+             *     verbatim;
+             *   - every content unit PAST the visible region is a
+             *     plain byte-carried unit (cp >= 0xA0, not a break,
+             *     not a mark, not a surrogate): the r100 skeleton law
+             *     (libyaml's UTF-16 reader ate line-start mark units,
+             *     nothing else) carries them identically into both
+             *     engines' values, so the uncut claim rides the input,
+             *     not the cut dumps.
+             * A tampered dump loses the 4105/4093 exact-length gates;
+             * a mutated break/mark unit past the cut loses the unit
+             * law and declines (a past-cut break changes the fold
+             * spell, a past-cut mark re-splits the strip). Comparator
+             * carry only, no engine change (the r226/r375/r368
+             * precedent). */
+            if (size >= 14 && (size % 2) == 0 && size / 2 > 8) {
+                static const unsigned char head[10] = {0x00, 0x85, 0xFE, 0xFF, 0x00,
+                                                       0x85, 0xFE, 0xFF, 0x00, 0x85};
+                int shape = memcmp(data + 2, head, sizeof(head)) == 0;
+                size_t nunits = size / 2;
+                /* every content unit: byte-carried on both engines */
+                size_t cu = 6;
+                while (shape && cu < nunits) {
+                    unsigned hi = data[cu * 2];
+                    unsigned lo = data[cu * 2 + 1];
+                    unsigned cp = hi << 8 | lo;
+                    if (cp < 0xA0 || cp == 0xFEFF || cp == 0x2028 || cp == 0x2029 ||
+                        (cp >= 0xD800 && cp <= 0xDFFF)) {
+                        shape = 0;
+                    }
+                    cu++;
+                }
+                /* the derived content spelling (units 6.. re-encoded) */
+                unsigned char* want = NULL;
+                if (shape) {
+                    want = malloc((nunits - 6) * 3 + 1);
+                    if (want != NULL) {
+                        size_t w = 0;
+                        for (size_t u = 6; u < nunits; u++) {
+                            unsigned cp = (unsigned)data[u * 2] << 8 | data[u * 2 + 1];
+                            if (cp < 0x80) {
+                                want[w++] = (unsigned char)cp;
+                            } else if (cp < 0x800) {
+                                want[w++] = (unsigned char)(0xC0 | (cp >> 6));
+                                want[w++] = (unsigned char)(0x80 | (cp & 0x3F));
+                            } else {
+                                want[w++] = (unsigned char)(0xE0 | (cp >> 12));
+                                want[w++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+                                want[w++] = (unsigned char)(0x80 | (cp & 0x3F));
+                            }
+                        }
+                        /* the whole-libyaml gate: "+STR\n=VAL : " +
+                         * content + "\n-STR\n" */
+                        size_t need = 5 + 7 + w + 6;
+                        known = strlen(ldump) == need && memcmp(ldump, "+STR\n=VAL : ", 12) == 0 &&
+                                memcmp(ldump + 12, want, w) == 0 &&
+                                memcmp(ldump + 12 + w, "\n-STR\n", 6) == 0;
+                        if (known) {
+                            /* the cut-yeptris gate: "+STR\n" + "=VAL : "
+                             * + mark SP mark SP + content[0:4080] +
+                             * then the -STR event's line whose newline
+                             * alone survives the clamp: "-STR\n" */
+                            static const char cutline[] = "+STR\n=VAL : \xef\xbb\xbf \xef\xbb\xbf ";
+                            size_t vis = 8 + 4080;
+                            size_t yneed = 5 + 7 + vis + 5;
+                            known = w > 4080 && strlen(ydump) == yneed &&
+                                    memcmp(ydump, cutline, sizeof(cutline) - 1) == 0 &&
+                                    memcmp(ydump + sizeof(cutline) - 1, want, 4080) == 0 &&
+                                    memcmp(ydump + sizeof(cutline) - 1 + 4080, "-STR\n", 5) == 0;
+                        }
+                        free(want);
+                    }
+                }
+            }
+        }
     }
     free(ydump2);
     free(sub);
@@ -11539,8 +11651,73 @@ static int yd_r238_clamp_tail_safe(const uint8_t* body, size_t bo, size_t be, si
         } else if (body[s] >= 0x20 && body[s] < 0x7f && body[s] != '\\' && body[s] != '\t') {
             pb = 0;
             s += 1;
+        } else if ((unsigned char)body[s] >= 0x80) {
+            /* the r383 MULTIBYTE-CONTENT law (issue #1646, artifact
+             * crash-eaec426c22dd5205b71cdaa966f5d88b7db7ef59, the
+             * nightly's 13594-byte 4-tail sibling of the r368 clamp
+             * family -- byte-identical to the pinned r368 artifact
+             * outside a +2704-byte chain growth): the mutation walk's
+             * CopyPart junk past the clamp cut can carry MULTIBYTE
+             * UTF-8 -- the sibling embeds a dump fragment's mark
+             * triple "\xef\xbb\xbf" (a "=VAL : <BOM>" paste) deep in
+             * the chain, ~9.3KB past the y-side cut, where the old
+             * "multibyte lead: unmeasured" decline rejected its own
+             * family (the fragment VISIBLE classifies: the pre-cut
+             * walkers already ride it). THE LAW: past the cut both
+             * engines' spellings of a byte ride the raw bytes -- the
+             * dump vocabulary escapes only < 0x20 and 0x7f, so every
+             * multibyte byte is verbatim on both sides -- and the
+             * engines carry quoted-scalar body bytes as content unless
+             * the DECODED code point is in the 1.1 break set: NEL/LS/
+             * PS (the r231 READ_LINE class -- yeptris keeps them raw,
+             * libyaml folds them; engine-divergent, declined). A
+             * well-formed UTF-8 sequence therefore rides iff its code
+             * point is none of U+0085/U+2028/U+2029; malformed or
+             * truncated leads (continuation-as-lead, overlong, UTF-16
+             * surrogate encodings) decline as unmeasured. MEASURED at
+             * the r366 floor scale (probes p1/p2/p3): the mark triple
+             * MID-BODY and at a post-break LINE START render verbatim
+             * on BOTH engines -- libyaml's line-start strip is a
+             * scan_to_next_token law and does not reach inside a
+             * quoted body -- the dump delta being exactly the 3 bytes
+             * on both sides, fold state unperturbed. Comparator carry
+             * only, no engine change (the r226/r375/r368 precedent). */
+            unsigned cp = (unsigned char)body[s];
+            size_t seq = 1;
+            if (cp >= 0xC0 && cp < 0xE0) {
+                cp &= 0x1F;
+                seq = 2;
+            } else if (cp >= 0xE0 && cp < 0xF0) {
+                cp &= 0x0F;
+                seq = 3;
+            } else if (cp >= 0xF0 && cp < 0xF8) {
+                cp &= 0x07;
+                seq = 4;
+            } else {
+                return 0; /* a continuation byte as lead: malformed */
+            }
+            if (s + seq > be) {
+                return 0; /* truncated sequence at the region end */
+            }
+            for (size_t q = 1; q < seq; q++) {
+                if ((((unsigned char)body[s + q]) & 0xC0) != 0x80) {
+                    return 0;
+                }
+                cp = (cp << 6) | ((unsigned char)body[s + q] & 0x3F);
+            }
+            if ((seq == 2 && cp < 0x80) || (seq == 3 && cp < 0x800) || (seq == 4 && cp < 0x10000)) {
+                return 0; /* overlong encoding: unmeasured */
+            }
+            if (cp >= 0xD800 && cp <= 0xDFFF) {
+                return 0; /* UTF-16 surrogate: unmeasured */
+            }
+            if (cp == 0x85 || cp == 0x2028 || cp == 0x2029) {
+                return 0; /* the r231 break set: engine-divergent */
+            }
+            pb = 0;
+            s += seq;
         } else {
-            return 0; /* backslash / control / multibyte lead: unmeasured */
+            return 0; /* backslash / control / 0x7f: unmeasured */
         }
     }
     return 1;

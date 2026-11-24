@@ -9896,6 +9896,85 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tabsteal-colon-r382-artifact.bin
     )
 
+    # the r383 drill (issues #1645 and #1646). TWO comparator-carry
+    # widenings, no engine change (the r226/r375/r368 precedent).
+    #
+    # Issue #1645 (the r382 soak's proactive find, artifact
+    # crash-e8479c97d512d617f13c7f1d75e7aca72c316df4, 2736 bytes):
+    # the pinned r226 NEL member grown a giant body -- the whole input
+    # is ONE UTF-16BE root plain ("mark<NEL><BOM><NEL><BOM><NEL>" +
+    # 1362 fused-BMP units; a byte-level ddmin cannot shrink it, the
+    # r382 soak's own pass floored 2736 -> 2730). The law face is the
+    # r226/r375 carry unchanged (yeptris keeps the interior line-start
+    # marks as CONTENT with the folds spelling "<BOM> <BOM> <body>",
+    # libyaml strips them; libfyaml 04e0b58 reads yeptris's shape on
+    # the UTF-8 twin in BOTH modes -- the r318 dual-consensus) -- but
+    # the yeptris-side dump crosses the shared vocabulary's per-event
+    # line budget (yd_line's char line[4096]): the value renders 4094
+    # bytes, the escape-append clamps at the 4095th char, swallows the
+    # trailing newline, and the -STR event's line GLUES onto the cut,
+    # so the r226 law's strip comparison saw 4080-of-4086 body bytes
+    # and declined its own family. The engine carries the WHOLE value
+    # (probed: the scalar event's value_len is 4094, the tail bytes
+    # the body's final fused units). THE CARRY: the r226 UTF-16 law
+    # gains the cap-cut arm -- the cut geometry pinned exactly (one
+    # 4095-char scalar line, glued "-STR", 4105-byte dump) against the
+    # derived content spelling, with every content unit past the cut
+    # required to be a plain byte-carried unit (cp >= 0xA0, not a
+    # break/mark/surrogate -- the r100 skeleton law); a tampered dump
+    # loses the exact-length gate, a mutated break/mark unit past the
+    # cut loses the unit law. Floor: the 2734-byte 1361-filler
+    # synthetic (value 4091, visible 4088, one past-cut unit) -- the
+    # smallest law-head member whose yeptris value crosses the budget.
+    #
+    # Issue #1646 (the nightly's run 45498839224, artifact
+    # crash-eaec426c22dd5205b71cdaa966f5d88b7db7ef59, 13594 bytes):
+    # the `&2?*:` PS-led composition's 4-tail sibling -- byte-identical
+    # to the pinned r368 clamp artifact outside a +2704-byte chain
+    # growth, PRE_RC=77 on the pre-patch build (pre-existing), and the
+    # seed exclusion CANNOT gate it (the family has no seeds to
+    # exclude -- the r1306 law; the walker re-derives the shape from
+    # general corpus material every round). The face that escaped: the
+    # mutation walk's CopyPart junk past the clamp cut -- the sibling
+    # embeds a dump fragment's mark triple "\xef\xbb\xbf" (a
+    # "=VAL : <BOM>" paste) ~9.3KB past the y-side cut, where the
+    # r368 clamp-tail law's "multibyte lead: unmeasured" decline
+    # rejected its own family (the fragment VISIBLE classifies: the
+    # pre-cut walkers already ride it). THE CARRY: the clamp-tail law
+    # gains the multibyte-content branch -- a well-formed UTF-8
+    # sequence rides iff its code point is none of U+0085/U+2028/
+    # U+2029 (the r231 break set, engine-divergent: yeptris keeps
+    # them raw, libyaml folds); malformed/truncated/overlong/
+    # surrogate encodings decline. MEASURED at the r366 floor scale:
+    # the mark triple MID-BODY and at a post-break LINE START render
+    # verbatim on BOTH engines (libyaml's line-start strip is a
+    # scan_to_next_token law and does not reach inside a quoted body),
+    # the dump delta exactly the 3 bytes on both sides. libfyaml
+    # 04e0b58 reads yeptris's shape on the artifact and the floor in
+    # BOTH modes (one root anchored scalar, anchor `2?*:`, the chain +
+    # fragment + `U:ba:` tail inside the quoted body) -- the r318
+    # dual-consensus. THE STRUCTURAL FINDING (for the main session):
+    # the composition family is mutation-dense along its whole
+    # past-cut vocabulary (three reds: the r368 artifact, #1643's
+    # member, this sibling) -- the exclusion chain cannot stop it and
+    # the clamp-tail safe set is an open-ended alphabet; whether the
+    # family graduates to a dedicated gate stays the main session's
+    # call. The comparator-snapshot exclusion list already covers the
+    # family (`root-anchor-quoted-follow-*`) and the utf16 seed family
+    # (`utf16-*`, which these pins' names join).
+    add_test(
+        NAME fuzz-diff-r383-bom-utf16-rootplain-capcut
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-bom-nel-rootplain-capcut-r383.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/utf16-bom-nel-rootplain-capcut-r383-artifact.bin
+    )
+    add_test(
+        NAME fuzz-diff-r383-raf-bomfrag-capcut
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-bomfrag-capcut-r383.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-bomfrag-capcut-r383-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
