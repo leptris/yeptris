@@ -7881,6 +7881,55 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-cleaneat-seq-exoticfold-r377-artifact.bin
     )
 
+    # r378 (run 45329321744, main bc1452c4, crash-e421dc2e63fe1ad3703200e52eeeb469ce41f61c):
+    # the r273 mined-soup law's tag-glue member grown the SECONDARY-handle
+    # tag resolution — the 33-byte artifact
+    # `[11>0e1:\r\r ,?!!l,?\r7\r\r ?\r ,?##m\r]` carries a `?!!l` member
+    # (the glued '?' + the `!!` tag) over CR runs, a `##m` comment-eat tail,
+    # and a `>`-mid-plain key that AGREES (`=VAL : 11>0e1` byte-equal on
+    # both engines — the issue's mid-key charset candidate is a non-face).
+    # The DIFFER is member 2: yeptris's suite-pinned plain-'?' law
+    # (HM87/652Z) keeps `?!!l` ONE flat plain while libyaml's flow KEY-token
+    # law consumes the '?' and binds the `!!l` tag property to the EMPTY
+    # scalar key (`=VAL : <tag:yaml.org,2002:l> `), the trailing member's
+    # separator giving the pair its terminator (why `[1,?!!l]` alone is the
+    # classified YEPTRIS-ONLY-ACCEPT split: no follower token, no node, an
+    # error). The r273 arm carried its shapes EXACT-BYTES because a
+    # libyaml-side tag model would have had to un-decline the
+    # yd_family_classify mutant firewall's own tag-splice case — but the
+    # firewall guards the models, not this walk: the qgh differ walk gains
+    # the TAGGED-EMPTY-KEY WRAPPER PAIR — yeptris's killed member line
+    # against the whole four-line block, the annotation byte-exact the
+    # token's resolution (secondary `!!name` -> `tag:yaml.org,2002:name`,
+    # verbatim `!suffix` -> `<!suffix>`, bare `!` drops — the r273 m0 row;
+    # a kept non-empty tail rides byte-exact after the '>' as the KEY's
+    # content with its ONE leading blank eaten; every escape/control/
+    # non-ASCII byte and %-handle rebinding declines). Floor: the 10-byte
+    # `[1,?!!l,?]` (greedy ddmin to a fixed point under the DIFFER +
+    # dump-pair shape bar; the trailing `,?` terminator member is
+    # load-bearing). A/B (probed byte-exact, both modes): libfyaml 04e0b58
+    # reads the floor AND the artifact byte-semantically yeptris's way in
+    # strict-1.2 AND 1.1 (`?!!l` and `?##m` flat plains, `11>0e1` the
+    # agreeing map) — the engine defect is refuted, comparator carry only,
+    # no engine change (the r317/r343/r366/r375 precedent). Probe matrix:
+    # 30+ shapes in the session log (secondary tails `!!abc`/`!!a-b`/
+    # `!!a.b`/`!!_`/`!!9`/`!!`(empty name), the verbatim/bare rows, the
+    # content-tail rows single+multi-word+folded, the `?!!l:` separator
+    # face EQUAL pre-patch, the `?!!l x` tail row newly carried, the
+    # double-blank tail and the %TAG-rebound `---\n%TAG !! x\n[1,?!!l,?]`
+    # (libyaml `<xl>`) declining conservative). 50-mutant paired battery
+    # (seed 378, 30 single + 20 double per shape): see the round issue.
+    add_test(
+        NAME fuzz-diff-r378-flow-qsoup-tagresolve
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qtag-glue-r378.bin
+    )
+    add_test(
+        NAME fuzz-diff-r378-flow-qsoup-tagresolve-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qtag-glue-r378-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB

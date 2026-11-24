@@ -4361,6 +4361,101 @@ static int yd_qgh_glue_marked(const char* s, size_t n) {
     return 0;
 }
 
+/* True when libyaml's KEY line is byte-exact the dump of the scalar
+ * carrying the tag property the glued token spells -- the r378
+ * tag-resolution table (the nightly's round 378, run 45329321744, main
+ * bc1452c4, crash-e421dc2e63fe1ad3703200e52eeeb469ce41f61c): libyaml's
+ * flow KEY-token law consumes the glued '?' and binds the glued TAG
+ * property to the key scalar; yeptris's plain keeps the whole member
+ * ONE flat plain, so the KEPT TAIL (the bytes past the token, blank
+ * led or empty) re-emerges as the KEY's content after the annotation.
+ * The resolution rows (probed byte-exact, r-p378 probes):
+ *   "!!name" -> "=VAL : <tag:yaml.org,2002:name>"    (the secondary
+ *               handle: the default prefix "tag:yaml.org,2002:" then
+ *               the token tail verbatim -- "!!l" -> "...2002:l",
+ *               "!!a-b"/"!!a.b"/"!!_"/"!!9" ride the tail byte-exact)
+ *   "!suffix" -> "=VAL : <!suffix>"                  (the verbatim local
+ *               tag, the '!' included -- "!s" -> "<!s>", the r273 m1
+ *               pinned row)
+ *   "!"       -> annotation empty                    (the bare tag DROPS
+ *               at the boundary -- the r273 m0 law)
+ * and the KEY line closes: the EMPTY tail renders the annotation's
+ * separator blank ("=VAL : <ANN> ", or the bare "=VAL : " row), the
+ * NON-EMPTY tail rides byte-exact after the '>' as the KEY's content
+ * in BOTH engines' own dump spelling, escapes included -- the
+ * battery's "?!!l?\r7\r\r ?\r " member renders the folded tail
+ * " 7\n?" on BOTH sides byte-exact (the r363 spelling law's paired
+ * form: the compare IS the certificate, no boundary is walked; probed
+ * "?!!l x y" -> "<...2002:l> x y", "?!" + tail -> "=VAL : x" with the
+ * ONE leading blank eaten). Everything else declines: named handles
+ * ("!!!"/"!h!s"), angle forms, tokens whose rendered annotation
+ * mismatches libyaml's, the double-blank tail ("?!!l  x" keeps two
+ * blanks on yeptris while libyaml's separator eats them), and
+ * %-directive rebindings (the "---\n%TAG !! x\n[1,?!!l,?]" probe
+ * renders libyaml "<xl> " and declines). No buffer, no wildcards:
+ * three memcmp rows + the tail byte-exact. The empty-annotation
+ * empty-tail row shares the plain emptied-key pair's line shape on
+ * purpose -- the r167 mid-stream empty-key ride claims the same shape
+ * by its own route, and a double claim of one DIFFER site is a
+ * verdict no-op (the claim set is a boolean). */
+static int yd_qgh_tagged_key_line(const char* k, size_t kl, const char* tok, size_t tokn,
+                                  const char* tail, size_t taill) {
+    static const char val_prefix[] = "=VAL : ";
+    const size_t vp = strlen(val_prefix);
+    if (tokn == 0 || tok[0] != '!') {
+        return 0;
+    }
+    if (taill > 0 && tail[0] == '\n') {
+        return 0; /* structurally impossible inside a dump line */
+    }
+    if (tokn == 1) {
+        /* the bare-tag drop: annotation empty; the empty tail renders
+         * the bare empty val (the r273 m0 row), a non-empty tail rides
+         * as the content behind ONE eaten leading blank */
+        if (taill == 0) {
+            return kl == vp && memcmp(k, val_prefix, vp) == 0;
+        }
+        if (tail[0] != ' ') {
+            return 0;
+        }
+        return kl == vp + (taill - 1) && memcmp(k, val_prefix, vp) == 0 &&
+               memcmp(k + vp, tail + 1, taill - 1) == 0;
+    }
+    if (tok[1] == '!') {
+        /* the secondary handle: "=VAL : <tag:yaml.org,2002:" + NAME +
+         * ">" (+ the separator blank, or the kept tail) */
+        static const char pfx[] = "=VAL : <tag:yaml.org,2002:";
+        const size_t pl = sizeof(pfx) - 1;
+        const size_t body = pl + (tokn - 2);
+        if (taill == 0) {
+            if (kl != body + 2) {
+                return 0;
+            }
+            return memcmp(k, pfx, pl) == 0 && memcmp(k + pl, tok + 2, tokn - 2) == 0 &&
+                   k[kl - 2] == '>' && k[kl - 1] == ' ';
+        }
+        if (kl != body + 1 + taill) {
+            return 0;
+        }
+        return memcmp(k, pfx, pl) == 0 && memcmp(k + pl, tok + 2, tokn - 2) == 0 &&
+               k[body] == '>' && memcmp(k + body + 1, tail, taill) == 0;
+    }
+    /* the verbatim local tag: "=VAL : <" + token + ">" (+ blank / tail) */
+    const size_t body = vp + 1 + tokn;
+    if (taill == 0) {
+        if (kl != body + 2) {
+            return 0;
+        }
+        return memcmp(k, val_prefix, vp) == 0 && k[vp] == '<' &&
+               memcmp(k + vp + 1, tok, tokn) == 0 && k[kl - 2] == '>' && k[kl - 1] == ' ';
+    }
+    if (kl != body + 1 + taill) {
+        return 0;
+    }
+    return memcmp(k, val_prefix, vp) == 0 && k[vp] == '<' && memcmp(k + vp + 1, tok, tokn) == 0 &&
+           k[body] == '>' && memcmp(k + body + 1, tail, taill) == 0;
+}
+
 /* True when libyaml's scalar content is yeptris's with exactly ONE raw
  * LS/PS triple inserted byte-exact — the #638 law's ADDITIVE reading
  * (the r104 forced form: libyaml joins the LS/PS verbatim where
@@ -5154,6 +5249,46 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
             y_double_empty_frame =
                 (frame_run > 0 && y_empty_val && y2l == vp && memcmp(y2, val_prefix, vp) == 0);
         }
+        /* the TAGGED-EMPTY-KEY WRAPPER tell (r378): yeptris's line is
+         * the glued '?' + tag-token member and libyaml's line opens the
+         * wrapper -- verify the whole four-line block HERE (the branch
+         * shape must be fully checked before entry: a declined wrapper
+         * must fall through to the structural arm below, the r153
+         * fallback discipline). The token is the member's bytes up to
+         * the first blank (the tag's maximal munch -- a tail blank is
+         * yeptris's kept content, the r-p378 probe row), the tail the
+         * rest. */
+        int y_tagged_wrapper = 0;
+        const char* y_tagged_l4 = NULL;
+        if (y_val && yl > vp + 1 && y[vp] == '?' && y[vp + 1] == '!' && l[0] == '+' && yn != NULL) {
+            const char* content = y + vp + 1;
+            size_t contentn = yl - vp - 1;
+            size_t tokn = contentn;
+            for (size_t i = 0; i < contentn; i++) {
+                if (content[i] == ' ') {
+                    tokn = i;
+                    break;
+                }
+            }
+            const char* tail = content + tokn;
+            size_t taill = contentn - tokn;
+            const char* tl1 = strchr(l, '\n');
+            const char* tl2 = tl1 != NULL ? tl1 + 1 : NULL;
+            const char* tl2n = tl2 != NULL ? strchr(tl2, '\n') : NULL;
+            const char* tl3 = tl2n != NULL ? tl2n + 1 : NULL;
+            const char* tl3n = tl3 != NULL ? strchr(tl3, '\n') : NULL;
+            const char* tl4 = tl3n != NULL ? tl3n + 1 : NULL;
+            if (tl4 != NULL) {
+                size_t tl2l = (size_t)(tl2n - tl2);
+                size_t tl3l = (size_t)(tl3n - tl3);
+                if (yd_qgh_tagged_key_line(tl2, tl2l, content, tokn, tail, taill) && tl3l == vp &&
+                    memcmp(tl3, val_prefix, vp) == 0 && memcmp(tl4, "-MAP", 4) == 0 &&
+                    (tl4[4] == '\n' || tl4[4] == '\0')) {
+                    y_tagged_wrapper = 1;
+                    y_tagged_l4 = tl4;
+                }
+            }
+        }
         if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
             if (y_val && l_empty_val) {
                 /* the emptied-key pair: libyaml emptied the plain
@@ -5161,6 +5296,58 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                  * ride '?#'- and '+`'-shaped plains alike); pass 1
                  * already pinned the glued-'?'# marker */
                 diffs++;
+            } else if (y_tagged_wrapper) {
+                /* the TAGGED-EMPTY-KEY WRAPPER PAIR (r378, the nightly's
+                 * round 378, run 45329321744, main bc1452c4; the 33-byte
+                 * artifact
+                 * crash-e421dc2e63fe1ad3703200e52eeeb469ce41f61c
+                 * "[11>0e1:\r\r ,?!!l,?\r7\r\r ?\r ,?##m\r]", the
+                 * 10-byte dual-bar floor "[1,?!!l,?]" -- greedy ddmin to
+                 * a fixed point under the DIFFER + dump-pair shape bar,
+                 * no further single-byte deletion keeps the bar; the
+                 * r273 mined-soup law's composition grown the tag
+                 * resolution): libyaml's flow KEY-token law consumes
+                 * the glued '?' (the qflow quirk carried since r58) and
+                 * binds the GLUED TAG property to the EMPTY scalar key
+                 * -- the wrapper (+MAP / the tagged empty KEY / the
+                 * salvaged empty value / -MAP) -- while yeptris's
+                 * suite-pinned plain-'?' law keeps the member ONE flat
+                 * plain (HM87/652Z; libfyaml 04e0b58 reads the floor
+                 * AND the artifact byte-semantically yeptris's way in
+                 * BOTH strict-1.2 and 1.1 -- `?!!l` and `?##m` ride
+                 * flat plains, `11>0e1` mid-key agrees -- the engine
+                 * defect is refuted, comparator carry only, no engine
+                 * change, the r317/r343/r366 precedent). The r273 arm
+                 * carried its two shapes EXACT-BYTES because a
+                 * libyaml-side tag model "would have to un-decline the
+                 * mutant firewall's own tag-splice case" -- but that
+                 * firewall guards yd_family_classify's models, not this
+                 * walk; the composition's lead member terminated
+                 * libyaml's pair (why `[1,?!!l]` alone is the
+                 * YEPTRIS-ONLY-ACCEPT split the split-arm carries:
+                 * without a follower token the tag property has no
+                 * node and libyaml errors) -- with it, the dump shows
+                 * the wrapper and the claim is the byte-exact
+                 * resolution pair (yd_qgh_tagged_key_line above): ONE
+                 * killed yeptris line against the whole four-line
+                 * block, the annotation byte-exact the token's
+                 * secondary-handle/verbatim/dropped rendering, the
+                 * salvaged value and bare closer pinned. Everything
+                 * else (named handles, angle forms, ':'/'#'/blank
+                 * token tails, %-rebindings) declines into the
+                 * structural arm below -- the fall-through is why the
+                 * tell is fully verified at the gate. The paired
+                 * consume advances BOTH pointers: no skip budget (the
+                 * r150 pair's bounded-by-construction economics); the
+                 * claim still stands only on full exhaustion of BOTH
+                 * skeletons (the walk's law). */
+                diffs += 2;
+                if (yn == NULL || y_tagged_l4 == NULL) {
+                    return 0;
+                }
+                y = yn + 1;
+                l = y_tagged_l4[4] == '\0' ? y_tagged_l4 + 4 : y_tagged_l4 + 5;
+                continue;
             } else if (frame && y_marker_frame && y_val && l_val && y_killed_frame) {
                 /* the MARKER-FRAME PRIORITY (r180, run 42336246527, main
                  * 8619d71, crash-d6d32ef7): when libyaml's current line
