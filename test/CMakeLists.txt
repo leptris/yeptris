@@ -7930,6 +7930,60 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qtag-glue-r378-artifact.bin
     )
 
+    # r379 (the r378 drill's bounded comparator soak, issue #1636, main
+    # dfb30cac, crash-4ca2e9109a803dac5edf48bc8a76229f89bbfce9): the
+    # 26-byte artifact `[0=,?=,{?#,?\t*L\t ,\n\t }\n,8]` -- a root flow
+    # seq whose members glue `0=` / `?=`, then a nested flow map carrying
+    # the glued `?#` (comment-eat) and the `?\t*L\t ` member (the `?` +
+    # TAB separator + the glued alias), the `\n\t }` blank-only-line
+    # close, and the trailing `,8`. The DIFFER composes THREE
+    # comparator-side faces, none engine-suspicious (libfyaml 04e0b58
+    # reads byte-semantically yeptris's way in BOTH strict-1.2 and 1.1
+    # on the artifact AND the floor -- probed byte-exact):
+    # (1) the bare-`?=` member: libyaml's flow KEY-token law (the 1.1
+    #     quirk the qflow family has carried since r58; the suite pins
+    #     the plain reading -- HM87 "[?x]" and 652Z "{ ?foo: bar }", the
+    #     ledger lines yeptris follows) makes `?=` the implicit
+    #     single-pair map (key `=`), yeptris's plain-'?' law keeps it
+    #     ONE flat plain (yd_qflow_divergence's single-pair branch, the
+    #     classic [?x] shape);
+    # (2) the glued-`?#` comment-eat member: libyaml's post-'?'-token
+    #     comment-glue runs the glued '#' to the BREAK (eating
+    #     `#,\t*L\t ,` wholesale -- the pending KEY re-pairs with the
+    #     closer) while the suite pins a '#' as content without a blank
+    #     lead (the HM87/r85 law), so yeptris reads `?#` ONE plain key
+    #     and the explicit-key alias member (`?` + TAB separator =
+    #     separated, so BOTH engines agree the alias `*L` is the key --
+    #     probed) that follows is yeptris's ALONE (the qgh walk's
+    #     glue-marked emptied-key pair + the ate-alias member skip);
+    # (3) the glued-`?*L` alias-key face: libyaml's KEY-token law
+    #     consumes the '?' and the glued `*L` RE-LEXES as the alias
+    #     token riding the KEY SLOT ("=ALI *L" -- the alias EVENT in
+    #     the key slot, the dump shape no qflow arm carried; the r199
+    #     qflow-bareq-alias-ride and r355 anchor-blank-alias families
+    #     cover the separated/`:`-glued forms) while yeptris's plain-'?'
+    #     law keeps `?*L` ONE flat plain (yd_qflow_divergence's
+    #     ALIAS-KEY line twin, the r178/r163 plain-first-'?' shape:
+    #     libyaml's rendering is yeptris's content's byte-exact suffix
+    #     minus the ONE '?').
+    # Floor: the 12-byte `[=,?=,{?*L}]` (greedy ddmin to a fixed point
+    # under the DIFFER + exact dump-pair bar; every single-byte deletion
+    # declines -- single-byte fixed-point re-verified on the drill; the
+    # from-artifact greedy path lands a 17-byte sibling
+    #     `[0,?=,{?#,*L\n},8]` carrying face (2) alone -- the artifact is
+    # genuinely multi-face). The mutant battery (seed 379, 30 single +
+    # 20 double per shape): see the round issue.
+    add_test(
+        NAME fuzz-diff-r379-flow-qalias-key
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qalias-key-r379.bin
+    )
+    add_test(
+        NAME fuzz-diff-r379-flow-qalias-key-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qalias-key-r379-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB

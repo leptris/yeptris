@@ -625,6 +625,30 @@ static int yd_qflow_divergence(const char* ydump, const char* ldump) {
             }
             continue;
         }
+        /* the ALIAS-KEY line twin (r379, run 45329321744's soak, main
+         * dfb30cac, crash-4ca2e9109a803dac5edf48bc8a76229f89bbfce9, the
+         * 12-byte dual-bar floor "[=,?=,{?*L}]"): libyaml's flow
+         * KEY-token law consumes the glued '?' and the glued '*' re-lexes
+         * as the ALIAS token, which rides the KEY SLOT ("{?*L}" -> a map
+         * whose key event is "=ALI *L" -- the alias EVENT in the key
+         * slot, the dump shape no qflow arm carried) while yeptris's
+         * suite-pinned plain-'?' law (HM87/652Z, the ledger lines the
+         * qflow family carries) keeps "?*L" ONE flat plain (libfyaml
+         * 04e0b58 byte-semantic yeptris's way in BOTH strict-1.2 and
+         * 1.1). yeptris keeps the MAP itself (only the KEY flattens),
+         * so the pair is the key-line twin: libyaml's alias rendering
+         * ("=ALI *<name>", name non-empty) is yeptris's content's
+         * byte-exact suffix minus the ONE '?' byte -- the r178/r163
+         * plain-first-'?' walk arms' shape, mirrored here in the qflow
+         * walk. A genuine yeptris alias-at-node bug ("=VAL : *N" vs
+         * "=ALI *N", no '?') declines the prefix pin; a glue-splitted
+         * name declines the suffix pin. */
+        if (lens[i] > 6 && strncmp(lines[i], "=ALI *", 6) == 0 && ylens[j] == 8 + (lens[i] - 5) &&
+            strncmp(ylines[j], "=VAL : ?", 8) == 0 &&
+            memcmp(ylines[j] + 8, lines[i] + 5, lens[i] - 5) == 0) {
+            j++;
+            continue;
+        }
         /* the r92 empty-key twin ("[?::J]", the nightly's round 92,
          * crash-cb23301ec): after the explicit-'?' key opens EMPTY,
          * libyaml consumes the ':' separator AND the plain value's
@@ -5199,6 +5223,9 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
     const char* ytwin = NULL; /* the re-paired-value ride's twin opener */
     int ride_run = 0;         /* the re-paired-value ride's consumed count */
     int frame_run = 0;        /* the r180 comment-run neighbor frames remaining */
+    int qglue_due = 0;        /* the r379 ate-alias adjacency: the glue-marked
+                               * emptied-key pair JUST paired (the comment-glue
+                               * law may have eaten the member that follows) */
     for (;;) {
         const char* yn = strchr(y, '\n');
         const char* ln = strchr(l, '\n');
@@ -5289,13 +5316,81 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                 }
             }
         }
+        /* the PLAIN single-pair WRAPPER tell (r379): yeptris's line is
+         * the '?'-prefixed flat plain and libyaml's line opens the
+         * UNANNOTATED single-pair wrapper -- the same composition face
+         * yd_qflow_divergence's single-pair branch carries, grown here
+         * because the r379 artifact composes it BESIDE the glue family's
+         * own faces (one walk must explain the whole stream, the r153
+         * lesson). The block is fully verified at the gate: +MAP / the
+         * non-empty plain KEY / the empty value / -MAP, yeptris's line
+         * "=VAL : ?" + the key byte-exact; a declined tell falls through
+         * to the structural arm (the r153 discipline). */
+        int y_pair_wrapper = 0;
+        const char* y_pair_l4 = NULL;
+        if (y_val && l[0] == '+' && yn != NULL && strncmp(l, "+MAP", 4) == 0 &&
+            (l[4] == '\n' || l[4] == '\0')) {
+            const char* wl2 = strchr(l, '\n');
+            const char* wl3 = wl2 != NULL ? strchr(wl2 + 1, '\n') : NULL;
+            const char* wl4 = wl3 != NULL ? strchr(wl3 + 1, '\n') : NULL;
+            const char* wl5 = wl4 != NULL ? strchr(wl4 + 1, '\n') : NULL;
+            if (wl5 != NULL) {
+                size_t wl2l = (size_t)(strchr(wl2 + 1, '\n') - (wl2 + 1));
+                size_t wl3l = (size_t)(strchr(wl3 + 1, '\n') - (wl3 + 1));
+                size_t wl4l = (size_t)(strchr(wl4 + 1, '\n') - (wl4 + 1));
+                if (wl2l >= 8 && memcmp(wl2 + 1, "=VAL : ", 7) == 0 && wl3l == vp &&
+                    memcmp(wl3 + 1, val_prefix, vp) == 0 && wl4l == 4 &&
+                    memcmp(wl4 + 1, "-MAP", 4) == 0 && yl == 8 + (wl2l - 7) &&
+                    memcmp(y + vp, "=VAL : ?", 8) == 0 &&
+                    memcmp(y + vp + 8, wl2 + 1 + 7, wl2l - 7) == 0) {
+                    y_pair_wrapper = 1;
+                    y_pair_l4 = wl4 + 1;
+                }
+            }
+        }
+        /* the ATE-ALIAS MEMBER tell (r379): the glue-marked emptied-key
+         * pair JUST paired and yeptris's next line is an ALIAS against
+         * libyaml's closer OR its re-paired content member -- libyaml's
+         * comment-glue law ate the run THROUGH the alias member yeptris
+         * kept (the pending KEY token re-pairs with the closer, or with
+         * the NEXT member's plain when the break's continuation carries
+         * one -- the m017 mutant's `2` riding INTO libyaml's key slot);
+         * the alias never emerges in libyaml's dump, the r138-r141
+         * no-libyaml-alias shape. The skip is verified at the gate: the
+         * alias line non-empty-named, the member's empty value line,
+         * then yeptris's next line BYTE-EXACT libyaml's current line
+         * (the re-alignment pin -- the closer case AND the VAL case;
+         * the VAL case demands non-empty content, the emptied-pair arm
+         * owns the empty form) -- a declined tell leaves the state to
+         * the terminal-tail/r144 arms unchanged. */
+        int y_ate_alias = 0;
+        if (qglue_due && yl > 6 && memcmp(y, "=ALI *", 6) == 0 && yn != NULL &&
+            ((ll == 4 && (memcmp(l, "-MAP", 4) == 0 || memcmp(l, "-SEQ", 4) == 0 ||
+                          memcmp(l, "-STR", 4) == 0)) ||
+             (l_val && ll > vp))) {
+            const char* al2 = yn + 1;
+            const char* al2n = strchr(al2, '\n');
+            size_t al2l = al2n != NULL ? (size_t)(al2n - al2) : strlen(al2);
+            if (al2l == vp && memcmp(al2, val_prefix, vp) == 0 && al2n != NULL) {
+                const char* al3 = al2n + 1;
+                size_t al3l = (size_t)(strchr(al3, '\n') != NULL ? (size_t)(strchr(al3, '\n') - al3)
+                                                                 : strlen(al3));
+                if (al3l == ll && memcmp(al3, l, al3l) == 0) {
+                    y_ate_alias = 1;
+                }
+            }
+        }
         if ((yn == NULL) != (ln == NULL) || yl != ll || memcmp(y, l, yl) != 0) {
             if (y_val && l_empty_val) {
                 /* the emptied-key pair: libyaml emptied the plain
                  * yeptris kept (any content — the r116 family's keys
                  * ride '?#'- and '+`'-shaped plains alike); pass 1
-                 * already pinned the glued-'?'# marker */
+                 * already pinned the glued-'?'# marker. The r379
+                 * adjacency: the pair is where libyaml's comment-glue
+                 * ate the run, so the member AFTER it may be yeptris's
+                 * alone (the ate-alias tell below consumes it). */
                 diffs++;
+                qglue_due = 1;
             } else if (y_tagged_wrapper) {
                 /* the TAGGED-EMPTY-KEY WRAPPER PAIR (r378, the nightly's
                  * round 378, run 45329321744, main bc1452c4; the 33-byte
@@ -5348,6 +5443,37 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                 y = yn + 1;
                 l = y_tagged_l4[4] == '\0' ? y_tagged_l4 + 4 : y_tagged_l4 + 5;
                 continue;
+            } else if (y_pair_wrapper) {
+                /* the PLAIN single-pair WRAPPER PAIR (r379, the nightly's
+                 * round 379 soak, main dfb30cac, crash-4ca2e9109a803dac
+                 * 5edf48bc8a76229f89bbfce9, the 26-byte artifact
+                 * "[0=,?=,{?#,?\t*L\t ,\n\t }\n,8]", the 12-byte dual-bar
+                 * floor "[=,?=,{?*L}]"): the composition's `?=` member --
+                 * libyaml's flow KEY-token law reads it as the implicit
+                 * single-pair map (key `=`, the salvaged empty value)
+                 * while yeptris's suite-pinned plain-'?' law (HM87/652Z)
+                 * keeps it ONE flat plain -- grown into THIS walk because
+                 * the artifact composes it beside the glue family's own
+                 * faces and every walk must explain the whole stream (the
+                 * r153 lesson; the dump shape is yd_qflow_divergence's
+                 * single-pair branch, mirrored byte-exact, the gate
+                 * verified at the tell above). The paired consume
+                 * advances BOTH pointers past the wrapper block; the
+                 * optional yeptris empty-value line rides like the
+                 * qflow branch's. Bounded by construction (no skip
+                 * budget); the claim still stands only on full
+                 * exhaustion of BOTH skeletons (the walk's law). */
+                diffs += 2;
+                l = y_pair_l4[4] == '\0' ? y_pair_l4 + 4 : y_pair_l4 + 5;
+                y = yn + 1;
+                {
+                    const char* yv2n = strchr(y, '\n');
+                    size_t yv2l = yv2n != NULL ? (size_t)(yv2n - y) : strlen(y);
+                    if (yv2l == vp && memcmp(y, val_prefix, vp) == 0 && yv2n != NULL) {
+                        y = yv2n + 1; /* the empty value line, when kept */
+                    }
+                }
+                continue;
             } else if (frame && y_marker_frame && y_val && l_val && y_killed_frame) {
                 /* the MARKER-FRAME PRIORITY (r180, run 42336246527, main
                  * 8619d71, crash-d6d32ef7): when libyaml's current line
@@ -5381,6 +5507,8 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                 }
                 frame_run = 16; /* the comment run's neighbor budget */
                 diffs += 2;
+                qglue_due = 1; /* the kill IS the ate site (the r379
+                                * adjacency: the alias member may follow) */
                 if (yn == NULL) {
                     return 0;
                 }
@@ -6508,6 +6636,49 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                 y = yn + 1;
                 l = ln + 1;
                 continue;
+            } else if (y_ate_alias) {
+                /* the ATE-ALIAS MEMBER skip (r379, the nightly's round
+                 * 379 soak, main dfb30cac, the 26-byte artifact
+                 * "[0=,?=,{?#,?\t*L\t ,\n\t }\n,8]"): the glue-marked
+                 * emptied-key pair JUST paired -- libyaml's post-'?'-token
+                 * comment-glue law ate the run THROUGH the member yeptris
+                 * ate the run THROUGH the member yeptris
+                 * kept (here the run "#,\t*L\t ," rode libyaml's comment
+                 * to the break, so the pending KEY re-paired with the
+                 * closer -- or, when the break's continuation carries a
+                 * plain, with THAT member's key (the m017 battery
+                 * mutant's `2`) -- and the alias never emerges in
+                 * libyaml's dump --
+                 * the r138-r141 no-libyaml-alias shape, whose bare-arm
+                 * masking ruling this branch honors structurally: the
+                 * gate pins the state to the ate's OWN adjacency (the
+                 * emptied-key pair set qglue_due; the flag rides until
+                 * the fire, so a second alias-at-closer state in the
+                 * SAME stream may re-fire -- the shape pins below, not
+                 * the flag, are the load-bearing gates), the
+                 * member shape (the alias, the empty
+                 * value), and the byte-exact closer re-alignment (the
+                 * tell verified yeptris's next line IS libyaml's closer)
+                 * -- and the claim still stands only on full exhaustion
+                 * of BOTH skeletons (the walk's law). Bounded: one-shot
+                 * (the flag clears on the fire), one shared-cap count,
+                 * the consumed lines pinned to two. A genuine
+                 * alias-at-node yeptris bug outside this adjacency
+                 * declines into the terminal-tail/r144 arms unchanged. */
+                if (++skips > skip_cap) {
+                    return 0;
+                }
+                diffs += 2;
+                qglue_due = 0;
+                {
+                    const char* al2 = strchr(y, '\n');
+                    const char* al3 = al2 != NULL ? strchr(al2 + 1, '\n') : NULL;
+                    if (al3 == NULL) {
+                        return 0; /* the tell pinned both lines' existence */
+                    }
+                    y = al3 + 1;
+                }
+                continue;
             } else if ((strncmp(y, "=VAL ", 5) == 0 || strncmp(y, "=ALI ", 5) == 0) &&
                        l[0] == '-' &&
                        (strncmp(l, "-MAP", 4) == 0 || strncmp(l, "-SEQ", 4) == 0 ||
@@ -6634,6 +6805,11 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                     return 0;
                 }
                 diffs++;
+                qglue_due = 1; /* the r379 adjacency: this arm IS a kill
+                                * site (libyaml ate the member ENTIRELY),
+                                * so the alias member may follow yeptris's
+                                * residue (the r124/r127 neighborhood's
+                                * m017 shape) */
                 if (yn == NULL) {
                     break;
                 }
