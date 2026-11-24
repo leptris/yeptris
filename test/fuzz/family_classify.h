@@ -411,6 +411,38 @@
  *        comparators split along the libyaml-compat bar, engine
  *        defect REFUTED (the r318/r330/.../r371/r374 precedent).
  *        Comparator carry only, no engine change.
+ *  (l4)  the r378 `!!` tag-glue MEMBER law (run 45329321744, main
+ *        3cc951a2 — issue #1632): a `!!`-handle tag GLUED into a flow
+ *        member after a `?` (the artifact's `?!!l` member inside
+ *        `[11>0e1:\r\r ,?!!l,?\r7\r\r ?\r ,?##m\r]`) rides the
+ *        tokenizer-level tag resolution in the libyaml model. yeptris
+ *        keeps the whole member ONE flat plain (the suite's
+ *        ns-plain-first law, HM87/652Z — a `?` followed by a non-blank
+ *        never opens the explicit-key split; `!` mid-plain is ns-char
+ *        content), while libyaml 90a56d4 fires its 1.1 unconditional
+ *        flow KEY token on the `?` and scan_tag lexes the `!!`
+ *        secondary handle — scan_tag_uri resolves
+ *        `tag:yaml.org,2002:` + the URI suffix onto the tagged EMPTY
+ *        key scalar (the empty-suffix twin `!!` is libyaml's "did not
+ *        find expected tag URI" scanner error, the YEPTRIS-ONLY-ACCEPT
+ *        split the r375 lead law documents at the root; a `!h!` handle
+ *        with a nonempty h is the undefined-tag-handle parser error
+ *        and stays out; the `%XX` escapes ride the suffix per the
+ *        UTF-8 octet discipline, the r108 charset). The modeled tag
+ *        end-check mirrors the scanner: in flow only `,` may end the
+ *        tag without a blank (the r108 law; a `]`-closer twin errors
+ *        libyaml the same way). THE A/B: libfyaml 04e0b58 reads the
+ *        floor `[\x3f!!l,\x3f]` — and the whole 33-byte artifact —
+ *        byte-exact yeptris's way in BOTH --yaml-1.2 and --yaml-1.1
+ *        passes (`?!!l` one flat plain; the comparators split along
+ *        the libyaml-compat bar, engine defect REFUTED — the
+ *        r318/r330/r336/r346/r356/r366/r371/r374/r375 precedent).
+ *        Comparator carry only, no engine change. The artifact's other
+ *        three faces are the standing laws: the `>`-in-plain-key row
+ *        (`11>0e1:` — `>` mid-plain is ns-char content on both
+ *        engines, the r367 LINE-START adjudication's MID-KEY twin),
+ *        the CR-run blank cells (law b, the r376 composition), and the
+ *        `##m` comment-eat (law a, the #949 family).
  *
  * Memory: no allocation escapes the call; all scratch is heap and freed
  * before return. Pure over its four arguments: same inputs, same

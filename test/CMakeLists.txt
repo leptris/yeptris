@@ -7881,6 +7881,45 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-cleaneat-seq-exoticfold-r377-artifact.bin
     )
 
+    # r378 (run 45329321744, main 3cc951a2 — issue #1632): the
+    # >-in-plain-key + tag-glue flow-soup DIFFER. The artifact
+    # `[11>0e1:\r\r ,?!!l,?\r7\r\r ?\r ,?##m\r]` (33 bytes,
+    # crash-e421dc2e63fe1ad3703200e52eeeb469ce41f61c) decomposes to ONE
+    # fresh face and three standing ones: the `>`-in-plain-key row
+    # (`11>0e1:` — `>` mid-plain is ns-char content on BOTH engines, the
+    # m1+m4 pair byte-equal), the CR-run blank cells (the r376 law) and
+    # the `##m` comment-eat (the law-a/#949 family) all classify today;
+    # the red is the `!!` TAG-GLUE member `?!!l` — the r375 tag-lead
+    # law's MEMBER-face twin. The glued `?` keeps the whole text as one
+    # flat plain on yeptris (the suite's ns-plain-first law, HM87/652Z —
+    # a `?` followed by a non-blank never fires libyaml's KEY-token
+    # quirk), while libyaml splits the flow `?` unconditionally (its 1.1
+    # KEY-token law) and then LEXES `!!l` as the secondary tag handle,
+    # resolving `tag:yaml.org,2002:l` onto the empty key scalar — its
+    # empty-suffix twin `!!` ERRORS the tag scan ("did not find expected
+    # tag URI", the yeptris-only-accept split the r375 lead law
+    # documents). THE A/B: libfyaml 04e0b58 reads the member — and the
+    # whole artifact — byte-exact yeptris's way in BOTH --yaml-1.2 and
+    # --yaml-1.1 passes (the floor `[\x3f!!l,\x3f]` emits `?!!l` one
+    # flat plain; the comparators split along the libyaml-compat bar,
+    # engine defect REFUTED — the r318/r330/r336/r346/r356/r366/r371/
+    # r374/r375 precedent). Comparator carry only, no engine change.
+    # FLOOR: the greedy ddmin fixed point `[?!!l,?]` (8 bytes, hex
+    # 5b3f21216c2c3f5d) — the trailing `?`-indicator member is
+    # byte-equal on both engines and merely escapes the r135-tag-twin
+    # arm's tail-match so the floor stays red for the classifier; every
+    # single-byte deletion drops the DIFFER (the dual+shape bar).
+    add_test(
+        NAME fuzz-diff-r378-tagmember-glue
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tagmember-r378.bin
+    )
+    add_test(
+        NAME fuzz-diff-r378-tagmember-glue-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tagmember-r378-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB

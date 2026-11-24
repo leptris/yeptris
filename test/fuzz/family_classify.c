@@ -3198,7 +3198,16 @@ static int l_dq_scan(lctx* c, fout* o, size_t* stop) {
  * bytes and advances past the tag; returns 0 on every error shape:
  *  - the handle forms: '!h!' with a nonempty h is the "undefined tag
  *    handle" parser error (the default directives carry only '!' and
- *    '!!'), and '!!' resolves to tag:yaml.org,2002: — neither rides;
+ *    '!!') — it stays out; the '!!' SECONDARY handle resolves to
+ *    tag:yaml.org,2002: + the URI suffix and rides (the r378
+ *    tag-member law, run 45329321744 — the glued-`?` member's `?!!l`:
+ *    libyaml's flow KEY token fires on the `?` and scan_tag lexes the
+ *    handle, while yeptris keeps the whole text one flat plain per the
+ *    suite's ns-plain-first law; libfyaml 04e0b58 reads yeptris's
+ *    stream byte-exact in both passes, comparator carry only). An
+ *    EMPTY suffix after the handle is libyaml's "did not find expected
+ *    tag URI" scanner error (scan_tag_uri demands at least one URI
+ *    char when the head is NULL) and declines;
  *  - the suffix form: handle '!', the suffix starts with the alpha run
  *    (scan_tag_uri copies the head minus the leading '!') and continues
  *    over the URI charset, decoding %XX octet escapes per the UTF-8
@@ -3220,7 +3229,72 @@ static int l_scan_tag(lctx* c, fout* tag) {
         h++;
     }
     if (h < n && p[h] == '!') {
-        return 0; /* a '!h!'/ '!!' handle: unmodeled */
+        if (h == i) {
+            /* the '!!' secondary handle (the r378 law): resolve to the
+             * 'tag:yaml.org,2002:' prefix + the URI suffix; an empty
+             * suffix is libyaml's scanner error and declines */
+            h++;
+            fo_str(tag, "tag:yaml.org,2002:");
+            size_t suffix = 0;
+            for (;;) {
+                if (h >= n) {
+                    break; /* IS_BLANKZ at EOF: the tag ends clean */
+                }
+                unsigned char t = p[h];
+                if (fc_blank(t) || fc_break_len(p, n, h) > 0) {
+                    break;
+                }
+                if (t == '%') {
+                    int width = 0;
+                    do {
+                        if (h + 2 >= n || p[h] != '%' || !fc_hex(p[h + 1]) ||
+                            !fc_hex(p[h + 2])) {
+                            return 0; /* 'did not find URI escaped octet' */
+                        }
+                        unsigned char octet =
+                            (unsigned char)((fc_hexval(p[h + 1]) << 4) + fc_hexval(p[h + 2]));
+                        if (!width) {
+                            width = (octet & 0x80) == 0x00   ? 1
+                                    : (octet & 0xE0) == 0xC0 ? 2
+                                    : (octet & 0xF0) == 0xE0 ? 3
+                                    : (octet & 0xF8) == 0xF0 ? 4
+                                                             : 0;
+                            if (!width) {
+                                return 0; /* 'found an incorrect leading
+                                           * UTF-8 octet' */
+                            }
+                        } else if ((octet & 0xC0) != 0x80) {
+                            return 0; /* 'found an incorrect trailing UTF-8
+                                       * octet' */
+                        }
+                        fo_bytes(tag, &octet, 1);
+                        h += 3;
+                    } while (--width);
+                    suffix++;
+                    continue;
+                }
+                if (!fc_uri_char(t)) {
+                    break; /* the end check below rules the terminator */
+                }
+                fo_bytes(tag, &t, 1);
+                h++;
+                suffix++;
+            }
+            if (suffix == 0) {
+                return 0; /* 'did not find expected tag URI' — scan_tag_uri
+                           * demands at least one URI char here */
+            }
+            /* the end check: in flow only ',' may end the tag without a
+             * blank (the scanner's tag-end gate, the r108 law) */
+            if (h < n && !fc_blank(p[h]) && fc_break_len(p, n, h) == 0 &&
+                !(p[h] == ',' && c->depth > 0)) {
+                return 0;
+            }
+            c->pos = h;
+            return 1;
+        }
+        return 0; /* a '!h!' handle (nonempty h): the undefined-tag-handle
+                   * parser error, unmodeled */
     }
     fo_str(tag, "!");            /* the '!' handle's default prefix */
     fo_bytes(tag, p + i, h - i); /* the head minus the leading '!' */
