@@ -12736,6 +12736,46 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
          * reading) — comparator carry only, no engine change (the
          * r318/r330/r331/r332/r340/r341/r346/r347/r348/r352/r353/r354
          * precedent). Anything the gate cannot pin declines (the
+         * escalation clause stays live).
+         *
+         * The r375b widening (the r375 nightly drill session, run
+         * 45281713143's post-widening comparator soak, main
+         * 4e6f0e78+classifier-lead): the '+' byte joins the plain
+         * charset, and the artifact is the 15-byte `+MAP...:
+         * '<PS><TAB>'` — the QUOTED-PS/TAB body (the family law,
+         * byte-identical here) riding a PLUS-LED plain key behind a
+         * STANDARD space separator — the quoted-exotic-tab family's
+         * TWELFTH composition and the key-form family's TENTH
+         * container. '+' is in NO engine's c-indicator set, so a plus
+         * HEAD is a legal plain head on BOTH engines — no head-guard
+         * (the r353 paren law's twin; the '&'/'*' prop twins and the
+         * r354 '[' head own their heads; the plus owns none). Head
+         * faces probed byte-equal on BOTH engines, all DIFFER only in
+         * the body (the dumps' key rows byte-equal, the value row
+         * ` \t` vs ` `): `+`, `+x`, `x+`, `2+2`, `+.` (the r332 dot
+         * composes), `+,` / `+)` / `+;` / `+[` (the r347/r348/r352/
+         * r353/r354 charset bytes compose), `+'` glued-quote (the
+         * r332 law, key `+'`), and the separator-TAB ride `+\t: '...'
+         * (the r341 law); the glued-colon face `+:x` is EQUAL (a plain
+         * `+:x` doc, never a consult) and the `+$:` face is EQUAL too
+         * (both engines read the whole line as ONE plain scalar — no
+         * value colon fires, byte-equal, never a differ). The dual-bar
+         * floor under the family SHAPE bar (key rows byte-equal + the
+         * r331 body delta; the r343 lesson — the naive exact-dump bar
+         * pins every key letter) is the 9-byte `+: '<PS><TAB>'`: the
+         * MAP letters die into key-equal shapes. RED pre-patch (the
+         * `+` head read no key bytes, ke == ko, the empty-key decline
+         * left the DIFFER unexplained); CLASSIFIED post-patch. THE
+         * A/B (probed): libfyaml 04e0b58's --yaml-1.2 pass sides with
+         * yeptris BYTE-EXACT on the floor and the artifact (the raw
+         * PS + the kept tab, the `=VAL '\P\t` render) while its
+         * --yaml-1.1 pass ERRORS "invalid tab used as indentation" —
+         * the documented third reading — comparator carry only, no
+         * engine change (the r318/.../r354 precedent). Found by the
+         * drill's own bounded comparator soak (45s from the nightly's
+         * exact corpus discipline), NOT by the nightly — the arm
+         * extension rides the same PR as the r375 classifier-lead
+         * widening. Anything the gate cannot pin declines (the
          * escalation clause stays live). */
         if (prefix_comment) {
             return 0; /* the r340 comment-led prefix stays floor-form
@@ -12799,7 +12839,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                 ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
                 (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' || (data[r]) == '$' ||
                 (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')' || (data[r]) == '[' ||
-                (data[r]) == ';')) {
+                (data[r]) == ';' || (data[r]) == '+')) {
             r++;
         }
         /* the r332 battery's GLUED spellings (each dump-verified
@@ -12825,7 +12865,7 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                     ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
                     (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' ||
                     (data[r]) == '$' || (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')' ||
-                    (data[r]) == '[' || (data[r]) == ';')) {
+                    (data[r]) == '[' || (data[r]) == ';' || (data[r]) == '+')) {
                 r++;
             }
             ke = r;

@@ -8790,6 +8790,39 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r354-artifact.bin
     )
 
+    # the r375b plus round (the r375 drill session's own bounded
+    # comparator soak, 45s from the nightly's exact corpus discipline;
+    # NOT a nightly red): the 15-byte artifact `+MAP...: '<PS><TAB>'`
+    # rides the QUOTED-PS/TAB body (the r331 family law, byte-identical)
+    # behind a PLUS-LED plain key — '+' is in NO engine's c-indicator
+    # set (a legal plain head on both engines, no head-guard — the
+    # r353 paren law's twin), and the pre-patch charset walk read no
+    # key bytes at the '+' head (ke == ko, the empty-key decline), so
+    # the DIFFER stayed unexplained. The dual-bar floor under the
+    # family SHAPE bar (key rows byte-equal + the body delta; the
+    # r343 lesson) is the 9-byte `+: '<PS><TAB>'`. Head faces probed
+    # byte-equal on both engines, all DIFFER only in the body: `+`,
+    # `+x`, `x+`, `2+2`, `+.`, `+,`, `+)`, `+;`, `+[`, `+'` (glued
+    # quote, the r332 law), `+\t:` (separator TAB, the r341 law); the
+    # `+:x` glued-colon and `+$:` faces are EQUAL (never a consult).
+    # THE A/B: libfyaml 04e0b58's --yaml-1.2 pass sides with yeptris
+    # BYTE-EXACT on floor and artifact (the raw PS + the kept tab)
+    # while its --yaml-1.1 pass errors "invalid tab used as
+    # indentation" — comparator carry only, no engine change. Both
+    # seeds join the quoted-exotic-tab comparator-snapshot exclusion
+    # (the family's mutation density is the treadmill this snapshot
+    # exists to stop).
+    add_test(
+        NAME fuzz-diff-r375b-plus-plain-quoted-exotic-tab
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r375b.bin
+    )
+    add_test(
+        NAME fuzz-diff-r375b-plus-plain-quoted-exotic-tab-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r375b-artifact.bin
+    )
+
     # the r360 semicolon round (the nightly's run 45056549705, main
     # 336bbaeb; the 12-byte artifact
     # crash-0d590a8d210c3fb74d70a683a3b16b6db10b3fb6 "...;: '<PS><TAB>'",
