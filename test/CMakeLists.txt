@@ -9779,6 +9779,57 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qate-run-r380-artifact.bin
     )
 
+    # r381 (the post-r380 Fuzz Nightly round): the anchor-led deep-flow
+    # soup, 4106 bytes "&al:o&a:&2?*: '"":[[...". yeptris rides the 1.2
+    # ns-anchor-char name `al:o&a:&2?*:` (the 2SXE/W5VH colon-ride law;
+    # the interior '&' per the r356 row, the glued '?'/'*' per the r330
+    # row) into ONE root single-quoted scalar running to the artifact's
+    # LAST byte (the col-0 fold lines are the NP9H root law -- spec
+    # example 7.5; the suite's QB6E pins the in-map twin as an ERROR,
+    # fail: true). libyaml 90a56d4 cuts at the ':' after `al` (in
+    # scan_anchor's follow set -- the anchor is ACCEPTED, unlike the
+    # r370 %/@ leads that error) and the ':'-led residual `:o&a:&2?*`
+    # re-lexes as the key's plain content (1.1 colon-plain leniency,
+    # the r174-documented re-lex) under a root map. A/B (probed, event
+    # level): libfyaml 04e0b58 reads yeptris's stream byte-exact in
+    # BOTH modes on the artifact, and rejects `k: 'a\nb\nc'`
+    # identically ("wrongly indented single-quoted scalar", both
+    # modes) -- comparator carry only, no engine change (the
+    # r318/r330/r336/r356/r366/r368/r370/r376 precedent). The carry:
+    # the r238 arm gains the ':'-LED MIXED residual branch, and the
+    # r368 clamp detection reads its own prefix (4100/4099 - the
+    # stream prefix) instead of the r366-only 4082/4081 constants --
+    # the giant value cuts both dumps at the 4095-char line budget
+    # (yeptris fused with `-STR` at region 4074, libyaml fused with
+    # `-MAP` at 4088), which strands the r76 keymap-splice arm's
+    # value-equality law (measured: the splice claims every SHORT
+    # member of this shape -- `'a\nb'`, `'a\nb\nc'`, `'[[{"": x\ny'`
+    # all ride yd_anchor_keymap_splice pre-patch -- and declines only
+    # the clamped giant). The charset arm's split copy declines its
+    # own family again: `&al :o&a:&2?*: '...'` opens the ROOT MAP on
+    # yeptris, whose quoted value carries the col-0 continuation --
+    # the QB6E law yeptris enforces -- so the copy is yeptris-rejected
+    # ("inconsistent indentation", measured) while libyaml accepts it.
+    # Dual-bar floor: the 4090-byte greedy single-byte ddmin fixed
+    # point (the 16-byte chain chunk deleted at offset 16; the value
+    # rides exactly at the fused-clamp boundary -- every further
+    # deletion drops below the band and lands classified pre-patch,
+    # exit 0). 50-mutant paired battery (seed 381, against the
+    # pre-patch build): 0 regressions. The alias face is DEAD -- the
+    # `*a:` byte run sits INSIDE the quoted body on BOTH engines
+    # (no =ALI event either side); the deep chain is quoted content,
+    # carried (r361/r368/r380).
+    add_test(
+        NAME fuzz-diff-r381-root-anchor-colon-ride
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-colon-ride-clamp-floor-r381.bin
+    )
+    add_test(
+        NAME fuzz-diff-r381-root-anchor-colon-ride-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-colon-ride-qsplat-clamp-r381.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

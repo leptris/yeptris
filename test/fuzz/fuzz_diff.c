@@ -12473,17 +12473,23 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                 /* the r368 clamp detection: the dump's per-event line
                  * budget (char line[4096] in both dump paths) cuts a
                  * giant scalar's line at exactly 4095 chars -- the
-                 * visible value region is then 4082 chars (the cut
-                 * fused with the `-STR\n` sentinel) or 4081 (the cut
-                 * line kept its own newline). Exact lengths only: a
+                 * visible value region is then 4100 - <prefix> chars
+                 * (the cut fused with the `-STR\n` sentinel) or one
+                 * less (the cut line kept its own newline), where
+                 * <prefix> = the stream-relative offset (the "+STR\n"
+                 * line + "=VAL : &" + the riding name + the separator
+                 * blank; the r366 members' 18-char stream prefix gave
+                 * the pinned 4082/4081, the r381 artifact's 26 gives
+                 * 4074/4073 -- measured). Exact lengths only: a
                  * tampered dump loses the gate and declines. */
+                size_t prefix = (size_t)(a - ydump);
                 size_t yl = strlen(ydump);
                 if (yl >= 5 + 5 && strncmp(ydump + yl - 5, "-STR\n", 5) == 0) {
-                    size_t region = (yl - 5) - (size_t)(a - ydump);
-                    if (region == 4082 && ydump[yl - 6] != '\n') {
+                    size_t region = (yl - 5) - prefix;
+                    if (region == 4100 - prefix && ydump[yl - 6] != '\n') {
                         ce = ydump + yl - 5;
                         tail_nl = 0;
-                    } else if (region == 4081 && ydump[yl - 6] == '\n') {
+                    } else if (region == 4099 - prefix && ydump[yl - 6] == '\n') {
                         ce = ydump + yl - 6;
                     }
                 }
@@ -12580,6 +12586,81 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                         return 0;
                     }
                     b++;
+                } else if (data[cut] == ':') {
+                    /* the r381 widening (the post-r380 nightly, run
+                     * 45305960965 class, main 88c2abae): the cut
+                     * residual may be ':'-LED AND MIXED -- the
+                     * artifact `&al:o&a:&2?*: '"":[...` (4106 bytes):
+                     * yeptris rides the 1.2 ns-anchor-char name
+                     * `al:o&a:&2?*:` (the 2SXE/W5VH colon-ride law;
+                     * the interior '&' rides per the r356 row, the
+                     * glued '?'/'*' per the r330 row) and reads ONE
+                     * root anchored single-quoted scalar (the quote
+                     * opens behind the separator blank and runs to
+                     * the artifact's LAST byte; its col-0 fold lines
+                     * are the NP9H root law -- spec example 7.5 --
+                     * a root scalar's continuations need no indent).
+                     * libyaml cuts at the FIRST out-of-IS_ALPHA byte
+                     * (the ':' after `al` -- ':' IS in scan_anchor's
+                     * follow set, so unlike the r370 `%`/`@`/backtick
+                     * leads this cut does NOT error: the anchor is
+                     * ACCEPTED) and the ':'-led residual `:o&a:&2?*`
+                     * re-lexes as the key's plain content (libyaml
+                     * 1.1's colon-plain leniency: the lead ':' glues
+                     * to the next non-blank byte -- the r174-documented
+                     * ':o&a:o:' re-lex, measured in this family round;
+                     * interior '&/?/*' ride mid-plain content, interior
+                     * ':' glues to non-blank followers) with the ': '
+                     * firing the VALUE token -- the anchored NON-empty
+                     * key, the r174 family's key shape in this arm's
+                     * container. The suite sides with yeptris on every
+                     * face: the cut is 2SXE/W5VH, the root fold is
+                     * NP9H, and libyaml's counterfactual map reading
+                     * would fold the quoted value at column 0 INSIDE a
+                     * mapping -- the QB6E error face (tags: error
+                     * indent, fail: true) libyaml is lenient on. A/B
+                     * (probed, event level): libfyaml 04e0b58 reads
+                     * yeptris's stream BYTE-EXACT in BOTH modes --
+                     * `=VAL anchor=al:o&a:&2?*: value=<"":[[...>` with
+                     * the identical folded value; and the fold split's
+                     * own A/B: libfyaml rejects `k: 'a\nb\nc'`
+                     * identically ("wrongly indented single-quoted
+                     * scalar", both modes) -- comparator carry only,
+                     * no engine change (the r318/r330/r331/r336/r346/
+                     * r356/r366/r368/r370/r376 precedent). The
+                     * charset arm's split copy declines its own family
+                     * again: `&al :o&a:&2?*: '...'` opens the ROOT MAP
+                     * on yeptris, whose quoted value now carries the
+                     * col-0 continuation -- the QB6E law yeptris
+                     * enforces -- so the copy is yeptris-rejected
+                     * ("inconsistent indentation", measured) while
+                     * libyaml accepts it. The r368 CLAMP-TAIL composes:
+                     * the artifact's giant value cuts BOTH dumps at
+                     * the 4095-char line budget (the yeptris line
+                     * fused with `-STR`, region 4074 = 4095 - the
+                     * 21-char line prefix; the libyaml value line
+                     * fused with `-MAP`, region 4088 = 4095 - the
+                     * 7-char prefix), which strands
+                     * the r76 keymap-splice arm's value-equality law
+                     * (yvn != lvn across the different prefixes --
+                     * measured: the splice claims every SHORT member
+                     * of this shape, e.g. `'a\nb'`, `'a\nb\nc'`,
+                     * `'[[{"": x\ny'`, and declines only the clamped
+                     * giant), so this arm's generalized clamp
+                     * detection below is the load-bearing walk. */
+                    for (size_t r = cut; r < colon; r++) {
+                        if (!yd_r238_wide_name_byte(data, size, r)) {
+                            return 0;
+                        }
+                        if (b[0] != (char)data[r]) {
+                            return 0;
+                        }
+                        b++;
+                    }
+                    if (b[0] != '\n') {
+                        return 0;
+                    }
+                    b++;
                 } else {
                     /* the r330 members: the cut residual is the key's
                      * plain content, byte-equal against the dump; the
@@ -12591,8 +12672,9 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                      * (`?/` -- `/` glued mid-plain is 1.1 content, the
                      * measured row in yd_r238_wide_name_byte); the
                      * interior ':' stays OUT (the r336 pure-run branch
-                     * owns pure-colon residuals, a mixed `?x:` face is
-                     * unmeasured), and the lead stays the pinned '?'
+                     * owns pure-colon residuals and the r381 widening
+                     * owns ':'-LED mixed residuals, a mixed `?x:` face
+                     * is unmeasured), and the lead stays the pinned '?'
                      * (an '&'-lead residual would re-lex as the key's
                      * own ANCHOR -- the `&2&: ...` twin probed
                      * shape-dead; a '*' lead still re-lexes as an
