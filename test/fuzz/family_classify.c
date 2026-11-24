@@ -194,7 +194,42 @@ static int fc_doc_lead(const uint8_t* p, size_t n, size_t* end) {
     size_t i = 0;
     int markers = 0;
     *end = 0;
-    if (n < 3 || p[0] != '-' || p[1] != '-' || p[2] != '-') {
+    /* the r377 widening (the soak find 2 floor's `\n---\n[...` lead,
+     * the r376b session): a blank/break RUN may precede the FIRST
+     * marker line — both engines scan-to-token before the doc start,
+     * byte-equal across the probe matrix (`\n---\n[1]`, ` \n---\n[1]`,
+     * `\n \n---\n[1]`, `\r---\n[1]`, and the exotic-break heads
+     * `NEL---\n[1]`/`LS---\n[1]`/`PS---\n[1]`/`\nLS---\n[1]` all
+     * EQUAL; the marker-count law composes unchanged behind the run,
+     * the `\n---\n---\n[1]` twin renders the one empty first document
+     * on both engines). The run admits spaces (each space run must
+     * face a break — a space run DIRECTLY before the triple is the
+     * r349 indented-`---` content law, stays out) and every
+     * fc_break_len break kind. A TAB before the triple is BOTH-ERROR
+     * on both engines (probed) — the walk's decline there matches; a
+     * comment inside the run is a separate composition, stays out. An
+     * EMPTY run is the old pos-0 law; a run ending at a non-triple
+     * byte keeps the pre-patch whole-lead decline. */
+    for (;;) {
+        size_t s = i;
+        while (s < n && p[s] == ' ') {
+            s++;
+        }
+        if (s > i) {
+            size_t bl = fc_break_len(p, n, s);
+            if (bl == 0) {
+                break; /* the space run faces a non-break: the lead
+                        * starts here (the indented `---` declines) */
+            }
+            i = s;
+        }
+        size_t bl = fc_break_len(p, n, i);
+        if (bl == 0) {
+            break;
+        }
+        i += (size_t)bl;
+    }
+    if (n < i + 3 || p[i] != '-' || p[i + 1] != '-' || p[i + 2] != '-') {
         return 0;
     }
     for (;;) {
@@ -1365,6 +1400,18 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
     if (nxt < n && (fc_blank(p[nxt]) || fc_break_len(p, n, nxt) > 0)) {
         split = 1;
     }
+    if (!split && nxt < n && (p[nxt] == '{' || p[nxt] == '[')) {
+        /* the r377 widening (the soak find 1 floor's glued `?{` member):
+         * a collection follower GLUED to the `?` rides the split
+         * machinery — the engine's `?` is the explicit-key indicator
+         * with the collection as the key node on BOTH engines, and the
+         * plain cannot start there (a flow indicator is not a
+         * plain-safe char). Probed byte-equal: `[?{a}]`, `[?[a]]`,
+         * `{?{a}}`, `[? {a}]` all EQUAL (the SEQ single-pair wrapper +
+         * the collection key node + the parser's inserted empty value;
+         * the r310/r351 split arms' mechanics with the run skipped) */
+        split = 1;
+    }
     fcnode key, val;
     memset(&val, 0, sizeof(val));
     size_t stop;
@@ -1635,16 +1682,23 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
          * `[a,?\r#x,y,z,b\nc]` render the r245 `+MAP(c,)` byte-exact).
          * An eat running to EOF still declines, and the root matrix
          * keeps its shape: a comma-carrying run on the MAP root stays
-         * untested-declined (the r245 steal stays SEQ-rooted), a clean
-         * eat on the SEQ root stays untested-declined. */
+         * untested-declined (the r245 steal stays SEQ-rooted).
+         *
+         * the r377 widening (the nightly's round 377, run
+         * 45317828972, main 7171f226 — the 23-byte giant floor's
+         * `?\r#\n5 ?#` member): the CLEAN eat (zero separators in the
+         * run) on the SEQ ROOT joins — the parser inserts the empty
+         * value at the closer and the stolen key rides the same plain
+         * walk as the separator form (probed byte-equal `[1,?\r##\na,2]`
+         * -> `+SEQ/1/+MAP/a//`, the floor's own member; the engines
+         * AGREE here — the member is an agreeing composition riding
+         * the dual byte-equality firewall, like the r351 nested-SEQ
+         * slot). The MAP-rooted clean eat keeps the r277 law. */
         if (e >= n) {
             return y_fail(c);
         }
         if (seps >= 1 && y_cur_is_map(c)) {
             return y_fail(c); /* the r245 steal stays SEQ-rooted */
-        }
-        if (seps == 0 && !y_cur_is_map(c)) {
-            return y_fail(c); /* a clean eat on the SEQ root: untested */
         }
         e += (size_t)fc_break_run_len(p, n, e);
         ks = fc_skip_blank_break(p, n, e);
