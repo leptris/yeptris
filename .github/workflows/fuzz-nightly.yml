@@ -132,7 +132,14 @@ jobs:
         # documented laws, so the diff leg must not seed from them;
         # the pins carry the bytes under the full ctest (the
         # fuzz-diff-r377 pins).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete
+        # The r379 alias-key family joins (the r378 drill soak, issue
+        # #1636): the glued-`?*L` alias-key / bare-`?=` / glued-`?#`
+        # composition -- the drill's own battery proved the neighborhood
+        # is mutation-dense (one TAB->`2` ChangeByte re-derived a fresh
+        # ate-adjacency shape, the m017 mutant), so the diff leg must
+        # not seed from it; the pins carry the bytes under the full
+        # ctest (the fuzz-diff-r379 pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete
 
       - name: Fuzz budget
         run: |
