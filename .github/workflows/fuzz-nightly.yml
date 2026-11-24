@@ -152,7 +152,16 @@ jobs:
         # itself stays classifier-carried at modelled scale and the pins
         # carry the bytes under the full ctest (the fuzz-diff-r361/r362
         # pins).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete
+        # The r381 colon-ride family joins (run 45485140275's carry,
+        # issue #1643): the r381 round added the root-anchor-colon-ride
+        # pins but missed this treadmill step, so the diff leg's
+        # mutation walk seeded from them and re-derived a fresh member
+        # of the body-adjacent root-anchor-quoted-follow vocabulary
+        # (the same `U:ba:`-tail + `[[{""` chain law composition) --
+        # mutation-dense, so the diff leg must not seed from it; the
+        # pins carry the bytes under the full ctest (the
+        # fuzz-diff-r381 pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete
 
       - name: Fuzz budget
         run: |
