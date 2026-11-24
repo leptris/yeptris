@@ -1709,22 +1709,50 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
             p[ks] == '[' || p[ks] == '{') {
             return y_fail(c); /* a structural stolen key: untested */
         }
-        if (p[ks] == ':' &&
-            (ks + 1 >= n || fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0)) {
-            return y_fail(c); /* a colon-led stolen key: untested */
-        }
-        /* the stolen key rides the SAME plain walk the split
-         * plain-key slot takes — SEQ-rooted, so the r272 KEY-implicit
-         * colon cut applies (the r319 artifact's stolen key
-         * `/<LF><CR><CR><PS> 51:<CR><CR>1.0e17.tag` cuts at the
-         * colon+break boundary: key = `/\n\n\n51`, the common colon
-         * path opens the value `1.0e17.tag` — the engine renders
-         * `+MAP(/\\n\\n\\n51,1.0e17.tag)` byte-exact). The MAP-rooted
-         * clean eat keeps the plain law (the r277 law's colon-inside
-         * key). Flat stolen keys never see the difference (no colon,
-         * no cut — every r245 probe shape unchanged). */
-        if (!fc_plain_pieces(p, n, ks, n, !y_cur_is_map(c), 0, &key, &stop, &sep)) {
-            return y_fail(c);
+        if (p[ks] == ':' && ks + 1 < n &&
+            (fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0 || fc_flow_ind(p[ks + 1]))) {
+            /* the r382 widening (run 45485140275's drill, issue #1642):
+             * the comment-steal's COLON-LED VALUE boundary — the r286
+             * law's slot mechanics one slot over. After the eat, the
+             * stolen key region may open `:` + blank/break/FLOW
+             * INDICATOR: the explicit key is EMPTY (the comment ate
+             * every key byte), the colon re-lexes as the VALUE boundary
+             * on BOTH engines (yeptris's 1.2 flow VALUE-boundary law,
+             * libyaml's unconditional flow fetch_value), and the pair
+             * rides the common colon path below (the value node or the
+             * parser's inserted empty; the probes: `{?TAB#`\n:TAB),}` ->
+             * (e,))`, `{?TAB#\n:,}` -> (e,e)`, `{?TAB#\n:TAB),}` ->
+             * (e,))`, `{?TAB#\n:}` -> (e,e)` — all EQUAL, and the
+             * artifact's own member `?TAB#` LF :TAB),` renders (e,))`
+             * inside the DIFFER). The floor's `?TAB# LF :,` twin (the
+             * r382 floor's member 2) rides the flow-indicator follower
+             * arm of the same gate. The r277 glued colon-plain twin
+             * (`:` + non-boundary content) keeps the plain walk below
+             * (the r277 law's own derivation). A colon at the slot's
+             * EOF stays declined. */
+            memset(&key, 0, sizeof(key)); /* the empty key node */
+            key.colon = 1;
+            key.colon_at = ks;
+            stop = ks + 1;
+            sep = 1;
+        } else if (p[ks] == ':' && ks + 1 >= n) {
+            return y_fail(c); /* a colon at the stolen-key slot's EOF:
+                               * untested */
+        } else {
+            /* the stolen key rides the SAME plain walk the split
+             * plain-key slot takes — SEQ-rooted, so the r272
+             * KEY-implicit colon cut applies (the r319 artifact's
+             * stolen key `/<LF><CR><CR><PS> 51:<CR><CR>1.0e17.tag` cuts
+             * at the colon+break boundary: key = `/\n\n\n51`, the
+             * common colon path opens the value `1.0e17.tag` — the
+             * engine renders `+MAP(/\\n\\n\\n51,1.0e17.tag)` byte-
+             * exact). The MAP-rooted clean eat keeps the plain law (the
+             * r277 law's colon-inside key). Flat stolen keys never see
+             * the difference (no colon, no cut — every r245 probe shape
+             * unchanged). */
+            if (!fc_plain_pieces(p, n, ks, n, !y_cur_is_map(c), 0, &key, &stop, &sep)) {
+                return y_fail(c);
+            }
         }
     } else if (p[ks] == '{') {
         /* the nested flow map at the split-explicit-key member's KEY

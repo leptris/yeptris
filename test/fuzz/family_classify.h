@@ -207,6 +207,20 @@
  *      arms) + the clean-eat SEQ member (this widening) — NOT the
  *      soak finds' conjunctions (the alias/doc-lead faces are absent
  *      from the floor; three independent faces this round).
+ *      the r382 widening (run 45485140275's drill, issue #1642): the
+ *      steal's COLON-LED VALUE boundary — the r286 law's slot
+ *      mechanics at the stolen-key position. After the eat, a stolen
+ *      key region opening `:` + blank/break/FLOW INDICATOR derives the
+ *      EMPTY key (the comment ate every key byte) and the colon
+ *      re-lexes as the VALUE boundary on BOTH engines (yeptris's 1.2
+ *      flow VALUE-boundary law, libyaml's unconditional flow
+ *      fetch_value) — the value node or the parser's inserted empty
+ *      follows (the probes `{?TAB#`\n:TAB),}` -> (e,))`,
+ *      `{?TAB#\n:,}` -> (e,e)`, `{?TAB#\n:TAB),}` -> (e,))`,
+ *      `{?TAB#\n:}` -> (e,e)` — all EQUAL, and the artifact's own
+ *      member `?TAB#` LF :TAB),` renders (e,))` inside the DIFFER).
+ *      The r277 glued colon-plain twin (`:` + non-boundary content)
+ *      keeps the plain walk; a colon at the slot's EOF stays declined.
  *  (g) the r278 quoted-tail law (run 43675241311): inside a glued-`?`
  *      member the quoted-span bytes ride yeptris's flat plain as
  *      content (the plain fold law joins the piece breaks), while

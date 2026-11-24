@@ -9830,6 +9830,72 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-colon-ride-qsplat-clamp-r381.bin
     )
 
+    # r382 (the r381 drill's bounded soak find, issue #1642): the
+    # flow-'?'+TAB soup, 202 bytes, `{?##|#|+` #|#|+  \t \n\t ,?##|#|,`
+    # ,?\t*L:\t ,?#` ...` -- a flow map whose members are the
+    # r244/r265-style `?#`/hash-cr plain runs TAB-glued (the blank
+    # runs before `*L:`, between members, inside the blank lines), a
+    # thrice-repeated member block (the mutation walk's CopyPart), and
+    # closing `}`. yeptris keeps the glued-`?#` members as PLAIN keys
+    # (the JR7V law -- the suite pins `?`+content as plain; the
+    # interior `#` is glued, never a comment) with the TAB-riding
+    # alias `=ALI *L` member; libyaml's flow dispatch fires the `?` as
+    # the KEY token unconditionally and its scan_to_next_token then
+    # comment-eats from the glued `#` -- its dump is the all-empty
+    # scalar collapse (12 members vs yeptris's 17). The artifact's
+    # key-slot face (member `?\t#`\n:\t),`): the TAB after the `?`
+    # splits the explicit key, the blank-preceded `#` at the key slot
+    # fires the r277 comment-steal on both engines, and the stolen key
+    # region opens `:` + TAB -- the COLON-LED VALUE boundary at the
+    # stolen-key slot (the r382 classifier widening, law (f)).
+    # Adjudication: the steal probes are all-EQUAL (`{?\t#`\n:\t),}` ->
+    # (e,))`, `{?\t#\n:,}` -> (e,e)`, `{?\t#\n:\t),}` -> (e,))`,
+    # `{?\t#\n:}` -> (e,e)` -- the r286 law's slot mechanics one slot
+    # over); the artifact's steal member renders `(e,))` inside the
+    # DIFFER. Floor: the 14-byte greedy ddmin fixed point
+    # `{?,?\t#\n:,?:#\n}` (the artifact's repeated block collapses;
+    # every one of the 14 single-byte deletions breaks the dual+shape
+    # bar -- no DIFFER, or an unclaimed DIFFER). The floor's own split
+    # face is the GLUED `?:#` member: yeptris reads ONE plain `?:#`
+    # (the 1.2 ns-plain-first followed-by arm; the suite's JR7V pins
+    # the `?`+content law, 2EBW pins the indicator-head key law) while
+    # libyaml's flow fetch dispatch splits the glued `?:` into KEY +
+    # VALUE tokens and comment-eats the tail (its scanner.c: flow `?`
+    # and `:` are unconditional indicators -- the documented 1.1
+    # leniency). A/B (probed, event level): libfyaml 04e0b58 reads
+    # yeptris's floor byte-exact in BOTH --yaml-1.2 and --yaml-1.1
+    # (`=VAL :?:#` plain kept) -- comparator carry only, no engine
+    # change (the r318/r330/r336/r356/r366/r368/r370/r376/r381
+    # precedent). The artifact additionally rides the LENIENT
+    # backtick-led plain composition (members `` ` ``-led after the
+    # `,`): the suite is silent (2EBW/FBC9 pin the backtick only
+    # MID-plain), libfyaml 04e0b58 strict-1.2 ERRORS the shape ("plain
+    # scalar cannot start with '`'" -- the reserved-indicator law) and
+    # both engines accept it leniently -- the lenient composition rides
+    # the artifact pin, and the classifier's dual model reproduces both
+    # actual dumps byte-exact on floor and artifact (the classify
+    # firewall: 108 dump-tamper cases declined on the pair). The carry:
+    # the r277 steal arm gains the colon-led VALUE-boundary branch (the
+    # r286 law's follower set: blank/break/FLOW INDICATOR) at the
+    # stolen-key slot; the glued colon-plain twin keeps the r277 plain
+    # walk and the slot's-EOF colon stays declined. 50-mutant paired
+    # battery (seed 382, against the pre-patch build): 31 pass-pass,
+    # 18 claims (the widening claims modeled family members), 1
+    # red-red (an unclaimed mutation outside the family), 0
+    # regressions. The comparator-snapshot exclusion chain gains
+    # `root-anchor-colon-ride-*` this round too (issue #1643 -- the
+    # r381 pins' own treadmill step).
+    add_test(
+        NAME fuzz-diff-r382-flow-qsoup-tabsteal-colon
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tabsteal-colon-r382.bin
+    )
+    add_test(
+        NAME fuzz-diff-r382-flow-qsoup-tabsteal-colon-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-tabsteal-colon-r382-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
