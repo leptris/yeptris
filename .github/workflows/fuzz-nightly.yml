@@ -123,7 +123,16 @@ jobs:
         # the diff leg seeds from no utf16 seed at all; the pins carry
         # the bytes under the full ctest (the fuzz-diff-r159..r371
         # utf16/utf32 pins).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete
+        # The r377 classifier families join (run 45317828972's carry):
+        # the glued-`?{`/`?[` collection-key family (the r310/r351
+        # neighborhood's glued variant), the doc-marker-lead pre-run
+        # family (the r349 walk's run head), and the clean-eat SEQ
+        # steal family (the r245/r319 neighborhood's clean cell) --
+        # each is one ChangeByte from a fresh composition of the
+        # documented laws, so the diff leg must not seed from them;
+        # the pins carry the bytes under the full ctest (the
+        # fuzz-diff-r377 pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete
 
       - name: Fuzz budget
         run: |

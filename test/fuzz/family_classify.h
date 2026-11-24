@@ -190,6 +190,23 @@
  *      the shared reading on the steal probes byte-exact and rejects
  *      the ride as a third reading — comparator carry, no engine
  *      change.
+ *      the r377 widening (the nightly's round 377, run 45317828972,
+ *      main 7171f226 — the 23-byte giant floor's `?\r#\n5 ?#` member):
+ *      the CLEAN eat (zero separators inside the run) on the SEQ ROOT
+ *      joins — the parser inserts the empty value at the closer and
+ *      the stolen key rides the same plain walk as the separator form
+ *      (probed byte-equal `[1,?\r##\na,2]` -> `+SEQ/1/+MAP/a//-SEQ`,
+ *      the floor's own member; the engines AGREE — the member is an
+ *      agreeing composition riding the dual byte-equality firewall,
+ *      like the r351 nested-SEQ slot). The MAP-rooted clean eat keeps
+ *      the r277 law; the comma-carrying run on the MAP root stays
+ *      declined. The giant (73,133 bytes, the nightly's own red)
+ *      decomposed to this 23-byte floor (`5b312c3f230d0d31e280a96e2c
+ *      3f0d230a35203f230a5d`): the glued-`?#` member's CR-run/LS fold
+ *      faces (law b/d, the r361 neighborhood — claimed by the standing
+ *      arms) + the clean-eat SEQ member (this widening) — NOT the
+ *      soak finds' conjunctions (the alias/doc-lead faces are absent
+ *      from the floor; three independent faces this round).
  *  (g) the r278 quoted-tail law (run 43675241311): inside a glued-`?`
  *      member the quoted-span bytes ride yeptris's flat plain as
  *      content (the plain fold law joins the piece breaks), while
@@ -257,7 +274,20 @@
  *      two glued-`?` plains of the law-d split behind it, 13 of 48
  *      bytes under the dual bar). A glued colon (not a VALUE boundary)
  *      after the collection key and any other non-boundary byte stay
- *      out.
+ *      out. The r377 widening (the r376b soak find 1, run
+ *      45317828972's session): the collection follower GLUED to the
+ *      `?` (no blank/break between) rides the same split machinery —
+ *      the engine's `?` is the explicit-key indicator with the
+ *      collection as the key node on BOTH engines, and the plain
+ *      cannot start there (a flow indicator is not a plain-safe char;
+ *      probed byte-equal `[?{a}]`, `[?[a]]`, `{?{a}}`, `[? {a}]` all
+ *      EQUAL — the SEQ single-pair wrapper + the collection key node
+ *      + the parser's inserted empty value). The find-1 floor's
+ *      `[=,?{?#,`,*L\n}]` composes the glued wrapper with the
+ *      nested-map law-a comment-eat (the KEY token's glued `#` eats
+ *      `#,\`,*L` to the fold, the nested pair empties) and the law-c
+ *      alias ride (`*L` renders `=ALI *L` on yeptris, never lexes on
+ *      libyaml) — the 15-byte floor carries it under the dual bar.
  *  (l2) the r349 document-marker LEAD law (run 44941446715): a run of
  *      document-marker lines ahead of the flow root is INERT and
  *      byte-equal on both engines, each marker BUT THE LAST opening an
@@ -282,6 +312,25 @@
  *      `+DOC ---` + the seq on 1.2 and 1.1 alike) while its body
  *      reading joins yeptris's flat glued-`?` plain — the documented
  *      third reading; comparator carry only, no engine change.
+ *      the r377 widening (the r376b soak find 2, run 45317828972's
+ *      session): a blank/break RUN may precede the FIRST marker line
+ *      (the floor's `\n---\n[?/ ?,?/]`) — both engines scan-to-token
+ *      before the doc start, byte-equal across the probe matrix
+ *      (`\n---\n[1]`, ` \n---\n[1]`, `\n \n---\n[1]`, `\r---\n[1]` and
+ *      the exotic-break heads `NEL---\n[1]`/`LS---\n[1]`/
+ *      `PS---\n[1]`/`\nLS---\n[1]` all EQUAL; the marker-count law
+ *      composes unchanged behind the run, the `\n---\n---\n[1]` twin
+ *      renders the one empty first document on both engines). The run
+ *      admits spaces (each space run must face a break — a space run
+ *      DIRECTLY before the triple is the indented-`---` content law,
+ *      stays out) and every fc_break_len break kind; a TAB before the
+ *      triple is BOTH-ERROR on both engines (probed) — the walk's
+ *      decline matches. The find-2 artifact's `----\n` lead
+ *      (a FOUR-dash line is plain CONTENT — both engines open the
+ *      stream with the multi-line block plain riding the break runs
+ *      into the `[`...) is the documented residual: a BLOCK-context
+ *      face (law j), the flow family stays out — the 16-byte floor
+ *      carries the law.
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:

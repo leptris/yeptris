@@ -7800,6 +7800,87 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-tabfold-r376-artifact.bin
     )
 
+    # r377 (run 45317828972, main 7171f226 — the nightly's own red plus
+    # the r376b soak's two finds, all three faces carried in one
+    # composed widening). THE THREE FACES (each probe-verified
+    # byte-equal on both engines before admission, the A/B law:
+    # libfyaml 04e0b58 declines the glued-`?{` shape outright in BOTH
+    # 1.2 and 1.1 passes (the documented third reading) and joins
+    # yeptris's PS-fold member reading in 1.2 — comparators split
+    # along the libyaml-compat bar, comparator carry only, no engine
+    # change; the r318/r330/r331/r336/r346/r356/r366/r368/r369/r370/
+    # r375 precedent):
+    # - FIND 1 (the 15-byte floor `[=,?{?#,`,*L\n}]`, the 163-byte
+    #   artifact): the glued collection follower — a `{`/`[` directly
+    #   after the member's `?` rides the split machinery (the engine's
+    #   `?` is the explicit-key indicator with the collection as the
+    #   key node on BOTH engines; probed `[?{a}]`/`[?[a]]`/`{?{a}}`/
+    #   `[? {a}]` all EQUAL). The floor composes it with the
+    #   nested-map law-a comment-eat (the KEY token's glued `#` eats
+    #   `#,\`,*L` to the fold, the nested pair empties) and the law-c
+    #   alias ride (`*L` renders `=ALI *L` on yeptris, never lexes on
+    #   libyaml). No new state: the r310/r351 nested-collection arms
+    #   walk it once the follower routes there.
+    # - FIND 2 (the 16-byte floor `\n---\n[?/ ?,?/]`): the doc-marker
+    #   LEAD admits a blank/break RUN before the FIRST marker line
+    #   (both engines scan-to-token before the doc start; probed
+    #   `\n---\n[1]`/` \n---\n[1]`/`\n \n---\n[1]`/`\r---\n[1]` and the
+    #   exotic-break heads `NEL---`/`LS---`/`PS---`/`\nLS---` EQUAL;
+    #   the marker-count law composes unchanged behind the run; a tab
+    #   before the triple is BOTH-ERROR on both engines — the walk's
+    #   decline matches). The
+    #   member faces are the standing law-d split + the PS raw-ride
+    #   (libyaml's KEY plain keeps the PS raw, yeptris folds it to the
+    #   one space). The 66-byte artifact's `----\n` lead (a FOUR-dash
+    #   line is plain CONTENT — the multi-line BLOCK plain riding the
+    #   break runs into the `[`...) is the documented residual: a
+    #   BLOCK-context face (law j), the flow family stays out; the
+    #   16-byte floor carries the law.
+    # - FIND 3 (the nightly's 73,133-byte giant, ddmin'd to the
+    #   23-byte floor `[1,?#\r\r1<U+2029>n,?\r#\n5 ?#\n]` — chunk then
+    #   byte ddmin, 272 bar calls total): the r319 steal law's clean
+    #   eat joins the SEQ ROOT (the old gate declined it as untested).
+    #   Probed byte-equal `[1,?\r##\na,2]` -> `+SEQ/1/+MAP/a//-SEQ`:
+    #   the parser inserts the empty value at the closer and the
+    #   stolen key rides the same plain walk as the separator form —
+    #   the member is an AGREEING composition riding the dual
+    #   byte-equality firewall. The floor's divergence lives in the
+    #   sibling glued-`?#` member (the CR-run/LS fold faces, law b/d —
+    #   the r361 neighborhood, claimed by the standing arms); the
+    #   giant decomposes to these faces + the clean-eat member, NOT
+    #   the soak finds' conjunctions (three independent faces).
+    # 50-mutant paired battery (seed 377, 10 ChangeByte/InsertByte/
+    # DeleteByte/SpliceDuplicate per shape across all three floors +
+    # the find-1 artifact + the giant): 0 regressions, 15
+    # newly-carried, 16 stable-green, 19 stable-red; the classifier
+    # self-test green (127 seeds, 6813 dump-tamper cases declined, 818
+    # mutants, 0 failures).
+    add_test(
+        NAME fuzz-diff-r377-flow-qcollection-glued-aliasfold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qcollection-glued-aliasfold-r377.bin
+    )
+    add_test(
+        NAME fuzz-diff-r377-flow-qcollection-glued-aliasfold-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qcollection-glued-aliasfold-r377-artifact.bin
+    )
+    add_test(
+        NAME fuzz-diff-r377-flow-doclead-prerun-psfold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-doclead-prerun-psfold-r377.bin
+    )
+    add_test(
+        NAME fuzz-diff-r377-flow-cleaneat-seq-exoticfold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-cleaneat-seq-exoticfold-r377.bin
+    )
+    add_test(
+        NAME fuzz-diff-r377-flow-cleaneat-seq-exoticfold-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-cleaneat-seq-exoticfold-r377-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB
