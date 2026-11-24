@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### the comparator era (r374-r377, all zero-`src/`)
+
+- **four more nightly escapes carried and pinned; the classifier's escape and tab laws completed** — the `\uXXXX` escape join rides a 21-row measured decode matrix (r374, #1622: every well-formed escape face renders byte-identical on both engines — mid-content/chained/lead/close-edge/fold compositions; surrogates and malformed hex stay BOTH-ERROR, never a consult); the tag-property lead joins the classifier as law l3 and the `+` byte joins the quoted-exotic-tab key charset via the drill's own bounded soak (r375, #1625 — the soak carried the next nightly red before the nightly fired); the r331 tab-position law's deferred cells land (r376, #1627: 22 probed rows — blank runs touching a clean break strip, interior blank runs ride the escaped-tab spell, n clean breaks spell n-1 `\n` escapes for n≥2); and the glued collection key, the lead pre-run, and the clean-eat SEQ cell join the soup laws (r377, #1629 — the 73KB exotic-break giant rides the composed law, no size-bound pin). Every round: floor minimized under the dual+shape bar, libfyaml 04e0b58 adjudicated byte-exact or comparators split along the libyaml-compat bar, batteries 0 regressions, walks green, ctest full pass, leaks 0. Zero engine divergence standing beyond #1411 (deliberate), #1468 (0.6.75), #1584 (0.6.77) and #1615 (0.6.78).
+
 ## [0.6.78] - 2026-11-23
 
 ### Fixed
