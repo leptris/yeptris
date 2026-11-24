@@ -113,7 +113,17 @@ jobs:
         # whole row, so the diff leg must not seed from it; the pins
         # carry the bytes under the full ctest (the
         # fuzz-diff-r238..r370 pins).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-midstream-bom-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete
+        # The WHOLE utf16 seed family joins at r375 (the drill's own
+        # bounded comparator soak): 45s of mutation from the remaining
+        # utf16 seeds (utf16-nel-fold-*, utf16-ps-fold-bom) re-derived
+        # a fresh midstream-BOM + NEL-fold composition (yeptris keeps
+        # three mid BOMs as content through the fold lines, libyaml
+        # keeps one) -- the r298 law generalizes: ANY UTF-16BE seed is
+        # one ChangeByte from a fresh documented-law composition, so
+        # the diff leg seeds from no utf16 seed at all; the pins carry
+        # the bytes under the full ctest (the fuzz-diff-r159..r371
+        # utf16/utf32 pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete
 
       - name: Fuzz budget
         run: |
