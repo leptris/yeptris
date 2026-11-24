@@ -16,41 +16,38 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.78 — live across all five runtimes** (C +
-ruby `0.6.78.0` + py `0.6.78.0` + rs/ts `0.6.78`, registry-checked
-2026-11-24). v0.6.78 ships the **feed-contract fold-line fix
-(catch 134, PR #1615)** — the fuzz_feed nightly (yeptris vs ITSELF:
-whole-input vs chunked-input recorder identity, the split-feed
-guarantee) caught the fold-line state machine treating a fold break
-as line-end ONLY on `\n`: a CR-terminated fold line swallowed the
-following line's flow openers and explicit-key `?` markers, so a
-chunked feed cut mid-token inside the still-open flow and
-materialized a different event stream than the same bytes fed whole.
-The fix routes both scan arms through the `norm_next_fold_break`
-SSOT carrying the visited-break-arm line-start state;
-whole-vs-chunked identity restored byte-for-byte (17-byte floor,
-critical boundary 247|248), the recorder lanes benched flat.
-Over the r360-r373 comparator roll: fourteen more pinned nightly
-escapes and two classifier-law generalizations — the semicolon key
-joining the quoted-exotic-TAB family; the nested `[?::[?::JJ]]`
-member (the artifact its own 12-byte fixed point); the size-bound
-tag-soup CONTINUUM riding the classifier law at arbitrary scale after
-the four conservatism budgets raised to measured demand (the r362
-dig REFUTED the size-dependence theory — the divergence is
-byte-identical at every size; test-side budgets were what bound); the
-folded-header backslash-escape ride; the three double-BOM faces (the
-one-scalar spelling, the map-follower end-of-input colon, the `?/`
-head-charset row); the root-block-content exotic-break rebuild; the
-4090-byte dump-line-clamp-tail floor; the r369 NEL-blank-state
-walkers replacing units no engine produces; and the r373 exotic-
-spelling rebuild (`yd_exotic_rebuild_divergence`) generalizing the
-r367 composed-claim move. Zero YAML engine divergence outstanding
-beyond #1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and
-this cut's #1615. The previous cut: v0.6.77 — the roundtrip
+**Latest release: v0.6.79 — live across all five runtimes** (C +
+ruby `0.6.79.0` + py `0.6.79.0` + rs/ts `0.6.79`, registry-checked
+2026-11-24). v0.6.79 carries the r374-r377 comparator roll (all
+zero-`src/`): the `\uXXXX` escape join over a 21-row measured decode
+matrix (every well-formed escape face renders byte-identical on both
+engines; surrogates and malformed hex stay BOTH-ERROR); the
+tag-property lead as classifier law l3 and the `+` byte joining the
+quoted-exotic-tab key charset via the drill's own bounded soak (the
+soak carried the next nightly red before the nightly fired); the
+r331 tab-position law's deferred cells landing (22 probed rows); and
+the glued collection key, the lead pre-run, and the clean-eat SEQ
+cell joining the soup laws (the 73KB exotic-break giant rides the
+composed law — no size-bound pin). Zero YAML engine divergence
+standing beyond #1411's deliberate fix, #1468 (0.6.75), #1584
+(0.6.77) and #1615 (0.6.78). **The bindings shipped their sibling
+faces this wave**: the plan/tape/events (pull + `next_batch` +
+iterparse) faces landed on the Python binding (#192, ctypes,
+capability-gated on the released engine tag) and the TypeScript/WASM
+binding (#48, `compilePlan`/`plan.walk` + the JSON tape face), and
+the Ruby binding adopted the org native-layer contract (#409 — the
+DOT-FREE per-minor bundles, the candidate-order SSOT, the
+no-unversioned-fallback law) alongside its pull/iterparse and tape
+faces (#411); all five runtimes now expose the plan/schema/pull/tape
+family. The previous cut: v0.6.78 — the feed-contract fold-line fix
+(#1615): the fold-line state machine rode `\n` only, a CR-terminated
+fold line swallowed the next line's flow openers, and the
+`norm_next_fold_break` SSOT restored whole-vs-chunked identity
+byte-for-byte. The cut before it: v0.6.77 — the roundtrip
 guarantee's empty-inline anchor twin (#1584): the emitter spells
 `k: &n: ''` whenever the anchor name's last byte is `:`, byte-stable
 round-trips, over the r351-r359 roll (eight pinned escapes).
-The cut before it: v0.6.76 — the character-column emitter (#1490,
+The cut before that: v0.6.76 — the character-column emitter (#1490,
 PR #1493): the fold column rides code points with the purity fact as
 a parse product, all emitter lanes at-or-above the pre-change
 levels, over the r314-r350 comparator roll (~37 pinned nightly
