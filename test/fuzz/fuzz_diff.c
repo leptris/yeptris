@@ -11038,26 +11038,72 @@ static int yd_r238_clamp_tail_safe(const uint8_t* body, size_t bo, size_t be, si
     (void)bo;
     while (s < be) {
         if (body[s] == '\r' || body[s] == '\n') {
-            if (pb) {
-                return 0; /* consecutive breaks: the fold delta is unmeasured */
+            /* the r376 clean-break-run law (see walk_y): runs spell
+             * (n-1) escapes for n>=2 and one fold space for n==1 --
+             * forced-equal on both engines (q9-q19); a CR LF pair is
+             * ONE break (q11/q14); blank-only lines ride the run
+             * (q16/q17). The old consecutive-break decline is gone. */
+            size_t e = s;
+            while (e < be) {
+                if (body[e] == '\r') {
+                    e += (e + 1 < be && body[e + 1] == '\n') ? 2 : 1;
+                } else if (body[e] == '\n') {
+                    e += 1;
+                } else {
+                    size_t k = e;
+                    while (k < be && (body[k] == ' ' || body[k] == '\t')) {
+                        k++;
+                    }
+                    if (k < be && (body[k] == '\r' || body[k] == '\n')) {
+                        e = k;
+                    } else {
+                        break;
+                    }
+                }
             }
             pb = 1;
-            s += 1;
+            s = e;
         } else if (body[s] == ' ') {
             size_t e = s;
             while (e < be && body[e] == ' ') {
                 e++;
             }
+            /* the r376 mixed-blank-run end: tabs join the run (q20/q21) */
+            while (e < be && (body[e] == ' ' || body[e] == '\t')) {
+                e++;
+            }
             if (e == be) {
                 return 0; /* the trailing run's no-fold spelling: unmeasured */
             }
-            pb = (body[e] == '\r' || body[e] == '\n') ? 1 : 0;
-            s = (pb ? e + 1 : e);
+            if (body[e] == '\r' || body[e] == '\n') {
+                pb = 1;
+                s = (body[e] == '\r' && e + 1 < be && body[e + 1] == '\n') ? e + 2 : e + 1;
+            } else {
+                /* mid-line blanks ride content (spaces verbatim, tabs
+                 * escaped -- byte-equal both engines, q22/e1-e3) */
+                pb = 0;
+                s = e;
+            }
+        } else if (body[s] == '\t') {
+            /* the r376 cells: the LEAD strips behind pb (q1-q3/q5-q7),
+             * the TRAILING trims facing a clean break (q8/q13/q20/q21),
+             * mid-line rides the content spell (q4/q22/e1-e3); the
+             * exotic-facing composition stays walk-only */
+            size_t e = s;
+            while (e < be && (body[e] == ' ' || body[e] == '\t')) {
+                e++;
+            }
+            if (!pb && e < be && (unsigned char)body[e] == 0xE2 && e + 2 < be &&
+                (unsigned char)body[e + 1] == 0x80 &&
+                ((unsigned char)body[e + 2] == 0xA8 || (unsigned char)body[e + 2] == 0xA9)) {
+                return 0;
+            }
+            s = e;
         } else if (body[s] >= 0x20 && body[s] < 0x7f && body[s] != '\\' && body[s] != '\t') {
             pb = 0;
             s += 1;
         } else {
-            return 0; /* tab / backslash / control / multibyte lead: unmeasured */
+            return 0; /* backslash / control / multibyte lead: unmeasured */
         }
     }
     return 1;
@@ -11108,58 +11154,116 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
             prev_break = 0;
             last_exotic = 1;
         } else if (body[i] == '\r' || body[i] == '\n') {
-            if (prev_break || a[0] != ' ') {
+            if (prev_break) {
                 return 0;
             }
-            a += 1; /* the plain fold: the break becomes one space */
-            i += 1;
+            {
+                /* the r376 CLEAN-BREAK-RUN law (the nightly's round 376,
+                 * run 45299095581, main df5722db): n consecutive clean
+                 * breaks -- a CR LF pair is ONE break (the r188
+                 * byte-reader pair law) and blank-only lines between
+                 * breaks (spaces/tabs, probed `a\n \nb`/`a\n\t\nb` read
+                 * `a\nb` on both) ride the run -- spell (n-1) escaped
+                 * newlines and NO fold space for n>=2 (probed
+                 * `a\n\nb` -> `a\nb`, `a\n\n\nb` -> `a\n\nb`,
+                 * `a\n\n\tb` -> `a\nb`, the trailing `a\n\n'` ->
+                 * `a\n`), one fold space for n==1 (the measured
+                 * standalone law, the trailing `a\n'` -> `a `). The
+                 * old single-break-only branch declined the run the
+                 * artifact's fold cluster composes. */
+                size_t j = i;
+                size_t n = 0;
+                while (j < be) {
+                    if (body[j] == '\r') {
+                        j += (j + 1 < be && body[j + 1] == '\n') ? 2 : 1;
+                        n++;
+                    } else if (body[j] == '\n') {
+                        j += 1;
+                        n++;
+                    } else {
+                        size_t k = j;
+                        while (k < be && (body[k] == ' ' || body[k] == '\t')) {
+                            k++;
+                        }
+                        if (n > 0 && k < be && (body[k] == '\r' || body[k] == '\n')) {
+                            j = k; /* the blank-only line rides the run */
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                if (n == 1) {
+                    if (a[0] != ' ') {
+                        return 0;
+                    }
+                    a += 1; /* the plain fold: the break becomes one space */
+                } else {
+                    for (size_t e = 0; e + 1 < n; e++) {
+                        if (a[0] != '\\' || a[1] != 'n') {
+                            return 0;
+                        }
+                        a += 2;
+                    }
+                }
+                i = j;
+            }
             prev_break = 1;
         } else if (body[i] == ' ') {
             size_t s = i;
             while (s < be && body[s] == ' ') {
                 s++;
             }
-            if (s < be && (body[s] == '\r' || body[s] == '\n')) {
-                if (a[0] != ' ') {
-                    return 0;
+            {
+                /* the r376 mixed-blank-run end: tabs after the spaces
+                 * join the run for the trim decision (probed `a\t \nb`
+                 * and `a \t\nb` read `a b` on both -- q20/q21); the CR
+                 * LF pair is ONE break (q11/q14, the r188 pair law) */
+                size_t e = s;
+                while (e < be && (body[e] == ' ' || body[e] == '\t')) {
+                    e++;
                 }
-                a += 1; /* the space run folds with its break into one space */
-                i = s + 1;
-                prev_break = 1;
-            } else if (s == be) {
-                /* the trailing run merges with a just-folded break (the
-                 * one fold space was already emitted); the no-fold
-                 * spelling is unmeasured -- decline */
-                if (!prev_break) {
-                    return 0;
-                }
-                i = s;
-            } else {
-                /* the r369 widening (run 45180416420, main 031e326e):
-                 * the run's tail facing a NEL breaks -- yeptris strips
-                 * the trailing blanks before the normalized break
-                 * (probed `&2?: '<SP><NEL>a'` reads ` a`: the run is
-                 * gone, the NEL's fold speaks alone), and behind a
-                 * just-folded break the run was the fold's own
-                 * line-start blanks -- already consumed by it (probed
-                 * `&2?: '<NEL><SP>a'` reads ` a` too). A content-state
-                 * run still rides verbatim (the r332 exotic-join law:
-                 * probed `<PS><SP>a` reads `<PS> a`). */
-                if (s + 1 < be && (unsigned char)body[s] == 0xC2 &&
-                    (unsigned char)body[s + 1] == 0x85) {
-                    i = s; /* the run strips; the NEL's fold speaks */
-                } else if (prev_break && !last_exotic) {
-                    i = s; /* the fold ate the run with it */
-                } else {
-                    while (i < s) {
-                        if (a[0] != ' ') {
-                            return 0;
-                        }
-                        a += 1;
-                        i += 1;
+                if (e < be && (body[e] == '\r' || body[e] == '\n')) {
+                    if (a[0] != ' ') {
+                        return 0;
                     }
-                    prev_break = 0;
-                    last_exotic = 0;
+                    a += 1; /* the blank run folds with its break into one space */
+                    i = (body[e] == '\r' && e + 1 < be && body[e + 1] == '\n') ? e + 2 : e + 1;
+                    prev_break = 1;
+                } else if (s == be && e == be) {
+                    /* the trailing run merges with a just-folded break (the
+                     * one fold space was already emitted); the no-fold
+                     * spelling is unmeasured -- decline */
+                    if (!prev_break) {
+                        return 0;
+                    }
+                    i = s;
+                } else {
+                    /* the r369 widening (run 45180416420, main 031e326e):
+                     * the run's tail facing a NEL breaks -- yeptris strips
+                     * the trailing blanks before the normalized break
+                     * (probed `&2?: '<SP><NEL>a'` reads ` a`: the run is
+                     * gone, the NEL's fold speaks alone), and behind a
+                     * just-folded break the run was the fold's own
+                     * line-start blanks -- already consumed by it (probed
+                     * `&2?: '<NEL><SP>a'` reads ` a` too). A content-state
+                     * run still rides verbatim (the r332 exotic-join law:
+                     * probed `<PS><SP>a` reads `<PS> a`). */
+                    if (s + 1 < be && (unsigned char)body[s] == 0xC2 &&
+                        (unsigned char)body[s + 1] == 0x85) {
+                        i = s; /* the run strips; the NEL's fold speaks */
+                    } else if (prev_break && !last_exotic) {
+                        i = s; /* the fold ate the run with it */
+                    } else {
+                        while (i < s) {
+                            if (a[0] != ' ') {
+                                return 0;
+                            }
+                            a += 1;
+                            i += 1;
+                        }
+                        prev_break = 0;
+                        last_exotic = 0;
+                    }
                 }
             }
         } else if (body[i] == '\t') {
@@ -11168,21 +11272,40 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
              * After a kept-raw LS/PS triple yeptris arms NO fold state
              * (the exotic break is kept content, not a fold break), so
              * the tab run behind it is CONTENT -- one escaped \t per
-             * tab, whether it ends the body or content follows; behind
-             * a clean CR/LF fold the run merges with the fold
-             * (rendered nothing, body-end only -- the content spelling
-             * is unmeasured); a tab with no break behind it rides the
-             * OTHER arms (the anchor-charset arm carries the agreeing
-             * mid-content spell -- probed: byte-equal both engines). */
+             * tab, whether it ends the body or content follows.
+             *
+             * The r376 widening (the nightly's round 376, run
+             * 45299095581, main df5722db) completes the position row
+             * with the three measured clean-fold cells the old gate
+             * deferred ("the content spelling is unmeasured" /
+             * "rides the OTHER arms"):
+             * - LEAD (behind a clean CR/LF fold): the run is the
+             *   continuation line's leading whitespace and strips on
+             *   BOTH engines, content following byte-equal -- the
+             *   nightly artifact's own cell (`- [\n\tfoo,`); probed
+             *   `a\n\tb`/`a\n\t\tb`/`a\n \tb`/`a\n\t b`/`a\n\t  b`
+             *   all read `a b` on both (q1-q3/q5-q7); the fold's one
+             *   space was already emitted by the break branch.
+             * - TRAILING (the run's tail -- spaces and tabs alike --
+             *   faces a clean CR/LF): both engines trim it, the break
+             *   speaks alone (probed `a\t\nb`/`a\t\n\tb`/`a\t \nb`/
+             *   `a \t\nb` read `a b` -- the r369 whitespaces-die law
+             *   generalized to tabs).
+             * - CONTENT (strictly between content bytes): one escaped
+             *   \t pair per tab, byte-equal on both engines through
+             *   the shared yd_escape_append table (probed `a\nb\tc`
+             *   and `a\t\t \tb` and the body-end `a\t` spell `a\t` --
+             *   the r331 note's agreeing mid-content spell, now
+             *   carried here: the anchor-charset arm's copy gates
+             *   decline the giant bodies the clamp family composes,
+             *   which is the unclaimed face behind the drill's
+             *   minimized candidate). */
             size_t s = i;
             while (s < be && body[s] == '\t') {
                 s++;
             }
             if (prev_break) {
-                if (s != be) {
-                    return 0;
-                }
-                i = s;
+                i = s; /* the lead strips; the fold state stays armed */
             } else if (last_exotic) {
                 if (s < be && (body[s] == '\r' || body[s] == '\n')) {
                     i = s; /* the run merges into the break's one fold space */
@@ -11202,23 +11325,52 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
                  * kept-raw LS/PS triple -- rides CONTENT on yeptris
                  * (one \t per tab; libyaml trims the break-adjacent
                  * run, probed `&2?: '<TAB><PS><TAB>a'` reads `\t<PS>
-                 * \ta` on yeptris, `<PS>a` on libyaml). A no-break tab
-                 * still rides the OTHER arms (the anchor-charset arm
-                 * carries the agreeing mid-content spell -- probed:
-                 * byte-equal both engines). */
+                 * \ta` on yeptris, `<PS>a` on libyaml). */
                 int pre_exotic =
                     (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
                      (unsigned char)body[s + 1] == 0x80 &&
                      ((unsigned char)body[s + 2] == 0xA8 || (unsigned char)body[s + 2] == 0xA9));
-                if (!pre_exotic) {
-                    return 0;
-                }
-                while (i < s) {
-                    if (a[0] != '\\' || a[1] != 't') {
-                        return 0;
+                {
+                    /* the r376 mixed-run end and the clean-break tail */
+                    size_t e = s;
+                    while (e < be && (body[e] == ' ' || body[e] == '\t')) {
+                        e++;
                     }
-                    a += 2;
-                    i += 1;
+                    if (!pre_exotic && e < be && (body[e] == '\r' || body[e] == '\n')) {
+                        /* the TRAILING cell: the run trims; the break
+                         * speaks its one fold space */
+                        if (a[0] != ' ') {
+                            return 0;
+                        }
+                        a += 1;
+                        i = (body[e] == '\r' && e + 1 < be && body[e + 1] == '\n') ? e + 2 : e + 1;
+                        prev_break = 1;
+                        continue;
+                    }
+                }
+                if (!pre_exotic) {
+                    /* the CONTENT cell: strictly between content bytes
+                     * -- one escaped \t per tab, byte-equal on both
+                     * (q4/q22/e1-e3); the mixed run's spaces ride the
+                     * space branch's verbatim path after */
+                    while (i < s) {
+                        if (a[0] != '\\' || a[1] != 't') {
+                            return 0;
+                        }
+                        a += 2;
+                        i += 1;
+                    }
+                    prev_break = 0;
+                } else {
+                    /* the r332 pre-exotic cell (unchanged): content
+                     * escapes into the kept-raw triple */
+                    while (i < s) {
+                        if (a[0] != '\\' || a[1] != 't') {
+                            return 0;
+                        }
+                        a += 2;
+                        i += 1;
+                    }
                 }
             }
         } else if (body[i] == '\\') {
@@ -11321,81 +11473,132 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
             if (prev_break) {
                 return 0;
             }
-            if (pending_exotic) {
-                if (b[0] != '\\' || b[1] != 'n') {
+            {
+                /* the r376 CLEAN-BREAK-RUN law (see walk_y): n clean
+                 * breaks (CRLF pairs ONE, blank-only lines riding) spell
+                 * (n-1) escaped newlines for n>=2, the single break
+                 * keeps its measured spell (the quark escape behind a
+                 * kept-raw exotic, the fold space clean). A run behind
+                 * the pending exotic stays unmeasured (declines). */
+                size_t j = i;
+                size_t n = 0;
+                while (j < be) {
+                    if (body[j] == '\r') {
+                        j += (j + 1 < be && body[j + 1] == '\n') ? 2 : 1;
+                        n++;
+                    } else if (body[j] == '\n') {
+                        j += 1;
+                        n++;
+                    } else {
+                        size_t k = j;
+                        while (k < be && (body[k] == ' ' || body[k] == '\t')) {
+                            k++;
+                        }
+                        if (n > 0 && k < be && (body[k] == '\r' || body[k] == '\n')) {
+                            j = k; /* the blank-only line rides the run */
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                if (pending_exotic && n > 1) {
                     return 0;
                 }
-                b += 2; /* the blank-state quark: the break escapes */
-                last_esc = 1;
-            } else {
-                if (b[0] != ' ') {
-                    return 0;
+                if (n == 1) {
+                    if (pending_exotic) {
+                        if (b[0] != '\\' || b[1] != 'n') {
+                            return 0;
+                        }
+                        b += 2; /* the blank-state quark: the break escapes */
+                        last_esc = 1;
+                    } else {
+                        if (b[0] != ' ') {
+                            return 0;
+                        }
+                        b += 1; /* the clean fold: the break becomes one space */
+                        last_esc = 0;
+                    }
+                } else {
+                    for (size_t e = 0; e + 1 < n; e++) {
+                        if (b[0] != '\\' || b[1] != 'n') {
+                            return 0;
+                        }
+                        b += 2;
+                    }
+                    last_esc = 0;
                 }
-                b += 1; /* the clean fold: the break becomes one space */
-                last_esc = 0;
+                i = j;
             }
-            i += 1;
             prev_break = 1;
         } else if (body[i] == ' ') {
             size_t s = i;
             while (s < be && body[s] == ' ') {
                 s++;
             }
-            if (s < be && (body[s] == '\r' || body[s] == '\n')) {
-                /* the space run trims; the break speaks alone */
-                if (pending_exotic) {
-                    if (b[0] != '\\' || b[1] != 'n') {
+            {
+                /* the r376 mixed-blank-run end (see walk_y): tabs join
+                 * the trim decision (q20/q21); the CR LF pair is ONE
+                 * break (q11/q14) */
+                size_t e = s;
+                while (e < be && (body[e] == ' ' || body[e] == '\t')) {
+                    e++;
+                }
+                if (e < be && (body[e] == '\r' || body[e] == '\n')) {
+                    /* the blank run trims; the break speaks alone */
+                    if (pending_exotic) {
+                        if (b[0] != '\\' || b[1] != 'n') {
+                            return 0;
+                        }
+                        b += 2;
+                        last_esc = 1;
+                    } else {
+                        if (b[0] != ' ') {
+                            return 0;
+                        }
+                        b += 1;
+                        last_esc = 0;
+                    }
+                    i = (body[e] == '\r' && e + 1 < be && body[e + 1] == '\n') ? e + 2 : e + 1;
+                    prev_break = 1;
+                } else if (s == be && e == be) {
+                    /* the trailing run merges with a just-FOLDED break; the
+                     * escaped and no-break spellings are unmeasured */
+                    if (!prev_break || last_esc) {
                         return 0;
                     }
-                    b += 2;
-                    last_esc = 1;
+                    i = s;
+                } else if (pending_exotic || prev_break ||
+                           (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
+                            (unsigned char)body[s + 1] == 0x80 &&
+                            ((unsigned char)body[s + 2] == 0xA8 ||
+                             (unsigned char)body[s + 2] == 0xA9)) ||
+                           (s + 1 < be && (unsigned char)body[s] == 0xC2 &&
+                            (unsigned char)body[s + 1] == 0x85)) {
+                    /* the r332 widening (run 44721335253, main e00d1138):
+                     * the exotic join's blank state swallows the whole
+                     * space run -- behind the kept-raw LS/PS break
+                     * (pending, probed `&2?: '<PS><SP>a'` reads `<PS>a`)
+                     * or directly before it (probed `&2?: '<SP><PS><TAB>a'`
+                     * and `&2?: 'a<SP><PS><TAB>b'`). pending_exotic stays
+                     * armed: a following blank run rides the same state
+                     * (probed `&2?: '<PS><SP><TAB><SP>b'` reads `<PS>b`). */
+                    /* the r369 widening (run 45180416420, main 031e326e):
+                     * the run's tail facing a NEL is the same CLEAR --
+                     * whitespaces die on the first break, exotic or not
+                     * (probed `&2?: '<SP><NEL>a'` reads ` a`), and behind a
+                     * just-folded break the run rides the SKIP branch
+                     * (probed `&2?: '<NEL><SP>a'` reads ` a`). */
+                    i = s;
                 } else {
-                    if (b[0] != ' ') {
-                        return 0;
+                    while (i < s) {
+                        if (b[0] != ' ') {
+                            return 0;
+                        }
+                        b += 1;
+                        i += 1;
                     }
-                    b += 1;
-                    last_esc = 0;
+                    prev_break = 0;
                 }
-                i = s + 1;
-                prev_break = 1;
-            } else if (s == be) {
-                /* the trailing run merges with a just-FOLDED break; the
-                 * escaped and no-break spellings are unmeasured */
-                if (!prev_break || last_esc) {
-                    return 0;
-                }
-                i = s;
-            } else if (pending_exotic || prev_break ||
-                       (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
-                        (unsigned char)body[s + 1] == 0x80 &&
-                        ((unsigned char)body[s + 2] == 0xA8 ||
-                         (unsigned char)body[s + 2] == 0xA9)) ||
-                       (s + 1 < be && (unsigned char)body[s] == 0xC2 &&
-                        (unsigned char)body[s + 1] == 0x85)) {
-                /* the r332 widening (run 44721335253, main e00d1138):
-                 * the exotic join's blank state swallows the whole
-                 * space run -- behind the kept-raw LS/PS break
-                 * (pending, probed `&2?: '<PS><SP>a'` reads `<PS>a`)
-                 * or directly before it (probed `&2?: '<SP><PS><TAB>a'`
-                 * and `&2?: 'a<SP><PS><TAB>b'`). pending_exotic stays
-                 * armed: a following blank run rides the same state
-                 * (probed `&2?: '<PS><SP><TAB><SP>b'` reads `<PS>b`). */
-                /* the r369 widening (run 45180416420, main 031e326e):
-                 * the run's tail facing a NEL is the same CLEAR --
-                 * whitespaces die on the first break, exotic or not
-                 * (probed `&2?: '<SP><NEL>a'` reads ` a`), and behind a
-                 * just-folded break the run rides the SKIP branch
-                 * (probed `&2?: '<NEL><SP>a'` reads ` a`). */
-                i = s;
-            } else {
-                while (i < s) {
-                    if (b[0] != ' ') {
-                        return 0;
-                    }
-                    b += 1;
-                    i += 1;
-                }
-                prev_break = 0;
             }
         } else if (body[i] == '\t') {
             /* the r331 widening: libyaml's blank-state swallows the
@@ -11403,8 +11606,16 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
              * exotic the content that follows rides byte-equal with NO
              * fold space (the exotic join emits only the raw break --
              * probed: "<PS><TAB>a" reads "<PS>a"), and a following
-             * CR/LF rides the existing quark/fold branches; behind a
-             * clean fold only the body-end spelling is measured. */
+             * CR/LF rides the existing quark/fold branches.
+             *
+             * The r376 widening (see walk_y) joins the three measured
+             * clean-fold cells: LEAD (behind a clean CR/LF fold the
+             * run is the continuation line's leading whitespace and
+             * strips here too -- probed `a\n\tb` reads `a b` on
+             * libyaml), TRAILING (the mixed run's tail facing a clean
+             * break trims, q8/q13/q20/q21), and CONTENT (strictly
+             * between content bytes one escaped \t pair per tab,
+             * byte-equal through the shared table -- q4/q22/e1-e3). */
             size_t s = i;
             while (s < be && body[s] == '\t') {
                 s++;
@@ -11420,14 +11631,33 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
                     (s + 2 < be && (unsigned char)body[s] == 0xE2 &&
                      (unsigned char)body[s + 1] == 0x80 &&
                      ((unsigned char)body[s + 2] == 0xA8 || (unsigned char)body[s + 2] == 0xA9));
-                if (!pending_exotic && !prev_break && !pre_exotic) {
-                    return 0;
+                /* the r376 mixed-run end and the clean-break tail */
+                size_t e = s;
+                while (e < be && (body[e] == ' ' || body[e] == '\t')) {
+                    e++;
                 }
-                if (prev_break && !pending_exotic && s < be && body[s] != '\r' && body[s] != '\n') {
-                    return 0;
+                if (prev_break && !pending_exotic) {
+                    i = s; /* the LEAD cell: the run strips */
+                } else if (!pending_exotic && !prev_break && !pre_exotic && e < be &&
+                           (body[e] == '\r' || body[e] == '\n')) {
+                    /* the TRAILING cell: the run trims; the break
+                     * speaks its fold/quark spell alone */
+                    i = e;
+                } else if (!pending_exotic && !prev_break && !pre_exotic) {
+                    /* the CONTENT cell: one escaped \t per tab */
+                    while (i < s) {
+                        if (b[0] != '\\' || b[1] != 't') {
+                            return 0;
+                        }
+                        b += 2;
+                        i += 1;
+                    }
+                    prev_break = 0;
+                } else {
+                    /* the r331/r332 swallow cells (pending/pre-exotic) */
+                    i = s;
                 }
             }
-            i = s;
         } else if (body[i] == '\\') {
             /* the r366 widening (run 45125049264, main 79e66828): the
              * literal backslash rides the single-quoted body as
@@ -11763,9 +11993,8 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                 i += 3;
                 prev_break = 0;
             } else if (data[i] == '\r' || data[i] == '\n') {
-                if (prev_break) {
-                    return 0;
-                }
+                /* the r376 clean-break-run law: consecutive clean
+                 * breaks ride (the walkers model the run spells) */
                 i += 1;
                 prev_break = 1;
             } else if (data[i] == '\t') {

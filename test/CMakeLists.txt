@@ -7750,6 +7750,56 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-slash-r370-artifact.bin
     )
 
+    # r376 (run 45299095581, main df5722db, crash-ad6bb839b5597f4891139e74d
+    # 5d17be28e47d336): the family's tab-fold mutant-of-pin red — the
+    # artifact is the r368 clamp head `&2?*: '"":[{...` grown the fold
+    # cluster `\n\tfoo,\n foo\n ]\n` mid-body (a tab-LEAD continuation
+    # line inside the giant single-quoted body) plus the `=ALI *`/`%{`
+    # content islands. The r238 arm's walks declined at the r331
+    # position law's deferred cell: the old tab branch admitted a
+    # tab run behind a clean CR/LF fold ONLY at the body end, and
+    # the mid-line tab stayed on "the OTHER arms" — whose
+    # anchor-charset split copy loses its libyaml byte-invariance at
+    # the dump clamp (the 4095-char line budget), so the giant-body
+    # composition was unclaimed. THE LAW (all cells probed byte-equal
+    # on both engines, q1-q22/e1-e3 in the session log): inside the
+    # single-quoted body every blank byte is line-anchored — a blank
+    # run touching a clean line break strips (LEAD `a\n\tb` -> `a b`,
+    # TRAILING `a\t\nb` -> `a b`, mixed runs `a\t \nb`/`a \t\nb` ->
+    # `a b`), a blank run strictly between content bytes rides the
+    # content spell (one escaped \t pair per tab, `a\t\t \tb` ->
+    # `a\t\t \tb`), and n clean breaks (a CR LF pair is ONE break —
+    # the r188 pair law; blank-only lines ride the run — `a\n \nb` ->
+    # `a\nb`) spell (n-1) escaped newlines for n>=2 and one fold
+    # space for n==1 (`a\n\nb` -> `a\nb`, `a\n\n\nb` -> `a\n\nb`, the
+    # trailing `a\n'` -> `a `, `a\n\n'` -> `a\n`). The walks gain the
+    # three tab cells + the run-aware break branch (both engines'
+    # walkers + the clamp-tail helper + the arm's body-extent
+    # pre-scan). A/B (probed, JSON mode byte-exact): libfyaml 04e0b58
+    # reads yeptris's artifact stream byte-exact in 1.2 (root SCALAR,
+    # anchor `2?*:` riding, the fold-cluster body with the tab lead
+    # stripped); its 1.1 mode matches libyaml's map+key structure —
+    # comparators-split along the libyaml-compat bar, comparator
+    # carry only, no engine change (the r318/r330/r331/r332/r336/
+    # r346/r356/r366/r368/r369/r370 precedent). Floor: the 4097-byte
+    # clamp-boundary unit (greedy soup-unit ddmin under the dual bar
+    # + the shape bar; the libyaml value line rides exactly at the
+    # 4095-char clamp cut — one soup unit less unclamps into the
+    # charset arm's claim). 50-mutant paired battery (seed 376, 20
+    # flips + 10 deletions + 20 doubles per shape): 0 regressions, 73
+    # newly agreeing, 0 both-red, 27 both-pass; the standing pins
+    # byte-identical (see the round issue).
+    add_test(
+        NAME fuzz-diff-r376-root-anchor-quoted-follow-tabfold
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-tabfold-r376.bin
+    )
+    add_test(
+        NAME fuzz-diff-r376-root-anchor-quoted-follow-tabfold-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-tabfold-r376-artifact.bin
+    )
+
     # r331 (run 44697552012, main 311da7ef): the family's SECOND
     # mutant-of-own-pin red — the artifact is r330's own pinned seed
     # `&2?: '<PS><CR>'` with the CR ChangeBit'd to a TAB
