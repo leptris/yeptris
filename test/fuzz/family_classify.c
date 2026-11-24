@@ -3247,8 +3247,7 @@ static int l_scan_tag(lctx* c, fout* tag) {
                 if (t == '%') {
                     int width = 0;
                     do {
-                        if (h + 2 >= n || p[h] != '%' || !fc_hex(p[h + 1]) ||
-                            !fc_hex(p[h + 2])) {
+                        if (h + 2 >= n || p[h] != '%' || !fc_hex(p[h + 1]) || !fc_hex(p[h + 2])) {
                             return 0; /* 'did not find URI escaped octet' */
                         }
                         unsigned char octet =
