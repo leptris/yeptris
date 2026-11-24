@@ -139,7 +139,20 @@ jobs:
         # ate-adjacency shape, the m017 mutant), so the diff leg must
         # not seed from it; the pins carry the bytes under the full
         # ctest (the fuzz-diff-r379 pins).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete
+        # The r361 tag-soup family joins (the r380 round, issue #1638):
+        # the r379 drill's comparator soak harvested a fresh 175,981-byte
+        # member of the family whose `?&` glued-anchor-key spelling
+        # escapes the r362 classifier law (the question-member walk's key
+        # slot declines `"`/`'`/`&`/`!` heads) -- and the diff leg still
+        # seeds from the family's OWN pins (qflow-tag-soup-r361*.bin),
+        # so its budget re-derives such siblings at the pins' own scale
+        # (the r361 artifact differs from the sibling in ~96k of 148k
+        # bytes after one budget of mutation -- mutation-dense, the
+        # r1306 law), so the diff leg must not seed from it; the law
+        # itself stays classifier-carried at modelled scale and the pins
+        # carry the bytes under the full ctest (the fuzz-diff-r361/r362
+        # pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete
 
       - name: Fuzz budget
         run: |

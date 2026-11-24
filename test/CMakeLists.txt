@@ -9685,6 +9685,100 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-map-follower-r365-artifact.bin
     )
 
+    # r380 (the post-r379 Fuzz Nightly round, run 45451584443, main
+    # 850d4d91, plus issue #1638's r379-drill soak finds). TWO carries:
+    #
+    # (1) the BOM-stripped VALUE twin (issue #1638, the r379 drill's
+    #     own bounded comparator soak): the 8-byte unit `[?:\r<BOM>]`
+    #     (crash-7c39da3fc484a16216f9c87fb9ef8d1be74e7fe1 -- libFuzzer's
+    #     minimizer walked the soak's raw `?##|` soup down to it in one
+    #     bounded pass; the unit is its own floor: all 8 single-byte
+    #     deletions either classify or leave the YD_DIFFER class for a
+    #     YEPTRIS-ONLY-ACCEPT split). The DIFFER composes TWO carried
+    #     laws no single arm modeled: libyaml's flow KEY-token law
+    #     consumes the glued `?` (the key side pairs via yd_qflow_
+    #     divergence's empty-key twin, the r58/r163 law -- its KEY
+    #     scans EMPTY because the line-start mark strip ate the
+    #     post-CR BOM that opened the line) while yeptris's suite-pinned
+    #     plain-'?' law (HM87/652Z) keeps `?` ONE plain KEY with the
+    #     `:` as the pair separator, and a MID-STREAM BOM rides the
+    #     value as CONTENT byte-exact (the catch-121/r92 family;
+    #     libyaml's scan_to_next_token strips the line-start mark at
+    #     column 0 whatever break opened the line -- the r226 law).
+    #     The suite is silent (no BOM-after-break rows at the da267a5c
+    #     pin -- the r364/r365 composition-arm precedent). The A/B:
+    #     libfyaml 04e0b58 reads the unit byte-semantically YEPTRIS's
+    #     way in BOTH strict-1.2 and 1.1 (key `?`, the BOM riding the
+    #     value -- probed byte-exact with the event API) -- the engine
+    #     defect is refuted, comparator carry only, no engine change
+    #     (the r317/r343/r366/r375/r378/r379 precedent). THE CARRY:
+    #     yd_qflow_divergence grows the BOM-STRIPPED VALUE twin -- the
+    #     state law: yeptris's value line is libyaml's line with the
+    #     THREE mark bytes inserted at the content head, the tail
+    #     byte-equal (a BOM-led yeptris line against a non-empty
+    #     libyaml value claims only the byte-equal tail; a yeptris line
+    #     without the mark, or a libyaml line carrying content the
+    #     mark's line never had, declines -- a dropped yeptris value
+    #     cannot claim). 50-mutant paired battery (seed 380, 30 single
+    #     + 20 double, against the r379-carry build f3cf69ec): 0
+    #     regressions (the b8 unit's 50: 17 stable-clean, 33 stable in
+    #     the split zone -- the unit's neighborhood is mostly
+    #     yeptris-only-accept splits).
+    add_test(
+        NAME fuzz-diff-r380-flow-qglue-bom
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qglue-bom-r380.bin
+    )
+    #
+    # (2) the ATE-RUN form of the qgh adjacency (the nightly's round
+    #     380, run 45451584443, main 850d4d91, crash-bc2987bf3a60b375574
+    #     e24a351494c1263993365, the 68-byte artifact; the 14-byte
+    #     dual-bar floor `{?#,*|,- |LF,<}`, greedy libFuzzer ddmin, all
+    #     14 single-byte deletions either classify or leave the face --
+    #     the five that still DIFFER leave the CLASS: YEPTRIS-ONLY/
+    #     LIBYAML-ONLY splits or an EOF-swallow skeleton). The floor's
+    #     eaten line is `#,*|,- |`: libyaml's post-'?'-token
+    #     comment-glue law (the r379 adjacency) runs the glued '#' to
+    #     the NEXT BREAK -- ONE line, line-local by construction (the
+    #     r337 law) -- so EVERY member frame whose bytes ride that line
+    #     dies WHOLE in libyaml's reading (yeptris's suite-pinned
+    #     plain-'?' law keeps `?#` ONE plain key, the bare-`*|` alias
+    #     member and the dash-plain `- |` member both ride; libyaml's
+    #     pending KEY re-pairs with the post-break continuation's `<`).
+    #     The r379 ate-alias arm modeled the run length of ONE; the
+    #     r380 floor's run carries TWO frames (the alias AND the
+    #     dash-plain). The A/B: libfyaml 04e0b58 REJECTS the floor in
+    #     both modes ("plain scalar cannot start with '|'" at `- |` --
+    #     the strict-1.2 plain-charset law) while libyaml 90a56d4's
+    #     1.1 posture accepts -- the comparator split rides the
+    #     engines' own tables (the r335/r317/r369 precedent), comparator
+    #     carry only, no engine change. THE CARRY: the qgh walk's
+    #     ate-alias adjacency grows the ATE-RUN form -- the run walk
+    #     consumes frame shapes ONLY (a content VAL, an ALI with a
+    #     non-empty name, or a double-empty, EACH with the exact empty
+    #     "=VAL : " partner), bounded by the r180 neighbor budget (16:
+    #     the comment cannot cross a break), ending at the SAME
+    #     byte-exact re-alignment pin the r379 one-frame form pinned
+    #     (yeptris's next line IS libyaml's current line; the alias
+    #     never emerges in libyaml's dump -- the r138-r141
+    #     no-libyaml-alias shape whose masking ruling the branch still
+    #     honors); ONE shared-cap count per frame (the r146 unit).
+    #     50-mutant paired battery (seed 380, against the r379-carry
+    #     build f3cf69ec): 0 regressions (the f14/a68 units' 100: 21
+    #     DIFFER->CLEAN shifts are the widened arms claiming their own
+    #     family's mutants -- 4 on the floor, 17 on the artifact; 25
+    #     +29 mutants ride stable in the split zone).
+    add_test(
+        NAME fuzz-diff-r380-flow-qate-run
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qate-run-r380.bin
+    )
+    add_test(
+        NAME fuzz-diff-r380-flow-qate-run-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qate-run-r380-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
