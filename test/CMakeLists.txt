@@ -10380,6 +10380,65 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r390-glued-charset-anchor-artifact.bin
     )
 
+    # r392 (the post-r391 Fuzz Nightly round, run 45675392491, headSha
+    # verified = the r391 merge fd8e74d4). Comparator carry on the BOM
+    # line-start arm -- no engine change, NO WAIVER WIDENING, NO
+    # entry-law surgery (the r318/r330/r336/r337/r338/r364/r365
+    # precedent). Artifact crash-ae0a21fb…30fac79, 80 bytes: the
+    # block-level plain at the document root
+    # `<BOM><BOM>&U:#` + 8sp + `text` + 58 trailing spaces (13-byte
+    # dual-bar floor `<BOM><BOM>&U:# t `). The red is OUTSIDE the
+    # r386 waiver's domain twice over -- the entry byte gates decline
+    # at offset 0 (a line-start BOM, the classifier's own documented
+    # entry law, untouched this round) and there is no flow root
+    # (law j) -- so the r391 glued-#-tail extension HELD its
+    # contract and the face lives in the BOM-LEAD ARM FAMILY: the
+    # r364 composition twin's verbatim spelling copies the raw bytes
+    # while BOTH engines strip the trailing blank run (the plain
+    # law: trailing blanks at the scalar's end-of-line are
+    # position-free whitespace; the 58-space run is gone from BOTH
+    # dumps byte-identically), so `want` never matches and the
+    # r156/r338 prop-split twin cannot rescue it (the residual
+    # `&U:#        text` carries interior blanks, the invented-key
+    # guard declines). MEASURED this round: the BOM-free twin
+    # `&U:#        text` is a YEPTRIS-ONLY-REJECT split (the
+    # 2SXE/Y2GN charset walk refuses the unspaced `#`, the r364
+    # removal-twin's own ledgered reading), so the BOM is what turns
+    # yeptris's `&` into content (catch-121) and the composition
+    # face exists only under the BOM lead; the trailing blank is
+    # what turns the claimed 74-byte shape (`<BOM><BOM>&U:#` + 8sp +
+    # `text`, claimed by the r364 verbatim spelling) into the red
+    # 80-byte one. THE CARRY: the composition spelling strips the
+    # trailing blank run (spaces/tabs) from the copied value bytes
+    # -- the plain law's own strip, exactly what both dumps already
+    # left out; interior blanks ride verbatim; any other yeptris
+    # reading still moves a byte and declines. The A/B: libfyaml
+    # 04e0b58 renders the artifact and every trailing-blank probe
+    # face as the ONE double-quoted plain `<FEFF>&U:#<blanks>text`
+    # byte-consistently yeptris's way on BOTH strict-1.2 and
+    # --yaml-1.1 passes (the r318 dual-consensus bar, met; probed
+    # this round on the artifact and 23 faces); the suite is silent
+    # (no BOM tests at the da267a5c pin, the r364/r365 precedent).
+    # Floor re-verified: ddmin chunked descent 80->30 under the
+    # dual+shape bar, then all single-byte deletions break the bar
+    # (interior blank, `t`, trailing blank each load-bearing). FIREWALL
+    # boundaries kept OUT (probed): the BOM-free lead (t01/t02/t05 --
+    # yeptris-only-reject, unmeasured), the one-BOM lead (t03 --
+    # yeptris errors after the mark strip, unmeasured), and the
+    # flow-root `{&U:#<LF>,s}` spelling (t10 -- yeptris errors, the
+    # r318 law's territory, unmeasured). Growth ledger: family
+    # nightly re-derivations now 9 (r377, #1646, #1649, #1656,
+    # #1665/r388, #1669/r389, #1671/r390, #1675/r391, this one);
+    # this round's red was OUTSIDE the extended grammar at the entry
+    # gates and the waiver itself needed NO widening -- an
+    # arm-classification carry, not a grammar extension.
+    add_test(
+        NAME fuzz-diff-r392-bom-line-start-trailing-blank
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-trailing-blank-r392.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-trailing-blank-r392-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
