@@ -4771,21 +4771,48 @@ static int fw_split_products(const char* yf, char* pfx, size_t cap1, char* sfx, 
  * fires, libyaml's IS_ALPHA alias scan then reads the glued `*` — the
  * law-d/r199/r339 face; the r390 artifact's `?*2` member renders
  * `=ALI *2`). The name rides only when fully fc_alpha — a non-alpha
- * byte would clip libyaml's cut mid-name (unmeasured: no source). */
+ * byte would clip libyaml's cut mid-name (unmeasured: no source).
+ *
+ * The r391 GLUED-`#`-TAIL extension (run 45658791887's artifact, the
+ * one-byte mutation `?*2:` -> `?*2:#` of the r390 floor): the alpha
+ * name may be followed by a GLUED `#` — libyaml's cut still lands on
+ * the whole alpha prefix (the `:` VALUE boundary fires at the glued
+ * colon), and the `#`-led remainder NEVER renders: libyaml's
+ * post-VALUE walk eats it as a comment to the FIRST break (measured
+ * `{?*2:#\n,s}` / `{?*2:#\r,s}`: only the `#` eaten, the followers
+ * ride; the artifact `#,&m:y` to the CR: the following member eaten
+ * with it — the yeptris-side lines the libyaml stream lacks, which
+ * the content-set tolerates one-directionally). Without a break
+ * before EOF the eat swallows the closer and libyaml ERRORS (`{?*2:#,}`
+ * is a split — the raw verdict never reaches this gate). The tail
+ * bytes carry no restriction of their own: the yeptris side is
+ * already byte-exact-derived (any byte in the tail is what yeptris
+ * kept as plain content per its own plain-safety law — the glued `#`
+ * rides, a blank-preceded `#` would not), the probe binds only the
+ * alpha prefix, and the alias bucket's multiset cap still counts the
+ * source exactly once — a tampered extra `=ALI *2` line still
+ * declines. fy 04e0b58 reads every admitted face yeptris's way
+ * byte-consistently in strict-1.2 AND --yaml-1.1 (the floor
+ * `{?*2:#<LF>}`, the artifact, the `#a#b`/`#s` tails, the
+ * `#,<member>` CR ride). A glued non-alpha non-`#` byte (`?*2:x#` —
+ * the `:`-bound tail) has no source under either face: declined. */
 static int fw_alias_source(const char* yf, const char* probe, size_t pl) {
     size_t yl = strlen(yf);
-    if (yl != pl + 2 || yf[0] != '?' || yf[1] != '*') {
+    if (yl < pl + 2 || pl == 0 || yf[0] != '?' || yf[1] != '*') {
         return 0;
     }
     if (memcmp(yf + 2, probe, pl) != 0) {
         return 0;
     }
-    for (size_t k = 2; k < yl; k++) {
+    for (size_t k = 2; k < pl + 2; k++) {
         if (!fc_alpha((unsigned char)yf[k])) {
             return 0;
         }
     }
-    return 1;
+    if (pl + 2 == yl) {
+        return 1; /* the r390 face: the cut rides the whole tail */
+    }
+    return yf[pl + 2] == '#'; /* the r391 face: the glued-`#` eat */
 }
 
 /* The libyaml-side content gate (multiset-exact): the documented split
@@ -5106,9 +5133,11 @@ static int fw_content_set(const char* ydump, const char* ldump) {
              * vocabulary — so an alias bucket can never collide with a
              * `=VAL : *...` plain-content probe (the event kinds
              * differ; a VAL probe must not ride the alias source). The
-             * ONLY source: the flat yeptris plain `?*<name>` (fully
-             * fc_alpha — a non-alpha byte clips libyaml's cut,
-             * unmeasured: no source). */
+             * sources: the flat yeptris plain `?*<name>` (fully
+             * fc_alpha — the r390 face), and since r391 the glued-`#`
+             * tail `?*<name>#<eat>` (the cut rides the alpha prefix,
+             * the `#`-led remainder never renders — see
+             * fw_alias_source). */
             const char* content = q + 6;
             size_t cl = ll - 6;
             if (cl == 0) {
