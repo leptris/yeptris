@@ -16,34 +16,38 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.79 — live across all five runtimes** (C +
-ruby `0.6.79.0` + py `0.6.79.0` + rs/ts `0.6.79`, registry-checked
-2026-11-24). v0.6.79 carries the r374-r377 comparator roll (all
-zero-`src/`): the `\uXXXX` escape join over a 21-row measured decode
-matrix (every well-formed escape face renders byte-identical on both
-engines; surrogates and malformed hex stay BOTH-ERROR); the
-tag-property lead as classifier law l3 and the `+` byte joining the
-quoted-exotic-tab key charset via the drill's own bounded soak (the
-soak carried the next nightly red before the nightly fired); the
-r331 tab-position law's deferred cells landing (22 probed rows); and
-the glued collection key, the lead pre-run, and the clean-eat SEQ
-cell joining the soup laws (the 73KB exotic-break giant rides the
-composed law — no size-bound pin). Zero YAML engine divergence
-standing beyond #1411's deliberate fix, #1468 (0.6.75), #1584
-(0.6.77) and #1615 (0.6.78). **The bindings shipped their sibling
-faces this wave**: the plan/tape/events (pull + `next_batch` +
-iterparse) faces landed on the Python binding (#192, ctypes,
-capability-gated on the released engine tag) and the TypeScript/WASM
-binding (#48, `compilePlan`/`plan.walk` + the JSON tape face), and
-the Ruby binding adopted the org native-layer contract (#409 — the
-DOT-FREE per-minor bundles, the candidate-order SSOT, the
-no-unversioned-fallback law) alongside its pull/iterparse and tape
-faces (#411); all five runtimes now expose the plan/schema/pull/tape
-family. The previous cut: v0.6.78 — the feed-contract fold-line fix
-(#1615): the fold-line state machine rode `\n` only, a CR-terminated
-fold line swallowed the next line's flow openers, and the
-`norm_next_fold_break` SSOT restored whole-vs-chunked identity
-byte-for-byte. The cut before it: v0.6.77 — the roundtrip
+**Latest release: v0.6.80 — live across all five runtimes** (C +
+ruby `0.6.80.0` + py `0.6.80.0` + rs/ts `0.6.80`, registry-checked
+2026-11-25). v0.6.80 carries the r378-r384 comparator roll (all
+zero-`src/`): the `!!` tag-glue member riding the qgh walk's
+tagged-empty-key wrapper pair (the annotation byte-exacts the token's
+tag resolution — secondary, verbatim, bare); the glued-`?*L`
+alias-EVENT-in-key-slot face and the bare-`?=` member joining the
+qflow gray arms; the BOM-stripped value twin and the ate-run
+adjacency joining the qflow walks with the tag-soup family leaving
+the comparator seed (the exclusion gap that let the r361 giant
+re-seed closed); the colon-ride anchor head with the clamp-prefix
+correction; the `root-anchor-colon-ride-*` exclusion entry and the
+flow-tab steal arm's colon-led VALUE boundary; and the dump-cap cut
+arm with the clamp-tail multibyte-content branch. Zero YAML engine
+divergence standing beyond #1411's deliberate fix, #1468 (0.6.75),
+#1584 (0.6.77) and #1615 (0.6.78). **The mutation-dense
+`&2?*:`-composition family graduated to a ledgered-waiver gate**
+(r386, in review): four consecutive nightly re-derivations with no
+seed names to exclude proved per-spelling arms cannot hold — the
+classifier now declines the composition class as a documented waiver
+(firewall-controlled: real divergences from other families and
+libfyaml-agrees-with-libyaml inputs never waiver). The previous cut:
+v0.6.79 — the r374-r377 comparator roll plus the binding faces wave
+(all five runtimes now expose the plan/schema/pull/tape family: the
+Python binding's plan/tape/events (#192), the TypeScript/WASM
+binding's plan+tape (#48), and the Ruby binding's org native-layer
+contract adoption (#409) alongside its pull/iterparse and tape faces
+(#411)). The cut before it: v0.6.78 — the feed-contract fold-line
+fix (#1615): the fold-line state machine rode `\n` only, a
+CR-terminated fold line swallowed the next line's flow openers, and
+the `norm_next_fold_break` SSOT restored whole-vs-chunked identity
+byte-for-byte. The cut before that: v0.6.77 — the roundtrip
 guarantee's empty-inline anchor twin (#1584): the emitter spells
 `k: &n: ''` whenever the anchor name's last byte is `:`, byte-stable
 round-trips, over the r351-r359 roll (eight pinned escapes).
