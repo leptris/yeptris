@@ -10321,6 +10321,65 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r389-paste-member-artifact.bin
     )
 
+    # the r390 drill (issue #1671, the post-r389 nightly's run
+    # 45643869326). Comparator carry on the r386 waiver — no engine
+    # change (the r318/r330/r336/r356/r366/r370/r376/r381/r385/r386/
+    # r388/r389 precedent). Artifact
+    # crash-89b18e7f2d90c25c4af351b15fa1e3c81167c320, 16 bytes: the
+    # glue-fold composition family's 7th re-derivation and the THIRD
+    # post-waiver one — the waiver HELD its contract (the fresh member
+    # correctly declined at the exact offset, the r389 debug walk's
+    # `STOP: fw_member declined at 7 (member 2)`). THE CAUSE: the
+    # bare-anchor member's name rides the GLUED-CHARSET cut
+    # (`&m:~y` ONE name — the engine's prop walk keeps `:` `~` `(`
+    # inside the name per the r318 suite law, 2SXE/W5VH; the waiver
+    # grammar's name cut was fc_alpha-only). MEASURED this round at
+    # the bare-anchor MEMBER slot (`&m:~y,` / `&m:(,` / `&m:x,` /
+    # `&a:b1,` — yeptris renders `=VAL : &<name> ` + the parser's
+    # inserted empty; libyaml splits at the first glued colon into the
+    # anchored-empty key `&<n> ` + the plain value); the break ride
+    # re-measured (`{&m:~y\r,}` / `{&m:~y\r  ,}` identical); the
+    # SEQ-root twin measured (single line, unwrapped). The SECOND face
+    # (member 1 `?*2:`, the glued-`?` plain whose colon is a
+    # `:`+BREAK VALUE boundary — derives fine on the yeptris side)
+    # rides the same basis: libyaml's `=ALI *2` render (the IS_ALPHA
+    # alias cut at the glued-`?` slot) maps in via the alias-cut
+    # source rule (`=ALI *<name>` INTO the flat `?*<name>` plain,
+    # fc_alpha names only, its own \x01 bucket — the event kinds
+    # differ, a `=VAL : *...` probe never rides the alias source).
+    # The content-set also gained the r318 SPLIT rule (a prop render
+    # `&<n>:<s> ` sources the `&<n> ` key render + the `<s>` value
+    # plain) and the MAP-root glued-`?` colon render law (the flat
+    # pair inside the root map; the single-pair wrapper fires only on
+    # the SEQ root — probed `[?*2:\n,s]`). The head-split fingerprint
+    # widened from `?#` to ANY flat `?`-led yeptris line libyaml
+    # lacks (the flow-`?` KEY-token law consumes the `?` at every
+    # member-start spelling). THE A/B: libfyaml 04e0b58 reads the
+    # artifact and every probe face byte-consistently yeptris's way
+    # in BOTH strict-1.2 and --yaml-1.1 passes — the r318
+    # dual-consensus bar, met; engine divergence REFUTED.
+    # comparator-only, no engine change. THE FLOOR: greedy ddmin
+    # under the dual+shape bar (pre-patch abort + post-patch
+    # ledgered-waiver + the glued-charset prop line AND the `=ALI`
+    # line in the dumps) to its 13-byte plateau
+    # `{?*2:\n,&m:y\r}` (`\r` = the CR byte) — the `~` and the
+    # trailing plain fell away, both faces intact. FIREWALL
+    # boundaries kept OUT (all probed): the colon-END name
+    # (`{&m:\r,s}` rides `m:` on yeptris; the render depends on the
+    # FOLLOWER via the engine's un-consume law — the
+    # waiver-neg-anchor-colon-end control), the props-led second
+    # anchor (`{&m:~y\r\r&s:~t,}` YEPTRIS-ONLY-ERRORS on the
+    # duplicate-anchor law — the waiver-neg-anchor-props-led
+    # control), and the anchor-only compositions without a `?`-led
+    # head (the fingerprint keeps them on the r318 ARM — the
+    # waiver-neg-anchor-nohead control).
+    add_test(
+        NAME fuzz-diff-r390-gluefold-waiver-glued-charset
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r390-glued-charset-anchor.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r390-glued-charset-anchor-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

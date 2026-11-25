@@ -4448,13 +4448,25 @@ static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer,
             return 0;
         }
         *term_at = stop;
-        if (colon) {
+        if (colon && !is_map) {
             /* the SEQ single-pair wrapper (the r272 floor's law) */
             fo_str(o, "+MAP\n=VAL : ");
             fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
             fo_str(o, "\n=VAL : ");
             fo_bytes(o, vout.buf ? vout.buf : "", vout.len);
             fo_str(o, "\n-MAP\n");
+        } else if (colon && is_map) {
+            /* the r390 MEASURED MAP-root render (the artifact's `?*2:`
+             * member, probed `{?*2:\n,s}` — the flat pair INSIDE the
+             * root map, no wrapper: the root map itself is the pair;
+             * the wrapper fires only on the SEQ root, where yeptris
+             * wraps the implicit single pair — probed `[?*2:\n,s]`
+             * renders `+MAP/=VAL : ?*2/=VAL : /-MAP`) */
+            fo_str(o, "=VAL : ");
+            fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+            fo_str(o, "\n=VAL : ");
+            fo_bytes(o, vout.buf ? vout.buf : "", vout.len);
+            fo_str(o, "\n");
         } else if (is_map) {
             fo_str(o, "=VAL : ");
             fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
@@ -4468,18 +4480,54 @@ static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer,
         free(vout.buf);
         return 1;
     }
-    if (c == '&' && i + 1 < n && fc_alpha(p[i + 1])) {
+    if (c == '&') {
         /* the bare ANCHORED-EMPTY member (the measured `&m,` ->
          * `=VAL : &m `: the prop render, the name cut at the
-         * terminator) */
+         * terminator). The r390 EXTENSION (the post-r389 nightly's run
+         * 45643869326, issue #1671 — the family's 7th re-derivation and
+         * the THIRD post-waiver one; the r389 paste-member extension
+         * HELD its contract, the fresh member correctly declined): the
+         * name rides the GLUED-CHARSET cut — the engine's prop walk
+         * (yep_scan_prop_char) keeps `:` `~` `(` inside ONE name (the
+         * r318 suite law, 2SXE/W5VH; libyaml is behind the suite, the
+         * r311 law), probed this round at the bare-anchor MEMBER slot
+         * (`&m:~y,` / `&m:(,` / `&m:x,` / `&a:b1,` all render
+         * `=VAL : &<name> ` + the parser's inserted empty on yeptris
+         * while libyaml splits at the first colon into the
+         * anchored-empty key `&<n> ` + the plain value). Measured
+         * faces, never guessed: the admitted name alphabet is exactly
+         * the probed charset (fc_alpha ∪ {`:`, `~`, `(`}); the name
+         * must NOT end at a riding `:` (the engine's un-consume law —
+         * a name-final colon's render depends on the FOLLOWER
+         * (collection/block-scalar/props run un-consume it, the
+         * engine.c follower scan) — a different composition, stays
+         * out; probed `{&m:\r,s}` rides `m:` — its own face, declined
+         * here); after the name either the terminator sits directly
+         * (the r318 `{&m:(}` face) or a blank/break run rides to it
+         * (the r315 ride, re-measured this round on the glued-charset
+         * name: `{&m:~y\r,}` and `{&m:~y\r  ,}` render identically) —
+         * any other byte (`#`, quotes, a props-led second anchor —
+         * probed `{&m:~y\r\r&s:~t,}` YEPTRIS-ONLY-ERRORS on the
+         * duplicate-anchor law) declines. The render: `=VAL : &<name> `
+         * + the inserted empty (the MAP root's pair) or the single
+         * line (the SEQ root — probed `[&m:~y\r,s]` renders
+         * `=VAL : &m:~y ` unwrapped). */
         size_t ae = i + 1;
-        while (ae < n && fc_alpha(p[ae])) {
+        while (ae < n && (fc_alpha(p[ae]) || p[ae] == ':' || p[ae] == '~' || p[ae] == '(')) {
             ae++;
         }
-        if (ae >= n || (p[ae] != ',' && p[ae] != closer)) {
-            return 0;
+        if (ae == i + 1 || p[ae - 1] == ':') {
+            return 0; /* an empty name, or the colon-end face: the
+                       * un-consume law's follower-dependent territory */
         }
-        *term_at = ae;
+        size_t te = ae;
+        if (te >= n || (p[te] != ',' && p[te] != closer)) {
+            te = fc_skip_blank_break(p, n, ae);
+            if (te >= n || (p[te] != ',' && p[te] != closer)) {
+                return 0;
+            }
+        }
+        *term_at = te;
         if (is_map) {
             fo_str(o, "=VAL : &");
             fo_bytes(o, p + i + 1, ae - i - 1);
@@ -4603,15 +4651,22 @@ static int fw_shape_ok(const char* dump, size_t len, int root_map) {
     return 0;
 }
 
-/* The head-split fingerprint: yeptris holds flat `?#`-content value
- * lines the libyaml stream lacks entirely (measured 558/685 vs 0). */
+/* The head-split fingerprint: yeptris holds flat `?`-LED content value
+ * lines the libyaml stream lacks entirely (measured 558/685 vs 0 on the
+ * r386 artifacts). The r390 widening: from the `?#` hash-run heads to
+ * ANY `?`-led line — the flow-`?` KEY-token law consumes/splits the `?`
+ * at EVERY member-start spelling (the law-a comment-eat, the law-d
+ * split, the r339 alias ride — the r390 artifact's `?*2` member renders
+ * `=ALI *2` on libyaml), so libyaml NEVER keeps a flat `?`-led VAL line
+ * on a family-shaped input. A quoted `"?x"` span renders `?x` on BOTH
+ * engines and still fails the gate (lq > 0 declines — conservative). */
 static int fw_head_fingerprint(const char* ydump, const char* ldump) {
     size_t yq = 0;
     size_t lq = 0;
-    for (const char* s = ydump; (s = strstr(s, "=VAL : ?#")) != NULL; s += 1) {
+    for (const char* s = ydump; (s = strstr(s, "=VAL : ?")) != NULL; s += 1) {
         yq++;
     }
-    for (const char* s = ldump; (s = strstr(s, "=VAL : ?#")) != NULL; s += 1) {
+    for (const char* s = ldump; (s = strstr(s, "=VAL : ?")) != NULL; s += 1) {
         lq++;
     }
     return yq > 0 && lq == 0;
@@ -4670,6 +4725,67 @@ static int fw_canon_line(const char* s, size_t n, char* out, size_t out_cap) {
     return any;
 }
 
+/* The r390 GLUED-CHARSET SPLIT products (the r318 law riding the
+ * waiver's accounting): a yeptris-side prop render `&<n>:<s> ` (ONE
+ * name, the colon glued to content, never at the name's end) maps INTO
+ * the libyaml pair `&<n> ` (the anchored-empty key render, its
+ * trailing space) + `<s>` (the plain value) — libyaml's IS_ALPHA
+ * anchor cut lands on the FIRST glued colon (probed this round at the
+ * bare-anchor member slot: `&m:~y,` / `&m:(,` / `&m:x,` / `&a:b1,`).
+ * pfx/sfx receive the two NUL-terminated products; returns 0 when the
+ * form is not a split source (no colon, a colon-final name — the
+ * un-consume law's follower-dependent territory, declined at the
+ * member walk too — or a non-prop render). */
+static int fw_split_products(const char* yf, char* pfx, size_t cap1, char* sfx, size_t cap2) {
+    size_t yl = strlen(yf);
+    if (yl < 5 || yf[0] != '&' || yf[yl - 1] != ' ') {
+        return 0;
+    }
+    size_t colon = 0;
+    int found = 0;
+    for (size_t k = 1; k + 1 < yl; k++) {
+        if (yf[k] == ':') {
+            colon = k;
+            found = 1;
+            break;
+        }
+    }
+    if (!found || colon + 1 > yl - 2) {
+        return 0; /* no colon, or the colon at the name's end */
+    }
+    if (colon + 2 > cap1 || yl - 2 - colon + 1 > cap2) {
+        return 0;
+    }
+    memcpy(pfx, yf, colon); /* '&' + the name prefix */
+    pfx[colon] = ' ';
+    pfx[colon + 1] = '\0';
+    memcpy(sfx, yf + colon + 1, yl - 2 - colon); /* the value suffix */
+    sfx[yl - 2 - colon] = '\0';
+    return 1;
+}
+
+/* The r390 ALIAS-CUT probe source: a libyaml-side `=ALI *<name>` line
+ * maps INTO the yeptris flat plain `?*<name>` (the flow-`?` KEY token
+ * fires, libyaml's IS_ALPHA alias scan then reads the glued `*` — the
+ * law-d/r199/r339 face; the r390 artifact's `?*2` member renders
+ * `=ALI *2`). The name rides only when fully fc_alpha — a non-alpha
+ * byte would clip libyaml's cut mid-name (unmeasured: no source). */
+static int fw_alias_source(const char* yf, const char* probe, size_t pl) {
+    size_t yl = strlen(yf);
+    if (yl != pl + 2 || yf[0] != '?' || yf[1] != '*') {
+        return 0;
+    }
+    if (memcmp(yf + 2, probe, pl) != 0) {
+        return 0;
+    }
+    for (size_t k = 2; k < yl; k++) {
+        if (!fc_alpha((unsigned char)yf[k])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /* The libyaml-side content gate (multiset-exact): the documented split
  * moves fold faces (the canon unifies), drops the `?` lead, eats the
  * `?#`-led heads to the line break — and NOTHING else. So the libyaml
@@ -4702,9 +4818,12 @@ static int fw_content_set(const char* ydump, const char* ldump) {
     char* store = malloc(store_cap);  /* the y raw contents */
     char* fstore = malloc(store_cap); /* the y canonical forms */
     char* pstore = malloc(store_cap); /* the probe forms */
+    char* pfxbuf = malloc(store_cap); /* the split-product scratch */
+    char* sfxbuf = malloc(store_cap);
     int result = 0;
     if (yforms == NULL || ycnt == NULL || praw == NULL || pcount == NULL || pallowed == NULL ||
-        canon == NULL || withq == NULL || store == NULL || fstore == NULL || pstore == NULL) {
+        canon == NULL || withq == NULL || store == NULL || fstore == NULL || pstore == NULL ||
+        pfxbuf == NULL || sfxbuf == NULL) {
         goto done;
     }
     size_t store_at = 0;
@@ -4876,6 +4995,26 @@ static int fw_content_set(const char* ydump, const char* ldump) {
                             }
                         }
                     }
+                    /* the r390 GLUED-CHARSET SPLIT source: the probe is
+                     * the `&<n> ` key render or the `<s>` value plain of
+                     * a yeptris prop render `&<n>:<s> ` (the r318 law's
+                     * split at the IS_ALPHA anchor cut). VAL probes
+                     * only — the alias-cut face is its own line kind
+                     * (`=ALI *`), bucketed separately below. */
+                    if (!has_source) {
+                        for (size_t j = 0; j < yn; j++) {
+                            if (fw_split_products(yforms[j], pfxbuf, store_cap, sfxbuf,
+                                                  store_cap)) {
+                                if ((strlen(pfxbuf) == probe_len &&
+                                     memcmp(pfxbuf, probe, probe_len) == 0) ||
+                                    (strlen(sfxbuf) == probe_len &&
+                                     memcmp(sfxbuf, probe, probe_len) == 0)) {
+                                    has_source = 1;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     /* the r389 prop-render twin at the GLUED-`?` slot
                      * (measured `{?&m,}`: yeptris rides the flat plain
                      * `?&m`, libyaml's flow-`?` KEY split renders the
@@ -4956,6 +5095,56 @@ static int fw_content_set(const char* ydump, const char* ldump) {
                     pn++;
                 }
             }
+        } else if (ll >= 6 && memcmp(q, "=ALI *", 6) == 0) {
+            /* the r390 ALIAS-CUT probe: the libyaml `=ALI *<name>` line
+             * (the flow-`?` KEY token fired, libyaml's IS_ALPHA alias
+             * scan read the glued `*` — the law-d/r199/r339 face, the
+             * r390 artifact's `?*2` member). Bucketed under the \x01
+             * prefix — a byte that never appears in admitted dump
+             * vocabulary — so an alias bucket can never collide with a
+             * `=VAL : *...` plain-content probe (the event kinds
+             * differ; a VAL probe must not ride the alias source). The
+             * ONLY source: the flat yeptris plain `?*<name>` (fully
+             * fc_alpha — a non-alpha byte clips libyaml's cut,
+             * unmeasured: no source). */
+            const char* content = q + 6;
+            size_t cl = ll - 6;
+            if (cl == 0) {
+                goto done; /* a bare `=ALI *` line: no measured source */
+            }
+            size_t k;
+            for (k = 0; k < pn; k++) {
+                if (praw[k][0] == '\x01' && strlen(praw[k]) == cl + 1 &&
+                    memcmp(praw[k] + 1, content, cl) == 0) {
+                    pcount[k]++;
+                    break;
+                }
+            }
+            if (k == pn) {
+                int has_source = 0;
+                for (size_t j = 0; j < yn; j++) {
+                    if (fw_alias_source(yforms[j], content, cl)) {
+                        has_source = 1;
+                        break;
+                    }
+                }
+                if (!has_source) {
+                    if (getenv("YD_FW_TRACE") != NULL) {
+                        fprintf(stderr, "content-set: alias line not in y-set: %.*s\n",
+                                (int)(cl > 90 ? 90 : cl), content);
+                    }
+                    goto done;
+                }
+                if (pn < max_forms && pstore_at + cl + 2 <= store_cap) {
+                    pstore[pstore_at] = '\x01';
+                    memcpy(pstore + pstore_at + 1, content, cl);
+                    pstore[pstore_at + cl + 1] = '\0';
+                    praw[pn] = pstore + pstore_at;
+                    pstore_at += cl + 2;
+                    pcount[pn] = 1;
+                    pn++;
+                }
+            }
         }
         q = nl + 1;
     }
@@ -4965,45 +5154,70 @@ static int fw_content_set(const char* ydump, const char* ldump) {
         const char* pf = praw[k];
         size_t pl = strlen(pf);
         unsigned allowed = 0;
-        for (size_t j = 0; j < yn; j++) {
-            if (strlen(yforms[j]) == pl && memcmp(yforms[j], pf, pl) == 0) {
-                allowed += ycnt[j];
-            }
-        }
-        if (pl + 1 < 8194) {
-            /* (a) the `?`-lead drop (the law-a KEY-token eat) */
-            withq[0] = '?';
-            memcpy(withq + 1, pf, pl + 1);
+        if (pf[0] == '\x01') {
+            /* the r390 ALIAS-CUT bucket: the cap draws ONLY the flat
+             * `?*<name>` sources' counts (multiset-exact: a tampered
+             * alias name loses its source and declines) */
             for (size_t j = 0; j < yn; j++) {
-                if (strlen(yforms[j]) == pl + 1 && memcmp(yforms[j], withq, pl + 1) == 0) {
+                if (fw_alias_source(yforms[j], pf + 1, pl - 1)) {
                     allowed += ycnt[j];
                 }
             }
-        }
-        if (pl >= 2 && pf[0] == '&' && pf[pl - 1] == ' ' && pl + 1 < 8194) {
-            /* (a2) the r389 twin's ALLOWANCE: the glued-`?` slot's
-             * anchor-prop render (`?&m` -> `&m `) draws its source's
-             * count — the cap stays multiset-exact (a tampered extra
-             * `&m ` line still exceeds direct + twin) */
-            withq[0] = '?';
-            memcpy(withq + 1, pf, pl - 1);
-            withq[pl] = '\0';
+        } else {
             for (size_t j = 0; j < yn; j++) {
-                if (strlen(yforms[j]) == pl && memcmp(yforms[j], withq, pl) == 0) {
+                if (strlen(yforms[j]) == pl && memcmp(yforms[j], pf, pl) == 0) {
                     allowed += ycnt[j];
                 }
             }
-        }
-        if (pl + 1 < 8194) {
-            /* (c) the prop-render twin: the eaten head's post-break
-             * anchor rides libyaml's prop render with its trailing
-             * space (`?## &m` -> `&m `) */
-            withq[0] = ' ';
-            memcpy(withq + 1, pf, pl + 1);
+            if (pl + 1 < 8194) {
+                /* (a) the `?`-lead drop (the law-a KEY-token eat) */
+                withq[0] = '?';
+                memcpy(withq + 1, pf, pl + 1);
+                for (size_t j = 0; j < yn; j++) {
+                    if (strlen(yforms[j]) == pl + 1 && memcmp(yforms[j], withq, pl + 1) == 0) {
+                        allowed += ycnt[j];
+                    }
+                }
+            }
+            if (pl >= 2 && pf[0] == '&' && pf[pl - 1] == ' ' && pl + 1 < 8194) {
+                /* (a2) the r389 twin's ALLOWANCE: the glued-`?` slot's
+                 * anchor-prop render (`?&m` -> `&m `) draws its source's
+                 * count — the cap stays multiset-exact (a tampered extra
+                 * `&m ` line still exceeds direct + twin) */
+                withq[0] = '?';
+                memcpy(withq + 1, pf, pl - 1);
+                withq[pl] = '\0';
+                for (size_t j = 0; j < yn; j++) {
+                    if (strlen(yforms[j]) == pl && memcmp(yforms[j], withq, pl) == 0) {
+                        allowed += ycnt[j];
+                    }
+                }
+            }
+            if (pl + 1 < 8194) {
+                /* (c) the prop-render twin: the eaten head's post-break
+                 * anchor rides libyaml's prop render with its trailing
+                 * space (`?## &m` -> `&m `) */
+                withq[0] = ' ';
+                memcpy(withq + 1, pf, pl + 1);
+                for (size_t j = 0; j < yn; j++) {
+                    if (strlen(yforms[j]) == pl + 1 && memcmp(yforms[j], withq, pl + 1) == 0 &&
+                        (yforms[j][0] == '&' || yforms[j][0] == '*')) {
+                        allowed += ycnt[j];
+                    }
+                }
+            }
+            /* (e) the r390 GLUED-CHARSET SPLIT's allowance: the `&<n> `
+             * key render and the `<s>` value plain each draw the source
+             * prop render's count (multiset-exact: a tampered name,
+             * suffix, or colon position loses the source and declines) */
             for (size_t j = 0; j < yn; j++) {
-                if (strlen(yforms[j]) == pl + 1 && memcmp(yforms[j], withq, pl + 1) == 0 &&
-                    (yforms[j][0] == '&' || yforms[j][0] == '*')) {
-                    allowed += ycnt[j];
+                if (fw_split_products(yforms[j], pfxbuf, store_cap, sfxbuf, store_cap)) {
+                    size_t p1l = strlen(pfxbuf);
+                    size_t p2l = strlen(sfxbuf);
+                    if ((p1l == pl && memcmp(pfxbuf, pf, pl) == 0) ||
+                        (p2l == pl && memcmp(sfxbuf, pf, pl) == 0)) {
+                        allowed += ycnt[j];
+                    }
                 }
             }
         }
@@ -5059,6 +5273,8 @@ done:
     free(store);
     free(fstore);
     free(pstore);
+    free(pfxbuf);
+    free(sfxbuf);
     return result;
 }
 
@@ -5144,6 +5360,10 @@ int yd_family_waiver(const uint8_t* data, size_t size, const char* ydump, const 
         fo_str(&yd, "-STR\n");
     }
     int ymatch = ok && !yd.bad && yd.buf != NULL && strcmp(yd.buf, ydump) == 0;
+    if (!ymatch && getenv("YD_FW_TRACE") != NULL) {
+        fprintf(stderr, "waiver: ymatch=%d ok=%d\n--- derived:\n%s\n--- actual:\n%s\n", ymatch, ok,
+                ok && yd.buf ? yd.buf : "(declined)", ydump);
+    }
     free(yd.buf);
     if (!ymatch) {
         return 0; /* the yeptris side must derive byte-exact: any engine
@@ -5151,12 +5371,21 @@ int yd_family_waiver(const uint8_t* data, size_t size, const char* ydump, const 
     }
     /* the libyaml side: shape-valid + the head-split fingerprint */
     if (!fw_shape_ok(ldump, strlen(ldump), is_map)) {
+        if (getenv("YD_FW_TRACE") != NULL) {
+            fprintf(stderr, "waiver: l-shape declined\n");
+        }
         return 0;
     }
     if (!fw_shape_ok(ydump, strlen(ydump), is_map)) {
+        if (getenv("YD_FW_TRACE") != NULL) {
+            fprintf(stderr, "waiver: y-shape declined\n");
+        }
         return 0;
     }
     if (!fw_head_fingerprint(ydump, ldump)) {
+        if (getenv("YD_FW_TRACE") != NULL) {
+            fprintf(stderr, "waiver: fingerprint declined\n");
+        }
         return 0; /* a fold-only (or other) divergence: not the
                    * documented head split */
     }
