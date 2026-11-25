@@ -560,10 +560,10 @@
  *        errors outright — split; the `:`-bound `?*2:x#`: the `x#`
  *        plain renders on libyaml and has no source — declined, the
  *        neg control). The rule widened in place: the alpha prefix +
- *        the glued `#` + any tail (the tail is libyaml-invisible; the
- *        yeptris side is byte-exact-derived; the multiset cap still
- *        counts the source once — a tampered extra `=ALI *2` line
- *        declines). fy 04e0b58 reads every admitted face yeptris's way
+ *        the glued `:` (the r357 VALUE boundary) + the glued `#` +
+ *        any tail (the tail is libyaml-invisible; the yeptris side is
+ *        byte-exact-derived; the multiset cap still counts the source
+ *        once — a tampered extra `=ALI *2` line declines). fy 04e0b58 reads every admitted face yeptris's way
  *        byte-consistently in BOTH passes (floor, artifact, twin,
  *        `#a#b`/`#s` tails, the fold face `#x<LF>y` where fy ALSO
  *        folds — the fold composition still declines on the waiver:
