@@ -10262,6 +10262,65 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r388-anchor-name-mq.bin
     )
 
+    # the r389 drill (issue #1669, the post-r388 nightly's run
+    # 45625878936). Comparator carry on the r386 waiver — no engine
+    # change (the r318/r330/r336/r356/r366/r370/r376/r381/r385/r386/r388
+    # precedent). Artifact
+    # crash-8e44de52f13da2b780278f4893b884479d77deb3, 24,883 bytes: the
+    # glue-fold composition family's 6th re-derivation and the SECOND
+    # post-waiver one — the waiver HELD its contract (the fresh member
+    # correctly declined). THE CAUSE: the mutation walk's CopyPart
+    # PASTED a comparator dump fragment (`=VAL : ?#?\r2002:binary\r\r`)
+    # into the input AS A MEMBER (input offset 3947). OWNERSHIP
+    # ADJUDICATED to the waiver (not the r238 arm): the paste sits at a
+    # MEMBER START of a flow-rooted `{` composition whose every other
+    # member is r386-measured vocabulary riding clean; the r238 arm's
+    # paste rows are anchor-led quoted-follower bodies past a clamp cut
+    # — a different position class. The A/B (libfyaml 04e0b58) met the
+    # r318 dual-consensus bar on the isolated pasted member (key
+    # `=VAL`, the folded plain `?#? 2002:binary`, BOTH passes) — engine
+    # divergence refuted. TWO underivable faces, resolved by
+    # MEASUREMENT: (1) the fold/blank model — a blank-only run padding
+    # a `:` VALUE boundary is EATEN, not ridden (probes `{=VAL : x,}` /
+    # `{=VAL  : x,}` / `{x  : y,}` / `{x  y : z,}` byte-EQUAL; the
+    # non-boundary `{x :2002:binary,}` rides verbatim) — the old model
+    # rode the run into the key (`=VAL ` vs the actual `=VAL`, the
+    # one-byte gap at dump offset 7587); the r386 grammar never carried
+    # a blank-before-boundary member, so no claimed face changes. (2)
+    # the content-set prop-render twin at the GLUED-`?` slot (measured
+    # `{?&m,}`: yeptris `?&m` flat, libyaml `&m ` prop + empty) — the
+    # floor carried this face as the probe `&m ` exceeding its
+    # allowance 2 > 1; the twin is anchors-only (the alias twin renders
+    # `=ALI *<name>`, never a VAL line). THE FIREWALL also gained its
+    # precise tamper contract: the two invariance domains the r386
+    # accounting cannot see (the PS<->LS canon-fold flip the artifact's
+    # sampled flip hit; the del-into-empty tolerance the floor's
+    # sampled dels hit — both domains predate r389, the r386/r388 seeds
+    # missed them by sampling luck) are computed independently
+    # (yd_family_tamper_in_domain): admission-relevant tampers still
+    # must decline, in-domain hits are counted and asserted to waive.
+    # THE FLOOR: greedy ddmin under the dual+shape bar (DIFFER + the
+    # paste signature `=VAL : =VAL` in the yeptris dump) to its
+    # 109-byte plateau
+    # `{?,?l,?I,?#\r a,?#,=VAL:\r0,?&m,?#,\r1,2,&m,g,<PS>0:\r1,?#,\r y,m,1,<PS>1:\r7,g:\r.,1,<PS>5:\r1,i,m,-|,g,y,m,y|,7,0,1,1,0}`
+    # (`\r` = CR bytes, `<PS>` = the raw E2 80 A9 trinity — the r386
+    # measured PS-led key class) — the paste member's ` : ` spacing
+    # rode down to the glued form (`=VAL:\r0`), the `?&m` member
+    # carrying the twin face. PRE_RC=77
+    # comparator-only, no engine change. The negative control
+    # waiver-neg-paste-member-split.bin pins the ISOLATED paste member
+    # (`{=VAL : ?#?\r2002:binary\r\r ,}`): libyaml ERRORS it
+    # (YEPTRIS-ONLY-ACCEPT — the flow-`?` fires the KEY token inside
+    # the value slot with no node) — a split the waiver must NEVER
+    # claim; only the in-composition reading (the artifact's, where
+    # libyaml's KEY-token law eats the pasted head) rides.
+    add_test(
+        NAME fuzz-diff-r389-gluefold-waiver-paste-member
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r389-paste-member.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r389-paste-member-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

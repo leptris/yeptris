@@ -434,6 +434,53 @@
  *        dual-consensus bar, met; the `>` member still errors fy
  *        mid-artifact (the reserved-indicator law, the r386 A/B
  *        unchanged).
+ *        the r389 EXTENSION (the post-r388 nightly's run 45625878936,
+ *        issue #1669 — the family's 6th re-derivation and the SECOND
+ *        post-waiver one): the waiver HELD its contract again — the
+ *        fresh member was the mutation walk's CopyPart PASTING a
+ *        comparator dump fragment (`=VAL : ?#?\r2002:binary\r\r`) into
+ *        the input AS A MEMBER (input offset 3947). Ownership
+ *        adjudicated to THIS waiver (not the r238 arm): the paste sits
+ *        at a MEMBER START of a flow-rooted `{` composition whose
+ *        every other member is r386-measured vocabulary riding clean;
+ *        the r238 arm's paste rows are anchor-led quoted-follower
+ *        bodies past a clamp cut — a different position class. The A/B
+ *        (libfyaml 04e0b58) met the r318 dual-consensus bar on the
+ *        isolated pasted member (key `=VAL`, the folded plain
+ *        `?#? 2002:binary`, BOTH passes) — engine divergence refuted.
+ *        TWO underivable faces, both resolved by MEASUREMENT (never by
+ *        guessing the derived line):
+ *        (1) the fold/blank model of the `=`-led pasted member: a
+ *            blank-only run padding a `:` VALUE boundary is EATEN, not
+ *            ridden (probes `{=VAL : x,}` / `{=VAL  : x,}` /
+ *            `{x  : y,}` / `{x  y : z,}` all byte-EQUAL — interior
+ *            blanks ride, the boundary padding vanishes; the
+ *            non-boundary colon `{x :2002:binary,}` rides verbatim).
+ *            The old model rode the run into the key (`=VAL ` vs the
+ *            actual `=VAL` — the one-byte gap at dump offset 7587).
+ *            The r386 grammar never carried a blank-before-boundary
+ *            member (its colon faces are glued or break-run-fed — both
+ *            unchanged).
+ *        (2) the content-set's prop-render twin at the GLUED-`?` slot
+ *            (measured `{?&m,}`: yeptris rides the flat plain `?&m`,
+ *            libyaml's flow-`?` KEY split renders the anchor prop
+ *            `&m ` with its trailing space) — the r388 twin's own
+ *            transform at the new slot, anchors only (the alias twin
+ *            renders `=ALI *<name>`, a line the content-set never
+ *            counts). The floor carried the fresh face as the probe
+ *            `&m ` exceeding its allowance 2 > 1.
+ *        The firewall also gained its precise TAMPER contract: the two
+ *        invariance domains the accounting cannot see (the PS<->LS
+ *        canon-fold flip; the del-into-empty tolerance) are now
+ *        computed independently (yd_family_tamper_in_domain) —
+ *        admission-relevant tampers still must decline, in-domain hits
+ *        are counted and asserted to waive (the r386/r388 seeds missed
+ *        both domains by sampling luck; the r389 seeds hit them).
+ *        Growth ledger: re-derivations 6; per-grammar verdict at n=3 —
+ *        KEEPING PACE holds (all three post-waiver reds were
+ *        unmeasured spellings correctly declined; the extension cost
+ *        per round: r386 = the waiver, r388 = 1 admission rule,
+ *        r389 = 1 render law + 1 allowance twin, measured faces only).
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
@@ -537,5 +584,31 @@ int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, cons
  * Never a substitute for the classifier: the waiver does not claim the
  * divergence is explained, only that it is the ledgered one. */
 int yd_family_waiver(const uint8_t* data, size_t size, const char* ydump, const char* ldump);
+
+/* 1 = the single-byte ldump tamper at pos (op 0 = flip, op 1 = delete)
+ * lands in a documented invariance domain of the r386 accounting and is
+ * EXPECTED to waive; 0 = admission-relevant (the battery must see the
+ * waiver decline). Two domains, both independent of the waiver's own
+ * decision:
+ *  (i)  the flip swaps a raw PS<->LS third byte (0xA8<->0xA9 inside the
+ *       E2 80 multibyte) — the law-b fold canon equates both, so the
+ *       canonical probe multiset is unchanged by construction (the
+ *       r389 artifact's sampled flip hit exactly this face). Escapes
+ *       and the NEL pair stay OUT (their flips change the byte class).
+ *  (ii) the del removes a single-byte-content VAL line's ONLY content
+ *       byte while the yeptris dump renders empty VAL lines at all —
+ *       the emptied form rides the split's asymmetric empty bucket,
+ *       the r386 accounting's own tolerance domain (measured l-y
+ *       empty deltas span -502..+147 across the five claimed seeds; a
+ *       ±1 move is inside it by construction). Deletions on the line
+ *       prefix, the colon, the boundary space, or the line break
+ *       itself change the line's shape/membership and stay OUT.
+ *       Multi-byte content deletions stay OUT (their projections may
+ *       be unmapped — asserted).
+ * The firewall's precise contract: every ADMISSION-RELEVANT tamper
+ * (a flip or del that forges an unmapped form or breaks the structure)
+ * must decline; invariance-domain hits are counted and reported by the
+ * self-test, and asserted to actually waive (predicate drift fails). */
+int yd_family_tamper_in_domain(const char* ydump, const char* ldump, size_t pos, int op);
 
 #endif /* YD_FAMILY_CLASSIFY_H */

@@ -24913,6 +24913,7 @@ static int fc_selftest_dir(const char* dir) {
     long mutant_flipped = 0;
     long waiver_seeds = 0;
     long waiver_tamper = 0;
+    long waiver_tamper_tol = 0;
     long waiver_mutants = 0;
     long waiver_neg = 0;
     long waiver_neg_differs = 0;
@@ -24969,16 +24970,33 @@ static int fc_selftest_dir(const char* dir) {
                         }
                         copy[pos] = (char)(copy[pos] ^ 0x01);
                         waiver_tamper++;
-                        if (yd_family_waiver(buf, n, side == 0 ? copy : ydump,
-                                             side == 0 ? ldump : copy) != 0) {
+                        /* the r389 invariance domains (family_classify.h):
+                         * a ldump-side tamper inside a documented domain
+                         * is expected to waive — asserted, and counted
+                         * separately from the admission-relevant cases */
+                        int tol =
+                            side == 1 && yd_family_tamper_in_domain(ydump, ldump, pos, 0) != 0;
+                        if (tol) {
+                            waiver_tamper_tol++;
+                        }
+                        if ((tol && yd_family_waiver(buf, n, side == 0 ? copy : ydump,
+                                                     side == 0 ? ldump : copy) == 0) ||
+                            (!tol && yd_family_waiver(buf, n, side == 0 ? copy : ydump,
+                                                      side == 0 ? ldump : copy) != 0)) {
                             fprintf(stderr, "family-classify: FAIL %s waiver-tamper-flip %s@%zu\n",
                                     namep[s], side == 0 ? "y" : "l", pos);
                             fails++;
                         }
                         memmove(copy + pos, copy + pos + 1, len - pos);
                         waiver_tamper++;
-                        if (yd_family_waiver(buf, n, side == 0 ? copy : ydump,
-                                             side == 0 ? ldump : copy) != 0) {
+                        tol = side == 1 && yd_family_tamper_in_domain(ydump, ldump, pos, 1) != 0;
+                        if (tol) {
+                            waiver_tamper_tol++;
+                        }
+                        if ((tol && yd_family_waiver(buf, n, side == 0 ? copy : ydump,
+                                                     side == 0 ? ldump : copy) == 0) ||
+                            (!tol && yd_family_waiver(buf, n, side == 0 ? copy : ydump,
+                                                      side == 0 ? ldump : copy) != 0)) {
                             fprintf(stderr, "family-classify: FAIL %s waiver-tamper-del %s@%zu\n",
                                     namep[s], side == 0 ? "y" : "l", pos);
                             fails++;
@@ -25478,11 +25496,12 @@ static int fc_selftest_dir(const char* dir) {
            seeds, tamper_declined, mutant_cases, mutant_consulted, mutant_declined, mutant_flipped,
            fails);
     printf("family-classify: waiver: %ld gluefold seeds waived, %ld waiver-tamper "
-           "cases declined, %ld waiver mutants consulted (%ld waived: the r1306 "
+           "cases declined (%ld in the r389 invariance domains, asserted to "
+           "waive), %ld waiver mutants consulted (%ld waived: the r1306 "
            "in-grammar absorption), %ld negative controls "
            "(%ld differing, 0 waived), %d failures\n",
-           waiver_seeds, waiver_tamper, waiver_mutants, waiver_mutant_waived, waiver_neg,
-           waiver_neg_differs, fails);
+           waiver_seeds, waiver_tamper, waiver_tamper_tol, waiver_mutants, waiver_mutant_waived,
+           waiver_neg, waiver_neg_differs, fails);
     if (tamper_cases < 100) {
         fprintf(stderr,
                 "family-classify: the tamper battery is too small "
