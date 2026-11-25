@@ -4237,8 +4237,24 @@ static int fw_render_content(const uint8_t* p, size_t n, size_t i, unsigned char
         if (brk == 0) {
             /* a blank-only run: verbatim when content follows (the
              * `+\t \t tag:` interior), unrendered at the terminator
-             * (the loop breaks there next round) */
-            if (k < n && p[k] != ',' && p[k] != closer && started && fw_content_byte(p[k])) {
+             * (the loop breaks there next round). The r389 extension
+             * (the post-r388 nightly's run 45625878936): the run that
+             * pads a `:` VALUE boundary is EATEN, never ridden — the
+             * measured renders (`{=VAL : x,}` / `{=VAL  : x,}` /
+             * `{x  : y,}` / `{x  y : z,}` all byte-equal: interior
+             * blanks ride, the boundary padding vanishes) — the engine
+             * ends the key at its last content byte; a NON-boundary
+             * colon (glued content: `{x :2002:binary,}`) still rides
+             * the run and the colon verbatim. The r386 grammar never
+             * carried a blank-before-boundary member (its colon faces
+             * are glued (`2002:binary`) or break-run-fed (`50:`-
+             * class), both unchanged) — the hole surfaced only on the
+             * CopyPart paste member `=VAL : ...` whose dump-vocabulary
+             * spacing rode one byte into the derived key (`=VAL ` vs
+             * the actual `=VAL`). */
+            if (k < n && p[k] != ',' && p[k] != closer && started && fw_content_byte(p[k]) &&
+                !(p[k] == ':' && k + 1 < n &&
+                  (fc_blank(p[k + 1]) || fc_break_len(p, n, k + 1) > 0))) {
                 fo_escape(o, p + bs, k - bs); /* the interior blank run
                                                * rides escaped (the
                                                * measured `+\t \t tag:`
@@ -4860,6 +4876,27 @@ static int fw_content_set(const char* ydump, const char* ldump) {
                             }
                         }
                     }
+                    /* the r389 prop-render twin at the GLUED-`?` slot
+                     * (measured `{?&m,}`: yeptris rides the flat plain
+                     * `?&m`, libyaml's flow-`?` KEY split renders the
+                     * anchor prop `&m ` with its trailing space) — the
+                     * space-stripped probe prefixed `?` maps INTO an
+                     * existing yeptris form. Anchors only: the alias
+                     * twin renders `=ALI *<name>` (a non-VAL line the
+                     * content-set never counts — nothing to map). */
+                    if (!has_source && probe_len >= 2 && probe[0] == '&' &&
+                        probe[probe_len - 1] == ' ' && probe_len + 1 < 8194) {
+                        withq[0] = '?';
+                        memcpy(withq + 1, probe, probe_len - 1);
+                        withq[probe_len] = '\0';
+                        for (size_t j = 0; j < yn; j++) {
+                            if (strlen(yforms[j]) == probe_len &&
+                                memcmp(yforms[j], withq, probe_len) == 0) {
+                                has_source = 1;
+                                break;
+                            }
+                        }
+                    }
                     if (!has_source) {
                         for (size_t j = 0; j < yn && !has_source; j++) {
                             const char* yf = yforms[j];
@@ -4939,6 +4976,20 @@ static int fw_content_set(const char* ydump, const char* ldump) {
             memcpy(withq + 1, pf, pl + 1);
             for (size_t j = 0; j < yn; j++) {
                 if (strlen(yforms[j]) == pl + 1 && memcmp(yforms[j], withq, pl + 1) == 0) {
+                    allowed += ycnt[j];
+                }
+            }
+        }
+        if (pl >= 2 && pf[0] == '&' && pf[pl - 1] == ' ' && pl + 1 < 8194) {
+            /* (a2) the r389 twin's ALLOWANCE: the glued-`?` slot's
+             * anchor-prop render (`?&m` -> `&m `) draws its source's
+             * count — the cap stays multiset-exact (a tampered extra
+             * `&m ` line still exceeds direct + twin) */
+            withq[0] = '?';
+            memcpy(withq + 1, pf, pl - 1);
+            withq[pl] = '\0';
+            for (size_t j = 0; j < yn; j++) {
+                if (strlen(yforms[j]) == pl && memcmp(yforms[j], withq, pl) == 0) {
                     allowed += ycnt[j];
                 }
             }
@@ -5113,4 +5164,56 @@ int yd_family_waiver(const uint8_t* data, size_t size, const char* ydump, const 
         return 0; /* a libyaml-side line the split cannot explain */
     }
     return 1;
+}
+
+/* The tamper battery's invariance domains (see family_classify.h). The
+ * r389 drill: the floor's sampled dels hit the empty-bucket tolerance
+ * (two single-byte contents) and the artifact's sampled flip hit the
+ * PS<->LS canon face — both domains predate r389 (the r386/r388 seeds
+ * missed them by sampling luck), and both are computed here
+ * independently of the waiver's own decision. */
+int yd_family_tamper_in_domain(const char* ydump, const char* ldump, size_t pos, int op) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    size_t len = strlen(ldump);
+    if (pos >= len) {
+        return 0;
+    }
+    if (op == 0) {
+        /* (i) the flip: only the raw LS/PS third byte inside the E2 80
+         * multibyte — the swap keeps the canon-fold face (the law-b
+         * equating). Every other byte class flips OUT of its face (the
+         * escape bytes, the NEL pair, plain content) and must decline. */
+        unsigned char b = (unsigned char)ldump[pos];
+        return (b == 0xA8 || b == 0xA9) && pos >= 2 && (unsigned char)ldump[pos - 2] == 0xE2 &&
+               (unsigned char)ldump[pos - 1] == 0x80;
+    }
+    if (op != 1) {
+        return 0; /* the cut (truncation) always breaks the shape */
+    }
+    /* (ii) the del: the line containing pos */
+    size_t ls = 0;
+    for (size_t i = pos; i > 0; i--) {
+        if (ldump[i - 1] == '\n') {
+            ls = i;
+            break;
+        }
+    }
+    if (len - ls < 7 || memcmp(ldump + ls, "=VAL : ", 7) != 0) {
+        return 0; /* not a VAL line: a structural tamper must decline */
+    }
+    const char* nl = strchr(ldump + ls, '\n');
+    if (nl == NULL) {
+        return 0;
+    }
+    size_t content_len = (size_t)(nl - (ldump + ls)) - 7;
+    /* the deleted byte must be the line's ONLY content byte — a del on
+     * the prefix, the colon, the boundary space, or the line break
+     * itself changes the line's shape/membership and must decline */
+    if (content_len == 1 && pos == (size_t)(nl - ldump) - 1 && strstr(ydump, "=VAL : \n") != NULL) {
+        return 1; /* the emptied form rides the split's asymmetric empty
+                   * bucket — the r386 accounting's tolerance domain */
+    }
+    return 0;
 }
