@@ -201,8 +201,7 @@ static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const 
             ydump != NULL && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF &&
             data[3] == 0xEF && data[4] == 0xBB && data[5] == 0xBF) {
             size_t vlen = size - 3;
-            while (vlen > 0 &&
-                   (data[3 + vlen - 1] == ' ' || data[3 + vlen - 1] == '\t')) {
+            while (vlen > 0 && (data[3 + vlen - 1] == ' ' || data[3 + vlen - 1] == '\t')) {
                 vlen--; /* the r392 widening: the plain law strips the
                          * trailing blank run at the scalar's end --
                          * both dumps already did */
