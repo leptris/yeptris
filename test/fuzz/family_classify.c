@@ -4390,8 +4390,8 @@ static int fw_render_key_slot(const uint8_t* p, size_t n, size_t ks, unsigned ch
  * the actual libyaml pair -- any engine drift or unmeasured tail
  * render stays red. */
 static int fw_prop_name_byte(uint8_t c) {
-    if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == '[' ||
-        c == ']' || c == '{' || c == '}' || c == '#') {
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == '[' || c == ']' ||
+        c == '{' || c == '}' || c == '#') {
         return 0; /* the SSOT walk's own ends */
     }
     if (c == '\'' || c == '"' || c == '\\' || c == '`') {
