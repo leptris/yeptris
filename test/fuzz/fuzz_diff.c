@@ -13736,7 +13736,8 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
             }
             ko = k;
         }
-        if (ko < size && (data[ko] == '&' || data[ko] == '*' || data[ko] == '[')) {
+        if (ko < size &&
+            (data[ko] == '&' || data[ko] == '*' || data[ko] == '[' || data[ko] == '!')) {
             return 0; /* the '&' head (the r238 arm owns every
                        * anchor-entry shape), the r352 '*' head twin
                        * (the empty-name star face `*: '...'` is the
@@ -13750,7 +13751,22 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                        * `[: '<PS><TAB>'`, `[A: '<PS><TAB>'`,
                        * `[A: '<PS><TAB>']` — never a differ, the dual
                        * bar denies); the bracket rides mid-plain
-                       * CONTENT only */
+                       * CONTENT only. The r384 '!' head (the #1648
+                       * artifact's twin): '!' at the key line's first
+                       * byte is the TAG-PROP entry — the r375 law's
+                       * territory, a derivation this arm does not own.
+                       * The bare-'!' face `!: '<PS><TAB>'` and the
+                       * named-tag face `!P...: '<PS><TAB>'` (the
+                       * artifact's own head charset at the tag slot)
+                       * re-lex the '!' as the tag property (yeptris
+                       * `+STR/=VAL : <!P...> <PS>\t/-STR` — a TAGGED
+                       * ROOT SCALAR, the map gone), both engines AGREE
+                       * on the tag reading and the rc=0 claim rides the
+                       * body's other arms — never this arm's shape; the
+                       * '!!' handle face and the verbatim `!<x>:` face
+                       * are rc=0 too (all four re-measured) — the dual
+                       * bar denies every '!'-lead spelling; the '!'
+                       * rides mid-plain CONTENT only. */
         }
         size_t r = ko;
         if (r < size && data[r] == ':' && r + 1 < size && data[r + 1] != ' ' &&
@@ -13764,8 +13780,10 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                 ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' || (data[r]) == '-' ||
                 (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' || (data[r]) == '$' ||
                 (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')' || (data[r]) == '[' ||
-                (data[r]) == ';' || (data[r]) == '+')) {
-            r++;
+                (data[r]) == ';' || (data[r]) == '+' || (data[r]) == '!')) {
+            r++; /* the r384 widening adds '!' as MID-plain content (the
+                  * tag-indicator law's neighbor: the r348 comma twin) */
+
         }
         /* the r332 battery's GLUED spellings (each dump-verified
          * byte-equal on both engines): a quote glued ahead of the
@@ -13790,8 +13808,10 @@ static int yd_r331_quoted_exotic_tab_gray(const uint8_t* data, size_t size, cons
                     ((data[r]) >= '0' && (data[r]) <= '9') || (data[r]) == '_' ||
                     (data[r]) == '-' || (data[r]) == '?' || (data[r]) == '&' || (data[r]) == '.' ||
                     (data[r]) == '$' || (data[r]) == ',' || (data[r]) == '*' || (data[r]) == ')' ||
-                    (data[r]) == '[' || (data[r]) == ';' || (data[r]) == '+')) {
-                r++;
+                    (data[r]) == '[' || (data[r]) == ';' || (data[r]) == '+' ||
+                    (data[r]) == '!')) {
+                r++; /* the r384 widening adds '!' as MID-plain content
+                      * (the r348 comma twin) */
             }
             ke = r;
             if (r + 1 < size && data[r] == ':' && data[r + 1] != ' ' && data[r + 1] != '\t' &&

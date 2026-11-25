@@ -9119,6 +9119,81 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r360-artifact.bin
     )
 
+    # the r384 bang round (the r383 drill's bounded proactive soak, seed
+    # 383, issue #1648; the 15-byte artifact
+    # crash-39d29a0c498a951972d9306a8af64b8aa2c4ebc7
+    # "+M!P...: '<PS><TAB>'", 10-byte dual-bar floor "M!: '<PS><TAB>'" —
+    # greedy single-byte ddmin under the dump-pair shape bar: the '+',
+    # 'M', 'P', and dot deletions keep the family shape red one at a
+    # time (the key stays byte-equal across the engines throughout);
+    # the '!' deletion is the ALREADY-CLASSIFIED r331/r332 alnum-key
+    # territory, exit 0 pre-patch, so the dual bar denies it; the colon
+    # deletion dies into the rc=0 no-value-colon face, the space
+    # deletion into the glued-quote EQUAL face (no value colon ever
+    # fires), the quote deletions are the unterminated-quote error, the
+    # per-byte PS deletions are the invalid-UTF-8 YEPTRIS-ONLY-ACCEPT
+    # splits, and the body-TAB deletion is the EQUAL '<PS>'-only face;
+    # pre-patch DIFFER exit 77 on floor and artifact, post-patch carry
+    # exit 0, both shapes): the QUOTED-EXOTIC-TAB family's THIRTEENTH
+    # member and the key-form family's ELEVENTH container — the '!'
+    # riding INSIDE plain key CONTENT (the r348 comma / r347 '$' / r352
+    # star twins; the tag-indicator law's neighbor). '!' is the TAG
+    # indicator at a plain HEAD only: glued MID-plain it is ns-plain
+    # content on BOTH engines (the r331 battery's mid-plain law — the
+    # artifact's key '+M!P...' and every probed face keep the '!' bytes
+    # in BOTH engines' key dumps byte-equal), so every DIFFER rides the
+    # quoted-PS/TAB body alone (the r331/r332 law byte-identical here:
+    # yeptris keeps the raw PS + the tab as content and the closing
+    # quote closes — 1.2: LS/PS are no breaks, the tab is mid-line
+    # s-white; libyaml 90a56d4's 1.1 READ_LINE treats the PS as a line
+    # break and strips the next line's leading whitespace, so the tab
+    # is gone). THE HEAD-GUARD (re-measured): '!' at the key line's
+    # first byte is the TAG-PROP entry — the r375 law's territory, a
+    # derivation this arm does not own: the bare-'!' face "!:
+    # '<PS><TAB>'" and the named-tag face "!P...: '<PS><TAB>'" (the
+    # artifact's own head-charset at the tag slot) re-lex the '!' as the
+    # tag property (yeptris "+STR/=VAL : <!P...> <PS>\t/-STR" — a
+    # TAGGED ROOT SCALAR, the map gone), both engines AGREE on the tag
+    # reading and the rc=0 claim rides the body's other arms — never
+    # this arm's shape, the dual bar denies every '!'-lead spelling;
+    # the '!!' handle face "!!: '<PS><TAB>'" and the verbatim "!<x>:"
+    # face are rc=0 too (re-measured). Head faces probed byte-equal on
+    # BOTH engines, all DIFFER only in the body: '+M!P...' (the
+    # artifact), 'x!y', 'x!', '2!2', 'a!!b' (the DOUBLE-bang mid-plain),
+    # the GLUED-COLON composition 'x!:y:' (key 'x!:y' — the ':' after
+    # the '!' glues mid-content, the second colon is the value colon),
+    # the GLUED-QUOTE spelling 'x!'': ' (key "x!'", the r332 law), the
+    # r346 COLON-HEAD composition ':!:' (the probed key ':!:x' — the
+    # colon head + the '!' mid-run),
+    # the '+' head composition (the artifact's own r375b spine); the
+    # lead law composes unchanged (CR x1, LF x2, spaces probed) and the
+    # trailer law rides (LF, CR probed); the r341 separator-TAB ride
+    # composes ("M!:<TAB>'<PS><TAB>'"). THE DECLINES THAT STAY OUT
+    # (re-measured): the '!'-LEAD faces above (the tag-prop arms), the
+    # interior-space key, and the glued-quote VALUE face ("x!': '...'" —
+    # key "x!'", rc=0, no value colon ever fires). THE A/B: libfyaml
+    # 04e0b58 re-measured on THIS composition's OWN floor (the r325
+    # lesson): its strict-1.2 pass sides with yeptris BYTE-EXACT on the
+    # floor AND the artifact (it re-emits the bang-bearing key + the raw
+    # PS + the kept tab, "4d 21 3a 20 27 e2 80 a9 09 27" on the floor)
+    # while its 1.1 pass ERRORS ("invalid tab used as indentation" —
+    # under 1.1 the PS is a break, so the quoted body's tab rides it as
+    # an indentation tab — the documented third reading) — comparator
+    # carry only, no engine change (the r318/r330/r331/r332/r340/r341/
+    # r346/r347/r348/r352/r353/r354/r360/r375b precedent). Both the
+    # floor and the full artifact ride the corpus (the r321 seed law)
+    # and join the nightly comparator-snapshot exclusion.
+    add_test(
+        NAME fuzz-diff-r384-bang-plain-quoted-exotic-tab
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r384.bin
+    )
+    add_test(
+        NAME fuzz-diff-r384-bang-plain-quoted-exotic-tab-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-exotic-tab-r384-artifact.bin
+    )
+
     # the r361 tag-soup round (the nightly's run 45066041954, main
     # d90ffbc4; the 148,798-byte artifact
     # crash-1f709c41ac13d656c4c6a641201adc458d0a4892 — the biggest
