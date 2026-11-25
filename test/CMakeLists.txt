@@ -10165,6 +10165,60 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r386-evolved-soak.bin
     )
 
+    # the r387 drill (issue #1660, the post-r386 nightly's run
+    # 45565730060). Comparator carry on the r238 arm — no engine change
+    # (the r226/r375/r368/r376/r383 precedent). Artifact
+    # crash-4c8ce34fbe3d8fc3b51abdc60dc356c2cb941754, 10,955 bytes:
+    # the r330-family head `&2?*: '` over the PS/CR-led quoted body
+    # grown the `[[{"":[{"" ` chain (three chain lines, ~552 reps
+    # each) plus the mutation walk's CopyPart paste junk
+    # (`\u0060\u012a\u12`-class dump-fragment runs with `A`/` b, `/`B]`
+    # /`c ]`/`al-` fragments) ~1.5KB past the clamp cut. The three-way
+    # split: yeptris ONE root anchored plain (the anchor `2?*:` riding
+    # whole -- the 2SXE/W5VH/Y2GN law; the PS kept raw, the CR folded
+    # to the one space), libyaml the anchored-key MAP (cut at the '?',
+    # the residual `?*` the key's plain content, the quoted body PS
+    # raw + the CR as the `\n` escape), libfyaml 04e0b58 --testsuite
+    # strict-1.2 reads yeptris's stream BYTE-EXACT (`+DOC` +
+    # `=VAL &2?*: '\P "\\u1:...` -- the whole body one scalar, the
+    # pastes riding as content); its --yaml-1.1 pass keeps the scalar
+    # structure with libyaml's value spelling (the r330 1.1 precedent)
+    # -- the r318 dual-consensus, engine divergence REFUTED. THE
+    # ESCAPE was NOT the chain (the chain bytes ride the printable
+    # units -- the r386 waiver's documented scope left the anchor-ride
+    # lead on the r238 arm and the arm covered everything else): the
+    # pastes carry LITERAL BACKSLASHES past the clamp cut, where
+    # yd_r238_clamp_tail_safe declined the byte (measured at s=5544,
+    # 0x5c, on the artifact). THE r387 WIDENING: the clamp-tail unit
+    # row admits the literal backslash as a FORCED-EQUAL content unit
+    # -- one dump `\\` pair per body byte on BOTH engines through the
+    # shared yd_escape_append table, state-clearing, position-
+    # independent (the r366 pre-cut law; the suite pins the literal
+    # face: 4V8U plain, 6H3V single-quoted; a single-quoted scalar has
+    # no escapes, 1.2 8.1.2) -- the same extension principle as the
+    # r383 multibyte law and the r376 content-tab cells. THE FLOOR:
+    # greedy ddmin under the dual+shape bar to its 4,113-byte plateau
+    # (the artifact's head + PS/CR fold faces + the `~foo:` fold lines
+    # + two chain runs + the `&mapping`/`&key` leads + the paste
+    # backslash cluster straddling the cut at 4076 (pre-cut, the r366
+    # pair) / 4082 / 4088 (past the y cut; 4088 past both)) -- the
+    # giant-class pin rides the r383 precedent (the r368 artifact's
+    # own round pinned the artifact + the structure-derived floor, not
+    # a full single-byte matrix: at this size the matrix is the
+    # engine's, not the gate's, work). Every deletion class probes
+    # CLAIMED post-patch (the `\u1` backslash at 12, the paste
+    # backslashes, the chain interiors); the negative controls ride
+    # their pre-patch verdicts unchanged (LS/PS past the cut stays
+    # the r231 engine-divergent decline -- probed red on both builds;
+    # the 0x7f/control/malformed-multibyte/trailing-blank shapes ride
+    # the other arms' claims identically pre- and post-patch).
+    add_test(
+        NAME fuzz-diff-r387-root-anchor-quoted-follow-pastebs-clampcut
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-pastebs-clampcut-r387.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-pastebs-clampcut-r387-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

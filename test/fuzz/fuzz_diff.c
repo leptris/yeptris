@@ -11632,12 +11632,14 @@ static int yd_r218_blank_line(const uint8_t* d, size_t n, size_t* at) {
  * region end (the clamp cut, passed as `ce`), the remaining body may
  * ride ONLY the units whose spellings are FORCED EQUAL on both
  * engines beyond the cut: printables byte-equal, mid-body space runs,
- * and lone clean CR/LF breaks (one fold space on both sides -- the
- * measured standalone law). Everything whose dump spelling is
- * state-carrying or escape-vocabulary declines as unmeasured past the
- * cut: tabs (the r331 position law), backslashes (the r366 pair),
- * NEL/LS/PS triples (the r231 verbatim keep + the blank-state quark),
- * 0x7f (the \xNN escape), and any other control byte. A space run
+ * lone clean CR/LF breaks (one fold space on both sides -- the
+ * measured standalone law), the position-measured tab cells (the r376
+ * widening), the well-formed non-break multibyte runs (the r383
+ * widening), and the literal backslash (the r387 widening below).
+ * Everything whose dump spelling is state-carrying or engine-divergent
+ * declines as unmeasured past the cut: NEL/LS/PS triples (the r231
+ * verbatim keep + the blank-state quark), 0x7f (the \xNN escape), and
+ * any other control byte. A space run
  * touching the body's end declines too (the no-fold trailing
  * spelling is unmeasured). Both clamp phases are exact-length pinned
  * by the caller (4082/4081 visible chars on the y side, 4088/4087 on
@@ -11712,6 +11714,48 @@ static int yd_r238_clamp_tail_safe(const uint8_t* body, size_t bo, size_t be, si
             }
             s = e;
         } else if (body[s] >= 0x20 && body[s] < 0x7f && body[s] != '\\' && body[s] != '\t') {
+            pb = 0;
+            s += 1;
+        } else if (body[s] == '\\') {
+            /* the r387 CLAMP-TAIL BACKSLASH law (the nightly's round
+             * 387, run 45565730060, main 15761feb, artifact
+             * crash-4c8ce34fbe3d8fc3b51abdc60dc356c2cb941754,
+             * 10,955 bytes): the r330-family head `&2?*: '` over the
+             * PS/CR-led quoted body grown the `[[{"":[{"" ` chain
+             * (three chain lines, ~552 reps each) -- and the mutation
+             * walk's CopyPart paste junk (`\u0060\u012a\u12`-class
+             * dump-fragment runs with `A`/` b, `/`B]`/`c ]`/`al-`
+             * fragments) deep in the second chain, ~1.5KB past the
+             * clamp cut. The pastes carry LITERAL BACKSLASHES: the
+             * pre-cut walks ride them byte-exact (the r366 law -- the
+             * floor's backslash at 4076 sits inside the visible
+             * region), but the old past-the-cut decline rejected the
+             * family at the first paste backslash (measured at
+             * s=5544, byte 0x5c, on the artifact; the ddmin floor
+             * pins the cluster straddling the cut at 4082/4088).
+             * THE LAW: past the cut the backslash is a FORCED-EQUAL
+             * unit exactly like the r383 multibyte byte and the r376
+             * content tab -- ONE dump `\\` pair per body `\` on BOTH
+             * engines through the shared yd_escape_append table (the
+             * dump vocabulary's only spell for 0x5c), state-clearing,
+             * position-independent (the r366 probes measured it
+             * behind a fold, behind a kept-raw exotic, at the body
+             * end; a single-quoted scalar has no escapes -- 1.2
+             * 8.1.2 -- and the suite pins the literal face: 4V8U
+             * plain, 6H3V single-quoted). Comparator carry only, no
+             * engine change (the r226/r375/r368/r376/r383 precedent).
+             * THE A/B: libfyaml 04e0b58 --testsuite strict-1.2 reads
+             * the artifact's stream BYTE-EXACT yeptris's way (`+DOC` +
+             * `=VAL &2?*: '\P "\\u1:...` -- ONE root anchored scalar,
+             * the full riding name, the PS kept raw, the folds the
+             * one space); its --yaml-1.1 pass keeps the scalar
+             * structure with libyaml's value spelling (PS raw + the
+             * CR as `\n`, the r330 1.1 precedent) -- the r318
+             * dual-consensus. The suite scan: every governing row
+             * predates this round (2SXE the anchor-name colon ride,
+             * NP9H the root scalar fold, 4V8U/6H3V the backslash
+             * literal; no row governs the chain -- content -- or the
+             * clamp -- the comparator's own vocabulary). */
             pb = 0;
             s += 1;
         } else if ((unsigned char)body[s] >= 0x80) {
