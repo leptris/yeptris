@@ -10219,6 +10219,49 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-pastebs-clampcut-r387-artifact.bin
     )
 
+    # the r388 drill (issue #1665, the post-r387 nightly's run
+    # 45610560196). Comparator carry on the r386 waiver — no engine
+    # change (the r318/r330/r336/r356/r366/r370/r376/r381/r385/r386
+    # precedent). Artifact crash-587608b0003905ab3686acf77ca2e1cb8afbd2fa,
+    # 15,783 bytes: the `?#`-class GLUE-FOLD composition family's 5th
+    # re-derivation and the FIRST post-waiver one — the waiver HELD its
+    # contract (~30 in-grammar members claimed as `ledgered-waiver`, the
+    # fresh member correctly declined). THE ESCAPE was NOT a member-shape
+    # gap: the fresh spellings decompose to (a) EQUAL faces the measured
+    # grammar already derives byte-exact (the `211` split-pair members
+    # x81, the `1.0e57.tag:y---|` dash-run plains x25, the `1&m`
+    # content-value slot — both engines render them identically) and (b)
+    # ONE underivable face: the folded prop tail's anchor NAME grew from
+    # the measured single-byte `m` to the multi-byte IS_ALPHA `mq` (the
+    # artifact's lone `?##\r\n&mq,` member — yeptris renders the folded
+    # plain `?## &mq`, libyaml's post-break rebind renders the
+    # anchored-empty `&mq `). THE r388 EXTENSION: the content-set
+    # ADMISSION check gains the prop-render twin its own ALLOWANCE rule
+    # (b) always carried — the eaten head's rebind name rides libyaml's
+    # prop render (trailing space) even when that name appears NOWHERE
+    # else in the yeptris stream. The firewall is unchanged: the byte-
+    # exact yeptris-side derivation gates the input first, the twin maps
+    # INTO an existing yeptris-side form, every other transform stays
+    # enumerated, the negative controls keep declining. THE A/B:
+    # libfyaml 04e0b58 reads the isolated `?##\r\n&mq` member byte-exact
+    # yeptris's way (`?## &mq`) in BOTH strict-1.2 and --yaml-1.1 passes
+    # and reads the artifact's head prefix (the flat `?##|` plains, the
+    # `{211: }` split pairs, the folded `?## &m` tails) yeptris's way
+    # until erroring at the artifact's `>` member mid-stream
+    # (the reserved-indicator law, the r386 A/B unchanged). THE FLOOR:
+    # greedy ddmin under the dual claim bar (PRE red + POST waiver-claims)
+    # to its 54-byte plateau `[1,?#\r2002:binary,1,?# ,?#,
+    # ?\r2002:binary,?.,?\r!i,?#\n&e]` — the fresh-face member's anchor
+    # name rode down to the single IS_ALPHA byte `e` (no bare `&e` member
+    # anywhere in the input — the admission twin is what carries it), the
+    # measured faces riding it. PRE_RC=134 comparator-only, no engine
+    # change.
+    add_test(
+        NAME fuzz-diff-r388-gluefold-waiver-anchor-name
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r388-anchor-name-mq.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
