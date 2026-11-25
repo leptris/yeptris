@@ -151,16 +151,70 @@ static int yd_bom_line_start_divergence(const uint8_t* data, size_t size, const 
          * "=VAL : &U :L" on libyaml, the anchor cut at the colon),
          * the r226 bar still misses while the pure-strip +
          * verbatim-spelling pair still fully explains the original,
-         * so the claim no longer demands the removal error. */
+         * so the claim no longer demands the removal error. The r392
+         * nightly (run 45675392491, crash-ae0a21fb…30fac79, the
+         * 80-byte "<BOM><BOM>&U:#" + 8sp + "text" + 58sp block-level
+         * plain at the document root; the 13-byte dual-bar floor
+         * "<BOM><BOM>&U:# t ") added the TRAILING-BLANK face: the
+         * opening line now ends in a blank RUN, and BOTH engines
+         * strip it (the plain law: trailing blanks at the scalar's
+         * end-of-line are position-free whitespace -- yeptris's dump
+         * and libyaml's agree on the stripped value, the 58-space run
+         * gone from BOTH dumps byte-identically), so the verbatim
+         * spelling above can never match: `want` copies the raw
+         * bytes (the blank run rides) while the actual yeptris dump
+         * ends at "text" -- a 58-byte delta the strcmp declines, and
+         * the r156/r338 prop-split twin cannot rescue the face
+         * (its residual "&U:#        text" carries interior blanks,
+         * the invented-key guard declines). THE WIDENING: the
+         * spelling strips the TRAILING BLANK RUN (spaces and tabs)
+         * from the copied value bytes -- the plain law's own strip,
+         * applied at the scalar's end-of-line, exactly what both
+         * engines' dumps already left out; the interior blank run
+         * rides verbatim (mid-scalar blanks are CONTENT on both
+         * sides, the dumps agree byte-for-byte there). Any other
+         * yeptris reading still moves a byte: a folded break, an
+         * anchor split, a map, a key -- all render differently and
+         * decline; a trailing blank run the yeptris dump KEPT
+         * (impossible under the plain law, but the strcmp holds the
+         * line) also declines. The A/B: libfyaml 04e0b58 renders the
+         * artifact and every trailing-blank probe face as the ONE
+         * double-quoted plain "<FEFF>&U:#<blanks>text" -- the BOM
+         * riding content, the interior blanks verbatim, the trailing
+         * run stripped -- byte-consistently yeptris's way on BOTH its
+         * strict-1.2 and --yaml-1.1 passes (the r318 dual-consensus
+         * face, probed this round); the suite is silent (no BOM tests
+         * at the da267a5c pin, the r364/r365 precedent); spec 5.1
+         * allows the BOM at the document start and libyaml's
+         * line-start strip is its own ledgered r226 deviation --
+         * comparator carry only, no engine change (the
+         * r318/r330/r336/r337/r338/r364/r365 precedent). Floor
+         * re-verified: ddmin chunked descent to the 13-byte plateau
+         * "<BOM><BOM>&U:# t " under the dual+shape bar, then all
+         * single-byte deletions break the bar (the interior blank,
+         * the 't', and the trailing blank are each load-bearing: no
+         * trailing blank and the r364 verbatim spelling already
+         * claims; no interior blank and the value tail is one token
+         * the same spelling claims; no 't' and the residual is
+         * "#"-ended which the r156/r338 cut filing claims). */
         if (lok2 == 1 && ldump2 != NULL && strcmp(ldump2, ldump) == 0 && size >= 6 &&
             ydump != NULL && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF &&
             data[3] == 0xEF && data[4] == 0xBB && data[5] == 0xBF) {
-            size_t need = 12 + (size - 3) + 6; /* "+STR\n=VAL : " ... "\n-STR\n" */
+            size_t vlen = size - 3;
+            while (vlen > 0 &&
+                   (data[3 + vlen - 1] == ' ' || data[3 + vlen - 1] == '\t')) {
+                vlen--; /* the r392 widening: the plain law strips the
+                         * trailing blank run at the scalar's end --
+                         * both dumps already did */
+            }
+            size_t need = 12 + vlen + 6; /* "+STR\n=VAL : " ... "\n-STR\n" */
             char* want = malloc(need + 1);
             if (want != NULL) {
                 memcpy(want, "+STR\n=VAL : ", 12);
-                memcpy(want + 12, data + 3, size - 3); /* the mark rides as content */
-                memcpy(want + 12 + (size - 3), "\n-STR\n", 6);
+                memcpy(want + 12, data + 3, vlen); /* the mark rides as content,
+                                                    * the trailing blank run
+                                                    * stripped (r392) */
+                memcpy(want + 12 + vlen, "\n-STR\n", 6);
                 want[need] = '\0';
                 known = (strlen(ydump) == need && memcmp(ydump, want, need) == 0);
                 free(want);
