@@ -563,12 +563,13 @@
  *        the glued `:` (the r357 VALUE boundary) + the glued `#` +
  *        any tail (the tail is libyaml-invisible; the yeptris side is
  *        byte-exact-derived; the multiset cap still counts the source
- *        once — a tampered extra `=ALI *2` line declines). fy 04e0b58 reads every admitted face yeptris's way
- *        byte-consistently in BOTH passes (floor, artifact, twin,
- *        `#a#b`/`#s` tails, the fold face `#x<LF>y` where fy ALSO
- *        folds — the fold composition still declines on the waiver:
- *        libyaml's split-out `y` member has no source). SUITE: no row
- *        governs the event render — CVW2 (`c,#invalid`) pins the
+ *        once — a tampered extra `=ALI *2` line declines). fy 04e0b58
+ *        reads every admitted face yeptris's way byte-consistently in
+ *        BOTH passes (floor, artifact, twin, `#a#b`/`#s` tails, the
+ *        fold face `#x<LF>y` where fy ALSO folds — the fold
+ *        composition still declines on the waiver: libyaml's
+ *        split-out `y` member has no source). SUITE: no row governs
+ *        the event render — CVW2 (`c,#invalid`) pins the
  *        glued-comment class fail-true (out of the event domain);
  *        psych-pure pf15 pins the plain-`?` ride. Engine divergence
  *        REFUTED (the r318 dual-consensus bar, met again);
