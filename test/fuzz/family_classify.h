@@ -540,6 +540,45 @@
  *        source rules + the fingerprint widening — all measured
  *        faces, one composition family).
  *
+ *  (w2) the r391 GLUED-`#`-TAIL face of the alias-cut source rule
+ *        (run 45658791887, the artifact `{?*2:#,&m:y\r}` — a ONE-BYTE
+ *        mutation of the r390 floor's `\n` into `#`): the firewall
+ *        declined at the exact designed gate (`YD_FW_TRACE`:
+ *        `content-set: alias line not in y-set: 2` — the r390 rule
+ *        required the y-form's tail after `?*` FULLY fc_alpha; the
+ *        fresh tail `2:#` has the glued-`#`, no source). MEASURED this
+ *        round: libyaml's cut still lands on the whole alpha prefix
+ *        with the glued `:` firing the r357 VALUE boundary, and the
+ *        `#`-led remainder NEVER renders — the post-VALUE walk eats it
+ *        as a comment to the FIRST break (floor `{?*2:#\n}` /
+ *        `{?*2:#\r}`: only the `#`; the artifact `#,&m:y` to the CR:
+ *        the following member eaten WITH it — the yeptris-side lines
+ *        the libyaml stream lacks, tolerated one-directionally by the
+ *        content-set; `{?*2:#,}` / `{?*2:# y,}` without a break before
+ *        EOF: the eat swallows the closer, libyaml ERRORS — a split,
+ *        never reaching this gate; the clipped-name `?*2+3:#`: libyaml
+ *        errors outright — split; the `:`-bound `?*2:x#`: the `x#`
+ *        plain renders on libyaml and has no source — declined, the
+ *        neg control). The rule widened in place: the alpha prefix +
+ *        the glued `#` + any tail (the tail is libyaml-invisible; the
+ *        yeptris side is byte-exact-derived; the multiset cap still
+ *        counts the source once — a tampered extra `=ALI *2` line
+ *        declines). fy 04e0b58 reads every admitted face yeptris's way
+ *        byte-consistently in BOTH passes (floor, artifact, twin,
+ *        `#a#b`/`#s` tails, the fold face `#x<LF>y` where fy ALSO
+ *        folds — the fold composition still declines on the waiver:
+ *        libyaml's split-out `y` member has no source). SUITE: no row
+ *        governs the event render — CVW2 (`c,#invalid`) pins the
+ *        glued-comment class fail-true (out of the event domain);
+ *        psych-pure pf15 pins the plain-`?` ride. Engine divergence
+ *        REFUTED (the r318 dual-consensus bar, met again);
+ *        comparator-classification debt. Growth ledger: re-derivations
+ *        8 (r377, #1646, #1649, #1656, #1665/r388, #1669/r389,
+ *        #1671/r390, this); verdict at n=5 KEEPING PACE — the
+ *        extension cost held at the measured-face minimum (one
+ *        source-rule widening in place, no new allowance, no new
+ *        transform).
+ *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
  * glued-`?` detection, quoted spans, alias/anchor positions,
