@@ -4205,6 +4205,40 @@ static int fw_render_content(const uint8_t* p, size_t n, size_t i, unsigned char
             if (k + 1 >= n) {
                 return 0; /* the member-end colon: unmeasured */
             }
+            /* THE r395 GLUED-COLON EMPTY-SLOT LAW (the post-r394
+             * nightly's run 45715194524, issue #1687 — the family's
+             * NINTH live re-derivation and the FIRST composed-of-two-
+             * measured-members shape: the walker crossed the r390
+             * floor's own members into a face neither mutation of one
+             * seed reaches — a THIRD territory beside dict-shape and
+             * seed-shape). The terminator sitting DIRECTLY after the
+             * glued `:` is the engine's VALUE token at an EMPTY slot —
+             * the colon consumes whatever the terminator is (the
+             * suite-pinned law, FRK4 spec example 7.3: `{? foo :,}`
+             * renders `foo` + the empty pair — the colon never rides
+             * as key content). The r395 boundary-row probe matrix,
+             * byte-exact on yeptris and fy 04e0b58 byte-consistent in
+             * strict-1.2 AND --yaml-1.1 on every row: comma-fed
+             * `{?*2:,}`, closer-fed `{?*2:}`, space-led `{?*2: ,}`,
+             * the composed floor `{?*2:,&m:~y\r}` and the artifact
+             * `{?*2:,\n&m:~y\r,s}` all consume (`=VAL : ?*2` + the
+             * empty pair; the r390 alias-cut bucket maps libyaml's
+             * `=ALI *2`); CONTENT follows glued — `{?*2:x,s}` renders
+             * `?*2:x`, `{x :2002:binary,}` renders `x :2002:binary`,
+             * `{?*2::,}` renders `?*2:` (the FIRST colon rides, the
+             * LAST consumes) — the colon stays interior content; the
+             * blank/tab-led slot ERRORS the engine (`{?*2:, ,}`
+             * BOTH-ERROR — never a consult, declined here as the
+             * plain-run walk); the `#`-led slot is the r391 face
+             * (libyaml errors — YEPTRIS-ONLY-ACCEPT, no consult); the
+             * `&`-name-final colon keeps the un-consume law (the `&`
+             * name walk declines before this render ever sees it,
+             * `{&m:\r,s}` stays red). */
+            if (p[k + 1] == ',' || p[k + 1] == closer) {
+                *at_colon = 1;
+                *stop_at = k;
+                return 1;
+            }
             /* glued to content: ride it */
             fo_str(o, ":");
             k++;
