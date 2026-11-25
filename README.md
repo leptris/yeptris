@@ -16,34 +16,38 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.80 — live across all five runtimes** (C +
-ruby `0.6.80.0` + py `0.6.80.0` + rs/ts `0.6.80`, registry-checked
-2026-11-25). v0.6.80 carries the r378-r384 comparator roll (all
-zero-`src/`): the `!!` tag-glue member riding the qgh walk's
-tagged-empty-key wrapper pair (the annotation byte-exacts the token's
-tag resolution — secondary, verbatim, bare); the glued-`?*L`
-alias-EVENT-in-key-slot face and the bare-`?=` member joining the
-qflow gray arms; the BOM-stripped value twin and the ate-run
-adjacency joining the qflow walks with the tag-soup family leaving
-the comparator seed (the exclusion gap that let the r361 giant
-re-seed closed); the colon-ride anchor head with the clamp-prefix
-correction; the `root-anchor-colon-ride-*` exclusion entry and the
-flow-tab steal arm's colon-led VALUE boundary; and the dump-cap cut
-arm with the clamp-tail multibyte-content branch. Zero YAML engine
+**Latest release: v0.6.81 — live across all five runtimes** (C +
+ruby `0.6.81.0` + py `0.6.81.0` + rs/ts `0.6.81`, registry-checked
+2026-11-25). v0.6.81 ships the glue-fold composition family's
+**ledgered-waiver gate** (r386, all zero-`src/`): four consecutive
+nightly re-derivations with no seed names to exclude proved
+per-spelling arms cannot hold, so `yd_family_waiver` (law w) now
+declines the composition class as a documented comparator split —
+gated by the measured member grammar (anything unmeasured declines),
+the byte-exact yeptris-side derivation (engine drift stays red), the
+head-split fingerprint, and multiset-exact content accounting
+through exactly the four documented transforms; the firewall's 108
+dump-tamper cases and 7 negative controls (real other-family DIFFERs
+among them) never waive, and no member class exists where libfyaml
+sides with libyaml against yeptris. The gate proved itself live the
+same day: the post-merge nightly fired it 27 times — absorbing 27
+would-be-red re-derivations — before one red outside its documented
+scope (the anchor-ride sub-family, the r387 drill). Zero YAML engine
 divergence standing beyond #1411's deliberate fix, #1468 (0.6.75),
-#1584 (0.6.77) and #1615 (0.6.78). **The mutation-dense
-`&2?*:`-composition family graduated to a ledgered-waiver gate**
-(r386, in review): four consecutive nightly re-derivations with no
-seed names to exclude proved per-spelling arms cannot hold — the
-classifier now declines the composition class as a documented waiver
-(firewall-controlled: real divergences from other families and
-libfyaml-agrees-with-libyaml inputs never waiver). The previous cut:
+#1584 (0.6.77) and #1615 (0.6.78). The previous cut: v0.6.80 — the
+r378-r384 comparator roll (all zero-`src/`): the `!!` tag-glue
+wrapper pair, the glued-`?*L` alias-EVENT-in-key-slot face, the
+BOM-stripped value twin and ate-run adjacency with the tag-soup
+exclusion gap closed, the colon-ride head with the clamp-prefix
+correction and the `root-anchor-colon-ride-*` exclusion entry, the
+flow-tab steal arm's colon-led VALUE boundary, and the dump-cap cut
+arm with the clamp-tail multibyte branch. The cut before it:
 v0.6.79 — the r374-r377 comparator roll plus the binding faces wave
 (all five runtimes now expose the plan/schema/pull/tape family: the
 Python binding's plan/tape/events (#192), the TypeScript/WASM
 binding's plan+tape (#48), and the Ruby binding's org native-layer
 contract adoption (#409) alongside its pull/iterparse and tape faces
-(#411)). The cut before it: v0.6.78 — the feed-contract fold-line
+(#411)). The cut before that: v0.6.78 — the feed-contract fold-line
 fix (#1615): the fold-line state machine rode `\n` only, a
 CR-terminated fold line swallowed the next line's flow openers, and
 the `norm_next_fold_break` SSOT restored whole-vs-chunked identity
