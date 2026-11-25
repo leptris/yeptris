@@ -12592,8 +12592,11 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
          * (BOTH-ERROR composed / LIBYAML-ONLY-ACCEPT bare-head),
          * the breaks (LS bare-head BOTH-ERROR), and the
          * interior-residual `:` (the r336 pure-run branch owns
-         * pure-colon residuals; a mixed `?x:` face stays
-         * unmeasured). The non-`?` residual LEADS stay out
+         * pure-colon residuals; the r381 widening owns ':'-LED
+         * mixed residuals; the mixed `?x:` face joined at r385 --
+         * the residual walk admits the interior ':' gluing to the
+         * next non-blank byte, issue #1652). The non-`?` residual
+         * LEADS stay out
          * (unmeasured): libyaml's scan_anchor follow set
          * (`? : , ] } % @ ` and the backtick) errors the
          * bare-heads (`&2/:` -> "did not find expected alphabetic
@@ -12910,20 +12913,83 @@ static int yd_r238_root_anchor_quoted_follow_gray(const uint8_t* data, size_t si
                      * the lead stays the pinned '?'). The r370 widening
                      * rides the head-charset row for the continuation
                      * (`?/` -- `/` glued mid-plain is 1.1 content, the
-                     * measured row in yd_r238_wide_name_byte); the
-                     * interior ':' stays OUT (the r336 pure-run branch
-                     * owns pure-colon residuals and the r381 widening
-                     * owns ':'-LED mixed residuals, a mixed `?x:` face
-                     * is unmeasured), and the lead stays the pinned '?'
-                     * (an '&'-lead residual would re-lex as the key's
-                     * own ANCHOR -- the `&2&: ...` twin probed
-                     * shape-dead; a '*' lead still re-lexes as an
-                     * ALIAS) */
+                     * measured row in yd_r238_wide_name_byte).
+                     * THE r385 WIDENING (the r384 soak's proactive
+                     * find, issue #1652, artifact
+                     * crash-59f81b58e85ad9e632820873255a685c7bc58bcc,
+                     * 13 bytes, `&2?/:: '<PS><CR>'` -- the pinned r330
+                     * seed grown the tail colon DOUBLED and the head
+                     * row's `/`): the residual admits the INTERIOR ':'
+                     * -- the mixed `?x:` face the r370 round left
+                     * unmeasured. yeptris rides the whole 1.2
+                     * ns-anchor-char name `2?/::` (the 2SXE/W5VH/Y2GN
+                     * law: ':' and the glued `?`/`/` are anchor chars;
+                     * probed: the alias `*2?/::` resolves, `=ALI
+                     * *2?/::`), libyaml cuts at the FIRST
+                     * out-of-IS_ALPHA byte (the '?', in scan_anchor's
+                     * follow set -- the cut ACCEPTS, the r381 note)
+                     * and the residual re-lexes as the key's plain
+                     * content with every interior ':' GLUING to the
+                     * next non-blank byte (the rest of the residual or
+                     * the name's riding trailing ':' -- the residual is
+                     * all non-blank by construction, so every interior
+                     * colon glues; the boundary fires at the riding
+                     * ':' behind the separator blank) -- the r174/r336/
+                     * r381 colon-plain leniency, the key byte-equal
+                     * INCLUDING the interior colons (`?/:`, probed
+                     * `+MAP / =VAL : &2 ?/:`). MEASURED at the row
+                     * scale (the r361 lesson; every member probed
+                     * pre-patch DIFFER, the identical structure):
+                     * `&2?:: '<PS><CR>'` (the family-scoped ddmin
+                     * floor -- the in-family del[3] twin; the `?`
+                     * deletion dies into the pinned r336 seed, the
+                     * colon deletions into the classified `&2?:`
+                     * solo), `&2?::: '<PS><CR>'` (two interior
+                     * colons), `&2?:/: '<PS><CR>'` (colon mid), the
+                     * artifact `&2?/:: '<PS><CR>'`, and the r366 body
+                     * over the new residual `&2?:: '<PS><CR>\'`; the
+                     * PS-only short member `&2?:: '<PS>'` stays the
+                     * r76 splice's claim (value-equal). The lead stays
+                     * the pinned '?' (an '&'-lead residual would
+                     * re-lex as the key's own ANCHOR -- the `&2&: ...`
+                     * twin probed shape-dead; a '*' lead still re-lexes
+                     * as an ALIAS). Heads whose
+                     * residual ends NON-colon (`&2?::/ `, `&2?:::x `)
+                     * never reach this walk -- the arm's own head gate
+                     * declines them (the name must end with the riding
+                     * ':'), and their libyaml reading is the PLAIN
+                     * continuation (no map; probed `=VAL : &2 ?::/
+                     * '<PS>\n'`), a different face. A/B (probed, DOM
+                     * level byte-exact): libfyaml 04e0b58 strict-1.2
+                     * reads yeptris's stream on EVERY row member --
+                     * root SCALAR, the full anchor riding (strip-labels
+                     * drops it; `&2?::`/`&2?:::`/`&2?:/:`/`&2?/::`),
+                     * value `<PS>+<SP>` (the CR folded to the one
+                     * space); its 1.1 pass rides the PS-as-break
+                     * (value `\n`), matching libyaml's value spelling
+                     * -- the r318 dual-consensus, the suite sides with
+                     * yeptris (2SXE/W5VH anchor-name law), comparator
+                     * carry only, no engine change (the r318/r330/
+                     * r331/r336/r346/r356/r366/r368/r370/r376/r381
+                     * precedent). THE r385 STRUCTURAL FINDING (for the
+                     * owner gate the r383 round left pending): the
+                     * artifact's one-byte neighborhood is DENSE across
+                     * THREE other verdict classes -- 9 of its 13
+                     * single-byte deletions abort unclaimed (the
+                     * no-'&' plain-head faces `2?/: '/...` yeptris
+                     * REJECTS the map-value col-0 continuation while
+                     * libyaml accepts, LIBYAML-ONLY-ACCEPT; the '&'
+                     * -lead `&?...` and malformed-UTF-8 faces,
+                     * YEPTRIS-ONLY-ACCEPT; the no-separator face) --
+                     * the raw greedy ddmin escapes the family through
+                     * del[0] and floors at the 6-byte plain-head `::
+                     * '<CR>'`; the family-scoped floor is the 12-byte
+                     * `&2?:: '<PS><CR>'` above. */
                     if (data[cut] != '?') {
                         return 0;
                     }
                     for (size_t r = cut; r < colon; r++) {
-                        if (data[r] == ':' || !yd_r238_wide_name_byte(data, size, r)) {
+                        if (!yd_r238_wide_name_byte(data, size, r)) {
                             return 0;
                         }
                         if (b[0] != (char)data[r]) {
