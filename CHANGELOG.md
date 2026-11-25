@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### the comparator era (r389, all zero-`src/`)
+
+- **the glue-fold waiver owns `=`-led paste members — extended by measurement, not guess** — the post-r388 nightly's 24,883-byte `{`-rooted artifact: the mutation walk's CopyPart pasted a comparator dump fragment (`=VAL : ?#?\r2002:binary\r\r`) into the input as a member, and the r386/r388 derivation mismatches the engine's actual render by exactly ONE byte (derived `=VAL ` vs actual `=VAL` at dump offset 7587) — the grammar declined rather than guessed, the firewall holding. Ownership adjudicated: the r238 arm's paste rows are anchor-quoted-body clamp-tail (a different position class); the glue-fold waiver owns member-start pastes. THE MEASURED BASIS: the blank-only run padding a `:` VALUE boundary is EATEN, never ridden (`{=VAL : x,}` / `{=VAL  : x,}` / `{x  : y,}` / `{x  y : z,}` all byte-EQUAL; the non-boundary `{x :2002:binary,}` rides verbatim — the one-byte gap resolved), plus the prop-render admission+allowance twin at the glued-`?` slot (`{?&m,}`: yeptris `?&m` flat vs libyaml `&m ` prop+empty). The tamper contract gains independently-computed invariance domains (`yd_family_tamper_in_domain`: the PS<->LS canon-flip and del-into-empty classes). Floor 109 bytes under the dual+shape bar (ddmin 1,032 runs); battery 56 pairs 0 regressions; self-test 0 failures (5 seeds waived, 270 tampers, 16 mutants, 8 negatives 0 waived); ctest 1216/1216 ×3; walks ×7; leaks 0. libfyaml 04e0b58 reads yeptris's way in strict-1.2 AND 1.1 on every face — engine divergence refuted. THE GROWTH LEDGER at n=3: the per-grammar gate is KEEPING PACE — all three post-waiver reds were unmeasured spellings correctly declined, and the extension cost keeps shrinking (r386 = the waiver; r388 = 1 admission rule; r389 = 1 render law + 1 allowance twin). Closes #1669.
+
 ## [0.6.82] - 2026-11-25
 
 ### the comparator era (r387, all zero-`src/`)
