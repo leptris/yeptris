@@ -16,30 +16,29 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.83 — live across all five runtimes** (C +
-ruby `0.6.83.0` + py `0.6.83.0` + rs/ts `0.6.83`, registry-checked
-2026-11-26). v0.6.83 carries the r389 comparator carry (all
-zero-`src/`): the glue-fold waiver owns `=`-led paste members — the
-post-r388 nightly's 24,883-byte `{`-rooted artifact where the
-mutation walk's CopyPart pasted a comparator dump fragment into the
-input as a member and the derivation mismatches the engine's actual
-render by exactly ONE byte (`=VAL ` vs `=VAL`), the grammar
-declining rather than guessing, the firewall holding. Ownership
-adjudicated (the r238 arm's paste rows are clamp-cut anchor-body
-territory, a different position class) and the face extended BY
-MEASUREMENT: the blank-run-before-a-`:`-VALUE-boundary is EATEN,
-never ridden (four byte-EQUAL probe faces; the non-boundary colon
-rides verbatim), plus the prop-render admission+allowance twin at
-the glued-`?` slot. The tamper contract gains independently-computed
-invariance domains (`yd_family_tamper_in_domain`). **The
-grammar-growth ledger, now owner-call evidence**: at n=3 post-waiver
-rounds the per-grammar gate is KEEPING PACE — every post-waiver red
-was an unmeasured spelling correctly declined, and the extension
-cost per round keeps shrinking (r386 = the waiver; r388 = 1
-admission rule; r389 = 1 render law + 1 allowance twin); the waiver
-has never wrongly claimed. Zero YAML engine divergence standing
-beyond #1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and
-#1615 (0.6.78). The previous cut:
+**Latest release: v0.6.84 — live across all five runtimes** (C +
+ruby `0.6.84.0` + py `0.6.84.0` + rs/ts `0.6.84`, registry-checked
+2026-11-26). v0.6.84 carries the r390-r391 waiver extensions (all
+zero-`src/`): the bare-anchor member face takes the glued-charset
+name cut — `&m:~y` ONE prop name per the r318 suite law's prop
+charset where libyaml splits at the first glued colon — measured by
+the yepdiff probe matrix (`&m:~y,` / `&m:(,` / `&m:x,` / `&a:b1,`),
+with the alias-cut source rule (`=ALI *<name>` INTO the flat
+`?*<name>` plain) and the r318 SPLIT rule joining the content-set
+and the fingerprint widened to any `?`-led line libyaml lacks
+(r390, #1674); then the alias-cut tail gate took the glued-`#` face
+(`?*2:#` — libyaml eats the `#`-led tail to the first break after
+its post-VALUE comment-eat) via 15 further probes and ONE
+in-place `fw_alias_source` widening (r391, #1676). **The
+grammar-growth ledger, now owner-call evidence at n=6: KEEPING PACE
+holds — every post-waiver red was an unmeasured spelling correctly
+declined, the extension cost holds at the measured-face minimum
+(r386 = the waiver; r388 = 1 admission rule; r389 = 1 render law +
+1 allowance twin; r390 = the charset widening + 2 source rules;
+r391 = 1 in-place widening), and the waiver has never wrongly
+claimed.** Zero YAML engine divergence standing beyond #1411's
+deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and #1615 (0.6.78).
+The previous cut:
 v0.6.81 — the glue-fold composition family's **ledgered-waiver
 gate** (r386, all zero-`src/`): four consecutive nightly
 re-derivations with no seed names to exclude proved per-spelling
