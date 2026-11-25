@@ -4134,6 +4134,12 @@ int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, cons
  * The measured member grammar (the four red runs' artifacts + the
  * r361/r384 pins) and the byte-exact yeptris-side render. Everything
  * unmeasured declines; the waiver is a decline, never a claim.
+ * The r388 extension (issue #1665, run 45610560196): the folded prop
+ * tail's anchor NAME rides any IS_ALPHA spelling (the fresh
+ * `?##\r\n&mq` member — the measured grammar already rendered the
+ * folded plain; the content-set ADMISSION check gains the prop-render
+ * twin its allowance rule (b) carried, so the rebind `&mq ` maps even
+ * without a bare `&mq,` member elsewhere in the stream).
  */
 
 /* the decline set: single quotes (the anchor-ride quoted-body class —
@@ -4871,6 +4877,27 @@ static int fw_content_set(const char* ydump, const char* ldump) {
                             }
                             size_t rest = yl - (size_t)(fold - yf) - 1;
                             if (rest == probe_len && memcmp(fold + 1, probe, probe_len) == 0) {
+                                has_source = 1;
+                            }
+                            /* the prop-render twin at ADMISSION (the r388
+                             * extension): the eaten head's post-break
+                             * anchor rides libyaml's prop render with its
+                             * trailing space (`?## &mq` -> `&mq ` — the
+                             * r388 artifact's fresh anchor-name spelling,
+                             * run 45610560196). The allowance loop (b)
+                             * already carried this transform; the
+                             * admission check did not — a head whose
+                             * rebind name appeared NOWHERE else in the
+                             * yeptris stream (no bare `&mq,` member) had
+                             * no direct bucket and declined. The
+                             * firewall is unchanged: the twin still maps
+                             * INTO an existing yeptris-side form (the
+                             * byte-exact derivation gates the input
+                             * first), and the allowance counting below
+                             * is untouched. */
+                            if (!has_source && probe_len > 0 && rest + 1 == probe_len &&
+                                (probe[0] == '&' || probe[0] == '*') && probe[rest] == ' ' &&
+                                memcmp(fold + 1, probe, rest) == 0) {
                                 has_source = 1;
                             }
                         }

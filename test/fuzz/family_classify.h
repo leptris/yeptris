@@ -406,6 +406,34 @@
  *        (`11`, the flat `?##|` plains, the folded `?## &m` tails)
  *        yeptris's way and errors at the `>` member — the
  *        yeptris-favoring-or-erroring bar, met.
+ *        the r388 EXTENSION (the post-r387 nightly's run 45610560196,
+ *        issue #1665 — the family's 5th re-derivation and the FIRST
+ *        post-waiver one): the waiver HELD its contract — it claimed
+ *        the ~30 in-grammar members and DECLINED the fresh member (the
+ *        firewall's unmeasured-shape bar, exactly the designed
+ *        behavior). The fresh spellings decompose to ONE underivable
+ *        face: the folded prop tail's anchor NAME grew from the
+ *        measured single-byte `m` to the multi-byte IS_ALPHA `mq` (the
+ *        artifact's `?##\r\n&mq,` member — yeptris renders the folded
+ *        plain `?## &mq`, libyaml's post-break rebind renders the
+ *        anchored-empty `&mq `). The `211` split-pair members (x81),
+ *        the `1.0e57.tag:y---|` dash-run plains (x25) and the `1&m`
+ *        content-value slot are EQUAL faces — both engines render them
+ *        byte-identically and the measured grammar already derives
+ *        them. THE FIX: the content-set ADMISSION check gains the
+ *        prop-render twin its own ALLOWANCE rule (b) always carried —
+ *        the eaten head's rebind name may ride libyaml's prop render
+ *        (trailing space) even when that name appears NOWHERE else in
+ *        the yeptris stream (no bare `&mq,` member to open a direct
+ *        bucket). The firewall is unchanged: the twin still maps INTO
+ *        an existing yeptris-side form behind the byte-exact
+ *        derivation; every other transform stays enumerated; the
+ *        negative controls keep declining. libfyaml 04e0b58 reads the
+ *        isolated `?##\r\n&mq` member byte-exact yeptris's way (`?##
+ *        &mq`) in BOTH strict-1.2 and 1.1 passes — the r318
+ *        dual-consensus bar, met; the `>` member still errors fy
+ *        mid-artifact (the reserved-indicator law, the r386 A/B
+ *        unchanged).
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
