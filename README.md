@@ -16,32 +16,49 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.81 — live across all five runtimes** (C +
-ruby `0.6.81.0` + py `0.6.81.0` + rs/ts `0.6.81`, registry-checked
-2026-11-25). v0.6.81 ships the glue-fold composition family's
-**ledgered-waiver gate** (r386, all zero-`src/`): four consecutive
-nightly re-derivations with no seed names to exclude proved
-per-spelling arms cannot hold, so `yd_family_waiver` (law w) now
-declines the composition class as a documented comparator split —
-gated by the measured member grammar (anything unmeasured declines),
-the byte-exact yeptris-side derivation (engine drift stays red), the
-head-split fingerprint, and multiset-exact content accounting
-through exactly the four documented transforms; the firewall's 108
-dump-tamper cases and 7 negative controls (real other-family DIFFERs
-among them) never waive, and no member class exists where libfyaml
-sides with libyaml against yeptris. The gate proved itself live the
-same day: the post-merge nightly fired it 27 times — absorbing 27
-would-be-red re-derivations — before one red outside its documented
-scope (the anchor-ride sub-family, the r387 drill). Zero YAML engine
-divergence standing beyond #1411's deliberate fix, #1468 (0.6.75),
-#1584 (0.6.77) and #1615 (0.6.78). The previous cut: v0.6.80 — the
-r378-r384 comparator roll (all zero-`src/`): the `!!` tag-glue
-wrapper pair, the glued-`?*L` alias-EVENT-in-key-slot face, the
-BOM-stripped value twin and ate-run adjacency with the tag-soup
+**Latest release: v0.6.82 — live across all five runtimes** (C +
+ruby `0.6.82.0` + py `0.6.82.0` + rs/ts `0.6.82`, registry-checked
+2026-11-25). v0.6.82 carries the r387 comparator carry (all
+zero-`src/`): the anchor-ride sub-family's paste-backslash clamp-cut
+escape — the post-r386 nightly's 10,955-byte `&2?*:` root-anchor
+quoted-body artifact (the r330-family head grown the `[[{"" ` chain
+plus the mutation walk's CopyPart paste junk past the clamp cut);
+the chain rode the printable units, and the escape was the pastes'
+literal backslashes past the clamp cut, where the clamp-tail unit
+row declined the byte while the r366 law already rides it pre-cut —
+the widening admits the literal backslash as a forced-equal content
+unit (one dump `\\` pair per body byte on both engines through the
+shared `yd_escape_append` table, state-clearing, position-
+independent; 1.2 8.1.2: no escapes in single-quoted; the suite pins
+the literal face 4V8U plain, 6H3V single-quoted), floor ddmin'd to
+its 4,113-byte plateau, libfyaml 04e0b58 strict-1.2 reading the
+whole artifact byte-exact yeptris's way (the r318 dual-consensus,
+engine divergence refuted). The r387 gate's nightly round then found
+the glue-fold family re-deriving past the r386 waiver's measured
+grammar — the waiver correctly DECLINED it (the firewall holding)
+and the grammar extension rides the r388 drill, with the grammar-
+growth-vs-mutation-density measurement recorded for the owner call.
+Zero YAML engine divergence standing beyond #1411's deliberate fix,
+#1468 (0.6.75), #1584 (0.6.77) and #1615 (0.6.78). The previous cut:
+v0.6.81 — the glue-fold composition family's **ledgered-waiver
+gate** (r386, all zero-`src/`): four consecutive nightly
+re-derivations with no seed names to exclude proved per-spelling
+arms cannot hold, so `yd_family_waiver` (law w) declines the
+composition class as a documented comparator split — gated by the
+measured member grammar (anything unmeasured declines), the
+byte-exact yeptris-side derivation, the head-split fingerprint, and
+multiset-exact content accounting; the firewall's 108 dump-tamper
+cases and 7 negative controls never waive, and no member class
+exists where libfyaml sides with libyaml against yeptris. It proved
+itself live the same day: 27 would-be-red re-derivations absorbed
+before one red outside its documented scope. The cut before it:
+v0.6.80 — the r378-r384 comparator roll (all zero-`src/`): the `!!`
+tag-glue wrapper pair, the glued-`?*L` alias-EVENT-in-key-slot face,
+the BOM-stripped value twin and ate-run adjacency with the tag-soup
 exclusion gap closed, the colon-ride head with the clamp-prefix
 correction and the `root-anchor-colon-ride-*` exclusion entry, the
 flow-tab steal arm's colon-led VALUE boundary, and the dump-cap cut
-arm with the clamp-tail multibyte branch. The cut before it:
+arm with the clamp-tail multibyte branch. The cut before that:
 v0.6.79 — the r374-r377 comparator roll plus the binding faces wave
 (all five runtimes now expose the plan/schema/pull/tape family: the
 Python binding's plan/tape/events (#192), the TypeScript/WASM
