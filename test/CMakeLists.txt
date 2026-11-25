@@ -10050,6 +10050,64 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-bomfrag-capcut-r383-artifact.bin
     )
 
+    # the r384 ps-midbody round (the post-r383-merge Fuzz Nightly's own
+    # red, run 45511622229, headSha a9958f4a, issue #1649): the 1824-byte
+    # artifact crash-954b8ddd220b324cbd239b36719eb3ca30bdac2b — the
+    # `+SEQ`-spliced qflow-qhash-cr composition grown a raw PS (U+2029)
+    # MID-BODY (`{?\n:cic +SEQ##|,?\r/\n\r\r<PS> 51:\r\r1.0e17.tag\r
+    # ,?##|,...`) — and its 166-byte greedy ddmin fixed point (the
+    # DIFFER-verdict bar; the whole composition is load-bearing, every
+    # single-byte deletion leaves the band). NOT an r383-carry
+    # regression: rc=77 on the PRE-patch build (the pristine main
+    # fuzz_diff) — the r383 carry is test-side only. The split (both
+    # accept, two root maps whose key SEQUENCES diverge downstream of
+    # the PS/CR-run region): three adjudicated laws in conjunction —
+    # (1) the r277/r319 comment-STEAL member (`?\r#,<PS>...`: the
+    # explicit-`?` split, the blank-preceded `#` at the key position,
+    # the comment ride with COMMAS inside the eat on a MAP root) —
+    # the classifier's steal walk declined sep-carrying runs on the MAP
+    # root ("the r245 steal stays SEQ-rooted", the r319 untested face);
+    # (2) the comment run's raw LS/PS bytes are COMMENT BREAKS on both
+    # engines (the comment scan breaks where the scalars keep the bytes
+    # raw — probed `{1,?\r#x,y<PS>2z,2}` -> the key `2z` byte-equal; the
+    # run stops AT the first LS/PS on both engines), so the run's walk
+    # extent (fc_break_len already counts them) matches the engines;
+    # (3) the plain-LS/PS fold face downstream (yeptris's 1.2 law-b
+    # algebra: the PS runs fold n-1 newlines per run; libyaml's 1.1
+    # READ_LINE joins the raw triples — the r56/r231 law), riding the
+    # stolen-key region and the `<PS>`-led sibling keys. THE WIDENING
+    # (the classifier's r277 arm, law (f)): the MAP root joins the SEQ
+    # root for sep-carrying runs — the measured matrix: `{1,?\r#x,y<LF>c,2}`
+    # / `{1,?\r#x,y,z<LF>c,2}` / `{1,?\r#x,y,z,w<LF>c,2}` all byte-EQUAL
+    # flat maps (the commas inert comment text on both engines, the r319
+    # law), `{1,?\r#x,y<LF>c:d,2}` EQUAL (the colon rides the stolen
+    # plain), `{1,?\r#x,y<PS>2z,2}` EQUAL (the PS-terminated run), the
+    # PS-fold stolen-key twin `{1,?\r#x,y<LF>2<PS><PS><PS><PS>z,2}`
+    # DIFFERs exactly the fold relation — and the models derive floor
+    # AND artifact byte-exact once the gate lifts (classified=1 on both,
+    # the dual byte-equality firewall). A run to EOF still declines
+    # (BOTH-ERROR on both engines, never a consult) and the structural
+    # stolen-key declines are untouched. THE A/B: libfyaml 04e0b58 reads
+    # the floor as a THIRD structure in both modes (its strict-1.2 pass
+    # keeps the split-`?` head glued in the key; its 1.1 pass rides the
+    # raw PS runs) — the composition's claim rides the pinned laws'
+    # conjunction (the r231/r56 PS adjudications: libfyaml 1.2 sides
+    # with yeptris on the scalar faces, 1.1 with libyaml) under the
+    # classify firewall; comparator carry only, no engine change (the
+    # r318/r330/r336/r356/r366/r368/r370/r376/r381/r382 precedent).
+    # 100-mutant paired battery (seed 384, the pre-patch build as base):
+    # 0 regressions (see the two PR bodies for the exact counts).
+    add_test(
+        NAME fuzz-diff-r384-flow-qsoup-ps-midbody
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-ps-midbody-r384.bin
+    )
+    add_test(
+        NAME fuzz-diff-r384-flow-qsoup-ps-midbody-artifact
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-ps-midbody-r384-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)

@@ -1659,18 +1659,15 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
          *    libyaml dump renders the empty-key pair. A non-colon-led
          *    stolen key agrees on both engines (never consulted).
          * Gates: at most one separator inside the run, a terminator
-         * exists, the r245 steal stays SEQ-rooted, a clean eat stays
-         * MAP-rooted, and the stolen key is flat content (structural
+         * exists, and the stolen key is flat content (structural
          * and colon+blank-led keys decline). */
         size_t e = ks + 1;
-        int seps = 0;
         while (e < n && fc_break_len(p, n, e) == 0) {
             unsigned char cc = p[e];
             if (fc_flow_ind(cc)) {
                 if (cc != ',') {
                     return y_fail(c);
                 }
-                seps++;
             }
             e++;
         }
@@ -1680,9 +1677,9 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
          * member carries two commas inside the eat and both engines
          * render the identical steal; the probes `[a,?\r#x,y,b\nc]` /
          * `[a,?\r#x,y,z,b\nc]` render the r245 `+MAP(c,)` byte-exact).
-         * An eat running to EOF still declines, and the root matrix
-         * keeps its shape: a comma-carrying run on the MAP root stays
-         * untested-declined (the r245 steal stays SEQ-rooted).
+         * An eat running to EOF still declines (the root matrix's
+         * original shape; the r384 widening below lifts the
+         * comma-carrying run's MAP-root decline).
          *
          * the r377 widening (the nightly's round 377, run
          * 45317828972, main 7171f226 — the 23-byte giant floor's
@@ -1693,13 +1690,43 @@ static int y_question_member(yctx* c, size_t i, size_t* term_at) {
          * -> `+SEQ/1/+MAP/a//`, the floor's own member; the engines
          * AGREE here — the member is an agreeing composition riding
          * the dual byte-equality firewall, like the r351 nested-SEQ
-         * slot). The MAP-rooted clean eat keeps the r277 law. */
+         * slot). The MAP-rooted clean eat keeps the r277 law.
+         *
+         * the r384 widening (run 45511622229's drill, issue #1649):
+         * the SEP-CARRYING run joins on the MAP ROOT too — the walk's
+         * extent was the unmodeled half. The run's commas are inert
+         * comment text on BOTH engines (the r319 law), and the run's
+         * raw LS/PS bytes are COMMENT BREAKS on both engines (the
+         * comment scan breaks where the scalars keep the bytes raw —
+         * probed `{1,?\r#x,y<PS>2z,2}` -> the key `2z` byte-equal; the
+         * comment stops AT the first LS/PS on both engines), so the
+         * post-run key region resumes exactly as the clean-eat walk
+         * reads it: the artifact's `?\r#,<PS><PS><PS>2<PS><PS><PS><PS>
+         * ?<PS><PS><PS><PS>,` member renders the stolen key `2` + the
+         * fold run + `?` + the fold run on yeptris (the 1.2 law-b
+         * algebra, n-1 newlines per run) against libyaml's raw-PS join
+         * (READ_LINE LS|PS->LS|PS) — the plain-LS/PS fold face the
+         * models already derive (probes `{1,?\r#x,y<LF>c,2}` /
+         * `{1,?\r#x,y,z<LF>c,2}` / `{1,?\r#x,y,z,w<LF>c,2}` all
+         * byte-EQUAL flat maps; the PS-fold stolen-key twin
+         * `{1,?\r#x,y<LF>2<PS><PS><PS><PS>z,2}` DIFFERs exactly the
+         * fold relation). A run to EOF still declines (the engines
+         * BOTH-ERROR it — never a consult), and the structural
+         * stolen-key declines below are untouched. libfyaml 04e0b58
+         * reads the 166-byte floor as a THIRD structure in both modes
+         * (its 1.2 pass keeps the split-`?` head glued, its 1.1 pass
+         * rides the raw PS runs) — the composition's claim rides the
+         * pinned laws' conjunction under the dual byte-equality
+         * firewall; comparator carry only, no engine change. */
         if (e >= n) {
             return y_fail(c);
         }
-        if (seps >= 1 && y_cur_is_map(c)) {
-            return y_fail(c); /* the r245 steal stays SEQ-rooted */
-        }
+        /* the r384 widening: the MAP root joins the SEQ root for
+         * sep-carrying runs — the old `seps >= 1 && y_cur_is_map`
+         * decline is lifted; the commas inside the run are inert on
+         * both engines and the run's LS/PS bytes are comment breaks on
+         * both (the measured matrix above), so the post-run key region
+         * resumes as the clean-eat walk reads it */
         e += (size_t)fc_break_run_len(p, n, e);
         ks = fc_skip_blank_break(p, n, e);
         if (ks >= n) {
