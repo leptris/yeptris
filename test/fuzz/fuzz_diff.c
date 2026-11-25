@@ -24720,6 +24720,23 @@ static void probe_one(const uint8_t* data, size_t size) {
                     probe_id ? probe_id : "libfuzzer");
         }
     }
+    /* the r386 LEDGERED-WAIVER (law w, issues #1656 + the r385 soak,
+     * PR #1647's owner call): the glue-fold composition family declines
+     * as a DOCUMENTED SPLIT — not a classified-green claim. Consulted
+     * only after the classifier declines; the waiver's own gates (the
+     * measured member grammar, the byte-exact yeptris-side derivation,
+     * the head-split fingerprint) keep every unmeasured shape red. */
+    if (!known && v == YD_DIFFER && yd_family_waiver(data, size, ydump, ldump)) {
+        fprintf(stderr,
+                "fuzz_diff: ledgered-waiver (%s): the glue-fold composition "
+                "family declines as the documented split (runs 45317828972/"
+                "45498839224/45511622229/45540139415, issues #1643/#1646/"
+                "#1649/#1656, PR #1647; libfyaml strict-1.2 yeptris-favoring "
+                "or erroring per member class — the #949 KEY-token head "
+                "split, the law-b fold renders)\n",
+                probe_id ? probe_id : "libfuzzer");
+        known = 1;
+    }
 #ifdef YEP_FUZZ_STANDALONE
     /* corpus walker: splits are enforced against the ledger (an
      * unledgered split is a conformance regression) */
@@ -24780,6 +24797,19 @@ static int fc_name_is_seed(const char* nm, size_t nl) {
     return 0;
 }
 
+/* the r386 waiver-corpus seeds: the LEDGERED-WAIVER class's own
+ * positive inputs (waiver-gluefold-*) and the firewall's negative
+ * controls (waiver-neg-* — other-family DIFFERs and unmeasured-shape
+ * splices that must NEVER waive) */
+static int fc_name_is_waiver_seed(const char* nm, size_t nl) {
+    return nl > 20 && memcmp(nm, "waiver-gluefold-", 16) == 0 &&
+           memcmp(nm + nl - 4, ".bin", 4) == 0;
+}
+
+static int fc_name_is_waiver_neg(const char* nm, size_t nl) {
+    return nl > 14 && memcmp(nm, "waiver-neg-", 11) == 0 && memcmp(nm + nl - 4, ".bin", 4) == 0;
+}
+
 static int fc_cmp_names(const void* a, const void* b) {
     return strcmp(*(const char* const*)a, *(const char* const*)b);
 }
@@ -24814,7 +24844,8 @@ static int fc_selftest_dir(const char* dir) {
     struct dirent* ent;
     while ((ent = readdir(d)) != NULL && nn < 512) {
         size_t nl = strlen(ent->d_name);
-        if (!fc_name_is_seed(ent->d_name, nl)) {
+        if (!fc_name_is_seed(ent->d_name, nl) && !fc_name_is_waiver_seed(ent->d_name, nl) &&
+            !fc_name_is_waiver_neg(ent->d_name, nl)) {
             continue;
         }
         snprintf(names[nn], sizeof(names[nn]), "%s", ent->d_name);
@@ -24836,6 +24867,12 @@ static int fc_selftest_dir(const char* dir) {
     long mutant_consulted = 0;
     long mutant_declined = 0;
     long mutant_flipped = 0;
+    long waiver_seeds = 0;
+    long waiver_tamper = 0;
+    long waiver_mutants = 0;
+    long waiver_neg = 0;
+    long waiver_neg_differs = 0;
+    long waiver_mutant_waived = 0;
     static uint8_t buf[1 << 20];
 
     for (int s = 0; s < nn; s++) {
@@ -24847,6 +24884,251 @@ static int fc_selftest_dir(const char* dir) {
         }
         size_t n = fread(buf, 1, sizeof(buf), f);
         fclose(f);
+        size_t nl = strlen(namep[s]);
+        int is_waiver = fc_name_is_waiver_seed(namep[s], nl);
+        int is_neg = fc_name_is_waiver_neg(namep[s], nl);
+        if (is_waiver) {
+            /* ---- the r386 W-phase: the LEDGERED-WAIVER class's own
+             * firewall. 1. the seed DIFFERs, the classifier declines,
+             * the waiver claims. 2. any single-byte change to either
+             * dump declines the waiver (the byte-exact yeptris-side
+             * derivation is the tamper firewall). 3. a law-violating
+             * input mutant never waives unless the classifier claims
+             * it first. */
+            waiver_seeds++;
+            char* ydump = NULL;
+            char* ldump = NULL;
+            yd_verdict v = yd_diff_classify((const char*)buf, n, &ydump, &ldump);
+            int cl = (v == YD_DIFFER) ? yd_family_classify(buf, n, ydump, ldump) : -1;
+            int w = (v == YD_DIFFER) ? yd_family_waiver(buf, n, ydump, ldump) : -1;
+            if (v != YD_DIFFER || cl != 0 || w != 1) {
+                fprintf(stderr,
+                        "family-classify: FAIL waiver seed %s (verdict %s, "
+                        "classified %d, waived %d)\n",
+                        namep[s], yd_verdict_name(v), cl, w);
+                fails++;
+            }
+            if (ydump != NULL && ldump != NULL) {
+                static const char* wsides[2] = {0};
+                wsides[0] = ydump;
+                wsides[1] = ldump;
+                for (int side = 0; side < 2; side++) {
+                    size_t len = strlen(wsides[side]);
+                    size_t step = len / 8;
+                    if (step == 0) {
+                        step = 1;
+                    }
+                    for (size_t pos = 0; pos < len; pos += step) {
+                        char* copy = strdup(wsides[side]);
+                        if (copy == NULL) {
+                            continue;
+                        }
+                        copy[pos] = (char)(copy[pos] ^ 0x01);
+                        waiver_tamper++;
+                        if (yd_family_waiver(buf, n, side == 0 ? copy : ydump,
+                                             side == 0 ? ldump : copy) != 0) {
+                            fprintf(stderr, "family-classify: FAIL %s waiver-tamper-flip %s@%zu\n",
+                                    namep[s], side == 0 ? "y" : "l", pos);
+                            fails++;
+                        }
+                        memmove(copy + pos, copy + pos + 1, len - pos);
+                        waiver_tamper++;
+                        if (yd_family_waiver(buf, n, side == 0 ? copy : ydump,
+                                             side == 0 ? ldump : copy) != 0) {
+                            fprintf(stderr, "family-classify: FAIL %s waiver-tamper-del %s@%zu\n",
+                                    namep[s], side == 0 ? "y" : "l", pos);
+                            fails++;
+                        }
+                        copy[pos] = '\0';
+                        waiver_tamper++;
+                        if (yd_family_waiver(buf, n, side == 0 ? copy : ydump,
+                                             side == 0 ? ldump : copy) != 0) {
+                            fprintf(stderr, "family-classify: FAIL %s waiver-tamper-cut %s@%zu\n",
+                                    namep[s], side == 0 ? "y" : "l", pos);
+                            fails++;
+                        }
+                        free(copy);
+                    }
+                }
+            }
+            /* the mutants: a diverging mutant must never waive unless
+             * the classifier claims it first */
+            uint8_t* m = malloc(n + 32);
+            if (m != NULL) {
+                for (int mc = 0; mc < 8; mc++) {
+                    size_t mn = 0;
+                    int applied = 1;
+                    switch (mc) {
+                    case 0: { /* a closer spliced before the first separator */
+                        size_t sep = n;
+                        for (size_t i = 1; i + 1 < n; i++) {
+                            if (buf[i] == ',') {
+                                sep = i;
+                                break;
+                            }
+                        }
+                        if (sep == n) {
+                            applied = 0;
+                            break;
+                        }
+                        memcpy(m, buf, sep);
+                        m[sep] = ']';
+                        memcpy(m + sep + 1, buf + sep, n - sep);
+                        mn = n + 1;
+                        break;
+                    }
+                    case 1: { /* a hash run grown past the measured cap */
+                        size_t h = n;
+                        for (size_t i = 1; i + 1 < n; i++) {
+                            if (buf[i] == '?' && buf[i + 1] == '#') {
+                                h = i;
+                                break;
+                            }
+                        }
+                        if (h == n) {
+                            applied = 0;
+                            break;
+                        }
+                        memcpy(m, buf, h + 1);
+                        memset(m + h + 1, '#', 8);
+                        memcpy(m + h + 9, buf + h + 1, n - h - 1);
+                        mn = n + 8;
+                        break;
+                    }
+                    case 2: { /* a quote spliced into a member */
+                        if (n < 8) {
+                            applied = 0;
+                            break;
+                        }
+                        memcpy(m, buf, 5);
+                        m[5] = '\'';
+                        memcpy(m + 6, buf + 5, n - 5);
+                        mn = n + 1;
+                        break;
+                    }
+                    case 3: { /* a nested collection spliced after the root */
+                        if (n < 4) {
+                            applied = 0;
+                            break;
+                        }
+                        m[0] = buf[0];
+                        m[1] = '[';
+                        memcpy(m + 2, buf + 1, n - 1);
+                        mn = n + 1;
+                        break;
+                    }
+                    case 4: { /* the root lead replaced with an anchor */
+                        if (n < 3) {
+                            applied = 0;
+                            break;
+                        }
+                        m[0] = '&';
+                        m[1] = 'a';
+                        memcpy(m + 2, buf, n);
+                        mn = n + 2;
+                        break;
+                    }
+                    case 5: { /* a byte deleted at the quarter mark */
+                        if (n < 8) {
+                            applied = 0;
+                            break;
+                        }
+                        size_t dq = n / 4;
+                        memcpy(m, buf, dq);
+                        memcpy(m + dq, buf + dq + 1, n - dq - 1);
+                        mn = n - 1;
+                        break;
+                    }
+                    case 6: { /* a byte flipped at the quarter mark */
+                        if (n < 8) {
+                            applied = 0;
+                            break;
+                        }
+                        memcpy(m, buf, n);
+                        m[n / 4] = (uint8_t)(m[n / 4] ^ 0x01);
+                        mn = n;
+                        break;
+                    }
+                    case 7: { /* the closer dropped (a break rides in) */
+                        if (n < 4) {
+                            applied = 0;
+                            break;
+                        }
+                        unsigned char close = buf[0] == '{' ? '}' : ']';
+                        size_t cl2 = n;
+                        for (size_t i = n; i-- > 1;) {
+                            if (buf[i] == close) {
+                                cl2 = i;
+                                break;
+                            }
+                        }
+                        if (cl2 == n) {
+                            applied = 0;
+                            break;
+                        }
+                        memcpy(m, buf, cl2);
+                        memcpy(m + cl2, buf + cl2 + 1, n - cl2 - 1);
+                        mn = n - 1;
+                        break;
+                    }
+                    }
+                    if (!applied) {
+                        continue;
+                    }
+                    char* my = NULL;
+                    char* ml = NULL;
+                    yd_verdict mv = yd_diff_classify((const char*)m, mn, &my, &ml);
+                    if (mv == YD_DIFFER) {
+                        waiver_mutants++;
+                        int mcl = yd_family_classify(m, mn, my, ml);
+                        int mw = yd_family_waiver(m, mn, my, ml);
+                        if (mw != 0) {
+                            /* a waived mutant is the r1306 absorption
+                             * working: a content-preserving mutation of
+                             * a class member stays in the grammar and
+                             * rides the documented split. The only bug
+                             * this phase can catch is the gates
+                             * disagreeing — the classifier and the
+                             * waiver must never BOTH claim. */
+                            if (mcl != 0) {
+                                fprintf(stderr,
+                                        "family-classify: FAIL %s waiver mutant %d "
+                                        "claimed by BOTH gates\n",
+                                        namep[s], mc);
+                                fails++;
+                            }
+                            waiver_mutant_waived++;
+                        }
+                    }
+                    free(my);
+                    free(ml);
+                }
+                free(m);
+            }
+            free(ydump);
+            free(ldump);
+            continue;
+        }
+        if (is_neg) {
+            /* ---- the r386 N-phase: the firewall's negative controls.
+             * A DIFFERING control that WAIVES means the signature is
+             * too wide — a real engine divergence would hide behind
+             * the waiver. */
+            waiver_neg++;
+            char* ydump = NULL;
+            char* ldump = NULL;
+            yd_verdict v = yd_diff_classify((const char*)buf, n, &ydump, &ldump);
+            if (v == YD_DIFFER) {
+                waiver_neg_differs++;
+                if (yd_family_waiver(buf, n, ydump, ldump) != 0) {
+                    fprintf(stderr, "family-classify: FAIL neg control %s WAIVED\n", namep[s]);
+                    fails++;
+                }
+            }
+            free(ydump);
+            free(ldump);
+            continue;
+        }
         seeds++;
 
         /* 1. the positive: DIFFER + classified */
@@ -25151,11 +25433,27 @@ static int fc_selftest_dir(const char* dir) {
            "flips), %d failures\n",
            seeds, tamper_declined, mutant_cases, mutant_consulted, mutant_declined, mutant_flipped,
            fails);
+    printf("family-classify: waiver: %ld gluefold seeds waived, %ld waiver-tamper "
+           "cases declined, %ld waiver mutants consulted (%ld waived: the r1306 "
+           "in-grammar absorption), %ld negative controls "
+           "(%ld differing, 0 waived), %d failures\n",
+           waiver_seeds, waiver_tamper, waiver_mutants, waiver_mutant_waived, waiver_neg,
+           waiver_neg_differs, fails);
     if (tamper_cases < 100) {
         fprintf(stderr,
                 "family-classify: the tamper battery is too small "
                 "(%ld cases; the firewall needs >= 100)\n",
                 tamper_cases);
+        fails++;
+    }
+    if (waiver_seeds == 0) {
+        fprintf(stderr, "family-classify: no waiver-gluefold-* seeds: the r386 "
+                        "ledgered-waiver firewall needs its positive corpus\n");
+        fails++;
+    }
+    if (waiver_neg == 0) {
+        fprintf(stderr, "family-classify: no waiver-neg-* controls: the r386 "
+                        "ledgered-waiver firewall needs its negative corpus\n");
         fails++;
     }
     return fails ? 1 : 0;
