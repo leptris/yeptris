@@ -10065,6 +10065,60 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-gluefold-ps-r384-artifact.bin
     )
 
+    # the r385 drill (issue #1652, the r384 soak's proactive find).
+    # Comparator carry, no engine change (the r318/r330/r336/r356/
+    # r366/r370/r376/r381 precedent). Artifact
+    # crash-59f81b58e85ad9e632820873255a685c7bc58bcc, 13 bytes,
+    # `&2?/:: '<PS><CR>'` -- the pinned r330 seed grown the tail
+    # colon DOUBLED over the r370 charset row's `/`. The three-way
+    # split (byte-exact, /tmp/r385-art/split-59f81b58.txt): yeptris
+    # ONE root anchored plain (the full name `2?/::` rides -- the
+    # 2SXE/W5VH/Y2GN anchor-name law, probed: the alias `*2?/::`
+    # resolves; value raw PS + the CR folded to the one space), libyaml
+    # the anchored-key MAP (cut at the '?', the residual `?/:` the
+    # key's plain content -- every interior ':' glues to the next
+    # non-blank byte, the boundary fires at the riding ':' behind the
+    # separator blank; the quoted value PS verbatim + the CR as the
+    # `\n` escape), libfyaml 04e0b58 strict-1.2 yeptris's stream
+    # BYTE-EXACT (the full anchor riding, strip-labels drops it; value
+    # `<PS>+<SP>`; its 1.1 pass value `\n`, matching libyaml's value
+    # spelling) -- the r318 dual-consensus, the issue's "whole line
+    # absorbed as quoted" third reading REFUTED at DOM level (it was
+    # the re-EMIT style of the multi-break value). THE CARRY: the
+    # r238 arm's `?`-led residual walk admits the INTERIOR ':' -- the
+    # mixed `?x:` face the r370 round left unmeasured (the r385
+    # widening note in yd_r238_root_anchor_quoted_follow_gray). THE
+    # ROW (measured pre-patch DIFFER, the identical MAP structure,
+    # all claimed post-patch): `&2?::` (the floor, the in-family
+    # del[3] twin), `&2?:::`, `&2?:/:`, the artifact `&2?/::`, and
+    # the r366 body over the new residual `&2?:: '<PS><CR>\'`; the
+    # PS-only short member `&2?:: '<PS>'` stays the r76 splice's
+    # claim. Floor: the 12-byte `&2?:: '<PS><CR>'` -- the FAMILY-
+    # SCOPED greedy ddmin fixed point (the `?` deletion dies into the
+    # pinned r336 seed, the colon deletions into the classified
+    # `&2?:` solo -- both exit 0 pre-patch). THE r385 STRUCTURAL
+    # FINDING (feeding the owner gate the r383 round left pending):
+    # the artifact's one-byte neighborhood is DENSE across THREE
+    # other verdict classes -- 9 of 13 single-byte deletions abort
+    # unclaimed (the no-'&' plain-head faces `2?/: '/...`: yeptris
+    # REJECTS the map-value col-0 continuation while libyaml accepts,
+    # LIBYAML-ONLY-ACCEPT; the '&'-lead `&?...` and malformed-UTF-8
+    # faces, YEPTRIS-ONLY-ACCEPT; the no-separator face) -- the RAW
+    # greedy ddmin escapes through del[0] and floors at the 6-byte
+    # plain-head `:: '<CR>'`; the neighbors are NOT this family and
+    # stay unclaimed. 50-mutant paired battery (seed 385, 20 flips +
+    # 10 deletions + 20 doubles per shape, against the pre-patch
+    # build): 37 pass-pass, 18 claims, 45 red-red (the density
+    # finding quantified; both builds agree red), 0 regressions. The
+    # pin names join the snapshot's `root-anchor-quoted-follow-*`
+    # exclusion (r370) -- no workflow change.
+    add_test(
+        NAME fuzz-diff-r385-root-anchor-quoted-follow-colonres
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-colonres-r385.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-colonres-r385-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
