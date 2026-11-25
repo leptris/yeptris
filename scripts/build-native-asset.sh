@@ -46,8 +46,21 @@ make
 echo "::endgroup::"
 
 echo "::group::Pack"
-ARTIFACT=native.so
-[ -f "$ARTIFACT" ] || ARTIFACT=native.bundle
+# The org native-layer contract (yeptris-ruby#409/#416) emits DOT-FREE
+# per-minor bundles: native_<major>_<minor>.<ext> where ext is the
+# platform DLEXT (.so on linux, .bundle on mac). Match those first;
+# the legacy unversioned names stay as the fallback for older
+# lockstep tags.
+ARTIFACT=""
+for f in native_*.so native_*.bundle native.so native.bundle; do
+  [ -f "$f" ] && ARTIFACT="$f" && break
+done
+if [ -z "$ARTIFACT" ]; then
+  echo "ERROR: no native materializer bundle found in $(pwd)" >&2
+  ls -la >&2
+  exit 1
+fi
+echo "packing $ARTIFACT"
 # cwd is ext/yeptris_native here
 tar -czf "$OUT" "$ARTIFACT"
 echo "artifact=$OUT"
