@@ -5432,6 +5432,64 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
          * yeptris's kept content, the r-p378 probe row), the tail the
          * rest. */
         int y_tagged_wrapper = 0;
+        /* the FOLD-GLUE tell (r384, issue #1649: the nightly's run
+         * 45511622229, artifact crash-954b8ddd..., 1824 bytes; the
+         * whole-member ddmin floor, 82 bytes,
+         * `{c,?#,\r0,?#\nm,y,...,g,l}`). The glue member's plain FOLDS
+         * onto libyaml's post-break key: at `,\r?#<LF>m,` yeptris reads
+         * ONE plain (`?#` + the 1.2 break fold joining the post-break
+         * `m` -- the plain-'?' law keeps the member flat, the fold law
+         * renders one break as one space) and libyaml reads the
+         * glued-`#` comment-eat law's KEY token with the post-break
+         * content ALONE as the key (the '#'s eat with it --
+         * `?##\r\n&m` eats `##` and keys the post-break `&m` ANCHOR,
+         * its prop render trailing one space, the r315 law's
+         * `=VAL : &<name> ` row). The dumps pair one-to-one
+         * (yeptris's line is libyaml's with the glued-'#'-run +
+         * fold-space prefix attached, the prop render minus its
+         * trailing space); but the MARKER-FRAME PRIORITY branch below
+         * PREEMPTS the r117 SPLIT arm on glue-marked content, consumes
+         * only yeptris's two lines and KEEPS libyaml's line -- whose
+         * bytes already RODE yeptris's line -- so the streams run one
+         * member off and the tail members burn 2 shared-cap skips each
+         * (the 82-byte floor's frame pass flooded 75 > 64 + 82/8 and
+         * died at the `&m` tail; the frame-0 pass floods 65 > 64
+         * off-sync the same way; the 1824-byte artifact floods 293 >
+         * 64 + 228/8 at the ~30 `?## &m` anchors; the ddmin proved the
+         * escape needs the whole composition -- every prefix, suffix
+         * and single-member cut classifies, the skip arithmetic binds
+         * only at the full length). The tell must gate BEFORE that
+         * priority: the paired route (the r117 form) consumes BOTH
+         * pairs as one diff -- no skip, both pointers advance, the
+         * walk stays bounded by construction. Two byte-tight tails:
+         * (1) the PLAIN tail -- yeptris's content is EXACTLY '?' +
+         * '#'+ + one fold space + libyaml's content (the floor's
+         * `?# m` / `?# /` members); (2) the PROP tail -- libyaml's
+         * content is the anchor/alias prop render (starts '&'/'*',
+         * ends ONE space, the r315 row) and yeptris's is the glued run
+         * + the fold space + the same prop name bare (the artifact's
+         * `?## &m` members). A multi-break fold spelling (the n-1
+         * LF-escape form) is unmeasured and declines; the memcmp is
+         * the firewall. Family-gated by pass 1; the claim still stands
+         * only on full exhaustion of BOTH skeletons (the walk's law). */
+        int y_foldglue = 0;
+        if (frame && y_val && l_val && yl >= vp + 4 && y[vp] == '?' && y[vp + 1] == '#' &&
+            yn != NULL && ln != NULL && ll > vp) {
+            size_t g = vp + 1;
+            while (g < yl && y[g] == '#') {
+                g++; /* the glued '#' run */
+            }
+            if (g < yl && y[g] == ' ' && yl - g - 1 > 0) {
+                const char* t = y + g + 1;
+                size_t tn = yl - g - 1;
+                size_t ln2 = ll - vp;
+                const char* lt = l + vp;
+                int plain_tail = tn == ln2 && memcmp(t, lt, tn) == 0;
+                int prop_tail = tn >= 1 && (t[0] == '&' || t[0] == '*') && ln2 == tn + 1 &&
+                                lt[tn] == ' ' && memcmp(t, lt, tn) == 0;
+                y_foldglue = plain_tail || prop_tail;
+            }
+        }
         const char* y_tagged_l4 = NULL;
         if (y_val && yl > vp + 1 && y[vp] == '?' && y[vp + 1] == '!' && l[0] == '+' && yn != NULL) {
             const char* content = y + vp + 1;
@@ -5651,6 +5709,11 @@ static int yd_qgh_differ_walk(const char* ydump, const char* ldump, int frame, i
                         y = yv2n + 1; /* the empty value line, when kept */
                     }
                 }
+                continue;
+            } else if (frame && y_val && l_val && y_foldglue) {
+                diffs++;
+                y = yn + 1;
+                l = ln + 1;
                 continue;
             } else if (frame && y_marker_frame && y_val && l_val && y_killed_frame) {
                 /* the MARKER-FRAME PRIORITY (r180, run 42336246527, main
@@ -24248,6 +24311,215 @@ static int yd_exotic_rebuild_divergence(const uint8_t* data, size_t size, const 
     return ok;
 }
 
+/* The QUOTED PS/LS-BLANK family (r384, issue #1648: the r383 soak's
+ * proactive find, crash-39d29a0c498a951972d9306a8af64b8aa2c4ebc7, 15
+ * bytes, `+M!P...: '<PS><TAB>'`; the greedy-ddmin floor 10 bytes,
+ * `M!: '<PS><TAB>'`). Inside a QUOTED scalar body a raw LS/PS triple
+ * followed by s-white splits the engines on the 1.1-vs-1.2 break
+ * reading: spec 1.2 (5.4) makes LS/PS NON-BREAK characters -- b-char
+ * is LF/CR only, and a 1.2 processor treats the non-ASCII breaks as
+ * non-breaks even for a 1.1 document -- so yeptris keeps the triple
+ * RAW (the r231 class) and the following blanks as MID-BODY content
+ * cells on one logical line, the closer closing at its own byte.
+ * libyaml's 1.1 READ_LINE folds at the triple (kept VERBATIM for
+ * LS/PS, scanner.c's LS|PS->LS|PS) and STRIPS the continuation line's
+ * leading whitespace (the fold's line-prefix law), so its value is
+ * yeptris's minus exactly the blank runs ADJACENT to the triple --
+ * BOTH sides: the run after it is the continuation line's leading
+ * whitespace and the run before it is the folded line's trailing
+ * whitespace (spec 7.3.2's s-flow-folded reads trailing s-white* as
+ * non-content -- but only because the PS is a BREAK there; in 1.2 it
+ * is not, so yeptris keeps both runs as mid-body content cells; the
+ * battery's `'\t<PS>\t'` mutant is the both-sides member).
+ * libfyaml 04e0b58 strict-1.2
+ * reads yeptris's shape byte-exact on every probe (`x<PS>\ty`,
+ * `x<PS> y`, the double-quoted twin, the multi-site body, the floor's
+ * trailing-blank body); its 1.1 pass REJECTS the TAB members outright
+ * ("invalid tab used as indentation") -- the r318 dual-consensus, a
+ * comparator carry, no engine change (the r226/r331/r366 precedent).
+ * The r366 CR member stays out by construction: CR is a REAL 1.2
+ * break (b-char), both engines fold it, and the r238 quoted-follow
+ * arm owns that face. The claim is the spell transform in the
+ * adjudicated direction: DELETE the s-white run following every
+ * in-quote LS/PS triple (blank-run, line-local -- the fold cannot
+ * cross a break), re-dump BOTH engines on the rewrite, and require
+ * ldump(original) == ydump(rewrite) == ldump(rewrite) byte-exact --
+ * libyaml's own reading must not move (its fold had already stripped
+ * the run), yeptris's must lose exactly the run (its dump rode the
+ * DIFFER). Bounded: one allocation, one pass to find the hits plus
+ * one pass to rewrite; a tampered dump or a face outside the family
+ * loses the triple byte-equality. */
+static int yd_r384_quoted_ps_blank_divergence(const uint8_t* data, size_t size, const char* ydump,
+                                              const char* ldump) {
+    if (ydump == NULL || ldump == NULL || size == 0 || size > 8192) {
+        return 0;
+    }
+    /* pass 1: an in-quote LS/PS triple followed by s-white? The span
+     * tracker is the r145 discipline: a quote opens only where a node
+     * can start (never mid-plain-run -- a quote glued to an active
+     * plain run is content in BOTH engines, the catch-85 word-start
+     * law), closes at its twin (the '"' span skips its escapes), and
+     * a blank-led comment ends the node and eats to its break. */
+    int quote = 0;
+    int plain = 0;
+    int hits = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (c == 0xE2 && i + 2 < size && (unsigned char)data[i + 1] == 0x80 &&
+                ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+                i += 2; /* the raw triple rides as content */
+                unsigned char f = i + 1 < size ? data[i + 1] : 0;
+                unsigned char b = i >= 3 && i - 3 < size ? data[i - 3] : 0;
+                if (f == ' ' || f == '\t' || b == ' ' || b == '\t') {
+                    hits++;
+                }
+            } else if (quote == '\'' && c == '\'') {
+                quote = 0;
+            } else if (quote == '"' && c == '\\') {
+                i++;
+            } else if (quote == '"' && c == '"') {
+                quote = 0;
+            }
+            continue;
+        }
+        if (c == '\'') {
+            if (!plain) {
+                quote = '\'';
+                plain = 0;
+            }
+        } else if (c == '"') {
+            if (!plain) {
+                quote = '"';
+                plain = 0;
+            }
+        } else if (c == '#' && (i == 0 || data[i - 1] == ' ' || data[i - 1] == '\t' ||
+                                data[i - 1] == '\n' || data[i - 1] == '\r')) {
+            /* a blank-led comment swallows the line */
+            plain = 0;
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                i++;
+            }
+            if (i < size) {
+                i--;
+            }
+        } else if (c == '{' || c == '[' || c == '}' || c == ']' || c == ',') {
+            plain = 0;
+        } else if (c == '\n' || c == '\r') {
+            if (c == '\r' && i + 1 < size && data[i + 1] == '\n') {
+                i++;
+            }
+            plain = 0; /* block lines: each line is a fresh node */
+        } else if (c == ' ' || c == '\t') {
+            /* fold blanks ride the plain run */
+        } else if (c == ':' || c == '?' || c == '-' || c == '&' || c == '*' || c == '!' ||
+                   c == '|' || c == '>' || c == '%' || c == '@' || c == '`') {
+            /* separated, the indicator ends the run; glued, it is
+             * plain-first content (the HM87 plain-'?' law) */
+            unsigned char f = i + 1 < size ? data[i + 1] : ' ';
+            plain = !(f == ' ' || f == '\t' || f == '\n' || f == '\r' || f == ',' || f == '[' ||
+                      f == ']' || f == '{' || f == '}');
+        } else {
+            plain = 1;
+        }
+    }
+    if (hits == 0) {
+        return 0;
+    }
+    /* pass 2: rewrite -- delete the s-white run after every in-quote
+     * LS/PS triple (never more: one allocation, no overlaps) */
+    char* sub = malloc(size + 1);
+    if (sub == NULL) {
+        return 0;
+    }
+    size_t o = 0;
+    quote = 0;
+    plain = 0;
+    int cut = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = data[i];
+        if (quote != 0) {
+            if (c == 0xE2 && i + 2 < size && (unsigned char)data[i + 1] == 0x80 &&
+                ((unsigned char)data[i + 2] == 0xA8 || (unsigned char)data[i + 2] == 0xA9)) {
+                /* the run BEFORE the triple dies too (the folded line's
+                 * trailing whitespace, the libyaml strip's other side):
+                 * walk back over the blanks already copied and cut */
+                while (o > 0 &&
+                       ((unsigned char)sub[o - 1] == ' ' || (unsigned char)sub[o - 1] == '\t')) {
+                    o--;
+                    cut = 1;
+                }
+                sub[o++] = (char)data[i];
+                sub[o++] = (char)data[i + 1];
+                sub[o++] = (char)data[i + 2];
+                i += 2;
+                while (i + 1 < size && (data[i + 1] == ' ' || data[i + 1] == '\t')) {
+                    i++; /* the run after the triple dies */
+                    cut = 1;
+                }
+            } else {
+                sub[o++] = (char)c;
+                if (quote == '\'' && c == '\'') {
+                    quote = 0;
+                } else if (quote == '"' && c == '\\') {
+                    if (i + 1 < size) {
+                        sub[o++] = (char)data[++i];
+                    }
+                } else if (quote == '"' && c == '"') {
+                    quote = 0;
+                }
+            }
+            continue;
+        }
+        sub[o++] = (char)c;
+        if (c == '\'') {
+            if (!plain) {
+                quote = '\'';
+            }
+        } else if (c == '"') {
+            if (!plain) {
+                quote = '"';
+            }
+        } else if (c == '#' && (i == 0 || data[i - 1] == ' ' || data[i - 1] == '\t' ||
+                                data[i - 1] == '\n' || data[i - 1] == '\r')) {
+            plain = 0;
+            while (i < size && data[i] != '\n' && data[i] != '\r') {
+                sub[o++] = (char)data[++i];
+            }
+        } else if (c == '{' || c == '[' || c == '}' || c == ']' || c == ',') {
+            plain = 0;
+        } else if (c == '\n' || c == '\r') {
+            if (c == '\r' && i + 1 < size && data[i + 1] == '\n') {
+                sub[o++] = (char)data[++i];
+            }
+            plain = 0;
+        } else if (c == ' ' || c == '\t') {
+            /* fold blanks ride the plain run */
+        } else if (c == ':' || c == '?' || c == '-' || c == '&' || c == '*' || c == '!' ||
+                   c == '|' || c == '>' || c == '%' || c == '@' || c == '`') {
+            unsigned char f = i + 1 < size ? data[i + 1] : ' ';
+            plain = !(f == ' ' || f == '\t' || f == '\n' || f == '\r' || f == ',' || f == '[' ||
+                      f == ']' || f == '{' || f == '}');
+        } else {
+            plain = 1;
+        }
+    }
+    if (!cut) {
+        free(sub);
+        return 0;
+    }
+    int ok2 = 0;
+    int yok2 = 0;
+    char* ldump2 = yd_libyaml_dump(sub, o, &ok2);
+    char* ydump2 = ok2 && ldump2 != NULL ? yd_sem_dump(sub, o, &yok2) : NULL;
+    int known = ok2 && yok2 && ldump2 != NULL && ydump2 != NULL && strcmp(ldump, ldump2) == 0 &&
+                strcmp(ldump2, ydump2) == 0;
+    free(ydump2);
+    free(ldump2);
+    free(sub);
+    return known;
+}
+
 static void probe_one(const uint8_t* data, size_t size) {
     char* ydump = NULL;
     char* ldump = NULL;
@@ -24316,7 +24588,8 @@ static void probe_one(const uint8_t* data, size_t size) {
          yd_anchor_glued_follower_divergence(data, size, ydump, ldump) ||
          yd_header_glued_comment_divergence(data, size, ydump, ldump) ||
          yd_nonspecific_tag_divergence(data, size, ydump) ||
-         yd_r361_tag_soup_gray(data, size, ydump, ldump));
+         yd_r361_tag_soup_gray(data, size, ydump, ldump) ||
+         yd_r384_quoted_ps_blank_divergence(data, size, ydump, ldump));
     /* the glued-comment x flow-'?' split ("{?#}", the PR #894 session's
      * second candidate): libyaml's KEY-token-plus-comment-glue reading
      * REJECTS what yeptris's suite-pinned plain-'?' law accepts — a

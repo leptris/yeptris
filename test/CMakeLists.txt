@@ -9975,6 +9975,96 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-bomfrag-capcut-r383-artifact.bin
     )
 
+    # the r384 drill (issues #1648 and #1649). TWO comparator-carry
+    # widenings, no engine change (the r226/r331/r366/r383 precedent).
+    #
+    # Issue #1648 (the r383 soak's proactive find, artifact
+    # crash-39d29a0c498a951972d9306a8af64b8aa2c4ebc7, 15 bytes,
+    # `+M!P...: '<PS><TAB>'`; the greedy-ddmin floor 10 bytes,
+    # `M!: '<PS><TAB>'`): inside a QUOTED scalar body a raw LS/PS
+    # triple followed by s-white splits the engines on the
+    # 1.1-vs-1.2 break reading. Spec 1.2 (5.4) makes LS/PS NON-BREAK
+    # characters -- b-char is LF/CR only, and a 1.2 processor treats
+    # the non-ASCII breaks as non-breaks even for a 1.1 document --
+    # so yeptris keeps the triple RAW (the r231 class) and the
+    # following blanks as MID-BODY content cells on one logical line,
+    # the closer closing at its own byte (`=VAL : <PS>\t`); libyaml's
+    # 1.1 READ_LINE folds at the triple (kept VERBATIM for LS/PS,
+    # scanner.c's LS|PS->LS|PS) and STRIPS the continuation line's
+    # leading whitespace (the fold's line-prefix law), so its value
+    # is yeptris's minus exactly the blank run (`=VAL : <PS>`).
+    # libfyaml 04e0b58 strict-1.2 reads yeptris's shape byte-exact on
+    # every probe (`x<PS>\ty`, `x<PS> y`, the double-quoted twin, the
+    # multi-site body, the floor's trailing-blank body); its 1.1 pass
+    # REJECTS the TAB members outright ("invalid tab used as
+    # indentation") -- the r318 dual-consensus, comparator carry
+    # only. THE CARRY: the r384 quoted-PS-blank arm -- a raw LS/PS
+    # triple followed by s-white inside an r145-tracked quoted span,
+    # claimed by the spell transform in the adjudicated direction
+    # (delete the s-white run after every in-quote triple, re-dump
+    # BOTH engines, require ldump(original) == ydump(rewrite) ==
+    # ldump(rewrite) byte-exact -- libyaml's own reading must not
+    # move, yeptris's must lose exactly the run). The r366 CR member
+    # stays out by construction: CR is a REAL 1.2 break (b-char),
+    # both engines fold it, and the r238 quoted-follow arm owns that
+    # face; the PS+CR/PS+LF col-0-continuation twins are
+    # YEPTRIS-REJECTED (the indent law) and never reach the arm.
+    #
+    # Issue #1649 (the nightly's run 45511622229, artifact
+    # crash-954b8ddd220b324cbd239b36719eb3ca30bdac2b, 1824 bytes; the
+    # whole-member ddmin floor 82 bytes,
+    # `{c,?#,\r0,?#\nm,y,...,g,l}`): the qflow-qhash-cr composition's
+    # glue members grown the FOLD-GLUE pairing -- at `,\r?#<LF>m,`
+    # yeptris reads ONE plain (`?#` + the 1.2 break fold joining the
+    # post-break `m`, the plain-'?' law keeping the member flat) while
+    # libyaml reads the glued-`#` comment-eat law's KEY token with the
+    # post-break content ALONE as the key (the '#'s eat with it --
+    # `?##\r\n&m` keys the post-break `&m` ANCHOR, its prop render
+    # trailing one space, the r315 row). The dumps pair one-to-one,
+    # but the r180 MARKER-FRAME PRIORITY branch PREEMPTED the r117
+    # SPLIT arm on glue-marked content, consumed only yeptris's two
+    # lines and KEPT libyaml's line -- whose bytes already RODE
+    # yeptris's line -- so the streams ran one member off and the tail
+    # members burned 2 shared-cap skips each (the floor's frame pass
+    # flooded 75 > 64 + 82/8 at the `&m` tail; frame 0 flooded 65 >
+    # 64 off-sync; the artifact flooded 293 > 64 + 228/8 at its ~30
+    # `?## &m` anchors; the ddmin proved the escape needs the whole
+    # composition -- every prefix, suffix and single-member cut
+    # classifies, the skip arithmetic binds only at the full length).
+    # THE CARRY: the r384 FOLD-GLUE tell -- a paired route (the r117
+    # form) gated BEFORE the marker-frame priority, consuming BOTH
+    # pairs as one diff, no skip, both pointers advance. Two
+    # byte-tight tails: the PLAIN tail (yeptris's content is EXACTLY
+    # '?' + '#'+ + one fold space + libyaml's content -- the floor's
+    # `?# m` / `?# /` members) and the PROP tail (libyaml's content is
+    # the anchor/alias prop render '&'/'*'+name+' ', the r315 row, and
+    # yeptris's is the glued run + the fold space + the same prop name
+    # bare -- the artifact's `?## &m` members). A multi-break fold
+    # spelling (the n-1 LF-escape form) is unmeasured and declines;
+    # the memcmp is the firewall. libfyaml 04e0b58 strict-1.2 reads
+    # the artifact's head byte-exact libyaml's way (the empty-key
+    # separate-value reading, the r106 family) and folds the PS
+    # identically -- the glue members are the documented #949 family,
+    # comparator carry only (the r244/r382 precedent; the family stays
+    # mutation-dense -- this composition re-derived from general
+    # corpus material in the nightly, the r383 structural finding).
+    # The PS mid-body faces ride the r150 lsps branches unchanged (the
+    # artifact's `/\n\n\n51` vs `/\n\n<PS>51` pairs claim through
+    # them); the head's `:cic +SEQ##|` empty-key split rides the r116/
+    # r117 skip routes.
+    add_test(
+        NAME fuzz-diff-r384-quoted-ps-blank
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-ps-blank-r384.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/quoted-ps-blank-r384-artifact.bin
+    )
+    add_test(
+        NAME fuzz-diff-r384-qflow-gluefold-ps
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-gluefold-ps-r384.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/qflow-gluefold-ps-r384-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
