@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### the waiver era (r386, all zero-`src/`)
+
+- **the glue-fold composition family takes its ledgered-waiver gate** — the `?#`-class treadmill (four nightly re-derivations: r377's 73KB giant's `?\r#\n5 ?#` member, the 4-tail sibling, the 1,824B fold-glue r384 carry, the 24,870B `+SEQ`-splice member; plus the r385 soak's 20,486B `?##|` evolved unit, adjudicated here as the waiver corpus's evolved-soak pin) graduates from per-spelling arms to `yd_family_waiver` (law `w`) — the classifier-level *decline* PR #1647 recorded for the owner, now with four data points. The gate: the measured member grammar (every byte accounted, anything unmeasured declines), the byte-exact yeptris-side derivation (engine drift on a class-shaped input stays red), the head-split fingerprint (yeptris's flat `?#` value lines absent from libyaml's stream — measured 558/685 vs 0), and multiset-exact content accounting through exactly the documented transforms (the verbatim ride, the `?`-lead drop, the `?#`-head line-break eat with the prop-render twin, the `>`-lead drop). The libfyaml 04e0b58 A/B probed per member class: the HEAD faces read yeptris's way byte-exact in strict-1.2 AND 1.1; the fold faces are the standing law-b split; the `>`-led members ERROR fy outright — no member class exists where libfyaml sides with libyaml against yeptris, the waiver's firewall by construction. Firewall self-test: 2 seeds waived, 108 waiver-corpus dump-tampers declined, 7 negative controls (other-family DIFFERs + unmeasured-shape splices) 0 waived — the first battery caught two mis-crafted in-class controls and moved them to the positive corpus. Verification: 129 seeds classified / 6,921 dump-tampers declined / 831 mutants; ctest 1213/1213 across Debug, Release, Debug+ASan; 50-mutant paired battery seed 386 (both new artifacts + the four prior family pins) 0 regressions; seven corpus walks green; leaks 0. Closes #1656. Zero `src/` change — the engine stays bit-identical.
+
 ## [0.6.80] - 2026-11-25
 
 ### the comparator era (r378-r384, all zero-`src/`)
