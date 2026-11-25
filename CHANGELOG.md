@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### the comparator era (r387, all zero-`src/`)
+
+- **the anchor-ride sub-family's paste-backslash clamp-cut escape carried** — the post-r386 nightly's 10,955-byte `&2?*:` root-anchor quoted-body artifact (the r330-family head grown the `[[{"" ` chain plus the mutation walk's CopyPart paste junk ~1.5KB past the clamp cut): the chain rode the printable units; the ESCAPE was the pastes' literal backslashes past the clamp cut, where `yd_r238_clamp_tail_safe` declined the byte (measured at s=5544, 0x5c, on the artifact) while the r366 law already rides it pre-cut. THE WIDENING: the clamp-tail unit row admits the literal backslash as a forced-equal content unit — one dump `\\` pair per body byte on both engines through the shared `yd_escape_append` table, state-clearing, position-independent (1.2 8.1.2: no escapes in single-quoted; the suite pins the literal face 4V8U plain, 6H3V single-quoted) — the r383 multibyte / r376 content-tab extension principle. Floor: greedy ddmin under the dual+shape bar to its 4,113-byte plateau; the giant-class pin rides the r383 precedent; every deletion class probes claimed post-patch; LS/PS past the cut stays the r231 engine-divergent decline (probed red on both builds); the 0x7f/control/malformed-multibyte/trailing-blank shapes ride the other arms' claims identically pre- and post-patch. libfyaml 04e0b58 strict-1.2 reads yeptris's stream byte-exact on the whole artifact (one root anchored scalar, the anchor `2?*:` riding whole, the PS kept raw); its --yaml-1.1 pass keeps the scalar structure with libyaml's value spelling — the r318 dual-consensus, engine divergence refuted. Comparator carry only, no engine change (the r226/r375/r368/r376/r383 precedent). Closes #1660.
+
 ## [0.6.81] - 2026-11-25
 
 ### the waiver era (r386, all zero-`src/`)
