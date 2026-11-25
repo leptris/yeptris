@@ -481,6 +481,62 @@
  *        unmeasured spellings correctly declined; the extension cost
  *        per round: r386 = the waiver, r388 = 1 admission rule,
  *        r389 = 1 render law + 1 allowance twin, measured faces only).
+ *        the r390 EXTENSION (the post-r389 nightly's run 45643869326,
+ *        issue #1671 — the family's 7th re-derivation and the THIRD
+ *        post-waiver one): the waiver HELD its contract a THIRD time —
+ *        the 16-byte artifact `{?*2:\n,&m:~y\r,s}` decomposed to TWO
+ *        faces and `fw_member` declined exactly where the debug walk
+ *        said (member 2, input offset 7, no ledgered-waiver log). THE
+ *        UNDERIVABLE FACE: the bare-anchor member's name rides the
+ *        GLUED-CHARSET cut (`&m:~y` ONE name — the engine's prop walk
+ *        keeps `:` `~` `(` inside the name per the r318 suite law,
+ *        2SXE/W5VH; the waiver grammar's name cut was fc_alpha-only
+ *        and its bare-anchor face measured only alpha names). MEASURED
+ *        this round at the bare-anchor MEMBER slot (`&m:~y,` /
+ *        `&m:(,` / `&m:x,` / `&a:b1,` — yeptris renders `=VAL :
+ *        &<name> ` + the parser's inserted empty while libyaml splits
+ *        at the first glued colon into the anchored-empty key `&<n> `
+ *        + the plain value); the break-boundary ride re-measured
+ *        (`{&m:~y\r,}` / `{&m:~y\r  ,}` identical; the r315 ride
+ *        extends to the glued-charset name); the SEQ-root twin
+ *        measured (`[&m:~y\r,s]` renders the single line unwrapped).
+ *        The SECOND face rode the same basis: the glued-`?` member
+ *        `?*2:` whose colon is a `:`+BREAK VALUE boundary derives on
+ *        the yeptris side, and its libyaml render (`=ALI *2`, the
+ *        IS_ALPHA alias cut at the glued-`?` slot — the law-d/r199/
+ *        r339 face at a fresh boundary) now maps in the content-set
+ *        via the alias-cut source rule (the `=ALI *<name>` line maps
+ *        INTO the flat `?*<name>` plain, fully fc_alpha names only,
+ *        bucketed separately from VAL probes — the event kinds
+ *        differ). The content-set also gained the r318 SPLIT rule
+ *        (a prop render `&<n>:<s> ` sources the `&<n> ` key render +
+ *        the `<s>` value plain — libyaml's IS_ALPHA anchor cut lands
+ *        on the FIRST glued colon), and the MAP-root glued-`?` colon
+ *        render law (the flat pair inside the root map — the wrapper
+ *        fires only on the SEQ root, probed both). The head-split
+ *        fingerprint widened from `?#` to ANY flat `?`-led yeptris
+ *        line libyaml lacks (the flow-`?` KEY-token law consumes the
+ *        `?` at every member-start spelling). FIREWALL boundaries
+ *        kept OUT (all probed this round): the colon-END name
+ *        (`&m:` + blank/break — `{&m:\r,s}` rides `m:` on yeptris;
+ *        the render depends on the FOLLOWER via the engine's
+ *        un-consume law — a different composition, declines), the
+ *        props-led second anchor (`{&m:~y\r\r&s:~t,}`
+ *        YEPTRIS-ONLY-ERRORS on the duplicate-anchor law — declines),
+ *        and the anchor-only compositions without a `?`-led head (the
+ *        fingerprint keeps them out — they ride the r318 ARM, probed
+ *        `{&m:~y,}` etc. known pre-patch). THE A/B: libfyaml 04e0b58
+ *        reads the artifact and every probe face byte-consistently
+ *        yeptris's way in BOTH strict-1.2 and --yaml-1.1 passes (the
+ *        `?*2` flat plain key, the `&m:~y ` ONE-name prop ride, the
+ *        `&a:b1 ` twin) — no face exists where fy sides with libyaml
+ *        against yeptris; the r318 dual-consensus bar, met; engine
+ *        divergence REFUTED. Growth ledger: re-derivations 7; the
+ *        extension cost trend holds (r386 = the waiver; r388 = 1
+ *        admission rule; r389 = 1 render law + 1 allowance twin;
+ *        r390 = the member-face charset widening + 2 content-set
+ *        source rules + the fingerprint widening — all measured
+ *        faces, one composition family).
  *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
