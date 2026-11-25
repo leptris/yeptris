@@ -490,7 +490,9 @@
  *        UNDERIVABLE FACE: the bare-anchor member's name rides the
  *        GLUED-CHARSET cut (`&m:~y` ONE name — the engine's prop walk
  *        keeps `:` `~` `(` inside the name per the r318 suite law,
- *        2SXE/W5VH; the waiver grammar's name cut was fc_alpha-only
+ *        2SXE/W5VH + Y2GN "Anchor with colon in the middle" — the
+ *        suite scan this round found no FLOW-context row, the block
+ *        trio governs; the waiver grammar's name cut was fc_alpha-only
  *        and its bare-anchor face measured only alpha names). MEASURED
  *        this round at the bare-anchor MEMBER slot (`&m:~y,` /
  *        `&m:(,` / `&m:x,` / `&a:b1,` — yeptris renders `=VAL :

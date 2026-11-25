@@ -4489,7 +4489,9 @@ static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer,
          * HELD its contract, the fresh member correctly declined): the
          * name rides the GLUED-CHARSET cut — the engine's prop walk
          * (yep_scan_prop_char) keeps `:` `~` `(` inside ONE name (the
-         * r318 suite law, 2SXE/W5VH; libyaml is behind the suite, the
+         * r318 suite law, 2SXE/W5VH + Y2GN "Anchor with colon in the
+         * middle" — the suite scan found no flow-context row, the
+         * block trio governs; libyaml is behind the suite, the
          * r311 law), probed this round at the bare-anchor MEMBER slot
          * (`&m:~y,` / `&m:(,` / `&m:x,` / `&a:b1,` all render
          * `=VAL : &<name> ` + the parser's inserted empty on yeptris
