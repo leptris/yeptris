@@ -4356,6 +4356,50 @@ static int fw_render_key_slot(const uint8_t* p, size_t n, size_t ks, unsigned ch
     return fw_render_content(p, n, ks, closer, o, stop_at, at_colon);
 }
 
+/* The r394 PROP-CHARSET ROW (issue #1684, the family's eighth live
+ * re-derivation, the FIRST shaped by the round's own staged seed): the
+ * admitted name alphabet IS the engine's own props walk --
+ * yep_scan_prop_char (scan.c:181): NOT blank (space/tab), NOT break
+ * (LF/CR), NOT a flow indicator (`,[]{}`), not `,` (in the set), not
+ * `#`. Measured face-by-face this round, never guessed (the r390 house
+ * law), at the row's exotic members, lead AND mid-name:
+ *   - `=` (the r394 artifact byte), `+`, `-`, `%`, `@`, `&`, `!`, `*`
+ *     lead: yeptris renders ONE props name (`&m:=x `, `&m:%x `, ...);
+ *     libyaml's IS_ALPHA anchor cut splits at the FIRST glued colon and
+ *     the tail renders PLAIN for `=`/`+`/`-`/mid-name everything
+ *     (`&m ` + `x=y`/`x!y`/`x@y`/`x*y`/`x%y`/`x<y`/`x|y`/`x?y`/`x;y`/
+ *     `x/y` probed -- libyaml's mid-plain walk rides every indicator
+ *     once the plain started), so the split products
+ *     (`&m ` + the tail) match byte-exact and the claim holds.
+ *   - `!`-lead / `*`-lead tails render TAG/ALIAS on libyaml
+ *     (`<!=x> ` / `=ALI *x`): the products lose their match and the
+ *     waiver declines -- the firewall keeps those faces red (they are
+ *     claimed by the anchor-name-charset arm today, probed lf=0).
+ *   - `%`-lead / `@`-lead / `&`-lead: libyaml ERRORS (directive /
+ *     reserved / second-anchor) -- a SPLIT verdict, never the waiver's
+ *     consult (the libFuzzer leg only aborts accept/accept DIFFERs).
+ *   - the SSOT-excluded bytes end the walk exactly as the engine does:
+ *     the blank/break run is the r315/r393 separator law, `,`/closer
+ *     the terminator; a glued `#` after the name makes yeptris ERROR
+ *     (measured LIBYAML-ONLY-ACCEPT -- no DIFFER, no consult).
+ *   - DECLINED corners (their own arms, per the drill contract):
+ *     quotes `'`/`"` (measured EQUAL -- the quoted-follow r238
+ *     territory), backslash (the escape arm), backtick (its control).
+ * The claim firewall is untouched: the derivation must reproduce the
+ * yeptris dump byte-exact (ymatch) and the split products must match
+ * the actual libyaml pair -- any engine drift or unmeasured tail
+ * render stays red. */
+static int fw_prop_name_byte(uint8_t c) {
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == '[' ||
+        c == ']' || c == '{' || c == '}' || c == '#') {
+        return 0; /* the SSOT walk's own ends */
+    }
+    if (c == '\'' || c == '"' || c == '\\' || c == '`') {
+        return 0; /* the declined corners: their own arms */
+    }
+    return 1;
+}
+
 /* One member: from i (at the first byte after the separator's blank
  * run), to the terminator. Emits the yeptris event lines for the
  * member. Returns 0 on any unmeasured shape. */
@@ -4497,11 +4541,12 @@ static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer,
          * `=VAL : &<name> ` + the parser's inserted empty on yeptris
          * while libyaml splits at the first colon into the
          * anchored-empty key `&<n> ` + the plain value). Measured
-         * faces, never guessed: the admitted name alphabet is exactly
-         * the probed charset (fc_alpha ∪ {`:`, `~`, `(`} — the r393
-         * probe matrix adds `.`: the engine's prop walk rides it, the
-         * auto-dict's `tag:yaml.org` spelling carries it, probed
-         * `&m:tag:yaml.org\r` renders one props name `m:tag:yaml.org`); the name
+         * faces, never guessed: through r393 the admitted name alphabet
+         * was the probed charset (fc_alpha ∪ {`:`, `~`, `(`} — the r393
+         * probe matrix added `.`); the r394 ROW WALK below replaces it
+         * with the engine's own props walk (fw_prop_name_byte — the
+         * row measured face-by-face at the exotic members, issue
+         * #1684); the name
          * must NOT end at a riding `:` (the engine's un-consume law —
          * a name-final colon's render depends on the FOLLOWER
          * (collection/block-scalar/props run un-consume it, the
@@ -4517,9 +4562,15 @@ static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer,
          * `=VAL : &<name> ` + the inserted empty (the MAP root's pair)
          * or the single line (the SEQ root — probed `[&m:~y\r,s]`
          * renders `=VAL : &m:~y ` unwrapped). */
+        /* THE r394 ROW WALK (fw_prop_name_byte above): the alphabet was
+         * fc_alpha ∪ {`:`, `~`, `(`, `.`} through r393 -- probed, but
+         * spelled per nightly: the r393 seed's own one-mutation neighbor
+         * rode `=` outside it (the post-r393 nightly's run
+         * 45702479731, issue #1684) and stayed red BY DESIGN. The
+         * alphabet IS the engine's walk now, so any byte the props ride
+         * derives; the products check still splits the claim per face. */
         size_t ae = i + 1;
-        while (ae < n &&
-               (fc_alpha(p[ae]) || p[ae] == ':' || p[ae] == '~' || p[ae] == '(' || p[ae] == '.')) {
+        while (ae < n && fw_prop_name_byte(p[ae])) {
             ae++;
         }
         if (ae == i + 1 || p[ae - 1] == ':') {
