@@ -4498,7 +4498,10 @@ static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer,
          * while libyaml splits at the first colon into the
          * anchored-empty key `&<n> ` + the plain value). Measured
          * faces, never guessed: the admitted name alphabet is exactly
-         * the probed charset (fc_alpha ∪ {`:`, `~`, `(`}); the name
+         * the probed charset (fc_alpha ∪ {`:`, `~`, `(`} — the r393
+         * probe matrix adds `.`: the engine's prop walk rides it, the
+         * auto-dict's `tag:yaml.org` spelling carries it, probed
+         * `&m:tag:yaml.org\r` renders one props name `m:tag:yaml.org`); the name
          * must NOT end at a riding `:` (the engine's un-consume law —
          * a name-final colon's render depends on the FOLLOWER
          * (collection/block-scalar/props run un-consume it, the
@@ -4508,14 +4511,15 @@ static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer,
          * (the r318 `{&m:(}` face) or a blank/break run rides to it
          * (the r315 ride, re-measured this round on the glued-charset
          * name: `{&m:~y\r,}` and `{&m:~y\r  ,}` render identically) —
-         * any other byte (`#`, quotes, a props-led second anchor —
-         * probed `{&m:~y\r\r&s:~t,}` YEPTRIS-ONLY-ERRORS on the
-         * duplicate-anchor law) declines. The render: `=VAL : &<name> `
-         * + the inserted empty (the MAP root's pair) or the single
-         * line (the SEQ root — probed `[&m:~y\r,s]` renders
-         * `=VAL : &m:~y ` unwrapped). */
+         * a `#`/quote byte after the run still declines, and the r393
+         * RIDER extension (below) claims the content-follows face the
+         * post-r392 nightly's auto-dict splice opened. The render:
+         * `=VAL : &<name> ` + the inserted empty (the MAP root's pair)
+         * or the single line (the SEQ root — probed `[&m:~y\r,s]`
+         * renders `=VAL : &m:~y ` unwrapped). */
         size_t ae = i + 1;
-        while (ae < n && (fc_alpha(p[ae]) || p[ae] == ':' || p[ae] == '~' || p[ae] == '(')) {
+        while (ae < n &&
+               (fc_alpha(p[ae]) || p[ae] == ':' || p[ae] == '~' || p[ae] == '(' || p[ae] == '.')) {
             ae++;
         }
         if (ae == i + 1 || p[ae - 1] == ':') {
@@ -4526,7 +4530,66 @@ static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer,
         if (te >= n || (p[te] != ',' && p[te] != closer)) {
             te = fc_skip_blank_break(p, n, ae);
             if (te >= n || (p[te] != ',' && p[te] != closer)) {
-                return 0;
+                /* THE r393 RIDER EXTENSION (the post-r392 nightly's run
+                 * 45691082217, issue #1682 — the family's 8th
+                 * re-derivation, the 4th shaped by the fuzzer's own
+                 * corpus+dict evolution: the r390 artifact as base unit,
+                 * CrossOver-PersAutoDict splicing the harvested
+                 * `tag:yaml.org,2002:intint` entry): content follows the
+                 * post-name run. Measured laws (the r393 probe matrix,
+                 * all byte-exact): the run is the PROPS SEPARATOR — it
+                 * renders as ONE space whatever its length or mix (the
+                 * 2-blank r3, the 3-blank r13, the 2-CR x1); the content
+                 * after it rides the fold render (interior blanks
+                 * verbatim y1, the break-count folds x2/y3, glued colons
+                 * r10, a blank-separated or glued second `&anchor` as
+                 * CONTENT r6/x4/x9 — the prop walk never re-fires past
+                 * the run); the rider's own run+colon+run VALUE boundary
+                 * fires (r14/x6, the run eaten at the boundary). The
+                 * render is the props form continued: `=VAL : &<name>
+                 * <keyside>` + `\n=VAL : <value>` — the r390
+                 * terminator-only render is the empty-keyside case. The
+                 * SEQ root renders the unwrapped single line (r5); a
+                 * rider boundary in a SEQ declines (unmeasured). */
+                fout rvout = {NULL, 0, 0, 0};
+                int rcolon = 0;
+                size_t rstop = 0;
+                fo_str(o, "=VAL : &");
+                fo_bytes(o, p + i + 1, ae - i - 1);
+                fo_str(o, " ");
+                if (!fw_render_content(p, n, te, closer, o, &rstop, &rcolon)) {
+                    return 0;
+                }
+                if (rstop >= n || (p[rstop] != ',' && p[rstop] != closer)) {
+                    return 0;
+                }
+                *term_at = rstop;
+                if (rcolon && !is_map) {
+                    return 0; /* the SEQ rider boundary: unmeasured */
+                }
+                if (rcolon) {
+                    size_t vs = fc_skip_blank_break(p, n, rstop + 1);
+                    int vcolon = 0;
+                    if (!fw_render_key_slot(p, n, vs, closer, &rvout, &rstop, &vcolon, 1) ||
+                        vcolon) {
+                        free(rvout.buf);
+                        return 0;
+                    }
+                    if (rstop >= n || (p[rstop] != ',' && p[rstop] != closer)) {
+                        free(rvout.buf);
+                        return 0;
+                    }
+                    *term_at = rstop;
+                }
+                if (is_map) {
+                    fo_str(o, "\n=VAL : ");
+                    fo_bytes(o, rvout.buf ? rvout.buf : "", rvout.len);
+                    fo_str(o, "\n");
+                } else {
+                    fo_str(o, "\n");
+                }
+                free(rvout.buf);
+                return 1;
             }
         }
         *term_at = te;
@@ -4740,29 +4803,48 @@ static int fw_canon_line(const char* s, size_t n, char* out, size_t out_cap) {
  * member walk too — or a non-prop render). */
 static int fw_split_products(const char* yf, char* pfx, size_t cap1, char* sfx, size_t cap2) {
     size_t yl = strlen(yf);
-    if (yl < 5 || yf[0] != '&' || yf[yl - 1] != ' ') {
+    if (yl < 5 || yf[0] != '&') {
         return 0;
     }
+    /* the props render's content: `&<name>[ ]<tail>` — the r390
+     * props+empty form ends AT the separator space (empty tail); the
+     * r393 RIDER form rides a non-empty value tail (the separator
+     * space is the post-name run's one-space render, r3/x1/r13). */
+    size_t tail = (yf[yl - 1] == ' ') ? yl - 1 : yl;
+    /* the props separator: the FIRST space (the name is `&`..sp) */
+    size_t sp = yl;
+    for (size_t k = 1; k < yl; k++) {
+        if (yf[k] == ' ') {
+            sp = k;
+            break;
+        }
+    }
+    /* libyaml's cut lands INSIDE the name (the first glued colon — the
+     * IS_ALPHA anchor cut, the r318 law); a colon in the value tail
+     * (`tag:yaml.org`) is NOT a cut site. No colon in the name = the
+     * no-colon rider class, byte-consensus on both engines (z1/z2:
+     * `{&m tag:yaml.org,s}` renders `=VAL : &m tag:yaml.org` on BOTH) —
+     * no split source needed. */
     size_t colon = 0;
     int found = 0;
-    for (size_t k = 1; k + 1 < yl; k++) {
+    for (size_t k = 1; k < sp; k++) {
         if (yf[k] == ':') {
             colon = k;
             found = 1;
             break;
         }
     }
-    if (!found || colon + 1 > yl - 2) {
+    if (!found || colon + 1 > tail - 1) {
         return 0; /* no colon, or the colon at the name's end */
     }
-    if (colon + 2 > cap1 || yl - 2 - colon + 1 > cap2) {
+    if (colon + 2 > cap1 || tail - colon - 1 + 1 > cap2) {
         return 0;
     }
     memcpy(pfx, yf, colon); /* '&' + the name prefix */
     pfx[colon] = ' ';
     pfx[colon + 1] = '\0';
-    memcpy(sfx, yf + colon + 1, yl - 2 - colon); /* the value suffix */
-    sfx[yl - 2 - colon] = '\0';
+    memcpy(sfx, yf + colon + 1, tail - colon - 1); /* the value suffix */
+    sfx[tail - colon - 1] = '\0';
     return 1;
 }
 
