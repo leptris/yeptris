@@ -4531,8 +4531,8 @@ static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer,
             te = fc_skip_blank_break(p, n, ae);
             if (te >= n || (p[te] != ',' && p[te] != closer)) {
                 /* THE r393 RIDER EXTENSION (the post-r392 nightly's run
-                 * 45691082217, issue #1682 — the family's 8th
-                 * re-derivation, the 4th shaped by the fuzzer's own
+                 * 45691082217, issue #1682 — the family's SEVENTH live
+                 * re-derivation, the THIRD shaped by the fuzzer's own
                  * corpus+dict evolution: the r390 artifact as base unit,
                  * CrossOver-PersAutoDict splicing the harvested
                  * `tag:yaml.org,2002:intint` entry): content follows the
