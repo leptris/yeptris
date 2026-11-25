@@ -16,30 +16,30 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.82 — live across all five runtimes** (C +
-ruby `0.6.82.0` + py `0.6.82.0` + rs/ts `0.6.82`, registry-checked
-2026-11-25). v0.6.82 carries the r387 comparator carry (all
-zero-`src/`): the anchor-ride sub-family's paste-backslash clamp-cut
-escape — the post-r386 nightly's 10,955-byte `&2?*:` root-anchor
-quoted-body artifact (the r330-family head grown the `[[{"" ` chain
-plus the mutation walk's CopyPart paste junk past the clamp cut);
-the chain rode the printable units, and the escape was the pastes'
-literal backslashes past the clamp cut, where the clamp-tail unit
-row declined the byte while the r366 law already rides it pre-cut —
-the widening admits the literal backslash as a forced-equal content
-unit (one dump `\\` pair per body byte on both engines through the
-shared `yd_escape_append` table, state-clearing, position-
-independent; 1.2 8.1.2: no escapes in single-quoted; the suite pins
-the literal face 4V8U plain, 6H3V single-quoted), floor ddmin'd to
-its 4,113-byte plateau, libfyaml 04e0b58 strict-1.2 reading the
-whole artifact byte-exact yeptris's way (the r318 dual-consensus,
-engine divergence refuted). The r387 gate's nightly round then found
-the glue-fold family re-deriving past the r386 waiver's measured
-grammar — the waiver correctly DECLINED it (the firewall holding)
-and the grammar extension rides the r388 drill, with the grammar-
-growth-vs-mutation-density measurement recorded for the owner call.
-Zero YAML engine divergence standing beyond #1411's deliberate fix,
-#1468 (0.6.75), #1584 (0.6.77) and #1615 (0.6.78). The previous cut:
+**Latest release: v0.6.83 — live across all five runtimes** (C +
+ruby `0.6.83.0` + py `0.6.83.0` + rs/ts `0.6.83`, registry-checked
+2026-11-26). v0.6.83 carries the r389 comparator carry (all
+zero-`src/`): the glue-fold waiver owns `=`-led paste members — the
+post-r388 nightly's 24,883-byte `{`-rooted artifact where the
+mutation walk's CopyPart pasted a comparator dump fragment into the
+input as a member and the derivation mismatches the engine's actual
+render by exactly ONE byte (`=VAL ` vs `=VAL`), the grammar
+declining rather than guessing, the firewall holding. Ownership
+adjudicated (the r238 arm's paste rows are clamp-cut anchor-body
+territory, a different position class) and the face extended BY
+MEASUREMENT: the blank-run-before-a-`:`-VALUE-boundary is EATEN,
+never ridden (four byte-EQUAL probe faces; the non-boundary colon
+rides verbatim), plus the prop-render admission+allowance twin at
+the glued-`?` slot. The tamper contract gains independently-computed
+invariance domains (`yd_family_tamper_in_domain`). **The
+grammar-growth ledger, now owner-call evidence**: at n=3 post-waiver
+rounds the per-grammar gate is KEEPING PACE — every post-waiver red
+was an unmeasured spelling correctly declined, and the extension
+cost per round keeps shrinking (r386 = the waiver; r388 = 1
+admission rule; r389 = 1 render law + 1 allowance twin); the waiver
+has never wrongly claimed. Zero YAML engine divergence standing
+beyond #1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and
+#1615 (0.6.78). The previous cut:
 v0.6.81 — the glue-fold composition family's **ledgered-waiver
 gate** (r386, all zero-`src/`): four consecutive nightly
 re-derivations with no seed names to exclude proved per-spelling
