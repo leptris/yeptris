@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### the comparator era (r378-r384, all zero-`src/`)
+
+- **seven more nightly escapes carried, pinned, or law-stated** — the `!!` tag-glue member rides the qgh walk's tagged-empty-key wrapper pair (the annotation byte-exacts the token's tag resolution: secondary, verbatim, bare) (r378, #1635); the glued-`?*L` alias-EVENT-in-key-slot face and the bare-`?=` member join the qflow gray arms (r379, #1637); the BOM-stripped value twin and the ate-run adjacency join the qflow walks and the tag-soup family leaves the comparator seed (r380, #1639 — the exclusion gap that let the r361 giant re-seed closed); the colon-ride anchor head joins the root-anchor law with the clamp-prefix correction (r381, #1641); the `root-anchor-colon-ride-*` exclusion entry lands and the flow-tab steal arm gains the colon-led VALUE boundary (r382, #1644); the dump-cap cut arm and the clamp-tail multibyte-content branch land, with the STRUCTURAL FINDING recorded: the `&2?*:` composition family is mutation-dense along its whole past-cut vocabulary — three reds re-derived from the corpus at large with no seed names to exclude; whether it graduates to a dedicated gate is recorded in PR #1647 for the owner (r383); the PS-TAB quoted member and the PS-splice drift faces complete the roll (r384). Every round: floor minimized under the dual+shape bar, libfyaml 04e0b58 adjudicated byte-exact or comparators split along the libyaml-compat bar, batteries 0 regressions, walks green, ctest full pass, leaks 0. Zero YAML engine divergence standing beyond #1411 (deliberate), #1468 (0.6.75), #1584 (0.6.77) and #1615 (0.6.78).
+
 ## [0.6.79] - 2026-11-24
 
 ### the comparator era (r374-r377, all zero-`src/`)
