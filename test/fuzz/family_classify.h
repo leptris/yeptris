@@ -346,6 +346,67 @@
  *      face (law j), the flow family stays out — the 16-byte floor
  *      carries the law.
  *
+ *  (w)  the r386 LEDGERED-WAIVER law (issues #1656 + the r385 soak; the
+ *        owner call recorded in PR #1647): the `?#`-class GLUE-FOLD
+ *        composition family graduates to a classifier-level decline.
+ *        Four red runs in four consecutive rounds (45317828972/r377,
+ *        45498839224/#1646, 45511622229/#1649, 45540139415/#1656 plus
+ *        the r385 drill soak's evolved unit) each escaped the previous
+ *        round's arm as a fresh mutation spelling of the SAME
+ *        composition: the flow-rooted member stream built from the
+ *        glued-`?#`{1,4} hash-run heads (pipes/`+`-splices/tag-soup
+ *        glued same-line), the split-`?` fold-glue key pairs (the
+ *        `\r/\n\r\r<PS> 50:`-class keys), the `1.0e57.tag:y|`-class
+ *        tag-soup plains, the `?##\r\n&m`-class folded prop tails, and
+ *        the `+SEQ` splice members. The per-spelling arms cannot gate
+ *        nameless re-derivations (the r1306 mutation-density law), so
+ *        the family declines as a LEDGERED WAIVER: yd_family_waiver()
+ *        admits an input ONLY when
+ *          - the input is flow-rooted (bare `[`/`{` after the blank
+ *            run; doc-marker/tag leads stay out — their classes ride
+ *            the l2/l3 laws and the anchor-ride lead stays on the
+ *            r238 arm),
+ *          - EVERY member is drawn from the MEASURED shape set below
+ *            (anything unmeasured declines — the waiver never guesses),
+ *          - the YEPTRIS dump derives BYTE-EXACT from the measured
+ *            member renders (the fold law fo_fold_run, the verbatim
+ *            content pieces, the split-`?` +MAP single-pair wrapper on
+ *            the SEQ root and the bare key/value pair on the MAP root,
+ *            the `!`-led key slot's tagged-empty `<!tag> ` render) —
+ *            so any engine drift on a class-shaped input stays red,
+ *          - and the divergence carries the documented HEAD-SPLIT
+ *            fingerprint: yeptris's stream holds flat `?#`-content
+ *            value lines the libyaml stream LACKS ENTIRELY (measured
+ *            558/685 vs 0 on the two r386 artifacts — the #949
+ *            KEY-token/comment-eat split), with the libyaml side
+ *            shape-valid (the same line vocabulary).
+ *        THE A/B TABLE (libfyaml 04e0b58, strict-1.2 + 1.1, probed
+ *        this round on every signature member class): the HEAD faces
+ *        read YEPTRIS's way byte-exact in BOTH fy passes (`?##|`,
+ *        `?##x`, `?#`+fold+tail, `?##\r\n&m` -> the folded plain
+ *        `?## &m`, the `1.0e57.tag:y|` tag-soup plains, `200#=`,
+ *        `?ml?`-class tab-folded heads); the FOLD faces (PS inside a
+ *        plain fold run) are the classifier's standing law (b) split —
+ *        fy keeps PS raw + the following blank (a third reading,
+ *        libyaml-family but not byte-exact libyaml, whose fold eats
+ *        the blank) while yeptris folds per the 1.2 law (the
+ *        r244-r266 owner-verified byte walks; suite-pinned); the
+ *        `>`-led members ERROR fy outright ("plain scalar cannot
+ *        start with '>'" — the reserved-indicator law) while yeptris
+ *        keeps them as plain content (the r258 law). No member class
+ *        exists where libfyaml sides WITH libyaml against yeptris —
+ *        the waiver's firewall: a composition whose divergence hides
+ *        such a face stays out (the fold-only divergences fail the
+ *        head-split fingerprint; any other face is an unmeasured
+ *        shape and declines). The waiver is a DECLINE, not a claim:
+ *        the comparator logs it as a documented split and moves on;
+ *        ctest never consults it (the artifact pins assert the engine
+ *        dumps directly through the plain fuzz_diff entries).
+ *        libfyaml 04e0b58 reads the 20,486B artifact's head prefix
+ *        (`11`, the flat `?##|` plains, the folded `?## &m` tails)
+ *        yeptris's way and errors at the `>` member — the
+ *        yeptris-favoring-or-erroring bar, met.
+ *
  * DERIVE, don't pattern-match: the classifier independently segments
  * the input into flow members (parsing the member structure itself:
  * glued-`?` detection, quoted spans, alias/anchor positions,
@@ -440,5 +501,13 @@
  * into the documented laws above. 0 = UNKNOWN: the classifier declines
  * (and the comparator keeps the input red). When in doubt, UNKNOWN. */
 int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, const char* ldump);
+
+/* 1 = LEDGERED-WAIVER: the input is a member of the glue-fold
+ * composition class (law w) — the comparator logs a documented split
+ * and does not red. 0 = decline (the input stays red). Consulted only
+ * AFTER yd_family_classify declines and only on a YD_DIFFER verdict.
+ * Never a substitute for the classifier: the waiver does not claim the
+ * divergence is explained, only that it is the ledgered one. */
+int yd_family_waiver(const uint8_t* data, size_t size, const char* ydump, const char* ldump);
 
 #endif /* YD_FAMILY_CLASSIFY_H */

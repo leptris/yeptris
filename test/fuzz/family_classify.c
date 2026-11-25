@@ -4128,3 +4128,962 @@ int yd_family_classify(const uint8_t* data, size_t size, const char* ydump, cons
     free(ld.buf);
     return classified;
 }
+
+/* ---- the r386 glue-fold composition waiver (law w) -------------------
+ *
+ * The measured member grammar (the four red runs' artifacts + the
+ * r361/r384 pins) and the byte-exact yeptris-side render. Everything
+ * unmeasured declines; the waiver is a decline, never a claim.
+ */
+
+/* the decline set: single quotes (the anchor-ride quoted-body class —
+ * the r238 arm owns it), the reserved backtick (the r382 lenient
+ * members ride their own arm), the escape byte (law k) */
+static int fw_decline_byte(unsigned char c) {
+    return c == '\'' || c == '`' || c == '\\';
+}
+
+/* a content byte inside a member (the measured alphabet: printable
+ * ASCII minus the flow-structural bytes; every letter/digit rides;
+ * the exotic bytes come only as the PS/LS break multibyte, which the
+ * break walk consumes) */
+static int fw_content_byte(unsigned char c) {
+    if (c < 0x20 || c == 0x7f) {
+        return 0;
+    }
+    if (fc_flow_ind(c)) {
+        return 0; /* ,[]{} are structure — a `[`/`{` inside a member is
+                   * nesting (unmeasured: declines); the matching
+                   * closer terminates the member */
+    }
+    return 1;
+}
+
+/* The fold-law content render (the yeptris-side render, byte-exact):
+ * content pieces with interior blanks verbatim, the blank edges of a
+ * break run eaten (the trailing-piece trim and the post-fold blank
+ * eat — the measured `/\n\r\r<PS> 51` -> `/\n\n\n51` and
+ * `1.0e17.tag\r ` -> `1.0e17.tag`), the break-BYTE count law
+ * (CRLF = one break; 1 -> space, n>1 -> n-1 `\n` escapes), bytes per
+ * fo_escape. Stops at `,`, the closer, or end; nesting (`[`/`{`)
+ * declines. Returns 0 on a `:` VALUE boundary it wants the caller to
+ * see (via at_colon) or on any unmeasured shape. */
+static int fw_render_content(const uint8_t* p, size_t n, size_t i, unsigned char closer, fout* o,
+                             size_t* stop_at, int* at_colon) {
+    size_t k = i;
+    int started = 0;
+    *at_colon = 0;
+    for (;;) {
+        /* the content run (interior blanks ride verbatim) */
+        size_t cs = k;
+        while (k < n && fw_content_byte(p[k]) && !fc_blank(p[k]) && fc_break_len(p, n, k) == 0 &&
+               p[k] != ':' && p[k] != closer) {
+            k++;
+        }
+        if (k > cs) {
+            fo_escape(o, p + cs, k - cs);
+            started = 1;
+        }
+        if (k >= n || p[k] == ',' || p[k] == closer) {
+            break; /* the member terminator: trailing run unrendered */
+        }
+        if (p[k] == ':') {
+            /* the boundary fires only when a blank/break (or the
+             * member end) follows — a glued `:` + content is interior
+             * content (the `1.0e57.tag:y|` law) */
+            if (k + 1 < n && (fc_blank(p[k + 1]) || fc_break_len(p, n, k + 1) > 0)) {
+                *at_colon = 1;
+                *stop_at = k;
+                return 1;
+            }
+            if (k + 1 >= n) {
+                return 0; /* the member-end colon: unmeasured */
+            }
+            /* glued to content: ride it */
+            fo_str(o, ":");
+            k++;
+            started = 1;
+            continue;
+        }
+        if (fc_flow_ind(p[k])) {
+            return 0; /* a non-matching flow indicator inside a member:
+                       * nesting — unmeasured */
+        }
+        if (fw_decline_byte(p[k])) {
+            return 0;
+        }
+        /* the blank/break run (blank edges of a break run eaten) */
+        size_t bs = k;
+        uint32_t brk = 0;
+        while (k < n && (fc_blank(p[k]) || fc_break_len(p, n, k) > 0)) {
+            int bl = fc_break_len(p, n, k);
+            if (bl > 0) {
+                if (bl == 1 && p[k] == '\r' && k + 1 < n && p[k + 1] == '\n') {
+                    k += 2;
+                } else {
+                    k += (size_t)bl;
+                }
+                brk++;
+                continue;
+            }
+            k++;
+        }
+        if (brk == 0) {
+            /* a blank-only run: verbatim when content follows (the
+             * `+\t \t tag:` interior), unrendered at the terminator
+             * (the loop breaks there next round) */
+            if (k < n && p[k] != ',' && p[k] != closer && started && fw_content_byte(p[k])) {
+                fo_escape(o, p + bs, k - bs); /* the interior blank run
+                                               * rides escaped (the
+                                               * measured `+\t \t tag:`
+                                               * render) */
+            }
+            continue;
+        }
+        /* a break run: the fold fires only when content follows (the
+         * trailing run at the member end is the terminator's trim) */
+        if (k >= n || p[k] == ',' || p[k] == closer || !fw_content_byte(p[k])) {
+            continue;
+        }
+        if (p[k] == ':') {
+            /* the fold run ends at a VALUE boundary — the key slot's
+             * post-break colon (the PS-key members). The boundary is
+             * the caller's (the value slot follows). */
+            *at_colon = 1;
+            *stop_at = k;
+            return 1;
+        }
+        if (fw_decline_byte(p[k]) || fc_flow_ind(p[k])) {
+            return 0;
+        }
+        fo_fold_run(o, brk);
+        started = 1;
+    }
+    *stop_at = k;
+    return 1;
+}
+
+/* The split-`?` key slot's render: content-led rides the fold render;
+ * an `!`-led slot is the TAGGED-EMPTY render (the measured
+ * `?\r!2002:binary\r ` -> `<!2002:binary> `: the tag rides, the value
+ * empty). Returns 0 on any other shape. */
+static int fw_render_key_slot(const uint8_t* p, size_t n, size_t ks, unsigned char closer, fout* o,
+                              size_t* stop_at, int* at_colon, int is_value) {
+    if (ks >= n) {
+        return 1; /* the empty slot (the `{? \t ,` head) */
+    }
+    if (is_value && p[ks] == '&') {
+        /* the ANCHORED-EMPTY value slot (the measured `<PS> 50:\r\r&m,`
+         * members -> `=VAL : &m `: the prop render, the name cut at the
+         * terminator) */
+        size_t ae = ks + 1;
+        while (ae < n && fc_alpha(p[ae])) {
+            ae++;
+        }
+        if (ae == ks + 1 || ae >= n || (p[ae] != ',' && p[ae] != closer)) {
+            return 0;
+        }
+        fo_str(o, "&");
+        fo_bytes(o, p + ks + 1, ae - ks - 1);
+        fo_str(o, " ");
+        *stop_at = ae;
+        *at_colon = 0;
+        return 1;
+    }
+    if (p[ks] == '!') {
+        /* the tag run: `!` + content up to the blank/break/terminator */
+        size_t te = ks + 1;
+        while (te < n && fw_content_byte(p[te]) && !fc_blank(p[te]) &&
+               fc_break_len(p, n, te) == 0 && p[te] != ',' && p[te] != closer) {
+            te++; /* interior ':' rides (the measured `!2002:binary`) */
+        }
+        if (te == ks + 1) {
+            return 0; /* a bare `!`: unmeasured */
+        }
+        fo_str(o, "<");
+        fo_escape(o, p + ks, te - ks);
+        fo_str(o, "> ");
+        /* the tag run ends at its trailing blank/break run — the run
+         * rides to the terminator (the measured `?!`-member shape:
+         * `!2002:binary\r ,`) */
+        *stop_at = fc_skip_blank_break(p, n, te);
+        *at_colon = 0;
+        return 1;
+    }
+    if (p[ks] == ':') {
+        /* the colon-led empty key (the slot's content was all eaten):
+         * the boundary is the VALUE token — the caller opens the value
+         * slot from here */
+        if (ks + 1 < n && (fc_blank(p[ks + 1]) || fc_break_len(p, n, ks + 1) > 0)) {
+            *stop_at = ks;
+            *at_colon = 1;
+            return 1;
+        }
+        return 0;
+    }
+    if (p[ks] == ',' || p[ks] == closer) {
+        /* the EMPTY slot: the run ate every key byte (the measured
+         * `{? \t ,` head member renders the empty key + empty value) */
+        *stop_at = ks;
+        *at_colon = 0;
+        return 1;
+    }
+    if (fw_decline_byte(p[ks])) {
+        return 0;
+    }
+    return fw_render_content(p, n, ks, closer, o, stop_at, at_colon);
+}
+
+/* One member: from i (at the first byte after the separator's blank
+ * run), to the terminator. Emits the yeptris event lines for the
+ * member. Returns 0 on any unmeasured shape. */
+static int fw_member(const uint8_t* p, size_t n, size_t i, unsigned char closer, int is_map,
+                     fout* o, size_t* term_at) {
+    if (i >= n) {
+        return 0;
+    }
+    unsigned char c = p[i];
+    size_t stop = 0;
+    int colon = 0;
+
+    if (c == '?' && i + 1 < n && (fc_blank(p[i + 1]) || fc_break_len(p, n, i + 1) > 0)) {
+        /* the SPLIT-`?` member: the key slot after the run */
+        size_t ks = fc_skip_blank_break(p, n, i + 1);
+        fout kout = {NULL, 0, 0, 0};
+        if (!fw_render_key_slot(p, n, ks, closer, &kout, &stop, &colon, 0)) {
+            free(kout.buf);
+            return 0;
+        }
+        size_t after = stop;
+        fout vout = {NULL, 0, 0, 0};
+        if (colon) {
+            /* the VALUE boundary: the slot after the colon's own run */
+            size_t vs = fc_skip_blank_break(p, n, after + 1);
+            int vcolon = 0;
+            if (!fw_render_key_slot(p, n, vs, closer, &vout, &stop, &vcolon, 1) || vcolon) {
+                free(kout.buf);
+                free(vout.buf);
+                return 0; /* a nested boundary in the value slot:
+                           * unmeasured */
+            }
+            after = stop;
+        }
+        if (after >= n || (p[after] != ',' && p[after] != closer)) {
+            free(kout.buf);
+            free(vout.buf);
+            return 0; /* the terminator gate */
+        }
+        *term_at = after;
+        if (!is_map) {
+            fo_str(o, "+MAP\n");
+            fo_str(o, "=VAL : ");
+            fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+            fo_str(o, "\n=VAL : ");
+            fo_bytes(o, vout.buf ? vout.buf : "", vout.len);
+            fo_str(o, "\n-MAP\n");
+        } else {
+            fo_str(o, "=VAL : ");
+            fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+            fo_str(o, "\n=VAL : ");
+            fo_bytes(o, vout.buf ? vout.buf : "", vout.len);
+            fo_str(o, "\n");
+        }
+        free(kout.buf);
+        free(vout.buf);
+        return 1;
+    }
+    if (c == '?') {
+        /* the glued-`?` member (head/plain/indicator): the `?` rides as
+         * the member's first content byte; the indicator form (`?` then
+         * `,`/closer) renders the empty pair */
+        if (i + 1 >= n || p[i + 1] == ',' || p[i + 1] == closer) {
+            *term_at = i + 1;
+            if (!is_map) {
+                fo_str(o, "+MAP\n=VAL : \n=VAL : \n-MAP\n");
+            } else {
+                fo_str(o, "=VAL : \n=VAL : \n");
+            }
+            return 1;
+        }
+        fout kout = {NULL, 0, 0, 0};
+        if (!fw_render_content(p, n, i, closer, &kout, &stop, &colon)) {
+            free(kout.buf);
+            return 0;
+        }
+        fout vout = {NULL, 0, 0, 0};
+        if (colon) {
+            size_t vs = fc_skip_blank_break(p, n, stop + 1);
+            int vcolon = 0;
+            if (!fw_render_key_slot(p, n, vs, closer, &vout, &stop, &vcolon, 1) || vcolon) {
+                free(kout.buf);
+                free(vout.buf);
+                return 0;
+            }
+        }
+        if (stop >= n || (p[stop] != ',' && p[stop] != closer)) {
+            free(kout.buf);
+            free(vout.buf);
+            return 0;
+        }
+        *term_at = stop;
+        if (colon) {
+            /* the SEQ single-pair wrapper (the r272 floor's law) */
+            fo_str(o, "+MAP\n=VAL : ");
+            fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+            fo_str(o, "\n=VAL : ");
+            fo_bytes(o, vout.buf ? vout.buf : "", vout.len);
+            fo_str(o, "\n-MAP\n");
+        } else if (is_map) {
+            fo_str(o, "=VAL : ");
+            fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+            fo_str(o, "\n=VAL : \n");
+        } else {
+            fo_str(o, "=VAL : ");
+            fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+            fo_str(o, "\n");
+        }
+        free(kout.buf);
+        free(vout.buf);
+        return 1;
+    }
+    if (c == '&' && i + 1 < n && fc_alpha(p[i + 1])) {
+        /* the bare ANCHORED-EMPTY member (the measured `&m,` ->
+         * `=VAL : &m `: the prop render, the name cut at the
+         * terminator) */
+        size_t ae = i + 1;
+        while (ae < n && fc_alpha(p[ae])) {
+            ae++;
+        }
+        if (ae >= n || (p[ae] != ',' && p[ae] != closer)) {
+            return 0;
+        }
+        *term_at = ae;
+        if (is_map) {
+            fo_str(o, "=VAL : &");
+            fo_bytes(o, p + i + 1, ae - i - 1);
+            fo_str(o, " \n=VAL : \n");
+        } else {
+            fo_str(o, "=VAL : &");
+            fo_bytes(o, p + i + 1, ae - i - 1);
+            fo_str(o, " \n");
+        }
+        return 1;
+    }
+    /* the plain/tag-soup member (the `11`, `2002:binary`,
+     * `1.0e57.tag:y|` class); a member-start `!`/`*`/`:`/`"` is
+     * unmeasured (the artifacts carry them only inside the fold-joined
+     * plains or behind the split-`?` slots) */
+    if (c == '!' || c == '*' || c == ':' || c == '"' || fw_decline_byte(c)) {
+        return 0;
+    }
+    fout kout = {NULL, 0, 0, 0};
+    if (!fw_render_content(p, n, i, closer, &kout, &stop, &colon)) {
+        free(kout.buf);
+        return 0;
+    }
+    fout vout = {NULL, 0, 0, 0};
+    if (colon) {
+        size_t vs = fc_skip_blank_break(p, n, stop + 1);
+        int vcolon = 0;
+        if (!fw_render_key_slot(p, n, vs, closer, &vout, &stop, &vcolon, 1) || vcolon) {
+            free(kout.buf);
+            free(vout.buf);
+            return 0;
+        }
+    }
+    if (stop >= n || (p[stop] != ',' && p[stop] != closer)) {
+        free(kout.buf);
+        free(vout.buf);
+        return 0;
+    }
+    *term_at = stop;
+    if (colon && !is_map) {
+        /* the SEQ single-pair wrapper (the plain-led key:value member:
+         * the measured `2002:binaryg:\r\r1.0e17.tag` pair) */
+        fo_str(o, "+MAP\n=VAL : ");
+        fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+        fo_str(o, "\n=VAL : ");
+        fo_bytes(o, vout.buf ? vout.buf : "", vout.len);
+        fo_str(o, "\n-MAP\n");
+    } else if (!is_map) {
+        fo_str(o, "=VAL : ");
+        fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+        fo_str(o, "\n");
+    } else if (colon) {
+        fo_str(o, "=VAL : ");
+        fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+        fo_str(o, "\n=VAL : ");
+        fo_bytes(o, vout.buf ? vout.buf : "", vout.len);
+        fo_str(o, "\n");
+    } else {
+        /* the MAP root's plain member: the key + the parser's empty
+         * value (the measured `?ml?\t ` -> `?ml?` + empty) */
+        fo_str(o, "=VAL : ");
+        fo_bytes(o, kout.buf ? kout.buf : "", kout.len);
+        fo_str(o, "\n=VAL : \n");
+    }
+    free(kout.buf);
+    free(vout.buf);
+    return 1;
+}
+
+/* The dump shape walk (both sides): only the family's line vocabulary,
+ * the root wrapper (open once, close once at depth 0, then -STR ends),
+ * nested +MAP/-MAP single-pair wrappers balanced; nested sequences and
+ * every other form decline. */
+static int fw_shape_ok(const char* dump, size_t len, int root_map) {
+    size_t i = 0;
+    int depth = 0;
+    if (len < 15 || memcmp(dump, "+STR\n", 5) != 0) {
+        return 0;
+    }
+    i = 5;
+    const char* root_open = root_map ? "+MAP\n" : "+SEQ\n";
+    const char* root_close = root_map ? "-MAP\n" : "-SEQ\n";
+    size_t rl = strlen(root_open);
+    if (i + rl > len || memcmp(dump + i, root_open, rl) != 0) {
+        return 0;
+    }
+    i += rl;
+    while (i < len) {
+        const char* nl = memchr(dump + i, '\n', len - i);
+        if (nl == NULL) {
+            return 0; /* every line ends with \n (-STR\n last) */
+        }
+        size_t ll = (size_t)(nl - (dump + i)) + 1;
+        const char* ln = dump + i;
+        if (ll == rl && memcmp(ln, root_close, rl) == 0 && depth == 0) {
+            /* the root close: only -STR may follow */
+            i += ll;
+            if (i + 5 == len && memcmp(dump + i, "-STR\n", 5) == 0) {
+                return 1;
+            }
+            return 0;
+        }
+        if (ll == 5 && memcmp(ln, "+MAP\n", 5) == 0) {
+            depth++;
+        } else if (ll == 5 && memcmp(ln, "-MAP\n", 5) == 0) {
+            if (depth == 0) {
+                return 0;
+            }
+            depth--;
+        } else if (ll == 5 && (memcmp(ln, "+SEQ\n", 5) == 0 || memcmp(ln, "-SEQ\n", 5) == 0)) {
+            return 0; /* a nested sequence: unmeasured */
+        } else if (ll >= 7 && memcmp(ln, "=VAL : ", 7) == 0) {
+            /* the value/key line (content rides) */
+        } else if (ll >= 6 && memcmp(ln, "=ALI *", 6) == 0) {
+            /* the alias render */
+        } else {
+            return 0; /* an unknown line form */
+        }
+        i += ll;
+    }
+    return 0;
+}
+
+/* The head-split fingerprint: yeptris holds flat `?#`-content value
+ * lines the libyaml stream lacks entirely (measured 558/685 vs 0). */
+static int fw_head_fingerprint(const char* ydump, const char* ldump) {
+    size_t yq = 0;
+    size_t lq = 0;
+    for (const char* s = ydump; (s = strstr(s, "=VAL : ?#")) != NULL; s += 1) {
+        yq++;
+    }
+    for (const char* s = ldump; (s = strstr(s, "=VAL : ?#")) != NULL; s += 1) {
+        lq++;
+    }
+    return yq > 0 && lq == 0;
+}
+
+/* The fold-face canonical form: every fold escape (`\n`) and every raw
+ * exotic break byte (NEL/LS/PS) collapses to ONE token, runs of tokens
+ * collapse to a single mark — so yeptris's `\n\n\n50` (the 1.2 fold
+ * law) and libyaml's `\n\n<PS>50` (the raw-PS law, its fold having
+ * eaten the blank) canonicalize to the same string. Everything else
+ * rides verbatim. Returns 0 when the content carries no fold face
+ * (nothing to canonicalize — the line must match verbatim). */
+static int fw_canon_line(const char* s, size_t n, char* out, size_t out_cap) {
+    size_t o = 0;
+    int folds = 0;
+    int any = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (s[i] == '\\' && i + 1 < n && s[i + 1] == 'n') {
+            any = 1;
+            folds++;
+            i++;
+            continue;
+        }
+        if ((unsigned char)s[i] == 0xE2 && i + 2 < n && (unsigned char)s[i + 1] == 0x80 &&
+            ((unsigned char)s[i + 2] == 0xA8 || (unsigned char)s[i + 2] == 0xA9)) {
+            any = 1;
+            folds++;
+            i += 2;
+            continue;
+        }
+        if ((unsigned char)s[i] == 0xC2 && i + 1 < n && (unsigned char)s[i + 1] == 0x85) {
+            any = 1;
+            folds++;
+            i++;
+            continue;
+        }
+        if (folds > 0) {
+            if (o + 2 >= out_cap) {
+                return 0;
+            }
+            out[o++] = '@';
+            folds = 0;
+        }
+        if (o + 1 >= out_cap) {
+            return 0;
+        }
+        out[o++] = s[i];
+    }
+    if (folds > 0) {
+        if (o + 2 >= out_cap) {
+            return 0;
+        }
+        out[o++] = '@';
+    }
+    out[o] = '\0';
+    return any;
+}
+
+/* The libyaml-side content gate (multiset-exact): the documented split
+ * moves fold faces (the canon unifies), drops the `?` lead, eats the
+ * `?#`-led heads to the line break — and NOTHING else. So the libyaml
+ * side's canonical forms must map into the yeptris side's WITHOUT ever
+ * exceeding the yeptris-side multiplicity, and every yeptris-side form
+ * the libyaml side lacks must be a law-a head (the eaten member). A
+ * single-byte tamper of either dump breaks the mapping. */
+static int fw_content_set(const char* ydump, const char* ldump) {
+    /* All scratch is heap and freed before return (the purity law).
+     *
+     * The multiset-exact accounting: the documented split maps the
+     * yeptris-side value forms onto the libyaml side through exactly
+     * three transforms — the verbatim ride, the `?`-lead drop (the
+     * law-a KEY-token eat, `?ml?` -> `ml?`), and the line-break eat of
+     * a `?#`-led head (`?## &m` -> `&m`, `?##|#|+@yaml.org` ->
+     * `yaml.org`). Each libyaml probe form may therefore draw at most
+     * ycount(direct) + ycount('?' + probe) + sum(ycount(head sources))
+     * lines; anything more (or a probe with no source at all) is an
+     * unexplained libyaml-side line — a single-byte tamper of the
+     * libyaml dump cannot survive it. */
+    const size_t max_forms = 24576;
+    const size_t store_cap = 2u * 1024u * 1024u;
+    char** yforms = malloc(max_forms * sizeof(char*));
+    unsigned* ycnt = malloc(max_forms * sizeof(unsigned));
+    char** praw = malloc(max_forms * sizeof(char*)); /* the probe forms (raw) */
+    unsigned* pcount = malloc(max_forms * sizeof(unsigned));
+    unsigned* pallowed = malloc(max_forms * sizeof(unsigned));
+    char* canon = malloc(8192);
+    char* withq = malloc(8194);
+    char* store = malloc(store_cap);  /* the y raw contents */
+    char* fstore = malloc(store_cap); /* the y canonical forms */
+    char* pstore = malloc(store_cap); /* the probe forms */
+    int result = 0;
+    if (yforms == NULL || ycnt == NULL || praw == NULL || pcount == NULL || pallowed == NULL ||
+        canon == NULL || withq == NULL || store == NULL || fstore == NULL || pstore == NULL) {
+        goto done;
+    }
+    size_t store_at = 0;
+    size_t fstore_at = 0;
+    size_t pstore_at = 0;
+    size_t yn = 0;
+    size_t pn = 0;
+    const char* p = ydump;
+    while (p != NULL && *p != '\0') {
+        const char* nl = strchr(p, '\n');
+        if (nl == NULL) {
+            break;
+        }
+        size_t ll = (size_t)(nl - p);
+        if (ll >= 7 && memcmp(p, "=VAL : ", 7) == 0) {
+            const char* content = p + 7;
+            size_t cl = ll - 7;
+            const char* form;
+            size_t fl;
+            if (fw_canon_line(content, cl, canon, 8192)) {
+                form = canon;
+                fl = strlen(canon);
+            } else {
+                form = content;
+                fl = cl;
+            }
+            size_t k;
+            for (k = 0; k < yn; k++) {
+                if (strlen(yforms[k]) == fl && memcmp(yforms[k], form, fl) == 0) {
+                    ycnt[k]++;
+                    break;
+                }
+            }
+            if (k == yn && yn < max_forms && store_at + cl + 1 <= store_cap &&
+                fstore_at + fl + 1 <= store_cap) {
+                memcpy(store + store_at, content, cl);
+                store[store_at + cl] = '\0';
+                memcpy(fstore + fstore_at, form, fl);
+                fstore[fstore_at + fl] = '\0';
+                yforms[yn] = fstore + fstore_at;
+                ycnt[yn] = 1;
+                store_at += cl + 1;
+                fstore_at += fl + 1;
+                yn++;
+            }
+        }
+        p = nl + 1;
+    }
+    /* the allowance buckets: direct + the `?`-lead-drop sources + the
+     * `?#`-head line-break-eat sources */
+    for (size_t k = 0; k < yn; k++) {
+        pallowed[k] = ycnt[k]; /* the direct bucket */
+    }
+    for (size_t k = 0; k < yn; k++) {
+        const char* yf = yforms[k];
+        size_t yl = strlen(yf);
+        if (yf[0] == '?' && yl > 1 && yf[1] != '#') {
+            /* the lead-drop product: yf minus its leading `?` */
+            const char* prod = yf + 1;
+            size_t pl = yl - 1;
+            for (size_t j = 0; j < yn; j++) {
+                if (j != k && strlen(yforms[j]) == pl && memcmp(yforms[j], prod, pl) == 0) {
+                    pallowed[j] += ycnt[k];
+                    break;
+                }
+            }
+        }
+        if (yf[0] == '>') {
+            /* the `>`-lead drop (the r258 law: libyaml's flow dispatch
+             * eats the reserved lead; libfyaml errors the member) */
+            const char* prod = yf + 1;
+            if (yl > 1 && prod[0] == ' ') {
+                prod++;
+            }
+            size_t pl = strlen(prod);
+            for (size_t j = 0; j < yn; j++) {
+                if (j != k && strlen(yforms[j]) == pl && memcmp(yforms[j], prod, pl) == 0) {
+                    pallowed[j] += ycnt[k];
+                    break;
+                }
+            }
+        }
+        if (yf[0] == '?' && yf[1] == '#') {
+            const char* fold = strchr(yf, '@');
+            const char* sp = strchr(yf, ' ');
+            if (sp != NULL && (fold == NULL || sp < fold)) {
+                fold = sp;
+            }
+            if (fold != NULL) {
+                const char* prod = fold + 1;
+                size_t pl = strlen(prod);
+                for (size_t j = 0; j < yn; j++) {
+                    if (strlen(yforms[j]) == pl && memcmp(yforms[j], prod, pl) == 0) {
+                        pallowed[j] += ycnt[k];
+                        break;
+                    }
+                    /* the prop-render twin: the post-eat anchor rides
+                     * libyaml's prop render with its trailing space
+                     * (`?## &m` -> `&m `) */
+                    if (prod[0] == '&' || prod[0] == '*') {
+                        char withs[8192];
+                        if (pl + 1 < sizeof(withs)) {
+                            memcpy(withs, prod, pl);
+                            withs[pl] = ' ';
+                            withs[pl + 1] = '\0';
+                            if (strlen(yforms[j]) == pl + 1 &&
+                                memcmp(yforms[j], withs, pl + 1) == 0) {
+                                pallowed[j] += ycnt[k];
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /* count the libyaml probe forms against the buckets */
+    const char* q = ldump;
+    while (q != NULL && *q != '\0') {
+        const char* nl = strchr(q, '\n');
+        if (nl == NULL) {
+            break;
+        }
+        size_t ll = (size_t)(nl - q);
+        if (ll >= 7 && memcmp(q, "=VAL : ", 7) == 0) {
+            const char* content = q + 7;
+            size_t cl = ll - 7;
+            const char* probe;
+            size_t probe_len;
+            if (fw_canon_line(content, cl, canon, 8192)) {
+                probe = canon;
+                probe_len = strlen(canon);
+            } else {
+                probe = content;
+                probe_len = cl;
+            }
+            /* the probe's bucket: the DIRECT form match only — a probe
+             * with no direct bucket has no source (the transforms map
+             * INTO existing yeptris forms, never create new buckets) */
+            size_t k;
+            for (k = 0; k < pn; k++) {
+                if (strlen(praw[k]) == probe_len && memcmp(praw[k], probe, probe_len) == 0) {
+                    pcount[k]++;
+                    break;
+                }
+            }
+            if (k == pn) {
+                int has_direct = 0;
+                for (size_t j = 0; j < yn; j++) {
+                    if (strlen(yforms[j]) == probe_len &&
+                        memcmp(yforms[j], probe, probe_len) == 0) {
+                        has_direct = 1;
+                        break;
+                    }
+                }
+                if (!has_direct) {
+                    /* the transform sources: `?`+probe or a `?#` head's
+                     * after-fold suffix — the probe rides an EXISTING
+                     * form's allowance only when such a source exists */
+                    int has_source = 0;
+                    if (probe_len + 1 < 8194) {
+                        withq[0] = '?';
+                        memcpy(withq + 1, probe, probe_len + 1);
+                        for (size_t j = 0; j < yn; j++) {
+                            if (strlen(yforms[j]) == probe_len + 1 &&
+                                memcmp(yforms[j], withq, probe_len + 1) == 0) {
+                                has_source = 1;
+                                break;
+                            }
+                        }
+                    }
+                    if (!has_source) {
+                        for (size_t j = 0; j < yn && !has_source; j++) {
+                            const char* yf = yforms[j];
+                            size_t yl = strlen(yf);
+                            if (yl < 2 || yf[0] != '?' || yf[1] != '#') {
+                                continue;
+                            }
+                            const char* fold = strchr(yf, '@');
+                            const char* sp = strchr(yf, ' ');
+                            if (sp != NULL && (fold == NULL || sp < fold)) {
+                                fold = sp;
+                            }
+                            if (fold == NULL) {
+                                continue;
+                            }
+                            size_t rest = yl - (size_t)(fold - yf) - 1;
+                            if (rest == probe_len && memcmp(fold + 1, probe, probe_len) == 0) {
+                                has_source = 1;
+                            }
+                        }
+                    }
+                    if (!has_source) {
+                        if (getenv("YD_FW_TRACE") != NULL) {
+                            fprintf(stderr, "content-set: l-line not in y-set: %.*s\n",
+                                    (int)(probe_len > 90 ? 90 : probe_len), probe);
+                        }
+                        goto done;
+                    }
+                }
+                if (pn < max_forms && pstore_at + probe_len + 1 <= store_cap) {
+                    memcpy(pstore + pstore_at, probe, probe_len);
+                    pstore[pstore_at + probe_len] = '\0';
+                    praw[pn] = pstore + pstore_at;
+                    pstore_at += probe_len + 1;
+                    pcount[pn] = 1;
+                    pn++;
+                }
+            }
+        }
+        q = nl + 1;
+    }
+    /* the allowances: a probe's cap = ycount(direct) + the transform
+     * sources' counts (recomputed per probe bucket) */
+    for (size_t k = 0; k < pn; k++) {
+        const char* pf = praw[k];
+        size_t pl = strlen(pf);
+        unsigned allowed = 0;
+        for (size_t j = 0; j < yn; j++) {
+            if (strlen(yforms[j]) == pl && memcmp(yforms[j], pf, pl) == 0) {
+                allowed += ycnt[j];
+            }
+        }
+        if (pl + 1 < 8194) {
+            /* (a) the `?`-lead drop (the law-a KEY-token eat) */
+            withq[0] = '?';
+            memcpy(withq + 1, pf, pl + 1);
+            for (size_t j = 0; j < yn; j++) {
+                if (strlen(yforms[j]) == pl + 1 && memcmp(yforms[j], withq, pl + 1) == 0) {
+                    allowed += ycnt[j];
+                }
+            }
+        }
+        if (pl + 1 < 8194) {
+            /* (c) the prop-render twin: the eaten head's post-break
+             * anchor rides libyaml's prop render with its trailing
+             * space (`?## &m` -> `&m `) */
+            withq[0] = ' ';
+            memcpy(withq + 1, pf, pl + 1);
+            for (size_t j = 0; j < yn; j++) {
+                if (strlen(yforms[j]) == pl + 1 && memcmp(yforms[j], withq, pl + 1) == 0 &&
+                    (yforms[j][0] == '&' || yforms[j][0] == '*')) {
+                    allowed += ycnt[j];
+                }
+            }
+        }
+        for (size_t j = 0; j < yn; j++) {
+            const char* yf = yforms[j];
+            size_t yl = strlen(yf);
+            /* (b) the line-break eat of a `?#`-led head */
+            if (yl >= 2 && yf[0] == '?' && yf[1] == '#') {
+                const char* fold = strchr(yf, '@');
+                const char* sp = strchr(yf, ' ');
+                if (sp != NULL && (fold == NULL || sp < fold)) {
+                    fold = sp;
+                }
+                if (fold != NULL) {
+                    size_t rest = yl - (size_t)(fold - yf) - 1;
+                    if ((rest == pl && memcmp(fold + 1, pf, pl) == 0) ||
+                        (pf[0] == '&' && rest + 1 == pl && pf[rest] == ' ' &&
+                         memcmp(fold + 1, pf, rest) == 0)) {
+                        allowed += ycnt[j];
+                    }
+                }
+            }
+            /* (d) the `>`-lead drop (the r258 law: libyaml's flow
+             * dispatch eats the reserved lead) */
+            if (yl >= 2 && yf[0] == '>') {
+                if (yf[1] == ' ' && yl - 2 == pl && memcmp(yf + 2, pf, pl) == 0) {
+                    allowed += ycnt[j];
+                } else if (yl - 1 == pl && memcmp(yf + 1, pf, pl) == 0) {
+                    allowed += ycnt[j];
+                }
+            }
+        }
+        if (pl > 0 && pcount[k] > allowed) {
+            /* the EMPTY form is exempt: the split inserts the parser's
+             * empty values asymmetrically (a content tamper still
+             * breaks its own line's membership above) */
+            if (getenv("YD_FW_TRACE") != NULL) {
+                fprintf(stderr, "content-set: probe exceeds allowance: %.*s (%u > %u)\n",
+                        (int)(pl > 70 ? 70 : pl), pf, pcount[k], allowed);
+            }
+            goto done;
+        }
+    }
+    result = 1;
+done:
+    free(yforms);
+    free(ycnt);
+    free(praw);
+    free(pcount);
+    free(pallowed);
+    free(canon);
+    free(withq);
+    free(store);
+    free(fstore);
+    free(pstore);
+    return result;
+}
+
+int yd_family_waiver(const uint8_t* data, size_t size, const char* ydump, const char* ldump) {
+    if (data == NULL || ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    if (size < 4 || size > FC_MAX_INPUT) {
+        return 0;
+    }
+    /* the byte gates: no NUL, no line-start BOM (the classifier's own
+     * entry law) */
+    int line_start = 1;
+    for (size_t i = 0; i < size;) {
+        unsigned char ch = data[i];
+        if (ch == 0x00) {
+            return 0;
+        }
+        if (ch == 0xEF && i + 2 < size && data[i + 1] == 0xBB && data[i + 2] == 0xBF) {
+            if (line_start) {
+                return 0;
+            }
+            i += 3;
+            continue;
+        }
+        size_t bl = fc_break_len(data, size, i);
+        if (bl > 0) {
+            i += (size_t)bl;
+            line_start = 1;
+            continue;
+        }
+        line_start = 0;
+        i++;
+    }
+    /* the bare flow root (no doc-marker/tag leads: their classes ride
+     * the l2/l3 laws and the anchor-ride lead stays on the r238 arm) */
+    size_t root = fc_skip_blank_break(data, size, 0);
+    if (root >= size || (data[root] != '[' && data[root] != '{')) {
+        return 0;
+    }
+    unsigned char closer = (data[root] == '[') ? ']' : '}';
+    int is_map = data[root] == '{';
+
+    /* the yeptris-side derivation */
+    fout yd = {NULL, 0, 0, 0};
+    fo_str(&yd, "+STR\n");
+    fo_str(&yd, is_map ? "+MAP\n" : "+SEQ\n");
+    size_t i = root + 1;
+    unsigned members = 0;
+    int ok = 1;
+    for (;;) {
+        i = fc_skip_blank_break(data, size, i);
+        if (i >= size) {
+            ok = 0; /* the closer never came */
+            break;
+        }
+        if (data[i] == closer) {
+            i++;
+            break;
+        }
+        if (data[i] == ',') {
+            i++;
+            continue;
+        }
+        if (members >= FC_MAX_MEMBERS) {
+            ok = 0;
+            break;
+        }
+        members++;
+        size_t term = 0;
+        if (!fw_member(data, size, i, closer, is_map, &yd, &term)) {
+            ok = 0;
+            break;
+        }
+        if (yd.bad || yd.len > FC_MAX_OUT) {
+            ok = 0;
+            break;
+        }
+        i = term;
+    }
+    if (ok) {
+        fo_str(&yd, is_map ? "-MAP\n" : "-SEQ\n");
+        fo_str(&yd, "-STR\n");
+    }
+    int ymatch = ok && !yd.bad && yd.buf != NULL && strcmp(yd.buf, ydump) == 0;
+    free(yd.buf);
+    if (!ymatch) {
+        return 0; /* the yeptris side must derive byte-exact: any engine
+                   * drift on a class-shaped input stays red */
+    }
+    /* the libyaml side: shape-valid + the head-split fingerprint */
+    if (!fw_shape_ok(ldump, strlen(ldump), is_map)) {
+        return 0;
+    }
+    if (!fw_shape_ok(ydump, strlen(ydump), is_map)) {
+        return 0;
+    }
+    if (!fw_head_fingerprint(ydump, ldump)) {
+        return 0; /* a fold-only (or other) divergence: not the
+                   * documented head split */
+    }
+    if (!fw_content_set(ydump, ldump)) {
+        return 0; /* a libyaml-side line the split cannot explain */
+    }
+    return 1;
+}

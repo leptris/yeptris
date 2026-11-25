@@ -10119,6 +10119,52 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-colonres-r385-artifact.bin
     )
 
+    # the r386 drill (issue #1656 + the r385 soak's evolved unit; the
+    # fourth re-derivation the family needed its gate for). THE
+    # LEDGERED-WAIVER (law w in family_classify.h, the PR #1647 owner
+    # call with four data points): the `?#`-class glue-fold composition
+    # family declines as a DOCUMENTED SPLIT instead of another
+    # per-spelling arm — the four red runs (45317828972/r377,
+    # 45498839224/#1646, 45511622229/#1649, 45540139415/#1656) each
+    # escaped the previous round's arm as a fresh mutation spelling of
+    # the SAME composition (the glued-`?#` hash-run heads, the split-`?`
+    # fold-glue PS keys, the `?##\r\n&m` prop tails, the `+SEQ` splices
+    # and `tag:ytag:yam2l.org,200#=` tag-soup mutations). THE GATE
+    # (yd_family_waiver): the measured member grammar + the BYTE-EXACT
+    # yeptris-side derivation + the head-split fingerprint (yeptris's
+    # flat `?#` lines absent from libyaml's stream — 558/685 vs 0 on
+    # the two artifacts) + the multiset-exact content accounting (the
+    # libyaml side maps onto the yeptris side through exactly four
+    # transforms: the verbatim ride, the `?`-lead drop, the `?#`-head
+    # line-break eat, the `>`-lead drop — anything else red). THE A/B
+    # (libfyaml 04e0b58, probed per member class this round): the HEAD
+    # faces read yeptris's way byte-exact in BOTH passes; the fold
+    # faces are the standing law-b split (fy keeps PS raw — the third
+    # reading); the `>` members ERROR fy (the reserved-indicator law).
+    # No member class exists where libfyaml sides WITH libyaml against
+    # yeptris. THE FIREWALL (the fuzz-diff-family-classify self-test's
+    # W/N phases): the waiver corpus's dump-tamper battery (108 cases)
+    # must decline every single-byte change, the law-violating input
+    # mutants must never waive outside the grammar, and the negative
+    # controls (other-family DIFFERs + unmeasured-shape splices: the
+    # nested-seq/5-hash/quote/backtick/BOM/alias/rootplain faces) must
+    # NEVER waive — 0 waived. The waiver is a DECLINE, not a claim: the
+    # comparator logs `ledgered-waiver` and moves on; ctest never
+    # consults it (these pins assert the engine behavior directly).
+    # The artifacts: crash-922561ba0ca8e65e174fc4823c3c7065678f0b1e
+    # (24,870B, the nightly's run 45540139415 — the `+SEQ` splices and
+    # the tag-soup mutations) and crash-67a59a94557ef71df2babe2e7568b5
+    # 411c74c105 (20,486B, the r385 drill's own bounded soak — the
+    # `?##|` triple-hash pipe spelling, the PS joined mid-key). Both
+    # PRE_RC=77 pre-existing, comparator-only, no engine change (the
+    # r318/r330/r336/r356/r366/r370/r376/r381/r385 precedent).
+    add_test(
+        NAME fuzz-diff-r386-gluefold-waiver
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r386-plusseq-splice.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/waiver-gluefold-r386-evolved-soak.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
