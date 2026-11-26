@@ -10439,6 +10439,58 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-trailing-blank-r392-artifact.bin
     )
 
+    # r396 (the post-r395 Fuzz Nightly round, run 45725924584, main
+    # 52af78a6, issue #1691): the anchor-PS composition at the BLOCK
+    # root, comment-led — the realworld-suite spec example 2.2 (SYW4's
+    # baseball comments) spliced by the walker's CopyPart with the
+    # `---` marker bytes, raw PS breaks, and the `&--02:in~---` anchor:
+    # the 32-byte floor "#<PS>&--02:in~---<PS><PS>? I &--nn~". yeptris
+    # rides the Y2GN suite law (the FULL colon-riding 1.2 anchor name
+    # `--02:in~---`; the explicit-key `?` fires — PS honors the line
+    # structure) and opens the anchored MAP with the `I &--nn~` key and
+    # the empty value; libyaml cuts the name at the colon (its ledgered
+    # 1.1 IS_ALPHA deviation) and its plain scan treats the PS as raw
+    # CONTENT — the colon-led residual plain `:in~---` never sees a
+    # break, swallows the `?` member, and renders ONE anchored plain.
+    # The charset split reconciles (the space insert makes both engines
+    # read the cut name; the PS render differs by the carried LS/PS
+    # fold relation only) — but the arm's gate never armed: its comment
+    # clause swallowed past the raw PS to the next LF/CR, consuming the
+    # WHOLE input as comment (red IDENTICALLY on the pre-patch build —
+    # the face predates r395; the r395 carry held). THE CARRY: the
+    # charset arm's comment clauses (gate + transform walks) stop at
+    # the r87 raw NEL/LS/PS breaks — the comment-led face then arms,
+    # and the split+verify legs (libyaml byte-invariance, the copy
+    # agreement mod the fold relation, the r95 solo ladder) keep every
+    # unmeasured shape red. The A/B (libfyaml 04e0b58, probed on the
+    # artifact + floor + all 19 composition-row faces): fy strict-1.2
+    # errors or truncates at the glued `---` (rendering NO reading of
+    # the member — never libyaml's one-plain), fy --yaml-1.1 rides
+    # yeptris's explicit-key structure byte-exactly on every face —
+    # NO fy mode sides with libyaml. The composition row (PS run
+    # length 1/2/3, LF/LS twins, the blank/space/glued `?` followers,
+    # the `#`-content lead, the marker mid-stream/leading/trailing/
+    # glued) measured claim-stable on every row; the same-line `?`
+    # follower is yeptris-only-reject (not a DIFFER, stays out). The
+    # suite: SYW4 is the splice source (a clean comment example, no
+    # anchor); Y2GN governs the name bytes (the colon RIDES —
+    # libyaml's cut is the ledgered deviation); the suite has NO
+    # LS/PS row (the r183 family carries the render). Floor
+    # re-verified: ddmin 116->32 under the dual+shape bar, red
+    # identically on the r394-era build. Growth ledger: family nightly
+    # re-derivations now 13 (r377, #1646, #1649, #1656, #1665/r388,
+    # #1669/r389, #1671/r390, #1675/r391, #1677/r392, #1682/r393,
+    # #1684/r394, #1687/r395, this one) — the FIRST in the
+    # realworld-splice territory: the walker reaches the composition
+    # by CopyPart of the realworld corpus, not by mutation of a family
+    # seed or a dict entry.
+    add_test(
+        NAME fuzz-diff-r396-anchor-ps-comment
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-ps-comment-floor.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-ps-comment-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
