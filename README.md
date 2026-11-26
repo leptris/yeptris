@@ -16,32 +16,38 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.88 — live across all five runtimes** (C +
-ruby `0.6.88.0` + py `0.6.88.0` + rs/ts `0.6.88`, registry-checked
-2026-11-27). v0.6.88 carries the r400-r403 comparator rounds (all
-zero-`src/`): the root-block-scalar content-indent face carried on
-the ledger's SECOND governing-row basis — the suite's M7A3/DK3J/FP8R
-rows (suite-VALID, libyaml rejects) with spec 1.2.2 §8.1.1.1's
-floorless auto-detect fetched as the canonical text — the
-classifier's header detector now skips leading blanks (r400,
-#1707); the block-root glued-anchor `&2?*:` plain-vs-map face
-carried on the THIRD governing-row basis — the suite rows 2SXE +
-W5VH pin the riding-name law, the r238 quoted-body family's NEL
-joining the clean-break runs (r401, #1710); the stream-start-BOM
-charset-arm skip carried with Y2GN governing the mid-name colon
-(r402, #1714); and the r392 double-BOM family's third live shape
-answered with **the treadmill decision executed: the bom-line-start
-family joined the comparator snapshot exclusion** (the r370
-mutation-density law — a family that re-derives must not seed the
-diff leg; the map-split face pinned as a live-DIFFER neg control so
-rediscovery classifies green) (r403). **The grammar-growth ledger at
-n=20 re-derivations across four territories: KEEPING PACE holds —
-every post-waiver red an unmeasured spelling correctly declined,
-the waiver has never wrongly claimed, and the governing-row pattern
-(HM87 → M7A3/DK3J/FP8R → 2SXE/W5VH) is now the second basis path
-confirmed three times.** Zero YAML engine divergence standing
-beyond #1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and
-#1615 (0.6.78). The previous cut:
+**Latest release: v0.6.89 — live across all five runtimes** (C +
+ruby `0.6.89.0` + py `0.6.89.0` + rs/ts `0.6.89`, registry-checked
+2026-11-27). v0.6.89 carries the r402-r404 comparator rounds (all
+zero-`src/`) and closes the r404 defect inside the same cut: the
+stream-start BOM arms the anchor-charset gate — the gate+copy walks
+skip the mark zero-width, the FOURTH governing-row carry (Y2GN +
+2SXE + W5VH, fy alias-resolution-verified) (r402, #1714); the
+bom-line-start family joins the comparator snapshot exclusion —
+the treadmill measurement (each arm patch bought one round and the
+family's own pins were the unexcluded mutation source) ending the
+r364/r365/r392 chain by exclusion instead of a fifth widening, the
+map-split face pinned as a live-DIFFER neg control (r403, #1716);
+the FIRST breeding-seed round identifying its seeds BY MEASUREMENT
+— the r368-era pin riding the snapshot under a name no exclusion
+glob covered (the chain-gap law), three measured breeders joining
+the exclusion, the PSNEL quoted-fold face red-by-design on its
+11-byte floor (fy sides with NEITHER engine, suite silent), the
+agreed NELPS pair pinned green (r404, #1719); and the carry's own
+under-globbed neg-control pin fixed (#1722) and VERIFIED by the
+nightly's clean INITED walk. **The grammar-growth ledger at
+n=21 re-derivations: the exclusion law now does the treadmill's
+work (a family on exclusion stops re-deriving — verified live),
+the chain-gap law emerges (a family's exclusion must cover its
+era's pins), and the governing-row basis set stands at four
+(HM87; M7A3/DK3J/FP8R; 2SXE/W5VH; Y2GN/2SXE/W5VH).** Zero YAML
+engine divergence standing beyond #1411's deliberate fix, #1468
+(0.6.75), #1584 (0.6.77) and #1615 (0.6.78). The previous cut:
+v0.6.88 — the r400-r401 rounds: the root-block-scalar face on the
+ledger's second and third governing-row bases (the suite's
+M7A3/DK3J/FP8R rows with spec 1.2.2 §8.1.1.1 fetched as canonical;
+2SXE/W5VH pinning the riding-name law) and the NEL-run carry
+widening. The cut before it:
 v0.6.87 — the r395-r397 waiver-era rounds (the rider-arm
 glued-colon boundary row closing the composition axis; the
 realworld-splice anchor-PS arm-carry; the flow VALUE-slot rider
