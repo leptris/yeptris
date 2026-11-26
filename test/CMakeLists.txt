@@ -10708,6 +10708,68 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqvalue-quotedkey-r399.bin
     )
 
+    # r400 (the post-r399 Fuzz Nightly round, run 45768696397, headSha
+    # verified = the r399 merge 7d923d69, issue #1704): the BLOCK-root
+    # root-block-scalar content-indent face through a SPACE-INDENTED
+    # header — the 60-byte artifact `#!##!!%#!ga#!##!!%#!ga␠␠\n␠|\n
+    # ##%#!g#\n###\n##2#21%b\n#\n###\n#A` (a `#`-comment lead, the ` |`
+    # literal header at column 1, and six `#`-led lines at column 0)
+    # and its 3-byte dual+shape-bar floor `|\n#` (greedy ddmin under
+    # the exact-nightly-pair bar: unclassified YD_DIFFER + yeptris
+    # renders the block literal + libyaml renders it EMPTY; the
+    # comment lead, the header space, and the body spellings were all
+    # droppable). Both engines ACCEPT; yeptris auto-detects the
+    # content indent from the first non-empty line (spec 8.1.1.1, no
+    # floor) so the `#`-led lines ride as literal content with the
+    # breakless-EOF clip break, libyaml's unconditional
+    # min-indent-1 clamp (scan_block_scalar_breaks: `if (*indent < 1)
+    # *indent = 1`) ends the scalar at the first unindented line and
+    # the `#`-led lines double as comments — the EMPTY render. THE
+    # CONSENSUS BASIS IS PRESENT: the arm's law is already ledgered —
+    # M7A3 "Spec Example 9.3" (root `|` + col-0 `%!PS-Adobe-2.0` line
+    # RIDES, `=VAL |%!PS...\n`), DK3J (zero-indented folded body
+    # RIDES; libyaml REJECTS it outright — measured YEPTRIS-ONLY-ACCEPT
+    # on this comparator), FP8R (same shape) — all suite-VALID/
+    # libyaml-rejects ledger rows with citations, and yeptris holds
+    # the suite at 100% (395/395 with these rows in). fy 2.6.0 rides
+    # the col-0 faces byte-exact in BOTH modes (strict-1.2 and
+    # --yaml-1.1 render `|\n#` as `|` with content `#`, probed), then
+    # emptying ONLY the space-indented-header composition (` |\n#A\n`
+    # renders `|-`) — fy's own header-column floor, the comparator
+    # split the arm's ledger lines already document (libfyaml rides /
+    # PyYAML sides with libyaml's clamp, the r317 version-line
+    # precedent). THE GAP WAS CLASSIFIER COVERAGE, not an engine or
+    # law defect: yd_root_block_content_divergence's header detector
+    # only fired at column 0, so the ` |` header never entered block
+    # mode and the family walked past its own arm. THE CARRY: the
+    # header detection skips leading blanks (the same header-spell
+    # gate bounds it; a face the skip wrongly enters fails the
+    # rebuild verification and stays red), and the
+    # breakless-EOF clip residual gate the arm already anticipates
+    # resolves the indented copy (measured: the artifact's indented
+    # copy splits on exactly yeptris's trailing break, the break-fixed
+    # copy EQUALS). Pins: the floor + artifact + the minimal
+    # space-indented-header composition ride the arm as the named walk
+    # below (claimed faces can carry a standalone fuzz_diff add_test).
+    # Firewall unchanged: the r398 foldheader-nel-comment row, the
+    # r397 alias-tail-ride row, the r396 anchor-PS row, the r395
+    # empty-slot row, the r390 alias-cut bucket, the r394 prop-charset
+    # row keep their arms. Growth ledger: family nightly re-derivations
+    # now 17 (r377, #1646, #1649, #1656, #1665/r388, #1669/r389,
+    # #1671/r390, #1675/r391, #1677/r392, #1682/r393, #1684/r394,
+    # #1687/r395, #1691/r396, #1694/r397, #1697/r398, #1702/r399,
+    # this one) — the ELEVENTH by-mutation re-derivation, and the
+    # SECOND governing-row carry: the suite's `#`-comment block rows
+    # (M7A3/DK3J/FP8R, the ledger lines the arm already cites) govern
+    # the law, confirming the r399 HM87 pattern.
+    add_test(
+        NAME fuzz-diff-r400-block-bsi-root
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-bsi-root-r400.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-bsi-root-r400-artifact.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-bsi-root-r400-hdr1.bin
+    )
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)

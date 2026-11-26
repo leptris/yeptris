@@ -21942,7 +21942,15 @@ static int yd_composed_break_divergence(const uint8_t* data, size_t size) {
  * to equal yeptris's dump of the original. When the body carries the
  * adjudicated exotic-break deltas (raw NEL/LS/PS spellings), the
  * composed binding below extends the same law through the
- * normalization rebuild. */
+ * normalization rebuild. The r400 widening (run 45768696397, issue
+ * #1704): the header itself may carry leading blanks at the root (the
+ * ` |` artifact spell — parser->indent is -1 at a bare root whatever
+ * the header's column, so libyaml's clamp is column-blind; the floor
+ * `|\n#` and the 60-byte artifact split identically under the blank
+ * skip, the indented copy resolves to the breakless-EOF clip residual
+ * exactly like the col-0 family, and fy 2.6.0 rides the col-0 faces in
+ * BOTH modes while emptying only the space-indented-header composition
+ * — the comparator split the arm's own ledger lines already document). */
 static int yd_clip_breakless_divergence(const uint8_t* data, size_t size, const char* ydump);
 static int yd_ps_space_divergence(const uint8_t* data, size_t size, const char* ydump,
                                   const char* ldump);
@@ -22043,6 +22051,34 @@ static int yd_root_block_content_divergence(const uint8_t* data, size_t size) {
                 while (k < le && (data[k] == ' ' || data[k] == '\t')) {
                     k++;
                 }
+            }
+            /* the r400 widening (the post-r399 Fuzz Nightly round, run
+             * 45768696397, headSha verified = the r399 merge 7d923d69,
+             * issue #1704): the header may carry its OWN leading blanks
+             * at the document root — the artifact's ` |` line (the
+             * 60-byte `#`-comment soup with the space-indented literal
+             * header) and its 3-byte dual+shape-bar floor `|\n#`. The
+             * law is unchanged and already ledgered (M7A3 "Spec
+             * Example 9.3", DK3J, FP8R: col-0 content under a root
+             * block scalar IS content; libyaml's unconditional
+             * min-indent-1 clamp is the ledgered upstream deviation) —
+             * parser->indent is still -1 at a bare-document root no
+             * matter the header's own column, so libyaml's clamp
+             * empties the col-0-content body identically under a
+             * column-1 header (measured: ` |\n#A\n` splits exactly
+             * like `|\n#A\n`, while ` |\n #A\n` is EQUAL on both
+             * engines). The `#`-led content lines are what lets the
+             * split ride with both engines ACCEPTING: for libyaml they
+             * double as comments after the clamp ends the scalar; a
+             * non-`#` body errors libyaml instead (the DK3J verdict,
+             * YEPTRIS-ONLY-ACCEPT). The blank skip is bounded by the
+             * same header-spell gate below (digits/+/- then optional
+             * blanks then end-of-line-or-`#`), and any face the skip
+             * wrongly enters fails the rebuild verification and stays
+             * red — the claim is byte-bounded by construction, the
+             * same safety the col-0 arm has always had. */
+            while (k < le && (data[k] == ' ' || data[k] == '\t')) {
+                k++;
             }
             if (k < le && (data[k] == '|' || data[k] == '>')) {
                 size_t m = k + 1;
