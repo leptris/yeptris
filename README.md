@@ -16,37 +16,42 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.85 — live across all five runtimes** (C +
-ruby `0.6.85.0` + py `0.6.85.0` + rs/ts `0.6.85`, registry-checked
-2026-11-26). v0.6.85 carries the r392-r394 waiver-era rounds (all
-zero-`src/`): the double-BOM-lead block-level anchored plain
-adjudicated as an **ARM-CLASSIFICATION CARRY** — the BOM-free twin
-proved the BOM drives the accept side and the fresh byte was the
-trailing blank run both engines strip; landed in the BOM-lead arm's
-territory, no waiver widening, no entry-law surgery (r392, #1679);
-the fuzzer's harvested auto-dict splice (`tag:yaml.org,2002:intint`
-riding the r390 artifact as base unit) measured as the **WHOLE
-tag:-prefix rider family in one widening** — the post-name run is
-the props separator rendering one space whatever its mix, rider
-content rides the fold render, the rider's own run+colon+run value
-boundary fires, the name alphabet gains `.`, and the split products
-generalize to the rider form (r393, #1683); then the
-**treadmill-breaking move** — the crasher one mutation off the
-round's own staged seed was answered by measuring the ENGINE'S OWN
-PROP-CHARSET ROW (`yep_scan_prop_char`: everything except
-blank/break/flow-indicator/`,`/`#`), so the admitted alphabet moves
-with the engine SSOT and charset drift now surfaces as a byte-exact
-ymatch failure, a real engine signal (r394, #1686). **The
-grammar-growth ledger at n=9 live re-derivations: KEEPING PACE holds
-— every post-waiver red an unmeasured spelling correctly declined,
-the waiver has never wrongly claimed, and the extension cost now
-collapses per axis closed. The auto-dict trend confirmed live across
-four consecutive rounds and recorded as the owner's gate-policy
-evidence: fresh waiver seeds whose unmeasured neighbor rows are
-mutation-dense either get row-measured in the staging round or join
-the comparator delete-list — the r394 round exercised option 1.**
-Zero YAML engine divergence standing beyond #1411's deliberate fix,
-#1468 (0.6.75), #1584 (0.6.77) and #1615 (0.6.78). The previous cut:
+**Latest release: v0.6.86 — live across all five runtimes** (C +
+ruby `0.6.86.0` + py `0.6.86.0` + rs/ts `0.6.86`, registry-checked
+2026-11-26). v0.6.86 carries the r395-r397 waiver-era rounds (all
+zero-`src/`): the rider ARM's `?*<name>:` glued-colon boundary
+measured as a ROW across terminators and followers — the engine's
+VALUE token consumes the glued colon at an empty slot regardless of
+terminator (suite FRK4 pins it); blank/tab-led slots BOTH-ERROR
+never a consult; `#`-led YEPTRIS-ONLY-ACCEPT; the `&`-name-final
+colon keeps the un-consume law — and the COMPOSITION AXIS (two
+measured members composed, reached by crossover) joins the ledger
+as its own territory (r395, #1689); the realworld-splice face (the
+baseball comments + `---` marker + raw PS breaks + the anchor
+composition — the FIRST round reached by CopyPart splice of the
+realworld corpus, SYW4 governs) adjudicated as an ARM-CARRY in the
+anchor-charset law family, fy 1.1 riding yeptris's explicit-key
+structure byte-exactly and fy 1.2 truncating at the marker (r396,
+#1692); and the flow VALUE-slot rider face adjudicated
+**DECLINED-BY-DESIGN** — fy errors "unexpected alias" in BOTH modes
+on every manifesting row, the suite silent on the mid-plain `*`, no
+consensus basis exists: the waiver was NOT widened, the face is
+pinned in the negative-control set, and the OWNER-ESCALATION datum
+recorded (yeptris's plain/alias scanner vs the spec's content-riding
+is an engine decision), with the comparator-snapshot exclusion
+shipping so the family's seeds stay out of the diff leg (r397,
+#1696). **The grammar-growth ledger at n=12 re-derivations across
+four territories (dict-shape, seed-shape, realworld-splice,
+composition-crossover): KEEPING PACE holds — every post-waiver red
+an unmeasured spelling correctly declined, the waiver has never
+wrongly claimed.** Zero YAML engine divergence standing beyond
+#1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and #1615
+(0.6.78). The previous cut:
+v0.6.85 — the r392-r394 waiver-era rounds (the BOM-lead arm-carry;
+the whole tag:-prefix rider family in one widening; the
+treadmill-breaking prop-charset row), the growth ledger at n=9
+KEEPING PACE with the auto-dict trend + gate-policy option 1 as
+owner evidence. The cut before it:
 v0.6.84 — the r390-r391 waiver extensions (the glued-charset name
 cut measured by the yepdiff probe matrix with the alias-cut source
 rule joining the content-set and the fingerprint widened; then the
