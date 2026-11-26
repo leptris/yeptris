@@ -225,7 +225,47 @@ jobs:
         # (the family-classify N-phase requires the waiver to decline
         # them forever), and the arms-claimed map-split pair pins
         # green under the full ctest (the fuzz-diff-r403 pins).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete
+        # The NAMING-GAP stragglers join at r404 (run 45858435542's
+        # round, issue #1718) — the FIRST re-derivation whose breeding
+        # seeds are IDENTIFIED BY MEASUREMENT: the r387
+        # root-anchor-quoted-follow vocabulary re-derived by MUTATION
+        # (ShuffleBytes-EraseBytes-CrossOver, post-INITED) from
+        # `qflow-depth-clamp-r368-artifact.bin` — the r368-era pin that
+        # rides the snapshot under a name matching NO exclusion glob
+        # (r370 excluded `root-anchor-quoted-follow-*`; the same face
+        # family's r368 carry sat outside it), riding near-byte-identical
+        # to the red: the same `&2?*: '` head, the same `[[{""` chain,
+        # the same `U:ba:`-tail. THE DENSITY MEASUREMENT (one budget
+        # each, fixed seed, the nightly bar): the r368 artifact seed
+        # alone re-derives a face-matching red within 45s;
+        # `qflow-gluefold-ps-r384.bin` and `waiver-neg-anchor-quoted-body.bin`
+        # (a 1-byte hop out of its waiver's model) each re-derive OTHER
+        # unclassified reds within 45s; the issue's remaining candidates
+        # (`catch101-colon-quoted-follower.bin`,
+        # `flow-q-quoted-follower.bin`, the non-artifact r368 clamp)
+        # stayed CLEAN — the measured breeders join the exclusion, the
+        # clean candidates ride. The face itself stays red by design:
+        # its floor (greedy ddmin under the exact nightly bar) is the
+        # 11-byte `&2: '<PS><NEL>'` quoted-fold cell — PS and NEL are
+        # CONTENT on both engines singly (both fold a lone NEL to one
+        # space; the p-nel1/p-ps1/p-nelps probes all agree), but the
+        # ADJACENT `PS NEL` order splits the fold join (yeptris `PS
+        # SP`, libyaml `PS LF` — its READ_LINE keeps LS/PS verbatim
+        # while normalizing NEL to LF, and its fold branch joins the
+        # verbatim leading break with the trailing LF); fy 1.0.0 keeps
+        # BOTH raw in strict-1.2 (siding with NEITHER engine; the 1.2
+        # c-printable reading) and the suite carries ZERO raw PS/NEL
+        # rows across all 351 dirs — no declined-by-design basis, no
+        # arm widening (the r370/r403 law: the gate surface is itself
+        # mutation-dense); the floor + artifact bytes pin as the r404
+        # live-DIFFER negative controls
+        # waiver-neg-psnel-quoted-fold-r404{,-artifact} (the
+        # family-classify N-phase requires the waiver to decline them
+        # forever), and the agreed reverse-order NELPS pair pins green
+        # under the full ctest (the fuzz-diff-r404 pins). The
+        # psnel-quoted-fold pins stay out of the snapshot with the
+        # breeders.
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete && find corpus-comparator -name 'qflow-depth-clamp-*' -delete && find corpus-comparator -name 'qflow-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-anchor-quoted-body*' -delete && find corpus-comparator -name 'psnel-quoted-fold-*' -delete
 
       - name: Fuzz budget
         run: |
