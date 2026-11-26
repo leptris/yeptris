@@ -11087,17 +11087,22 @@ add_test(
     # controls waiver-neg-gluefold-qhash-r405{,-artifact}.bin (the
     # family-classify N-phase requires the waiver to decline them
     # forever — and NO other classifier family may claim them), and
-    # the engines-agreed floor-head shape `{?,*L:<LF>,?#}` (fy-clean
-    # in both passes) pins green below. The gluefold-qhash names stay
+    # the engines-agreed closed-map double-cell shape `{?#,?#}`
+    # (fy-clean in both passes) pins green below. The SAME cell
+    # composes to three engine-relations by tail: closed compositions
+    # agree, the open-tail floor-head `{?,*L:<LF>,?#}` is
+    # YEPTRIS-ONLY-ACCEPT (libyaml errors outright, fy sides with
+    # yeptris), and the full break-tail floor is the live DIFFER. The
+    # gluefold-qhash names stay
     # out of the snapshot with the pool; six breeding green firewall
     # controls (alias-member, backtick, bom, nested-seq,
     # paste-member-split, squote) join the exclusion by name; the
     # measured-clean riders (rootplain, mid-token-hash-prop-line,
     # block-nel-escless-fold-r294) stay in the snapshot.
     add_test(
-        NAME fuzz-diff-r405-gluefold-qhash-floor-head
+        NAME fuzz-diff-r405-gluefold-qhash-closed
         COMMAND fuzz_diff
-                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/gluefold-qhash-floor-head-r405-pair.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/gluefold-qhash-closed-r405-pair.bin
     )
 
 

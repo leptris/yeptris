@@ -314,10 +314,14 @@ jobs:
         # `{?,*L:<LF>,?#,-<LF>0}` (every single-byte deletion breaks
         # the bar) + the 113-byte artifact pin as the live-DIFFER
         # negative controls waiver-neg-gluefold-qhash-r405{,-artifact}
-        # .bin, and the engines-agreed floor-head shape
-        # `{?,*L:<LF>,?#}` pins green under the full ctest (the
+        # .bin, and the engines-agreed closed-map double-cell shape
+        # `{?#,?#}` pins green under the full ctest (the
         # fuzz-diff-r405-gluefold-qhash unit; fy accepts it in both
-        # passes). The gluefold-qhash names stay out of the snapshot
+        # passes). The SAME cell composes to three engine-relations by
+        # tail: closed compositions agree, the open-tail floor-head
+        # `{?,*L:<LF>,?#}` is YEPTRIS-ONLY-ACCEPT (libyaml errors, fy
+        # sides with yeptris), and the full break-tail floor is the
+        # live DIFFER. The gluefold-qhash names stay out of the snapshot
         # with the pool. Six of the seven early waiver-era GREEN
         # firewall controls measured as live breeders (alias-member,
         # backtick, bom, nested-seq, paste-member-split, squote —
