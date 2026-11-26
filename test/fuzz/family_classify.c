@@ -2018,9 +2018,17 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
         fcnode val;
         memset(&val, 0, sizeof(val));
         size_t qstop;
-        if (y_cur_is_map(c) && j < n && p[j] == ':') {
+        int seq_pair = 0;
+        if (j < n && p[j] == ':') {
             /* the VALUE boundary after the quoted key (unconditional
-             * split on both engines) */
+             * split on both engines). The r399 widening (run
+             * 45759021837): the SEQ-root twin joins — the head pair of
+             * the artifact's `["1or": "\rg",?g?,""]` composition (the
+             * probed pair `["1or": "\rg"]` / `["r": "",t]` renders the
+             * wrapper EQUAL on both engines; the split rides the LATER
+             * `?g?` member). The SEQ entry split at the colon boundary
+             * rides the single-pair wrapper (the r245 m2-seed
+             * simple-key law — the plain-key twin below). */
             if (!y_value_node(c, j + 1, &qstop, &val)) {
                 free(tmp.buf);
                 return 0;
@@ -2030,6 +2038,7 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
                 free(tmp.buf);
                 return y_fail(c);
             }
+            seq_pair = !y_cur_is_map(c);
         } else if (j >= n || !fc_flow_ind(p[j])) {
             free(tmp.buf);
             return y_fail(c); /* a non-boundary byte after the span */
@@ -2037,12 +2046,18 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
             qstop = j; /* the empty value (the parser's insertion) */
         }
         *term_at = qstop;
+        if (seq_pair) {
+            fo_str(&c->out, "+MAP\n");
+        }
         fo_str(&c->out, "=VAL : ");
         fo_bytes(&c->out, tmp.buf, tmp.len);
         fo_str(&c->out, "\n");
         free(tmp.buf);
         if (y_cur_is_map(c)) {
             fc_render_val(&c->out, p, &val);
+        } else if (seq_pair) {
+            fc_render_val(&c->out, p, &val);
+            fo_str(&c->out, "-MAP\n");
         }
         return 1;
     }

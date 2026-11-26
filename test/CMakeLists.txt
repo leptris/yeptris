@@ -10654,6 +10654,61 @@ add_test(
     # cannot carry a standalone fuzz_diff add_test — the walker
     # aborts on every unclaimed split by design).
 
+    # r399 (the post-r398 Fuzz Nightly round, run 45759021837, headSha
+    # verified = the r398 merge 17b2fd99, issue #1702): the FLOW-root
+    # plain-`?` member face — the 18-byte artifact `[1or: "\rg",?g?,""]`
+    # (a raw CR inside the head pair's double-quoted value) and its
+    # 14-byte dual+shape-bar floor `[r: "",?g?,""]` (greedy ddmin under
+    # the unclassified-YD_DIFFER + yeptris-renders-the-plain-member +
+    # libyaml-renders-the-`?`-opened-map bar; the CR and the head
+    # spelling `1or` were both droppable). Both engines ACCEPT; the
+    # streams split on the SECOND member: yeptris reads `?g?` as a
+    # PLAIN scalar (the carried law-d plain-`?` rule), libyaml opens
+    # its flow-`?` KEY wrapper (key `g?`, the parser's empty value) and
+    # the trailing member rides after the wrapper. THE CONSENSUS BASIS
+    # IS PRESENT, UNLIKE r398: the suite's HM87 row ("Scalars in flow
+    # start with syntax char") pins `[?x]` -> `=VAL :?x` PLAIN — the
+    # suite GOVERNS the member row (yeptris's reading IS the suite
+    # bar); fy strict-1.2 AND fy --yaml-1.1 render `?g?` plain on the
+    # floor, the artifact, and every probed DIFFER row (both engines
+    # byte-equal on the head pairs themselves — plain-led, quoted-led,
+    # empty-quoted, escape-carrier — probed via yepdiff). The member-row
+    # measurement: the split needs only the flow map head + the `?g?`
+    # member (the CR carrier is free: LF/CRLF/none all split
+    # identically; the terminator member is free: `"x"`/none both
+    # CLEAN — the classification, not the engines, needed the third
+    # member for the pre-widening derivation). THE GAP WAS CLASSIFIER
+    # COVERAGE, not an engine defect: the #1310 derivation declined at
+    # the value walk's outright `"`/`'`/`!` refusal (y_value_node),
+    # so any DIFFER sharing the seq with a DQ-valued head pair stayed
+    # red. THE CARRY: the DQ value slot joins the derivation
+    # (fc_quoted_value — the r337/r374/r308 gates — derives the span;
+    # the quoted VALUE's glued `:` and the SQ/`!` slots stay declined,
+    # unmeasured) and the r314 quoted-KEY member's unconditional-colon
+    # law takes the SEQ-root single-pair wrapper twin (the probed
+    # `["1or": "\rg"]` / `["r": "",t]` heads render EQUAL on both
+    # engines). Pins: the floor + artifact + the quoted-key head
+    # composition ride the flow-qsoup classify N-phase AND the named
+    # walk below (claimed faces can carry a standalone fuzz_diff
+    # add_test). Firewall unchanged: the r398 foldheader-nel-comment
+    # row, the r397 alias-tail-ride row, the r396 anchor-PS row, the
+    # r395 empty-slot row, the r390 alias-cut bucket, the r394
+    # prop-charset row keep their arms. Growth ledger: family nightly
+    # re-derivations now 16 (r377, #1646, #1649, #1656, #1665/r388,
+    # #1669/r389, #1671/r390, #1675/r391, #1677/r392, #1682/r393,
+    # #1684/r394, #1687/r395, #1691/r396, #1694/r397, #1697/r398,
+    # this one) — the TENTH by-mutation re-derivation, and the FIRST
+    # governing-row carry: a suite row (HM87) sides with yeptris and
+    # fy rides it on both 1.2/1.1 passes.
+    add_test(
+        NAME fuzz-diff-r399-dqvalue-head
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqvalue-head-r399.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqvalue-head-r399-artifact.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/flow-qsoup-dqvalue-quotedkey-r399.bin
+    )
+
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
