@@ -11105,6 +11105,105 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/gluefold-qhash-closed-r405-pair.bin
     )
 
+    # r406 (the post-r405 Fuzz Nightly round, run 45899290043, headSha
+    # verified = d701c4e8, the r405 merge, issue #1726): the r405
+    # exclusion HELD — the diff leg's INITED walk over the EXTENDED
+    # snapshot was CLEAN (#1487, corp 835, the 1170-seed snapshot, zero
+    # seed reds; the gluefold pool did not re-derive) and the round
+    # red by MUTATION instead: 14 bytes `feff0085 feff0085 feff0085
+    # 0021` (BOM+NEL x3 + `!` under UTF-16BE), ONE ChangeByte off base
+    # unit `bom-utf16-nel-line-start-r226.bin` (`0061` -> `0021`) — an
+    # r226-era BOM-led seed riding the snapshot under a name matching
+    # NO exclusion glob (`bom-line-start-*` and `utf16-*` both miss it;
+    # the r403/r375 families' naming gap, the r404 precedent shape).
+    # THE FACE: the r402/r403 BOM-content law composed with the NEL
+    # fold — yeptris strips only the STREAM-LEAD BOM and keeps the two
+    # mid-stream BOMs as plain-scalar content through the folded NEL
+    # lines (`=VAL : <BOM> <BOM> !`), libyaml strips EVERY BOM in its
+    # UTF-16 reader (`=VAL : `, the scalar collapses to empty). THE
+    # GREEDY-DDMIN FLOOR is the FULL 14 bytes — every single-byte and
+    # chunk deletion drops the bar (agree), the face is one-minimal.
+    # THE PROBE MATRIX (the standalone harness, never the LF form
+    # alone): one pair + `a`, two pairs + `a`, three pairs + `a` (the
+    # r226 seed itself), one pair + `!`, BOM-runs without NELs, and
+    # the UTF-8 spelling of the whole composition ALL AGREE — the
+    # split needs >=3 BOM+NEL pairs AND the `!` tail (the NEL run
+    # without the BOM lead is YEPTRIS-ONLY-ACCEPT — libyaml cannot
+    # even detect UTF-16 without the BOM and rejects the NUL-bearing
+    # bytes outright; a different documented axis, not this face).
+    # THE CONSENSUS BASIS: YEPTRIS-SIDING per the standing BOM-content
+    # rows (r402 BOM-led charset, r403 bom-line-start) — fy 04e0b58
+    # CANNOT READ UTF-16BE AT ALL (Invalid UTF8 in BOTH strict-1.2 and
+    # --yaml-1.1 passes on the floor, the artifact, and every u16be
+    # probe — siding with NEITHER engine), and on the encoding-
+    # independent UTF-8 spelling of the same composition fy keeps the
+    # BOMs RAW as scalar content in BOTH passes (`"﻿ ﻿ !"`),
+    # siding WITH yeptris on BOM-content; the suite carries ZERO BOM
+    # rows, ZERO UTF-16 rows and ZERO raw-NEL rows across all 351 src
+    # dirs at the da267a5c pin. THE DENSITY MEASUREMENT (the r404/r405
+    # census form; one ~45s budget each, fixed seed 406, single-file
+    # seed dirs, the nightly bar, over the WHOLE 17-entry BOM-named
+    # riding set the globs missed — 14 file seeds + 3 seed dirs,
+    # seed-read cleanliness verified first: every candidate walked
+    # -runs=1 CLEAN, so every soak red is a mutation product): the
+    # pool RE-DERIVES WHOLESALE — 13 of 17 re-derive a comparator red
+    # within ONE budget (the r226 breeder itself, the
+    # bom-anchored-key quartet (r154, r156, r338 x2),
+    # bom-content-breaks-utf16be, BOTH catch seed dirs
+    # (catch121-lone-utf8-bom, catch132-utf16-content-bom), the
+    # leading-bom-content dir, double-content-bom,
+    # catch116-block-key-bom and catch117-engine-bom), with faces
+    # across the documented-law neighborhoods: BOM+charset,
+    # BOM+block-scalar, the comparator's own `AL : ` dump vocabulary
+    # pasted into a plain, the PS/UTF-16 compositions, the ` >#:`
+    # fold cell; only bom-content-late-head-overflow,
+    # bom-content-leading-break-utf16be, bom-utf16-line-start,
+    # catch105-utf8-bom-reencode and catch113-push-lone-utf16-bom
+    # stayed clean for one budget — and they are FAMILY-NAMED, so
+    # they join the sweep with the pool (the r405 six-green-controls
+    # precedent: riding is only clean until the walk reaches them).
+    # the EXCLUSION EXTENSION is the answer (the r375/r405 whole-
+    # family law), not an arm widening whose gate would derive the
+    # mid-stream-BOM fold split from raw bytes (the r370/r403
+    # mutation-dense-gate law): the WHOLE BOM-named family joins —
+    # `bom-*` sweeps the 9 never-excluded BOM-led seeds (the
+    # bom-anchored-key quartet, the three bom-content seeds, the two
+    # bom-utf16 seeds) and `*bom*` sweeps the straggler cohort the
+    # prefix form cannot reach (catch105/113/116/117, the
+    # catch121/catch132 seed dirs, double-content-bom, the
+    # leading-bom-content dir; 46/46 name hits are genuinely
+    # BOM-family — zero collateral), with the `waiver-neg-*bom*` twin
+    # closing the mid-name gap forward (the r404 lesson; the
+    # r405-era `waiver-neg-bom*` twin already covers the
+    # waiver-neg-bom-prefixed controls). THE PINS: the 14-byte floor +
+    # artifact pin as the live-DIFFER negative controls
+    # waiver-neg-bomutf16-nel-fold-r406{,-artifact}.bin (the
+    # family-classify N-phase requires the waiver to decline them
+    # forever — and NO other classifier family may claim them; the
+    # comparator cannot seed from them — every twin glob matches),
+    # and the engines-agreed UTF-8 spelling of the composition pins
+    # green below (the BOM-content/NEL-fold regression gate for the
+    # axis both engines already share; the r226 seed itself stays
+    # under its existing fuzz-diff-r226 pin). The BOM-named family —
+    # breeders and the one-budget-clean cohort alike — stays out of
+    # the snapshot with the pool. Firewall unchanged: the r405
+    # gluefold-qhash row (VERIFIED this run by the clean INITED walk),
+    # the r404 psnel-quoted-fold row, the r403 bom-line-start row,
+    # the r402 BOM-led charset row, the r401 nelrun row, the r400
+    # block-bsi-root row, the r398 foldheader row, the r397
+    # alias-tail-ride row, the r396 anchor-PS row, the r395
+    # empty-slot row, the r390 alias-cut bucket, the r394 prop-charset
+    # row keep their arms. Growth ledger: family nightly
+    # re-derivations now 23 — the SEVENTEENTH by-mutation and the
+    # THIRD identified-by-measurement (the exclusion-chain GAP class:
+    # the r375 utf16 glob's leading-anchor form is what left the
+    # bom-utf16-* seeds riding).
+    add_test(
+        NAME fuzz-diff-r406-bomutf16-nel-fold-u8
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bomutf16-nel-fold-u8-r406-pair.bin
+    )
+
 
 
 
