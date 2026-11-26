@@ -16,45 +16,33 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.87 — live across all five runtimes** (C +
-ruby `0.6.87.0` + py `0.6.87.0` + rs/ts `0.6.87`, registry-checked
-2026-11-26). v0.6.87 carries the r398-r399 comparator rounds (all
-zero-`src/`): the folded-header NEL-comment face (`> #` + PS/PS +
-NEL-glued-`#`; yeptris renders the folded multi-line plain, libyaml
-EMPTY; manifests iff BOTH the space-`#` comment lead AND a
-NEL-glued trailing `#` are present — the 18-row matrix) adjudicated
-**DECLINED-BY-DESIGN**: fy strict-1.2 sides WITH libyaml's empty
-render, fy 1.1 errors, the suite silent — no consensus basis, the
-waiver NOT widened, the face pinned in the negative-control set,
-and the owner datum recorded (yeptris's kept-NEL render is arguably
-the spec-correct strict-1.2-printable reading), with the
-comparator-snapshot exclusion shipping so the family's seeds stay
-out of the diff leg (r398, #1700); the flow VALUE-slot rider face
-(`?*2` head + the `&m:` anchored value + the tag-riding plain + the
-mid-collection `*VAL` alias tail) likewise **DECLINED-BY-DESIGN** —
-fy errors "unexpected alias" in BOTH modes on every manifesting
-row, the OWNER-ESCALATION datum recorded (yeptris's plain/alias
-scanner vs the spec's content-riding is an engine decision), and
-the comparator exclusion HELD through its first nightly (r397→
-r398's red was genuinely new, #1696); and then the **ledger's first
-GOVERNING-ROW carry**: the flow `?`-led member face (`[r: "",
-?g?,""]` — yeptris reads `?g?` as a plain member, libyaml opens a
-flow map) found its basis in the suite's own HM87 row (pins `[?x]`
-→ `=VAL : ?x` plain — yeptris's reading), fy strict-1.2 AND
---yaml-1.1 both siding yeptris on floor + artifact + every probe —
-carried as a classifier widening (r399, #1703). **The
-grammar-growth ledger at n=16 re-derivations across four
-territories: KEEPING PACE holds — every post-waiver red an
-unmeasured spelling correctly declined, the waiver has never
-wrongly claimed, and the consensus-basis discipline
-(fy-must-render-a-reading + suite-row-or-decline) is now the
-standard gate for every candidate widening — two consecutive
-declines without forced carries is the pattern working as designed,
-and the HM87 governing-row precedent gives every future face a
-second basis path.** Zero YAML engine divergence standing beyond
-#1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and #1615
-(0.6.78). The previous cut:
-v0.6.86 — the r395-r397 waiver-era rounds (the rider-arm
+**Latest release: v0.6.88 — live across all five runtimes** (C +
+ruby `0.6.88.0` + py `0.6.88.0` + rs/ts `0.6.88`, registry-checked
+2026-11-27). v0.6.88 carries the r400-r403 comparator rounds (all
+zero-`src/`): the root-block-scalar content-indent face carried on
+the ledger's SECOND governing-row basis — the suite's M7A3/DK3J/FP8R
+rows (suite-VALID, libyaml rejects) with spec 1.2.2 §8.1.1.1's
+floorless auto-detect fetched as the canonical text — the
+classifier's header detector now skips leading blanks (r400,
+#1707); the block-root glued-anchor `&2?*:` plain-vs-map face
+carried on the THIRD governing-row basis — the suite rows 2SXE +
+W5VH pin the riding-name law, the r238 quoted-body family's NEL
+joining the clean-break runs (r401, #1710); the stream-start-BOM
+charset-arm skip carried with Y2GN governing the mid-name colon
+(r402, #1714); and the r392 double-BOM family's third live shape
+answered with **the treadmill decision executed: the bom-line-start
+family joined the comparator snapshot exclusion** (the r370
+mutation-density law — a family that re-derives must not seed the
+diff leg; the map-split face pinned as a live-DIFFER neg control so
+rediscovery classifies green) (r403). **The grammar-growth ledger at
+n=20 re-derivations across four territories: KEEPING PACE holds —
+every post-waiver red an unmeasured spelling correctly declined,
+the waiver has never wrongly claimed, and the governing-row pattern
+(HM87 → M7A3/DK3J/FP8R → 2SXE/W5VH) is now the second basis path
+confirmed three times.** Zero YAML engine divergence standing
+beyond #1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and
+#1615 (0.6.78). The previous cut:
+v0.6.87 — the r395-r397 waiver-era rounds (the rider-arm
 glued-colon boundary row closing the composition axis; the
 realworld-splice anchor-PS arm-carry; the flow VALUE-slot rider
 declined-by-design), the ledger at n=12 across four territories.
