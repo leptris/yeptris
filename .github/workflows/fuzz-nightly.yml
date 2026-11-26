@@ -265,7 +265,79 @@ jobs:
         # under the full ctest (the fuzz-diff-r404 pins). The
         # psnel-quoted-fold pins stay out of the snapshot with the
         # breeders.
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete && find corpus-comparator -name 'qflow-depth-clamp-*' -delete && find corpus-comparator -name 'qflow-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-anchor-quoted-body*' -delete && find corpus-comparator -name 'psnel-quoted-fold-*' -delete && find corpus-comparator -name 'waiver-neg-psnel-quoted-fold-*' -delete
+        # The WHOLE gluefold-qhash soup POOL joins at r405 (run
+        # 45880924803's round, issue #1723) — the r404 soak's own
+        # prediction landed: the diff leg passed INITED CLEAN (the
+        # #1722 glob fix verified) and red by MUTATION 52s in on a
+        # 113-byte `{?#?#|#|+`-led flow-soup face bred by ONE CopyPart
+        # from `flow-qate-run-r380-artifact.bin` — an r380-era pin
+        # riding the snapshot under a name matching NO exclusion glob.
+        # THE DENSITY MEASUREMENT (the r404 census carried forward to
+        # its pool; one 45s budget each, fixed seed 405, single-file
+        # seed dirs, the nightly bar, over the WHOLE 74-seed
+        # `?#`-vocabulary pool the census had measured, contended
+        # 3-way on a loaded arm64 host): 64 of 74 seeds re-derive a red
+        # within ONE budget (42 the face-matching gluefold soup, 22
+        # neighboring documented-family faces — the utf16-BOM law, the
+        # r390 alias-cut bucket, the `?*L` alias-soup cells); 10 stayed
+        # clean for one budget. THE r1306 LAW CUTS BOTH WAYS and the
+        # pool as a whole re-derives, so the EXCLUSION EXTENSION is the
+        # answer (the r375/r397 whole-family law), not an arm widening
+        # whose gate would derive the plain-vs-indicator `?#` split
+        # from raw bytes (the r370/r403 mutation-dense-gate law). The
+        # family globs sweep 104 seeds — the 71 measured pool members
+        # PLUS 33 lineage siblings whose bytes lack the literal `?#`
+        # cell (the alias-charset-glued/anchor-glued-hash/
+        # qflow-seq-question/qflow-lsps/docsoup r116-r380 comparators)
+        # — so the naming gap cannot regrow inside the extension
+        # (THE R404 LESSON, applied forward). THE CELL LAW: the glued
+        # `?#` cell inside a flow collection splits the plain-vs-
+        # indicator resolution — yeptris keeps `?#...` as plain-scalar
+        # CONTENT (1.2 ns-plain-first: `?` followed by non-space
+        # continues a plain; `#` never starts a comment without
+        # preceding whitespace), libyaml treats the `?` as the
+        # complex-key indicator and the glued `#...` as a comment run
+        # (the member collapses to an empty key/value and the run
+        # swallows the separator tail); the `*L:` alias riders, the
+        # `20:` colon-ride members and the `#|#` mid-token cells all
+        # AGREE singly (p1-p9 probe matrix through the harness). THE
+        # CONSENSUS BASIS: fy 04e0b58 accepts the single cells but
+        # REJECTS the composed faces in BOTH strict-1.2 and
+        # --yaml-1.1 passes (strict-1.2 "did not find expected node
+        # content" at the `,?#` cell; the artifact "plain scalar cannot
+        # start with a backtick") — siding with NEITHER engine; the
+        # suite carries ZERO glued rows (`?#`, `,#`, `{#`, `[#` absent
+        # from all 351 src dirs at the da267a5c pin) and the
+        # alias-charset axis stays governed by 2SXE/W5VH/Y2GN.
+        # DECLINED-BY-DESIGN per the r397/r398 precedent (no basis to
+        # carry). THE PINS: the 15-byte greedy-ddmin floor
+        # `{?,*L:<LF>,?#,-<LF>0}` (every single-byte deletion breaks
+        # the bar) + the 113-byte artifact pin as the live-DIFFER
+        # negative controls waiver-neg-gluefold-qhash-r405{,-artifact}
+        # .bin, and the engines-agreed closed-map double-cell shape
+        # `{?#,?#}` pins green under the full ctest (the
+        # fuzz-diff-r405-gluefold-qhash unit; fy accepts it in both
+        # passes). The SAME cell composes to three engine-relations by
+        # tail: closed compositions agree, the open-tail floor-head
+        # `{?,*L:<LF>,?#}` is YEPTRIS-ONLY-ACCEPT (libyaml errors, fy
+        # sides with yeptris), and the full break-tail floor is the
+        # live DIFFER. The gluefold-qhash names stay out of the snapshot
+        # with the pool. Six of the seven early waiver-era GREEN
+        # firewall controls measured as live breeders (alias-member,
+        # backtick, bom, nested-seq, paste-member-split, squote —
+        # "riding is their designed behavior" held only until the walk
+        # reached them) join by their own names; the measured-clean
+        # non-family riders stay in the snapshot (rootplain,
+        # mid-token-hash-prop-line, block-nel-escless-fold-r294).
+        # Firewall unchanged: the r404 psnel-quoted-fold row (VERIFIED
+        # this run by the clean INITED walk), the r403 bom-line-start
+        # exclusion row, the r402 BOM-led charset row, the r401 nelrun
+        # row, the r400 block-bsi-root row, the r398 foldheader row,
+        # the r397 alias-tail-ride row, the r396 anchor-PS row, the
+        # r395 empty-slot row, the r390 alias-cut bucket, the r394
+        # prop-charset row keep their arms. Growth ledger: family
+        # nightly re-derivations now 22 — the SIXTEENTH by-mutation.
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete && find corpus-comparator -name 'qflow-depth-clamp-*' -delete && find corpus-comparator -name 'qflow-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-anchor-quoted-body*' -delete && find corpus-comparator -name 'psnel-quoted-fold-*' -delete && find corpus-comparator -name 'waiver-neg-psnel-quoted-fold-*' -delete && find corpus-comparator -name '*soup*' -delete && find corpus-comparator -name '*glue*' -delete && find corpus-comparator -name 'qcomp-*' -delete && find corpus-comparator -name 'qflow-*' -delete && find corpus-comparator -name '*gray*' -delete && find corpus-comparator -name 'flow-qate-run-*' -delete && find corpus-comparator -name 'waiver-neg-alias-member*' -delete && find corpus-comparator -name 'waiver-neg-backtick*' -delete && find corpus-comparator -name 'waiver-neg-bom*' -delete && find corpus-comparator -name 'waiver-neg-nested-seq*' -delete && find corpus-comparator -name 'waiver-neg-paste-member-split*' -delete && find corpus-comparator -name 'waiver-neg-squote*' -delete && find corpus-comparator -name 'waiver-neg-gluefold-qhash*' -delete && find corpus-comparator -name 'gluefold-qhash-*' -delete
 
       - name: Fuzz budget
         run: |

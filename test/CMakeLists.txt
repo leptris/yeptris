@@ -11048,6 +11048,63 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/psnel-quoted-fold-nelps-order-r404-pair.bin
     )
 
+    # r405 (the post-r404 Fuzz Nightly round, run 45880924803, headSha
+    # verified = 0ee85036, the v0.6.89 tag, issue #1723): the r404
+    # soak's own prediction landed — the diff leg passed INITED CLEAN
+    # (the #1722 glob fix verified; the r404 psnel defect is CLOSED)
+    # and red by MUTATION 52s in on a 113-byte `{?#?#|#|+`-led
+    # flow-soup face bred by ONE CopyPart from
+    # `flow-qate-run-r380-artifact.bin`, an r380-era pin riding the
+    # comparator snapshot under a name matching NO exclusion glob.
+    # Zero engine src/ change since 0.6.88 — the mutation walk
+    # reaching a long-riding pool, not a regression. THE DENSITY
+    # MEASUREMENT (the r404 census carried forward to its pool; one
+    # 45s budget each, fixed seed 405, single-file seed dirs, the
+    # nightly bar, over the WHOLE 74-seed `?#`-vocabulary pool): 64 of
+    # 74 seeds re-derive a red within one budget (42 face-matching
+    # gluefold, 22 neighboring documented-family faces); 10 stayed
+    # clean for one budget — the pool re-derives wholesale, so the
+    # EXCLUSION EXTENSION is the answer (the r375/r397 whole-family
+    # law; the family globs sweep 104 seeds including 33 lineage
+    # siblings, closing the naming-gap class forward). THE FACE:
+    # DECLINED-BY-DESIGN — the glued `?#` cell inside a flow
+    # collection splits the plain-vs-indicator resolution (yeptris
+    # keeps `?#...` as plain content per the 1.2 ns-plain-first
+    # reading — a `#` never starts a comment without preceding
+    # whitespace; libyaml treats `?` as the complex-key indicator and
+    # the glued `#...` as a comment run that swallows the member and
+    # its separator tail); all single cells AGREE (p1-p9 probe matrix:
+    # `{?#}`, `{a?#}`, `{?#|#|}`, the `*L:` alias rider, the `20:`
+    # colon-ride); fy 04e0b58 accepts the single cells but REJECTS the
+    # composed floor and artifact in BOTH strict-1.2 and --yaml-1.1
+    # passes (strict-1.2 "did not find expected node content" at the
+    # `,?#` cell) — siding with NEITHER engine; the suite carries ZERO
+    # glued rows at the da267a5c pin and the alias-charset axis stays
+    # governed by 2SXE/W5VH/Y2GN (the r397/r398 no-basis precedent).
+    # THE PINS: the 15-byte greedy-ddmin floor
+    # `{?,*L:<LF>,?#,-<LF>0}` (every single-byte deletion breaks the
+    # bar) + the 113-byte artifact are the live-DIFFER negative
+    # controls waiver-neg-gluefold-qhash-r405{,-artifact}.bin (the
+    # family-classify N-phase requires the waiver to decline them
+    # forever — and NO other classifier family may claim them), and
+    # the engines-agreed closed-map double-cell shape `{?#,?#}`
+    # (fy-clean in both passes) pins green below. The SAME cell
+    # composes to three engine-relations by tail: closed compositions
+    # agree, the open-tail floor-head `{?,*L:<LF>,?#}` is
+    # YEPTRIS-ONLY-ACCEPT (libyaml errors outright, fy sides with
+    # yeptris), and the full break-tail floor is the live DIFFER. The
+    # gluefold-qhash names stay
+    # out of the snapshot with the pool; six breeding green firewall
+    # controls (alias-member, backtick, bom, nested-seq,
+    # paste-member-split, squote) join the exclusion by name; the
+    # measured-clean riders (rootplain, mid-token-hash-prop-line,
+    # block-nel-escless-fold-r294) stay in the snapshot.
+    add_test(
+        NAME fuzz-diff-r405-gluefold-qhash-closed
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/gluefold-qhash-closed-r405-pair.bin
+    )
+
 
 
 
