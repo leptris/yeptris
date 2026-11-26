@@ -21946,8 +21946,10 @@ static int yd_composed_break_divergence(const uint8_t* data, size_t size) {
  * #1704): the header itself may carry leading blanks at the root (the
  * ` |` artifact spell — parser->indent is -1 at a bare root whatever
  * the header's column, so libyaml's clamp is column-blind; the floor
- * `|\n#` and the 60-byte artifact split identically under the blank
- * skip, the indented copy resolves to the breakless-EOF clip residual
+ * ` |\n#` and the 60-byte artifact split identically under the blank
+ * skip — dropping the header's space re-enters the already-claimed
+ * col-0 family, which is why the dual+shape bar pins the space — the
+ * indented copy resolves to the breakless-EOF clip residual
  * exactly like the col-0 family, and fy 2.6.0 rides the col-0 faces in
  * BOTH modes while emptying only the space-indented-header composition
  * — the comparator split the arm's own ledger lines already document). */

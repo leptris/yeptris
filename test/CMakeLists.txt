@@ -10714,11 +10714,12 @@ add_test(
     # header — the 60-byte artifact `#!##!!%#!ga#!##!!%#!ga␠␠\n␠|\n
     # ##%#!g#\n###\n##2#21%b\n#\n###\n#A` (a `#`-comment lead, the ` |`
     # literal header at column 1, and six `#`-led lines at column 0)
-    # and its 3-byte dual+shape-bar floor `|\n#` (greedy ddmin under
+    # and its 4-byte dual+shape-bar floor ` |\n#` (greedy ddmin under
     # the exact-nightly-pair bar: unclassified YD_DIFFER + yeptris
-    # renders the block literal + libyaml renders it EMPTY; the
-    # comment lead, the header space, and the body spellings were all
-    # droppable). Both engines ACCEPT; yeptris auto-detects the
+    # renders the block literal + libyaml renders it EMPTY + the
+    # pre-patch harness aborts; the comment lead and the body
+    # spellings were all droppable — the header's own space was NOT:
+    # dropping it re-enters the already-claimed col-0 family). Both engines ACCEPT; yeptris auto-detects the
     # content indent from the first non-empty line (spec 8.1.1.1, no
     # floor) so the `#`-led lines ride as literal content with the
     # breakless-EOF clip break, libyaml's unconditional
