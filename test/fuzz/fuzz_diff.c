@@ -22972,8 +22972,17 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
              * prose, but an anchor on a later line still gates (the
              * nightly's round 17, crash-39eb5a17: "&4:" after a
              * '# comment' line was never scanned and the family's
-             * carry declined the shape) */
-            while (i + 1 < size && data[i + 1] != '\n' && data[i + 1] != '\r') {
+             * carry declined the shape). The r87 raw-break model
+             * bounds the line too (the r396 nightly's run 45725924584,
+             * crash-1e075bc5cb3673e5b5763d036c457e4bb1071afa, the
+             * 32-byte floor "#<PS>&--02:in~---<PS><PS>? I &--nn~":
+             * the swallow ran past the comment's PS terminator and
+             * consumed the WHOLE input — no '&' ever gated, and the
+             * charset split never staged on the comment-led face;
+             * both engines end the comment at the raw break, the
+             * anchor after it gates legitimately) */
+            while (i + 1 < size && data[i + 1] != '\n' && data[i + 1] != '\r' &&
+                   yd_mb_break_len(data, size, i + 1) == 0) {
                 i++;
             }
             prev = '\n';
@@ -23276,8 +23285,12 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
         if (c == '#' && (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r')) {
             /* verbatim through the comment's line break, then keep
              * scanning: anchors on later lines still split (the gate
-             * walks the same set) */
-            while (i < size && data[i] != '\n' && data[i] != '\r') {
+             * walks the same set). The r87 raw breaks bound the line
+             * here too (the r396 floor's "#<PS>" lead — the copy is
+             * byte-identical either way, the PS then rides the normal
+             * verbatim break clause) */
+            while (i < size && data[i] != '\n' && data[i] != '\r' &&
+                   yd_mb_break_len(data, size, i) == 0) {
                 sub[o++] = (char)data[i++];
             }
             prev = '\n';
