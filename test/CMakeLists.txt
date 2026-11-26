@@ -10954,6 +10954,101 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-map-split-r403-pair.bin
     )
 
+    # r404 (the post-r403 Fuzz Nightly round, run 45858435542, headSha
+    # verified = the r403 merge 5f6e81f5, issue #1718): the r387
+    # root-anchor-quoted-follow vocabulary re-derived by MUTATION
+    # (ShuffleBytes-EraseBytes-CrossOver, post-INITED — never a seed)
+    # on a 4056-byte face — the anchor-ride head `&2?*: '` over the
+    # `[[{""` quoted-body chain grown to ~398 reps, a folded-comment
+    # rider `> #<PS> :> #<CARON> :<LF> <PS><NEL> 0` INSIDE the chain
+    # (the r398 foldheader vocabulary composed into the r387 chain),
+    # and the r381 law's `U:ba:`-tail. Both engines ACCEPT. The dump
+    # pair: yeptris `+STR =VAL : &2?*: <chain-as-one-scalar-value>
+    # -STR` (the spec anchor munch riding `?*` per the 2SXE/W5VH/Y2GN
+    # law), libyaml `+STR +MAP =VAL : &2 ?* =VAL : <chain> -MAP -STR`
+    # (its IS_ALPHA cut at `2`, the `?*` residual as the key plain) —
+    # the same r387 three-way split, arm-carried. THE r403 CARRY HELD
+    # AND VERIFIED: the red carries ZERO bom-line-start vocabulary and
+    # the diff leg's INITED walk over the exclusion-extended snapshot
+    # (1279 seeds, `bom-line-start-*` + `waiver-neg-bom-line-start-*`
+    # deleted) was CLEAN — the r392 family stopped re-deriving exactly
+    # as the r370 law predicts. THE BREEDING SEEDS (the FIRST round
+    # identifying them by measurement): the mutant bred from NON-family
+    # seeds still riding the comparator snapshot —
+    # `qflow-depth-clamp-r368-artifact.bin`, the r368-era pin
+    # near-byte-identical to the red (the same `&2?*: '` head, chain,
+    # `U:ba:`-tail) whose name matches NO exclusion glob (r370 excluded
+    # `root-anchor-quoted-follow-*`; the same face family's r368 carry
+    # sat outside it). THE DENSITY MEASUREMENT (one 45s budget each,
+    # fixed seed 404, the nightly bar): the r368 artifact seed alone
+    # re-derives a face-matching red (3270 bytes,
+    # `&2?*: '<PS><CR>"\u1:…` — its own shape shrunk);
+    # `qflow-gluefold-ps-r384.bin` re-derives its own gluefold face
+    # (`{c,?#,\r{c,?#,\r0,?#…`, 35 bytes);
+    # `waiver-neg-anchor-quoted-body.bin` re-derives a 1-byte hop out
+    # of its waiver's model (`&2?/:\r '<PS><CR>'`, 13 bytes);
+    # `catch101-colon-quoted-follower.bin`, `flow-q-quoted-follower.bin`,
+    # and the non-artifact `qflow-depth-clamp-r368.bin` stayed CLEAN —
+    # the measured breeders (`qflow-depth-clamp-*`, `qflow-gluefold-*`,
+    # `waiver-neg-anchor-quoted-body*`) join the snapshot exclusion,
+    # the clean candidates ride. THE FLOOR: greedy chunk+byte ddmin
+    # under the exact nightly bar (rc 77 unclassified + the map-split
+    # shape check) walks the 4056 bytes to the 11-byte plateau
+    # `&2: '<PS><NEL>'` — every single-byte deletion breaks the bar
+    # (the anchor, the split colon, and EACH break byte are
+    # load-bearing). THE CELL LAW (the probe matrix, all measured
+    # through the harness + fy): PS and NEL are CONTENT singly on both
+    # engines (`a<PS>b` / `a<NEL>b` agree — libyaml's READ_LINE folds a
+    # lone NEL to one space, keeps PS verbatim); the ADJACENT `PS NEL`
+    # order splits the fold join — yeptris `a<PS> b`, libyaml
+    # `a<PS><LF>b` (READ_LINE normalizes NEL to LF but keeps LS/PS
+    # VERBATIM, and the fold branch joins the verbatim leading break
+    # with the trailing LF instead of folding to a space), the reverse
+    # `NEL PS` order AGREES on both (the trailing verbatim PS joined
+    # whole). THE CONSENSUS BASIS: fy 1.0.0 keeps BOTH break bytes RAW
+    # in strict-1.2 on the floor and every probe face (the 1.2
+    # c-printable reading — PS/NEL are printable content, b-break is
+    # CR/LF/CRLF only) — siding with NEITHER engine's fold; fy
+    # --yaml-1.1 folds all break runs (its own 1.1 reading); the suite
+    # carries ZERO raw PS/NEL rows across all 351 src dirs — no
+    # declined-by-design basis exists (the r402 precedent), and the
+    # treadmill decision (the r370/r403 law) holds: the face is a
+    # composition over seeds the exclusion should never have seeded, so
+    # the measured breeders JOIN THE EXCLUSION instead of widening an
+    # arm whose gate surface (deriving the PSNEL fold join from raw
+    # bytes) is itself mutation-dense. Comparator carry only, no engine
+    # change, NO arm change — the face stays red by design in the
+    # comparator. THE PINS: the floor + artifact bytes pin as the
+    # live-DIFFER negative controls
+    # waiver-neg-psnel-quoted-fold-r404{,-artifact}.bin (the
+    # family-classify N-phase requires the waiver to decline them
+    # forever), and the AGREED reverse-order pair `&2: 'a<NEL><PS>b'`
+    # pins green below (the fold-join regression gate for the axis
+    # both engines already share). The psnel-quoted-fold pins stay out
+    # of the snapshot (they are live DIFFERs / live-approved shapes the
+    # diff leg must not seed from). Firewall unchanged: the r403
+    # bom-line-start exclusion row (now VERIFIED), the r402 BOM-led
+    # charset row, the r401 nelrun row, the r400 block-bsi-root row,
+    # the r398 foldheader-nel-comment row, the r397 alias-tail-ride
+    # row, the r396 anchor-PS row, the r395 empty-slot row, the r390
+    # alias-cut bucket, the r394 prop-charset row keep their arms.
+    # Growth ledger: family nightly re-derivations now 21 (r377,
+    # #1646, #1649, #1656, #1665/r388, #1669/r389, #1671/r390,
+    # #1675/r391, #1677/r392, #1682/r393, #1684/r394, #1687/r395,
+    # #1691/r396, #1694/r397, #1697/r398, #1702/r399, #1704/r400,
+    # #1708/r401, #1711/r402, #1715/r403, this one) — the FIFTEENTH
+    # by-mutation re-derivation and the FIRST whose breeding seeds are
+    # identified as an exclusion-chain GAP; the treadmill status: the
+    # exclusion extension stops the r368/gluefold/waiver-anchor
+    # vocabulary from re-deriving (verify by the next nightly's INITED
+    # walk).
+    add_test(
+        NAME fuzz-diff-r404-psnel-quoted-fold-nelps-order
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/psnel-quoted-fold-nelps-order-r404-pair.bin
+    )
+
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
