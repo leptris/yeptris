@@ -22874,7 +22874,26 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
                       * '&'/'*' inside it is tag-URI content (r108) */
     int bs_open = 0; /* a |/> block-scalar body: every byte is text */
     size_t bs_col = 0;
-    for (size_t i = 0; i < size; i++) {
+    /* the STREAM-START BOM lead (the r402 nightly, run 45822172084,
+     * crash-c0f22730be132d78fa83738469c0d8d429e0795e): both engines
+     * strip the mark at the stream's head (spec 5.1; the catch-121
+     * law), so the walk skips it zero-width and the following '&'
+     * arms at node position. The mark's raw bytes plain-opened a
+     * phantom plain (the 0xEF is content to every state law below),
+     * the gate never armed, and the charset family declined its own
+     * BOM-led compositions — the 7-byte ddmin floor "<BOM>&U:U" under
+     * the exact-red bar (every no-BOM twin of the same faces classifies
+     * pre-patch through this very arm: &U:U:{}t / &U::U / &U::Ut /
+     * &U::U:{}t, and the trailing blank at breakless EOF strips on
+     * BOTH engines byte-identically in every probe — inert, no law of
+     * its own here). A mark at any LATER line start stays the
+     * r226/r364 family (yeptris keeps it content, libyaml strips — a
+     * different verdict relation yd_bom_line_start_divergence owns). */
+    size_t walk0 = 0;
+    if (size >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) {
+        walk0 = 3;
+    }
+    for (size_t i = walk0; i < size; i++) {
         unsigned char c = data[i];
         /* the r87 law: a raw NEL/LS/PS is a line break in this walk's
          * model — the head's column bookkeeping and the tail's
@@ -23211,7 +23230,16 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     int tag_run2 = 0; /* the gate's r108 tag-URI law again */
     int bs_open2 = 0;
     size_t bs_col2 = 0;
-    for (size_t i = 0; i < size;) {
+    /* the gate's stream-start BOM skip again: the mark rides STRIPPED
+     * through the copy (both engines' dumps are byte-identical with or
+     * without a copied mark, but the gate armed PAST it, so the copy
+     * walk must see the same post-mark bytes or its state walk — and
+     * with it the split positions — desync) */
+    size_t walk02 = 0;
+    if (size >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) {
+        walk02 = 3;
+    }
+    for (size_t i = walk02; i < size;) {
         unsigned char c = data[i];
         /* the r87 law again: a raw NEL/LS/PS breaks the line — copied
          * verbatim, with the \n state effects */
