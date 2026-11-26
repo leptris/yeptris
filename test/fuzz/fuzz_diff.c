@@ -11698,38 +11698,91 @@ static int yd_r218_blank_line(const uint8_t* d, size_t n, size_t* at) {
  * by the caller (4082/4081 visible chars on the y side, 4088/4087 on
  * the l side -- the 4095-char cut line minus the render prefix), so a
  * tamper-truncated dump loses the exact-length gate and declines. */
+/* The r401 normalized-break span (the post-r400 Fuzz Nightly round,
+ * run 45782078711, headSha verified = the r400 merge 93972085, issue
+ * #1708): NEL joins the clean CR/LF breaks inside the r238 quoted
+ * body. The r369 law measured the single NEL (READ_LINE spells it
+ * '\n' on libyaml -- the one exotic it does not keep raw -- and
+ * yeptris's #638 normalizer rewrites it to '\n' everywhere, quoted
+ * regions included); this round measures the RUN at engine level
+ * through the r330-family head, every cell forced-equal on BOTH
+ * engines: a pair mid-content spells ONE newline (`x<NEL><NEL>y` ->
+ * `x\ny`, probed n3), a blank-only line inside the run rides it
+ * (`x<NEL> <NEL>y` -> `x\ny`, q4), a space run before the pair dies
+ * into it (`x <NEL><NEL>y` -> `x\ny`, q5), the body-lead blanks die
+ * (` <NEL><NEL> :` -> `\n: `, n4), a pair at the body end spells its
+ * newline then the close (`x<NEL><NEL>'` -> `x\n`, q9), separated
+ * singles fold to spaces (`x<NEL>y<NEL>z` -> `x y z`, q10), and the
+ * MIXED run counts every member (`x<NEL><NEL>\n<NEL>y` -> `x\n\n\ny`
+ * -- 4 breaks, 3 newlines, q11) -- byte-identical to the clean-LF
+ * twins (t2-t5/tw-*) on both engines. NEL is simply a clean LF at
+ * the walk level. */
+static size_t yd_qbody_break_span(const uint8_t* body, size_t be, size_t i) {
+    if (body[i] == '\r') {
+        return (i + 1 < be && body[i + 1] == '\n') ? 2 : 1;
+    }
+    if (body[i] == '\n') {
+        return 1;
+    }
+    if (i + 1 < be && (unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
+        return 2;
+    }
+    return 0;
+}
+
+/* The r401 run scanner over the normalized breaks: NEL pairs join the
+ * clean CR/LF run, blank-only lines riding (the r376 law's own walk,
+ * span-generalized). Returns n and sets *j past the run. */
+static size_t yd_qbody_break_run(const uint8_t* body, size_t be, size_t i, size_t* j) {
+    size_t n = 0;
+    size_t s = i;
+    while (s < be) {
+        size_t sp = yd_qbody_break_span(body, be, s);
+        if (sp > 0) {
+            s += sp;
+            n++;
+            continue;
+        }
+        size_t k = s;
+        while (k < be && (body[k] == ' ' || body[k] == '\t')) {
+            k++;
+        }
+        if (n > 0 && k < be && yd_qbody_break_span(body, be, k) > 0) {
+            s = k; /* the blank-only line rides the run */
+            continue;
+        }
+        break;
+    }
+    *j = s;
+    return n;
+}
+
 static int yd_r238_clamp_tail_safe(const uint8_t* body, size_t bo, size_t be, size_t i,
-                                   int prev_break) {
+                                   int prev_break, int exotic_facing) {
     size_t s = i;
     int pb = prev_break;
     (void)bo;
-    while (s < be) {
-        if (body[s] == '\r' || body[s] == '\n') {
-            /* the r376 clean-break-run law (see walk_y): runs spell
-             * (n-1) escapes for n>=2 and one fold space for n==1 --
-             * forced-equal on both engines (q9-q19); a CR LF pair is
-             * ONE break (q11/q14); blank-only lines ride the run
-             * (q16/q17). The old consecutive-break decline is gone. */
-            size_t e = s;
-            while (e < be) {
-                if (body[e] == '\r') {
-                    e += (e + 1 < be && body[e + 1] == '\n') ? 2 : 1;
-                } else if (body[e] == '\n') {
-                    e += 1;
-                } else {
-                    size_t k = e;
-                    while (k < be && (body[k] == ' ' || body[k] == '\t')) {
-                        k++;
-                    }
-                    if (k < be && (body[k] == '\r' || body[k] == '\n')) {
-                        e = k;
-                    } else {
-                        break;
-                    }
-                }
+    if (exotic_facing) {
+        /* the r401 discipline: behind a kept-raw LS/PS the NEL fold
+         * diverges on the raw-join machinery (probed `<PS><NEL>a`
+         * reads `<PS> a` on y, `<PS>\na` on l) -- engine-divergent,
+         * declined past the cut exactly like the visible-side
+         * pending/last-exotic declines */
+        for (size_t t = s; t + 1 < be; t++) {
+            if ((unsigned char)body[t] == 0xC2 && (unsigned char)body[t + 1] == 0x85) {
+                return 0;
             }
-            pb = 1;
+        }
+    }
+    while (s < be) {
+        size_t bsp = yd_qbody_break_span(body, be, s);
+        if (bsp > 0) {
+            /* the r376 clean-break-run law (see walk_y), span-
+             * generalized: NEL pairs join the run (the r401 law) */
+            size_t e = s;
+            (void)yd_qbody_break_run(body, be, s, &e);
             s = e;
+            pb = 1;
         } else if (body[s] == ' ') {
             size_t e = s;
             while (e < be && body[e] == ' ') {
@@ -11742,9 +11795,9 @@ static int yd_r238_clamp_tail_safe(const uint8_t* body, size_t bo, size_t be, si
             if (e == be) {
                 return 0; /* the trailing run's no-fold spelling: unmeasured */
             }
-            if (body[e] == '\r' || body[e] == '\n') {
+            if (yd_qbody_break_span(body, be, e) > 0) {
                 pb = 1;
-                s = (body[e] == '\r' && e + 1 < be && body[e + 1] == '\n') ? e + 2 : e + 1;
+                s = e + yd_qbody_break_span(body, be, e);
             } else {
                 /* mid-line blanks ride content (spaces verbatim, tabs
                  * escaped -- byte-equal both engines, q22/e1-e3) */
@@ -11892,24 +11945,25 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
     while (i < be) {
         if (ce != NULL && a >= ce) {
             /* the r368 clamp-tail law: the visible region is spent; the
-             * remaining body rides the forced-equal units only */
-            if (!yd_r238_clamp_tail_safe(body, bo, be, i, prev_break)) {
+             * remaining body rides the forced-equal units only (the
+             * r401 span widening admits the NEL run; the exotic-facing
+             * gate declines the raw-join composition) */
+            if (!yd_r238_clamp_tail_safe(body, bo, be, i, prev_break, last_exotic)) {
                 return 0;
             }
             *c = ce;
             return 1;
         }
-        if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
-            /* the r369 widening (run 45180416420, main 031e326e): NEL is
-             * a BREAK on both engines inside the quoted body -- yeptris's
-             * #638 normalizer rewrites it to '\n' everywhere (quoted
-             * regions included) and libyaml's READ_LINE spells it '\n'
-             * (NEL -> LF, the one exotic it does not keep raw), so both
-             * folds speak the ONE-SPACE spelling (probed `&2?: '<NEL>a'`
-             * reads ` a` on both; the r238-era raw-raw unit modeled a
-             * spelling no engine path produces). last_exotic clears:
-             * behind a kept-raw PS the fold is yeptris's own (probed
-             * `<PS><NEL>a` reads `<PS> a` on y). */
+        if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85 && last_exotic) {
+            /* the r369 cell behind a kept-raw LS/PS (the raw triple is
+             * kept content, so the following NEL's fold is yeptris's
+             * own clean one-space fold -- probed `<PS><NEL>a` reads
+             * `<PS> a` on y). Every OTHER NEL -- the clean single and
+             * every NEL-led or NEL-carrying run -- routes to the
+             * r376 clean-break-run branch below, span-generalized at
+             * r401: the measured run row (pairs spell (n-1) newlines,
+             * mixed NEL/LF runs count every member, blank-only lines
+             * ride) is forced-equal on both engines. */
             if (a[0] != ' ') {
                 return 0;
             }
@@ -11927,7 +11981,7 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
             i += 3;
             prev_break = 0;
             last_exotic = 1;
-        } else if (body[i] == '\r' || body[i] == '\n') {
+        } else if (yd_qbody_break_span(body, be, i) > 0) {
             if (prev_break) {
                 return 0;
             }
@@ -11944,28 +11998,16 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
                  * `a\n`), one fold space for n==1 (the measured
                  * standalone law, the trailing `a\n'` -> `a `). The
                  * old single-break-only branch declined the run the
-                 * artifact's fold cluster composes. */
+                 * artifact's fold cluster composes. The r401 widening
+                 * (run 45782078711, main 93972085, issue #1708): the
+                 * span scanner admits the NEL -- pairs and mixed
+                 * NEL/LF/CR runs spell (n-1) newlines exactly like the
+                 * clean twins (probed n3/q4/q5/q6/q7/q9/q10/q11 vs
+                 * t3/t4/t5/tw-* -- byte-equal on both engines; NEL is
+                 * READ_LINE's LF on libyaml and #638's '\n' on
+                 * yeptris, the r369 law carried to runs). */
                 size_t j = i;
-                size_t n = 0;
-                while (j < be) {
-                    if (body[j] == '\r') {
-                        j += (j + 1 < be && body[j + 1] == '\n') ? 2 : 1;
-                        n++;
-                    } else if (body[j] == '\n') {
-                        j += 1;
-                        n++;
-                    } else {
-                        size_t k = j;
-                        while (k < be && (body[k] == ' ' || body[k] == '\t')) {
-                            k++;
-                        }
-                        if (n > 0 && k < be && (body[k] == '\r' || body[k] == '\n')) {
-                            j = k; /* the blank-only line rides the run */
-                        } else {
-                            break;
-                        }
-                    }
-                }
+                size_t n = yd_qbody_break_run(body, be, i, &j);
                 if (n == 1) {
                     if (a[0] != ' ') {
                         return 0;
@@ -11996,12 +12038,12 @@ static int yd_r238_body_walk_y(const uint8_t* body, size_t bo, size_t be, const 
                 while (e < be && (body[e] == ' ' || body[e] == '\t')) {
                     e++;
                 }
-                if (e < be && (body[e] == '\r' || body[e] == '\n')) {
+                if (e < be && yd_qbody_break_span(body, be, e) > 0) {
                     if (a[0] != ' ') {
                         return 0;
                     }
                     a += 1; /* the blank run folds with its break into one space */
-                    i = (body[e] == '\r' && e + 1 < be && body[e + 1] == '\n') ? e + 2 : e + 1;
+                    i = e + yd_qbody_break_span(body, be, e);
                     prev_break = 1;
                 } else if (s == be && e == be) {
                     /* the trailing run merges with a just-folded break (the
@@ -12197,42 +12239,36 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
         if (ce != NULL && b >= ce) {
             /* the r368 clamp-tail law (see walk_y): the same forced-equal
              * unit set past the visible region */
-            if (!yd_r238_clamp_tail_safe(body, bo, be, i, prev_break)) {
+            if (!yd_r238_clamp_tail_safe(body, bo, be, i, prev_break, pending_exotic)) {
                 return 0;
             }
             *c = ce;
             return 1;
         }
-        if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85) {
-            /* the r369 widening (run 45180416420, main 031e326e): READ_LINE
-             * spells the NEL '\n' (NEL -> LF -- the one exotic it does not
-             * keep raw), so the fold gate speaks for it: the clean NEL
-             * folds to the ONE-SPACE spelling (probed `&2?: '<NEL>a'` reads
-             * ` a`) -- the r238-era raw-raw unit modeled a spelling no
-             * engine path produces. Behind a kept-raw LS/PS the composition
-             * diverges on the raw-join machinery (probed `<PS><NEL>a` reads
-             * `<PS>\na` here) -- unmeasured, declines. A clean NEL directly
-             * before a kept-raw LS/PS is the floor face: the '\n' is the
-             * leading break and the raw triple the trailing one -- the NEL
-             * renders NOTHING and the LS/PS rides raw (probed `<NEL><PS>a`
-             * reads `<PS>a`); the LS/PS unit re-arms the blank state. */
+        if ((unsigned char)body[i] == 0xC2 && (unsigned char)body[i + 1] == 0x85 &&
+            (pending_exotic ||
+             (i + 4 < be && (unsigned char)body[i + 2] == 0xE2 &&
+              (unsigned char)body[i + 3] == 0x80 &&
+              ((unsigned char)body[i + 4] == 0xA8 || (unsigned char)body[i + 4] == 0xA9)))) {
+            /* the r369 widening (run 45180416420, main 031e326e): NEL
+             * is READ_LINE's '\n' (the one exotic it does not keep
+             * raw). Behind a kept-raw LS/PS the composition diverges
+             * on the raw-join machinery (probed `<PS><NEL>a` reads
+             * `<PS>\na` here) -- unmeasured, declines. A clean NEL
+             * directly before a kept-raw LS/PS is the floor face: the
+             * '\n' is the leading break and the raw triple the
+             * trailing one -- the NEL renders NOTHING and the LS/PS
+             * rides raw (probed `<NEL><PS>a` reads `<PS>a`); the
+             * LS/PS unit re-arms the blank state. Every OTHER NEL --
+             * the clean single and every NEL-led or NEL-carrying run
+             * -- routes to the r376 clean-break-run branch below,
+             * span-generalized at r401 (the measured run row
+             * n3/q4-q11 is forced-equal on both engines). */
             if (pending_exotic) {
                 return 0;
             }
-            if (i + 4 < be && (unsigned char)body[i + 2] == 0xE2 &&
-                (unsigned char)body[i + 3] == 0x80 &&
-                ((unsigned char)body[i + 4] == 0xA8 || (unsigned char)body[i + 4] == 0xA9)) {
-                i += 2; /* silent: the raw triple joins over it */
-                continue;
-            }
-            if (b[0] != ' ') {
-                return 0;
-            }
-            b += 1;
-            i += 2;
-            pending_exotic = 0;
-            prev_break = 1;
-            last_esc = 0;
+            i += 2; /* silent: the raw triple joins over it */
+            continue;
         } else if ((unsigned char)body[i] == 0xE2 && (unsigned char)body[i + 1] == 0x80 &&
                    ((unsigned char)body[i + 2] == 0xA8 || (unsigned char)body[i + 2] == 0xA9)) {
             if ((unsigned char)b[0] != 0xE2 || (unsigned char)b[1] != 0x80 ||
@@ -12243,7 +12279,7 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
             i += 3;
             pending_exotic = 1;
             prev_break = 0;
-        } else if (body[i] == '\r' || body[i] == '\n') {
+        } else if (yd_qbody_break_span(body, be, i) > 0) {
             if (prev_break) {
                 return 0;
             }
@@ -12253,28 +12289,13 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
                  * (n-1) escaped newlines for n>=2, the single break
                  * keeps its measured spell (the quark escape behind a
                  * kept-raw exotic, the fold space clean). A run behind
-                 * the pending exotic stays unmeasured (declines). */
+                 * the pending exotic stays unmeasured (declines). The
+                 * r401 widening: the span scanner admits the NEL --
+                 * pairs and mixed NEL/LF/CR runs spell (n-1) newlines
+                 * exactly like the clean twins (READ_LINE spells the
+                 * NEL '\n', the r369 law carried to runs). */
                 size_t j = i;
-                size_t n = 0;
-                while (j < be) {
-                    if (body[j] == '\r') {
-                        j += (j + 1 < be && body[j + 1] == '\n') ? 2 : 1;
-                        n++;
-                    } else if (body[j] == '\n') {
-                        j += 1;
-                        n++;
-                    } else {
-                        size_t k = j;
-                        while (k < be && (body[k] == ' ' || body[k] == '\t')) {
-                            k++;
-                        }
-                        if (n > 0 && k < be && (body[k] == '\r' || body[k] == '\n')) {
-                            j = k; /* the blank-only line rides the run */
-                        } else {
-                            break;
-                        }
-                    }
-                }
+                size_t n = yd_qbody_break_run(body, be, i, &j);
                 if (pending_exotic && n > 1) {
                     return 0;
                 }
@@ -12317,7 +12338,7 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
                 while (e < be && (body[e] == ' ' || body[e] == '\t')) {
                     e++;
                 }
-                if (e < be && (body[e] == '\r' || body[e] == '\n')) {
+                if (e < be && yd_qbody_break_span(body, be, e) > 0) {
                     /* the blank run trims; the break speaks alone */
                     if (pending_exotic) {
                         if (b[0] != '\\' || b[1] != 'n') {
@@ -12332,7 +12353,7 @@ static int yd_r238_body_walk_l(const uint8_t* body, size_t bo, size_t be, const 
                         b += 1;
                         last_esc = 0;
                     }
-                    i = (body[e] == '\r' && e + 1 < be && body[e + 1] == '\n') ? e + 2 : e + 1;
+                    i = e + yd_qbody_break_span(body, be, e);
                     prev_break = 1;
                 } else if (s == be && e == be) {
                     /* the trailing run merges with a just-FOLDED break; the
