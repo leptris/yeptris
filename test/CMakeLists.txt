@@ -10771,6 +10771,54 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/block-bsi-root-r400-hdr1.bin
     )
 
+    # r401 (the post-r400 Fuzz Nightly round, run 45782078711, headSha
+    # verified = the r400 merge 93972085, issue #1708): the r238
+    # quoted-body family's NEL RUN — the 10,910-byte artifact is ONE
+    # 20-byte CopyPart insert (offset 7019, two raw NEL pairs and a
+    # U+2129) into the r368 clamp-tail artifact 418cc31a itself, deep
+    # past the 4095-char clamp cut where both dumps stay byte-identical
+    # to the carried pin's; the r383 clamp-tail walk declined its own
+    # family at the NEL's "engine-divergent" line. The r369 law already
+    # measured the single NEL (READ_LINE's LF on libyaml, #638's LF on
+    # yeptris); this round measures the RUN at engine level through the
+    # r330 head — every cell forced-equal on BOTH engines (pairs spell
+    # (n-1) newlines, mixed NEL/LF/CR runs count every member, blank
+    # runs ride, the clean-LF twins byte-identical) — and the span
+    # scanner admits the NEL into the r376 clean-break-run machinery.
+    # The raw-LS/PS-facing compositions keep their declines (the
+    # raw-join spell split is unmeasured); the clamp tail gains the
+    # exotic-facing gate. The 20-byte ddmin floor
+    # `&2?*: '<PS><CR>:<NEL><NEL><U+2129>'` (greedy chunk+byte ddmin
+    # under the exact-nightly-pair bar: unclassified YD_DIFFER, yeptris
+    # ONE root plain, libyaml the `&2 ?*`-keyed map) and the
+    # mixed-run row `&2?*: 'x<NEL><NEL>\n<NEL>y'` (4 breaks -> 3
+    # newlines on both engines) ride the arm as the named walk below.
+    # THE SUITE GOVERNS THE SPLIT (the third governing-row carry): the
+    # anchor-name rows 2SXE ("Anchors With Colon in Name") and W5VH
+    # ("Allowed characters in alias" — the name charset literally
+    # carries `?`, `*`, `!`, `"`) pin the riding-name law the family
+    # reads; fy 1.0.0 (04e0b58) renders yeptris's structure byte-exact
+    # on floor + artifact + every probe face in BOTH modes (strict-1.2
+    # and --yaml-1.1). The NEL spell itself is comparator-internal
+    # (yeptris == libyaml forced-equal; fy is a third reading — raw
+    # /`\\N`-escaped in 1.2, verbatim breaks in 1.1; the suite carries
+    # no raw-NEL row). Firewall unchanged: the r398 foldheader-nel-
+    # comment row, the r397 alias-tail-ride row, the r396 anchor-PS
+    # row, the r395 empty-slot row, the r390 alias-cut bucket, the
+    # r394 prop-charset row, and the r400 block-bsi-root row keep
+    # their arms. Growth ledger: family nightly re-derivations now 18
+    # — the TWELFTH by-mutation re-derivation, and the THIRD
+    # governing-row carry (r399 HM87, r400 M7A3/DK3J/FP8R, this one
+    # 2SXE/W5VH).
+    add_test(
+        NAME fuzz-diff-r401-anchor-quoted-follow-nelrun
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-nelrun-r401.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-nelrun-r401-artifact.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-nelrun-mixed-r401.bin
+    )
+
+
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
