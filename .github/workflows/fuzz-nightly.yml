@@ -185,7 +185,17 @@ jobs:
         # the gates must never claim (the family-classify N-phase
         # walks them) and the diff leg must not seed from them. The
         # pins stay under the full ctest.
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete
+        # The r402 BOM-led charset composition joins (run
+        # 45822172084's carry, issue #1711): the anchor-name-charset
+        # family's stream-start BOM corner — the face is one
+        # BOM-prepend from the no-BOM charset pins the diff leg
+        # already cannot seed from, the family is mutation-dense
+        # across the composed lead (the arm now claims the BOM-led
+        # shapes, and mutations beyond the modeled set stay red by
+        # design), so the diff leg must not seed from it; the pins
+        # carry the bytes under the full ctest (the
+        # fuzz-diff-r402 pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete
 
       - name: Fuzz budget
         run: |

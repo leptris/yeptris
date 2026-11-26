@@ -10818,6 +10818,65 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-quoted-follow-nelrun-mixed-r401.bin
     )
 
+    # r402 (the post-r401 Fuzz Nightly round, run 45822172084, headSha
+    # verified = the r401 merge 4b0f0be1, issue #1711): the charset
+    # arm's STREAM-START BOM LEAD — the 13-byte artifact
+    # `<BOM>&U::U:{}t ` is a fresh composition of the measured
+    # anchor-name-charset row (yeptris munches the riding name `U::U`,
+    # value `:{}t`; libyaml cuts at `U`, its IS_ALPHA 1.1 set, the
+    # residual `::U:{}` re-lexing as the plain value) with a BOM lead
+    # and the trailing-blank-at-breakless-EOF cell. The mark's raw
+    # bytes plain-opened a phantom plain in the arm's gate walk (the
+    # 0xEF is content to every state law), the `&` never armed, and
+    # the family declined its own BOM-led compositions. MEASURED: the
+    # red set is EXACTLY the BOM-led faces (the 7-byte ddmin floor
+    # `<BOM>&U:U` under the exact-red bar — every single-byte deletion
+    # breaks the bar; the BOM+`&U::U` head, the BOM+`&U::Ut `, and the
+    # BOM+`&U:U:{}t ` probes all red pre-patch), while EVERY no-BOM
+    # twin classifies pre-patch through this very arm (`&U::U`,
+    # `&U::Ut `, `&U:U:{}t `, `&a::b:c `, `&U::U:x ` — the r336/r381/
+    # r385 residual laws hold). THE TRAILING BLANK at breakless EOF is
+    # INERT: both engines strip it byte-identically in every probe
+    # (the plain law, position-free whitespace) — measured, no law of
+    # its own. The `{}` glyphs ride as block-context plain content on
+    # both engines (the `{` never reaches a node position: the value
+    # plain opens at the riding `:`). THE CARRY: the gate walk and the
+    # copy walk skip a stream-start BOM zero-width (spec 5.1; the
+    # catch-121 law — both engines strip the mark at the stream head),
+    # so the `&` arms and the split-copy verify runs; a mark at any
+    # LATER line start stays the r226/r364 family
+    # (yd_bom_line_start_divergence). THE SUITE GOVERNS THE SPLIT
+    # (the FOURTH governing-row carry): Y2GN ("Anchor with colon in
+    # the middle" — `&an:chor` anchors `an:chor`, the mid-name colon
+    # the floor rides), 2SXE ("Anchors With Colon in Name") and W5VH
+    # ("Allowed characters in alias") pin the riding-name law;
+    # libfyaml 04e0b58 sides WITH yeptris on every boundary face in
+    # BOTH modes, alias-resolution-verified (`k: &U:U` + `*U:U`
+    # resolves, `*U` errors alias-not-found; the artifact's munch
+    # `U::U` resolves the same way; the floor `<BOM>&U:U` parses
+    # clean in strict-1.2 AND --yaml-1.1) — fy's own munch extends
+    # one colon further on the `:{}`-adjacent cell (`U::U:`), a
+    # suite-silent comparator-internal free cell, and fy's full-
+    # artifact pass takes its own `{}`-at-node-start recovery
+    # (missing-document-start error at the `t`), a third reading of
+    # the residual, not of the anchor axis. Comparator carry only, no
+    # engine change (the r142/r76/r318/r330/r336/r337/r338/r364/r365/
+    # r370/r381/r385 precedent). Firewall unchanged: the r401 nelrun
+    # row, the r400 block-bsi-root row, the r398 foldheader-nel-
+    # comment row, the r397 alias-tail-ride row, the r396 anchor-PS
+    # row, the r395 empty-slot row, the r390 alias-cut bucket, the
+    # r394 prop-charset row keep their arms. Growth ledger: family
+    # nightly re-derivations now 19 — the THIRTEENTH by-mutation
+    # re-derivation, and the FOURTH governing-row carry (r399 HM87,
+    # r400 M7A3/DK3J/FP8R, r401 2SXE/W5VH, this one Y2GN/2SXE/W5VH).
+    add_test(
+        NAME fuzz-diff-r402-anchor-charset-bom
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-charset-bom-r402.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-charset-bom-r402-artifact.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-charset-bom-r402-pair.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
