@@ -16,37 +16,49 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.86 — live across all five runtimes** (C +
-ruby `0.6.86.0` + py `0.6.86.0` + rs/ts `0.6.86`, registry-checked
-2026-11-26). v0.6.86 carries the r395-r397 waiver-era rounds (all
-zero-`src/`): the rider ARM's `?*<name>:` glued-colon boundary
-measured as a ROW across terminators and followers — the engine's
-VALUE token consumes the glued colon at an empty slot regardless of
-terminator (suite FRK4 pins it); blank/tab-led slots BOTH-ERROR
-never a consult; `#`-led YEPTRIS-ONLY-ACCEPT; the `&`-name-final
-colon keeps the un-consume law — and the COMPOSITION AXIS (two
-measured members composed, reached by crossover) joins the ledger
-as its own territory (r395, #1689); the realworld-splice face (the
-baseball comments + `---` marker + raw PS breaks + the anchor
-composition — the FIRST round reached by CopyPart splice of the
-realworld corpus, SYW4 governs) adjudicated as an ARM-CARRY in the
-anchor-charset law family, fy 1.1 riding yeptris's explicit-key
-structure byte-exactly and fy 1.2 truncating at the marker (r396,
-#1692); and the flow VALUE-slot rider face adjudicated
-**DECLINED-BY-DESIGN** — fy errors "unexpected alias" in BOTH modes
-on every manifesting row, the suite silent on the mid-plain `*`, no
-consensus basis exists: the waiver was NOT widened, the face is
-pinned in the negative-control set, and the OWNER-ESCALATION datum
-recorded (yeptris's plain/alias scanner vs the spec's content-riding
-is an engine decision), with the comparator-snapshot exclusion
-shipping so the family's seeds stay out of the diff leg (r397,
-#1696). **The grammar-growth ledger at n=12 re-derivations across
-four territories (dict-shape, seed-shape, realworld-splice,
-composition-crossover): KEEPING PACE holds — every post-waiver red
-an unmeasured spelling correctly declined, the waiver has never
-wrongly claimed.** Zero YAML engine divergence standing beyond
+**Latest release: v0.6.87 — live across all five runtimes** (C +
+ruby `0.6.87.0` + py `0.6.87.0` + rs/ts `0.6.87`, registry-checked
+2026-11-26). v0.6.87 carries the r398-r399 comparator rounds (all
+zero-`src/`): the folded-header NEL-comment face (`> #` + PS/PS +
+NEL-glued-`#`; yeptris renders the folded multi-line plain, libyaml
+EMPTY; manifests iff BOTH the space-`#` comment lead AND a
+NEL-glued trailing `#` are present — the 18-row matrix) adjudicated
+**DECLINED-BY-DESIGN**: fy strict-1.2 sides WITH libyaml's empty
+render, fy 1.1 errors, the suite silent — no consensus basis, the
+waiver NOT widened, the face pinned in the negative-control set,
+and the owner datum recorded (yeptris's kept-NEL render is arguably
+the spec-correct strict-1.2-printable reading), with the
+comparator-snapshot exclusion shipping so the family's seeds stay
+out of the diff leg (r398, #1700); the flow VALUE-slot rider face
+(`?*2` head + the `&m:` anchored value + the tag-riding plain + the
+mid-collection `*VAL` alias tail) likewise **DECLINED-BY-DESIGN** —
+fy errors "unexpected alias" in BOTH modes on every manifesting
+row, the OWNER-ESCALATION datum recorded (yeptris's plain/alias
+scanner vs the spec's content-riding is an engine decision), and
+the comparator exclusion HELD through its first nightly (r397→
+r398's red was genuinely new, #1696); and then the **ledger's first
+GOVERNING-ROW carry**: the flow `?`-led member face (`[r: "",
+?g?,""]` — yeptris reads `?g?` as a plain member, libyaml opens a
+flow map) found its basis in the suite's own HM87 row (pins `[?x]`
+→ `=VAL : ?x` plain — yeptris's reading), fy strict-1.2 AND
+--yaml-1.1 both siding yeptris on floor + artifact + every probe —
+carried as a classifier widening (r399, #1703). **The
+grammar-growth ledger at n=16 re-derivations across four
+territories: KEEPING PACE holds — every post-waiver red an
+unmeasured spelling correctly declined, the waiver has never
+wrongly claimed, and the consensus-basis discipline
+(fy-must-render-a-reading + suite-row-or-decline) is now the
+standard gate for every candidate widening — two consecutive
+declines without forced carries is the pattern working as designed,
+and the HM87 governing-row precedent gives every future face a
+second basis path.** Zero YAML engine divergence standing beyond
 #1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and #1615
 (0.6.78). The previous cut:
+v0.6.86 — the r395-r397 waiver-era rounds (the rider-arm
+glued-colon boundary row closing the composition axis; the
+realworld-splice anchor-PS arm-carry; the flow VALUE-slot rider
+declined-by-design), the ledger at n=12 across four territories.
+The cut before it:
 v0.6.85 — the r392-r394 waiver-era rounds (the BOM-lead arm-carry;
 the whole tag:-prefix rider family in one widening; the
 treadmill-breaking prop-charset row), the growth ledger at n=9
