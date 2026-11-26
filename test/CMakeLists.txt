@@ -10491,6 +10491,83 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-charset-ps-comment-artifact.bin
     )
 
+    # r397 (the post-r396 Fuzz Nightly round, run 45736164715, headSha
+    # verified = the r396 merge 68ae4f2a, issue #1694): the flow
+    # VALUE-slot RIDER face — the `?*2` head, the `&m:` anchored value,
+    # the tag-riding plain, and the mid-collection `*VAL` alias tail —
+    # the 38-byte artifact `{?*2,&m:tag:yamlabcdefgh==ALI *VAL\r,s}`
+    # and its 35-byte dual-bar floor `{*2,&m:tag:yamlabcdefgh==ALI
+    # *VAL\r}` (greedy ddmin under the exact-nightly-pair bar). yeptris
+    # fires the tail as a REAL ALIAS EVENT at the member slot
+    # (`=ALI *VAL` + the empty pair) — the carried r318 glued-name law
+    # swallows `m:tag:yamlabcdefgh==ALI` into the anchor name, the
+    # separating space puts `*VAL` at a NODE position, and the alias
+    # indicator fires there ([104]); libyaml rides the whole tail as
+    # ONE plain value (`tag:yamlabcdefgh==ALI *VAL`) THROUGH its own
+    # ledgered r390 IS_ALPHA cut + flow-`:` quirk (once the bytes are a
+    # plain, spec [130] admits the mid-plain `*`). Red IDENTICALLY on
+    # the pre-patch build (/tmp/ywt-r394: exit 77) — the face predates
+    # r395 AND r396; the r396 carry held. THE RIDER-ROW MEASUREMENT
+    # (15-row matrix over the four follower axes): the alias-tail lead
+    # (glued/spaced/member-boundary/absent), the terminator
+    # (CR/LF/CRLF/none/trailing member), the tag-plain content
+    # (tag:-URI/bare/minimal), and the head (`?*2`/bare `*2`) — the
+    # face manifests on EVERY row where a SPACE leads the `*VAL` (9 of
+    # 15 rows, all DIFFER), regardless of lead, terminator, plain
+    # content, or head; the member-boundary twin (`,*VAL` — a real
+    # alias member both engines agree on) and the no-terminator twin
+    # are already admitted (family-classified), and the r390-class
+    # siblings (the spaced-`==ALI`/glued-name rows where the star
+    # never reaches a node position) ride fy dual-consensus but stay
+    # unmeasured waiver shapes. THE CONSENSUS BASIS: NONE. fy 04e0b58
+    # ERRORS "unexpected alias" in BOTH strict-1.2 and --yaml-1.1 on
+    # EVERY row where the face manifests (13 error rows; it never
+    # renders libyaml's one-plain, and under the carried r318 name
+    # ride the tail is PROPS-ON-ALIAS — a shape the strict grammar
+    # has no production for, [159]/7.1 "an alias node must not
+    # specify any properties"); the suite is SILENT on the mid-plain
+    # `*` (the alias rows it has — SR86/SU74/26DV/6M2F/LE5A — are all
+    # token-start aliases; no row governs a space-led `*` after plain
+    # content); and the two engines' renders rest on OPPOSITE
+    # resolutions of the already-ledgered r390 bucket (the glued
+    # `&m:` colon: yeptris+fy ride the name, libyaml cuts it), so
+    # neither engine's tail reading has an independent basis. THE
+    # ADJUDICATION: DECLINED-BY-DESIGN — the face stays red in the
+    # comparator (documented, unreached-by-consensus), the waiver is
+    # NOT widened, NO arm is added, NO engine change. OWNER-ESCALATION
+    # DATUM (recorded, for the owner to resolve): the tail's fate
+    # follows mechanically from the r390 bucket split — resolving
+    # whether yeptris's plain/alias scanner should ride the tail as
+    # content (spec [130]) or keep firing the node-position alias is
+    # an ENGINE decision, not comparator-classifier work. THE CARRY:
+    # the floor + artifact bytes pin as the waiver's negative-control
+    # set entries waiver-neg-alias-tail-ride{,-artifact}.bin — the
+    # family-classify N-phase requires the waiver to DECLINE them
+    # forever (a DIFFER-shaped declined control, the first in the
+    # set: the older neg controls are one-engine-error or
+    # arms-claimed DIFFERs) — and because a live DIFFER cannot ride
+    # the nightly's comparator seed set, the snapshot step excludes
+    # these pins AND the mutation-dense waiver-gluefold-* family (the
+    # r1306/r361/r379/r381 treadmill law: the r397 floor is bytes
+    # away from the r394/r393 pins, proven by this round's own
+    # red); the pins stay under the full ctest (the family-classify
+    # entry walks them). Firewall unchanged: the r396 anchor-PS row,
+    # the r395 empty-slot row, the r390 alias-cut bucket, and the
+    # r394 prop-charset row keep their arms. Growth ledger: family
+    # nightly re-derivations now 14 (r377, #1646, #1649, #1656,
+    # #1665/r388, #1669/r389, #1671/r390, #1675/r391, #1677/r392,
+    # #1682/r393, #1684/r394, #1687/r395, #1691/r396, this one) —
+    # the rider family's own vocabulary (the r389-r395 laws' terms
+    # recombined); the consensus-basis question DID change the
+    # disposition: every prior rider carry met the r318 dual-
+    # consensus bar, this one cannot, and the face declines by
+    # design instead of widening past the bar.
+    # 50-mutant paired battery (30 single + 20 double, seed 397,
+    # size-asserted mutator) over the floor + artifact + the r361/
+    # r384/r387/r389/r390/r391/r393/r394/r395-law/r396 floors and
+    # artifacts: 1100 mutants, 1051 ok-clean, 49 ok-differ (the
+    # declined face's own neighborhood stays red), 0 regressions.
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
