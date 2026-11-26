@@ -174,7 +174,18 @@ jobs:
         # waiver-neg-alias-tail-ride* pins are live DIFFERs the gates
         # must never claim (the family-classify N-phase walks them).
         # The pins stay under the full ctest.
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete
+        # The r398 folded-header face joins the same day (run
+        # 45748018830's round, issue #1697): the block-root
+        # folded-header `>` x space-`#` comment-lead x raw PS/NEL
+        # break-run x NEL-glued trailing `#` composition adjudicated
+        # DECLINED-BY-DESIGN (fy strict-1.2 renders the scalar EMPTY
+        # -- siding with libyaml -- on every probed row; fy --yaml-1.1
+        # errors outright; the suite carries no raw NEL/PS row), so
+        # its waiver-neg-foldheader-nel-comment* pins are live DIFFERs
+        # the gates must never claim (the family-classify N-phase
+        # walks them) and the diff leg must not seed from them. The
+        # pins stay under the full ctest.
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete
 
       - name: Fuzz budget
         run: |

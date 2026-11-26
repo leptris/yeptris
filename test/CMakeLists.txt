@@ -10568,6 +10568,92 @@ add_test(
     # artifacts: 1100 mutants, 1051 ok-clean, 49 ok-differ (the
     # declined face's own neighborhood stays red), 0 regressions.
 
+    # r398 (the post-r397 Fuzz Nightly round, run 45748018830, headSha
+    # verified = the r397 merge 6728c3b9, issue #1697): the BLOCK-root
+    # FOLDED-HEADER exotic-break face — the folded `>` scalar header,
+    # the space-`#` comment lead, the raw PS/NEL/LF break run, and the
+    # trailing NEL-glued `#` — the 21-byte artifact `> #<PS><PS>
+    # <NEL><LF><PS>  <NEL>#` and its 16-byte dual+shape-bar floor
+    # `> #<PS><PS><NEL>  <NEL>#` (greedy ddmin under the
+    # exact-nightly-pair bar: unclassified YD_DIFFER + yeptris renders
+    # the multi-line plain with a raw NEL pair in its scalar content +
+    # libyaml renders the scalar EMPTY; the artifact's lone interior LF
+    # and one separation space were droppable). yeptris reads the
+    # folded block scalar with the PSes folded to leading break LFs and
+    # the NELs KEPT RAW as first-class content (the r220 kept-NEL
+    # block-content law), so the trailing `#` is glued MID-CONTENT and
+    # rides as content — the value is a multi-line plain
+    # (`\n\n<NEL>#\n` on the floor, `\n<NEL>\n\n <NEL>#\n` on the
+    # artifact). libyaml (its 1.1 reader BREAKS at NEL) sees the line
+    # after the trailing NEL start with `#` at the content column — a
+    # comment — and eats the whole body: the scalar renders EMPTY. Red
+    # IDENTICALLY on the pre-patch build (this worktree IS the
+    # pre-patch tree: exit 77, byte-identical dump pair) — the face
+    # predates r397; the r397 carry held its contract (the declined
+    # rider face is nowhere in the red; the comparator corpus read all
+    # 1602 files clean; the red came by MUTATION ~106s into the diff
+    # budget, never a seed). THE FOLD-ROW MEASUREMENT (18-row matrix
+    # over the header/comment/break/tail axes): the face manifests
+    # (10 of 18 rows, all with the byte-identical EMPTY-vs-kept-NEL
+    # split) on every row that has BOTH the space-`#` comment lead
+    # (dropping it — `>` with no comment, or the glued `>#` — renders
+    # both engines agreeing, CLEAN) AND a NEL-glued trailing `#`
+    # (dropping the second NEL so `#` is space-led after the PS run —
+    # CLEAN, both engines empty); the PS run length is free (1/2/3
+    # PSes all DIFFER, the run folds to the same leading LF count on
+    # yeptris's side), the NEL position is free (first or second),
+    # the LF placement is free (interior or trailing, the lf-mid row
+    # DIFFERs identically), the trailing `#` may be spaced (the
+    # spaced-hash row keeps the split with a content space), and the
+    # LITERAL twin (`| #...`) DIFFERs byte-identically — the header
+    # style is free. The plain-root twin (no block header) is CLEAN
+    # and the header-alone baseline is CLEAN. THE CONSENSUS BASIS:
+    # NONE — fy strict-1.2 renders the scalar EMPTY (`>` on every
+    # probed DIFFER row, `|-` on the literal twin) SIDING WITH
+    # libyaml; fy --yaml-1.1 ERRORS outright ("block scalar with
+    # wrong indented line after spaces only") on every probed DIFFER
+    # row; the suite carries NO raw NEL/PS row (grep over the src/
+    # tree: zero hits for C2 85 and E2 80 A9), so no row governs.
+    # yeptris's kept-NEL reading is the strict-1.2-printable reading
+    # ([95] c-printable admits 0x85 and nb-char excludes only the
+    # 1.2 breaks CR/LF/CRLF — NEL is content, the `#` is glued
+    # mid-content, no comment production fires), but BOTH comparators
+    # ride the 1.1 break-at-NEL legacy, so no consensus basis sides
+    # with yeptris and the r318 dual-consensus bar cannot be met.
+    # THE ADJUDICATION: DECLINED-BY-DESIGN — the face stays red in
+    # the comparator (documented, unreached-by-consensus), the r386
+    # waiver is NOT widened, NO arm is added to the classifier chain,
+    # NO engine change. OWNER-ESCALATION DATUM (recorded, for the
+    # owner to resolve): the split is the 1.1-legacy break-at-NEL
+    # (libyaml, fy) vs the strict-1.2 printable-content reading
+    # (yeptris) — yeptris's render is arguably the spec-correct 1.2
+    # one; whether the emitter/scanner keeps it or the comparators'
+    # de-facto reading wins is an ENGINE decision, not
+    # comparator-classifier work. THE CARRY: the floor + artifact
+    # bytes pin as the waiver's negative-control set entries
+    # waiver-neg-foldheader-nel-comment{,-artifact}.bin — the
+    # family-classify N-phase requires the waiver to DECLINE them
+    # forever — and because a live DIFFER cannot ride the nightly's
+    # comparator seed set, the snapshot step excludes these pins (the
+    # r1306/r361/r379/r381 treadmill law; the r398 red itself was
+    # reached by mutation, never a seed). Firewall unchanged: the
+    # r397 declined rider row, the r396 anchor-PS row, the r395
+    # empty-slot row, the r390 alias-cut bucket, and the r394
+    # prop-charset row keep their arms. Growth ledger: family nightly
+    # re-derivations now 15 (r377, #1646, #1649, #1656, #1665/r388,
+    # #1669/r389, #1671/r390, #1675/r391, #1677/r392, #1682/r393,
+    # #1684/r394, #1687/r395, #1691/r396, #1694/r397, this one) — the
+    # NINTH by-mutation re-derivation, and the second consecutive
+    # consensus-basis decline: the comparator-snapshot exclusion
+    # worked exactly as designed (the gluefold family and the
+    # alias-tail-ride live-DIFFER pins never seeded the diff leg), so
+    # the red is a DIFFERENT family — the block-root folded-header
+    # exotic-break composition, the r317/r333 law-b break-fold +
+    # comment-eat family's vocabulary. The pins ride the
+    # fuzz-diff-family-classify N-phase ONLY (a declined live DIFFER
+    # cannot carry a standalone fuzz_diff add_test — the walker
+    # aborts on every unclaimed split by design).
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
