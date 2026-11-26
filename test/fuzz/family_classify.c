@@ -1381,7 +1381,51 @@ static int y_value_node(yctx* c, size_t i, size_t* stop, fcnode* val) {
         *stop = fc_skip_blank_break(p, c->n, after);
         return 1;
     }
-    if (p[q] == '"' || p[q] == '\'' || p[q] == '!') {
+    if (p[q] == '"') {
+        /* the r399 widening (run 45759021837, crash-e273e1f13..., the
+         * flow-root plain-`?` floor `[r: "",?g?,""]`): the DQ VALUE slot
+         * — the plain key's value IS the quoted span (the floor's head
+         * pair `r: ""`, the artifact's `1or: "\rg"` twin; both engines
+         * render the pair byte-exact and the face's split rides the
+         * LATER `?g?` member's law-d plain + libyaml's flow-`?` KEY
+         * wrapper — the suite's HM87 row pins the plain reading, fy
+         * strict-1.2 and --yaml-1.1 render it plain on every probe).
+         * fc_quoted_value derives the span (the empty span closes clean;
+         * escapes/folds ride the r337/r374/r308 laws). The boundary
+         * after the span rides the caller's member-terminator gate; a
+         * glued `:` after the QUOTED VALUE (the r314 quoted-KEY member's
+         * unconditional-split law, unmeasured in a value slot) declines,
+         * and the SQ/`!` slots stay declined (unmeasured). The render
+         * stashes on the node — the caller renders the key line first,
+         * then the stash (the r281 nested-collection arm's mechanics;
+         * the sem dump is style-less, `=VAL : ` for every scalar). */
+        fout tmp = {NULL, 0, 0, 0};
+        size_t close = 0;
+        if (!fc_quoted_value(p, c->n, q + 1, c->n, &tmp, &close)) {
+            free(tmp.buf);
+            return y_fail(c);
+        }
+        fout stash = {NULL, 0, 0, 0};
+        fo_str(&stash, "=VAL : ");
+        fo_bytes(&stash, tmp.buf, tmp.len);
+        fo_str(&stash, "\n");
+        free(tmp.buf);
+        if (stash.bad) {
+            free(stash.buf);
+            return 0;
+        }
+        size_t after = fc_skip_blank_break(p, c->n, close + 1);
+        if (after < c->n && p[after] == ':') {
+            free(stash.buf);
+            return y_fail(c); /* the quoted VALUE's glued ':' — unmeasured */
+        }
+        memset(val, 0, sizeof(*val));
+        val->nest_buf = stash.buf;
+        val->nest_len = stash.len;
+        *stop = after;
+        return 1;
+    }
+    if (p[q] == '\'' || p[q] == '!') {
         return y_fail(c);
     }
     int sep;
