@@ -10877,6 +10877,83 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/root-anchor-charset-bom-r402-pair.bin
     )
 
+    # r403 (the post-r402 Fuzz Nightly round, run 45843890557, headSha
+    # verified = the r402 merge 1a3e93b6, issue #1715): the r392
+    # double-line-start-BOM family's FOURTH live shape — the 81-byte
+    # artifact `<BOM><BOM>&U:#` + blank runs + `text` + `1` +
+    # `=VAL : ` + `<BOM>` + trailing blanks, red by MUTATION ~24s into
+    # the diff leg's walk (INITED over all 1602 comparator-snapshot
+    # files clean — never a seed), both engines ACCEPT. The dump pair:
+    # yeptris `+STR +MAP =VAL : <BOM>&U:# … =VAL =VAL : <BOM> -MAP
+    # -STR` (the stream-start mark stripped, the SECOND mark kept as
+    # CONTENT, the whole head riding ONE plain key — the glued `#`
+    # mid-token content, the `=VAL : ` paste splitting the map, the
+    # value plain `<BOM>`), libyaml `+STR +MAP =VAL : &U :# … =VAL
+    # =VAL : <BOM> -MAP -STR` (BOTH head marks stripped — its
+    # column-0 skip, the r226 law; the anchor cut at `U` — its IS_ALPHA
+    # 1.1 set; the `:#…` residual re-lexing as the plain; the same map
+    # split, the same content-BOM value). THE r402 CARRY HELD ITS
+    # CONTRACT — the red is OUTSIDE it (the offset-0 skip is nowhere
+    # in the face). THE FLOOR: greedy ddmin under the exact-nightly
+    # bar (rc 77 unclassified) to the 17-byte plateau
+    # `<BOM><BOM>&U:# L: <BOM>` — every single-byte deletion breaks
+    # the bar (the double mark, the `&U:#` glue, the ` L`, the split
+    # colon, and the trailing mark are each load-bearing). THE AXES
+    # (all measured): the trailing `<BOM>` value rides CONTENT
+    # byte-exact on BOTH engines (`=VAL : <BOM>` in both dumps —
+    # libyaml keeps non-line-start marks); the ` : `/`: ` map split
+    # agrees on both engines at the same colon; the anchor-charset cut
+    # is a PASSENGER of the mark fate (without the offset-3 mark the
+    # `&` arms on both sides and the face joins the carried
+    # anchor-charset family). THE CONSENSUS BASIS: fy 04e0b58 sides
+    # WITH yeptris on EVERY probed face in BOTH its strict-1.2 and
+    # --yaml-1.1 passes — the floor renders `"<FEFF>&U:# L":
+    # "<FEFF>"` (mark-content key, glued plain, byte-exact
+    # mark-content value), the artifact renders the full one-entry map
+    # with the interior blank runs verbatim and the split at `=VAL :
+    # `; the suite carries ZERO BOM rows at the da267a5c pin — no
+    # declined-by-design basis exists (the r402 precedent), but THE
+    # TREADMILL DECISION (the measurement issue #1715 owes): each
+    # prior arm patch on this family bought exactly one round
+    # (r364 anchor-colon -> r365 map-follower -> r392 trailing-blank
+    # -> this map-split), the mutation source rode the comparator
+    # snapshot UNEXCLUDED (the r392 pins seeded the diff leg), the
+    # floor is 4 edits from the r392 pin (`t`->`L`, the `: ` insert,
+    # the trailing mark — the artifact's `=VAL : ` is the harness's
+    # own dump vocabulary pasted into the plain), and the map-aware
+    # widening's gate surface (deriving the plain-law split colon from
+    # raw bytes) is itself mutation-dense — so the r370/r375/r380/r397
+    # law applies and the WHOLE bom-line-start family JOINS THE
+    # EXCLUSION (`bom-line-start-*` + the new neg-control names in the
+    # nightly's snapshot step) instead of widening again. Comparator
+    # carry only, no engine change, NO arm change — the face stays red
+    # by design in the comparator. THE PINS: the floor + artifact
+    # bytes pin as the live-DIFFER negative controls
+    # waiver-neg-bom-line-start-map-split-r403{,-artifact}.bin (the
+    # family-classify N-phase requires the waiver to decline them
+    # forever — measured this round: 18 negative controls, 13
+    # differing, 0 waived, 0 failures), and the arms-claimed map-split
+    # pair `<BOM><BOM>L: <BOM>` pins green below (the removal twin
+    # claims it — the regression gate for the mark-fate x map axis the
+    # arms already cover). Firewall unchanged: the r402 BOM-led
+    # charset row, the r401 nelrun row, the r400 block-bsi-root row,
+    # the r398 foldheader-nel-comment row, the r397 alias-tail-ride
+    # row, the r396 anchor-PS row, the r395 empty-slot row, the r390
+    # alias-cut bucket, the r394 prop-charset row keep their arms.
+    # Growth ledger: family nightly re-derivations now 20 (r377,
+    # #1646, #1649, #1656, #1665/r388, #1669/r389, #1671/r390,
+    # #1675/r391, #1677/r392, #1682/r393, #1684/r394, #1687/r395,
+    # #1691/r396, #1694/r397, #1697/r398, #1702/r399, #1704/r400,
+    # #1708/r401, #1711/r402, this one) — the FOURTEENTH by-mutation
+    # re-derivation, the r392 family's THIRD live shape after its
+    # carry; the treadmill status: a family on exclusion stops
+    # re-deriving (verified by the next nightly's INITED walk).
+    add_test(
+        NAME fuzz-diff-r403-bom-line-start-map-split
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bom-line-start-map-split-r403-pair.bin
+    )
+
 
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)

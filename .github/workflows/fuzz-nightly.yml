@@ -195,7 +195,37 @@ jobs:
         # design), so the diff leg must not seed from it; the pins
         # carry the bytes under the full ctest (the
         # fuzz-diff-r402 pins).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete
+        # The WHOLE bom-line-start family joins at r403 (run
+        # 45843890557's round, issue #1715): the double-line-start-BOM
+        # face's FOURTH documented shape re-derived by MUTATION ~24s
+        # into the diff leg's walk — the r392 trailing-blank pins rode
+        # the comparator snapshot UNEXCLUDED, and their mutation walk
+        # pasted the comparator's own `=VAL : ` dump vocabulary into
+        # the plain, splitting it into a map the r364 one-plain
+        # spelling, the r365 end-of-input-colon spelling, and the r226
+        # removal twin all decline (the floor is 4 edits from the r392
+        # pin: `t`->`L`, the `: ` insert, the trailing mark). THE
+        # TREADMILL DECISION (measurement, issue #1715): each prior
+        # arm patch on this family bought exactly one round
+        # (r364 -> r365 -> r392 -> r403), the consensus basis stays
+        # yeptris-siding (fy 04e0b58 renders the mark-content key and
+        # the byte-exact mark-content value on the floor, the
+        # artifact, and every probe face in BOTH its strict-1.2 and
+        # --yaml-1.1 passes; the suite carries zero BOM rows at the
+        # da267a5c pin), and the map-aware widening's gate surface
+        # (deriving the plain-law split colon from raw bytes) is
+        # itself mutation-dense — so the r370/r375/r380/r397 law
+        # applies and the family JOINS THE EXCLUSION instead of
+        # widening again: the diff leg must not seed from any
+        # bom-line-start seed at all (the pins are the mutation
+        # source; the r403 red is one paste-plus-insert from the r392
+        # floor). The face itself stays red by design in the
+        # comparator: its bytes pin as the r403 live-DIFFER negative
+        # controls waiver-neg-bom-line-start-map-split-r403{,-artifact}
+        # (the family-classify N-phase requires the waiver to decline
+        # them forever), and the arms-claimed map-split pair pins
+        # green under the full ctest (the fuzz-diff-r403 pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete
 
       - name: Fuzz budget
         run: |
