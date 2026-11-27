@@ -16,33 +16,41 @@ corpora and reproducible releases). The achievement program lives in
 [`PLAN.md`](PLAN.md) ("The best-ever program"); the bindings live in
 their own repos — see "The ecosystem" below.
 
-**Latest release: v0.6.89 — live across all five runtimes** (C +
-ruby `0.6.89.0` + py `0.6.89.0` + rs/ts `0.6.89`, registry-checked
-2026-11-27). v0.6.89 carries the r402-r404 comparator rounds (all
-zero-`src/`) and closes the r404 defect inside the same cut: the
-stream-start BOM arms the anchor-charset gate — the gate+copy walks
-skip the mark zero-width, the FOURTH governing-row carry (Y2GN +
-2SXE + W5VH, fy alias-resolution-verified) (r402, #1714); the
-bom-line-start family joins the comparator snapshot exclusion —
-the treadmill measurement (each arm patch bought one round and the
-family's own pins were the unexcluded mutation source) ending the
-r364/r365/r392 chain by exclusion instead of a fifth widening, the
-map-split face pinned as a live-DIFFER neg control (r403, #1716);
-the FIRST breeding-seed round identifying its seeds BY MEASUREMENT
-— the r368-era pin riding the snapshot under a name no exclusion
-glob covered (the chain-gap law), three measured breeders joining
-the exclusion, the PSNEL quoted-fold face red-by-design on its
-11-byte floor (fy sides with NEITHER engine, suite silent), the
-agreed NELPS pair pinned green (r404, #1719); and the carry's own
-under-globbed neg-control pin fixed (#1722) and VERIFIED by the
-nightly's clean INITED walk. **The grammar-growth ledger at
-n=21 re-derivations: the exclusion law now does the treadmill's
-work (a family on exclusion stops re-deriving — verified live),
-the chain-gap law emerges (a family's exclusion must cover its
-era's pins), and the governing-row basis set stands at four
-(HM87; M7A3/DK3J/FP8R; 2SXE/W5VH; Y2GN/2SXE/W5VH).** Zero YAML
-engine divergence standing beyond #1411's deliberate fix, #1468
-(0.6.75), #1584 (0.6.77) and #1615 (0.6.78). The previous cut:
+
+**Latest release: v0.6.90 — live across all five runtimes** (C +
+ruby `0.6.90.0` + py `0.6.90.0` + rs/ts `0.6.90`, registry-checked
+2026-11-27). v0.6.90 carries the r405 comparator round (all
+zero-`src/`): the gluefold-qhash soup pool joined the comparator
+snapshot exclusion on the density measurement's WHOLESALE verdict —
+the post-0.6.89 nightly's 113-byte `{?#?#|#|+` face bred by one
+CopyPart from an r380-era pin riding under a name no glob covered,
+and the per-seed measurement returned 64 of 74 pool seeds
+re-deriving within one budget (42 face-matching + 22 neighboring
+documented-family faces) — the exclusion swept 104 seeds (the pool
+plus 33 lineage siblings, closing the naming-gap class FORWARD;
+six of seven early waiver-era green firewall controls measured as
+live breeders joined by name; the measured-clean riders stayed)
+while the face itself adjudicated DECLINED-BY-DESIGN on the
+glued-`?#` plain-vs-indicator split (yeptris keeps `?#` plain
+content per 1.2 ns-plain-first; libyaml reads the complex-key
+indicator + a comment run; all nine single cells agree; fy 04e0b58
+rejects the composed floor and artifact in BOTH passes siding with
+neither; the suite carries zero glued rows), the 15-byte floor +
+artifact pinning as twin-globbed live-DIFFER neg controls with the
+engines-agreed closed cell pinned green (r405, #1725). **The
+grammar-growth ledger at n=22 re-derivations: the density-first
+discipline now decides exclusion vs widening BY MEASUREMENT (the
+whole-pool verdict is the owner-evidence shape), the naming-gap
+class closes forward inside the extension, and the waiver has
+never wrongly claimed.** Zero YAML engine divergence standing
+beyond #1411's deliberate fix, #1468 (0.6.75), #1584 (0.6.77) and
+#1615 (0.6.78). The previous cut:
+v0.6.89 — the r402-r404 rounds: the stream-start-BOM charset skip
+(the FOURTH governing-row carry, Y2GN/2SXE/W5VH), the bom-line-start
+family ending its treadmill by exclusion, the FIRST breeding-seed
+round identifying its seeds by measurement (the chain-gap law), and
+the r404 neg-control glob defect fixed (#1722) and verified by the
+nightly's clean INITED walk. The cut before it:
 v0.6.88 — the r400-r401 rounds: the root-block-scalar face on the
 ledger's second and third governing-row bases (the suite's
 M7A3/DK3J/FP8R rows with spec 1.2.2 §8.1.1.1 fetched as canonical;
