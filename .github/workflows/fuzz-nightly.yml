@@ -407,7 +407,55 @@ jobs:
         # measurement (the exclusion-chain GAP class: the r375 utf16
         # glob's leading-anchor form is what left the bom-utf16-*
         # seeds riding).
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete && find corpus-comparator -name 'qflow-depth-clamp-*' -delete && find corpus-comparator -name 'qflow-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-anchor-quoted-body*' -delete && find corpus-comparator -name 'psnel-quoted-fold-*' -delete && find corpus-comparator -name 'waiver-neg-psnel-quoted-fold-*' -delete && find corpus-comparator -name '*soup*' -delete && find corpus-comparator -name '*glue*' -delete && find corpus-comparator -name 'qcomp-*' -delete && find corpus-comparator -name 'qflow-*' -delete && find corpus-comparator -name '*gray*' -delete && find corpus-comparator -name 'flow-qate-run-*' -delete && find corpus-comparator -name 'waiver-neg-alias-member*' -delete && find corpus-comparator -name 'waiver-neg-backtick*' -delete && find corpus-comparator -name 'waiver-neg-bom*' -delete && find corpus-comparator -name 'waiver-neg-nested-seq*' -delete && find corpus-comparator -name 'waiver-neg-paste-member-split*' -delete && find corpus-comparator -name 'waiver-neg-squote*' -delete && find corpus-comparator -name 'waiver-neg-gluefold-qhash*' -delete && find corpus-comparator -name 'gluefold-qhash-*' -delete && find corpus-comparator -name 'bom-*' -delete && find corpus-comparator -name '*bom*' -delete && find corpus-comparator -name 'waiver-neg-*bom*' -delete
+        #
+        # r407 (run 45915521571, headSha verified = 92ba513a, the r406
+        # merge, issue #1731): the r406 exclusion HELD — INITED clean
+        # over the extended snapshot (#1470, corp 820, zero seed reds)
+        # — and the round red by MUTATION (~43s in): 14 bytes
+        # `{*L,&L,&MpMp:}`, ONE CopyPart off a walk-intermediate base
+        # unit (corp 820 -> 2176; NOT a seed). The face is the
+        # flow-anchor-colon family COMPOSED with agreeing alias/anchor
+        # members: the third member's glued anchor rides the colon
+        # INSIDE the props name on yeptris (`=VAL : &MpMp: ` — the 1.2
+        # ns-anchor-char walk, '}' the flow indicator that ends the
+        # name) while libyaml's IS_ALPHA cut ends it at `MpMp` and the
+        # freed colon becomes the key separator (`=VAL : &MpMp `, the
+        # ledgered 1.1 deviation). The `*L`/`&L` members render
+        # byte-identically on both engines. The escape was scan-order:
+        # the arm's alias exclusion ('*' -> decline) only ever saw the
+        # alias-FIRST spelling; the SAME compositions ride CLAIMED
+        # when the "&name:" member precedes the alias (p10/m2/m3
+        # probed). ADJUDICATED CARRY (yeptris-siding): the suite
+        # GOVERNS the colon-in-anchor-name law (Y2GN accepted row
+        # `=VAL &an:chor :value`, 2SXE `=VAL &a: :key` + `=ALI *a:`,
+        # W5VH; the ledger's own 2SXE/W5VH/Y2GN rows carry the
+        # citations) and fy 04e0b58 renders yeptris's stream
+        # byte-consistently on every pool face in BOTH strict-1.2 and
+        # --yaml-1.1 passes (26 passes over 13 faces — the r318
+        # dual-consensus bar met), so this is an ARM EXTENSION on the
+        # flow-anchor-colon bucket — NOT a waiver extension (the r390
+        # firewall: waiver-neg-anchor-colon-end pins the colon-end
+        # face out of the gluefold waiver forever) and NOT an
+        # exclusion (the face has a basis). The alias admission rides
+        # the byte-exact props-cut relation over the OBSERVED dumps
+        # (the r179/r196 discipline at the anchor-props orientation;
+        # two measured shapes: the colon-end member 1:1, the tail
+        # member 1:2 with the eaten tail as libyaml's extra plain;
+        # never derived from input bytes — the r370/r403 law). The
+        # pins: floor `{*L,&L,&p:}` + artifact `{*L,&L,&MpMp:}` green
+        # under ctest (fuzz-diff-r407-alias-anchor-cut), the
+        # engines-agreed member composition `{*L,&L}` green (the
+        # agree-pair), and the space-tail boundary
+        # `{*L,&L,&p: x}` as the live-DIFFER neg control
+        # waiver-neg-alias-anchor-cut-r407.bin (probed unclaimed pre-
+        # AND post-patch; stays red forever) — ITS glob closes the
+        # snapshot forward so the walk never reads it. The positive
+        # pins ride the snapshot CLAIMED (the r396/r397 precedent).
+        # Growth ledger: family nightly re-derivations now 24 — the
+        # eighteenth by-mutation; the third round in a row where the
+        # carry held at INITED and the red bred off a walk
+        # intermediate.
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete && find corpus-comparator -name 'qflow-depth-clamp-*' -delete && find corpus-comparator -name 'qflow-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-anchor-quoted-body*' -delete && find corpus-comparator -name 'psnel-quoted-fold-*' -delete && find corpus-comparator -name 'waiver-neg-psnel-quoted-fold-*' -delete && find corpus-comparator -name '*soup*' -delete && find corpus-comparator -name '*glue*' -delete && find corpus-comparator -name 'qcomp-*' -delete && find corpus-comparator -name 'qflow-*' -delete && find corpus-comparator -name '*gray*' -delete && find corpus-comparator -name 'flow-qate-run-*' -delete && find corpus-comparator -name 'waiver-neg-alias-member*' -delete && find corpus-comparator -name 'waiver-neg-backtick*' -delete && find corpus-comparator -name 'waiver-neg-bom*' -delete && find corpus-comparator -name 'waiver-neg-nested-seq*' -delete && find corpus-comparator -name 'waiver-neg-paste-member-split*' -delete && find corpus-comparator -name 'waiver-neg-squote*' -delete && find corpus-comparator -name 'waiver-neg-gluefold-qhash*' -delete && find corpus-comparator -name 'gluefold-qhash-*' -delete && find corpus-comparator -name 'bom-*' -delete && find corpus-comparator -name '*bom*' -delete && find corpus-comparator -name 'waiver-neg-*bom*' -delete && find corpus-comparator -name 'waiver-neg-alias-anchor-cut*' -delete
 
       - name: Fuzz budget
         run: |
