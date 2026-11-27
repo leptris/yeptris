@@ -11204,8 +11204,97 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/bomutf16-nel-fold-u8-r406-pair.bin
     )
 
-
-
+    # r407 (the post-r406 Fuzz Nightly round, run 45915521571, headSha
+    # verified = 92ba513a, the r406 merge, issue #1731): the r406
+    # exclusion HELD — the diff leg's INITED walk over the EXTENDED
+    # snapshot was CLEAN (#1470, cov 5692, corp 820/860Kb over 1469
+    # files, zero seed reds; the BOM-named family did not re-derive;
+    # the two family-classified ledgered divergences rode as designed)
+    # and the round red by MUTATION instead (~43s in): 14 bytes
+    # `{*L,&L,&MpMp:}` (7b 2a 4c 2c 26 4c 2c 26 4d 70 4d 70 3a 7d),
+    # MS: 1 CopyPart off walk-intermediate base unit 2de9f56a (corp
+    # 820 -> 2176 during the walk; NOT a seed — absent from every
+    # local seed corpus; the nightly uploads only the crasher
+    # artifact, so the base unit's exact bytes are unrecoverable and
+    # the local re-walk over the 1153-seed snapshot with the nightly's
+    # own libFuzzer seed 2576624494 diverges deterministically at the
+    # corpus delta — 1153 local vs 1469 runner — reaching INITED CLEAN
+    # then breeding a different sibling of the SAME bucket instead).
+    # THE FACE: the flow-anchor-colon family (yd_flow_anchor_colon_
+    # divergence's own law) COMPOSED with agreeing alias/anchor
+    # members — the third member's glued anchor `&MpMp:` rides the
+    # colon INSIDE the props name on yeptris (`=VAL : &MpMp: `, the
+    # 1.2 ns-anchor-char walk: a name ends only at blank/break/
+    # flow-indicator/comma/'#', and '}' is a flow indicator), while
+    # libyaml's IS_ALPHA cut ends the name at `MpMp` and the freed
+    # colon becomes the key/value separator (`=VAL : &MpMp `, the
+    # ledgered 1.1 deviation). The `*L` alias member and the `&L`
+    # anchor member render byte-identically on both engines (the
+    # nightly's own dump pair proves it — lines 1-6 and 8-10 equal).
+    # THE ESCAPE was scan-order: the arm's mini-scan declined any '*'
+    # byte ("aliases/exotics: out of family"), so it claimed the SAME
+    # compositions whenever the "&name:" member PRECEDED the alias
+    # (p10 `{&MpMp:,*L}`, m2 `{&a:,&b:,*L}`, m3 `{&a:,&b:,&c:,*L}` —
+    # probed CLAIMED pre-patch) while an alias-FIRST member aborted
+    # unclaimed (the floor, and the tail twin `{*L,&L,&p:x}` — probed
+    # raw-DIFFER, zero claims). THE ADJUDICATION: CARRY, yeptris-
+    # siding — the suite GOVERNS the colon-in-anchor-name law (Y2GN
+    # "Anchor with colon in the middle", an ACCEPTED row whose tree is
+    # `=VAL &an:chor :value`; 2SXE "Anchors With Colon in Name",
+    # accepted 1.2 / 1.3-err, tree `=VAL &a: :key` + `=ALI *a:`; W5VH
+    # alias charset; the ledger's own rows 2SXE/W5VH/Y2GN carry the
+    # citations), and fy 04e0b58 renders yeptris's stream
+    # byte-consistently on EVERY pool face in BOTH strict-1.2 and
+    # --yaml-1.1 passes (26 passes over 13 faces, fy-pool log: the
+    # floor, the 11-byte greedy-ddmin floor `{*L,&L,&p:}` — every
+    # single-byte deletion clean, `MpMp`->`p` the only load-bearing
+    # name bytes, the r318 dual-consensus bar MET). Engine divergence
+    # REFUTED. THE CARRY: the arm extension, NOT a waiver extension
+    # (the r390 firewall — waiver-neg-anchor-colon-end pins the
+    # colon-end face OUT of the gluefold waiver's grammar forever:
+    # "the render depends on the FOLLOWER via the engine's un-consume
+    # law") and NOT an exclusion (the face has a basis). The alias
+    # admission rides the byte-exact PROPS-CUT relation over the
+    # OBSERVED dumps (yd_props_cut_sites_relation, the r179/r196
+    # alias-cut discipline carried to the anchor-props orientation:
+    # every non-site line identical; per site yeptris's props name =
+    # libyaml's kept IS_ALPHA name + the exact cut byte ':', in two
+    # measured shapes — SHAPE A the colon-end member (1:1 lines, the
+    # key-line values byte-equal, measured empty on both) and SHAPE B
+    # the tail member (1 yeptris line vs 2 libyaml lines, the eaten
+    # tail byte-exact libyaml's line-2 plain, yeptris's site-line
+    # value pinned EMPTY); the multi-site and mixed A/B compositions
+    # measured exact (m2/m3/m4 `{*L,&p:,&q:x}`/m5 `{*L,&p:x,&q:}`);
+    # sites capped at 16 (the r125 precedent). NEVER derived from the
+    # input bytes (the r370/r403 mutation-dense-gate law). THE PINS:
+    # the floor + artifact pin green below (claimed post-patch), the
+    # engines-agreed member composition `{*L,&L}` pins green (p4 —
+    # the alias/anchor members AGREE, dumps equal:1), and the
+    # space-tail boundary pins as the live-DIFFER neg control
+    # waiver-neg-alias-anchor-cut-r407.bin `{*L,&L,&p: x}` (yeptris's
+    # site-line value `x` vs SHAPE B's EMPTY pin — probed unclaimed
+    # pre- AND post-patch, stays red forever; excluded from the
+    # snapshot with its glob so the walk never reads it; the
+    # family-classify N-phase asserts the waiver still declines it).
+    # Firewall unchanged: the r406 BOM rows, the r405 gluefold-qhash
+    # row, the r404 psnel-quoted-fold row, the r390 alias-cut bucket's
+    # waiver grammar (this round rides the ARM, not the waiver), the
+    # r394 prop-charset row keep theirs. Growth ledger: family nightly
+    # re-derivations now 24 — the eighteenth by-mutation (the
+    # treadmill's 24th link), the third round in a row where the
+    # carry held clean at INITED and the red bred by mutation off a
+    # walk intermediate.
+    add_test(
+        NAME fuzz-diff-r407-alias-anchor-cut
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-anchor-cut-r407-floor.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-anchor-cut-r407-artifact.bin
+    )
+    add_test(
+        NAME fuzz-diff-r407-alias-anchor-cut-agree-pair
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-anchor-cut-r407-agree-pair.bin
+    )
 
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)

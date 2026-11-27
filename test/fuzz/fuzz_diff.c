@@ -22617,14 +22617,148 @@ static int yd_lsps_breakless_clip_divergence(const uint8_t* data, size_t size, c
     return known;
 }
 
+static int yd_props_cut_sites_relation(const char* ydump, const char* ldump);
+static int yd_anchor_byte_in_libyaml_set(unsigned char n);
+
+/* The r407 ALIAS-COMPOSED PROPS-CUT relation (the widening's claim
+ * leg). True when the OBSERVED dump pair is byte-identical except at
+ * "cut sites" -- the lines where libyaml's scan_anchor IS_ALPHA cut
+ * ate the glued colon that yeptris's 1.2 ns-anchor-char walk keeps
+ * INSIDE the props name (the suite's Y2GN "Anchor with colon in the
+ * middle" `=VAL &an:chor :value`, 2SXE "Anchors With Colon in Name"
+ * `=VAL &a: :key` / `=ALI *a:`, W5VH; the ledger's own rows 2SXE/W5VH/
+ * Y2GN carry the citations; libyaml is the documented 1.1 comparator
+ * deviation). Two measured site shapes:
+ *
+ *   SHAPE A (the r407 floor `{*L,&L,&p:}`, one-minimal 11 bytes; the
+ *   artifact `{*L,&L,&MpMp:}`, 14 bytes): the colon-END member --
+ *   yeptris `=VAL : &<n>: ` (name rides the trailing colon, EMPTY
+ *   scalar, the parser's inserted empty value), libyaml `=VAL : &<n> `
+ *   (cut at the colon, the colon becomes the key/value separator, the
+ *   value empty). One line on EACH side; the key-line values are
+ *   byte-equal (measured empty on both).
+ *
+ *   SHAPE B (the tail twin `{*L,&L,&p:x}`, probed raw-DIFFER beside
+ *   the floor): the tail member -- yeptris `=VAL : &<n>:<tail> ` (the
+ *   glued tail rides the name, empty scalar), libyaml `=VAL : &<n> `
+ *   PLUS one extra line `=VAL : <tail>` (the eaten tail re-lexes as
+ *   the member's plain value). One yeptris line, TWO libyaml lines;
+ *   the tail is byte-exact libyaml's line-2 value.
+ *
+ * Every NON-site line must be byte-identical; sites count is capped
+ * (the r125 alias arm's run cap precedent); the multi-site and mixed
+ * A/B compositions measured exact (m2 `{&a:,&b:,*L}`, m3 three sites,
+ * m4 `{*L,&p:,&q:x}`, m5 `{*L,&p:x,&q:}` -- fy 04e0b58 renders
+ * yeptris's stream byte-consistently on every face in BOTH
+ * strict-1.2 and --yaml-1.1 passes, the r318 dual-consensus bar, 26
+ * passes over the pool, fy-pool-r407.log). The libyaml-side kept name
+ * is pinned nonempty and byte-in-libyaml's-own-anchor-charset, the
+ * cut byte exactly ':' -- an invented name, a genuine yeptris
+ * alias-drop bug, or any unmeasured shape (the space-tail neg control
+ * `waiver-neg-alias-anchor-cut-r407.bin` `{*L,&L,&p: x}`: yeptris's
+ * site-line value `x` vs the pins' EMPTY -- probed unclaimed pre- AND
+ * post-patch) leaves a pin unsatisfied and declines. The relation
+ * reads the dumps the engines actually produced -- never the input
+ * bytes (the r370/r403 law). */
+static int yd_props_cut_sites_relation(const char* ydump, const char* ldump) {
+    if (ydump == NULL || ldump == NULL) {
+        return 0;
+    }
+    static const char val_props[] = "=VAL : &";
+    const size_t vp = sizeof(val_props) - 1; /* 8 */
+    const char* y = ydump;
+    const char* l = ldump;
+    int sites = 0;
+    while (*y != '\0' && *l != '\0') {
+        const char* yn = strchr(y, '\n');
+        const char* ln = strchr(l, '\n');
+        if (yn == NULL || ln == NULL) {
+            return 0; /* both dumps are \\n-terminated line sequences */
+        }
+        size_t yl = (size_t)(yn - y);
+        size_t ll = (size_t)(ln - l);
+        if (yl == ll && memcmp(y, l, yl) == 0) {
+            y = yn + 1;
+            l = ln + 1;
+            continue;
+        }
+        if (++sites > 16) {
+            return 0; /* the per-site cap (the r125 alias arm's precedent) */
+        }
+        if (yl <= vp || ll <= vp || memcmp(y, val_props, vp) != 0 ||
+            memcmp(l, val_props, vp) != 0) {
+            return 0; /* a differing line that is not a props line */
+        }
+        const char* yr = y + vp;
+        const char* lr = l + vp;
+        size_t nl = 0;
+        while (lr[nl] != '\0' && yd_anchor_byte_in_libyaml_set((unsigned char)lr[nl])) {
+            nl++;
+        }
+        if (nl == 0 || lr[nl] != ' ') {
+            return 0; /* libyaml's kept name: nonempty, IS_ALPHA-terminated */
+        }
+        if (memcmp(yr, lr, nl) != 0 || yr[nl] != ':') {
+            return 0; /* yeptris's name = libyaml's + the exact cut byte */
+        }
+        if (yr[nl + 1] == ' ') {
+            /* SHAPE A: the colon ends yeptris's name too; the key-line
+             * values must be byte-equal (measured empty on both) */
+            const char* yv = yr + nl + 2;
+            const char* lv = lr + nl + 1;
+            size_t yvl = yl - vp - nl - 2;
+            size_t lvl = ll - vp - nl - 1;
+            if (yvl != lvl || memcmp(yv, lv, yvl) != 0) {
+                return 0;
+            }
+            y = yn + 1;
+            l = ln + 1;
+        } else {
+            /* SHAPE B: the tail rides yeptris's name to its own props
+             * terminator; yeptris's value EMPTY; libyaml's line-1 value
+             * EMPTY and its line-2 value the exact tail */
+            size_t t = nl + 1;
+            while (yr[t] != ' ') {
+                t++;
+                if (vp + t >= yl) {
+                    return 0; /* yeptris's name run never terminated */
+                }
+            }
+            size_t tail = t - (nl + 1);
+            if (tail == 0 || vp + t + 1 != yl) {
+                return 0; /* yeptris's site-line value must be EMPTY */
+            }
+            if (ll != vp + nl + 1) {
+                return 0; /* libyaml's line-1 value must be EMPTY */
+            }
+            l = ln + 1;
+            ln = strchr(l, '\n');
+            if (ln == NULL) {
+                return 0;
+            }
+            size_t l2l = (size_t)(ln - l);
+            static const char val_plain[] = "=VAL : ";
+            if (l2l != 7 + tail || memcmp(l, val_plain, 7) != 0 ||
+                memcmp(l + 7, yr + nl + 1, tail) != 0) {
+                return 0; /* libyaml's extra line IS the eaten tail */
+            }
+            y = yn + 1;
+            l = ln + 1;
+        }
+    }
+    return sites >= 1 && *y == '\0' && *l == '\0';
+}
+
 /* True when the difference is the flow-anchor-colon family: inside a
  * flow collection libyaml reads "&name:" as an anchored empty key
  * ("[&a: x]" -> {a-anchored empty => x}) while yeptris's designed
  * lenience keeps "&" as plain content in flow (anchors ride block and
  * refuse flow; the suite has ZERO flow-&-colon cases, so neither side
  * is suite-backed). The gate is a mini-scan: the "&name:" shape with
- * a terminator, found at bracket depth > 0 outside quotes, and no
- * alias anywhere (aliases would tangle the semantics). */
+ * a terminator, found at bracket depth > 0 outside quotes -- and, as
+ * of the r407 widening below, alias members admitted through the
+ * byte-exact props-cut relation (they never tangle the cut pair: the
+ * alias member's dump lines are byte-identical on both engines). */
 static int yd_flow_anchor_colon_divergence(const uint8_t* data, size_t size, const char* ydump,
                                            const char* ldump) {
     if (ydump == NULL || ldump == NULL) {
@@ -22632,6 +22766,7 @@ static int yd_flow_anchor_colon_divergence(const uint8_t* data, size_t size, con
     }
     int depth = 0;
     int quote = 0;
+    int had_alias = 0;
     for (size_t i = 0; i < size; i++) {
         unsigned char c = data[i];
         if (quote != 0) {
@@ -22661,8 +22796,33 @@ static int yd_flow_anchor_colon_divergence(const uint8_t* data, size_t size, con
             }
             continue;
         }
-        if (c == '*' || c == '@' || c == '`') {
-            return 0; /* aliases/exotics: out of family */
+        if (c == '@' || c == '`') {
+            return 0; /* reserved/backtick exotics: out of family */
+        }
+        if (c == '*') {
+            /* the r407 widening (the nightly's round r407, run
+             * 45915521571, headSha verified = the r406 merge 92ba513a,
+             * crash-8040b58ba7dd118f4694e23709b97685f4f1d16a, 14 bytes
+             * "{*L,&L,&MpMp:}", MS: 1 CopyPart off walk-intermediate
+             * base unit 2de9f56a): an alias member no longer declines
+             * the family outright. The scan-order accident was the
+             * escape: the arm claimed the SAME anchor-cut compositions
+             * whenever the "&name:" member preceded the alias (p10
+             * "{&MpMp:,*L}" probed CLAIMED, m2 "{&a:,&b:,*L}" and m3
+             * "{&a:,&b:,&c:,*L}" likewise) while an alias-FIRST member
+             * hit this '*' byte and aborted unclaimed (the floor and
+             * the tail twin "{*L,&L,&p:x}" probed raw-DIFFER, zero
+             * claims). Aliases do not tangle THIS face: every dump
+             * line around the cut pair is byte-identical (the "*L"
+             * alias member and the "&L" anchor member agree on both
+             * engines -- the nightly's own dump pair proves it), so
+             * the claim moves to the byte-exact pair relation below,
+             * over the OBSERVED dumps (the r179/r196 alias-cut
+             * discipline carried to the anchor-props orientation),
+             * never derived from the input bytes (the r370/r403
+             * mutation-dense-gate law). */
+            had_alias = 1;
+            continue;
         }
         if (c == '&' && depth > 0) {
             size_t j = i + 1;
@@ -22678,6 +22838,9 @@ static int yd_flow_anchor_colon_divergence(const uint8_t* data, size_t size, con
                  * irrelevant -- after an anchor libyaml takes ':' as
                  * the key separator even glued ("&tag:examle.com",
                  * the nightly's crash-3483b4cd). */
+                if (had_alias) {
+                    return yd_props_cut_sites_relation(ydump, ldump);
+                }
                 return 1;
             }
         }
