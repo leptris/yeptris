@@ -329,15 +329,85 @@ jobs:
         # reached them) join by their own names; the measured-clean
         # non-family riders stay in the snapshot (rootplain,
         # mid-token-hash-prop-line, block-nel-escless-fold-r294).
-        # Firewall unchanged: the r404 psnel-quoted-fold row (VERIFIED
-        # this run by the clean INITED walk), the r403 bom-line-start
-        # exclusion row, the r402 BOM-led charset row, the r401 nelrun
-        # row, the r400 block-bsi-root row, the r398 foldheader row,
-        # the r397 alias-tail-ride row, the r396 anchor-PS row, the
-        # r395 empty-slot row, the r390 alias-cut bucket, the r394
-        # prop-charset row keep their arms. Growth ledger: family
-        # nightly re-derivations now 22 — the SIXTEENTH by-mutation.
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete && find corpus-comparator -name 'qflow-depth-clamp-*' -delete && find corpus-comparator -name 'qflow-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-anchor-quoted-body*' -delete && find corpus-comparator -name 'psnel-quoted-fold-*' -delete && find corpus-comparator -name 'waiver-neg-psnel-quoted-fold-*' -delete && find corpus-comparator -name '*soup*' -delete && find corpus-comparator -name '*glue*' -delete && find corpus-comparator -name 'qcomp-*' -delete && find corpus-comparator -name 'qflow-*' -delete && find corpus-comparator -name '*gray*' -delete && find corpus-comparator -name 'flow-qate-run-*' -delete && find corpus-comparator -name 'waiver-neg-alias-member*' -delete && find corpus-comparator -name 'waiver-neg-backtick*' -delete && find corpus-comparator -name 'waiver-neg-bom*' -delete && find corpus-comparator -name 'waiver-neg-nested-seq*' -delete && find corpus-comparator -name 'waiver-neg-paste-member-split*' -delete && find corpus-comparator -name 'waiver-neg-squote*' -delete && find corpus-comparator -name 'waiver-neg-gluefold-qhash*' -delete && find corpus-comparator -name 'gluefold-qhash-*' -delete
+        # Firewall unchanged: the r405 gluefold-qhash row (VERIFIED this
+        # run by the clean INITED walk — the #1487 corpus, zero seed
+        # reds, the pool did not re-derive), the r404 psnel-quoted-fold
+        # row, the r403 bom-line-start exclusion row, the r402 BOM-led
+        # charset row, the r401 nelrun row, the r400 block-bsi-root row,
+        # the r398 foldheader row, the r397 alias-tail-ride row, the
+        # r396 anchor-PS row, the r395 empty-slot row, the r390
+        # alias-cut bucket, the r394 prop-charset row keep their arms.
+        # The WHOLE BOM-named family joins at r406 (run 45899290043's
+        # round, issue #1726) — the r405 exclusion HELD (INITED CLEAN)
+        # and the round red by MUTATION on 14 bytes `feff0085
+        # feff0085 feff0085 0021` (BOM+NEL x3 + `!` under UTF-16BE),
+        # ONE ChangeByte off base unit `bom-utf16-nel-line-start-r226
+        # .bin` (`0061`->`0021`) — an r226-era BOM-led seed riding the
+        # snapshot under a name matching NO exclusion glob
+        # (`bom-line-start-*` and `utf16-*` both miss it; the r403/
+        # r375 families' naming gap, the r404 precedent shape). THE
+        # FACE: the r402/r403 BOM-content law composed with the NEL
+        # fold — yeptris keeps the two mid-stream BOMs as plain
+        # content through the folded lines (`=VAL : <BOM> <BOM> !`),
+        # libyaml's UTF-16 reader strips EVERY BOM (the scalar
+        # collapses to empty); the greedy-ddmin floor is the FULL 14
+        # bytes (every single-byte deletion drops the bar), and the
+        # probe matrix shows one pair, two pairs, three pairs + `a`
+        # (the r226 seed), BOM-runs, and the UTF-8 spelling ALL AGREE
+        # — the split needs >=3 BOM+NEL pairs AND the `!` tail. THE
+        # CONSENSUS BASIS: yeptris-siding per the standing BOM-content
+        # rows — fy 04e0b58 CANNOT READ UTF-16BE at all (Invalid UTF8
+        # in BOTH passes on the floor and every u16be probe; siding
+        # with NEITHER engine) and on the UTF-8 spelling of the same
+        # composition keeps the BOMs RAW as content in BOTH passes
+        # (siding WITH yeptris); the suite carries ZERO BOM/UTF-16/
+        # raw-NEL rows across all 351 src dirs at the da267a5c pin.
+        # THE DENSITY MEASUREMENT (the r404/r405 census form; one ~45s
+        # budget each, fixed seed 406, single-file seed dirs, the
+        # nightly bar, over the WHOLE 17-entry BOM-named riding set —
+        # 14 file seeds + 3 seed dirs; seed-read cleanliness verified
+        # first, every candidate -runs=1 CLEAN): the pool RE-DERIVES
+        # WHOLESALE — 13 of 17 re-derive a comparator red within ONE
+        # budget: the r226 breeder, the bom-anchored-key quartet
+        # (r154/r156/r338 x2), bom-content-breaks-utf16be, BOTH catch
+        # seed dirs (catch121-lone-utf8-bom, catch132-utf16-content-
+        # bom), the leading-bom-content dir, double-content-bom,
+        # catch116-block-key-bom and catch117-engine-bom (faces across
+        # the documented-law neighborhoods: BOM+charset, BOM+block-
+        # scalar, the comparator's own dump vocabulary pasted into a
+        # plain, PS/UTF-16 compositions, the ` >#:` fold cell); only
+        # bom-content-late-head-overflow,
+        # bom-content-leading-break-utf16be, bom-utf16-line-start,
+        # catch105-utf8-bom-reencode and catch113-push-lone-utf16-bom
+        # stayed clean for one budget — and they are FAMILY-NAMED, so
+        # they join the sweep with the pool (the r405 six-green-
+        # controls precedent: riding is only clean until the walk
+        # reaches them). The r1306 law cuts both ways,
+        # so the EXCLUSION EXTENSION is the answer (the r375/r405
+        # whole-family law), not an arm widening whose gate would
+        # derive the mid-stream-BOM fold split from raw bytes (the
+        # r370/r403 mutation-dense-gate law): `bom-*` sweeps the 9
+        # never-excluded BOM-led seeds and `*bom*` sweeps the
+        # straggler cohort the prefix form cannot reach (46/46 name
+        # hits genuinely BOM-family — zero collateral), with the
+        # `waiver-neg-*bom*` twin closing the mid-name gap forward
+        # (the r404 lesson; the r405-era `waiver-neg-bom*` twin
+        # already covers the waiver-neg-bom-prefixed controls). The
+        # floor + artifact pin as the live-DIFFER negative controls
+        # waiver-neg-bomutf16-nel-fold-r406{,-artifact}.bin (the
+        # family-classify N-phase requires the waiver to decline them
+        # forever), and the engines-agreed UTF-8 spelling of the
+        # composition pins green under the full ctest (the
+        # fuzz-diff-r406-bomutf16-nel-fold-u8 unit; the r226 seed
+        # itself stays under its fuzz-diff-r226 pin). The BOM-named
+        # family — breeders and the one-budget-clean cohort alike —
+        # stays out of the snapshot with the pool.
+        # Growth ledger: family nightly re-derivations now 23 — the
+        # SEVENTEENTH by-mutation and the THIRD identified-by-
+        # measurement (the exclusion-chain GAP class: the r375 utf16
+        # glob's leading-anchor form is what left the bom-utf16-*
+        # seeds riding).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete && find corpus-comparator -name 'qflow-depth-clamp-*' -delete && find corpus-comparator -name 'qflow-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-anchor-quoted-body*' -delete && find corpus-comparator -name 'psnel-quoted-fold-*' -delete && find corpus-comparator -name 'waiver-neg-psnel-quoted-fold-*' -delete && find corpus-comparator -name '*soup*' -delete && find corpus-comparator -name '*glue*' -delete && find corpus-comparator -name 'qcomp-*' -delete && find corpus-comparator -name 'qflow-*' -delete && find corpus-comparator -name '*gray*' -delete && find corpus-comparator -name 'flow-qate-run-*' -delete && find corpus-comparator -name 'waiver-neg-alias-member*' -delete && find corpus-comparator -name 'waiver-neg-backtick*' -delete && find corpus-comparator -name 'waiver-neg-bom*' -delete && find corpus-comparator -name 'waiver-neg-nested-seq*' -delete && find corpus-comparator -name 'waiver-neg-paste-member-split*' -delete && find corpus-comparator -name 'waiver-neg-squote*' -delete && find corpus-comparator -name 'waiver-neg-gluefold-qhash*' -delete && find corpus-comparator -name 'gluefold-qhash-*' -delete && find corpus-comparator -name 'bom-*' -delete && find corpus-comparator -name '*bom*' -delete && find corpus-comparator -name 'waiver-neg-*bom*' -delete
 
       - name: Fuzz budget
         run: |
