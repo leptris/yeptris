@@ -11296,6 +11296,91 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-anchor-cut-r407-agree-pair.bin
     )
 
+    # r408 (the post-r407 Fuzz Nightly round, run 45928787739, headSha
+    # verified = 2d4cf8b8, the r407 merge, issue #1734): the r407 carry
+    # HELD — the diff leg's INITED walk over the extended snapshot was
+    # CLEAN (#1473, corp 816/861Kb, the r407 pins rode CLAIMED, the neg
+    # twin stayed excluded, the alias-admission lane produced no reds;
+    # the Valgrind leg's failure was INFRA, apt 403, never reached
+    # checkout) and the round red by MUTATION: 23 bytes
+    # `{?*L:<LF>,&2m:(+SVA<BS>n t<BS>n}` (7b 3f 2a 4c 3a 0a 2c 26 32 6d
+    # 3a 28 2b 53 56 41 5c 6e 20 74 5c 6e 7d — the BS pairs LITERAL
+    # backslash+n bytes), MS: 1 EraseBytes off walk-intermediate base
+    # 9d4ab3a2 (NOT a seed; the artifact
+    # crash-37c2c62fc7e5a086a923c230e47402f8ef8e6343). THE FACE: the
+    # gluefold `?*`-head KEY-token face composed with a run-terminated
+    # charset-divergent anchor member AT the waiver's declined BACKSLASH
+    # corner — member 1 `?*L:` renders yeptris ONE plain (`=VAL : ?*L`,
+    # the r390-measured MAP-root render class) vs libyaml's `=ALI *L`
+    # alias-cut (the r339 rider carve-out's own bucket); member 2
+    # `&2m:(+SVA<BS>n t<BS>n` rides the engine's prop-charset name
+    # THROUGH the colon and the backslash (`=VAL : &2m:(+SVA<BS>n
+    # t\\n`, the 1.2 ns-anchor-char walk, props rendered RAW) while
+    # libyaml's IS_ALPHA cut ends the name at `2m` and frees the tail
+    # as ONE flat plain (`=VAL : (+SVA\\n t\\n`, the escape render, the
+    # documented 1.1 deviation). THE DDMIN: greedy floor 10 bytes
+    # `{*L,&m:<BS> }` (7b 2a 4c 2c 26 6d 3a 5c 20 7d), one-minimal —
+    # the backslash survives every greedy step (load-bearing: without
+    # it the composition falls to the r407 relation's SHAPE B or the
+    # already-ledgered no-backslash waiver rows). THE ADJUDICATION:
+    # CARRY, yeptris-siding, at the corner — fy 04e0b58 reads YEPtris's
+    # stream byte-consistently on every matrix face in BOTH strict-1.2
+    # AND --yaml-1.1 (36-face probe matrix, dumpboth byte-exact each:
+    # the floor, the blank/comma/tab/CRLF run twins, the content
+    # followers `{*L,&m:<BS> x}`/`{*L,&m:<BS> x y}`/`{*L,&m:x<BS> y}`,
+    # the double-backslash name, the real-break run, the artifact; the
+    # r318 dual-consensus bar MET). The suite (da267a5c) has ZERO rows
+    # for the corner — no backslash-in-anchor-name member anywhere —
+    # libyaml stays the documented 1.1 comparator deviation (the r311
+    # law) and fy is the second vote favoring yeptris (the r335/r355
+    # comparator-split line). THE CARRY: the y_member anchor-arm
+    # widening (the r355 region's non-alias follower no longer
+    # declines outright) — SHAPE E the run rides to the terminator
+    # (`,`/`}`: the props + ONE separator space + the parser's inserted
+    # empty) and SHAPE C plain content follows the run (the STANDARD
+    # piece walk, fc_plain_pieces: the 1.2 fold law, the r279 comment
+    # law, the VALUE-boundary laws; the terminator gate `,`/`}` EXACT).
+    # The map-root render of member 1 rides the fc walk's own r339/
+    # r390 laws; the l-side needs NO new law (the IS_ALPHA cut + VALUE
+    # token + the freed-tail flat plain already derives — the riding
+    # `{*L,&m:x<BS>}` proves it) and the entry's dual byte-equality is
+    # the firewall. THE SCOPE: the corner is the ESCAPE ARM — the
+    # widening claims only faces whose props tail carries a BACKSLASH
+    # (the measured corner's byte class; the arms' charset-gate
+    # precedent). The backslash-free run-terminated faces stay OUT —
+    # they are the GLUEFOLD WAIVER's seed class (the r390/r391/r393/
+    # r394 corpus members are all backslash-free) and the self-test's
+    # W-phase asserts waiver seeds ride waived-ONLY ("claimed by BOTH
+    # gates" measured in this round's first cut, the lanes are disjoint
+    # by measured shape); those faces stay red (probed `{*L,&m:x }`,
+    # `{*L,&m: x:y}`, `{*L,&m: x<LF>y}`, `{*L,&m:<CR><LF>x}` — measured,
+    # declined, the waiver lane's own future round), as does the SEQ
+    # slot (`[*L,&m:<BS> ]` — libyaml WRAPS the anchored empty into a
+    # single-pair map there; the r393 rider-boundary SEQ decline
+    # precedent, the l-side wrapper law unproven). THE PINS: the floor
+    # + artifact pin green below (claimed post-patch); the live-DIFFER
+    # neg controls waiver-neg-anchor-bsrun-seq-r408.bin (the SEQ slot)
+    # and waiver-neg-anchor-bsrun-nobacks-r408.bin (the no-backslash
+    # scope twin) stay red forever, excluded from the snapshot with
+    # their glob so the walk never reads them; the family-classify
+    # N-phase asserts the waiver still declines them. Firewall
+    # unchanged: the r407 relation (untouched — the relation's SHAPE B
+    # misalignment on the inserted-empty line is subsumed by this arm's
+    # fc route), the waiver's own grammar (fw_prop_name_byte keeps the
+    # backslash in its declined corners — the W-phase held with it),
+    # the r406 BOM rows, the r405 gluefold-qhash row, the r404
+    # psnel-quoted-fold row, the r394 prop-charset row. Growth ledger:
+    # family nightly re-derivations now 25 — the nineteenth
+    # by-mutation (the treadmill's 25th link), the fourth round in a
+    # row where the carry held clean at INITED and the red bred by
+    # mutation off a walk intermediate.
+    add_test(
+        NAME fuzz-diff-r408-anchor-bsrun
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-bsrun-r408-floor.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-bsrun-r408-artifact.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
