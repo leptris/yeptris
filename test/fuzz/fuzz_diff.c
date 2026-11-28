@@ -23361,8 +23361,20 @@ static int yd_anchor_name_charset_divergence(const uint8_t* data, size_t size, c
     /* transform: split every quote-free '&' name run at its first
      * out-of-set byte ("&ab?cd" -> "&ab ?cd") — the reading yeptris
      * then produces IS libyaml's reading of the original; each run's
-     * split adds one byte (amps counted in the gate walk) */
-    char* sub = malloc(size + amps + 1);
+     * split adds one byte (amps counted in the gate walk). The gate
+     * walk and the copy walk can DESYNC on the split count (a glued
+     * quote flips the copy walk's quote state where the gate's stayed
+     * closed — a 1-byte apostrophe insert into a riding corpus seed
+     * split one run more than amps sized for), so the bound is the
+     * CLOSED counting argument, not the gate's census: every split
+     * emits exactly one space and consumes an '&' plus at least one
+     * name byte, so the copy can reach size + size/2 + 1 ("&a&" two
+     * splits) — the same bound the r64-era qflow rewrite carries
+     * ("two hits overflowed the old size+1 buffer — ASan write");
+     * the r410 battery's seed-410 exotic-insert class hit the
+     * overrun first (heap-buffer-overflow WRITE of size 1, 0 bytes
+     * past the size+amps+1 region, ASan, local battery). */
+    char* sub = malloc(size * 2 + amps + 1);
     if (sub == NULL) {
         return 0;
     }
