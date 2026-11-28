@@ -18,35 +18,37 @@ their own repos — see "The ecosystem" below.
 
 
 
-**Latest release: v0.6.91 — live across all five runtimes** (C +
-ruby `0.6.91.0` + py `0.6.91.0` + rs/ts `0.6.91`, registry-checked
-2026-11-27). v0.6.91 carries the r407 comparator round (all
-zero-`src/`): the flow-anchor-colon arm admitted the alias-cut
-composition on the ledger's FIFTH governing-row basis — the
-post-r406 nightly's 14-byte `{*L,&L,&MpMp:}` face (the first red
-whose breeding base was a WALK CORPUS INTERMEDIATE, never a seed;
-the r406 BOM exclusion held at INITED) adjudicated as a CARRY on
-the glued-anchor colon cell: yeptris rides the colon INSIDE the
-props name (the 1.2 ns-anchor-char walk — `}` ends the name),
-libyaml's IS_ALPHA cut frees it as the key/value separator (the
-ledgered 1.1 deviation), and the escape was scan-order (the arm
-declined any `*` byte, so the same compositions rode CLAIMED
-whenever the anchor member preceded the alias while alias-first
-aborted unclaimed) — the suite GOVERNS the colon-in-anchor-name
-law (Y2GN + 2SXE + W5VH; the trio's third carry) and fy 04e0b58
-renders yeptris's stream byte-consistently on every pool face in
-BOTH strict-1.2 and `--yaml-1.1` (26 passes over 13 faces — the
-r318 dual-consensus bar met), engine divergence REFUTED — carried
-as an arm extension riding a byte-exact props-cut relation over
-the OBSERVED dumps (never derived from input bytes — the
-r370/r403 law), the 11-byte floor + artifact + the agreed pair
-pinning green and the space-tail boundary pinned as the
-twin-globbed live-DIFFER negative control (r407, #1732). **The
-grammar-growth ledger at n=24 re-derivations: the governing-row
-basis set now FIVE, the scan-order escape class documented, and
-the waiver has never wrongly claimed.** Zero YAML engine
-divergence standing beyond #1411's deliberate fix, #1468
-(0.6.75), #1584 (0.6.77) and #1615 (0.6.78). The previous cut:
+**Latest release: v0.6.92 — live across all five runtimes** (C +
+ruby `0.6.92.0` + py `0.6.92.0` + rs/ts `0.6.92`, registry-checked
+2026-11-28). v0.6.92 carries the r408 comparator round (all
+zero-`src/`): the escape-arm anchor run shapes carried at the
+waiver's declined backslash corner — the post-r407 nightly's
+23-byte face (the gluefold `?*`-head KEY-token face composed with
+a run-terminated charset-divergent anchor member; the r407 carry
+held at INITED) adjudicated as a CARRY (yeptris-siding): yeptris
+rides the prop-charset name through the colon AND the backslash
+(the 1.2 ns-anchor-char walk — the 10-byte floor keeps the
+backslash load-bearing) while libyaml's IS_ALPHA cut frees the
+tail as one flat plain (the documented 1.1 deviation, the suite
+carrying zero backslash rows), and fy 04e0b58 reads yeptris's
+stream byte-consistently on the 36-face matrix in BOTH strict-1.2
+and `--yaml-1.1` (the r318 dual-consensus bar) — carried as
+`y_member`'s anchor-arm widening scoped to THE ESCAPE ARM ONLY
+(backslash faces; the backslash-free rows + the SEQ slot stay
+red-by-scope with the two-gate double-claim hazard measured and
+pinned shut), the floor + artifact green and the SEQ + scope
+twins pinned as twin-globbed live-DIFFER neg controls (r408,
+#1737). **The grammar-growth ledger at n=25: the nineteenth
+by-mutation, the FOURTH consecutive round where the carry held
+clean at INITED and the red bred off a walk intermediate; the
+snapshot-replay discipline is now mechanical fnmatch and the
+waiver has never wrongly claimed.** Zero YAML engine divergence
+standing beyond #1411's deliberate fix, #1468 (0.6.75), #1584
+(0.6.77) and #1615 (0.6.78). The previous cut:
+v0.6.91 — the r407 round: the flow-anchor-colon arm admitted the
+alias-cut composition on the FIFTH governing-row basis
+(Y2GN/2SXE/W5VH; fy byte-consistent 26 passes over 13 faces; the
+byte-exact props-cut relation). The cut before it:
 v0.6.90 — the r405-r406 rounds: the gluefold-qhash WHOLE-POOL
 exclusion (the density measurement's wholesale verdict, 104
 seeds swept, the naming-gap class closed forward) and the whole
