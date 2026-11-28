@@ -11381,6 +11381,91 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-bsrun-r408-artifact.bin
     )
 
+    # r409 (the post-r408 Fuzz Nightly round, run 46115926660, headSha
+    # verified = 24394fad, the r408 merge, issue #1739): the r408 carry
+    # HELD — the diff leg's INITED walk over the extended snapshot was
+    # CLEAN (#1475, corp 821, zero seed reds; the Valgrind leg PASS)
+    # — and the round red by MUTATION ~5s in: 15 bytes
+    # `{*L,&L,&MpMp:-}`, ONE InsertByte off base unit
+    # 8040b58ba7dd118f4694e23709b97685f4f1d16a — THE r407 ARTIFACT PIN
+    # ITSELF (alias-anchor-cut-r407-artifact.bin, riding the comparator
+    # snapshot CLAIMED). The chain-gap class extends to PINS: a green
+    # comparator pin is a mutation source. THE FACE: the props-cut
+    # family's TAIL member — yeptris's 1.2 ns-anchor-char walk keeps
+    # the `-` glued after the cut colon INSIDE the name (`=VAL :
+    # &MpMp:- ` + the parser's inserted empty; `-` and `:` ride the
+    # name per Y2GN/2SXE/W5VH) while libyaml's IS_ALPHA cut frees the
+    # tail as the member's VALUE plain (`=VAL : &MpMp ` + `=VAL : -`).
+    # Lines 1-6 and the closers equal; the site pair is the r407
+    # relation's SHAPE B with the inserted-empty twist — the relation
+    # declines CORRECTLY (the consumed 1:2 tail leaves yeptris owing
+    # its exact `=VAL : ` line; the dumps misalign there). Greedy ddmin
+    # floor 12 bytes `{*L,&L,&p:-}` (one-minimal; del[13] IS the r407
+    # pin — clean; the colon and the `-` tail load-bearing). THE
+    # ADJUDICATION (the round's distinguishing question — a GREEN pin
+    # bred the face): both lawful paths measured. (a) MODEL: the face
+    # HAS a consensus basis — fy 04e0b58 renders yeptris's stream
+    # byte-consistently in BOTH strict-1.2 and --yaml-1.1 on every
+    # probed face (the artifact, the floor, the `-`-position matrix,
+    # every tail variant — the r318 dual-consensus bar) and the suite
+    # carries ZERO `-`-in-anchor-name rows across all 351 src dirs at
+    # the da267a5c pin — but ANY relation scope covering the dash-led
+    # tail class either (i) also claims `{*L,&m:x }` — the r408
+    # waiver-neg contract, an IDENTICAL site shape modulo the tail
+    # bytes (the relation is dump-derived; it cannot see the lane) —
+    # or (ii) cuts on the tail's first byte and leaves
+    # `{*L,&L,&MpMp:x}` RED: ONE InsertByte from the r407 artifact pin
+    # itself (x/-/y/2 all measured rc 77 off the pin; only IS_ALPHA
+    # name mutations stay claimed). The tail dimension off the pin is
+    # uniformly one-mutation red. (b) EXCLUDE: THE DENSITY MEASUREMENT
+    # (the r404/r405 census form; one ~45s budget each, fixed seed
+    # 409, single-file seed dirs, the nightly bar, seed-read
+    # cleanliness verified first — every candidate -runs=1 CLEAN): 4
+    # of 5 riding family seeds re-derive a comparator red within ONE
+    # budget — alias-anchor-cut-r407-artifact (the breeder itself,
+    # crash-0e46559b), alias-anchor-cut-r407-floor (crash-5c39e12d),
+    # anchor-bsrun-r408-floor (crash-96e50deb — the `&mw: ~` TAIL
+    # class, the r408 neg lane's own shape), anchor-bsrun-r408-artifact
+    # (crash-1a2c3fd7); only alias-anchor-cut-r407-agree-pair stayed
+    # clean for one budget and it is FAMILY-NAMED (the r405/r406
+    # one-budget-clean-cohort law: riding is only clean until the walk
+    # reaches it). The r1306 law cuts both ways: the pool as a whole
+    # re-derives, so the EXCLUSION EXTENSION is the answer (the
+    # r375/r405/r406 whole-family law), not an arm widening whose gate
+    # surface the pin's own neighborhood defeats. THE PATCH: the
+    # snapshot globs `alias-anchor-cut-*` (the 3 r407 pins + the new
+    # agreed pair — zero collateral: the only corpus names matching the
+    # glob are the family's own) and `anchor-bsrun-*` (the 2 r408
+    # pins) join the chain (46 -> 48 globs); the pins carry the bytes
+    # under the full ctest (the r403/r405 pattern — the r407/r408
+    # fuzz-diff units stay green, the fc walk keeps every claim, zero
+    # src/ change). THE FACE pins as the live-DIFFER negative controls
+    # waiver-neg-alias-anchor-cut-r409.bin (the floor) +
+    # waiver-neg-alias-anchor-cut-r409-artifact.bin (the 15-byte
+    # artifact): the existing `waiver-neg-alias-anchor-cut*` twin-glob
+    # already sweeps them (the r404 naming-gap lesson closes forward),
+    # the family-classify N-phase carries them (29 controls, 24
+    # differing, 0 waived), and both were probed unclaimed by every
+    # family pre-patch (zero claim lines, abort-rc 6). The
+    # engines-agreed dash-in-name pair `{*L,&L,&Mp-}` — the `-` rides
+    # BOTH engines' anchor names byte-equal (IS_ALPHA keeps `-`; the
+    # measured agree cell, dumps equal) — pins green under the full
+    # ctest below. Firewall unchanged: the r408 escape arm, the r407
+    # relation (untouched; its SHAPE B decline on this class is
+    # CORRECT and load-bearing — it is what keeps the r408 neg lane
+    # red), the waiver's own grammar, the r406 BOM rows, the r405
+    # gluefold-qhash row, the r404 psnel-quoted-fold row, the r394
+    # prop-charset row. Growth ledger: family nightly re-derivations
+    # now 26 — the TWENTIETH by-mutation (the treadmill's 26th link);
+    # the FIFTH round in a row where the carry held clean at INITED;
+    # the red bred off a comparator PIN — the chain-gap class extends
+    # to pins (a green pin is a mutation source).
+    add_test(
+        NAME fuzz-diff-r409-alias-anchor-cut-agree-dash
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-anchor-cut-r409-agree-dash.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
