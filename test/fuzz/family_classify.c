@@ -2262,7 +2262,132 @@ static int y_member(yctx* c, size_t i, size_t* term_at) {
                 return y_fail(c);
             }
             size_t av = fc_skip_blank_break(p, n, te);
-            if (av >= n || p[av] != '*') {
+            if (av >= n) {
+                return y_fail(c);
+            }
+            if (p[av] != '*') {
+                /* THE r408 WIDENING (the nightly's round r408, run
+                 * 45928787739, headSha verified = the r407 merge
+                 * 2d4cf8b8, crash-37c2c62fc7e5a086a923c230e47402f8ef8e6343,
+                 * 23 bytes "{?*L:<LF>,&2m:(+SVA<BS>n t<BS>n}" — the BS
+                 * pairs LITERAL backslash+n bytes — MS: 1 EraseBytes off
+                 * walk-intermediate base 9d4ab3a2; the greedy ddmin floor
+                 * {*L,&m:<BS> }, one-minimal 10 bytes): the follower
+                 * after the blank/break run is no longer an outright
+                 * decline. The r355 arm kept the alias node; EVERY other
+                 * follower declined even though the engine walks and both
+                 * renders were already measured law — the r318 glued-colon
+                 * cut fires libyaml's VALUE token whatever ends the tail,
+                 * and yeptris's own reading (the prop-charset name rides
+                 * the glued colon AND the backslash, the suite's
+                 * 2SXE/W5VH/Y2GN interior law) ends at the run, renders
+                 * the props + ONE separator space, and inserts the empty
+                 * value at the terminator. The measured matrix (36 faces,
+                 * dumpboth byte-exact + fy 04e0b58 reading yeptris's
+                 * stream byte-consistently in strict-1.2 AND --yaml-1.1
+                 * on every parsed face, 26 + 2 consistent-error): the
+                 * floor `{*L,&m:<BS> }` (E), the blank/comma twins
+                 * `{*L,&m:<BS> ,}`, `{*L,&m:x }` (the NO-backslash twin
+                 * — the corner is the run-terminated member form, the
+                 * backslash only drags the escape render in), the content
+                 * followers `{*L,&m:<BS> x}` / `{*L,&m:<BS> x,y}` /
+                 * `{*L,&m:<BS> x y}` / `{*L,&m:x<BS> y}` / the artifact's
+                 * own `&2m:(+SVA<BS>n t<BS>n`, the separator-length law
+                 * (two blanks render ONE space on yeptris while libyaml's
+                 * plain keeps them verbatim — `{*L,&m:<BS>  x}`), the
+                 * tab/CRLF runs, the double-backslash name
+                 * `{*L,&m:<BS><BS> }` (props raw on yeptris, libyaml's
+                 * freed tail escape-rendered `\\\\`), the content-colon
+                 * ride `{*L,&m: x:y}` (no VALUE token fires mid-plain on
+                 * either engine), and the real-break run
+                 * `{*L,&m:<LF>x}`. The suite (da267a5c) has ZERO rows for
+                 * the corner — no backslash-in-anchor-name member, no
+                 * run-terminated charset-divergent member — libyaml stays
+                 * the documented 1.1 comparator deviation (the r311 law)
+                 * and fy is the second vote favoring yeptris (the
+                 * r335/r355 comparator-split line). Gates (everything
+                 * unmeasured declines): the MAP slot only (the SEQ slot
+                 * keeps the r393 rider-boundary decline — libyaml WRAPS
+                 * the anchored empty into a single-pair map there, the
+                 * probed `[*L,&m:<BS> ]`); shape E the terminator
+                 * EXACTLY (`,` or the `}` closer — a `]`/nesting opener
+                 * declines); shape C the flat plain to the terminator
+                 * via the STANDARD piece walk (fc_plain_pieces: the 1.2
+                 * fold law — 1 break one space, n breaks n-1 escapes,
+                 * the probed `x<LF>y` -> `x y` and `x<LF><LF>y` ->
+                 * `x\ny`; interior blanks verbatim; the trailing trim —
+                 * probed `{*L,&m:<BS> x }`; the r279 comment law; the
+                 * VALUE-boundary laws; the terminator gate stays
+                 * `,`/`}` EXACT and a `[`/`{`/`]` declines — nesting/
+                 * mismatched closer, unmeasured). The libyaml side needs
+                 * NO new law:
+                 * its walk derives the IS_ALPHA cut + VALUE token + the
+                 * freed tail as one flat plain already (the r318
+                 * machinery, the escape render included — the riding
+                 * `{*L,&m:x<BS>}` proves it) and the entry's dual
+                 * byte-equality is the firewall. Comparator carry only,
+                 * no engine change. */
+                if (memchr(p + ae, '\\', te - ae) == NULL) {
+                    /* the r408 ESCAPE-ARM SCOPE: the widening claims the
+                     * corner it measured — the props tail carries a
+                     * BACKSLASH (the escape byte in the anchor name).
+                     * The no-backslash run-terminated faces stay OUT:
+                     * they are the GLUEFOLD WAIVER's seed class (the
+                     * r390/r391/r393/r394 corpus members
+                     * `&m:y<CR>`/`&m:tag:...<CR>` — every one of them
+                     * backslash-free), and the family-classify self-test
+                     * asserts waiver seeds ride waived-ONLY
+                     * ("claimed by BOTH gates" measured in this round's
+                     * first cut). The waiver's own grammar keeps the
+                     * no-backslash run-terminated rows; the escape arm
+                     * (this corner: crash-37c2c62fc7e5a086a923c230e47402f8ef8e6343,
+                     * the floor `{*L,&m:<BS> }`) moves HERE — the waiver
+                     * fw walk cannot derive alias-composed faces at all
+                     * (the fw member walk declines `*`-led members), so
+                     * the lanes stay disjoint BY MEASURED SHAPE, not by
+                     * a raw-byte fingerprint on the claim: the byte
+                     * class names the family (every arm's charset gate),
+                     * the dual byte-exact derivation stays the firewall.
+                     * The backslash-free faces this gate leaves out
+                     * (probed `{*L,&m:x }` / `{*L,&m: x:y}` /
+                     * `{*L,&m: x<LF>y}` / `{*L,&m:<CR><LF>x}`) stay red
+                     * — measured, declined, their own lane's future
+                     * round. */
+                    return y_fail(c);
+                }
+                if (p[av] == ',' || p[av] == '}') {
+                    /* shape E: the run is the props separator, the value
+                     * slot stays EMPTY (the parser's insertion) */
+                    *term_at = av;
+                    fo_str(&c->out, "=VAL : &");
+                    fo_bytes(&c->out, p + as, apl);
+                    fo_str(&c->out, " \n=VAL : \n");
+                    return 1;
+                }
+                if (p[av] != ']' && p[av] != '[' && p[av] != '{') {
+                    /* shape C: the flat plain to the terminator — the
+                     * standard piece walk (the 1.2 fold law, the r279
+                     * comment law, the VALUE-boundary laws ride; the
+                     * entry's dual byte-equality is the firewall) */
+                    fcnode pnd;
+                    size_t pstop = 0;
+                    int psep = 0;
+                    if (!fc_plain_pieces(p, n, av, n, 0, 0, &pnd, &pstop, &psep)) {
+                        fc_val_drop(&pnd);
+                        return y_fail(c);
+                    }
+                    if (psep && pstop < n && (p[pstop] == ',' || p[pstop] == '}')) {
+                        *term_at = pstop;
+                        fo_str(&c->out, "=VAL : &");
+                        fo_bytes(&c->out, p + as, apl);
+                        fo_str(&c->out, " ");
+                        fc_render_plain(&c->out, p, pnd.pieces, pnd.n);
+                        fo_str(&c->out, "\n=VAL : \n");
+                        fc_val_drop(&pnd);
+                        return 1;
+                    }
+                    fc_val_drop(&pnd);
+                }
                 return y_fail(c);
             }
             size_t ans = av + 1;
