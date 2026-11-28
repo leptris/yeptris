@@ -6,6 +6,12 @@ source of truth; this file, vcpkg.json are synced from it).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### the plan walk (`src/yeptris/plan.c`)
+
+- **map-kind plan walks emit one row over a scalar-map leaf (yeptris-ruby#430)** — the single-record shape (`{"config":{"database":{"host":...,"port":...}}}`; serialbench's canonical config face): the walk came back status-OK with rows=0 — the tape leg counted only row MAP_OPENs at container depth 0 and the DOM leg yielded only mapping values, so the record's own pairs never surfaced and the values were unreachable through every binding. Both legs now classify the container: a mapping whose OWN key names a planned leaf IS one record — rows=1, the pairs fill the columns (missing/null/mistyped leaves stay null; an empty container rows nothing; mapping values keep winning for the map-of-records form; seq and array-leaf walks unchanged). The fill pass also skips a matched leaf's container value to its CLOSE — the old OPEN-skip walked the nested keys as row keys, leaking the nested value into the column and derailing the depth accounting for every row after it. Nine pins in `test/unit/test_plan.cpp` (the issue's document on both legs, the array-leaf contrast, the records-form priority, the nested-container CLOSE-skip on both forms, the empty-leaf zero); ctest 806/806 with the corpora at their pins; ASan clean; clang-format `--Werror` clean.
+
 ## [0.6.83] - 2026-11-25
 
 ### the comparator era (r389, all zero-`src/`)
