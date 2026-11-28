@@ -11466,6 +11466,88 @@ add_test(
                 ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/alias-anchor-cut-r409-agree-dash.bin
     )
 
+    # r410 (the post-r409 Fuzz Nightly round, run 46148663901, headSha
+    # verified = 26fe5f03, the r409 merge, issue #1749): the r409
+    # exclusion HELD — the diff leg's INITED walk over the extended
+    # snapshot was CLEAN (#1470, corp 820, zero seed reds; the Valgrind
+    # leg PASS) — and the round red by MUTATION ~2m10s in: 22 bytes
+    # `&k:":<PS> &k:":U\$<PS> U` (two raw PS U+2029 breaks at BLOCK
+    # root, no braces), ONE CopyPart off base unit 5030c5e9 — verified
+    # a WALK INTERMEDIATE, not a seed. THE FACE: the fc-claimed
+    # anchor-cut vocabulary's QUOTE cell composed at BLOCK ROOT — two
+    # props runs across a raw PS break. yeptris keeps the tails riding
+    # the anchor names per the suite charset law (member 1 `=VAL :
+    # &k:" `, member 2 `=VAL : &k:":U\$ U`; W5VH `&:@*!$"<foo>:` governs
+    # quote-in-name, and every SOLO face already rides the charset
+    # arm's truncate-and-verify CLAIMED) while libyaml's IS_ALPHA cut
+    # frees each tail as the member's plain VALUE (`=VAL : &k :"` then
+    # `=VAL : &k :":U\\$ U`). Greedy ddmin floor 13 bytes `::<PS>
+    # &k:$<PS>` (one-minimal under the nightly bar; the quote NOT
+    # load-bearing — the floor sheds into the agreeing `::` head plus
+    # the props-cut dollar tail), so the load-bearing composition is
+    # the SECOND PROPS RUN across the raw PS break; the quote is one
+    # tail byte of the vocabulary, not the cell. THE ADJUDICATION (up
+    # front): the composed face is DECLINED-BY-DESIGN — fy 04e0b58
+    # REJECTS the artifact and every composed probed variant in BOTH
+    # strict-1.2 and --yaml-1.1 (rc 1 both passes), and on the
+    # `::`-floor faces fy's strict-1.2 reading is a THIRD reading (one
+    # flat plain, no map) while its --yaml-1.1 reading differs from its
+    # own 1.2 — siding with NEITHER engine; the suite carries ZERO
+    # `"`-after-cut-colon rows across all 351 src dirs at the da267a5c
+    # pin. No modeled-carry path: the arm chain already claims every
+    # SOLO face, and a relation covering the composed two-run shape
+    # would derive the second-run split from raw bytes (the r370/r403
+    # law). THE DENSITY MEASUREMENT (the r404/r405 census form; one
+    # ~45s budget each, fixed seed 410, single-file seed dirs, the
+    # nightly bar, over the WHOLE 45-entry fc-claimed anchor-cut rider
+    # pool; seed-read cleanliness verified first — every candidate
+    # -runs=1 CLEAN, so every red is a mutation product): the pool
+    # RE-DERIVES WHOLESALE — 20 of 45 within ONE budget (Y2GN.in —
+    # the suite-row comparator itself; the anchor-charset family x8;
+    # the quote-ps lineage x2; decl-alias-collapse-r157; the r72/r77
+    # fold rows; the mbbreak-key-quote / ps-separator singles;
+    # fold-props-gap; and the r397-era waiver-neg-anchor-props-led neg
+    # control); the one-budget-clean cohort stays ONLY where it is
+    # non-family-named (the root-alias septet 7/7, r66/r68/r69/r76,
+    # anchor-name-colon, flow-anchor-colon, anchored-key-explicit,
+    # json-long-flow-key, props-chain-recursion, roundtrip-r235,
+    # waiver-neg-anchor-nohead — the r405 measured-clean non-family-
+    # rider law) while the family-named clean cohort joins the sweep.
+    # The r1306 law cuts both ways: the EXCLUSION EXTENSION is the
+    # answer (the r375/r405/r406/r409 whole-family law) — the pool
+    # globs join the snapshot chain 48 -> 61 with zero collateral
+    # (mechanical fnmatch replay: every new-glob removal is a measured
+    # red, a family-named cohort member, or an in-family lineage
+    # sibling; the 18 measured-clean non-family riders stay). THE FACE
+    # pins as the live-DIFFER negative controls
+    # waiver-neg-anchor-cut-compose-r410.bin (the 13-byte floor) +
+    # waiver-neg-anchor-cut-compose-r410-artifact.bin (the 22-byte
+    # artifact, byte-verified): both probed unclaimed by every family
+    # pre-patch (zero claim lines, SA abort), the
+    # family-classify N-phase carries them (31 controls, 26 differing,
+    # 0 waived), and the new `waiver-neg-anchor-cut-compose*` twin-glob
+    # closes the snapshot forward (the r404 lesson closes forward).
+    # The engines-agreed block-root dash twin `&k-` (`-` rides BOTH
+    # engines' anchor names byte-equal — the r409 agree cell's
+    # block-root form) pins green under the full ctest below
+    # (fuzz-diff-r410-anchor-cut-agree-dash), and joins the snapshot
+    # exclusion by its own glob (`anchor-cut-*`, zero collateral —
+    # the r409 lesson: a green pin is a mutation source). Firewall
+    # unchanged: the anchor-charset ARM itself (every solo face stays
+    # claimed — the arm is NOT touched), the r408 escape arm, the
+    # r407 relation, the r406 BOM rows, the r405 gluefold-qhash row,
+    # the r404 psnel-quoted-fold row, the r394 prop-charset row.
+    # Growth ledger: family nightly re-derivations now 27 — the
+    # TWENTY-FIRST by-mutation (the treadmill's 27th link); the SIXTH
+    # round in a row where the carry held clean at INITED; the red
+    # bred off a walk intermediate in the fc-claimed anchor-cut
+    # vocabulary's own neighborhood.
+    add_test(
+        NAME fuzz-diff-r410-anchor-cut-agree-dash
+        COMMAND fuzz_diff
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/parse/anchor-cut-r410-agree-dash.bin
+    )
+
     add_executable(gen_emitter_golden port/libyaml/gen_emitter_golden.c)
     target_include_directories(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/include)
     target_link_libraries(gen_emitter_golden PRIVATE ${YEPTRIS_LIBYAML_ROOT}/build/libyaml.a)
