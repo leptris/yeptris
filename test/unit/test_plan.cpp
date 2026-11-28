@@ -105,6 +105,133 @@ TEST(PlanWalk, MapRootPathSelectsRows) {
     yeptris_plan_result_free(r);
 }
 
+TEST(PlanWalk, MapRootScalarMapLeafIsOneRow) {
+    /* the single-record shape (yeptris-ruby#430): the path leaf is a
+     * map of scalars — the container itself is ONE row */
+    PlanGuard plan;
+    plan.compile(R"({"kind":"map","path":["config","database"],"children":[
+        {"name":"host","kind":"str"},{"name":"port","kind":"int"},
+        {"name":"name","kind":"str"},{"name":"user","kind":"str"},
+        {"name":"password","kind":"str"}]})");
+    TapeGuard tape;
+    tape.parse(R"({"config":{"database":{"host":"localhost","port":5432,
+                    "name":"myapp","user":"admin","password":"secret"}}})");
+
+    YeptrisStatus st = YEPTRIS_OK;
+    yeptris_plan_result* r = yeptris_tape_plan_walk(&tape.t, plan.p, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_plan_result_rows(r), 1u);
+    const uint32_t* offs = yeptris_plan_result_str_offs(r, 0);
+    const uint32_t* lens = yeptris_plan_result_str_lens(r, 0);
+    ASSERT_NE(offs, nullptr);
+    EXPECT_EQ(std::string((const char*)tape.t._src + offs[0], lens[0]), "localhost");
+    EXPECT_EQ(yeptris_plan_result_ints(r, 1)[0], 5432);
+    EXPECT_EQ(std::string((const char*)tape.t._src + yeptris_plan_result_str_offs(r, 2)[0],
+                          yeptris_plan_result_str_lens(r, 2)[0]),
+              "myapp");
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 0)[0], 0);
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 1)[0], 0);
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 4)[0], 0);
+    yeptris_plan_result_free(r);
+}
+
+TEST(PlanWalk, ScalarMapLeafMissingLeavesStayNull) {
+    PlanGuard plan;
+    plan.compile(R"({"kind":"map","path":"db","children":[
+        {"name":"host","kind":"str"},{"name":"port","kind":"int"},
+        {"name":"gone","kind":"str"}]})");
+    TapeGuard tape;
+    tape.parse(R"({"db":{"host":"h","port":null,"other":7}})");
+
+    YeptrisStatus st = YEPTRIS_OK;
+    yeptris_plan_result* r = yeptris_tape_plan_walk(&tape.t, plan.p, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_plan_result_rows(r), 1u);
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 0)[0], 0);
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 1)[0], 1); /* explicit null */
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 2)[0], 1); /* missing leaf */
+    yeptris_plan_result_free(r);
+}
+
+TEST(PlanWalk, ScalarMapLeafNestedValueSkipsToItsClose) {
+    /* a planned leaf holding a nested object stays null AND its
+     * contents never fill later columns (the OPEN-skip used to walk
+     * nested keys as row keys and derailed the record fill) */
+    PlanGuard plan;
+    plan.compile(R"({"kind":"map","path":"db","children":[
+        {"name":"host","kind":"str"},{"name":"tls","kind":"int"},
+        {"name":"port","kind":"int"}]})");
+    TapeGuard tape;
+    tape.parse(R"({"db":{"host":"h","tls":{"deep":9},"port":5432}})");
+
+    YeptrisStatus st = YEPTRIS_OK;
+    yeptris_plan_result* r = yeptris_tape_plan_walk(&tape.t, plan.p, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_plan_result_rows(r), 1u);
+    EXPECT_EQ(yeptris_plan_result_ints(r, 2)[0], 5432); /* the sibling after the nested map */
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 1)[0], 1);   /* the nested object: null */
+    yeptris_plan_result_free(r);
+}
+
+TEST(PlanWalk, RowLeafNestedValueDoesNotLeakNestedKeys) {
+    /* the same CLOSE-skip on the rows-of-records form: a matched key
+     * whose value is a nested map must not walk the nested keys as
+     * row keys (the OPEN-skip used to leak the nested value into the
+     * column AND derail the depth for every row after it) */
+    PlanGuard plan;
+    plan.compile(R"({"kind":"seq","children":[
+        {"name":"id","kind":"int"},{"name":"deep","kind":"int"}]})");
+    TapeGuard tape;
+    tape.parse(R"([{"id":1,"deep":{"deep":9}},{"id":2,"deep":7}])");
+
+    YeptrisStatus st = YEPTRIS_OK;
+    yeptris_plan_result* r = yeptris_tape_plan_walk(&tape.t, plan.p, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_plan_result_rows(r), 2u);
+    EXPECT_EQ(yeptris_plan_result_ints(r, 0)[0], 1);
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 1)[0], 1); /* the nested "deep" does not leak */
+    EXPECT_EQ(yeptris_plan_result_ints(r, 0)[1], 2);  /* the sibling row still fills */
+    EXPECT_EQ(yeptris_plan_result_ints(r, 1)[1], 7);
+    yeptris_plan_result_free(r);
+}
+
+TEST(PlanWalk, ScalarMapLeafEmptyContainerIsZeroRows) {
+    PlanGuard plan;
+    plan.compile(R"({"kind":"map","path":"db","children":[
+        {"name":"host","kind":"str"}]})");
+    TapeGuard tape;
+    tape.parse(R"({"db":{}})");
+
+    YeptrisStatus st = YEPTRIS_OK;
+    yeptris_plan_result* r = yeptris_tape_plan_walk(&tape.t, plan.p, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_plan_result_rows(r), 0u); /* empty: no record, no row */
+    yeptris_plan_result_free(r);
+}
+
+TEST(PlanWalk, MapRootMappingValuesWinOverTheRecordForm) {
+    /* a map-of-records keeps its shape even beside scalar siblings */
+    PlanGuard plan;
+    plan.compile(R"({"kind":"map","path":"items","children":[
+        {"name":"id","kind":"int"}]})");
+    TapeGuard tape;
+    tape.parse(R"({"items":{"a":{"id":1},"b":2,"c":{"id":3}}})");
+
+    YeptrisStatus st = YEPTRIS_OK;
+    yeptris_plan_result* r = yeptris_tape_plan_walk(&tape.t, plan.p, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_plan_result_rows(r), 2u); /* the mapping values only */
+    EXPECT_EQ(yeptris_plan_result_ints(r, 0)[0], 1);
+    EXPECT_EQ(yeptris_plan_result_ints(r, 0)[1], 3);
+    yeptris_plan_result_free(r);
+}
+
 TEST(PlanWalk, NullsAndUnknownLeaves) {
     PlanGuard plan;
     plan.compile(R"({"kind":"seq","children":[{"name":"v","kind":"int"}]})");
@@ -329,6 +456,72 @@ TEST(PlanDomWalk, MapRootYieldsMappingRows) {
     EXPECT_EQ(yeptris_plan_result_rows(r), 2);
     EXPECT_EQ(yeptris_plan_result_ints(r, 0)[0], 1);
     EXPECT_EQ(yeptris_plan_result_ints(r, 0)[1], 2);
+    yeptris_plan_result_free(r);
+}
+
+TEST(PlanDomWalk, MapRootScalarMapLeafIsOneRow) {
+    /* the single-record shape (yeptris-ruby#430) on the YAML leg */
+    PlanGuard plan;
+    plan.compile(R"({"kind":"map","path":["config","database"],"children":[
+        {"name":"host","kind":"str"},{"name":"port","kind":"int"},
+        {"name":"name","kind":"str"}]})");
+    DocGuard doc;
+    doc.parse("config:\n"
+              "  database:\n"
+              "    host: localhost\n"
+              "    port: 5432\n"
+              "    name: myapp\n");
+
+    YeptrisStatus st = YEPTRIS_OK;
+    yeptris_plan_result* r = yeptris_document_plan_walk(doc.d, plan.p, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_plan_result_rows(r), 1);
+    const yeptris_plan_str* hosts = yeptris_plan_result_strs(r, 0);
+    ASSERT_NE(hosts, nullptr);
+    EXPECT_EQ(std::string(hosts[0].p, hosts[0].len), "localhost");
+    EXPECT_EQ(yeptris_plan_result_ints(r, 1)[0], 5432);
+    EXPECT_EQ(
+        std::string(yeptris_plan_result_strs(r, 2)[0].p, yeptris_plan_result_strs(r, 2)[0].len),
+        "myapp");
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 0)[0], 0);
+    yeptris_plan_result_free(r);
+}
+
+TEST(PlanDomWalk, ScalarMapLeafNestedValueSkipsAndKeepsWalking) {
+    PlanGuard plan;
+    plan.compile(R"({"kind":"map","path":"db","children":[
+        {"name":"host","kind":"str"},{"name":"tls","kind":"str"},
+        {"name":"port","kind":"int"}]})");
+    DocGuard doc;
+    doc.parse("db:\n"
+              "  host: h\n"
+              "  tls:\n"
+              "    enabled: true\n"
+              "  port: 5432\n");
+
+    YeptrisStatus st = YEPTRIS_OK;
+    yeptris_plan_result* r = yeptris_document_plan_walk(doc.d, plan.p, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_plan_result_rows(r), 1);
+    EXPECT_EQ(yeptris_plan_result_ints(r, 2)[0], 5432); /* the sibling after the nested map */
+    EXPECT_EQ(yeptris_plan_result_nulls(r, 1)[0], 1);   /* the nested mapping: null */
+    yeptris_plan_result_free(r);
+}
+
+TEST(PlanDomWalk, ScalarMapLeafEmptyContainerIsZeroRows) {
+    PlanGuard plan;
+    plan.compile(R"({"kind":"map","path":"db","children":[
+        {"name":"host","kind":"str"}]})");
+    DocGuard doc;
+    doc.parse("db: {}\n");
+
+    YeptrisStatus st = YEPTRIS_OK;
+    yeptris_plan_result* r = yeptris_document_plan_walk(doc.d, plan.p, &st);
+    ASSERT_EQ(st, YEPTRIS_OK);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(yeptris_plan_result_rows(r), 0);
     yeptris_plan_result_free(r);
 }
 
