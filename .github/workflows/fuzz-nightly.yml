@@ -491,7 +491,70 @@ jobs:
         # family nightly re-derivations now 25 — the nineteenth
         # by-mutation; the fourth round in a row where the carry held
         # at INITED and the red bred off a walk intermediate.
-        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete && find corpus-comparator -name 'qflow-depth-clamp-*' -delete && find corpus-comparator -name 'qflow-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-anchor-quoted-body*' -delete && find corpus-comparator -name 'psnel-quoted-fold-*' -delete && find corpus-comparator -name 'waiver-neg-psnel-quoted-fold-*' -delete && find corpus-comparator -name '*soup*' -delete && find corpus-comparator -name '*glue*' -delete && find corpus-comparator -name 'qcomp-*' -delete && find corpus-comparator -name 'qflow-*' -delete && find corpus-comparator -name '*gray*' -delete && find corpus-comparator -name 'flow-qate-run-*' -delete && find corpus-comparator -name 'waiver-neg-alias-member*' -delete && find corpus-comparator -name 'waiver-neg-backtick*' -delete && find corpus-comparator -name 'waiver-neg-bom*' -delete && find corpus-comparator -name 'waiver-neg-nested-seq*' -delete && find corpus-comparator -name 'waiver-neg-paste-member-split*' -delete && find corpus-comparator -name 'waiver-neg-squote*' -delete && find corpus-comparator -name 'waiver-neg-gluefold-qhash*' -delete && find corpus-comparator -name 'gluefold-qhash-*' -delete && find corpus-comparator -name 'bom-*' -delete && find corpus-comparator -name '*bom*' -delete && find corpus-comparator -name 'waiver-neg-*bom*' -delete && find corpus-comparator -name 'waiver-neg-alias-anchor-cut*' -delete && find corpus-comparator -name 'waiver-neg-anchor-bsrun*' -delete
+        #
+        # r409 (run 46115926660, headSha verified = 24394fad, the
+        # r408 merge, issue #1739): the r408 carry HELD (INITED clean,
+        # #1475 corp 821; Valgrind PASS) and the round red by MUTATION
+        # ~5s in: 15 bytes `{*L,&L,&MpMp:-}`, ONE InsertByte off base
+        # unit 8040b58ba7dd118f4694e23709b97685f4f1d16a — THE r407
+        # ARTIFACT PIN ITSELF (alias-anchor-cut-r407-artifact.bin,
+        # riding the comparator snapshot CLAIMED). The chain-gap class
+        # extends to PINS: a green comparator pin is a mutation
+        # source. THE FACE: the props-cut family's TAIL member —
+        # yeptris's 1.2 ns-anchor-char walk keeps the `-` glued after
+        # the cut colon INSIDE the name (`=VAL : &MpMp:- ` + the
+        # parser's inserted empty; `-`/`:` ride the name per
+        # Y2GN/2SXE/W5VH) while libyaml's IS_ALPHA cut frees the tail
+        # as the member's VALUE plain (`=VAL : &MpMp ` + `=VAL : -`);
+        # the r407 relation declines at its SHAPE B inserted-empty
+        # misalignment, CORRECTLY. Greedy ddmin floor 12 bytes
+        # `{*L,&L,&p:-}` (del[13] IS the r407 pin — clean). THE
+        # ADJUDICATION (a GREEN pin bred the face): the face HAS a
+        # consensus basis (fy 04e0b58 byte-consistent with yeptris in
+        # BOTH strict-1.2 and --yaml-1.1 on every probed face — the
+        # `-`-position matrix and every tail variant; the suite ZERO
+        # `-`-in-anchor-name rows at the da267a5c pin) but NO lawful
+        # gate covers it: any relation scope covering the dash-led
+        # tail either also claims `{*L,&m:x }` (the r408 waiver-neg
+        # contract — an IDENTICAL dump shape modulo the tail bytes;
+        # the dump-derived relation cannot see the lane) or cuts on
+        # the tail's first byte and leaves `{*L,&L,&MpMp:x}` RED —
+        # ONE InsertByte from the pin itself (x/-/y/2 all rc 77; only
+        # IS_ALPHA name mutations stay claimed). THE DENSITY
+        # MEASUREMENT (the r404/r405 census form; one ~45s budget
+        # each, fixed seed 409, single-file seed dirs, the nightly
+        # bar, seed-read cleanliness verified): 4 of 5 riding family
+        # seeds re-derive a red within ONE budget (the r407 artifact
+        # — the breeder, the r407 floor, BOTH r408 pins — the r408
+        # floor bred the `&mw: ~` tail class, its own neg lane); the
+        # agree-pair stayed clean one budget and is FAMILY-NAMED (the
+        # r405/r406 cohort law). The r1306 law cuts both ways: the
+        # EXCLUSION EXTENSION is the answer (the r375/r405/r406
+        # whole-family law) — `alias-anchor-cut-*` sweeps the r407
+        # pins + the new agreed pair (zero collateral: the only
+        # corpus names matching are the family's own) and
+        # `anchor-bsrun-*` sweeps the r408 pins; the pins carry the
+        # bytes under the full ctest (the r403/r405 pattern; the
+        # r407/r408 fuzz-diff units stay green, the fc walk keeps
+        # every claim, zero src/ change). THE FACE pins as the
+        # live-DIFFER negative controls waiver-neg-alias-anchor-cut-
+        # r409{,-artifact}.bin — the existing
+        # `waiver-neg-alias-anchor-cut*` twin-glob already sweeps
+        # them (the r404 lesson closes forward); the N-phase carries
+        # them (29 controls, 24 differing, 0 waived); the
+        # engines-agreed dash-in-name pair `{*L,&L,&Mp-}` (`-` rides
+        # BOTH engines' anchor names byte-equal) pins green under the
+        # full ctest (fuzz-diff-r409-alias-anchor-cut-agree-dash).
+        # Firewall unchanged: the r408 escape arm, the r407 relation
+        # (its SHAPE B decline on this class is CORRECT and
+        # load-bearing — it keeps the r408 neg lane red), the r406
+        # BOM rows, the r405 gluefold-qhash row, the r404
+        # psnel-quoted-fold row, the r394 prop-charset row. Growth
+        # ledger: family nightly re-derivations now 26 — the
+        # TWENTIETH by-mutation; the FIFTH round in a row where the
+        # carry held clean at INITED; the red bred off a comparator
+        # PIN (the chain-gap class extends to pins).
+        run: cp -r corpus corpus-comparator && find corpus-comparator -name 'flow-qhash-cr-*' -delete && find corpus-comparator -name 'flow-qsoup*' -delete && find corpus-comparator -name 'flow-qhash-nest-*' -delete && find corpus-comparator -name 'flow-qhash-emptyflowkey-*' -delete && find corpus-comparator -name 'block-ps-nel-fold-*' -delete && find corpus-comparator -name 'utf16-*' -delete && find corpus-comparator -name 'utf32-*' -delete && find corpus-comparator -name 'quoted-exotic-tab-*' -delete && find corpus-comparator -name 'root-anchor-quoted-follow-*' -delete && find corpus-comparator -name 'flow-qcollection-glued-*' -delete && find corpus-comparator -name 'flow-doclead-prerun-*' -delete && find corpus-comparator -name 'flow-cleaneat-seq-*' -delete && find corpus-comparator -name 'flow-qalias-key-*' -delete && find corpus-comparator -name 'qflow-tag-soup-*' -delete && find corpus-comparator -name 'root-anchor-colon-ride-*' -delete && find corpus-comparator -name 'waiver-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-alias-tail-ride*' -delete && find corpus-comparator -name 'waiver-neg-foldheader-nel-comment*' -delete && find corpus-comparator -name 'block-bsi-root-*' -delete && find corpus-comparator -name 'root-anchor-charset-bom-*' -delete && find corpus-comparator -name 'bom-line-start-*' -delete && find corpus-comparator -name 'waiver-neg-bom-line-start-*' -delete && find corpus-comparator -name 'qflow-depth-clamp-*' -delete && find corpus-comparator -name 'qflow-gluefold-*' -delete && find corpus-comparator -name 'waiver-neg-anchor-quoted-body*' -delete && find corpus-comparator -name 'psnel-quoted-fold-*' -delete && find corpus-comparator -name 'waiver-neg-psnel-quoted-fold-*' -delete && find corpus-comparator -name '*soup*' -delete && find corpus-comparator -name '*glue*' -delete && find corpus-comparator -name 'qcomp-*' -delete && find corpus-comparator -name 'qflow-*' -delete && find corpus-comparator -name '*gray*' -delete && find corpus-comparator -name 'flow-qate-run-*' -delete && find corpus-comparator -name 'waiver-neg-alias-member*' -delete && find corpus-comparator -name 'waiver-neg-backtick*' -delete && find corpus-comparator -name 'waiver-neg-bom*' -delete && find corpus-comparator -name 'waiver-neg-nested-seq*' -delete && find corpus-comparator -name 'waiver-neg-paste-member-split*' -delete && find corpus-comparator -name 'waiver-neg-squote*' -delete && find corpus-comparator -name 'waiver-neg-gluefold-qhash*' -delete && find corpus-comparator -name 'gluefold-qhash-*' -delete && find corpus-comparator -name 'bom-*' -delete && find corpus-comparator -name '*bom*' -delete && find corpus-comparator -name 'waiver-neg-*bom*' -delete && find corpus-comparator -name 'waiver-neg-alias-anchor-cut*' -delete && find corpus-comparator -name 'waiver-neg-anchor-bsrun*' -delete && find corpus-comparator -name 'alias-anchor-cut-*' -delete && find corpus-comparator -name 'anchor-bsrun-*' -delete
 
       - name: Fuzz budget
         run: |
